@@ -23,9 +23,9 @@
  *     is needed — the renderer resolves it via `docNameFromHash`.)
  *
  * Desktop presence comes from `detectDesktop().bundlePath`, populated whenever a
- * bundle is installed on macOS and `OK_FORCE_BROWSER` is unset — including
+ * desktop executable is installed and `OK_FORCE_BROWSER` is unset — including
  * non-TTY/headless invocations (an agent shelling out). The verb spawns its own
- * `open "<url>"` (LaunchServices) rather than `launchDesktop`.
+ * platform-native URL handler rather than `launchDesktop`.
  */
 import { statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -38,7 +38,8 @@ import {
   resolveUiInfo,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
+import type { SpawnDetachedScrubbedOutcome } from '../utils/detached-spawn.ts';
+import { openTargetFailureMessage, openTarget as openTargetReal } from '../utils/open-target.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 
 export interface OpenOptions {
@@ -66,7 +67,7 @@ export interface OpenDeps {
    */
   classifyName: (projectDir: string, name: string) => 'doc' | 'folder';
   /** Hand a URL or `openknowledge://` deep link to the OS to open. */
-  openTarget: (target: string) => void;
+  openTarget: (target: string) => Promise<SpawnDetachedScrubbedOutcome>;
   log: (message: string) => void;
   error: (message: string) => void;
 }
@@ -101,9 +102,7 @@ export function createRealOpenDeps(
         return 'doc';
       }
     },
-    openTarget: (target) => {
-      spawnDetachedScrubbed('open', [target]);
-    },
+    openTarget: openTargetReal,
     log: (message) => process.stdout.write(`${message}\n`),
     error: (message) => process.stderr.write(`${message}\n`),
   };
@@ -123,17 +122,18 @@ function noTargetError(deps: OpenDeps): number {
   return 1;
 }
 
-/** Build + open an `openknowledge://open` deep link to the desktop app. */
-function openDesktopDeepLink(
-  projectDir: string,
-  param: 'doc' | 'folder',
+async function openAndReport(
   target: string,
+  successMessage: string,
   deps: OpenDeps,
-): void {
-  const deepLink = `openknowledge://open?project=${encodeURIComponent(
-    projectDir,
-  )}&${param}=${encodeURIComponent(target)}`;
-  deps.openTarget(deepLink);
+): Promise<number> {
+  const outcome = await deps.openTarget(target);
+  if (!outcome.ok) {
+    deps.error(`Could not open ${target}: ${openTargetFailureMessage(outcome.reason, target)}.`);
+    return 1;
+  }
+  deps.log(successMessage);
+  return 0;
 }
 
 /**
@@ -143,7 +143,7 @@ function openDesktopDeepLink(
  * Does not check that a doc exists — "open `<doc>`" on a not-yet-created doc
  * lands on the renderer route, which resolves missing targets.
  */
-export function runOpen(name: string, options: OpenOptions, deps: OpenDeps): number {
+export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps): Promise<number> {
   const projectDir = resolve(options.project ?? process.cwd());
   const cleanName = name.replace(/\/+$/, '');
 
@@ -180,16 +180,23 @@ export function runOpen(name: string, options: OpenOptions, deps: OpenDeps): num
     // the synthetic name needs no pre-encoding here.
     const bundlePath = deps.detectBundlePath();
     if (bundlePath) {
-      openDesktopDeepLink(projectDir, 'doc', `__skill__/${scope}/${cleanName}`, deps);
-      deps.log(`Opening skill ${cleanName} (${scope}) in the OpenKnowledge desktop app.`);
-      return 0;
+      const deepLink = `openknowledge://open?project=${encodeURIComponent(
+        projectDir,
+      )}&doc=${encodeURIComponent(`__skill__/${scope}/${cleanName}`)}`;
+      return openAndReport(
+        deepLink,
+        `Opening skill ${cleanName} (${scope}) in the OpenKnowledge desktop app.`,
+        deps,
+      );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
     if (baseUrl) {
       const url = `${baseUrl}/#/${encodeSkillRoute(scope, cleanName)}`;
-      deps.openTarget(url);
-      deps.log(`Opening skill ${cleanName} (${scope}) in your browser: ${url}`);
-      return 0;
+      return openAndReport(
+        url,
+        `Opening skill ${cleanName} (${scope}) in your browser: ${url}`,
+        deps,
+      );
     }
     return noTargetError(deps);
   }
@@ -200,32 +207,34 @@ export function runOpen(name: string, options: OpenOptions, deps: OpenDeps): num
   const bundlePath = deps.detectBundlePath();
   if (isFolder) {
     if (bundlePath) {
-      openDesktopDeepLink(projectDir, 'folder', cleanName, deps);
-      deps.log(`Opening folder ${cleanName} in the OpenKnowledge desktop app.`);
-      return 0;
+      const deepLink = `openknowledge://open?project=${encodeURIComponent(
+        projectDir,
+      )}&folder=${encodeURIComponent(cleanName)}`;
+      return openAndReport(
+        deepLink,
+        `Opening folder ${cleanName} in the OpenKnowledge desktop app.`,
+        deps,
+      );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
     if (baseUrl) {
       const url = `${baseUrl}/#/${encodeFolderRoute(cleanName)}`;
-      deps.openTarget(url);
-      deps.log(`Opening folder ${cleanName} in your browser: ${url}`);
-      return 0;
+      return openAndReport(url, `Opening folder ${cleanName} in your browser: ${url}`, deps);
     }
     return noTargetError(deps);
   }
 
   // Doc.
   if (bundlePath) {
-    openDesktopDeepLink(projectDir, 'doc', cleanName, deps);
-    deps.log(`Opening ${cleanName} in the OpenKnowledge desktop app.`);
-    return 0;
+    const deepLink = `openknowledge://open?project=${encodeURIComponent(
+      projectDir,
+    )}&doc=${encodeURIComponent(cleanName)}`;
+    return openAndReport(deepLink, `Opening ${cleanName} in the OpenKnowledge desktop app.`, deps);
   }
   const baseUrl = deps.resolveBaseUrl(projectDir);
   if (baseUrl) {
     const url = `${baseUrl}/#/${encodeDocName(cleanName)}`;
-    deps.openTarget(url);
-    deps.log(`Opening ${cleanName} in your browser: ${url}`);
-    return 0;
+    return openAndReport(url, `Opening ${cleanName} in your browser: ${url}`, deps);
   }
   return noTargetError(deps);
 }
@@ -247,7 +256,7 @@ export function openCommand(): Command {
       'project',
     )
     .option('--project <dir>', 'Project root (defaults to the current directory)')
-    .action((name: string, options: OpenOptions) => {
-      process.exitCode = runOpen(name, options, createRealOpenDeps());
+    .action(async (name: string, options: OpenOptions) => {
+      process.exitCode = await runOpen(name, options, createRealOpenDeps());
     });
 }

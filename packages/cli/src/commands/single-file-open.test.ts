@@ -31,14 +31,23 @@ function makeDeps(
       return overrides.plan;
     },
     detectBundlePath: overrides.detectBundlePath ?? (() => null),
-    openTarget: (t) => rec.openTargets.push(t),
-    runProjectOpen: (docName, projectRoot) => {
-      rec.projectOpens.push({ docName, projectRoot });
-      return 0;
-    },
-    runBrowserOpen: async (plan) => {
-      rec.browserOpens.push(plan);
-    },
+    openTarget:
+      overrides.openTarget ??
+      (async (t) => {
+        rec.openTargets.push(t);
+        return { ok: true };
+      }),
+    runProjectOpen:
+      overrides.runProjectOpen ??
+      (async (docName, projectRoot) => {
+        rec.projectOpens.push({ docName, projectRoot });
+        return 0;
+      }),
+    runBrowserOpen:
+      overrides.runBrowserOpen ??
+      (async (plan) => {
+        rec.browserOpens.push(plan);
+      }),
     log: (m) => rec.logs.push(m),
     error: (m) => rec.errors.push(m),
   };
@@ -80,6 +89,21 @@ describe('runSingleFileOpen', () => {
       `openknowledge://open?file=${encodeURIComponent('/Users/me/notes/todo.md')}`,
     ]);
     expect(rec.browserOpens).toHaveLength(0);
+  });
+
+  test('ephemeral mode reports launcher failures as exit code 1', async () => {
+    const { deps, rec } = makeDeps({
+      plan: ephemeralPlan,
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      openTarget: async () => ({ ok: false, reason: 'not-installed' }),
+    });
+
+    const code = await runSingleFileOpen('/Users/me/notes/todo.md', deps);
+
+    expect(code).toBe(1);
+    expect(rec.logs).toHaveLength(0);
+    expect(rec.errors).toHaveLength(1);
+    expect(rec.errors[0]).toContain('is not installed or cannot be executed');
   });
 
   test('ephemeral mode with no desktop bundle falls back to the browser session', async () => {

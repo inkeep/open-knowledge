@@ -22,7 +22,8 @@ import {
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
 } from '@inkeep/open-knowledge-server';
-import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
+import type { SpawnDetachedScrubbedOutcome } from '../utils/detached-spawn.ts';
+import { openTargetFailureMessage, openTarget as openTargetReal } from '../utils/open-target.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
 
@@ -41,9 +42,9 @@ export interface SingleFileOpenDeps {
   /** Absolute desktop bundle path when one is installed, else null. */
   detectBundlePath: () => string | null;
   /** Hand a URL / `openknowledge://` deep link to the OS to open. */
-  openTarget: (target: string) => void;
+  openTarget: (target: string) => Promise<SpawnDetachedScrubbedOutcome>;
   /** Reuse `ok open`'s project-mode deep-link/browser path. Returns exit code. */
-  runProjectOpen: (docName: string, projectRoot: string) => number;
+  runProjectOpen: (docName: string, projectRoot: string) => Promise<number>;
   /** Browser fallback — boot an ephemeral single-file server + open a tab. */
   runBrowserOpen: (plan: Extract<SingleFileOpenPlan, { mode: 'ephemeral' }>) => Promise<void>;
   log: (message: string) => void;
@@ -56,9 +57,7 @@ export function createRealSingleFileOpenDeps(
   return {
     prepare: prepareSingleFileOpen,
     detectBundlePath: () => detect().bundlePath ?? null,
-    openTarget: (target) => {
-      spawnDetachedScrubbed('open', [target]);
-    },
+    openTarget: openTargetReal,
     runProjectOpen: (docName, projectRoot) =>
       runOpen(docName, { project: projectRoot }, createRealOpenDeps()),
     runBrowserOpen: (plan) => runSingleFileBrowserOpen(plan),
@@ -96,7 +95,7 @@ export async function runSingleFileOpen(
   if (plan.mode === 'project') {
     // Reuse the existing `ok open` project-doc path (desktop deep-link →
     // browser fallback). Mostly unchanged behavior.
-    return deps.runProjectOpen(plan.docName, plan.projectRoot);
+    return await deps.runProjectOpen(plan.docName, plan.projectRoot);
   }
 
   // No-project ephemeral mode. Desktop owns the server lifecycle (deterministic
@@ -106,7 +105,16 @@ export async function runSingleFileOpen(
   const bundlePath = deps.detectBundlePath();
   if (bundlePath) {
     const deepLink = `openknowledge://open?file=${encodeURIComponent(plan.canonicalFilePath)}`;
-    deps.openTarget(deepLink);
+    const outcome = await deps.openTarget(deepLink);
+    if (!outcome.ok) {
+      deps.error(
+        `Could not open the OpenKnowledge desktop app: ${openTargetFailureMessage(
+          outcome.reason,
+          deepLink,
+        )}.`,
+      );
+      return 1;
+    }
     deps.log(`Opening ${plan.singleDocRelPath} in the OpenKnowledge desktop app.`);
     return 0;
   }

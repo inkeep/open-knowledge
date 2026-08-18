@@ -1,6 +1,7 @@
-import type { SpawnOptions } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { describe, expect, test } from 'vitest';
-import { spawnDetachedScrubbed } from './detached-spawn.ts';
+import { spawnDetachedScrubbed, spawnDetachedScrubbedAndWait } from './detached-spawn.ts';
 
 describe('spawnDetachedScrubbed', () => {
   interface Captured {
@@ -63,5 +64,34 @@ describe('spawnDetachedScrubbed', () => {
       if (prevValue === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
       else process.env.ELECTRON_RUN_AS_NODE = prevValue;
     }
+  });
+
+  test('a real ENOENT spawn resolves as not-installed instead of crashing Node', async () => {
+    const outcome = await spawnDetachedScrubbedAndWait(
+      '/nonexistent/ok-launcher-that-does-not-exist',
+      [],
+    );
+
+    expect(outcome).toEqual({ ok: false, reason: 'not-installed' });
+  });
+
+  test('unrefs a child even when neither process signal arrives before timeout', async () => {
+    let unrefCalled = false;
+    const spawn = (() => {
+      const child = new EventEmitter() as ChildProcess;
+      child.unref = () => {
+        unrefCalled = true;
+        return child;
+      };
+      return child;
+    }) as typeof import('node:child_process').spawn;
+
+    const outcome = await spawnDetachedScrubbedAndWait('launcher', [], {
+      spawn,
+      timeoutMs: 1,
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: 'timeout' });
+    expect(unrefCalled).toBe(true);
   });
 });
