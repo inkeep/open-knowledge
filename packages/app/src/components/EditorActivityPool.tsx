@@ -85,10 +85,13 @@ import { PageHeader } from './PageHeader';
 import { usePageList } from './PageListContext';
 import { PropertyPanel } from './PropertyPanel';
 import {
+  clampTargetToContent,
   computeRestoreTarget,
   hasLandedAt,
+  hasRestoreRunway,
   isExternalScroll,
   measureAnchor,
+  measureContentExtent,
   RESTORE_BACKSTOP_MS,
   shouldRecordScrollPosition,
 } from './scroll-restore';
@@ -782,8 +785,8 @@ export function ScrollPreservingContainer({
   //      from warm-fallback to real-editor will collapse scrollHeight
   //      transiently and re-clamp scrollTop to 0.
   //   2. Bounded per-frame poll that re-applies scrollTop whenever the
-  //      browser has clamped it below target AND scrollHeight is
-  //      sufficient. Survives the warm-fallback → real-editor swap by
+  //      browser has clamped it below target AND the document extends far
+  //      enough to hold it. Survives the warm-fallback → real-editor swap by
   //      re-applying after content hydrates back to full height.
   //
   // rAF-poll, not ResizeObserver: `ResizeObserver(el)` observes the
@@ -802,7 +805,9 @@ export function ScrollPreservingContainer({
   // that is exactly how transient churn froze into a permanently wrong
   // position. Tracking until someone else takes over the scroll is the
   // contract ("the same body content at the same viewport position"). Cost:
-  // a few rect reads per frame (getClientRects + two getBoundingClientRect),
+  // a few rect reads per frame (getClientRects + two getBoundingClientRect +
+  // one per TOP-LEVEL editing surface — nested contenteditable atoms are
+  // excluded by ancestry before any rect read),
   // cheap while layout is clean — reads only force reflow after a write.
   //
   // CSS scroll anchoring is suspended while the loop runs: it is the one
@@ -857,10 +862,33 @@ export function ScrollPreservingContainer({
       savedAnchorPos.current !== null ? rawTarget - savedAnchorPos.current : null;
     const bodyOffset: number | null = sharedOffset ?? instanceOffset;
     if (rawTarget === 0 && bodyOffset === null) return; // nothing to restore
-    // Null = no valid layout evidence this frame (anchor mounted but hidden,
-    // e.g. a Suspense fallback window) — hold: no write this frame.
-    const computeTarget = (): number | null =>
-      computeRestoreTarget(rawTarget, bodyOffset, measureAnchor(el, bodyAnchorRef?.current));
+    // One frame's layout evidence: where to land, and how far the document
+    // actually reaches. A null target = no valid evidence this frame (anchor
+    // mounted but hidden, e.g. a Suspense fallback window) — hold: no write.
+    //
+    // The target is bounded by measured content rather than trusted outright.
+    // A saved offset describes the layout it was saved in; a rebuilt content
+    // DOM re-estimates its `content-visibility` chunks and can be a fraction
+    // of that height, leaving the offset past everything real — and
+    // scrollHeight, the only runway evidence available before, counts
+    // absolutely positioned chrome, so it will happily confirm a landing on
+    // nothing. Measuring per frame (not once at setup) is what makes the
+    // bound converge: the extent starts collapsed and grows as chunks
+    // materialize under the viewport, so the target climbs back toward the
+    // saved offset instead of freezing at the first frame's geometry.
+    const measureFrame = (): { target: number | null; contentBottom: number | null } => {
+      const contentBottom = measureContentExtent(el);
+      const target = computeRestoreTarget(
+        rawTarget,
+        bodyOffset,
+        measureAnchor(el, bodyAnchorRef?.current),
+      );
+      return {
+        target:
+          target === null ? null : clampTargetToContent(target, contentBottom, el.clientHeight),
+        contentBottom,
+      };
+    };
     // Suppress scroll capture while we drive the restore — our own writes and
     // the panel-resize adjustments would otherwise be recorded as user scroll.
     isRestoringRef.current = true;
@@ -882,13 +910,16 @@ export function ScrollPreservingContainer({
     // lands AND content is sized; do NOT short-circuit: the Suspense
     // warm-fallback → real-editor swap can still collapse scrollHeight and
     // re-clamp scrollTop, so Stage 2's poll must remain armed.
-    let target = computeTarget();
-    if (target !== null) {
-      el.scrollTop = target;
-      if (hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
+    let frame = measureFrame();
+    if (frame.target !== null) {
+      el.scrollTop = frame.target;
+      if (
+        hasLandedAt(el.scrollTop, frame.target) &&
+        hasRestoreRunway(frame.target, frame.contentBottom, el.scrollHeight)
+      ) {
         hasLandedOnce = true;
         mark('ok/scroll-restore/phase1-success', {
-          target,
+          target: frame.target,
           elapsedMs: performance.now() - startTs,
         });
       }
@@ -974,18 +1005,22 @@ export function ScrollPreservingContainer({
         return;
       }
       // Recompute from the current anchor so the target follows the Properties
-      // section as it settles to its post-toggle height (see computeTarget).
+      // section as it settles to its post-toggle height (see measureFrame).
       // A null target is a degenerate frame (anchor hidden): hold — writing
       // through invalid evidence is how a transient hidden window used to
       // become a permanently wrong scroll position.
-      target = computeTarget();
-      if (target !== null && !hasLandedAt(el.scrollTop, target) && el.scrollHeight > target) {
-        el.scrollTop = target;
-        if (hasLandedAt(el.scrollTop, target) && !phase2Marked) {
+      frame = measureFrame();
+      if (
+        frame.target !== null &&
+        !hasLandedAt(el.scrollTop, frame.target) &&
+        hasRestoreRunway(frame.target, frame.contentBottom, el.scrollHeight)
+      ) {
+        el.scrollTop = frame.target;
+        if (hasLandedAt(el.scrollTop, frame.target) && !phase2Marked) {
           // At-most-once per restore session: phase2-success fires on the
           // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
-            target,
+            target: frame.target,
             elapsedMs: performance.now() - startTs,
           });
           phase2Marked = true;
@@ -999,16 +1034,20 @@ export function ScrollPreservingContainer({
     const safetyTimer = setTimeout(() => {
       if (done) return;
       // Fire `abandoned` based on final DOM state, not a historical success
-      // flag. Gated on `scrollHeight > target` so we don't emit `abandoned`
-      // when the doc legitimately shrunk below the saved target (content
-      // changed; restoration was not possible). A null target here means the
-      // anchor never became measurable again — that IS abandonment. User
-      // scroll exits via `yieldToUser → finish` which clears the timer,
-      // so a scroll-away cannot trigger a false `abandoned`.
-      const finalTarget = computeTarget();
+      // flag. The final target is content-clamped, so a doc that shrank below
+      // the saved offset yields a REACHABLE target at the new content bottom:
+      // landing there counts as restored, not landing is genuine abandonment,
+      // and the runway check only suppresses the mark when no document exists
+      // below the target at all. A null target here means the anchor never
+      // became measurable again — that IS abandonment. User scroll exits via
+      // `yieldToUser → finish` which clears the timer, so a scroll-away
+      // cannot trigger a false `abandoned`.
+      const final = measureFrame();
+      const finalTarget = final.target;
       if (
         finalTarget === null ||
-        (!hasLandedAt(el.scrollTop, finalTarget) && el.scrollHeight > finalTarget)
+        (!hasLandedAt(el.scrollTop, finalTarget) &&
+          hasRestoreRunway(finalTarget, final.contentBottom, el.scrollHeight))
       ) {
         // `target` stays numeric across the ok/scroll-restore family (a
         // mixed number|string field silently NaNs any numeric aggregation);

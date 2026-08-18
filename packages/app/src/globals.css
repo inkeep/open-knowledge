@@ -2426,10 +2426,26 @@ body[data-editor-tab-dragging] * {
   outline-offset: 2px;
 }
 
-/* Visibility fade — DragHandlePlugin sets inline visibility: hidden */
+/* Visibility fade — DragHandlePlugin sets inline visibility: hidden.
+   The hidden handle stays in layout and keeps whatever inline top/left
+   floating-ui last wrote for it, so a handle parked against a deep block goes
+   on stretching the scroller's scrollHeight after the content beneath it
+   shrinks (a rebuilt content DOM re-estimates every content-visibility chunk
+   much shorter). That surplus is scrollable but holds nothing, which is how a
+   restored offset can park the viewport on blank space. Pinning the hidden
+   handle to the container origin keeps chrome inside the content by
+   construction; `!important` because the plugin writes those offsets inline.
+   `visibility` must stay the hiding mechanism — the plugin's reveal path
+   measures the handle's box via floating-ui (the position write lands a
+   microtask after the reveal), and `display: none` would zero the dimensions
+   that measurement needs. */
 .ok-block-controls[style*="visibility: hidden"],
 .ok-block-controls[style*="visibility:hidden"] {
   opacity: 0;
+  /* biome-ignore lint/complexity/noImportantStyles: the plugin writes top/left as inline styles, which no selector specificity can outrank. */
+  top: 0 !important;
+  /* biome-ignore lint/complexity/noImportantStyles: same inline-style override as `top` above. */
+  left: 0 !important;
 }
 
 /* Dark mode */

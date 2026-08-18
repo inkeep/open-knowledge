@@ -21,6 +21,14 @@
  *      standard-DPR displays. Landing checks need a sub-pixel tolerance or
  *      the loop rewrites forever and telemetry misclassifies an on-target
  *      restore as abandoned.
+ *
+ *   3. A scroller's `scrollHeight` is not a statement about the document.
+ *      Absolutely positioned chrome inside it counts toward the scrollable
+ *      overflow region, so scrollHeight can describe space no content
+ *      occupies — and a saved offset measured against a taller earlier layout
+ *      lands in exactly that space. Targets and the runway checks that gate
+ *      them must be bounded by measured content, or a restore can "succeed"
+ *      onto a blank viewport and then defend that position.
  */
 
 /** Anchor layout evidence for one frame. */
@@ -76,6 +84,106 @@ export function computeRestoreTarget(
     default:
       return assertNever(anchor);
   }
+}
+
+/**
+ * The editing surfaces whose boxes describe the document. Both ProseMirror's
+ * `view.dom` and CodeMirror's `.cm-content` carry the attribute, so no
+ * per-mode knowledge is needed. The scroll-coordinate conversion below is
+ * exact for the modes whose surface is laid out by THIS scroller (WYSIWYG,
+ * full-page source — CM6 there renders at content height with no internal
+ * scrollport). Diff, standalone Mermaid, and standalone text docs mount
+ * `.cm-content` behind their own overflow pane inside the scroller, where the
+ * conversion would mix the outer scrollTop with an inner-positioned rect —
+ * inert today because the outer scroller cannot overflow in those modes, so
+ * the clamp is unreachable there.
+ *
+ * Load-bearing exclusion: overlay chrome mounted inside the scroller (the
+ * block drag handle, selection indicators) must NOT carry `contenteditable` —
+ * an overlay that gained the attribute would re-enter this measurement and
+ * re-open the phantom-space hazard the selector exists to exclude.
+ */
+const CONTENT_SURFACE_SELECTOR = '[contenteditable]';
+
+/**
+ * Bottom of `container`'s document content, in the container's scroll
+ * coordinates (distance from the top of the scrollable content), or `null`
+ * when no editing surface is laid out in it this frame.
+ *
+ * Neither of the two obvious measurements works here (property 3 above):
+ *
+ *   - `scrollHeight` is the polluted quantity, at every level. It counts the
+ *     scrollable overflow of absolutely positioned chrome, so the scroller AND
+ *     every wrapper between it and the document report the same inflated
+ *     height.
+ *   - the container's own children are height-constrained wrappers (`h-full`
+ *     on the editor column), and the document overflows them. Their boxes
+ *     describe the viewport, not the document — measuring them would clamp
+ *     every restore to roughly the top of the page.
+ *
+ * The editing surface is the one box that both encloses the document and
+ * excludes the chrome, because that chrome is mounted as its SIBLING rather
+ * than inside it, and `getBoundingClientRect` reports an element's own border
+ * box. A surface with no boxes (a hidden mode's editor, a skipped subtree)
+ * contributes nothing rather than a zero rect at the viewport origin — the
+ * same hazard as an unmeasurable anchor — and a frame with no surface at all
+ * (a Suspense skeleton or warm fallback) yields `null` so callers hold their
+ * previous behavior instead of clamping against content they cannot see.
+ */
+export function measureContentExtent(container: HTMLElement): number | null {
+  const containerTop = container.getBoundingClientRect().top;
+  const { scrollTop } = container;
+  let contentBottom: number | null = null;
+  for (const surface of Array.from(container.querySelectorAll(CONTENT_SURFACE_SELECTOR))) {
+    // `[contenteditable]` also matches the contenteditable=false atom node
+    // views nested inside an editing surface (wiki-link chips, embeds, image
+    // widgets) — in-flow boxes that can never extend below their surface's
+    // bottom. Skipping them by ancestry keeps the per-frame cost at one rect
+    // read per top-level surface instead of one per atom in a chip-dense doc.
+    if (surface.parentElement?.closest(CONTENT_SURFACE_SELECTOR)) continue;
+    if (surface.getClientRects().length === 0) continue;
+    const bottom = surface.getBoundingClientRect().bottom - containerTop + scrollTop;
+    if (contentBottom === null || bottom > contentBottom) contentBottom = bottom;
+  }
+  return contentBottom;
+}
+
+/**
+ * `target` bounded so the viewport it produces still sits over real content.
+ *
+ * This is what the browser already does to an over-large `scrollTop` write —
+ * clamp it to `scrollHeight - clientHeight` — minus the chrome that inflates
+ * `scrollHeight`. On a document whose geometry has not changed the bound is
+ * the identity: an offset the user could reach when it was saved is still
+ * reachable. It only bites once the content that offset was measured against
+ * is gone, which is precisely when landing on it would show nothing.
+ *
+ * An unmeasurable extent leaves the target alone; the caller's own runway
+ * check falls back to `scrollHeight` in that case rather than clamping
+ * against a measurement we do not have.
+ */
+export function clampTargetToContent(
+  target: number,
+  contentBottom: number | null,
+  clientHeight: number,
+): number {
+  if (contentBottom === null) return target;
+  return Math.min(target, Math.max(0, contentBottom - clientHeight));
+}
+
+/**
+ * Whether the layout can actually hold `target` — whether there is document
+ * below it, not merely scrollable space. Gates the success marks (a scrollTop
+ * that equals its target only because both were clamped to 0 is not a restore)
+ * and the re-apply write (nothing to reach). Falls back to `scrollHeight` only
+ * when no content extent could be measured.
+ */
+export function hasRestoreRunway(
+  target: number,
+  contentBottom: number | null,
+  scrollHeight: number,
+): boolean {
+  return (contentBottom ?? scrollHeight) > target;
 }
 
 /**

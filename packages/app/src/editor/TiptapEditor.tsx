@@ -1033,6 +1033,31 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
     };
   }, [editor]);
 
+  // Hide the block drag handle when this editor leaves the screen. The handle
+  // is an absolutely positioned overlay DragHandlePlugin mounts outside React,
+  // and flipping an `<Activity>` to hidden (`display: none`) does not reach the
+  // plugin's own hide paths, so it survives parked at the last hovered block.
+  // On the way back the content DOM is rebuilt with every content-visibility
+  // chunk re-estimated much shorter, and a handle left at pre-rebuild
+  // coordinates stretches the scroller into scrollable space that holds no
+  // content. Effects unmount on Activity hide, so this cleanup IS the
+  // deactivation hook for Activity hide, pool recycle, and unmount. The one
+  // display path it cannot reach is a WYSIWYG<->source mode flip (a CSS-only
+  // class swap; the chrome stays mounted) — containment there comes from the
+  // `.ok-mode-hidden` pane rule in globals.css, whose content-visibility
+  // bounds the hidden pane's layout, this overlay included.
+  // `hideDragHandle` is the plugin's own transaction meta: it hides the
+  // element and clears the node it tracks, which additionally disarms the
+  // plugin's reposition path during the rebuild.
+  useEffect(() => {
+    return () => {
+      // `editor.commands` reaches through `editor.view`, a throwing proxy
+      // until ProseMirror mounts (same guard as this file's other view users).
+      if (editor.isDestroyed || !getEditorView(editor)) return;
+      editor.commands.setMeta('hideDragHandle', true);
+    };
+  }, [editor]);
+
   // A user edit promotes this doc's preview tab to permanent. Listens for the
   // content change rather than the keystroke: arrow keys, Escape and Cmd+C all
   // reach the DOM handlers above but leave the document untouched, and a tab
