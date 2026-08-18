@@ -25,6 +25,7 @@ import * as Y from 'yjs';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
+import { RUNTIME_VERSION } from '../version-constants.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import { ACP_ENVIRONMENT_NOTE, AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
@@ -536,6 +537,75 @@ process.stdin.on('data', (chunk) => {
       image: true,
       embeddedContext: true,
     });
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('initialize handshake: sends clientInfo implementation metadata', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const agentPath = join(localDir, 'client-info-agent.mjs');
+    // The fake persists the initialize params it received — the only way to
+    // observe the client half of the handshake from outside the process.
+    const capturePath = join(localDir, 'initialize-params.json');
+    writeFileSync(
+      agentPath,
+      `
+import { writeFileSync } from 'node:fs';
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      writeFileSync(${JSON.stringify(capturePath)}, JSON.stringify(msg.params));
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'client-info-agent', name: 'Client Info Agent', command: 'node', args: [agentPath] },
+      ]),
+    );
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'client-info-agent' },
+    });
+    const deadline = Date.now() + 15_000;
+    while (manager.getInfo(info.threadId)?.status !== 'ready') {
+      if (Date.now() > deadline) {
+        throw new Error(`timed out; info: ${JSON.stringify(manager.getInfo(info.threadId))}`);
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
+
+    const params = JSON.parse(readFileSync(capturePath, 'utf8')) as {
+      clientInfo?: unknown;
+      clientCapabilities?: unknown;
+    };
+    expect(params.clientInfo).toEqual({
+      name: 'open-knowledge',
+      title: 'Open Knowledge',
+      version: RUNTIME_VERSION,
+    });
+    expect(params.clientCapabilities).toBeDefined();
 
     await manager.closeThread(info.threadId);
   }, 30_000);

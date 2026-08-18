@@ -72,6 +72,7 @@ import {
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
+import { RUNTIME_VERSION } from '../version-constants.ts';
 import { buildPromptBlocks } from './attachment-blocks.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
@@ -989,6 +990,7 @@ export class AcpThreadManager {
     try {
       init = await conn.agent.request(acpMethods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
+        clientInfo: { name: 'open-knowledge', title: 'Open Knowledge', version: RUNTIME_VERSION },
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
           terminal: true,
