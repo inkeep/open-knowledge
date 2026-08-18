@@ -12,6 +12,11 @@
  * decorations, S9 Problems-panel badge+list+nav composition, plus the live
  * re-lint observer path and the no-false-positive negative case.
  *
+ * The WYSIWYG hover callout's geometry and dismissal live here for the same
+ * reason: the assertion is real-pixel rect arithmetic between the callout and
+ * the caret's line box, and a layout-less DOM reports both as zero-size rects,
+ * so the jsdom tier would report "no overlap" whatever the code does.
+ *
  * markdownlint is opt-in (off by default), so `beforeEach` enables the plugin
  * for the worker's project (`.ok/config.yml`); a hard tab then trips MD010.
  *
@@ -713,6 +718,298 @@ test.describe('markdown lint — auto-fix', () => {
     // leaves the PM doc unchanged, so the decoration relies on the
     // LINT_SOURCE_FIXED_EVENT nudge to re-lint and drop the mark.
     await expect(page.locator('.ProseMirror .ok-lint-block')).toHaveCount(0);
+  });
+});
+
+test.describe('markdown lint — WYSIWYG hover callout vs the editing region', () => {
+  // Long enough to wrap, so a click can land mid-line with the pointer left
+  // resting inside the block. The trailing run trips MD009 (auto-fixable), so
+  // the callout renders with its Fix button — the tallest, worst-case form.
+  const OCCLUDING_BODY =
+    '# Title\n\nA long paragraph that wraps across more than one visual line in the editor, so a click can land at the measured vertical centre of a known line box while the pointer keeps resting on the block.   \n';
+
+  /**
+   * Max caret-line overlap treated as "clear". The callout's bottom edge is
+   * pinned relative to the anchor, so a correct anchor (the caret's line box)
+   * leaves a gap and the measure floors at 0; only an anchor that ignores the
+   * line's height reads positive. Observed regression magnitudes are 4.0-4.6 px
+   * on ordinary paragraphs and 18.2 px of a 20 px line on a tall JSX block, so
+   * 1 px absorbs sub-pixel and font-rendering jitter while staying 4x below the
+   * smallest real occlusion.
+   */
+  const CARET_OCCLUSION_TOLERANCE_PX = 1;
+
+  interface EdgeRect {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  }
+
+  interface CalloutGeometry {
+    tooltip: EdgeRect | null;
+    /** The caret's line box: its vertical extent, spanned to the block's width. */
+    caretLine: EdgeRect | null;
+    /** Height of the callout ∩ caret-line intersection; 0 when disjoint or hidden. */
+    caretOcclusionPx: number;
+    elementAtCaret: string | null;
+  }
+
+  /**
+   * Measure the visible callout against the caret's line box — the region the
+   * user is editing. A collapsed caret rect carries the line's height but no
+   * width, and text keeps flowing into the rest of the line as it is typed, so
+   * the horizontal extent comes from the enclosing block rather than from the
+   * caret's own zero-width x.
+   */
+  function readCalloutGeometry(page: Page): Promise<CalloutGeometry> {
+    return page.evaluate(() => {
+      const toEdges = (r: DOMRect) => ({
+        top: r.top,
+        bottom: r.bottom,
+        left: r.left,
+        right: r.right,
+      });
+      const visible =
+        Array.from(document.querySelectorAll<HTMLElement>('.ok-lint-tooltip')).find(
+          (el) => !el.hidden,
+        ) ?? null;
+      const selection = window.getSelection();
+      let caretLine: EdgeRect | null = null;
+      let elementAtCaret: string | null = null;
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0).cloneRange();
+        const rects = range.getClientRects();
+        const caret = rects.length > 0 ? rects[0] : range.getBoundingClientRect();
+        const focus = selection.focusNode;
+        const focusElement = focus instanceof Element ? focus : (focus?.parentElement ?? null);
+        const blockRect =
+          focusElement?.closest('.ProseMirror > *')?.getBoundingClientRect() ?? null;
+        caretLine = {
+          top: caret.top,
+          bottom: caret.bottom,
+          left: blockRect ? blockRect.left : caret.left,
+          right: blockRect ? blockRect.right : caret.right,
+        };
+        elementAtCaret =
+          document.elementFromPoint(caret.left + 1, (caret.top + caret.bottom) / 2)?.className ??
+          null;
+      }
+      const tooltip = visible ? toEdges(visible.getBoundingClientRect()) : null;
+      let caretOcclusionPx = 0;
+      if (tooltip && caretLine) {
+        const horizontalOverlap =
+          Math.min(tooltip.right, caretLine.right) - Math.max(tooltip.left, caretLine.left);
+        const verticalOverlap =
+          Math.min(tooltip.bottom, caretLine.bottom) - Math.max(tooltip.top, caretLine.top);
+        caretOcclusionPx = horizontalOverlap > 0 ? Math.max(0, verticalOverlap) : 0;
+      }
+      return { tooltip, caretLine, caretOcclusionPx, elementAtCaret };
+    });
+  }
+
+  const visibleCallouts = (page: Page) => page.locator('.ok-lint-tooltip:visible');
+
+  async function lintBlockBox(page: Page) {
+    const block = page.locator('.ProseMirror:not(.composer-prosemirror) .ok-lint-block').first();
+    await expect(block).toBeVisible({ timeout: 15_000 });
+    const box = await block.boundingBox();
+    if (!box) throw new Error('lint block has no layout box');
+    return box;
+  }
+
+  test('the hover callout clears the line box the caret sits in', async ({ page, api }) => {
+    await seed(api, testDocName, OCCLUDING_BODY);
+    const box = await lintBlockBox(page);
+
+    // Click near the top of the block: places the caret AND drags the pointer
+    // into the block, raising the callout. A visible callout here is the
+    // positive precondition — without it the occlusion measurement below would
+    // read 0 vacuously.
+    await page.mouse.click(box.x + 80, box.y + 6);
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+    const probe = await readCalloutGeometry(page);
+    expect(probe.caretLine, 'no caret after clicking into the lint block').not.toBeNull();
+    const lineBox = probe.caretLine as EdgeRect;
+    // A zero-size line box would make any overlap arithmetic pass trivially —
+    // exactly the vacuous shape a layout-less DOM produces.
+    expect(lineBox.bottom - lineBox.top).toBeGreaterThan(8);
+    expect(lineBox.right - lineBox.left).toBeGreaterThan(50);
+
+    // Leave the block so the next entry re-runs the show path with a fresh
+    // anchor, then click at the measured vertical centre of that same line —
+    // where a user aiming at text in the middle of a line actually clicks.
+    await page.mouse.move(box.x + 20, 60);
+    await expect(visibleCallouts(page)).toHaveCount(0);
+    await page.mouse.click(box.x + 150, (lineBox.top + lineBox.bottom) / 2);
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+    // floating-ui resolves the placement asynchronously; before it lands the
+    // callout still sits at its initial 0,0, which would also read as no overlap.
+    // Testing both axes rather than a positive `top` keeps the guard honest: a
+    // legitimately-resolved placement can carry a non-positive top near the
+    // viewport edge, which a `top > 0` poll would misread as never-positioned.
+    await expect
+      .poll(
+        async () => {
+          const { tooltip } = await readCalloutGeometry(page);
+          return tooltip ? tooltip.top !== 0 || tooltip.left !== 0 : false;
+        },
+        {
+          message: 'the hover callout never received a computed position',
+        },
+      )
+      .toBe(true);
+
+    const geometry = await readCalloutGeometry(page);
+    // Stated locally rather than leaned on: a hidden callout makes the
+    // occlusion measure below read 0 and pass for the wrong reason.
+    expect(geometry.tooltip, 'the hover callout vanished before it was measured').not.toBeNull();
+    expect(
+      geometry.caretLine && Math.abs(geometry.caretLine.top - lineBox.top),
+      'the second click landed on a different line than the one that was measured',
+    ).toBeLessThan(2);
+    expect(
+      geometry.caretOcclusionPx,
+      `hover callout overlaps the caret line box by ${geometry.caretOcclusionPx.toFixed(2)}px — ` +
+        `callout=${JSON.stringify(geometry.tooltip)} caretLine=${JSON.stringify(geometry.caretLine)} ` +
+        `topmostElementAtCaret=${geometry.elementAtCaret}`,
+    ).toBeLessThanOrEqual(CARET_OCCLUSION_TOLERANCE_PX);
+  });
+
+  test('typing with the pointer resting on the block retires the hover callout', async ({
+    page,
+    api,
+  }) => {
+    await seed(api, testDocName, OCCLUDING_BODY);
+    const box = await lintBlockBox(page);
+
+    await page.mouse.click(box.x + 80, box.y + box.height / 2);
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+
+    // The pointer never moves again — the only thing that can retire the
+    // callout is the typing itself.
+    await page.keyboard.type('typing under the callout', { delay: 25 });
+    await expect(visibleCallouts(page)).toHaveCount(0);
+  });
+
+  test('arrow-key caret movement retires the hover callout', async ({ page, api }) => {
+    await seed(api, testDocName, OCCLUDING_BODY);
+    const box = await lintBlockBox(page);
+
+    await page.mouse.click(box.x + 80, box.y + 6);
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+
+    // Keyboard navigation moves the caret out from under the point the callout
+    // was anchored against, so a callout still parked there sits over text the
+    // user is now editing. Separate from the typing case: a dismissal wired to
+    // document changes alone would leave this one covered.
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect(visibleCallouts(page)).toHaveCount(0);
+  });
+
+  test('the hover callout comes back when the pointer moves after a keyboard dismissal', async ({
+    page,
+    api,
+  }) => {
+    await seed(api, testDocName, OCCLUDING_BODY);
+    const box = await lintBlockBox(page);
+
+    await page.mouse.click(box.x + 80, box.y + 6);
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+
+    // Caret-only navigation rather than typing: it retires the callout without
+    // editing the document, so the block stays decorated and there is still a
+    // callout to raise again. (Typing here would rewrite the trailing run that
+    // produces the diagnostic in the first place.)
+    await page.keyboard.press('ArrowRight');
+    await expect(visibleCallouts(page)).toHaveCount(0);
+
+    // Off the block and back on. `pointerover` fires on boundary crossings, not
+    // on motion: two 4 px moves inside one block were measured to produce zero
+    // events, so a nudge in place would leave this assertion passing on an
+    // accident of hit-testing rather than on the re-arm actually working.
+    await page.mouse.move(box.x + 20, 60);
+    await page.mouse.move(box.x + 140, box.y + 6);
+    // Hover-to-read must survive the dismissal: a callout that never returns
+    // has traded the reported bug for the loss of the whole affordance. The
+    // diagnostic text proves this is the real callout re-shown, not a stray
+    // empty box left standing.
+    await expect(visibleCallouts(page)).not.toHaveCount(0);
+    await expect(visibleCallouts(page).first()).toContainText('MD009');
+  });
+
+  // A 100x100 PNG, inline so the image resolves without a network fetch: a fake
+  // src renders the not-found placeholder AND trips the console-error gate.
+  const INLINE_PNG =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAAJ0lEQVR4nO3BMQEAAADCoPVPbQhfoAAAAAAAAAAAAAAAAAAAAOBrAB+wAAF7bJcRAAAAAElFTkSuQmCC';
+  // Both textless shapes that get decorated, in one doc: the alt-less image
+  // (MD045) and the second, differently-styled thematic break (MD035).
+  const TEXTLESS_BODY = `# Title\n\nA paragraph of ordinary text.\n\n![](${INLINE_PNG})\n\nMore ordinary text.\n\n---\n\nEven more text.\n\n***\n\nEnd.\n`;
+
+  /**
+   * Max distance from the callout's bottom edge to the top of the block it
+   * describes. `offset(6)` sets the intended gap; the allowance absorbs
+   * `shift()` nudges and sub-pixel jitter while staying far below a callout
+   * that has lost its anchor altogether — an anchor rect of all zeros parks it
+   * at the viewport origin, measured 170.4 px from its block on this fixture
+   * and further still on a scrolled document.
+   */
+  const MAX_ANCHOR_GAP_PX = 24;
+
+  test('the hover callout on a textless block anchors to that block', async ({ page, api }) => {
+    // A textless block has no text line for `coordsAtPos` to measure, so it
+    // answers with a zero-height rect — the exact shape the line-box anchor
+    // exists to replace. `flattenH` collapses a thematic break to its own top
+    // edge, which still clears; an atom React node view (the image) has no laid
+    // out position DOM at all and measures as (0,0,0,0), which anchors the
+    // callout to the top-left of the window instead of to the block.
+    await seed(api, testDocName, TEXTLESS_BODY);
+    const atoms = page.locator('.ProseMirror:not(.composer-prosemirror) .ok-lint-block-atom');
+    await expect(atoms.first()).toBeVisible({ timeout: 15_000 });
+    const count = await atoms.count();
+    // Without both shapes present the loop below would pass on the easy one.
+    expect(count, 'expected both textless shapes to be decorated').toBeGreaterThanOrEqual(2);
+
+    for (let index = 0; index < count; index += 1) {
+      const atom = atoms.nth(index);
+      const box = await atom.boundingBox();
+      expect(box, `textless lint block ${index} has no layout box`).not.toBeNull();
+      const blockBox = box as NonNullable<typeof box>;
+
+      // Off the block and back on: `pointerover` fires on boundary crossings,
+      // so re-entry is what re-runs the anchor computation.
+      await page.mouse.move(blockBox.x + 20, 60);
+      await expect(visibleCallouts(page)).toHaveCount(0);
+      await page.mouse.move(blockBox.x + blockBox.width * 0.25, blockBox.y + blockBox.height / 2);
+      await expect(visibleCallouts(page)).not.toHaveCount(0);
+      await expect
+        .poll(
+          async () => {
+            const { tooltip } = await readCalloutGeometry(page);
+            return tooltip ? tooltip.top !== 0 || tooltip.left !== 0 : false;
+          },
+          { message: 'the hover callout never received a computed position' },
+        )
+        .toBe(true);
+
+      const { tooltip } = await readCalloutGeometry(page);
+      expect(tooltip, 'the hover callout vanished before it was measured').not.toBeNull();
+      const callout = tooltip as EdgeRect;
+      const gapPx = blockBox.y - callout.bottom;
+      expect(
+        gapPx,
+        `hover callout sits ${gapPx.toFixed(2)}px above the block it describes — ` +
+          `callout=${JSON.stringify(callout)} block=${JSON.stringify(blockBox)}`,
+      ).toBeLessThanOrEqual(MAX_ANCHOR_GAP_PX);
+      // The other side of the same invariant: a callout that has slid down over
+      // the block is anchored no better than one that flew off the top.
+      expect(
+        gapPx,
+        `hover callout overlaps the block it describes by ${(-gapPx).toFixed(2)}px — ` +
+          `callout=${JSON.stringify(callout)} block=${JSON.stringify(blockBox)}`,
+      ).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

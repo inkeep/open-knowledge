@@ -408,6 +408,104 @@ describe('Problems-row navigation — scroll suppression', () => {
   });
 });
 
+describe('hover callout — keyboard dismissal unwinds the pointer grace', () => {
+  const DOC = 'lint-tooltip-doc';
+  const BODY = '# Heading\n\nfirst paragraph\n\n\tindented with a hard tab\n';
+  const ENABLED_CONFIG: LinterConfig = {
+    enabled: true,
+    plugins: {
+      ...DEFAULT_LINTER_CONFIG.plugins,
+      markdownlint: { enabled: true, rules: { default: true } },
+    },
+  };
+  let editor: Editor | null = null;
+  let host: HTMLElement | null = null;
+  let originalFetch: typeof globalThis.fetch;
+  let originalElementFromPoint: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () =>
+      Response.json({ effective: ENABLED_CONFIG }),
+    ) as unknown as typeof fetch;
+    // The anchor computation hit-tests the pointer against the document, which
+    // jsdom does not implement. Answering outside the editor takes the callout's
+    // documented fallback (anchor to the block's own box) without needing the
+    // text-node geometry jsdom also omits — the dismissal wiring under test
+    // does not depend on which anchor was chosen.
+    originalElementFromPoint = Object.getOwnPropertyDescriptor(
+      Document.prototype,
+      'elementFromPoint',
+    );
+    Object.defineProperty(Document.prototype, 'elementFromPoint', {
+      value: () => document.body,
+      configurable: true,
+      writable: true,
+    });
+    host = document.createElement('div');
+    document.body.appendChild(host);
+    editor = new Editor({
+      element: host,
+      extensions: [
+        ...coreExtensions,
+        MarkdownLintDecorations.configure({ docName: DOC, getSource: () => BODY }),
+      ],
+      content: md.parse(BODY),
+    });
+  });
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    host?.remove();
+    host = null;
+    if (originalElementFromPoint) {
+      Object.defineProperty(Document.prototype, 'elementFromPoint', originalElementFromPoint);
+    } else {
+      Reflect.deleteProperty(Document.prototype, 'elementFromPoint');
+    }
+    globalThis.fetch = originalFetch;
+  });
+
+  /** jsdom has no PointerEvent; the handlers read only MouseEvent fields. */
+  function pointer(type: string, init: MouseEventInit = {}): MouseEvent {
+    return new MouseEvent(type, { bubbles: true, ...init });
+  }
+
+  test('a keydown taken with the pointer on the callout leaves the next hide working', async () => {
+    const ed = editor;
+    const mount = host;
+    if (!ed || !mount) throw new Error('editor not mounted');
+    await vi.waitFor(() => expect(mount.querySelectorAll('.ok-lint-block').length).toBe(1), {
+      timeout: 5_000,
+    });
+    const block = mount.querySelector('.ok-lint-block') as HTMLElement;
+    // The callout is body-appended rather than mounted under the editor, so a
+    // leaked one from an earlier mount would be indistinguishable here.
+    const callouts = document.querySelectorAll<HTMLElement>('.ok-lint-tooltip');
+    expect(callouts).toHaveLength(1);
+    const tooltip = callouts[0] as HTMLElement;
+
+    block.dispatchEvent(pointer('pointerover'));
+    expect(tooltip.hidden).toBe(false);
+
+    // The pointer travels onto the callout so its Fix button stays reachable.
+    // That grace suppresses the hide timer, so a dismissal has to unwind it:
+    // once hidden the callout is no longer hit-testable, and an engine that
+    // withholds the matching `pointerleave` would leave the grace latched.
+    tooltip.dispatchEvent(new MouseEvent('pointerenter'));
+    ed.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(tooltip.hidden).toBe(true);
+
+    // Hover-to-read still works after the dismissal, and walking away from the
+    // block must retire what it raised.
+    block.dispatchEvent(pointer('pointerover'));
+    expect(tooltip.hidden).toBe(false);
+    ed.view.dom.dispatchEvent(pointer('pointerout', { relatedTarget: document.body }));
+    await vi.waitFor(() => expect(tooltip.hidden).toBe(true), { timeout: 2_000 });
+  });
+});
+
 describe('decoration recovery after a content-equal rebuild', () => {
   const DOC = 'lint-rebuild-doc';
   /** The hard tab trips MD010 — the same body-anchored rule the e2e fixtures use. */

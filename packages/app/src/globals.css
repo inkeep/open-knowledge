@@ -5635,7 +5635,10 @@ html.electron-mode [data-slot="sidebar-inner"] {
 }
 /* Hover tooltip for a decorated lint block (markdown-lint-decorations.ts). A
    styled, instant alternative to the native `title` — OK popover tokens,
-   one diagnostic per line, never intercepts pointer events. */
+   one diagnostic per line. It DOES take pointer events: the Fix button has to
+   be clickable and the enter/leave handlers keep the box alive while the
+   pointer travels to it, so it also swallows clicks on the region it covers
+   (the line above the hovered one). Any keypress retires it. */
 .ok-lint-tooltip {
   position: absolute;
   z-index: 50;

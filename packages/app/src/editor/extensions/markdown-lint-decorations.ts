@@ -43,7 +43,7 @@ import { t } from '@lingui/core/macro';
 import { Extension } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import { buttonVariants } from '@/components/ui/button';
 import { collectFixes, LINT_SOURCE_FIXED_EVENT } from '@/editor/apply-lint-fix';
@@ -162,9 +162,13 @@ function buildDecorationSet(
  * a Fix button (mouse-only convenience — the Problems panel is the
  * keyboard-accessible fix path). The tooltip stays open while the pointer is
  * over it so the button is reachable.
+ *
+ * Mouse-only is enforced rather than merely documented: any keydown in the
+ * editor retires the tooltip, so an overlay raised by a resting pointer can
+ * never stand over the region the user has started typing in.
  */
 function createLintTooltip(
-  view: { dom: HTMLElement },
+  view: EditorView,
   opts: {
     getFixes: (block: HTMLElement) => LintTextEdit[];
     applyFix?: (fixes: LintTextEdit[]) => void;
@@ -192,7 +196,8 @@ function createLintTooltip(
   fixButton.hidden = true;
   tooltip.appendChild(fixButton);
   // Body-appended, viewport-fixed: positioned by floating-ui against a virtual
-  // reference at the pointer (below), so it survives editor scroll containers.
+  // reference built from the hovered line (below), so it survives editor scroll
+  // containers.
   tooltip.style.position = 'fixed';
   tooltip.style.top = '0';
   tooltip.style.left = '0';
@@ -202,22 +207,26 @@ function createLintTooltip(
   let overTooltip = false;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
   let stopAutoUpdate: (() => void) | null = null;
-  // Anchor point for positioning — the pointer location where the tooltip was
-  // shown. Anchoring to the cursor (not the block's top-left corner) keeps the
-  // tooltip next to the text the user is hovering, even in a tall block.
+  // Anchor for positioning: the pointer's x, but the full vertical extent of
+  // the text line under it. Keeping the pointer's x holds the tooltip next to
+  // the text being hovered (not at the block's top-left corner) even in a tall
+  // block, while the line's height is what `offset()` measures its clearance
+  // from — a zero-height reference clears the pointer POINT, which sits inside
+  // the line the caret is on, so the box lands on top of the text being edited.
   let anchorX = 0;
-  let anchorY = 0;
+  let anchorTop = 0;
+  let anchorBottom = 0;
   const virtualEl = {
     getBoundingClientRect: () =>
       ({
         width: 0,
-        height: 0,
+        height: anchorBottom - anchorTop,
         x: anchorX,
-        y: anchorY,
-        top: anchorY,
+        y: anchorTop,
+        top: anchorTop,
         left: anchorX,
         right: anchorX,
-        bottom: anchorY,
+        bottom: anchorBottom,
       }) as DOMRect,
   };
 
@@ -298,7 +307,22 @@ function createLintTooltip(
     if (block) {
       if (block !== current) {
         anchorX = pe.clientX;
-        anchorY = pe.clientY;
+        // A textless block has no text line to measure, so `coordsAtPos` hands
+        // back a zero-height rect (`flattenH` in block context): its own top
+        // edge for a plain leaf like a thematic break, but (0,0,0,0) for an
+        // atom node view, whose position DOM is an empty, never-laid-out
+        // element. The second would anchor the callout to the viewport origin
+        // instead of to the block, so a collapsed measurement falls back to the
+        // block's own box — the wider clearance, which is also what the
+        // declared `| null` arm takes. That arm is unreachable from here by
+        // construction (a lint block is a child of `view.dom`, and the null
+        // arms require coords outside it).
+        const found = view.posAtCoords({ left: pe.clientX, top: pe.clientY });
+        const measured = found ? view.coordsAtPos(found.pos) : null;
+        const line =
+          measured && measured.bottom > measured.top ? measured : block.getBoundingClientRect();
+        anchorTop = line.top;
+        anchorBottom = line.bottom;
         show(block);
       } else {
         // Still over the same block — keep it alive (cancel any pending hide).
@@ -329,10 +353,31 @@ function createLintTooltip(
     if (related !== current && !related?.closest(`.${OK_LINT_BLOCK_CLASS}`)) scheduleHide();
   }
 
+  // Once the user is driving with the keyboard, an overlay raised by a pointer
+  // they are no longer moving is an obstruction, so EVERY key retires it —
+  // deliberately no key allowlist and no `overTooltip` grace. Any exclusion is a
+  // hole (IME `229`, chorded shortcuts, a modifier held before a click), and the
+  // cost of over-firing is one hover the user restores by moving off the block
+  // and back — `pointerover` fires on boundary crossings, not on motion, so a
+  // nudge in place does not re-raise it — while the cost of under-firing is a
+  // box parked on the caret.
+  // Clearing `overTooltip` alongside the hide mirrors what the Fix click does,
+  // for the same reason: a hidden tooltip stops being hit-testable, so the
+  // `pointerleave` that would normally clear the grace flag may never arrive,
+  // and a stale flag makes the next `scheduleHide` return early. Defensive
+  // rather than load-bearing on a spec-compliant engine — the boundary
+  // algorithm dispatches `pointerleave` on the tooltip before any `pointerover`
+  // that could re-raise it, so the stranded window is real but unreachable.
+  function onKeyDown() {
+    overTooltip = false;
+    reallyHide();
+  }
+
   tooltip.addEventListener('pointerenter', onTooltipEnter);
   tooltip.addEventListener('pointerleave', onTooltipLeave);
   view.dom.addEventListener('pointerover', onOver);
   view.dom.addEventListener('pointerout', onOut);
+  view.dom.addEventListener('keydown', onKeyDown);
 
   return {
     destroy() {
@@ -340,6 +385,7 @@ function createLintTooltip(
       stopAutoUpdate?.();
       view.dom.removeEventListener('pointerover', onOver);
       view.dom.removeEventListener('pointerout', onOut);
+      view.dom.removeEventListener('keydown', onKeyDown);
       tooltip.remove();
     },
   };
