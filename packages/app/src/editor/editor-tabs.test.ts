@@ -1,4 +1,8 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  __resetKnownProjectSkillDirsForTests,
+  setKnownProjectSkillDirs,
+} from '@/lib/known-skill-dirs';
 import {
   addPinnedTab,
   applyDragPinMutation,
@@ -782,6 +786,39 @@ describe('preview-tab integration', () => {
       skills: skillTab,
     });
   });
+
+  test('a skills tab known only from /api/skills survives a parse that runs before the list', () => {
+    // The session is read synchronously from localStorage on first paint; the
+    // skills list is a network round trip away. For a bundle whose ONLY evidence
+    // is that list — a symlinked or custom-rooted one, at a non-dot path — the
+    // pre-list answer is "not a skill", and dropping the slot here would persist
+    // that guess: the parse feeds `activeTabByModeRef`, the persist effect writes
+    // the ref straight back out, and the Skills toggle then opens its empty home
+    // instead of the doc the user left open.
+    //
+    // So the parse must be LOSSLESS while classification is still unanswerable,
+    // and strict again once the list has settled.
+    const fileTab = docTabId('docs/a');
+    const aliasedSkillTab = docTabId('plugins/ok/skills/bake-lume-golden/SKILL');
+    const state = createEditorTabSessionState(
+      editorWorkspace([fileTab, aliasedSkillTab], [], aliasedSkillTab),
+      { files: fileTab, skills: aliasedSkillTab },
+      () => new Date('2026-05-06T00:00:00Z'),
+    );
+
+    // List not yet loaded: keep it rather than guess.
+    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBe(aliasedSkillTab);
+
+    // List settled and it IS a skill dir: still kept, now on the evidence.
+    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
+    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBe(aliasedSkillTab);
+
+    // List settled and it is NOT a skill dir: the stale-state guard applies again.
+    setKnownProjectSkillDirs(new Set(['.claude/skills/other']));
+    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBeNull();
+
+    __resetKnownProjectSkillDirsForTests();
+  });
 });
 
 describe('applyDragPinMutation — drag-mutable pin state', () => {
@@ -927,22 +964,72 @@ describe('skill discriminators reject template content shapes', () => {
   // skills.sh carries `tests.md` + `mocking.md` at its root. Those are ordinary
   // content docs, so the surface decision is the only thing keeping the sidebar
   // on Skills when the user clicks one straight after installing.
-  const companionDocs = [
+  // Dot-rooted bundles are matched by SHAPE — no skills list needed, which is
+  // what keeps first paint correct (the tab-session parser runs before any fetch).
+  const dotRootedCompanionDocs = [
     '.claude/skills/tdd/mocking',
     '.claude/skills/tdd/tests',
     '.agents/skills/grill-me/GUIDE',
-    'plugins/ok/skills/demo/notes/deep',
   ];
 
-  test('isSkillBundleShapedPath is true for companion docs inside a bundle', () => {
-    for (const doc of companionDocs) expect(isSkillBundleShapedPath(doc)).toBe(true);
+  // A bundle reached by a path no host root names — the symlink-alias case: a
+  // repo keeping bundles in `plugins/<x>/skills/` and linking them into
+  // `.agents/`. Shape cannot see this; only `/api/skills` (`canonicalPath`) can.
+  const aliasedCompanionDoc = 'plugins/ok/skills/demo/notes/deep';
+
+  afterEach(() => {
+    __resetKnownProjectSkillDirsForTests();
   });
 
-  test('isSkillTabId keeps a bundle companion doc on the Skills surface', () => {
-    for (const doc of companionDocs) expect(isSkillTabId(docTabId(doc))).toBe(true);
+  test('isSkillBundleShapedPath is true for companion docs inside a dot-rooted bundle', () => {
+    for (const doc of dotRootedCompanionDocs) expect(isSkillBundleShapedPath(doc)).toBe(true);
+  });
+
+  test('isSkillTabId keeps a dot-rooted bundle companion doc on the Skills surface', () => {
+    for (const doc of dotRootedCompanionDocs) expect(isSkillTabId(docTabId(doc))).toBe(true);
+  });
+
+  test('an aliased bundle needs the skills list, and gets the surface once it lands', () => {
+    // Before `/api/skills` answers, shape is all there is — and a non-dot path
+    // is indistinguishable from ordinary repo content, so it reads as Files.
+    expect(isSkillBundleShapedPath(aliasedCompanionDoc)).toBe(false);
+
+    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/demo']));
+    expect(isSkillBundleShapedPath(aliasedCompanionDoc)).toBe(true);
+    expect(isSkillTabId(docTabId(aliasedCompanionDoc))).toBe(true);
   });
 
   test('isSkillBundleShapedPath is false for the bundle dir itself', () => {
     expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
+    // Also when the list names it: a doc AT the bundle dir is not a file inside one.
+    setKnownProjectSkillDirs(new Set(['.claude/skills/tdd', 'plugins/ok/skills/demo']));
+    expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
+    expect(isSkillBundleShapedPath('plugins/ok/skills/demo')).toBe(false);
+  });
+
+  // A repo that authors skills keeps bundles at an ordinary path and
+  // installs copies into the host roots. Those authored files are content: the
+  // reporter browsed them in Files and the sidebar kept pulling him to Skills,
+  // where the tree has no row for them. Nothing about the path shape can tell
+  // them apart from a real skill — only whether OK knows the dir.
+  test('ordinary repo content under a non-dot skills/ dir stays on the Files surface', () => {
+    const authoredContent = [
+      'packages/design-ai/skills/ooui/references/layout-and-interaction',
+      'packages/design-ai/skills/ooui/SKILL',
+      'packages/design-ai/skills/animate/RECIPES',
+      'skills/README',
+      'docs/skills/overview/index',
+    ];
+    for (const doc of authoredContent) {
+      expect(isSkillBundleShapedPath(doc)).toBe(false);
+      expect(isSkillTabId(docTabId(doc))).toBe(false);
+    }
+
+    // Registering one of them as a skill root is the ONLY thing that changes it.
+    setKnownProjectSkillDirs(new Set(['packages/design-ai/skills/ooui']));
+    expect(
+      isSkillBundleShapedPath('packages/design-ai/skills/ooui/references/layout-and-interaction'),
+    ).toBe(true);
+    expect(isSkillBundleShapedPath('packages/design-ai/skills/animate/RECIPES')).toBe(false);
   });
 });

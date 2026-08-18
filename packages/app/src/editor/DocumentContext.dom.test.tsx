@@ -6,6 +6,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Toaster } from '@/components/ui/sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
+import {
+  __resetKnownProjectSkillDirsForTests,
+  setKnownProjectSkillDirs,
+} from '@/lib/known-skill-dirs';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import {
   consumeHashNavigationSuppression,
@@ -28,6 +32,16 @@ vi.doMock('@/lib/use-collab-url', () => ({
     lastError: null,
     retry: () => {},
   }),
+}));
+
+// The surface decision reads the known-skill-dirs store, which `useSkills`
+// publishes. Mocking the hook is what makes the "list has not landed yet" ->
+// "list landed" transition drivable from a test: the provider subscribes to this
+// status, so flipping it is what re-runs the per-surface tracking effect.
+let mockSkillsStatus: 'idle' | 'loading' | 'ready' = 'idle';
+
+vi.doMock('@/hooks/use-skills', () => ({
+  useSkills: () => ({ status: mockSkillsStatus, data: [] }),
 }));
 
 const { DocumentProvider, useDocumentContext } = await import('./DocumentContext');
@@ -1981,5 +1995,76 @@ describe('DocumentContext skills-surface new tabs', () => {
 
     await user.click(screen.getByRole('button', { name: 'Resolve skills hub' }));
     expect(activeNewTabId()).toBe(first);
+  });
+});
+
+describe('DocumentContext skills-surface classification without a loaded skills list', () => {
+  afterEach(() => {
+    mockSkillsStatus = 'idle';
+    __resetKnownProjectSkillDirsForTests();
+    window.localStorage.clear();
+    window.location.hash = '';
+    cleanup();
+  });
+
+  function seedSingleDocSession(tabId: string) {
+    window.localStorage.setItem(
+      localTabSessionStorageKey(window.location.origin),
+      JSON.stringify(
+        persistedTabSession([tabId], [], tabId, new Date('2026-05-13T00:00:00.000Z').toISOString()),
+      ),
+    );
+  }
+
+  // The reported bug, at the rendering level: a repo that authors skills keeps
+  // bundles at an ordinary path. Those files are content, so the sidebar must
+  // stay on Files when one is active.
+  test('an ordinary doc under a non-dot skills/ dir leaves the surface on Files', async () => {
+    seedSingleDocSession(
+      docTabId('packages/design-ai/skills/ooui/references/layout-and-interaction'),
+    );
+    mockCollabUrl = 'ws://localhost:1234';
+
+    render(
+      <DocumentProvider>
+        <CloseActiveHarness />
+      </DocumentProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('skill-focused')).toBeTruthy());
+    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
+  });
+
+  // The regression the review caught: a bundle whose only evidence is
+  // /api/skills classifies as Files before the list lands. That answer must not
+  // outlive the list — the provider subscribes to the hook's status, so arrival
+  // re-derives the surface.
+  test('an aliased bundle doc re-derives to Skills when the list lands', async () => {
+    seedSingleDocSession(docTabId('plugins/ok/skills/bake-lume-golden/SKILL'));
+    mockCollabUrl = 'ws://localhost:1234';
+
+    const { rerender } = render(
+      <DocumentProvider>
+        <CloseActiveHarness />
+      </DocumentProvider>,
+    );
+
+    // Pre-list: shape is all there is, and a non-dot path is indistinguishable
+    // from ordinary repo content.
+    await waitFor(() => expect(screen.getByTestId('skill-focused')).toBeTruthy());
+    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
+
+    // The list lands and names the dir.
+    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
+    mockSkillsStatus = 'ready';
+    await act(async () => {
+      rerender(
+        <DocumentProvider>
+          <CloseActiveHarness />
+        </DocumentProvider>,
+      );
+    });
+
+    await waitFor(() => expect(screen.getByTestId('skill-focused').textContent).toBe('true'));
   });
 });

@@ -8,6 +8,7 @@ import { createContext, type ReactNode, use, useEffect, useRef, useState } from 
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { docNameForNavigationTarget, isSkillFocusedTarget } from '@/components/navigation-targets';
 import { consumePrewarmClick } from '@/components/prewarm-correlation';
+import { useSkills } from '@/hooks/use-skills';
 import {
   assetPathFromHash,
   docNameFromHash,
@@ -838,6 +839,22 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     currentPane.openTabs,
     currentPane.newTabIds,
   );
+  // Subscribed, not consumed: the Files/Skills surface decision reads the
+  // project's known skill dirs synchronously via `isSkillBundleShapedPath`, and
+  // `useSkills` is what publishes them. Mounting it HERE (unconditionally) does
+  // two things nothing else does:
+  //
+  //  - re-renders this provider when `/api/skills` lands, so `skillFocused`
+  //    recomputes for a symlinked or custom-rooted bundle instead of sitting on
+  //    the shape-only answer until an unrelated render happens to occur;
+  //  - breaks the circular gate — `EditorTabs` fetches only when it already
+  //    recognises a skill tab, so a doc recognisable ONLY through the list would
+  //    never trigger the fetch that recognises it.
+  //
+  // Costs no extra request in the default configuration: `SkillsSidebarSection`
+  // already calls `useSkills` on every render and mounts whenever the Skills
+  // section is enabled, and the hook shares one module-level in-flight request.
+  const skillsListStatus = useSkills().status;
   const [skillsSidebar, setSkillsSidebarState] = useState<boolean | null>(null);
   // Per-surface active-tab memory: switching Files/Skills restores the tab you
   // last had active in that surface (or clears to its empty/home state). Kept in
@@ -985,11 +1002,24 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   // Remember the active tab per surface so a Files↔Skills toggle can restore it.
   // Runs on every activeTabId change (incl. session restore) so both surfaces
   // stay current even before the first toggle.
+  //
+  // Also re-runs when the skills list settles. A tab restored on first paint is
+  // filed before `/api/skills` answers, so a bundle known only to that list lands
+  // under `files`; leaving it there survives into localStorage and pulls the
+  // toggle straight back across on every press. Re-filing on arrival — and
+  // releasing the slot it was wrongly filed under — is what keeps the pre-list
+  // guess from outliving the answer.
+  //
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `skillsListStatus` is a re-run trigger, not an input — the body reads the list through `isSkillTabId`, which is not reactive on its own.
   useEffect(() => {
     if (!activeTabId) return;
     const mode = isSkillTabId(activeTabId) ? 'skills' : 'files';
+    const previousMode = mode === 'skills' ? 'files' : 'skills';
     activeTabByModeRef.current[mode] = activeTabId;
-  }, [activeTabId]);
+    if (activeTabByModeRef.current[previousMode] === activeTabId) {
+      activeTabByModeRef.current[previousMode] = null;
+    }
+  }, [activeTabId, skillsListStatus]);
 
   // Show only the current surface's tabs. Filtering here (not in EditorTabs)
   // keeps the strip, keyboard cycle/jump, and drag-reorder all consistent;

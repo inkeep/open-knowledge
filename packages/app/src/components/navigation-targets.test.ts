@@ -1,5 +1,9 @@
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
+import {
+  __resetKnownProjectSkillDirsForTests,
+  setKnownProjectSkillDirs,
+} from '@/lib/known-skill-dirs';
 import {
   deriveKnownFolderPaths,
   docNameForNavigationTarget,
@@ -13,6 +17,10 @@ import {
 } from './navigation-targets';
 
 describe('isSkillFocusedTarget', () => {
+  afterEach(() => {
+    __resetKnownProjectSkillDirsForTests();
+  });
+
   const doc = (docName: string): ResolvedNavigationTarget => ({
     kind: 'doc',
     target: docName,
@@ -34,15 +42,31 @@ describe('isSkillFocusedTarget', () => {
     expect(isSkillFocusedTarget(doc('__skill__/global/demo'))).toBe(true);
   });
 
-  test('true for a bundle reached through a symlinked skill dir', () => {
+  test('true for a bundle reached through a symlinked skill dir, once the list names it', () => {
     // A skill dir can be a symlink to somewhere else inside the content dir, so
     // the same bytes also index under the real path. Following a `references/…`
     // link out of the skill can land on that name — same file, no dot-dir — and
     // dropping to Files there looked like the Skills surface had broken.
+    //
+    // Nothing in that path distinguishes it from ordinary repo content, so the
+    // real location is what settles it: `/api/skills` reports the alias as
+    // `path` and this location as `canonicalPath`.
+    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
     expect(
       isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/references/version-pinning')),
     ).toBe(true);
     expect(isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/SKILL'))).toBe(true);
+  });
+
+  test('false for an unregistered bundle-shaped path', () => {
+    // A repo that AUTHORS skills keeps bundles at an ordinary path and installs
+    // copies into the host roots. The authored files are content — classifying
+    // them as skill work pulled the sidebar off Files on nearly every click,
+    // onto a surface whose tree has no row for them.
+    expect(
+      isSkillFocusedTarget(doc('packages/design-ai/skills/ooui/references/layout-and-interaction')),
+    ).toBe(false);
+    expect(isSkillFocusedTarget(doc('packages/design-ai/skills/ooui/SKILL'))).toBe(false);
   });
 
   test('false for plain docs, folders, assets, and no target', () => {

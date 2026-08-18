@@ -14,6 +14,7 @@ import {
   type SkillPreviewFlavor,
   type SkillPreviewHashTarget,
 } from '@/lib/doc-hash';
+import { getKnownProjectSkillDirs, knownSkillDirsSettled } from '@/lib/known-skill-dirs';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { skillDisplayName } from '@/lib/skill-scope';
 import {
@@ -41,14 +42,27 @@ export interface EditorTabSessionState {
   focusedPaneId: string;
 }
 
-/** An open-tab id valid for `surface`, else null (guards stale/hand-edited state). */
+/** An open-tab id valid for `surface`, else null (guards stale/hand-edited state).
+ *
+ * The surface check is skipped for the skills slot until `/api/skills` has
+ * answered once. This parse runs on FIRST PAINT, synchronously off localStorage,
+ * while the list is still in flight — so a bundle whose only evidence is that
+ * list (symlinked, or at a registered custom root, both of which sit at non-dot
+ * paths) reads as Files here. Dropping the slot on that reading does not just
+ * lose a classification, it PERSISTS one: the parse feeds `activeTabByModeRef`,
+ * the persist effect writes the ref back to localStorage, and the Skills toggle
+ * then opens its empty home instead of the doc the user left open. Keeping the
+ * value until the answer is real makes the pre-list parse lossless; once the
+ * list settles the guard applies in full.
+ */
 function surfaceActiveTab(
   value: unknown,
   surface: 'files' | 'skills',
   openTabs: readonly string[],
 ): string | null {
   if (typeof value !== 'string' || !openTabs.includes(value)) return null;
-  return isSkillTabId(value) === (surface === 'skills') ? value : null;
+  if (isSkillTabId(value) === (surface === 'skills')) return value;
+  return surface === 'skills' && !knownSkillDirsSettled() ? value : null;
 }
 
 /** A fresh empty session — factory (not a shared const) so callers can't alias it. */
@@ -396,14 +410,46 @@ export function isSkillDocName(docName: string): boolean {
 
 /**
  * A bundle laid out like a skill but reached by a path `isSkillDocName` does not
- * name — the host roots it knows all start with a dot (`.claude/skills/…`).
+ * name. Drives the Files/Skills SURFACE decision only.
  *
- * A skill dir can be a SYMLINK to somewhere else inside the content dir (a repo
- * that keeps its skills in `plugins/<x>/skills/` and links them into `.agents/`).
- * Both paths then index as documents, and a relative link in the body can resolve
- * to the real one — same bytes, a name that reads as ordinary content. Following
- * a reference out of a skill would drop the sidebar to Files, which looked like
- * the Skills surface had broken.
+ * Two halves, and both are load-bearing:
+ *
+ * SHAPE — a skills dir under a DOT-directory root. Every project root in
+ * `EDITOR_PROJECT_SKILL_ROOT` is one (`.claude`, `.cursor`, `.codex`, `.github`,
+ * `.opencode`, `.pi`), as is the `.agents` hub. The dot anchor is what keeps
+ * ordinary repo content out: a repo that keeps its own markdown under
+ * `packages/<x>/skills/<name>/` is authoring files, not addressing OK skills,
+ * and reading it as skill work hijacked the sidebar away from Files on nearly
+ * every click.
+ *
+ * DATA — bundle dirs `/api/skills` actually reported for this project. Covers
+ * what no path shape can see:
+ *   1. A skill dir that is a SYMLINK to elsewhere in the content dir (a repo
+ *      keeping bundles in `plugins/<x>/skills/` and linking them into
+ *      `.agents/`). Both paths index as documents and a relative link in the
+ *      body resolves to the real, non-dot one; `canonicalPath` names it.
+ *   2. A ledger-registered custom root, which is not required to be dotted.
+ *
+ * Neither half subsumes the other. `/api/skills` returns one row per content
+ * identity and `path` names only the ELECTED CANONICAL dir — same-content copies
+ * live in `hosts`/`copyDirs` — so a doc under a non-canonical copy is absent from
+ * the data, and shape is what catches it. That covers the copies fan-out actually
+ * writes, which land in editor host dirs (`.agents/skills/x/...` when `.claude`
+ * won election).
+ *
+ * KNOWN GAP: a copy at a NON-dot CUSTOM root is named by neither half and reads
+ * as Files. A custom root always loses canonical election (it is absent from
+ * `SKILL_CANONICAL_PRECEDENCE`), so its dir never appears as `path`; being a copy
+ * rather than a symlink, it gets no `canonicalPath` either; and being un-dotted,
+ * shape misses it. It surfaces only as `customPlacements`/`hosts`, which this
+ * predicate deliberately does NOT read: those are recorded against `projectDir`
+ * while doc names are `contentDir`-relative, and under a configured `content.dir`
+ * the two differ — reading them would trade a narrow miss for a wrong prefix.
+ *
+ * Stays synchronous and TOTAL: this is reached from the `useState` initializer
+ * that parses the persisted tab session on first paint, before any fetch. An
+ * empty known-dirs set degrades to the shape answer; it never yields "unknown",
+ * which would drop a persisted `activeTabByMode.skills` entry at parse time.
  *
  * Deliberately NOT folded into `isSkillDocName`: that parser also feeds the CC1
  * link index and managed-artifact resolution, where a looser shape would mint
@@ -417,10 +463,20 @@ export function isSkillDocName(docName: string): boolean {
  * user clicked one — right after installing, when the tree has the bundle
  * expanded and those rows are the obvious thing to click.
  */
-const SKILL_BUNDLE_SHAPED_PATH = /(?:^|\/)skills\/[^/]+\/.+$/;
+const SKILL_BUNDLE_ROOT_PATH = /(?:^|\/)\.[A-Za-z0-9_-]+\/skills\/[^/]+\/.+$/;
 
 export function isSkillBundleShapedPath(docName: string): boolean {
-  return SKILL_BUNDLE_SHAPED_PATH.test(docName);
+  if (SKILL_BUNDLE_ROOT_PATH.test(docName)) return true;
+  const known = getKnownProjectSkillDirs();
+  if (known.size === 0) return false;
+  // Walk ancestors from the parent dir up. Starting at the PARENT (not
+  // `docName` itself) is what keeps a bundle dir addressed as a doc —
+  // `.claude/skills/tdd` — from matching itself: the dir is a skill, a document
+  // AT that name is not a file inside one.
+  for (let cut = docName.lastIndexOf('/'); cut > 0; cut = docName.lastIndexOf('/', cut - 1)) {
+    if (known.has(docName.slice(0, cut))) return true;
+  }
+  return false;
 }
 
 /**

@@ -1,6 +1,11 @@
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { filterOpenTabsForKnownTargets, isSkillTabId } from '@/editor/editor-tabs';
+import {
+  __resetKnownProjectSkillDirsForTests,
+  projectSkillBundleDirs,
+  setKnownProjectSkillDirs,
+} from '@/lib/known-skill-dirs';
 import { skillEntryFileLiveDocName, skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 
 /**
@@ -59,6 +64,10 @@ describe('skillEntryFileLiveDocName', () => {
 });
 
 describe('an aliased skill tab survives a page-list sync', () => {
+  afterEach(() => {
+    __resetKnownProjectSkillDirsForTests();
+  });
+
   // `/api/pages` lists the canonical name only. The tab has to survive either
   // way now (skill docs are the reconciler's to close), but the doc the sidebar
   // opens must still be the indexed one — opening the alias would put a second
@@ -74,6 +83,24 @@ describe('an aliased skill tab survives a page-list sync', () => {
 
   test('the canonical name still classifies as a Skills-surface tab', () => {
     // Otherwise the tab survives but lands in the Files tab strip.
+    //
+    // The canonical location is an ORDINARY path — nothing in `plugins/ok/skills/…`
+    // distinguishes it from a repo that merely keeps markdown under a folder
+    // called `skills`. So the surface decision reads the same
+    // `/api/skills` entry the doc name was built from: `canonicalPath` is what
+    // makes this location a skill, and no path-shape guess can substitute.
+    setKnownProjectSkillDirs(projectSkillBundleDirs([aliased]));
     expect(isSkillTabId(skillEntryLiveDocName(aliased))).toBe(true);
+  });
+
+  test('the derived set carries the alias dir as well as the canonical one', () => {
+    // `path` and `canonicalPath` both index as documents, so both belong in the
+    // set. Asserted at the SET level on purpose: `.agents/skills/bug-triage/SKILL`
+    // is already a skill doc by shape (`.agents` is a host root), so asserting
+    // `isSkillTabId` on it would pass with the seeding removed — it would pin the
+    // dot-root half while reading like a check of the derivation.
+    expect(projectSkillBundleDirs([aliased])).toEqual(
+      new Set(['.agents/skills/bug-triage', 'plugins/ok/skills/bug-triage']),
+    );
   });
 });

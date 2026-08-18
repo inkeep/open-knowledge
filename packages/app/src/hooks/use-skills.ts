@@ -6,6 +6,7 @@ import {
   subscribeToDocumentsChanged,
   subscribeToSkillsChanged,
 } from '@/lib/documents-events';
+import { projectSkillBundleDirs, setKnownProjectSkillDirs } from '@/lib/known-skill-dirs';
 import { parseApiError } from '@/lib/parse-api-error';
 import type { AsyncState } from './use-folder-config';
 
@@ -196,6 +197,11 @@ export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly 
           return;
         }
         lastKnownSkills = parsed.data.skills;
+        // The Files/Skills surface predicates read this synchronously, outside
+        // render (`isSkillBundleShapedPath`). Publishing it here — rather than
+        // deriving it in a component — is what lets a symlinked or
+        // custom-rooted bundle keep its surface without a path-shape guess.
+        setKnownProjectSkillDirs(projectSkillBundleDirs(parsed.data.skills));
         setState({ status: 'ready', data: parsed.data.skills });
       })
       .catch((err: unknown) => {
