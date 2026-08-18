@@ -37,6 +37,7 @@ import {
   type AgentIdentity,
   type Config,
   getLocalDir,
+  installJsonSchemaDialect,
   installPrettyZodErrors,
   isProjectRoot,
   MCP_SERVER_NAME,
@@ -441,6 +442,10 @@ export async function startGlobalMcpServer(
     // agent shouldn't navigate.
     isHostedAgent: resolveIsHostedAgent(process.env),
   });
+
+  // After `registerAllTools`, not before: the SDK installs its `tools/list`
+  // handler lazily on the first `registerTool`.
+  installJsonSchemaDialect(server);
 
   const transport = new StdioServerTransport();
   let closed = false;

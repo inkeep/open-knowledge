@@ -54,6 +54,10 @@ const FILE_ALLOWLIST: ReadonlyMap<string, string> = new Map([
     'MCP stdio logger self-failure path — stdout is the JSON-RPC channel, so this surface writes to stderr/OK_LOG_FILE by design',
   ],
   [
+    'mcp/json-schema-dialect.ts',
+    'runs inside the MCP server surface where stdout is the JSON-RPC channel; console.warn targets stderr',
+  ],
+  [
     'mcp/pretty-zod-errors.ts',
     'runs inside the MCP server surface where stdout is the JSON-RPC channel; console.warn targets stderr',
   ],

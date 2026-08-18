@@ -327,6 +327,10 @@ export {
   MCP_CONNECTION_ID_HEADER,
   sanitizeClientName,
 } from './mcp/agent-identity.ts';
+export {
+  installJsonSchemaDialect,
+  JSON_SCHEMA_DIALECT_2020_12,
+} from './mcp/json-schema-dialect.ts';
 export { getCurrentMcpLogger, McpLogger, runWithMcpLogger } from './mcp/logger.ts';
 export { installPrettyZodErrors } from './mcp/pretty-zod-errors.ts';
 export { buildExecResult, type ExecStructuredResult } from './mcp/tools/exec.ts';

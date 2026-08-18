@@ -13,6 +13,7 @@ import {
   MCP_HOSTED_AGENT_HEADER,
   sanitizeClientName,
 } from './mcp/agent-identity.ts';
+import { installJsonSchemaDialect } from './mcp/json-schema-dialect.ts';
 import { installPrettyZodErrors } from './mcp/pretty-zod-errors.ts';
 import { registerAllTools } from './mcp/tools/index.ts';
 import { resolveWithinRoot } from './mcp/tools/path-safety.ts';
@@ -144,6 +145,10 @@ function createSessionServer(
     identityRef,
     isHostedAgent,
   });
+
+  // After `registerAllTools`, not before: the SDK installs its `tools/list`
+  // handler lazily on the first `registerTool`.
+  installJsonSchemaDialect(server);
 
   return { server, transport };
 }
