@@ -217,6 +217,7 @@ export interface BootServerOptions
     | 'debounce'
     | 'maxDebounce'
     | 'gitEnabled'
+    | 'mcpTomlEditor'
     | 'commitDebounceMs'
     | 'wipRef'
     | 'destroyTimeoutMs'
@@ -792,6 +793,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     debounce: opts.debounce,
     maxDebounce: opts.maxDebounce,
     gitEnabled: opts.gitEnabled,
+    mcpTomlEditor: opts.mcpTomlEditor,
     commitDebounceMs: opts.commitDebounceMs,
     wipRef: opts.wipRef,
     enableTestRoutes: opts.enableTestRoutes,

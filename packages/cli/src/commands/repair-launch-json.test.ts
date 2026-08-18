@@ -65,14 +65,15 @@ describe('repairLaunchJson (remove sweep)', () => {
     expect(logEvents).toContainEqual({ event: 'launch-json-repair-removed', configPath });
   });
 
-  it("removes the whole file when OK's entry was the only configuration", () => {
+  it("keeps the file when OK's entry was the only configuration", () => {
     const configPath = writeLaunchJson({ version: '0.0.1', configurations: [OK_ENTRY] });
 
     const result = repairLaunchJson({ projectDir, logger });
 
-    expect(result.outcome.outcome).toBe('removed-file');
+    expect(result.outcome.outcome).toBe('removed');
     expect(result.repairedCount).toBe(1);
-    expect(existsSync(configPath)).toBe(false);
+    expect(existsSync(configPath)).toBe(true);
+    expect(JSON.parse(readFileSync(configPath, 'utf8')).configurations).toEqual([]);
   });
 
   it('reports not-present when no launch.json exists, and does not create one', () => {

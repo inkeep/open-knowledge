@@ -10,6 +10,7 @@ import {
   resolveClaudeReadiness,
   resolveCliInstalledMap,
   resolveCliOnPath,
+  resolvePlatformCliInstalledMap,
   runLoginShellProbe,
 } from '../../src/main/claude-readiness.ts';
 
@@ -442,5 +443,42 @@ describe('resolveCliInstalledMap', () => {
   test('all-definitive probes yield one entry per CLI in TERMINAL_CLI_IDS', async () => {
     const map = await resolveCliInstalledMap({ probe: () => Promise.resolve(127) });
     expect(Object.keys(map).sort()).toEqual([...TERMINAL_CLI_IDS].sort());
+  });
+});
+
+describe('resolvePlatformCliInstalledMap', () => {
+  test('Windows resolves registry binaries with the native PATH probe', async () => {
+    const probePosix = vi.fn(async () => 127);
+    const probeWindows = vi.fn(async (bin: string) => bin === 'codex');
+
+    const map = await resolvePlatformCliInstalledMap({
+      platform: 'win32',
+      probePosix,
+      probeWindows,
+    });
+
+    expect(map.codex).toBe(true);
+    expect(map.cursor).toBe(false);
+    expect(probePosix).not.toHaveBeenCalled();
+    expect(probeWindows).toHaveBeenCalledWith('codex');
+    expect(probeWindows).toHaveBeenCalledWith('cursor-agent');
+  });
+
+  test('POSIX hosts keep using the login-shell probe', async () => {
+    const probePosix = vi.fn(async (args: readonly string[]) =>
+      args.at(-1) === 'command -v cursor-agent' ? 0 : 127,
+    );
+    const probeWindows = vi.fn(async () => false);
+
+    const map = await resolvePlatformCliInstalledMap({
+      platform: 'darwin',
+      probePosix,
+      probeWindows,
+    });
+
+    expect(map.cursor).toBe(true);
+    expect(map.codex).toBe(false);
+    expect(probeWindows).not.toHaveBeenCalled();
+    expect(probePosix).toHaveBeenCalledWith(cliProbeArgs('cursor-agent'));
   });
 });

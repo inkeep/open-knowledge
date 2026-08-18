@@ -133,6 +133,47 @@ describe('surgical YAML MCP write', () => {
     );
   });
 
+  it('updates only launch keys and preserves unknown fields inside the entry', () => {
+    const configPath = tempFile('config.yaml');
+    const original = [
+      '# hand-written header',
+      'model: hermes-4',
+      'mcp_servers:',
+      '  other:',
+      '    command: node',
+      '    args: [other.js]',
+      '  open-knowledge:',
+      '    command: /bin/sh',
+      '    args: [-l, -c, "# ok-mcp-v1\\nexit 127"]',
+      '    env:',
+      '      KEEP: yes',
+      '    startup_timeout_ms: 45000',
+      '    tools:',
+      '      exec:',
+      '        approval_mode: approve',
+      '    unknown: # keep nested policy',
+      '      nested:',
+      '        values: [1, 2, 3]',
+      '',
+    ].join('\n');
+    writeFileSync(configPath, original);
+
+    expect(writeHermes(configPath).action).toBe('overwritten');
+
+    const after = readFileSync(configPath, 'utf-8');
+    const entry = parseYaml(after).mcp_servers['open-knowledge'];
+    expect(entry).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      env: { KEEP: 'yes' },
+      startup_timeout_ms: 45000,
+      tools: { exec: { approval_mode: 'approve' } },
+      unknown: { nested: { values: [1, 2, 3] } },
+    });
+    expect(after).toContain('# keep nested policy');
+    expect(after).toContain('# hand-written header');
+    expect(parseYaml(after).mcp_servers.other).toEqual({ command: 'node', args: ['other.js'] });
+  });
+
   it('is idempotent: a second write does not churn the file', () => {
     const configPath = tempFile('config.yaml');
     writeHermes(configPath);

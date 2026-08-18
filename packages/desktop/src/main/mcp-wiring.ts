@@ -42,10 +42,10 @@ import {
   type EditorMcpTarget,
   editorConfigPathDisplay,
   editorEntryLocator,
-  isEntryUpToDate,
   type McpDeclineReason,
   type McpEntryClassification,
 } from '@inkeep/open-knowledge';
+import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   McpWiringConfirmRequest,
@@ -511,9 +511,12 @@ export function checkAndRepairMcpWiringOnStartup(
       continue;
     }
 
-    if (classification.kind === 'present' && isEntryUpToDate(classification.entry)) {
-      logger.event({ event: 'mcp-wiring-repair-healthy-current', editor });
-      continue;
+    if (classification.kind === 'present') {
+      const launcher = classifyMcpLauncherEntry(classification.entry);
+      if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
+        logger.event({ event: 'mcp-wiring-repair-healthy-current', editor });
+        continue;
+      }
     }
 
     if (classification.kind === 'decline') {
@@ -728,8 +731,8 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
       // Namespace ownership means we ALWAYS overwrite that token under the
       // user's consent, regardless of whether the existing entry matches
       // today's chain shape or a foreign customization. The sentinel-based
-      // `isEntryUpToDate` predicate is the authoritative no-op gate at
-      // write time (skips byte-identical chain entries); the arming-time
+      // The ordered launcher classifier is the authoritative no-op gate at
+      // write time (including recognized future chains); the arming-time
       // probe here is purely a disclosure aid that errs on the side of
       // showing the user every row Add would touch. `readExistingMcpEntry`
       // returns null when the config file is absent or has no entry for

@@ -596,7 +596,6 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       const outcome = removeOwnLaunchEntry(op.projectRoot);
       switch (outcome.kind) {
         case 'removed':
-        case 'removed-file':
           return { op, status: 'removed' };
         case 'not-present':
           return { op, status: 'not-present' };

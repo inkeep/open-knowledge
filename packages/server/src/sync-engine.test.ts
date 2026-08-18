@@ -771,6 +771,287 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
   });
 });
 
+describe('SyncEngine tracked MCP overlap preparation', () => {
+  test('matching newer local and incoming launchers do not pause full sync', async () => {
+    const bareDir = join(tmpDir, 'mcp-overlap.git');
+    const sisterDir = join(tmpDir, 'mcp-overlap-sister');
+    mkdirSync(bareDir, { recursive: true });
+    mkdirSync(sisterDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const v1 = JSON.stringify({
+      mcpServers: {
+        other: { command: 'keep-me' },
+        'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexit 127'] },
+      },
+    });
+    const v2 = v1.replace('# ok-mcp-v1', '# ok-mcp-v2');
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, '.mcp.json'), `${v1}\n`, 'utf-8');
+    await sister.add('.mcp.json');
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    writeFileSync(join(sisterDir, '.mcp.json'), `${v2}\n`, 'utf-8');
+    await sister.add('.mcp.json');
+    await sister.commit('incoming v2');
+    await sister.push('origin', 'main');
+
+    // This is the reported conflict shape: startup repair generated the same
+    // v2 bytes locally before Git fetched the teammate's v2 commit.
+    writeFileSync(join(projectDir, '.mcp.json'), `${v2}\n`, 'utf-8');
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: {
+        ...stubContentFilter,
+        isExcluded: (path: string) => path === '.mcp.json',
+      },
+      syncEnabled: true,
+    });
+    try {
+      await engine.start();
+      const outcome = await engine.pullOnce();
+      expect(outcome).toBe('succeeded');
+      expect(engine.getStatus().pausedReason).toBeUndefined();
+      expect(readFileSync(join(projectDir, '.mcp.json'), 'utf-8')).toBe(`${v2}\n`);
+      expect((await simpleGit(projectDir).status()).isClean()).toBe(true);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('full sync keeps a locally newer launcher without stash conflicts', async () => {
+    const bareDir = join(tmpDir, 'mcp-newer-overlap.git');
+    const sisterDir = join(tmpDir, 'mcp-newer-overlap-sister');
+    mkdirSync(bareDir, { recursive: true });
+    mkdirSync(sisterDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const config = (marker: string, theme: string) =>
+      `${JSON.stringify({
+        theme,
+        mcpServers: {
+          other: { command: 'keep-me' },
+          'open-knowledge': {
+            command: '/bin/sh',
+            args: ['-l', '-c', `${marker}\nexit 127`],
+          },
+        },
+      })}\n`;
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v1', 'base'), 'utf8');
+    await sister.add('.mcp.json');
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+
+    writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v2', 'incoming'), 'utf8');
+    await sister.add('.mcp.json');
+    await sister.commit('incoming launcher');
+    await sister.push('origin', 'main');
+    writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99', 'base'), 'utf8');
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: {
+        ...stubContentFilter,
+        isExcluded: (path: string) => path === '.mcp.json',
+      },
+      syncEnabled: true,
+    });
+    try {
+      await engine.start();
+      expect(await engine.pullOnce()).toBe('succeeded');
+
+      const project = simpleGit(projectDir);
+      const raw = readFileSync(join(projectDir, '.mcp.json'), 'utf8');
+      expect(raw).not.toContain('<<<<<<<');
+      expect(JSON.parse(raw)).toEqual(JSON.parse(config('# ok-mcp-v99', 'incoming')));
+      expect((await project.raw(['diff', '--name-only', '--diff-filter=U'])).trim()).toBe('');
+      expect((await project.status()).isClean()).toBe(true);
+      expect((await project.log({ maxCount: 1 })).latest?.message).toBe(
+        'Update OpenKnowledge MCP launcher',
+      );
+      expect((await project.raw(['stash', 'list'])).trim()).toBe('');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('full sync persists a newer winner in an entry-only generated commit', async () => {
+    const project = simpleGit(projectDir);
+    await project.init(['--initial-branch=main']);
+    await project.raw('config', 'user.name', 'Project');
+    await project.raw('config', 'user.email', 'project@test.com');
+    const entry = (marker: string) => ({
+      command: '/bin/sh',
+      args: ['-l', '-c', `${marker}\nexit 127`],
+    });
+    const config = (marker: string) =>
+      `${JSON.stringify({
+        theme: 'keep',
+        mcpServers: {
+          other: { command: 'keep-me' },
+          'open-knowledge': entry(marker),
+        },
+      })}\n`;
+    writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v2'), 'utf8');
+    await project.add('.mcp.json');
+    await project.commit('base');
+    writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99'), 'utf8');
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+    });
+    await (
+      engine as unknown as {
+        persistReconciledMcpEntries: (
+          entries: Array<{ path: string; raw: string; winnerEntry: Record<string, unknown> }>,
+        ) => Promise<void>;
+      }
+    ).persistReconciledMcpEntries([
+      {
+        path: '.mcp.json',
+        raw: config('# ok-mcp-v99'),
+        winnerEntry: entry('# ok-mcp-v99'),
+      },
+    ]);
+
+    expect((await project.log({ maxCount: 1 })).latest?.message).toBe(
+      'Update OpenKnowledge MCP launcher',
+    );
+    expect(await project.show(['--format=', '--name-only', 'HEAD'])).toBe('.mcp.json\n');
+    expect(JSON.parse(readFileSync(join(projectDir, '.mcp.json'), 'utf8'))).toEqual(
+      JSON.parse(config('# ok-mcp-v99')),
+    );
+    expect((await project.status()).files).toEqual([]);
+    const committed = JSON.parse(await project.show(['HEAD:.mcp.json'])) as {
+      theme: string;
+      mcpServers: Record<string, unknown>;
+    };
+    expect(committed.theme).toBe('keep');
+    expect(committed.mcpServers.other).toEqual({ command: 'keep-me' });
+  });
+
+  test('push retry persists a locally newer launcher after a non-fast-forward rejection', async () => {
+    const bareDir = join(tmpDir, 'mcp-push-retry.git');
+    const sisterDir = join(tmpDir, 'mcp-push-retry-sister');
+    mkdirSync(bareDir, { recursive: true });
+    mkdirSync(sisterDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const config = (marker: string) =>
+      `${JSON.stringify({
+        mcpServers: {
+          other: { command: 'keep-me' },
+          'open-knowledge': {
+            command: '/bin/sh',
+            args: ['-l', '-c', `${marker}\nexit 127`],
+          },
+        },
+      })}\n`;
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    // Real OK projects ignore per-machine runtime state. Keep the synthetic
+    // repo faithful so SyncEngine state files cannot make the clean-tree
+    // assertion timing-dependent under a loaded CI runner.
+    writeFileSync(join(sisterDir, '.gitignore'), '/.ok/*\n', 'utf8');
+    writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v1'), 'utf8');
+    writeFileSync(join(sisterDir, 'shared.md'), 'base\n', 'utf8');
+    await sister.add(['.gitignore', '.mcp.json', 'shared.md']);
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+    // A fresh OK user may not have configured Git identity yet. Blank local
+    // values override any identity inherited from the developer/CI host and
+    // force the engine's non-interactive fallback path deterministically.
+    await simpleGit(projectDir).raw(['config', 'user.name', '']);
+    await simpleGit(projectDir).raw(['config', 'user.email', '']);
+
+    writeFileSync(join(sisterDir, '.mcp.json'), config('# ok-mcp-v2'), 'utf8');
+    await sister.add('.mcp.json');
+    await sister.commit('incoming launcher');
+    await sister.push('origin', 'main');
+
+    writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99'), 'utf8');
+    writeFileSync(join(projectDir, 'local.md'), 'local content\n', 'utf8');
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: {
+        ...stubContentFilter,
+        isExcluded: (path: string) => path === '.mcp.json',
+      },
+      syncEnabled: true,
+      pullIntervalSeconds: 99999,
+      pushIntervalSeconds: 99999,
+    });
+    try {
+      await engine.start();
+      await engine.trigger('push');
+
+      const project = simpleGit(projectDir);
+      const raw = readFileSync(join(projectDir, '.mcp.json'), 'utf8');
+      expect(raw).not.toContain('<<<<<<<');
+      expect(JSON.parse(raw)).toEqual(JSON.parse(config('# ok-mcp-v99')));
+      expect((await project.raw(['diff', '--name-only', '--diff-filter=U'])).trim()).toBe('');
+      const status = await project.status();
+      // The generated commit is entry-only. Git may retain a byte-distinct,
+      // semantically equivalent worktree overlay (for example, formatting or
+      // line-ending bytes) rather than rewriting the rest of the guest-owned
+      // config. That overlay is safe; collateral dirt is not.
+      expect(status.files.filter((file) => file.path !== '.mcp.json')).toEqual([]);
+      expect(status.files.find((file) => file.path === '.mcp.json')?.index ?? ' ').toBe(' ');
+      expect((await project.raw(['stash', 'list'])).trim()).toBe('');
+      // Inspect the remote itself. A push to a local-path remote does not
+      // consistently refresh the clone's origin/main tracking ref across Git
+      // versions, even when the remote branch advanced successfully.
+      expect(JSON.parse(await bare.show(['main:.mcp.json']))).toEqual(
+        JSON.parse(config('# ok-mcp-v99')),
+      );
+      expect(await bare.show(['main:local.md'])).toBe('local content\n');
+      expect((await project.log({ maxCount: 1 })).latest?.message).toBe(
+        'Update OpenKnowledge MCP launcher',
+      );
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
 // ─── Delete-vs-modify conflict from dirty working tree ───────────────────────
 
 describe('SyncEngine delete/modify dirty content conflicts', () => {
@@ -3574,6 +3855,65 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       // Converged: the file matches the new tip, so the tree is clean.
       expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual([]);
       await assertNoGitResidue();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('tracked MCP overlay upgrades to the incoming newer launcher without a commit', async () => {
+    const mcp = (marker: string) =>
+      `${JSON.stringify({
+        mcpServers: {
+          other: { command: 'keep-me' },
+          'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', `${marker}\nexit 127`] },
+        },
+      })}\n`;
+    const { originTip } = await cloneBehindOrigin({
+      seed: { '.mcp.json': mcp('# ok-mcp-v1') },
+      advance: { '.mcp.json': mcp('# ok-mcp-v2') },
+    });
+    writeFileSync(join(projectDir, '.mcp.json'), mcp('# ok-mcp-v1'), 'utf8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, '.mcp.json'), 'utf8')).toBe(mcp('# ok-mcp-v2'));
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual([]);
+      expect(
+        (await project.log()).all.filter((commit) => commit.message.includes('MCP launcher')),
+      ).toEqual([]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('tracked MCP overlay preserves a recognized future launcher over incoming v2', async () => {
+    const mcp = (marker: string) =>
+      `${JSON.stringify({
+        mcpServers: {
+          other: { command: 'keep-me' },
+          'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', `${marker}\nexit 127`] },
+        },
+      })}\n`;
+    const { originTip } = await cloneBehindOrigin({
+      seed: { '.mcp.json': mcp('# ok-mcp-v1') },
+      advance: { '.mcp.json': mcp('# ok-mcp-v2') },
+    });
+    writeFileSync(join(projectDir, '.mcp.json'), mcp('# ok-mcp-v99'), 'utf8');
+
+    const engine = makePullEngine();
+    try {
+      await engine.start();
+      await engine.trigger('pull');
+      const project = simpleGit(projectDir);
+      expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
+      expect(readFileSync(join(projectDir, '.mcp.json'), 'utf8')).toBe(mcp('# ok-mcp-v99'));
+      expect(await listNames(project, ['diff-index', '--name-only', 'HEAD'])).toEqual([
+        '.mcp.json',
+      ]);
     } finally {
       await engine.destroy();
     }

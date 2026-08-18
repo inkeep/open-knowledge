@@ -350,6 +350,75 @@ describe('surgical JSON MCP write', () => {
     expect(servers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
+  it('updates only standard launch keys and preserves every unknown entry field', () => {
+    const configPath = tempFile('config.jsonc');
+    const original = `{
+  "mcpServers": {
+    "other": { "command": "node", "args": ["other.js"] },
+    "open-knowledge": {
+      "command": "/bin/sh",
+      "args": ["-l", "-c", "# ok-mcp-v1\\nexit 127"],
+      "env": { "KEEP": "yes" },
+      "startup_timeout_ms": 45000,
+      "tools": { "exec": { "approval_mode": "approve" } },
+      // nested policy belongs to the harness, not OK
+      "unknown": { "nested": { "values": [1, 2, 3] } }
+    }
+  },
+  "theme": "dark"
+}
+`;
+    writeFileSync(configPath, original);
+
+    expect(write('cursor', configPath).action).toBe('overwritten');
+
+    const after = readFileSync(configPath, 'utf-8');
+    const entry = (parseConfig(after).mcpServers as Record<string, Record<string, unknown>>)[
+      'open-knowledge'
+    ];
+    expect(entry).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      env: { KEEP: 'yes' },
+      startup_timeout_ms: 45000,
+      tools: { exec: { approval_mode: 'approve' } },
+      unknown: { nested: { values: [1, 2, 3] } },
+    });
+    expect(after).toContain('// nested policy belongs to the harness, not OK');
+    expect(after).toContain('"other": { "command": "node", "args": ["other.js"] }');
+    expect(after).toContain('"theme": "dark"');
+  });
+
+  it('updates only OpenCode launch keys without re-enabling a disabled entry', () => {
+    const configPath = tempFile('opencode.json');
+    writeFileSync(
+      configPath,
+      `{
+  "mcp": {
+    "open-knowledge": {
+      "type": "local",
+      "enabled": false,
+      "command": ["/bin/sh", "-l", "-c", "# ok-mcp-v1\\nexit 127"],
+      "environment": { "KEEP": "yes" },
+      "unknown": { "nested": true }
+    }
+  }
+}
+`,
+    );
+
+    expect(write('opencode', configPath).action).toBe('overwritten');
+
+    const entry = (
+      parseConfig(readFileSync(configPath, 'utf-8')).mcp as Record<string, Record<string, unknown>>
+    )['open-knowledge'];
+    expect(entry).toEqual({
+      ...OPENCODE_ENTRY,
+      enabled: false,
+      environment: { KEEP: 'yes' },
+      unknown: { nested: true },
+    });
+  });
+
   it('is a byte-identical no-op when our entry is already current', () => {
     const configPath = tempFile('config.json');
     writeFileSync(

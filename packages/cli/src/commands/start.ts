@@ -50,6 +50,7 @@ import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
+import { getNativeTomlMcpEditor } from '../native/toml-config-engine.ts';
 import { probeOwnManagedEditorMcpEntry } from './acp-harness-probe.ts';
 import {
   createRealDetectDeps,
@@ -863,6 +864,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     detectGh,
     tokenStore,
     embeddingsKeyStore,
+    mcpTomlEditor: getNativeTomlMcpEditor(),
     // Ephemeral single-file mode: scope content to the one doc, no MCP, no git
     // (shadow repo + commits off), and a no-op git preflight so a machine
     // without git can still open a loose file. The synthesized config lives at

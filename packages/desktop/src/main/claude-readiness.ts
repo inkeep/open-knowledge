@@ -21,7 +21,7 @@
  */
 
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
-import { TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import { TERMINAL_CLI_IDS, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import type { ClaudeReadiness, CliReadiness } from '../shared/bridge-contract.ts';
 import { getLogger } from './desktop-logger.ts';
 
@@ -273,4 +273,27 @@ export async function resolveCliInstalledMap(
     if (onPath !== 'unknown') map[cli] = onPath === 'present';
   }
   return map;
+}
+
+export interface ResolvePlatformCliInstalledMapDeps {
+  readonly platform: NodeJS.Platform;
+  readonly probePosix: (args: readonly string[]) => Promise<number | null>;
+  readonly probeWindows: (bin: string) => Promise<boolean>;
+}
+
+/**
+ * Resolve every registered CLI against the host's real executable lookup.
+ * Windows needs `where` so PATHEXT-backed `.cmd` launchers count; POSIX hosts
+ * need the login shell because desktop processes do not inherit its PATH.
+ */
+export function resolvePlatformCliInstalledMap(
+  deps: ResolvePlatformCliInstalledMapDeps,
+): Promise<Partial<Record<TerminalCli, boolean>>> {
+  return resolveCliInstalledMap({
+    probe: async (cli) => {
+      const bin = TERMINAL_CLIS[cli].bin;
+      if (deps.platform === 'win32') return (await deps.probeWindows(bin)) ? 0 : 127;
+      return deps.probePosix(cliProbeArgs(bin));
+    },
+  });
 }

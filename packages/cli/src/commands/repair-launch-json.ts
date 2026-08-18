@@ -15,25 +15,19 @@ import { removeOwnLaunchEntry } from './launch-json-removal.ts';
 export interface LaunchJsonRepairOutcome {
   configPath: string;
   /**
-   * - `removed` / `removed-file` — OK's entry (or the whole OK-only file) was
-   *   removed from a pre-existing `.claude/launch.json`.
+   * - `removed` — OK's structurally recognized entry was removed from a
+   *   pre-existing `.claude/launch.json`; the containing file remains.
    * - `not-present` — no file, or no OK entry; nothing to clean up.
    * - `declined` — file exists but is malformed; left untouched.
    * - `skipped-reclaim-disabled` — `OK_RECLAIM_DISABLE=1` short-circuited.
    */
-  outcome:
-    | 'removed'
-    | 'removed-file'
-    | 'not-present'
-    | 'declined'
-    | 'write-failed'
-    | 'skipped-reclaim-disabled';
+  outcome: 'removed' | 'not-present' | 'declined' | 'write-failed' | 'skipped-reclaim-disabled';
   error?: string;
 }
 
 export interface LaunchJsonRepairResult {
   outcome: LaunchJsonRepairOutcome;
-  /** 1 when an entry (or the OK-only file) was removed, else 0. */
+  /** 1 when a structurally recognized entry was removed, else 0. */
   repairedCount: 0 | 1;
 }
 
@@ -76,7 +70,7 @@ export function repairLaunchJson(ctx: LaunchJsonRepairContext): LaunchJsonRepair
     logger({ event: 'launch-json-repair-write-failed', configPath });
     return { outcome: { configPath, outcome: 'write-failed', error }, repairedCount: 0 };
   }
-  const removed = result.kind === 'removed' || result.kind === 'removed-file';
+  const removed = result.kind === 'removed';
   if (removed) logger({ event: 'launch-json-repair-removed', configPath });
   return { outcome: { configPath, outcome: result.kind }, repairedCount: removed ? 1 : 0 };
 }

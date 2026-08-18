@@ -13,6 +13,10 @@ import {
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const CHAIN_ENTRY = buildManagedServerEntry({ mode: 'published' });
+const KNOWN_OLDER_ENTRY = {
+  command: '/bin/sh',
+  args: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
+};
 
 function fakeTarget(id: McpWiringEditorId, projectConfigPath?: string): EditorMcpTarget {
   return {
@@ -201,13 +205,35 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     expect(writes).toEqual([]);
   });
 
-  test('incompatible entry → reclaimed (write occurs in place, no rename)', async () => {
+  test('recognized future entry → healthy-current, no downgrade write', async () => {
     const { cli, writes } = buildCli({
       claude: {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { command: 'npx', args: ['-y', '@inkeep/open-knowledge', 'mcp'] },
+          entry: { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v99\nfuture body'] },
+        },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') expect(r.perEditor[0]?.status).toBe('healthy-current');
+    expect(writes).toEqual([]);
+  });
+
+  test('known older entry → reclaimed (write occurs in place, no rename)', async () => {
+    const { cli, writes } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: KNOWN_OLDER_ENTRY,
         },
       },
     });
@@ -223,6 +249,30 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     expect(writes).toEqual(['claude']);
   });
 
+  test('foreign entry → declined without a write', async () => {
+    const { cli, writes } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: { command: '/usr/bin/foreign', args: ['server.js'] },
+        },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') {
+      expect(r.perEditor[0]).toMatchObject({ status: 'declined', reason: 'foreign-command' });
+    }
+    expect(writes).toEqual([]);
+  });
+
   test('write declines (read-then-write race) → declined, not a false reclaimed', async () => {
     // The classify pre-pass sees a reclaimable entry, but the lock-time write
     // declines (a concurrent harness truncated the file, or it grew past the
@@ -233,7 +283,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
         classification: {
           kind: 'present',
-          entry: { command: 'npx', args: ['-y', '@inkeep/open-knowledge', 'mcp'] },
+          entry: KNOWN_OLDER_ENTRY,
         },
         writeOutcome: { action: 'declined', reason: 'unparseable' },
       },
@@ -267,7 +317,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     expect(decline).not.toHaveProperty('configPath');
   });
 
-  test('incompatible entry emits mcp-config-migrate before the write', async () => {
+  test('known older entry emits mcp-config-migrate before the write', async () => {
     // Records the order of (event-emit, write) calls so we can assert the
     // migrate event lands BEFORE the writer is invoked — captures "intent to
     // migrate" even when the write subsequently fails.
@@ -278,7 +328,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       allEditorIds: ['claude' as McpWiringEditorId],
       classifyExistingProjectMcpConfig: () => ({
         kind: 'present',
-        entry: { command: 'npx', args: ['-y', '@inkeep/open-knowledge', 'mcp'] },
+        entry: KNOWN_OLDER_ENTRY,
       }),
       writeProjectMcpConfig: () => {
         order.push('write');
@@ -310,8 +360,8 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       surface: 'desktop-project-open',
       editorId: 'claude',
       configPath: '/p/.mcp.json',
-      priorCommand: 'npx',
-      priorArgs: ['-y', '@inkeep/open-knowledge', 'mcp'],
+      priorCommand: '/bin/sh',
+      priorArgs: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
     });
   });
 
@@ -367,7 +417,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
       },
       cursor: {
         target: fakeTarget('cursor' as McpWiringEditorId, '/p/.cursor/mcp.json'),
-        classification: { kind: 'present', entry: { command: 'old' } },
+        classification: { kind: 'present', entry: KNOWN_OLDER_ENTRY },
         writeOutcome: { action: 'overwritten' },
       },
     });
@@ -391,7 +441,7 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     const { cli } = buildCli({
       claude: {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
-        classification: { kind: 'present', entry: { command: 'old' } },
+        classification: { kind: 'present', entry: KNOWN_OLDER_ENTRY },
         writeOutcome: { action: 'failed', error: 'EACCES' },
       },
     });
@@ -417,12 +467,12 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     const { cli, writes } = buildCli({
       claude: {
         target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
-        classification: { kind: 'present', entry: { command: 'old' } },
+        classification: { kind: 'present', entry: KNOWN_OLDER_ENTRY },
         writeOutcome: { action: 'failed', error: 'EACCES' },
       },
       cursor: {
         target: fakeTarget('cursor' as McpWiringEditorId, '/p/.cursor/mcp.json'),
-        classification: { kind: 'present', entry: { command: 'old' } },
+        classification: { kind: 'present', entry: KNOWN_OLDER_ENTRY },
         writeOutcome: { action: 'overwritten' },
       },
     });

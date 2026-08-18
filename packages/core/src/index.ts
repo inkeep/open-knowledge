@@ -380,6 +380,19 @@ export {
   resolveIsHostedAgent,
 } from './constants/mcp.ts';
 export {
+  classifyMcpLauncherEntry,
+  DEFAULT_MCP_LAUNCHER_REVISION_CATALOG,
+  type FutureMcpLauncherDescriptor,
+  type KnownMcpLauncherDescriptor,
+  type McpLauncherCapability,
+  type McpLauncherClassification,
+  type McpLauncherDeclineReason,
+  type McpLauncherDescriptor,
+  type McpLauncherEnvelope,
+  type McpLauncherFamily,
+  type McpLauncherRevisionCatalog,
+} from './constants/mcp-launcher.ts';
+export {
   MENU_LABELS,
   type MenuLabelKey,
   menuLabelForPlatform,

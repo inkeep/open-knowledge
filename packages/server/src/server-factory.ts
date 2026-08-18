@@ -190,6 +190,7 @@ import {
 } from './managed-artifact-persistence.ts';
 import { startManagedArtifactWatcher } from './managed-artifact-watcher.ts';
 import { recoverPendingManagedRename } from './managed-rename-journal.ts';
+import type { NativeTomlMcpEditor } from './mcp-config-reconciler.ts';
 import { mdManager, schema } from './md-manager.ts';
 import {
   incrementBatch,
@@ -292,6 +293,8 @@ export interface ServerOptions {
     minEvictableIdleMs?: number;
   };
   gitEnabled?: boolean;
+  /** Injected native TOML capability for entry-preserving sync reconciliation. */
+  mcpTomlEditor?: NativeTomlMcpEditor;
   commitDebounceMs?: number;
   wipRef?: string;
   /**
@@ -5402,6 +5405,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         contentDir,
         contentFilter,
         contentRoot,
+        mcpTomlEditor: options.mcpTomlEditor,
         mode: bootAutoSyncMode.mode,
         pullIntervalSeconds: options.pullIntervalSeconds,
         pushIntervalSeconds: options.pushIntervalSeconds,

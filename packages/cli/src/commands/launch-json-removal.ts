@@ -8,14 +8,11 @@
  * whole file; it surgically removes only OK's array element, byte-preserving
  * every other configuration, comment, and formatting token.
  *
- * The one case the whole file IS removed: when OK's entry was the ONLY
- * configuration — the file was scaffolded by `ok init` and holds nothing else
- * of the user's — so deleting it is the clean full reversal (a later `ok init`
- * re-scaffolds it), matching how the fish PATH conf file is deleted when
- * stripping OK's block leaves it empty.
+ * The containing file is never deleted, even when the generated entry was its
+ * only configuration: top-level settings remain user-owned.
  */
 
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import {
@@ -30,7 +27,6 @@ import { existingFileMode, surgicalJsonDelete } from './jsonc-surgical.ts';
 
 export type LaunchRemoveOutcome =
   | { kind: 'removed' }
-  | { kind: 'removed-file' }
   | { kind: 'not-present' }
   | { kind: 'declined' };
 
@@ -76,22 +72,49 @@ export function removeOwnLaunchEntry(projectRoot: string): LaunchRemoveOutcome {
   const configs = root.configurations;
   if (!Array.isArray(configs)) return { kind: 'not-present' };
 
-  const index = configs.findIndex(
-    (c) => isObject(c) && (c as Record<string, unknown>).name === LAUNCH_CONFIG_NAME,
-  );
+  const index = configs.findIndex(isOwnLaunchEntry);
   if (index === -1) return { kind: 'not-present' };
-
-  // OK's entry is the only configuration → the file is OK-owned; delete it. An
-  // I/O failure here propagates (like the atomicWriteFileSync below) so the
-  // executor surfaces it as a `failed` op — a permission error is not a
-  // `declined (unparseable)`.
-  if (configs.length === 1) {
-    rmSync(configPath, { force: true });
-    return { kind: 'removed-file' };
-  }
 
   const { text, changed } = surgicalJsonDelete(raw, ['configurations', index]);
   if (!changed) return { kind: 'not-present' };
   atomicWriteFileSync(configPath, text, { mode: existingFileMode(configPath) });
   return { kind: 'removed' };
+}
+
+function isOwnLaunchEntry(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  const entry = value as Record<string, unknown>;
+  if (entry.name !== LAUNCH_CONFIG_NAME || !Array.isArray(entry.runtimeArgs)) return false;
+  const args = entry.runtimeArgs;
+  if (entry.runtimeExecutable === '/bin/sh') {
+    return (
+      args.length === 3 &&
+      args[0] === '-l' &&
+      args[1] === '-c' &&
+      typeof args[2] === 'string' &&
+      /^# ok-ui-v[1-9]\d*$/.test(args[2].split(/\r?\n/, 1)[0] ?? '')
+    );
+  }
+  if (entry.runtimeExecutable === 'npx') {
+    return LEGACY_NPX_UI_FORMS.some((form) => argsExactlyMatch(args, form));
+  }
+  return (
+    entry.runtimeExecutable === 'powershell' &&
+    args.length === 4 &&
+    args[0] === '-NoProfile' &&
+    args[1] === '-NonInteractive' &&
+    args[2] === '-Command' &&
+    typeof args[3] === 'string' &&
+    /^# ok-ui-win-v[1-9]\d*$/.test(args[3].split(/\r?\n/, 1)[0] ?? '')
+  );
+}
+
+const LEGACY_NPX_UI_FORMS: ReadonlyArray<readonly string[]> = [
+  ['@inkeep/open-knowledge', 'ui'],
+  ['-y', '@inkeep/open-knowledge', 'ui'],
+  ['-y', '@inkeep/open-knowledge@latest', 'ui'],
+];
+
+function argsExactlyMatch(actual: readonly unknown[], expected: readonly string[]): boolean {
+  return actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
 }

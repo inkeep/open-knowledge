@@ -17,7 +17,10 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'nod
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { inspect } from 'node:util';
-import { OPENKNOWLEDGE_SKILLS_REPO } from '@inkeep/open-knowledge-core';
+import {
+  type McpLauncherDeclineReason,
+  OPENKNOWLEDGE_SKILLS_REPO,
+} from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync, withFileLockSync } from '@inkeep/open-knowledge-core/server';
 import type {
   BundleId,
@@ -218,6 +221,23 @@ function jsonValueEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
+const STANDARD_MANAGED_ENTRY_KEYS = ['command', 'args'] as const;
+const OPENCODE_MANAGED_ENTRY_KEYS = ['type', 'command'] as const;
+
+function managedEntryKeys(entry: Record<string, unknown>): readonly string[] {
+  return entry.type === 'local' && Array.isArray(entry.command)
+    ? OPENCODE_MANAGED_ENTRY_KEYS
+    : STANDARD_MANAGED_ENTRY_KEYS;
+}
+
+function managedEntryFieldsEqual(
+  existing: unknown,
+  desired: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  return isObject(existing) && keys.every((key) => jsonValueEqual(existing[key], desired[key]));
+}
+
 /**
  * Detect the indentation a JSON/JSONC file already uses so a surgically-inserted
  * entry matches its convention. jsonc-parser's `modify` formats only the
@@ -330,7 +350,8 @@ function upsertJsonMcpConfig(
   const container = readServerContainer(root, topLevelKey, subKey);
   const existing = isObject(container) ? container[serverName] : undefined;
   const entryExists = existing !== undefined;
-  if (entryExists && jsonValueEqual(existing, entry)) {
+  const managedKeys = managedEntryKeys(entry);
+  if (entryExists && managedEntryFieldsEqual(existing, entry, managedKeys)) {
     // Already present and current: skip the write so the file never churns on an
     // idempotent re-run.
     return { kind: 'overwritten' };
@@ -341,10 +362,21 @@ function upsertJsonMcpConfig(
   const hasBom = raw.charCodeAt(0) === 0xfeff;
   const body = hasBom ? raw.slice(1) : raw;
   const eol = body.includes('\r\n') ? '\r\n' : '\n';
-  const edits = modifyJsonc(body, serverMapPath(topLevelKey, subKey, serverName), entry, {
-    formattingOptions: { ...detectJsonIndent(body), eol },
-  });
-  const newText = `${hasBom ? '\uFEFF' : ''}${applyJsoncEdits(body, edits)}`;
+  const formattingOptions = { ...detectJsonIndent(body), eol };
+  const entryPath = serverMapPath(topLevelKey, subKey, serverName);
+  let editedBody = body;
+  if (entryExists && isObject(existing)) {
+    for (const key of managedKeys) {
+      const edits = modifyJsonc(editedBody, [...entryPath, key], entry[key], {
+        formattingOptions,
+      });
+      editedBody = applyJsoncEdits(editedBody, edits);
+    }
+  } else {
+    const edits = modifyJsonc(editedBody, entryPath, entry, { formattingOptions });
+    editedBody = applyJsoncEdits(editedBody, edits);
+  }
+  const newText = `${hasBom ? '\uFEFF' : ''}${editedBody}`;
   if (newText !== raw) {
     atomicWriteFileSync(configPath, newText, { mode: existingFileMode(configPath) });
   }
@@ -513,9 +545,15 @@ function upsertYamlMcpConfig(
   if (doc.hasIn([topLevelKey]) && !isCollection(doc.getIn([topLevelKey], true))) {
     doc.deleteIn([topLevelKey]);
   }
-  // Wrap the plain entry into YAML nodes explicitly so `command`/`args`/`env`
-  // serialize as a proper map/seq (the multi-line chain becomes a block scalar).
-  doc.setIn(path, doc.createNode(entry));
+  const existingEntryNode = doc.getIn(path, true);
+  if (entryExists && isCollection(existingEntryNode)) {
+    for (const key of managedEntryKeys(entry)) {
+      doc.setIn([...path, key], doc.createNode(entry[key]));
+    }
+  } else {
+    // A missing or non-map entry has no field-level structure to preserve.
+    doc.setIn(path, doc.createNode(entry));
+  }
 
   // `yaml` emits LF, always ends with a trailing newline, and drops a leading
   // BOM; restore the source file's encoding so the only byte-level change is
@@ -1430,7 +1468,8 @@ export type McpDeclineReason =
   | 'unparseable'
   | 'duplicate-container'
   | 'oversize'
-  | 'no-native-writer';
+  | 'no-native-writer'
+  | McpLauncherDeclineReason;
 
 /**
  * Discriminated classification of an existing MCP host config file. Where

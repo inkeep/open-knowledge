@@ -189,6 +189,38 @@ describe('checkAndRepairMcpWiringOnStartup — migrate event ordering', () => {
     expect(order).toEqual([]);
     expect(events.some((e) => e.event === 'mcp-config-migrate')).toBe(false);
   });
+
+  test('recognized future chain entry → no downgrade and no write', async () => {
+    const futureEntry = {
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nexit 127'],
+    };
+    const { cli, events, order } = buildStartupCli({
+      classify: { kind: 'present', entry: futureEntry },
+    });
+
+    const result = await checkAndRepairMcpWiringOnStartup({
+      isPackaged: true,
+      executablePath: PACKAGED_EXE,
+      home: '/home',
+      platform: 'darwin',
+      ipcMain: { handle() {}, removeHandler() {} } as unknown as Parameters<
+        typeof checkAndRepairMcpWiringOnStartup
+      >[0]['ipcMain'],
+      cli,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        event: (e) => events.push(e),
+      },
+    });
+
+    expect(result.status).toBe('ok');
+    expect(order).toEqual([]);
+    expect(events).toContainEqual({ event: 'mcp-wiring-repair-healthy-current', editor: 'claude' });
+    expect(events.some((e) => e.event === 'mcp-config-migrate')).toBe(false);
+  });
 });
 
 describe('checkAndRepairMcpWiringOnStartup — non-destructive decline', () => {

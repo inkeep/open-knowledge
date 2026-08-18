@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { createTomlConfigEngine, type NativeTomlBinding } from './toml-config-engine.ts';
+import {
+  createTomlConfigEngine,
+  getNativeTomlMcpEditor,
+  type NativeTomlBinding,
+} from './toml-config-engine.ts';
 
 // A config value that exercises the whole point of the native engine: a 64-bit
 // integer past Number.MAX_SAFE_INTEGER, plus a microsecond datetime. smol-toml
@@ -21,6 +25,13 @@ const NOOP_REMOVE: NativeTomlBinding['removeMcpServer'] = () => ({
 });
 
 describe('createTomlConfigEngine', () => {
+  test('exposes the native server composition seam when the addon is available', () => {
+    const editor = getNativeTomlMcpEditor();
+    expect(editor?.backend).toBe('native');
+    expect(typeof editor?.upsertEntry).toBe('function');
+    expect(typeof editor?.removeEntry).toBe('function');
+  });
+
   test('resolves the native backend and parses values smol-toml rejects', () => {
     const engine = createTomlConfigEngine();
     expect(engine.backend).toBe('native');

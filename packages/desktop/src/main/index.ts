@@ -214,8 +214,8 @@ import {
 import {
   cliProbeArgs,
   resolveClaudeReadiness,
-  resolveCliInstalledMap,
   resolveCliOnPath,
+  resolvePlatformCliInstalledMap,
   runLoginShellProbe,
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
@@ -4762,8 +4762,10 @@ function resolveTerminalCliInstalledMap(): Promise<Partial<Record<TerminalCli, b
   if (cliInstalledMapCache && now - cliInstalledMapCache.at < CLI_INSTALLED_MAP_TTL_MS) {
     return cliInstalledMapCache.value;
   }
-  const value = resolveCliInstalledMap({
-    probe: (cli) => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin)),
+  const value = resolvePlatformCliInstalledMap({
+    platform: process.platform,
+    probePosix: (args) => probeLoginShellOnPath(args),
+    probeWindows: (bin) => probeWindowsPath(bin),
   }).catch((err) => {
     // Don't let a rejected probe stay cached for the full TTL; the next call retries fresh.
     cliInstalledMapCache = null;

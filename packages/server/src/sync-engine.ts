@@ -53,6 +53,13 @@ import {
   type PushPermission,
 } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
+import {
+  applyManagedMcpEntry,
+  getMcpUnownedShell,
+  type NativeTomlMcpEditor,
+  reconcileTrackedMcpConfig,
+  TRACKED_MCP_CONFIG_TARGETS,
+} from './mcp-config-reconciler.ts';
 import { toPosix } from './path-utils.ts';
 import {
   originGitHubHost,
@@ -68,6 +75,7 @@ import {
 } from './sync-timing.ts';
 
 const log = getLogger('sync-engine');
+const TRACKED_MCP_CONFIG_TARGET_SET: ReadonlySet<string> = new Set(TRACKED_MCP_CONFIG_TARGETS);
 
 /**
  * Git SHA-1 object IDs are 40 lowercase hex chars. `commit-tree` and similar
@@ -259,6 +267,18 @@ interface ContentFileEntry {
   projectRelPath: string;
 }
 
+interface PreparedMcpReconciliation {
+  path: string;
+  raw: string;
+  winnerEntry: Record<string, unknown>;
+}
+
+interface MergePreparation {
+  proceed: boolean;
+  needsStashPop: boolean;
+  reconciled: PreparedMcpReconciliation[];
+}
+
 /**
  * ContentFilter read-opts for the two staging-path consultations
  * (`gatherContentFilesSync`, `listHeadContentPaths`): admits the shareable
@@ -364,6 +384,8 @@ interface SyncEngineOptions {
     branch: string;
     paths: number;
   }) => void | Promise<void>;
+  /** Native, token-preserving TOML capability supplied by a composition root. */
+  mcpTomlEditor?: NativeTomlMcpEditor;
   /**
    * Tier A token detector. Honors the existing three-tier model (see
    * `packages/cli/src/auth/resolve-auth.ts`) without `packages/server`
@@ -481,6 +503,7 @@ export class SyncEngine {
   private checkpointBeforeOverlayRestore:
     | ((context: { branch: string; paths: number }) => void | Promise<void>)
     | undefined;
+  private mcpTomlEditor: NativeTomlMcpEditor | undefined;
   private detectGh: DetectGhFn | undefined;
   /**
    * Resolves + caches the gh token relayed to the credential helper so sync
@@ -566,6 +589,7 @@ export class SyncEngine {
     this.onAutoDisable = options.onAutoDisable;
     this.checkpointBeforeStrandedConversion = options.checkpointBeforeStrandedConversion;
     this.checkpointBeforeOverlayRestore = options.checkpointBeforeOverlayRestore;
+    this.mcpTomlEditor = options.mcpTomlEditor;
     this.detectGh = options.detectGh;
     this.ghTokenSource = createGhTokenSource(options.detectGh);
     this.tokenStore = options.tokenStore;
@@ -1261,6 +1285,30 @@ export class SyncEngine {
   }
 
   /**
+   * Apply the resolved Git identity, or OpenKnowledge's non-interactive
+   * fallback, to every engine-authored commit path. `git merge` creates its
+   * own commit and therefore needs the same environment as `commit-tree`;
+   * otherwise a machine without user.name/user.email aborts after a
+   * non-fast-forward push and never reaches MCP reconciliation.
+   */
+  private async applyCommitIdentity(handle: GitHandle): Promise<void> {
+    const identity = await resolveGitIdentity(this.projectDir);
+    const nextUnresolved = identity === null;
+    if (this.identityUnresolved !== nextUnresolved) {
+      this.identityUnresolved = nextUnresolved;
+      this.cc1Broadcaster?.signal('sync-status');
+    }
+    const name = identity?.name ?? 'OpenKnowledge';
+    const email = identity?.email ?? 'sync@open-knowledge.local';
+    applyGitEnv(handle, {
+      GIT_AUTHOR_NAME: name,
+      GIT_AUTHOR_EMAIL: email,
+      GIT_COMMITTER_NAME: name,
+      GIT_COMMITTER_EMAIL: email,
+    });
+  }
+
+  /**
    * Drive the push-permission probe and apply its consequences:
    *   - record the result in `this.pushPermission`
    *   - when `denied` AND the user previously enabled sync, pause the
@@ -1797,14 +1845,23 @@ export class SyncEngine {
         await this.commitDirtyContentFilesToHead(handle);
         const mergePrep = await this.prepareForMerge(handle, branch);
         if (!mergePrep.proceed) return 'refused';
+        let stashRestored = true;
+        let overlaysRestored = true;
         try {
+          await this.applyCommitIdentity(handle);
           await handle.git.merge([`origin/${branch}`]);
           this.lastSyncUtc = new Date().toISOString();
           this.behind = 0;
           this.transitionTo('idle');
         } finally {
-          if (mergePrep.needsStashPop) await this.popPreMergeStash(handle);
+          if (mergePrep.needsStashPop) {
+            stashRestored = await this.popPreMergeStash(handle);
+          }
+          overlaysRestored = this.restoreReconciledMcpOverlays(mergePrep.reconciled);
         }
+        if (!stashRestored) throw new Error('failed to replay pre-merge working-tree state');
+        if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
+        await this.persistReconciledMcpEntries(mergePrep.reconciled);
         this.scheduleSaveState();
         return 'succeeded';
       } catch (e) {
@@ -2238,6 +2295,43 @@ export class SyncEngine {
         continue;
       }
 
+      if (theirsStr !== null && TRACKED_MCP_CONFIG_TARGET_SET.has(p)) {
+        const head = await this.readMcpGitBlob(handle, oldHead, p);
+        const index = await this.readMcpGitBlob(handle, '', p);
+        const mcpPlan = reconcileTrackedMcpConfig({
+          target: p,
+          layers: {
+            base: head,
+            head,
+            index,
+            worktree: mineStr,
+            incoming: theirsStr,
+          },
+          tomlEditor: this.mcpTomlEditor,
+        });
+        if (mcpPlan.kind === 'resolved') {
+          if (mcpPlan.raw !== theirsStr) {
+            writes.push({ path: p, bytes: Buffer.from(mcpPlan.raw, 'utf8') });
+          }
+          log.info(
+            { event: 'mcp-config-reconcile', target: p, outcome: 'auto-resolved' },
+            '[sync] pull-only: auto-resolved OpenKnowledge MCP entry overlap',
+          );
+          continue;
+        }
+        if (mcpPlan.kind === 'declined') {
+          log.warn(
+            {
+              event: 'mcp-config-reconcile',
+              target: p,
+              outcome: 'declined',
+              reason: mcpPlan.reason,
+            },
+            '[sync] pull-only: declined OpenKnowledge MCP entry reconciliation',
+          );
+        }
+      }
+
       if (theirsStr === null || !this.isContentConflictPath(p)) {
         // Non-content or unreadable tip blob: keep the overlay verbatim, never
         // line-merge or escalate (matches adjacent-config behavior).
@@ -2576,22 +2670,8 @@ export class SyncEngine {
         // hard-coded "OpenKnowledge" default. We never error on unresolved
         // identity — attribution silently degrades to the default and the UI
         // surfaces a non-blocking nudge via `status.identityUnresolved`.
-        const identity = await resolveGitIdentity(this.projectDir);
-        const nextUnresolved = identity === null;
-        if (this.identityUnresolved !== nextUnresolved) {
-          this.identityUnresolved = nextUnresolved;
-          this.cc1Broadcaster?.signal('sync-status');
-        }
-        const authorName = identity?.name ?? 'OpenKnowledge';
-        const authorEmail = identity?.email ?? 'sync@open-knowledge.local';
-
-        // Set author/committer env vars on the handle for commit-tree
-        applyGitEnv(handle, {
-          GIT_AUTHOR_NAME: authorName,
-          GIT_AUTHOR_EMAIL: authorEmail,
-          GIT_COMMITTER_NAME: authorName,
-          GIT_COMMITTER_EMAIL: authorEmail,
-        });
+        // Set author/committer env vars on the handle for commit-tree.
+        await this.applyCommitIdentity(handle);
 
         // ── 10. Create squash commit (one parent per push cycle) ───────────────
         const newCommitSha = (
@@ -2686,11 +2766,20 @@ export class SyncEngine {
               this.setBatchInProgress?.(false);
               return;
             }
+            let stashRestored = true;
+            let overlaysRestored = true;
             try {
+              await this.applyCommitIdentity(retryHandle);
               await retryHandle.git.merge([`origin/${this.currentBranch}`]);
             } finally {
-              if (mergePrep.needsStashPop) await this.popPreMergeStash(retryHandle);
+              if (mergePrep.needsStashPop) {
+                stashRestored = await this.popPreMergeStash(retryHandle);
+              }
+              overlaysRestored = this.restoreReconciledMcpOverlays(mergePrep.reconciled);
             }
+            if (!stashRestored) throw new Error('failed to replay pre-merge working-tree state');
+            if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
+            await this.persistReconciledMcpEntries(mergePrep.reconciled);
           } catch (mergeErr) {
             const mc = classifyGitError(
               mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
@@ -2778,15 +2867,7 @@ export class SyncEngine {
         changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
       }
 
-      const identity = await resolveGitIdentity(this.projectDir);
-      const authorName = identity?.name ?? 'OpenKnowledge';
-      const authorEmail = identity?.email ?? 'sync@open-knowledge.local';
-      applyGitEnv(isoHandle, {
-        GIT_AUTHOR_NAME: authorName,
-        GIT_AUTHOR_EMAIL: authorEmail,
-        GIT_COMMITTER_NAME: authorName,
-        GIT_COMMITTER_EMAIL: authorEmail,
-      });
+      await this.applyCommitIdentity(isoHandle);
 
       const message = 'Auto-save: interim before merge';
       const newCommitSha = (
@@ -2845,10 +2926,55 @@ export class SyncEngine {
    * If either git diff call fails, fall back to "proceed without stash" —
    * the merge will surface any real failure via its own error class.
    */
-  private async prepareForMerge(
+  private async readMcpGitBlob(
+    handle: GitHandle,
+    revision: string,
+    path: string,
+  ): Promise<string | null> {
+    try {
+      await handle.git.raw(['cat-file', '-e', `${revision}:${path}`]);
+      return await handle.git.raw(['show', `${revision}:${path}`]);
+    } catch {
+      return null;
+    }
+  }
+
+  private async planTrackedMcpOverlap(
     handle: GitHandle,
     branch: string,
-  ): Promise<{ proceed: boolean; needsStashPop: boolean }> {
+    path: string,
+  ): Promise<ReturnType<typeof reconcileTrackedMcpConfig>> {
+    let baseRevision: string;
+    try {
+      baseRevision = (await handle.git.raw(['merge-base', 'HEAD', `origin/${branch}`])).trim();
+    } catch (err) {
+      log.warn(
+        { err, branch, path },
+        '[sync] MCP reconciliation merge-base unavailable — declining',
+      );
+      return { kind: 'declined', reason: 'merge-base-unavailable' };
+    }
+    const [base, head, index, incoming] = await Promise.all([
+      this.readMcpGitBlob(handle, baseRevision, path),
+      this.readMcpGitBlob(handle, 'HEAD', path),
+      this.readMcpGitBlob(handle, '', path),
+      this.readMcpGitBlob(handle, `origin/${branch}`, path),
+    ]);
+    let worktree: string | null = null;
+    try {
+      worktree = readFileSync(join(this.projectDir, path), 'utf8');
+    } catch {
+      // A missing worktree path is a deletion layer, not an empty file.
+    }
+    return reconcileTrackedMcpConfig({
+      target: path,
+      layers: { base, head, index, worktree, incoming },
+      tomlEditor: this.mcpTomlEditor,
+    });
+  }
+
+  private async prepareForMerge(handle: GitHandle, branch: string): Promise<MergePreparation> {
+    const reconciled: PreparedMcpReconciliation[] = [];
     // `diff-index --name-only HEAD` lists only TRACKED files whose working-
     // tree OR index content differs from HEAD's. Untracked files are
     // intentionally excluded: `git merge` only refuses on untracked when
@@ -2863,9 +2989,9 @@ export class SyncEngine {
       // log so triage can spot a degraded pre-check (stale remote ref,
       // index corruption, etc.) rather than seeing the gate vanish silently.
       log.warn({ err, branch }, '[sync] diff-index failed — allowing merge attempt');
-      return { proceed: true, needsStashPop: false };
+      return { proceed: true, needsStashPop: false, reconciled };
     }
-    if (dirtyPaths.length === 0) return { proceed: true, needsStashPop: false };
+    if (dirtyPaths.length === 0) return { proceed: true, needsStashPop: false, reconciled };
 
     // Intersect with the set of paths the incoming merge actually touches.
     // `diff --name-only HEAD..origin/<branch>` reports every path differing
@@ -2881,9 +3007,57 @@ export class SyncEngine {
       );
     } catch (err) {
       log.warn({ err, branch }, '[sync] merge-path diff failed — allowing merge attempt');
-      return { proceed: true, needsStashPop: false };
+      return { proceed: true, needsStashPop: false, reconciled };
     }
-    const blocking = dirtyPaths.filter((p) => mergePaths.has(p));
+    let blocking = dirtyPaths.filter((p) => mergePaths.has(p));
+
+    // Tracked MCP configs are guest-owned at entry granularity. Before the
+    // generic path-name gate pauses, prove that every overlapping config can
+    // preserve its unowned shell and select a non-downgrading launcher. Plan
+    // the whole batch first: one decline means zero reconciliation writes.
+    const trackedTargets = TRACKED_MCP_CONFIG_TARGET_SET;
+    const mcpOverlaps = blocking.filter((path) => trackedTargets.has(path));
+    if (mcpOverlaps.length > 0) {
+      const plans = await Promise.all(
+        mcpOverlaps.map(async (path) => ({
+          path,
+          plan: await this.planTrackedMcpOverlap(handle, branch, path),
+        })),
+      );
+      const declined = plans.find(({ plan }) => plan.kind === 'declined');
+      const hasOtherBlockingPath = blocking.some((path) => !trackedTargets.has(path));
+      if (!declined && !hasOtherBlockingPath) {
+        for (const { path, plan } of plans) {
+          if (plan.kind !== 'resolved') continue;
+          reconciled.push({ path, raw: plan.raw, winnerEntry: plan.winnerEntry });
+          log.info(
+            { event: 'mcp-config-reconcile', target: path, outcome: 'auto-resolved' },
+            '[sync] auto-resolved OpenKnowledge MCP entry overlap',
+          );
+        }
+        blocking = blocking.filter((path) => !trackedTargets.has(path));
+      } else if (declined) {
+        log.warn(
+          {
+            event: 'mcp-config-reconcile',
+            target: declined.path,
+            outcome: 'declined',
+            reason: declined.plan.kind === 'declined' ? declined.plan.reason : undefined,
+          },
+          '[sync] declined OpenKnowledge MCP entry reconciliation',
+        );
+      } else if (hasOtherBlockingPath) {
+        log.info(
+          {
+            event: 'mcp-config-reconcile',
+            targets: mcpOverlaps,
+            outcome: 'suppressed',
+            reason: 'other-blocking-path',
+          },
+          '[sync] suppressed MCP entry reconciliation because another path blocks the merge',
+        );
+      }
+    }
 
     if (blocking.length > 0) {
       const display = blocking.slice(0, 3).join(', ');
@@ -2895,7 +3069,38 @@ export class SyncEngine {
       this.transitionTo('idle');
       this.scheduleSaveState();
       log.warn({ files: blocking }, '[sync] paused — dirty paths overlap incoming merge');
-      return { proceed: false, needsStashPop: false };
+      return { proceed: false, needsStashPop: false, reconciled: [] };
+    }
+
+    // The reconciler has captured the exact post-merge overlay for these
+    // paths. Restore them to HEAD before stashing so Git never tries to replay
+    // an MCP launcher change across the incoming commit. The caller reapplies
+    // the captured bytes after the merge (including failure paths) and then
+    // persists the managed entry on a successful merge.
+    if (reconciled.length > 0) {
+      try {
+        await handle.git.raw([
+          'restore',
+          '--source=HEAD',
+          '--staged',
+          '--worktree',
+          '--',
+          ...reconciled.map((item) => item.path),
+        ]);
+      } catch (err) {
+        log.warn({ err }, '[sync] could not isolate reconciled MCP paths from pre-merge stash');
+        this.pullError =
+          'Sync paused — OpenKnowledge could not safely isolate local MCP launcher changes before merging.';
+        this.pausedReason = 'external-changes-pending';
+        this.transitionTo('idle');
+        this.scheduleSaveState();
+        return { proceed: false, needsStashPop: false, reconciled: [] };
+      }
+    }
+
+    const reconciledPaths = new Set(reconciled.map((item) => item.path));
+    if (dirtyPaths.every((path) => reconciledPaths.has(path))) {
+      return { proceed: true, needsStashPop: false, reconciled };
     }
 
     // No overlap with the incoming merge, but tracked dirt remains. Stash
@@ -2907,9 +3112,33 @@ export class SyncEngine {
       await handle.git.raw(['stash', 'push', '-m', stashMessage]);
     } catch (err) {
       log.warn({ err }, '[sync] stash push failed — proceeding without stash');
-      return { proceed: true, needsStashPop: false };
+      return { proceed: true, needsStashPop: false, reconciled };
     }
-    return { proceed: true, needsStashPop: true };
+    return { proceed: true, needsStashPop: true, reconciled };
+  }
+
+  private restoreReconciledMcpOverlays(reconciled: PreparedMcpReconciliation[]): boolean {
+    let restored = true;
+    for (const item of reconciled) {
+      try {
+        const absolutePath = join(this.projectDir, item.path);
+        assertRealpathWithinDir(absolutePath, this.projectDir);
+        let existing: string | null = null;
+        try {
+          existing = readFileSync(absolutePath, 'utf8');
+        } catch (err) {
+          log.warn(
+            { err, path: item.path },
+            '[sync] could not read MCP config before restoring reconciled overlay',
+          );
+        }
+        if (existing !== item.raw) tracedWriteFileSync(absolutePath, item.raw, 'utf8');
+      } catch (err) {
+        restored = false;
+        log.warn({ err, path: item.path }, '[sync] could not restore reconciled MCP overlay');
+      }
+    }
+    return restored;
   }
 
   /**
@@ -2919,12 +3148,165 @@ export class SyncEngine {
    * the stash stays on the stack — we log so the user can recover via
    * `git stash list` / `git stash pop` manually.
    */
-  private async popPreMergeStash(handle: GitHandle): Promise<void> {
+  private async popPreMergeStash(handle: GitHandle): Promise<boolean> {
     try {
       await handle.git.raw(['stash', 'pop']);
+      return true;
     } catch (err) {
       log.warn({ err }, '[sync] stash pop failed — stash remains on stack');
+      return false;
     }
+  }
+
+  private hasGitOperationInProgress(): boolean {
+    const gitDir = resolveGitDir(this.projectDir);
+    if (!gitDir) return true;
+    return ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'].some(
+      (marker) => existsSync(join(gitDir, marker)),
+    );
+  }
+
+  private async persistReconciledMcpEntries(
+    reconciled: PreparedMcpReconciliation[],
+  ): Promise<void> {
+    if (reconciled.length === 0) return;
+    if (this.hasGitOperationInProgress()) {
+      throw new Error('refusing MCP entry commit while a Git operation is in progress');
+    }
+
+    await withParentLock(async () => {
+      const tmpIndex = join(tmpdir(), `ok-mcp-sync-idx-${process.pid}-${Date.now()}.idx`);
+      const tempBlobs: string[] = [];
+      try {
+        const realHandle = this.gitHandle();
+        const isolated = this.gitHandle(tmpIndex);
+        const headSha = (await isolated.git.revparse('HEAD')).trim();
+        const branch = (await isolated.git.revparse(['--abbrev-ref', 'HEAD'])).trim();
+        if (branch === 'HEAD') throw new Error('refusing MCP entry commit on detached HEAD');
+        await isolated.git.raw(['read-tree', headSha]);
+
+        const replayEntries: Array<{ path: string; mode: string; blobSha: string; raw: string }> =
+          [];
+        for (let i = 0; i < reconciled.length; i++) {
+          const item = reconciled[i];
+          if (!item) continue;
+          const headRaw = await this.readMcpGitBlob(isolated, headSha, item.path);
+          if (headRaw === null) throw new Error(`tracked MCP path disappeared: ${item.path}`);
+          const commitRaw = applyManagedMcpEntry({
+            target: item.path,
+            raw: headRaw,
+            entry: item.winnerEntry,
+            tomlEditor: this.mcpTomlEditor,
+          });
+          if (commitRaw === null) throw new Error(`cannot edit tracked MCP path: ${item.path}`);
+
+          const treeLine = await isolated.git.raw(['ls-tree', headSha, '--', item.path]);
+          const mode = treeLine.match(/^(100644|100755)\s/)?.[1];
+          if (!mode) throw new Error(`unsafe tracked MCP mode: ${item.path}`);
+
+          const commitBlobPath = `${tmpIndex}.commit-${i}`;
+          tempBlobs.push(commitBlobPath);
+          writeFileSync(commitBlobPath, commitRaw, 'utf8');
+          const commitBlobSha = (
+            await isolated.git.raw(['hash-object', '-w', commitBlobPath])
+          ).trim();
+          await isolated.git.raw([
+            'update-index',
+            '--add',
+            '--cacheinfo',
+            `${mode},${commitBlobSha},${item.path}`,
+          ]);
+
+          const committedShell = getMcpUnownedShell({
+            target: item.path,
+            raw: commitRaw,
+            tomlEditor: this.mcpTomlEditor,
+          });
+          const overlayShell = getMcpUnownedShell({
+            target: item.path,
+            raw: item.raw,
+            tomlEditor: this.mcpTomlEditor,
+          });
+          const replayRaw =
+            committedShell !== null && committedShell === overlayShell ? commitRaw : item.raw;
+          const replayBlobPath = `${tmpIndex}.replay-${i}`;
+          tempBlobs.push(replayBlobPath);
+          writeFileSync(replayBlobPath, replayRaw, 'utf8');
+          const replayBlobSha = (
+            await isolated.git.raw(['hash-object', '-w', replayBlobPath])
+          ).trim();
+          replayEntries.push({ path: item.path, mode, blobSha: replayBlobSha, raw: replayRaw });
+        }
+
+        const newTree = (await isolated.git.raw(['write-tree'])).trim();
+        const headTree = (await isolated.git.raw(['rev-parse', `${headSha}^{tree}`])).trim();
+        if (newTree === headTree) return;
+
+        await this.applyCommitIdentity(isolated);
+        const commitSha = (
+          await isolated.git.raw([
+            'commit-tree',
+            newTree,
+            '-p',
+            headSha,
+            '-m',
+            'Update OpenKnowledge MCP launcher',
+          ])
+        ).trim();
+        if (!SHA_HEX_40.test(commitSha)) throw new Error('commit-tree returned an invalid SHA');
+        try {
+          await isolated.git.raw(['update-ref', `refs/heads/${branch}`, commitSha, headSha]);
+        } catch (err) {
+          log.info(
+            { event: 'mcp-config-reconcile', outcome: 'ref-race', branch, err },
+            '[sync] skipped MCP launcher commit because the branch moved',
+          );
+          return;
+        }
+
+        // Rebase the user's real index/worktree layers onto the new HEAD. The
+        // replay bytes are the reconciler's entry-only result over the original
+        // index/worktree shell, so unrelated staged intent remains staged.
+        try {
+          for (const replay of replayEntries) {
+            await realHandle.git.raw([
+              'update-index',
+              '--add',
+              '--cacheinfo',
+              `${replay.mode},${replay.blobSha},${replay.path}`,
+            ]);
+            const absolutePath = join(this.projectDir, replay.path);
+            assertRealpathWithinDir(absolutePath, this.projectDir);
+            if (readFileSync(absolutePath, 'utf8') !== replay.raw) {
+              tracedWriteFileSync(absolutePath, replay.raw, 'utf8');
+            }
+          }
+        } catch (err) {
+          // The commit already landed, so recover the entire batch rather than
+          // leaving a partly replayed index. Resetting to the new HEAD turns
+          // the preserved overlay bytes into ordinary unstaged changes.
+          log.warn(
+            { event: 'mcp-config-reconcile', outcome: 'overlay-replay-failed', err },
+            '[sync] MCP overlay replay failed; resetting the affected index entries',
+          );
+          await this.resetRealIndexForPaths(replayEntries.map((entry) => entry.path));
+          this.restoreReconciledMcpOverlays(reconciled);
+        }
+        log.info(
+          { event: 'mcp-config-reconcile', outcome: 'persisted-entry-commit' },
+          '[sync] persisted OpenKnowledge MCP launcher entry commit',
+        );
+      } finally {
+        for (const path of tempBlobs) {
+          try {
+            unlinkSync(path);
+          } catch {}
+        }
+        try {
+          unlinkSync(tmpIndex);
+        } catch {}
+      }
+    });
   }
 
   /**
@@ -3306,6 +3688,7 @@ export class SyncEngine {
       // would otherwise be reported as a successful pull over a half-merged tree.
       let committed = false;
       try {
+        await this.applyCommitIdentity(handle);
         await handle.git.raw(['commit', '--no-edit']);
         const gitDir = resolveGitDir(this.projectDir);
         committed = gitDir === null || !existsSync(join(gitDir, 'MERGE_HEAD'));

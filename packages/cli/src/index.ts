@@ -138,6 +138,7 @@ export {
   removeProjectSkill,
   writeProjectSkill,
 } from './integrations/write-project-skill.ts';
+export { getNativeTomlMcpEditor } from './native/toml-config-engine.ts';
 // Leveled bug-report capture — shared by `ok bug-report` and the desktop
 // report-a-bug flow so the two stay in lockstep.
 export {

@@ -259,7 +259,7 @@ describe('runInit', () => {
     expect(config.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
-  it('replaces user-added fields instead of merging them', async () => {
+  it('preserves user-added fields while updating the managed launcher', async () => {
     writeFileSync(
       claudeConfigPath(),
       JSON.stringify(
@@ -283,10 +283,14 @@ describe('runInit', () => {
     expect(result.editors[0].action).toBe('overwritten');
 
     const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
+    expect(config.mcpServers['open-knowledge']).toEqual({
+      ...PUBLISHED_CHAIN_ENTRY,
+      cwd: testDir,
+      env: { OK_MODE: 'local' },
+    });
   });
 
-  it('overwrites a published MCP entry in dev mode', async () => {
+  it('updates only the managed launcher when switching a published entry to dev mode', async () => {
     writeFileSync(
       claudeConfigPath(),
       JSON.stringify(
@@ -309,7 +313,10 @@ describe('runInit', () => {
     expect(result.editors[0].action).toBe('overwritten');
 
     const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers['open-knowledge']).toEqual(expectedDevMcpEntry());
+    expect(config.mcpServers['open-knowledge']).toEqual({
+      command: expectedDevMcpEntry().command,
+      args: expectedDevMcpEntry().args,
+    });
   });
 
   it('does not touch ~/.claude.json when --no-mcp is passed', async () => {

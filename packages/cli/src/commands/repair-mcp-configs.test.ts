@@ -53,6 +53,12 @@ describe('repairMcpConfigs', () => {
     return path;
   }
 
+  function writeProjectClaude(entry: Record<string, unknown>): string {
+    const path = join(projectDir, '.mcp.json');
+    writeFileSync(path, JSON.stringify({ mcpServers: { 'open-knowledge': entry } }, null, 2));
+    return path;
+  }
+
   it('rewrites legacy bare-npx, npx-@latest, bundle-direct, and symlink entries to the chain', () => {
     for (const entry of [LEGACY_BARE, LEGACY_NPX_AT_LATEST, BUNDLE_ABSOLUTE, SYMLINK]) {
       const configPath = writeClaude(entry);
@@ -114,6 +120,51 @@ describe('repairMcpConfigs', () => {
 
     expect(result.repairedCount).toBe(0);
     expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('canonical');
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('leaves a recognized future launcher byte-unchanged', () => {
+    const configPath = writeClaude({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      env: { KEEP: 'yes' },
+    });
+    const before = readFileSync(configPath, 'utf-8');
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome });
+
+    expect(result.repairedCount).toBe(0);
+    expect(result.outcomes.find((o) => o.editorId === 'claude')?.outcome).toBe('canonical');
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('keeps a recognized future project launcher byte-unchanged', () => {
+    const configPath = writeProjectClaude({
+      command: '/bin/sh',
+      args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+      unknown: { keep: true },
+    });
+    const before = readFileSync(configPath, 'utf-8');
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome });
+    const outcome = result.outcomes.find(
+      (item) => item.scope === 'project' && item.editorId === 'claude',
+    );
+
+    expect(outcome?.outcome).toBe('canonical');
+    expect(readFileSync(configPath, 'utf-8')).toBe(before);
+  });
+
+  it('declines a foreign project entry without writing it', () => {
+    const configPath = writeProjectClaude({ command: '/usr/bin/foreign', args: ['server.js'] });
+    const before = readFileSync(configPath, 'utf-8');
+
+    const result = repairMcpConfigs({ projectDir, home: fakeHome });
+    const outcome = result.outcomes.find(
+      (item) => item.scope === 'project' && item.editorId === 'claude',
+    );
+
+    expect(outcome).toMatchObject({ outcome: 'declined', reason: 'foreign-command' });
     expect(readFileSync(configPath, 'utf-8')).toBe(before);
   });
 

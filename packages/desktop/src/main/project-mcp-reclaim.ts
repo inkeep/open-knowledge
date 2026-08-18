@@ -14,6 +14,7 @@ import {
   type McpEntryClassification,
   truncatePriorEntry,
 } from '@inkeep/open-knowledge';
+import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import type { McpWiringEditorId } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
@@ -162,16 +163,6 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
       continue;
     }
 
-    if (classification.kind === 'present' && isEntryUpToDate(classification.entry)) {
-      perEditor.push({ editor, status: 'healthy-current', configPath: projectPath });
-      logger.event({
-        event: 'project-mcp-reclaim-healthy-current',
-        editor,
-        configPath: projectPath,
-      });
-      continue;
-    }
-
     if (classification.kind === 'decline') {
       // OpenKnowledge is a guest in another tool's config: a present, non-empty
       // file it cannot fully parse is left byte-untouched — never renamed aside
@@ -193,6 +184,48 @@ export async function checkAndRepairProjectMcpOnProjectOpen(
         }),
       );
       continue;
+    }
+
+    if (classification.kind === 'present') {
+      if (editor === 'pi') {
+        if (isEntryUpToDate(classification.entry)) {
+          perEditor.push({ editor, status: 'healthy-current', configPath: projectPath });
+          logger.event({
+            event: 'project-mcp-reclaim-healthy-current',
+            editor,
+            configPath: projectPath,
+          });
+          continue;
+        }
+      } else {
+        const launcher = classifyMcpLauncherEntry(classification.entry);
+        if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
+          perEditor.push({ editor, status: 'healthy-current', configPath: projectPath });
+          logger.event({
+            event: 'project-mcp-reclaim-healthy-current',
+            editor,
+            configPath: projectPath,
+          });
+          continue;
+        }
+        if (launcher.kind === 'declined') {
+          perEditor.push({
+            editor,
+            status: 'declined',
+            configPath: projectPath,
+            reason: launcher.reason,
+          });
+          logger.event(
+            buildMcpConfigDeclineEvent({
+              scope: 'project',
+              surface: 'desktop-project-open',
+              editorId: editor,
+              reason: launcher.reason,
+            }),
+          );
+          continue;
+        }
+      }
     }
 
     if (classification.kind !== 'present') {

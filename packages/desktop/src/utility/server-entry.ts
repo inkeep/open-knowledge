@@ -24,6 +24,7 @@ import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import {
   detectGh,
+  getNativeTomlMcpEditor,
   loadConfig,
   makeLazyProbeTokenStore,
   probeOwnManagedEditorMcpEntry,
@@ -372,6 +373,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         detectGh,
         tokenStore,
         embeddingsKeyStore,
+        mcpTomlEditor: getNativeTomlMcpEditor(),
         // ACP threads skip injecting the `open-knowledge` MCP server when the
         // agent's own harness already loads OK's managed editor-config entry
         // (same wiring as `ok start`).

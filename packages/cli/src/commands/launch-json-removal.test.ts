@@ -28,7 +28,7 @@ describe('removeOwnLaunchEntry', () => {
           {
             name: LAUNCH_CONFIG_NAME,
             runtimeExecutable: '/bin/sh',
-            runtimeArgs: ['-l', '-c', 'x'],
+            runtimeArgs: ['-l', '-c', '# ok-ui-v1\nexec ok start'],
           },
         ],
       });
@@ -43,7 +43,7 @@ describe('removeOwnLaunchEntry', () => {
     }
   });
 
-  test('deletes the whole file when OK’s entry was the only configuration', () => {
+  test('keeps the containing file when OK’s entry was the only configuration', () => {
     const dir = project();
     try {
       const p = writeLaunch(dir, {
@@ -52,13 +52,43 @@ describe('removeOwnLaunchEntry', () => {
           {
             name: LAUNCH_CONFIG_NAME,
             runtimeExecutable: '/bin/sh',
-            runtimeArgs: ['-l', '-c', 'x'],
+            runtimeArgs: ['-l', '-c', '# ok-ui-v1\nexec ok start'],
           },
         ],
       });
       const outcome = removeOwnLaunchEntry(dir);
-      expect(outcome.kind).toBe('removed-file');
-      expect(existsSync(p)).toBe(false);
+      expect(outcome.kind).toBe('removed');
+      expect(existsSync(p)).toBe(true);
+      expect(JSON.parse(readFileSync(p, 'utf8'))).toEqual({
+        version: '0.2.0',
+        configurations: [],
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['@inkeep/open-knowledge', 'ui'],
+    ['-y', '@inkeep/open-knowledge', 'ui'],
+    ['-y', '@inkeep/open-knowledge@latest', 'ui'],
+  ])('removes the historical generated npx form %j', (...runtimeArgs) => {
+    const dir = project();
+    try {
+      const p = writeLaunch(dir, {
+        configurations: [
+          { name: 'My App', type: 'node' },
+          {
+            name: LAUNCH_CONFIG_NAME,
+            runtimeExecutable: 'npx',
+            runtimeArgs,
+          },
+        ],
+      });
+      expect(removeOwnLaunchEntry(dir).kind).toBe('removed');
+      expect(JSON.parse(readFileSync(p, 'utf8')).configurations).toEqual([
+        { name: 'My App', type: 'node' },
+      ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -89,7 +119,7 @@ describe('removeOwnLaunchEntry', () => {
             {
               name: LAUNCH_CONFIG_NAME,
               runtimeExecutable: '/bin/sh',
-              runtimeArgs: ['-l', '-c', 'x'],
+              runtimeArgs: ['-l', '-c', '# ok-ui-v1\nexec ok start'],
             },
           ],
         },
@@ -116,6 +146,26 @@ describe('removeOwnLaunchEntry', () => {
       writeFileSync(p, raw);
       expect(removeOwnLaunchEntry(dir).kind).toBe('declined');
       expect(readFileSync(p, 'utf-8')).toBe(raw);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('preserves a same-name foreign configuration without a generated marker', () => {
+    const dir = project();
+    try {
+      const p = writeLaunch(dir, {
+        configurations: [
+          {
+            name: LAUNCH_CONFIG_NAME,
+            runtimeExecutable: '/bin/sh',
+            runtimeArgs: ['-l', '-c', 'exec my-own-preview'],
+          },
+        ],
+      });
+      const before = readFileSync(p, 'utf8');
+      expect(removeOwnLaunchEntry(dir).kind).toBe('not-present');
+      expect(readFileSync(p, 'utf8')).toBe(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

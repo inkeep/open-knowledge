@@ -3,6 +3,7 @@
  * forward to today's resilient chain shape.
  */
 import { homedir } from 'node:os';
+import { classifyMcpLauncherEntry } from '@inkeep/open-knowledge-core';
 import {
   ALL_EDITOR_IDS,
   EDITOR_TARGETS,
@@ -10,7 +11,7 @@ import {
   type EditorMcpTarget,
   isEntryUpToDate,
 } from './editors.ts';
-import { readExistingMcpEntry, writeEditorMcpConfig } from './init.ts';
+import { type McpDeclineReason, readExistingMcpEntry, writeEditorMcpConfig } from './init.ts';
 import { buildMcpConfigMigrateEvent } from './mcp-migrate-event.ts';
 
 export interface RepairOutcome {
@@ -18,6 +19,7 @@ export interface RepairOutcome {
   editorId: EditorId;
   configPath: string;
   outcome: 'no-entry' | 'canonical' | 'repaired' | 'write-failed' | 'declined';
+  reason?: McpDeclineReason;
   error?: string;
 }
 
@@ -165,7 +167,24 @@ function repairOne(opts: RepairOneOptions): RepairOutcome {
     return { ...base, outcome: 'no-entry' };
   }
 
-  if (isEntryUpToDate(existing)) return { ...base, outcome: 'canonical' };
+  if (opts.editorId === 'pi') {
+    if (isEntryUpToDate(existing)) return { ...base, outcome: 'canonical' };
+  } else {
+    const launcher = classifyMcpLauncherEntry(existing);
+    if (launcher.kind === 'recognized' && launcher.disposition === 'keep') {
+      return { ...base, outcome: 'canonical' };
+    }
+    if (launcher.kind === 'declined' && opts.scope === 'project') {
+      opts.logger({
+        event: 'mcp-config-repair-declined',
+        scope: opts.scope,
+        editorId: opts.editorId,
+        configPath: opts.configPath,
+        reason: launcher.reason,
+      });
+      return { ...base, outcome: 'declined', reason: launcher.reason };
+    }
+  }
 
   // Emit migrate event BEFORE the rewrite so field observability captures
   // every attempted migration — including writes that subsequently fail with

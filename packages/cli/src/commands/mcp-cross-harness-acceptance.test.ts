@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { reconcileTrackedMcpConfig } from '../../../server/src/mcp-config-reconciler.ts';
 import { buildPiExtensionSource } from '../integrations/pi-extension.ts';
 import {
   createTomlConfigEngine,
@@ -414,5 +415,42 @@ describe('pi file-drop write path (whole-file sibling of the entry upserts)', ()
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe('server reconciliation with the CLI native TOML composition seam', () => {
+  it('selects v2 while preserving Codex siblings and unknown entry fields', () => {
+    const engine = createTomlConfigEngine();
+    if (engine.backend !== 'native') {
+      throw new Error('native toml_edit addon must be built for the reconciliation gate');
+    }
+    const toml = (marker: string, keep = 'yes') => `# keep top comment
+model = "gpt-5"
+
+[mcp_servers.other]
+command = "other"
+
+[mcp_servers.open-knowledge]
+command = "/bin/sh"
+args = ["-l", "-c", "${marker}\\nexit 127"]
+startup_timeout_ms = 9000
+
+[mcp_servers.open-knowledge.env]
+KEEP = "${keep}"
+`;
+    const v1 = toml('# ok-mcp-v1');
+    const v2 = toml('# ok-mcp-v2', 'incoming');
+    const plan = reconcileTrackedMcpConfig({
+      target: '.codex/config.toml',
+      layers: { base: v1, head: v1, index: v1, worktree: v1, incoming: v2 },
+      tomlEditor: engine,
+    });
+    expect(plan.kind).toBe('resolved');
+    if (plan.kind !== 'resolved') return;
+    expect(plan.raw).toContain('# keep top comment');
+    expect(plan.raw).toContain('[mcp_servers.other]');
+    expect(plan.raw).toContain('startup_timeout_ms = 9000');
+    expect(plan.raw).toContain('KEEP = "incoming"');
+    expect(plan.raw).toContain('# ok-mcp-v2');
   });
 });

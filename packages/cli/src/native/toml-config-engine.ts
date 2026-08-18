@@ -199,6 +199,16 @@ export function getTomlConfigEngine(): TomlConfigEngine {
 }
 
 /**
+ * Composition-root seam for server-side tracked-config reconciliation.
+ * Returning undefined is an explicit no-native-writer capability result; the
+ * server then declines TOML reconciliation instead of changing fidelity.
+ */
+export function getNativeTomlMcpEditor(): NativeTomlConfigEngine | undefined {
+  const engine = getTomlConfigEngine();
+  return engine.backend === 'native' ? engine : undefined;
+}
+
+/**
  * Test-only: override the cached engine (pass `null` to reset to lazy default).
  * Lets a test exercise the fallback decline path or the native path
  * deterministically regardless of whether the addon is built on the host.
