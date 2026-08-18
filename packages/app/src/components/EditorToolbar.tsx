@@ -3,6 +3,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   isEditableTextDocFile,
+  isExcalidrawDocFile,
   type LintDiagnostic,
   parseExternalSkillDocName,
   parseManagedArtifactName,
@@ -182,9 +183,12 @@ export function EditorToolbar({
             )}
           </div>
           <div className="pointer-events-auto flex justify-center">
-            {/* Editable text docs have exactly one surface (CodeMirror), so
-                the wysiwyg/source switch would be a no-op pair of buttons. */}
-            {activeDocName !== null && isEditableTextDocFile(activeDocName) ? null : (
+            {/* Editable text docs have exactly one surface (CodeMirror) and
+                Excalidraw canvas docs have exactly one surface (the canvas —
+                the raw JSON snapshot is not something to hand-edit), so the
+                wysiwyg/source switch would be a no-op pair of buttons. */}
+            {activeDocName !== null &&
+            (isEditableTextDocFile(activeDocName) || isExcalidrawDocFile(activeDocName)) ? null : (
               <EditorModeToggle
                 isSourceMode={isSourceMode}
                 onModeChange={onModeChange}

@@ -5084,6 +5084,10 @@ msgstr "{1}/-এর ভেতরের {0}/ ফোল্ডারগুলোর
 msgid "everything under any {0}/ folder"
 msgstr "যেকোনো {0}/ ফোল্ডারের নিচের সবকিছু"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "Excalidraw ক্যানভাস"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "ব্যতিক্রম: স্কিল ভাগ করা হয়"

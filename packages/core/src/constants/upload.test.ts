@@ -2,9 +2,11 @@ import { describe, expect, test } from 'vitest';
 import {
   ASSET_EXTENSIONS,
   AUDIO_EXTENSIONS,
+  EXCALIDRAW_FILE_EXTENSIONS,
   FILE_ATTACHMENT_EXTENSIONS,
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
+  isExcalidrawDocFile,
   isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
@@ -220,15 +222,66 @@ describe('mediaKindForSidebarAssetExtension', () => {
       expect(LINKABLE_ASSET_EXTENSIONS.has('canvas')).toBe(true);
     });
 
-    test('size equals ASSET_EXTENSIONS + TEXT_VIEWER_FALLBACK_EXTENSIONS + MERMAID_FILE_EXTENSIONS', () => {
+    test('size equals ASSET_EXTENSIONS + TEXT_VIEWER_FALLBACK_EXTENSIONS + MERMAID_FILE_EXTENSIONS + EXCALIDRAW_FILE_EXTENSIONS', () => {
       expect(LINKABLE_ASSET_EXTENSIONS.size).toBe(
-        ASSET_EXTENSIONS.size + TEXT_VIEWER_FALLBACK_EXTENSIONS.size + MERMAID_FILE_EXTENSIONS.size,
+        ASSET_EXTENSIONS.size +
+          TEXT_VIEWER_FALLBACK_EXTENSIONS.size +
+          MERMAID_FILE_EXTENSIONS.size +
+          EXCALIDRAW_FILE_EXTENSIONS.size,
       );
     });
 
     test('contains mmd and mermaid (mermaid-file members)', () => {
       expect(LINKABLE_ASSET_EXTENSIONS.has('mmd')).toBe(true);
       expect(LINKABLE_ASSET_EXTENSIONS.has('mermaid')).toBe(true);
+    });
+
+    test('contains excalidraw (excalidraw-file member)', () => {
+      expect(LINKABLE_ASSET_EXTENSIONS.has('excalidraw')).toBe(true);
+    });
+  });
+
+  describe('EXCALIDRAW_FILE_EXTENSIONS', () => {
+    test('scoped to `.excalidraw` only — `.canvas` stays with the text-viewer fallback set', () => {
+      // `.canvas` is Obsidian's canvas JSON schema (different format,
+      // Excalidraw can't parse it); it must keep routing through the
+      // TEXT_VIEWER_FALLBACK path with syntax highlighting.
+      expect(EXCALIDRAW_FILE_EXTENSIONS.has('excalidraw')).toBe(true);
+      expect(EXCALIDRAW_FILE_EXTENSIONS.has('canvas')).toBe(false);
+      expect(TEXT_VIEWER_FALLBACK_EXTENSIONS.has('canvas')).toBe(true);
+    });
+
+    test('mediaKindForSidebarAssetExtension routes `.excalidraw` to "excalidraw"', () => {
+      expect(mediaKindForSidebarAssetExtension('.excalidraw')).toBe('excalidraw');
+      expect(mediaKindForSidebarAssetExtension('excalidraw')).toBe('excalidraw');
+      expect(mediaKindForSidebarAssetExtension('.EXCALIDRAW')).toBe('excalidraw');
+      // `.canvas` still routes to text, not excalidraw.
+      expect(mediaKindForSidebarAssetExtension('.canvas')).toBe('text');
+    });
+
+    test('isExcalidrawDocFile matches by trailing extension', () => {
+      expect(isExcalidrawDocFile('assets/board.excalidraw')).toBe(true);
+      expect(isExcalidrawDocFile('board.EXCALIDRAW')).toBe(true);
+      expect(isExcalidrawDocFile('board.canvas')).toBe(false);
+      expect(isExcalidrawDocFile('board.mmd')).toBe(false);
+      expect(isExcalidrawDocFile('board')).toBe(false);
+    });
+
+    test('excalidraw is absent from ASSET_EXTENSIONS and INLINE_RENDERABLE_EXTENSIONS (XSS boundary)', () => {
+      // Same allowlist stance as MERMAID_FILE_EXTENSIONS above: canvas render
+      // is a client-side React component (`ExcalidrawDocEditor`) that reads
+      // via the CRDT, not a raw asset stream. Admitting `.excalidraw` to the
+      // XSS/serve boundary would route the file through inline `/api/asset`
+      // instead of the CSP-sandboxed `/api/asset-text` — a stored-XSS regress
+      // if a `.excalidraw` file ever carried untrusted bytes. Pin the
+      // exclusion so accidental widening (adding `excalidraw` to
+      // ASSET_EXTENSIONS or INLINE_RENDERABLE_EXTENSIONS in upload.ts)
+      // fails CI immediately.
+      for (const ext of EXCALIDRAW_FILE_EXTENSIONS) {
+        expect(ASSET_EXTENSIONS.has(ext)).toBe(false);
+        expect(INLINE_RENDERABLE_EXTENSIONS.has(ext)).toBe(false);
+        expect(LINKABLE_ASSET_EXTENSIONS.has(ext)).toBe(true);
+      }
     });
   });
 

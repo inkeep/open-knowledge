@@ -48,7 +48,10 @@ import {
   type FileTargetMenuPrimitives,
 } from '@/components/FileTargetMenuItems';
 import { FileTreeFilteredToZeroNotice } from '@/components/FileTreeFilteredToZeroNotice';
-import { MARKDOWN_FILE_ICON_VIEWBOX } from '@/components/file-entry-icon';
+import {
+  EXCALIDRAW_FILE_ICON_VIEWBOX,
+  MARKDOWN_FILE_ICON_VIEWBOX,
+} from '@/components/file-entry-icon';
 import {
   appendSidebarUploadFields,
   collectTreeFolderPathsFromDocuments,
@@ -87,6 +90,7 @@ import {
 } from '@/components/file-tree-extension-badge';
 import {
   AGENT_DECORATION_ICON_ID,
+  EXCALIDRAW_FILE_ICON_ID,
   FILE_TREE_DECORATION_SPRITE_SHEET,
   LINK_DECORATION_ICON_ID,
   MARKDOWN_FILE_ICON_ID,
@@ -1264,6 +1268,10 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       byFileExtension: {
         md: { name: MARKDOWN_FILE_ICON_ID, viewBox: MARKDOWN_FILE_ICON_VIEWBOX },
         mdx: { name: MARKDOWN_FILE_ICON_ID, viewBox: MARKDOWN_FILE_ICON_VIEWBOX },
+        excalidraw: {
+          name: EXCALIDRAW_FILE_ICON_ID,
+          viewBox: EXCALIDRAW_FILE_ICON_VIEWBOX,
+        },
       },
     },
     unsafeCSS: FILE_TREE_UNSAFE_CSS,

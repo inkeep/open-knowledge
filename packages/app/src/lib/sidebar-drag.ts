@@ -20,6 +20,7 @@ const INLINE_ASSET_MEDIA_KIND_VALUES = {
   pdf: true,
   text: true,
   mermaid: true,
+  excalidraw: true,
 } satisfies Record<InlineAssetMediaKind, true>;
 
 export function serializeSidebarDragPayload(payload: SidebarDragPayload): string {

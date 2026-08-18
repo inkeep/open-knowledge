@@ -36,6 +36,7 @@
 
 import {
   isEditableTextDocFile,
+  isExcalidrawDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
   parseTemplateContentDocName,
@@ -106,6 +107,12 @@ const ManagedArtifactProperties = lazy(async () => ({
 // for projects without any `.mmd`/`.mermaid` files.
 const MermaidDocEditor = lazy(async () => ({
   default: (await import('./MermaidDocEditor')).MermaidDocEditor,
+}));
+// Standalone Excalidraw doc editor. Lazy so the ~600kB Excalidraw bundle
+// (plus its `roughjs` renderer) stays out of the first-load bundle for
+// projects without any `.excalidraw` files.
+const ExcalidrawDocEditor = lazy(async () => ({
+  default: (await import('./ExcalidrawDocEditor')).ExcalidrawDocEditor,
 }));
 const TextDocEditor = lazy(async () => ({
   default: (await import('./TextDocEditor')).TextDocEditor,
@@ -254,6 +261,7 @@ export function computeIsNewDoc(args: {
     !isManagedArtifactDocName(docName) &&
     parseTemplateContentDocName(docName) === null &&
     !isMermaidDocFile(docName) &&
+    !isExcalidrawDocFile(docName) &&
     !isEditableTextDocFile(docName)
   );
 }
@@ -1161,9 +1169,12 @@ function ActivityEntry({
   // Standalone Mermaid docs (`.mmd`/`.mermaid`) render a dedicated diagram+source
   // editor instead of the markdown dual-editor (they are Y.Text-only, no bridge).
   const isMermaid = isMermaidDocFile(entry.docName);
+  // Standalone Excalidraw canvas docs (`.excalidraw`) — Y.Text-only doc
+  // whose source is a JSON snapshot of the canvas scene.
+  const isExcalidraw = isExcalidrawDocFile(entry.docName);
   // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
   // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
-  const isTextDoc = !isMermaid && isEditableTextDocFile(entry.docName);
+  const isTextDoc = !isMermaid && !isExcalidraw && isEditableTextDocFile(entry.docName);
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
   // initializer ensures the same `HTMLDivElement` reference survives across
@@ -1445,6 +1456,14 @@ function ActivityEntry({
                       provider={entry.provider}
                       isSourceMode={effectiveIsSourceMode}
                     />
+                  ) : isExcalidraw ? (
+                    /* Standalone Excalidraw canvas doc (`.excalidraw`).
+                       Whole-doc Y.Text('source') snapshot; no dual-editor,
+                       no markdown bridge. Lazy so the canvas bundle stays
+                       out of first-load for projects without one. */
+                    <Suspense fallback={<EditorSkeleton />}>
+                      <ExcalidrawDocEditor provider={entry.provider} />
+                    </Suspense>
                   ) : isTextDoc ? (
                     /* Editable text doc: single CodeMirror surface bound to this
                        doc's Y.Text('source') — same doc-class plumbing as the

@@ -9,6 +9,8 @@
 import { __iconNode as botIcon } from 'lucide-react/dist/esm/icons/bot';
 import { __iconNode as link2Icon } from 'lucide-react/dist/esm/icons/link-2';
 import {
+  EXCALIDRAW_FILE_ICON_PATH_D,
+  EXCALIDRAW_FILE_ICON_VIEWBOX,
   MARKDOWN_FILE_ICON_PATH_D,
   MARKDOWN_FILE_ICON_VIEWBOX,
 } from '@/components/file-entry-icon';
@@ -16,11 +18,15 @@ import {
 export const LINK_DECORATION_ICON_ID = 'ok-file-tree-link-decoration';
 export const AGENT_DECORATION_ICON_ID = 'ok-file-tree-agent-decoration';
 export const MARKDOWN_FILE_ICON_ID = 'ok-file-tree-markdown';
+export const EXCALIDRAW_FILE_ICON_ID = 'ok-file-tree-excalidraw';
 // Custom Markdown file glyph (document with an "MD" label) overriding Pierre's
 // built-in `complete`-set markdown glyph. `fill="currentColor"` lets
 // `--trees-file-icon-color-markdown` (set in createFileTreeStyle, see
 // file-tree-density.ts) color it.
 const MARKDOWN_FILE_ICON_SYMBOL = `<symbol id="${MARKDOWN_FILE_ICON_ID}" viewBox="${MARKDOWN_FILE_ICON_VIEWBOX}" fill="currentColor"><path d="${MARKDOWN_FILE_ICON_PATH_D}"/></symbol>`;
+// Excalidraw brand mark for `.excalidraw` canvas files — same `currentColor`
+// technique as the Markdown symbol so the row's file-icon color drives it.
+const EXCALIDRAW_FILE_ICON_SYMBOL = `<symbol id="${EXCALIDRAW_FILE_ICON_ID}" viewBox="${EXCALIDRAW_FILE_ICON_VIEWBOX}" fill="currentColor"><path d="${EXCALIDRAW_FILE_ICON_PATH_D}"/></symbol>`;
 
 type IconNode = [string, Record<string, string>][];
 
@@ -47,4 +53,5 @@ export const FILE_TREE_DECORATION_SPRITE_SHEET = `<svg data-icon-sprite aria-hid
   ${createLucideSpriteSymbol(LINK_DECORATION_ICON_ID, link2Icon)}
   ${createLucideSpriteSymbol(AGENT_DECORATION_ICON_ID, botIcon)}
   ${MARKDOWN_FILE_ICON_SYMBOL}
+  ${EXCALIDRAW_FILE_ICON_SYMBOL}
 </svg>`;

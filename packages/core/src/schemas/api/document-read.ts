@@ -52,12 +52,13 @@ export type DocumentReadSuccess = z.infer<typeof DocumentReadSuccessSchema>;
  *   when `isSymlink: true`).
  * - `kind: 'asset'` — referenced asset discovered through wiki-link or markdown
  *   image syntax. Carries `path` (contentDir-relative), `assetExt`,
- *   `mediaKind` (`'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid' | null` —
+ *   `mediaKind` (`'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid' | 'excalidraw' | null` —
  *   `'text'` is set for data formats the sidebar previews via CodeMirror
  *   (json / toml / lock); `'mermaid'` for standalone `.mmd` / `.mermaid`
- *   diagram files; `null` for non-renderable extensions that surface only
- *   via `[[wiki-link]]` references), and `referencedBy` (the docNames
- *   that point at it).
+ *   diagram files; `'excalidraw'` for standalone `.excalidraw` canvas
+ *   files; `null` for non-renderable extensions that surface only via
+ *   `[[wiki-link]]` references), and `referencedBy` (the docNames that
+ *   point at it).
  * - `kind: 'file'` — any ContentFilter-passing non-markdown
  *   file that is NOT picked up as a referenced asset (e.g. `data.csv`,
  *   `FileTree.tsx`, `package.json`). Carries `path` (contentDir-relative,
@@ -88,7 +89,10 @@ export const DocumentListEntrySchema = z
     // path within the content directory.
     path: z.string().min(1).optional(),
     assetExt: z.string().min(1).optional(),
-    mediaKind: z.enum(['image', 'video', 'audio', 'pdf', 'text', 'mermaid']).nullable().optional(),
+    mediaKind: z
+      .enum(['image', 'video', 'audio', 'pdf', 'text', 'mermaid', 'excalidraw'])
+      .nullable()
+      .optional(),
     referencedBy: z.array(z.string().min(1)).optional(),
     // Folder-only. True when the folder contains at least one non-skipped child
     // entry. The depth-1 children variant of GET /api/documents

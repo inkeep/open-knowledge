@@ -5084,6 +5084,10 @@ msgstr "semua yang ada di folder {0}/ di dalam {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "semua yang ada di folder {0}/ mana pun"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "Kanvas Excalidraw"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "Pengecualian: keterampilan dibagikan"

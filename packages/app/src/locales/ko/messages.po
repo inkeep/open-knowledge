@@ -5083,6 +5083,10 @@ msgstr "{0}/ 폴더가 {1}/ 안에 있는 모든 항목"
 msgid "everything under any {0}/ folder"
 msgstr "모든 {0}/ 폴더 아래의 항목"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "Excalidraw 캔버스"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "예외: 스킬은 공유됨"

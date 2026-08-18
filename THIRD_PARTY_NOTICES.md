@@ -599,8 +599,33 @@ Homepage: https://github.com/agentclientprotocol/typescript-sdk#readme
 
 Copyright 2025 Zed Industries, Inc. and contributors
 
+### `@chevrotain/cst-dts-gen@11.0.3`
+Homepage: https://github.com/Chevrotain/chevrotain
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `@chevrotain/gast@11.0.3`
+Homepage: https://github.com/Chevrotain/chevrotain
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `@chevrotain/regexp-to-ast@11.0.3`
+Homepage: https://github.com/Chevrotain/chevrotain
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
 ### `@chevrotain/types@11.1.2`
 Homepage: https://chevrotain.io/documentation/
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `@chevrotain/types@11.0.3`
+Homepage: https://chevrotain.io/documentation/
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `@chevrotain/utils@11.0.3`
+Homepage: https://github.com/Chevrotain/chevrotain
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
@@ -799,10 +824,25 @@ Homepage: https://github.com/gr2m/before-after-hook
 
 Copyright 2018 Gregor Martynus and other contributors.
 
+### `browser-fs-access@0.29.1`
+Homepage: https://github.com/GoogleChromeLabs/browser-fs-access#readme
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `chevrotain@11.0.3`
+Homepage: https://chevrotain.io/docs/
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
 ### `class-variance-authority@0.7.1`
 Homepage: https://github.com/joe-bell/cva#readme
 
 Copyright 2022 Joe Bell
+
+### `crc-32@0.3.0`
+Homepage: https://github.com/SheetJS/js-crc32
+
+Copyright (C) 2014  SheetJS
 
 ### `detect-libc@2.1.2`
 Homepage: https://github.com/lovell/detect-libc
@@ -885,6 +925,11 @@ _(LICENSE template present but no copyright line filled in; refer to the package
 
 ### `pdfjs-dist@6.2.108`
 Homepage: https://mozilla.github.io/pdf.js/
+
+_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
+
+### `pwacompat@2.0.17`
+Homepage: https://github.com/GoogleChrome/pwacompat
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
@@ -1151,6 +1196,11 @@ Homepage: https://github.com/braintree/sanitize-url#readme
 
 Copyright (c) 2017 Braintree
 
+### `@braintree/sanitize-url@6.0.2`
+Homepage: https://github.com/braintree/sanitize-url#readme
+
+Copyright (c) 2017 Braintree
+
 ### `@codemirror/autocomplete@6.20.3`
 Homepage: https://code.haverbeke.berlin/codemirror/autocomplete
 
@@ -1260,6 +1310,29 @@ Copyright (c) 2021, Claudéric Demers
 Homepage: https://github.com/clauderic/dnd-kit
 
 Copyright (c) 2021, Claudéric Demers
+
+### `@excalidraw/excalidraw@0.18.1`
+Homepage: https://github.com/excalidraw/excalidraw/tree/master/packages/excalidraw
+
+_(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
+
+### `@excalidraw/laser-pointer@1.3.1`
+
+Copyright (c) 2023 Excalidraw
+
+### `@excalidraw/markdown-to-text@0.1.2`
+Homepage: https://github.com/danestves/markdown-to-text.git
+
+Copyright (c) 2020 Daniel Esteves
+
+### `@excalidraw/mermaid-to-excalidraw@2.2.2`
+
+Copyright (c) 2023 Excalidraw
+
+### `@excalidraw/random-username@1.1.0`
+Homepage: https://github.com/excalidraw/random-username
+
+Copyright (c) 2021 dwelle
 
 ### `@floating-ui/core@1.7.5`
 Homepage: https://floating-ui.com
@@ -1522,6 +1595,11 @@ Homepage: https://code.haverbeke.berlin/marijn/find-cluster-break
 Copyright (C) 2024 by Marijn Haverbeke <marijn@haverbeke.berlin>
 
 ### `@mermaid-js/parser@1.2.0`
+Homepage: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
+
+Copyright (c) 2023 Yokozuna59
+
+### `@mermaid-js/parser@0.6.3`
 Homepage: https://github.com/mermaid-js/mermaid/tree/develop/packages/mermaid/parser/#readme
 
 Copyright (c) 2023 Yokozuna59
@@ -2695,6 +2773,11 @@ Homepage: https://github.com/Pomax/bezierjs
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
 
+### `binary-extensions@2.3.0`
+Homepage: https://github.com/sindresorhus/binary-extensions
+
+Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com) Copyright (c) Paul Miller (https://paulmillr.com)
+
 ### `bl@4.1.0`
 Homepage: https://github.com/rvagg/bl
 
@@ -2780,6 +2863,11 @@ Homepage: https://github.com/vasturiano/canvas-color-tracker
 
 Copyright (c) 2018 Vasco Asturiano
 
+### `canvas-roundrect-polyfill@0.0.1`
+Homepage: https://github.com/Kaiido/roundRect
+
+Copyright (c) 2021 Tristan Fraipont
+
 ### `ccount@2.0.1`
 Homepage: https://github.com/wooorm/ccount
 
@@ -2815,10 +2903,20 @@ Homepage: https://github.com/wooorm/character-reference-invalid
 
 Copyright (c) 2015 Titus Wormer <tituswormer@gmail.com>
 
+### `chevrotain-allstar@0.3.1`
+Homepage: https://github.com/langium/chevrotain-allstar
+
+Copyright 2022 TypeFox GmbH
+
 ### `chokidar@5.0.0`
 Homepage: https://github.com/paulmillr/chokidar
 
 Copyright (c) 2012 Paul Miller (https://paulmillr.com), Elan Shanker
+
+### `chokidar@3.6.0`
+Homepage: https://github.com/paulmillr/chokidar
+
+Copyright (c) 2012-2019 Paul Miller (https://paulmillr.com), Elan Shanker
 
 ### `cjs-module-lexer@1.4.3`
 Homepage: https://github.com/nodejs/cjs-module-lexer#readme
@@ -2846,6 +2944,11 @@ Homepage: https://github.com/sindresorhus/cli-spinners
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
 ### `clsx@2.1.1`
+Homepage: https://github.com/lukeed/clsx
+
+Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
+
+### `clsx@1.1.1`
 Homepage: https://github.com/lukeed/clsx
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
@@ -2974,6 +3077,11 @@ Copyright (c) 2015 David Clark
 Homepage: https://code.haverbeke.berlin/marijn/crelt
 
 Copyright (C) 2020 by Marijn Haverbeke <marijn@haverbeke.berlin>
+
+### `cross-env@7.0.3`
+Homepage: https://github.com/kentcdodds/cross-env#readme
+
+Copyright (c) 2017 Kent C. Dodds
 
 ### `cross-spawn@7.0.6`
 Homepage: https://github.com/moxystudio/node-cross-spawn
@@ -3196,6 +3304,11 @@ Homepage: https://es-toolkit.dev
 
 Copyright (c) 2024 Viva Republica, Inc.
 
+### `es6-promise-pool@2.5.0`
+Homepage: https://github.com/timdp/es6-promise-pool
+
+Copyright (c) 2017 Tim De Pauw <https://tmdpw.eu/>
+
 ### `escalade@3.2.0`
 Homepage: https://github.com/lukeed/escalade
 
@@ -3407,6 +3520,11 @@ Homepage: https://github.com/Raynos/function-bind
 
 Copyright (c) 2013 Raynos.
 
+### `fuzzy@0.1.3`
+Homepage: https://github.com/mattyork/fuzzy
+
+Copyright (c) 2012 Matt York
+
 ### `fuzzysort@3.1.0`
 Homepage: https://github.com/farzher/fuzzysort
 
@@ -3461,6 +3579,11 @@ Copyright (c) 2020 Baidu EFE
 Homepage: https://github.com/substack/github-from-package
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+
+### `glur@1.1.2`
+Homepage: https://github.com/andr83/glur/issues
+
+Copyright (c) 2014 Andrei Tupitcyn
 
 ### `gopd@1.2.0`
 Homepage: https://github.com/ljharb/gopd#readme
@@ -3622,6 +3745,16 @@ Homepage: https://github.com/kaelzhang/node-ignore
 
 Copyright (c) 2013 Kael Zhang <i@kael.me>, contributors
 
+### `image-blob-reduce@3.0.1`
+Homepage: https://github.com/nodeca/image-blob-reduce
+
+Copyright (C) 2020 by authors
+
+### `immutable@4.3.9`
+Homepage: https://immutable-js.com
+
+Copyright (c) 2014-present, Lee Byron and other contributors.
+
 ### `import-fresh@3.3.1`
 Homepage: https://github.com/sindresorhus/import-fresh
 
@@ -3673,6 +3806,11 @@ Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
 Homepage: https://github.com/qix-/node-is-arrayish
 
 Copyright (c) 2015 JD Ballard
+
+### `is-binary-path@2.1.0`
+Homepage: https://github.com/sindresorhus/is-binary-path
+
+Copyright (c) 2019 Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com), Paul Miller (https://paulmillr.com)
 
 ### `is-core-module@2.16.2`
 Homepage: https://github.com/inspect-js/is-core-module
@@ -3819,6 +3957,16 @@ Homepage: https://github.com/panva/jose
 
 Copyright (c) 2018 Filip Skokan
 
+### `jotai@2.11.0`
+Homepage: https://github.com/pmndrs/jotai
+
+Copyright (c) 2020-2023 Poimandres
+
+### `jotai-scope@0.7.2`
+Homepage: https://github.com/jotaijs/jotai-scope
+
+Copyright (c) 2023 Daishi Kato
+
 ### `joycon@3.1.1`
 Homepage: https://github.com/egoist/joycon
 
@@ -3899,6 +4047,11 @@ Homepage: https://github.com/lukeed/kleur
 
 Copyright (c) Luke Edwards <luke.edwards05@gmail.com> (lukeed.com)
 
+### `langium@3.3.1`
+Homepage: https://langium.org
+
+Copyright 2021 TypeFox GmbH
+
 ### `layout-base@1.0.2`
 Homepage: https://github.com/iVis-at-Bilkent/layout-base#readme
 
@@ -3954,6 +4107,16 @@ Homepage: https://lodash.com/custom-builds
 
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
+### `lodash-es@4.17.21`
+Homepage: https://lodash.com/custom-builds
+
+Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
+
+### `lodash.debounce@4.0.8`
+Homepage: https://lodash.com/
+
+_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
+
 ### `lodash.escaperegexp@4.1.2`
 Homepage: https://lodash.com/
 
@@ -3963,6 +4126,11 @@ _(LICENSE file present but no auto-extractable copyright line; refer to the pack
 Homepage: https://lodash.com/
 
 Copyright JS Foundation and other contributors <https://js.foundation/>
+
+### `lodash.throttle@4.1.1`
+Homepage: https://lodash.com/
+
+_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
 ### `log-symbols@6.0.0`
 Homepage: https://github.com/sindresorhus/log-symbols
@@ -4374,6 +4542,21 @@ Homepage: https://github.com/vercel/ms
 
 Copyright (c) 2020 Vercel, Inc.
 
+### `multimath@2.0.0`
+Homepage: https://github.com/nodeca/multimath
+
+Copyright (C) 2017 by Vitaly Puzrin
+
+### `nanoid@3.3.3`
+Homepage: https://github.com/ai/nanoid
+
+Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
+
+### `nanoid@4.0.2`
+Homepage: https://github.com/ai/nanoid
+
+Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
+
 ### `nanoid@3.3.16`
 Homepage: https://github.com/ai/nanoid
 
@@ -4506,6 +4689,11 @@ Homepage: https://github.com/sindresorhus/open
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
+### `open-color@1.9.1`
+Homepage: https://github.com/yeun/open-color
+
+Copyright (c) 2016 heeyeun
+
 ### `ora@8.2.0`
 Homepage: https://github.com/sindresorhus/ora
 
@@ -4535,6 +4723,11 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 Homepage: https://github.com/antfu-collective/package-manager-detector#readme
 
 Copyright (c) 2020-PRESENT Anthony Fu <https://github.com/antfu>
+
+### `pako@2.0.3`
+Homepage: https://github.com/nodeca/pako
+
+Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
 
 ### `papaparse@5.5.4`
 Homepage: https://www.papaparse.com/
@@ -4616,6 +4809,16 @@ Homepage: https://github.com/andrewrk/node-pend
 
 Copyright (c) 2014 Andrew Kelley
 
+### `perfect-freehand@1.2.0`
+Homepage: https://github.com/steveruizok/perfect-freehand
+
+Copyright (c) 2021 Stephen Ruiz Ltd
+
+### `pica@7.1.1`
+Homepage: https://github.com/nodeca/pica
+
+Copyright (C) 2014-2017 by Vitaly Puzrin
+
 ### `picomatch@4.0.5`
 Homepage: https://github.com/micromatch/picomatch
 
@@ -4655,6 +4858,26 @@ Copyright (c) 2019
 Homepage: https://github.com/sindresorhus/pkg-up
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
+
+### `png-chunk-text@1.0.0`
+Homepage: https://github.com/hughsk/png-chunk-text
+
+Copyright (c) 2015 Hugh Kennedy
+
+### `png-chunks-encode@1.0.0`
+Homepage: https://github.com/hughsk/png-chunks-encode
+
+Copyright (c) 2015 Hugh Kennedy
+
+### `png-chunks-extract@1.0.0`
+Homepage: https://github.com/hughsk/png-chunks-extract
+
+Copyright (c) 2015 Hugh Kennedy
+
+### `points-on-curve@1.0.1`
+Homepage: https://github.com/pshihn/bezier-points#readme
+
+Copyright (c) 2020 Preet Shihn
 
 ### `points-on-curve@0.2.0`
 Homepage: https://github.com/pshihn/bezier-points#readme
@@ -4932,6 +5155,11 @@ Homepage: https://github.com/paulmillr/readdirp
 
 Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (https://paulmillr.com)
 
+### `readdirp@3.6.0`
+Homepage: https://github.com/paulmillr/readdirp
+
+Copyright (c) 2012-2019 Thorsten Lorenz, Paul Miller (https://paulmillr.com)
+
 ### `real-require@0.2.0`
 Homepage: https://github.com/pinojs/real-require
 
@@ -5077,6 +5305,11 @@ Homepage: https://roughjs.com
 
 Copyright (c) 2019 Preet Shihn
 
+### `roughjs@4.6.4`
+Homepage: https://roughjs.com
+
+Copyright (c) 2019 Preet Shihn
+
 ### `router@2.2.0`
 Homepage: https://github.com/pillarjs/router
 
@@ -5106,6 +5339,14 @@ Copyright (c) Ruben Bridgewater
 Homepage: https://github.com/ChALkeR/safer-buffer
 
 Copyright (c) 2018 Nikita Skovoroda <chalkerx@gmail.com>
+
+### `sass@1.51.0`
+Homepage: https://github.com/sass/dart-sass
+
+Copyright (c) 2016, Google Inc.
+Copyright 2012, the Dart project authors.
+Copyright 2019, the Dart project authors.
+Copyright 2013, the Dart project authors.
 
 ### `scheduler@0.27.0`
 Homepage: https://react.dev/
@@ -5201,6 +5442,11 @@ _(No LICENSE file in package; SPDX identifier in `package.json` is the sole decl
 Homepage: https://github.com/terkelg/sisteransi
 
 Copyright (c) 2018 Terkel Gjervig Nielsen
+
+### `sliced@1.0.1`
+Homepage: https://github.com/aheckmann/sliced
+
+Copyright (c) 2012 [Aaron Heckmann](aaron.heckmann+github@gmail.com)
 
 ### `sonic-boom@4.2.1`
 Homepage: https://github.com/pinojs/sonic-boom#readme
@@ -5434,6 +5680,11 @@ Homepage: https://github.com/dividab/tsconfig-paths
 
 Copyright (c) 2016 Jonas Kello
 
+### `tunnel-rat@0.1.2`
+Homepage: https://github.com/pmndrs/tunnel-rat#readme
+
+Copyright (c) 2022 Poimandres
+
 ### `turndown@7.2.4`
 Homepage: https://github.com/mixmark-io/turndown
 
@@ -5579,6 +5830,36 @@ Homepage: https://github.com/vfile/vfile-message
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
 
+### `vscode-jsonrpc@8.2.0`
+Homepage: https://github.com/Microsoft/vscode-languageserver-node
+
+Copyright (c) Microsoft Corporation
+
+### `vscode-languageserver@9.0.1`
+Homepage: https://github.com/Microsoft/vscode-languageserver-node
+
+Copyright (c) Microsoft Corporation
+
+### `vscode-languageserver-protocol@3.17.5`
+Homepage: https://github.com/Microsoft/vscode-languageserver-node
+
+Copyright (c) Microsoft Corporation
+
+### `vscode-languageserver-textdocument@1.0.12`
+Homepage: https://github.com/Microsoft/vscode-languageserver-node
+
+Copyright (c) Microsoft Corporation
+
+### `vscode-languageserver-types@3.17.5`
+Homepage: https://github.com/Microsoft/vscode-languageserver-node
+
+Copyright (c) Microsoft Corporation
+
+### `vscode-uri@3.0.8`
+Homepage: https://github.com/microsoft/vscode-uri#readme
+
+Copyright (c) Microsoft
+
 ### `w3c-keyname@2.2.8`
 Homepage: https://github.com/marijnh/w3c-keyname#readme
 
@@ -5598,6 +5879,11 @@ Copyright (c) 2015-2021 polygonplanet
 Homepage: https://github.com/wooorm/web-namespaces
 
 Copyright (c) 2016 Titus Wormer <tituswormer@gmail.com>
+
+### `webworkify@1.5.0`
+Homepage: https://github.com/substack/webworkify
+
+_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
 ### `whatwg-mimetype@3.0.0`
 Homepage: https://github.com/jsdom/whatwg-mimetype
@@ -5669,6 +5955,11 @@ Homepage: https://zod.dev
 
 Copyright (c) 2025 Colin McDonnell
 
+### `zustand@4.5.7`
+Homepage: https://github.com/pmndrs/zustand
+
+Copyright (c) 2019 Paul Henschel
+
 ### `zwitch@2.0.4`
 Homepage: https://github.com/wooorm/zwitch
 
@@ -5700,6 +5991,11 @@ PERFORMANCE OF THIS SOFTWARE.
 Homepage: https://github.com/ungap/structured-clone#readme
 
 Copyright (c) 2021, Andrea Giammarchi, @WebReflection
+
+### `anymatch@3.1.3`
+Homepage: https://github.com/micromatch/anymatch
+
+Copyright (c) 2019 Elan Shanker, Paul Miller (https://paulmillr.com)
 
 ### `chownr@1.1.4`
 Homepage: https://github.com/isaacs/chownr
@@ -6293,6 +6589,7 @@ Copyright (c) 2015, Yeoman team
 
 The following packages are under licenses that do not require attribution (BlueOak-1.0.0, 0BSD, WTFPL, Unlicense, CC0-1.0). Listed for completeness and traceability.
 
+- `fractional-indexing@3.2.0` — CC0-1.0
 - `isexe@3.1.5` — BlueOak-1.0.0
 - `minimatch@10.2.5` — BlueOak-1.0.0
 - `robust-predicates@3.0.3` — Unlicense

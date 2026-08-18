@@ -575,7 +575,14 @@ export const WIKI_EMBED_EXTENSIONS: ReadonlySet<string> = new Set([
   'mobi',
 ]);
 
-export type InlineAssetMediaKind = 'image' | 'video' | 'audio' | 'pdf' | 'text' | 'mermaid';
+export type InlineAssetMediaKind =
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'pdf'
+  | 'text'
+  | 'mermaid'
+  | 'excalidraw';
 
 // Sidebar-clickable asset extensions, grouped by inline-render path.
 // Each set is a STRICT subset of its canonical-class set (asserted below),
@@ -698,6 +705,27 @@ export function isMermaidDocFile(path: string): boolean {
   return MERMAID_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
 }
 
+// Standalone Excalidraw drawing-canvas source files. Rendered via the
+// editor's `<Excalidraw>` component through the ungated `/api/asset-text`
+// byte path — same allowlist stance as the Mermaid set (indexable + linkable
+// but not admitted to the XSS-gated `/api/asset` serve path). Scoped to
+// `.excalidraw` only; `.canvas` is deliberately excluded because
+// TEXT_VIEWER_FALLBACK_EXTENSIONS already claims it for Obsidian's canvas
+// JSON schema (different format, cannot be parsed by Excalidraw).
+export const EXCALIDRAW_FILE_EXTENSIONS: ReadonlySet<string> = new Set(['excalidraw']);
+
+/**
+ * True when a path/docName names a standalone Excalidraw source file. Pure
+ * string op (no `node:path`) so it runs in the browser too. Same doc-class
+ * discriminator role as `isMermaidDocFile` — the docName retains the
+ * extension (`assets/board.excalidraw`).
+ */
+export function isExcalidrawDocFile(path: string): boolean {
+  const lastDot = path.lastIndexOf('.');
+  if (lastDot < 0) return false;
+  return EXCALIDRAW_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
+}
+
 // Code-file extensions live in a sibling module so the
 // language→extension table can be shared with the app-side TextViewer
 // (which maps the same canonical IDs to CodeMirror language packs).
@@ -718,6 +746,7 @@ export const LINKABLE_ASSET_EXTENSIONS: ReadonlySet<string> = new Set([
   ...ASSET_EXTENSIONS,
   ...TEXT_VIEWER_FALLBACK_EXTENSIONS,
   ...MERMAID_FILE_EXTENSIONS,
+  ...EXCALIDRAW_FILE_EXTENSIONS,
 ]);
 
 /**
@@ -739,6 +768,7 @@ export function mediaKindForSidebarAssetExtension(ext: string): InlineAssetMedia
   if (SIDEBAR_TEXT_ASSET_EXTENSIONS.has(normalized)) return 'text';
   if (TEXT_VIEWER_FALLBACK_EXTENSIONS.has(normalized)) return 'text';
   if (MERMAID_FILE_EXTENSIONS.has(normalized)) return 'mermaid';
+  if (EXCALIDRAW_FILE_EXTENSIONS.has(normalized)) return 'excalidraw';
   // Files whose extension matches a codeblock-supported language
   // (`ts` / `py` / `go` / ...) open by default in the read-only
   // text viewer with syntax highlighting — same kind dispatch as

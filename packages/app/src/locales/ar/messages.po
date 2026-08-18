@@ -5088,6 +5088,10 @@ msgstr "كل ما تحت مجلدات {0}/ داخل {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "كل ما تحت أي مجلد {0}/"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "لوحة Excalidraw"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "استثناء: المهارات مشتركة"

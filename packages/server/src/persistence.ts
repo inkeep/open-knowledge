@@ -51,6 +51,7 @@ import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog
 import {
   isConfigDoc,
   isEditableTextDoc,
+  isExcalidrawDoc,
   isManagedArtifactDoc,
   isMermaidDoc,
   isPersistenceExcludedDoc,
@@ -2690,9 +2691,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         loadManagedArtifactDoc(document, documentName, managedArtifactCtx);
         return;
       }
-      if (isMermaidDoc(documentName) || isEditableTextDoc(documentName)) {
-        // Editable text docs share the Mermaid verbatim Y.Text load/store —
-        // the path resolver is extension-agnostic (docName retains its ext).
+      if (
+        isMermaidDoc(documentName) ||
+        isExcalidrawDoc(documentName) ||
+        isEditableTextDoc(documentName)
+      ) {
+        // Editable-text and Excalidraw docs share the Mermaid verbatim Y.Text
+        // load/store — the path resolver is extension-agnostic (docName
+        // retains its ext) and the on-wire body is opaque bytes to the
+        // server regardless of whether it's Mermaid source, TS/JSON source,
+        // or an Excalidraw JSON snapshot.
         loadMermaidDoc(document, documentName, mermaidPersistenceCtx);
         return;
       }
@@ -2919,7 +2927,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
         return;
       }
-      if (isMermaidDoc(documentName) || isEditableTextDoc(documentName)) {
+      if (
+        isMermaidDoc(documentName) ||
+        isExcalidrawDoc(documentName) ||
+        isEditableTextDoc(documentName)
+      ) {
         await storeMermaidDoc(document, documentName, lastTransactionOrigin, mermaidPersistenceCtx);
         return;
       }

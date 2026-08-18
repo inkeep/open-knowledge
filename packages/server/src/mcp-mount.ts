@@ -412,7 +412,17 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     // shell first for this prefix; fall through to the content middleware on a
     // miss so user uploads at `<contentDir>/assets/*` still serve. Mirrors
     // the split-mode UI proxy's `/assets/`-first branch in `commands/ui.ts`.
-    if (reactShellMiddleware !== undefined && url?.startsWith('/assets/')) {
+    //
+    // `/excalidraw-assets/` carries the vendored Excalidraw font tree from
+    // `packages/app/scripts/copy-excalidraw-assets.mjs`, which the editor
+    // pins via `window.EXCALIDRAW_ASSET_PATH` at module load. The tree is
+    // shell-owned (`packages/app/public/excalidraw-assets/`), not contentDir,
+    // so it hits the same fail-closed trap that `/assets/` did — bundle the
+    // prefix into the same shell-first branch so the fonts serve.
+    if (
+      reactShellMiddleware !== undefined &&
+      (url?.startsWith('/assets/') || url?.startsWith('/excalidraw-assets/'))
+    ) {
       runShell(() => runContent(notFound));
       return;
     }

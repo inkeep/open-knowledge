@@ -3,6 +3,7 @@ import {
   type InlineAssetMediaKind,
   isDocumentOverOpenByteLimit,
   isEditableTextDocFile,
+  isExcalidrawDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
   mediaKindForSidebarAssetExtension,
@@ -334,14 +335,17 @@ export function resolveNavigationTarget(
   if (!normalizedTarget) {
     return { kind: 'missing', target: normalizedTarget };
   }
-  // Standalone Mermaid docs (`assets/flow.mmd`) retain their extension in the
-  // docName and live OUTSIDE the markdown `pages` set — the membership checks
-  // below would mark them 'missing'. Resolve directly as a doc target (mirrors
-  // the managed-artifact early return above) so tree-open / hash nav opens the
-  // editable Mermaid doc editor rather than the read-only asset viewer.
+  // Standalone Mermaid (`.mmd`), Excalidraw (`.excalidraw`), and editable-
+  // text docs retain their extension in the docName and live OUTSIDE the
+  // markdown `pages` set — the membership checks below would mark them
+  // 'missing'. Resolve directly as a doc target (mirrors the managed-
+  // artifact early return above) so tree-open / hash nav opens the
+  // editable doc editor rather than the read-only asset viewer.
   if (
     !expectsFolder &&
-    (isMermaidDocFile(normalizedTarget) || isEditableTextDocFile(normalizedTarget))
+    (isMermaidDocFile(normalizedTarget) ||
+      isExcalidrawDocFile(normalizedTarget) ||
+      isEditableTextDocFile(normalizedTarget))
   ) {
     return { kind: 'doc', target: normalizedTarget, docName: normalizedTarget };
   }

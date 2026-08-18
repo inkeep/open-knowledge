@@ -5,9 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "turbo run build --filter=@inkeep/open-knowledge-core --filter=@inkeep/open-knowledge-server && sh scripts/i18n-compile-unless-skipped.sh",
+    "predev": "turbo run build --filter=@inkeep/open-knowledge-core --filter=@inkeep/open-knowledge-server && sh scripts/i18n-compile-unless-skipped.sh && node scripts/copy-excalidraw-assets.mjs",
     "dev": "vite",
-    "build": "pnpm run i18n:compile && tsc --noEmit && vite build",
+    "build": "pnpm run i18n:compile && node scripts/copy-excalidraw-assets.mjs && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "i18n": "lingui extract --clean && pnpm run i18n:compile",
     "i18n:extract": "lingui extract --clean",
@@ -53,7 +53,7 @@
     {
       "name": "all JS chunks combined (gzipped)",
       "path": "dist/assets/*.js",
-      "limit": "4.95 MB",
+      "limit": "6.55 MB",
       "gzip": true,
       "running": false
     },
@@ -86,6 +86,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@excalidraw/excalidraw": "0.18.1",
     "@fellow/prosemirror-recreate-transform": "^1.2.3",
     "@floating-ui/dom": "^1.7.6",
     "@fontsource-variable/inter": "^5.2.8",

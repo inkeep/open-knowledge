@@ -108,12 +108,15 @@ export function resolveFileTreeSelectionAction(
     return { kind: 'document', path: documentDocName };
   }
   if (entry && isAssetEntry(entry)) {
-    // Mermaid files (`.mmd`/`.mermaid`) and editable text files (`.ts` /
-    // `.json` / `.html` / …) are served as assets but open as editable CRDT
-    // docs, not the read-only asset viewer. Their docName IS the asset path
-    // (extension retained), so route the selection as a document.
+    // Mermaid files (`.mmd`/`.mermaid`), Excalidraw canvases (`.excalidraw`),
+    // and editable text files (`.ts` / `.json` / `.html` / …) are served as
+    // assets but open as editable CRDT docs, not the read-only asset viewer.
+    // Their docName IS the asset path (extension retained), so route the
+    // selection as a document — the doc-open path takes it through
+    // EditorActivityPool where the per-extension editor branches live.
     if (
       entry.mediaKind === 'mermaid' ||
+      entry.mediaKind === 'excalidraw' ||
       (isEditableTextDocFile(entry.path) &&
         !isDocumentOverOpenByteLimit(entry.size, TEXT_DOC_OPEN_BYTE_LIMIT))
     ) {

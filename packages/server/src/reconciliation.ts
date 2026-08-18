@@ -1,4 +1,10 @@
-import { isConfigDoc, isEditableTextDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  isConfigDoc,
+  isEditableTextDoc,
+  isExcalidrawDoc,
+  isMermaidDoc,
+  isSystemDoc,
+} from './cc1-broadcast.ts';
 
 /**
  * Three-way reconciliation for external writes.
@@ -122,6 +128,7 @@ export function reconcile(input: ReconcileInput): ReconcileOutcome {
     isSystemDoc(input.docName) ||
     isConfigDoc(input.docName) ||
     isMermaidDoc(input.docName) ||
+    isExcalidrawDoc(input.docName) ||
     isEditableTextDoc(input.docName)
   )
     return { kind: 'noop' };

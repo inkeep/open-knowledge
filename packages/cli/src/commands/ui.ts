@@ -423,7 +423,11 @@ export async function startUiServer(opts: StartUiServerOptions): Promise<UiServe
     // true` + `extensions: []` means a missing file WITH an extension
     // calls `next()` (instead of returning the SPA shell), so user
     // uploads at `<contentDir>/assets/foo.png` still serve.
-    if (staticHandler && url?.startsWith('/assets/')) {
+    //
+    // `/excalidraw-assets/` follows the same shell-first rule for the
+    // vendored Excalidraw font tree (mirrors `mcp-mount.ts`) — keep the
+    // two branches aligned; splitting them out would let one drift.
+    if (staticHandler && (url?.startsWith('/assets/') || url?.startsWith('/excalidraw-assets/'))) {
       staticHandler(req, res, () => {
         if (assetServeMiddleware) {
           assetServeMiddleware(req, res, () => notFoundStatic(res));

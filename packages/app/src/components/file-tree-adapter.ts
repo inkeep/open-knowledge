@@ -1,5 +1,6 @@
 import {
   isEditableTextDocFile,
+  isExcalidrawDocFile,
   isMermaidDocFile,
   mediaKindForSidebarAssetExtension,
   type UploadAssetSuccess,
@@ -29,12 +30,15 @@ export function docNameToTreePath(
   docName: string,
   docExt: string = DEFAULT_TREE_EXTENSION,
 ): string {
-  // A Mermaid docName already carries its `.mmd`/`.mermaid` extension (it IS the
-  // filename), so it maps to the tree path verbatim — appending `.md` would
-  // point at a nonexistent file and break tree-highlight matching.
+  // A Mermaid, Excalidraw, or editable-text docName already carries its
+  // extension (it IS the filename), so it maps to the tree path verbatim —
+  // appending `.md` would point at a nonexistent file and break tree-
+  // highlight matching (and, worse, cause the doc-open path to create a
+  // phantom `${docName}.md` on disk on first open).
   if (
     TREE_EXTENSION_PATTERN.test(docName) ||
     isMermaidDocFile(docName) ||
+    isExcalidrawDocFile(docName) ||
     isEditableTextDocFile(docName)
   ) {
     return docName;

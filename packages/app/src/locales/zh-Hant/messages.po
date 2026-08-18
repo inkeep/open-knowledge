@@ -5088,6 +5088,10 @@ msgstr "{1}/ 裡各個 {0}/ 資料夾底下的所有內容"
 msgid "everything under any {0}/ folder"
 msgstr "任何 {0}/ 資料夾底下的所有內容"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "Excalidraw 畫布"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "例外：技能是共享的"

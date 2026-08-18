@@ -22,7 +22,13 @@ import {
   type DeriveLossDetectOptions,
 } from './bridge-loss-detector.ts';
 import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
-import { isConfigDoc, isEditableTextDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  isConfigDoc,
+  isEditableTextDoc,
+  isExcalidrawDoc,
+  isMermaidDoc,
+  isSystemDoc,
+} from './cc1-broadcast.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
@@ -82,6 +88,7 @@ export function applyExternalChange(
     isSystemDoc(docName) ||
     isConfigDoc(docName) ||
     isMermaidDoc(docName) ||
+    isExcalidrawDoc(docName) ||
     isEditableTextDoc(docName)
   )
     return;
@@ -358,6 +365,7 @@ export function reconcileDiskBeforeAgentWrite(
     isSystemDoc(docName) ||
     isConfigDoc(docName) ||
     isMermaidDoc(docName) ||
+    isExcalidrawDoc(docName) ||
     isEditableTextDoc(docName)
   )
     return NOT_RECONCILED;

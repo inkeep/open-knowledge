@@ -16,6 +16,7 @@ import {
   type ConfigValidationError,
   type DerivedViewChannel,
   isEditableTextDocFile,
+  isExcalidrawDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
   SYSTEM_DOC_NAME,
@@ -104,6 +105,15 @@ export function isMermaidDoc(documentName: string): boolean {
 }
 
 /**
+ * Standalone Excalidraw canvas doc (`.excalidraw`). Same doc-class posture as
+ * `isMermaidDoc` above — `Y.Text('source')` verbatim JSON, markdown bridge
+ * gated OFF, real user content that stays in the tree + link/graph index.
+ */
+export function isExcalidrawDoc(documentName: string): boolean {
+  return isExcalidrawDocFile(documentName);
+}
+
+/**
  * Editable text docs (`.ts` / `.json` / `.css` / `.txt` / …) — the Mermaid
  * doc class generalized to code/config/plain-text files. Same posture on
  * every axis: extension-retaining docName, Y.Text-only (markdown bridge and
@@ -162,6 +172,7 @@ export function isPersistenceExcludedDoc(documentName: string): boolean {
     isConfigDoc(documentName) ||
     isManagedArtifactDoc(documentName) ||
     isMermaidDoc(documentName) ||
+    isExcalidrawDoc(documentName) ||
     isEditableTextDoc(documentName)
   );
 }

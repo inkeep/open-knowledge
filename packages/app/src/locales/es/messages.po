@@ -5088,6 +5088,10 @@ msgstr "todo lo que hay en las carpetas {0}/ dentro de {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "todo lo que hay en cualquier carpeta {0}/"
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr "Lienzo de Excalidraw"
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr "Excepción: las habilidades se comparten"

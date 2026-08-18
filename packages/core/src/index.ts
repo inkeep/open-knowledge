@@ -436,6 +436,7 @@ export {
   type DedupMode,
   type DedupUIMode,
   type EmitFormat,
+  EXCALIDRAW_FILE_EXTENSIONS,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   FILE_ATTACHMENT_EXTENSIONS,
   // re-exported here as the canonical dispatch surface — same set, same
@@ -443,6 +444,7 @@ export {
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
+  isExcalidrawDocFile,
   isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,

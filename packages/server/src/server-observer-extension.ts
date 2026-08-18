@@ -12,7 +12,13 @@ import type { Extension } from '@hocuspocus/server';
 import type { MarkdownManager } from '@inkeep/open-knowledge-core';
 import type { Schema } from '@tiptap/pm/model';
 import type * as Y from 'yjs';
-import { isConfigDoc, isEditableTextDoc, isMermaidDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  isConfigDoc,
+  isEditableTextDoc,
+  isExcalidrawDoc,
+  isMermaidDoc,
+  isSystemDoc,
+} from './cc1-broadcast.ts';
 import { getLogger } from './logger.ts';
 import type { LossCaptureRing } from './loss-capture.ts';
 import { incrementServerObserverError } from './metrics.ts';
@@ -106,6 +112,7 @@ export function createServerObserverExtension(opts: ServerObserverExtensionOptio
         isSystemDoc(documentName) ||
         isConfigDoc(documentName) ||
         isMermaidDoc(documentName) ||
+        isExcalidrawDoc(documentName) ||
         isEditableTextDoc(documentName)
       )
         return;

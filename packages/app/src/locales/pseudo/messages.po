@@ -5084,6 +5084,10 @@ msgstr ""
 msgid "everything under any {0}/ folder"
 msgstr ""
 
+#: src/components/ExcalidrawDocEditor.tsx
+msgid "Excalidraw canvas"
+msgstr ""
+
 #: src/components/settings/SharingSection.tsx
 msgid "Exception: skills are shared"
 msgstr ""

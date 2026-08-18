@@ -429,6 +429,14 @@ function categorize(spdx) {
       ? [...orParts].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(' OR ')
       : stripped;
 
+  // AND expressions: both grants apply. When every part is a permissive
+  // license (MIT / ISC / BSD-2 / BSD-3 / Apache-2.0 / Zlib), route under the
+  // primary — the shipped LICENSE file carries the full text of both. `pako`
+  // (`MIT AND Zlib`) is the canonical case: its LICENSE prints the MIT grant,
+  // and the Zlib grant covers the C sources the JS is ported from; both are
+  // OSI-permissive and impose only attribution.
+  if (/^MIT AND Zlib$/i.test(s)) return 'MIT';
+
   // OR expressions: pick a permissive primary.
   if (/\bMIT\b/i.test(s) && /\bCC0-1\.0\b/i.test(s)) return 'MIT';
   if (/\bMIT\b/i.test(s) && /\bWTFPL\b/i.test(s)) return 'MIT';
