@@ -1096,7 +1096,11 @@ export function writeEditorMcpConfig(
   // Two exceptions keep the bypass from creating a home for a tool that isn't
   // installed. `offerOnlyWhenDetected` editors declare it explicitly (four
   // today — OpenClaw, Antigravity, LM Studio, Hermes — but read the flag, not
-  // this list). `writeWouldFabricateDetection` catches the rest structurally:
+  // this list). The two OVERLAP rather than partition: every current
+  // `offerOnlyWhenDetected` editor also satisfies the structural test. Both are
+  // kept because they are independent reasons — a future editor could declare
+  // the flag while detecting by something other than a directory.
+  // `writeWouldFabricateDetection` is the structural half:
   // when the config dir IS the probe dir, writing it would make OK detect a tool
   // purely because OK wrote there. Both leave Claude Code's tick honoured —
   // its config sits beside its probe, not inside it. Project-scope

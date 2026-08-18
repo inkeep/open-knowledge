@@ -3430,6 +3430,46 @@ describe('consent bypass never fabricates its own detection evidence (PRD-8007)'
     });
   }
 
+  it('refuses when the probe is an ANCESTOR of the config dir, not just equal to it', () => {
+    // Antigravity is this shape today: probe `~/.gemini`, config
+    // `~/.gemini/config/mcp_config.json`. `recursive: true` would create the
+    // probe on the way down, so the ancestor branch is live logic — it is only
+    // masked in production because antigravity also sets `offerOnlyWhenDetected`,
+    // which short-circuits first. A synthetic target isolates the branch so it
+    // keeps working if that flag is ever dropped.
+    const probeRoot = join(fakeHome, '.synthetic-probe');
+    const syntheticTarget = {
+      ...EDITOR_TARGETS.cursor,
+      id: 'synthetic' as (typeof EDITOR_TARGETS.cursor)['id'],
+      configPath: () => join(probeRoot, 'config', 'mcp_config.json'),
+      detectPath: () => probeRoot,
+    };
+    expect(existsSync(probeRoot)).toBe(false);
+
+    const refused = writeEditorMcpConfig(
+      syntheticTarget,
+      '',
+      { skipAvailabilityCheck: true },
+      fakeHome,
+    );
+
+    expect(refused.action).toBe('skipped-missing');
+    // Nothing created anywhere along the path the mkdir would have walked.
+    expect(existsSync(probeRoot)).toBe(false);
+
+    // Present probe: the write is honoured, so the guard is the only thing that
+    // refused above rather than some unrelated failure.
+    mkdirSync(probeRoot, { recursive: true });
+    const written = writeEditorMcpConfig(
+      syntheticTarget,
+      '',
+      { skipAvailabilityCheck: true },
+      fakeHome,
+    );
+    expect(written.action).toBe('written');
+    expect(existsSync(join(probeRoot, 'config', 'mcp_config.json'))).toBe(true);
+  });
+
   it('Claude Code keeps the bypass — its config sits beside the probe, not inside it', () => {
     const configPath = resolveClaudeCodeConfigPath({ home: fakeHome });
     // `~/.claude` absent, yet the config is `~/.claude.json`: writing it cannot
