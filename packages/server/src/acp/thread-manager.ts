@@ -2423,6 +2423,23 @@ export class AcpThreadManager {
           this.drainIfIdle(t);
           return;
         }
+        if (isAuthRequiredError(err)) {
+          // Credentials expired (or were revoked) mid-conversation — the agent
+          // rejected `session/prompt` with the same AUTH_REQUIRED code
+          // `openSession` handles at startup. Route through the sign-in surface
+          // so the user can reauth and retry, mirroring that path: the initial
+          // `authMethods` from the still-live connection's `initialize` become
+          // the buttons the client renders. Without this branch the failure
+          // lands as `reason: 'prompt'`, which the transcript renders as the
+          // opaque "Your message didn't reach X" card with no reauth affordance.
+          this.emitStatus(t, 'auth_required', `sign in required: ${agentErrorMessage(err)}`, {
+            reason: 'auth-required',
+            agentMessage: agentErrorMessage(err),
+            machineDetail: authMachineDetail(err, t),
+            authMethods: threadAuthMethods(t.lastInit?.authMethods),
+          });
+          return;
+        }
         this.emitStatus(t, 'error', `prompt failed: ${agentErrorMessage(err)}`, {
           reason: 'prompt',
           agentMessage: agentErrorMessage(err),
@@ -3409,16 +3426,29 @@ function declinedRuntimeHint(runtimeKind: ManagedRuntimeKind): string {
 }
 
 /**
- * True when a request failed with the ACP auth-required code. Structural
- * (`code` field) rather than `instanceof RequestError` so a dual-package
- * SDK instance can't defeat the check.
+ * True when a request failed with an auth-required signal. Two shapes qualify:
+ *
+ *   1. `code === AUTH_REQUIRED_CODE` (`-32000`) — the ACP standard for
+ *      `session/new` refusing to open until sign-in.
+ *   2. `data.errorKind === 'authentication_failed'` — the Claude Agent SDK's
+ *      shape when its OAuth token can't refresh mid-turn (its `session/prompt`
+ *      rejects with `-32603` "Internal error" plus this discriminator in the
+ *      data payload, NOT with `-32000`). Recognizing it here is what routes
+ *      mid-conversation expiry through the sign-in surface instead of the
+ *      opaque "message didn't reach" card.
+ *
+ * Structural (`code` / `data.errorKind` fields) rather than `instanceof
+ * RequestError` so a dual-package SDK instance can't defeat the check.
  */
 function isAuthRequiredError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: unknown }).code === AUTH_REQUIRED_CODE
-  );
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; data?: unknown };
+  if (e.code === AUTH_REQUIRED_CODE) return true;
+  if (typeof e.data === 'object' && e.data !== null) {
+    const kind = (e.data as { errorKind?: unknown }).errorKind;
+    if (kind === 'authentication_failed') return true;
+  }
+  return false;
 }
 
 /** The failing side's own human-readable message — never wire payloads. */

@@ -2880,6 +2880,108 @@ process.stdin.on('data', (chunk) => {
 }
 
 /**
+ * Agent that opens a session normally but rejects every `session/prompt` with
+ * the ACP AUTH_REQUIRED code — the shape a real adapter takes when the user's
+ * OAuth token expired between the initialize handshake and the first user
+ * turn.
+ */
+function writeMidTurnAuthExpiringAgentEntry(localDir: string, id: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const AUTH_METHODS = [
+  { id: 'reauth_login', name: 'Reauth Login', description: 'Sign back in' },
+];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) => write({ jsonrpc: '2.0', id: msg.id, result });
+    const fail = (error) => write({ jsonrpc: '2.0', id: msg.id, error });
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 'sess-live' });
+    } else if (msg.method === 'session/prompt') {
+      fail({
+        code: -32000,
+        message: 'Failed to authenticate: OAuth session expired',
+        data: { detail: 'oauth token expired mid-turn' },
+      });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: 'Reauth-Needed Agent', command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
+ * Agent that rejects `session/prompt` with the Claude Agent SDK's shape for
+ * mid-turn OAuth expiry: JSON-RPC `-32603` "Internal error" plus a data
+ * payload of `{ errorKind: 'authentication_failed' }`. The wire code is NOT
+ * the ACP `-32000` — the discriminator lives in `data.errorKind`.
+ */
+function writeClaudeShapeAuthExpiringAgentEntry(localDir: string, id: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const AUTH_METHODS = [
+  { id: 'claude_login', name: 'Sign in with Claude', description: 'Reauth via Claude' },
+];
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) => write({ jsonrpc: '2.0', id: msg.id, result });
+    const fail = (error) => write({ jsonrpc: '2.0', id: msg.id, error });
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {}, authMethods: AUTH_METHODS });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 'sess-claude' });
+    } else if (msg.method === 'session/prompt') {
+      fail({
+        code: -32603,
+        message: 'Internal error: Failed to authenticate: OAuth session expired and could not be refreshed',
+        data: { errorKind: 'authentication_failed' },
+      });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: 'Claude-Shape Agent', command: 'node', args: [agentPath] }]),
+  );
+}
+
+/**
  * Agent parked on sign-in that NEVER answers `authenticate` — the abandoned
  * browser-tab shape. `session/new` keeps failing with the auth code until
  * `markerPath` exists, so a retry (which respawns) can still reach ready and
@@ -3532,6 +3634,98 @@ describe('AcpThreadManager auth classification', () => {
 
     await manager.closeThread(info.threadId);
   }, 40_000);
+
+  test('a session/prompt that rejects with AUTH_REQUIRED parks on sign-in, not on the opaque prompt error', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeMidTurnAuthExpiringAgentEntry(localDir, 'reauth-agent');
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'reauth-agent' } });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+
+    // The agent opens a session normally — the auth failure lives on the
+    // prompt path, not the startup path.
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      `ready; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+
+    // Send the prompt whose rejection is the reproduction. Before this branch
+    // existed the prompt-catch classified every non-cancel rejection as
+    // `reason: 'prompt'`, which the client renders as the opaque
+    // "Your message didn't reach X" card with no reauth affordance.
+    manager.sendPrompt(info.threadId, 'hello');
+
+    await waitUntil(
+      () => withStatus(statuses, 'auth_required') !== undefined,
+      15_000,
+      `auth_required from prompt; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+
+    const notice = withStatus(statuses, 'auth_required');
+    expect(notice?.failure?.reason).toBe('auth-required');
+    expect(notice?.failure?.agentMessage).toContain('OAuth session expired');
+    // The buttons the client renders come from the still-live connection's
+    // initialize response — the record keeps `lastInit` exactly so this reopen
+    // path has them without a fresh handshake.
+    expect(notice?.failure?.authMethods).toEqual([
+      { id: 'reauth_login', name: 'Reauth Login', description: 'Sign back in' },
+    ]);
+    // Not `error`: the manager must not tear the thread down or drop the queue —
+    // the child stays alive so `authenticate` can run on the same connection.
+    expect(withStatus(statuses, 'error')).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.status).toBe('auth_required');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('a Claude-shape `-32603` + errorKind=authentication_failed prompt rejection parks on sign-in', async () => {
+    // Claude Agent SDK returns a JSON-RPC internal-error code when its OAuth
+    // token expires mid-turn — the ACP `-32000` is only what `session/new`
+    // uses. The classifier has to recognize BOTH shapes; the first mid-turn
+    // fix landed with only the ACP shape and reproduced as the unchanged
+    // "message didn't reach" card against a real Claude adapter.
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeClaudeShapeAuthExpiringAgentEntry(localDir, 'claude-shape-agent');
+    const manager = makeManager(contentDir, localDir);
+    const statuses: StatusEvent[] = [];
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'claude-shape-agent' },
+    });
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      `ready; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+
+    manager.sendPrompt(info.threadId, 'hello');
+
+    await waitUntil(
+      () => withStatus(statuses, 'auth_required') !== undefined,
+      15_000,
+      `auth_required from prompt; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+    );
+
+    const notice = withStatus(statuses, 'auth_required');
+    expect(notice?.failure?.reason).toBe('auth-required');
+    expect(notice?.failure?.agentMessage).toContain('Failed to authenticate');
+    expect(notice?.failure?.authMethods).toEqual([
+      {
+        id: 'claude_login',
+        name: 'Sign in with Claude',
+        description: 'Reauth via Claude',
+      },
+    ]);
+    expect(withStatus(statuses, 'error')).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.status).toBe('auth_required');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
 });
 
 describe('AcpThreadManager agent presence', () => {
