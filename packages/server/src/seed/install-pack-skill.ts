@@ -36,7 +36,8 @@ import {
   type SkillsLock,
   upsertLockEntry,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import { tracedCpSync, tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from '../fs-traced.ts';
+import { copyDirSync } from '../copy-dir.ts';
+import { tracedMkdirSync, tracedRmSync, tracedWriteFileSync } from '../fs-traced.ts';
 import { resolveDefaultSkillHomeRel, scanInPlaceSkills } from '../in-place-skills.ts';
 import { getLogger } from '../logger.ts';
 import { BUNDLE_SKILL_NAME } from '../skill-bundles.ts';
@@ -322,11 +323,21 @@ export async function installPackSkill(
         tracedMkdirSync(join(projectDir, homeRel), { recursive: true });
         // A decomposed pack's root dir CONTAINS its member skill dirs; each member
         // installs as its own top-level skill, so filter them out of the root copy.
-        tracedCpSync(sourceDir, skillDir, {
-          recursive: true,
+        copyDirSync(sourceDir, skillDir, {
           filter: (src) => !excludePaths.some((p) => src === join(sourceDir, p)),
         });
       } catch (err) {
+        // Roll back the partial tree. A walk can fail HALFWAY (unlike the copy
+        // primitive it replaced, which threw before writing anything), and a
+        // `SKILL.md` that landed before the failure would make every later seed
+        // read the skill as already present — classified as our own fork and
+        // therefore never re-copied. Best-effort: a failed rollback must not
+        // mask the original error.
+        try {
+          tracedRmSync(skillDir, { recursive: true, force: true });
+        } catch {
+          // leave the partial tree; the warn below still names the skill
+        }
         // A real disk failure (EACCES / ENOSPC / I/O) — NOT the benign
         // "pack ships no skill" (empty `sources` above). Log it so a seed that
         // silently installed 0 editors is diagnosable rather than mistaken for normal.

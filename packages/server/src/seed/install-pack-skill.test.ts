@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OPENKNOWLEDGE_SKILLS_REPO, RENAMED_PACK_SKILLS } from '@inkeep/open-knowledge-core';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { readInstalledSkills } from '../installed-skills-marker.ts';
 import {
   classifyPresentPackSkill,
@@ -398,5 +398,34 @@ describe('classifyPresentPackSkill — ours-retrofit', () => {
       classifyPresentPackSkill('plain-notes', 'note-taking', dir, { schema: 1, skills: {} }),
     ).toBe('foreign');
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('installPackSkill — a copy that fails partway does not wedge the skill', () => {
+  test('rolls the partial tree back so a later seed retries instead of reading it as present', async () => {
+    const proj = tmpProject();
+    setUpEditor(proj, '.claude');
+    const name = orientationName('knowledge-base');
+    const skillDir = join(proj, '.claude', 'skills', name);
+
+    // Fail AFTER a file has landed — the window the walk opens and the copy
+    // primitive it replaced never could.
+    const copyDir = await import('../copy-dir.ts');
+    const real = copyDir.copyDirSync;
+    const spy = vi.spyOn(copyDir, 'copyDirSync').mockImplementationOnce((_src, dest) => {
+      mkdirSync(dest, { recursive: true });
+      writeFileSync(join(dest, 'SKILL.md'), '---\nname: half\n---\npartial\n');
+      throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+    });
+
+    await installPackSkill(proj, 'knowledge-base');
+    expect(existsSync(join(skillDir, 'SKILL.md'))).toBe(false);
+
+    // The retry is the point: without rollback the half-written SKILL.md reads
+    // as an already-present fork and the skill is never re-copied.
+    spy.mockRestore();
+    expect(copyDir.copyDirSync).toBe(real);
+    await installPackSkill(proj, 'knowledge-base');
+    expect(readFileSync(join(skillDir, 'SKILL.md'), 'utf-8')).not.toContain('partial');
   });
 });
