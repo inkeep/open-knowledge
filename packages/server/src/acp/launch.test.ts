@@ -8,15 +8,28 @@
  * SIGKILL to npx reparents its bin to PID 1, still running).
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { getLogger, type PinoLogger } from '../logger.ts';
 import {
   AgentLaunchError,
   brokenInterpreterHint,
   declinedRepairHint,
+  ensureBinaryInstalled,
   isPathQualified,
   mergedEnv,
   overlaySetsPath,
@@ -32,6 +45,7 @@ import {
   withHostedAgentMarker,
   withLoginShellPath,
 } from './launch.ts';
+import type { RegistryBinaryTarget } from './registry.ts';
 
 describe('mergedEnv PATH augmentation', () => {
   test('an explicit overlay PATH is used verbatim — augmentation repairs only the inherited base', () => {
@@ -186,6 +200,7 @@ async function waitFor(pred: () => boolean, ms: number, what: string): Promise<v
 
 let dirs: string[] = [];
 let strayPids: number[] = [];
+const log = getLogger('acp-launch-test');
 function tmp(): string {
   const d = mkdtempSync(join(tmpdir(), 'acp-launch-test-'));
   dirs.push(d);
@@ -202,6 +217,463 @@ afterEach(() => {
   strayPids = [];
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
+});
+
+function buildBinaryTarball(
+  dir: string,
+  label = 'agent',
+): { bytes: Buffer; sha: string; target: RegistryBinaryTarget } {
+  const treeRoot = join(dir, `tree-${label}`);
+  const command = join(treeRoot, 'package', 'bin', 'agent');
+  mkdirSync(join(command, '..'), { recursive: true });
+  writeFileSync(command, `#!/bin/sh\necho ${label}\n`, { mode: 0o755 });
+  const tarPath = join(dir, `${label}.tar.gz`);
+  execFileSync('tar', ['-czf', tarPath, '-C', treeRoot, 'package']);
+  const bytes = readFileSync(tarPath);
+  return {
+    bytes,
+    sha: createHash('sha256').update(bytes).digest('hex'),
+    target: {
+      archive: `https://example.com/${label}.tar.gz`,
+      cmd: './package/bin/agent',
+    },
+  };
+}
+
+function binaryFetch(bytes: Buffer): typeof fetch {
+  return (async () =>
+    new Response(new Uint8Array(bytes), {
+      status: 200,
+      headers: { 'content-length': String(bytes.length) },
+    })) as unknown as typeof fetch;
+}
+
+describe('ensureBinaryInstalled', () => {
+  test('stages beside the destination before downloading', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const agentDir = join(cacheDir, 'test-agent');
+    let observedStagingDir: string | undefined;
+    const baseFetch = binaryFetch(artifact.bytes);
+    const inspectingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      observedStagingDir = readdirSync(agentDir).find((name) => name.startsWith('.install-'));
+      return baseFetch(input, init);
+    }) as typeof fetch;
+
+    const installed = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      { fetchImpl: inspectingFetch },
+    );
+
+    expect(installed).toBe(join(agentDir, '1.0.0'));
+    expect(observedStagingDir).toBeDefined();
+    expect(readdirSync(agentDir)).not.toContain(observedStagingDir);
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+  });
+
+  test('removes crash-orphaned staging directories on the next install', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const staleDir = join(cacheDir, 'test-agent', '.install-1.0.0-orphaned');
+    mkdirSync(staleDir, { recursive: true });
+    writeFileSync(join(staleDir, 'partial-archive'), 'partial');
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    utimesSync(staleDir, staleTime, staleTime);
+
+    await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      { fetchImpl: binaryFetch(artifact.bytes) },
+    );
+
+    expect(existsSync(staleDir)).toBe(false);
+  });
+
+  test('concurrent installers adopt the first completed binary', async () => {
+    const firstSource = tmp();
+    const secondSource = tmp();
+    const cacheDir = tmp();
+    const first = buildBinaryTarball(firstSource, 'first');
+    const second = buildBinaryTarball(secondSource, 'second');
+    let arrivals = 0;
+    let releaseCommit!: () => void;
+    const commitGate = new Promise<void>((resolve) => {
+      releaseCommit = resolve;
+    });
+    const beforeCommit = async () => {
+      arrivals += 1;
+      if (arrivals === 2) releaseCommit();
+      await commitGate;
+    };
+    const installMessages: string[] = [];
+    const concurrentLog = {
+      info: (_context: unknown, message?: string) => {
+        if (message !== undefined) installMessages.push(message);
+      },
+      warn: log.warn.bind(log),
+    } as PinoLogger;
+    const install = (artifact: ReturnType<typeof buildBinaryTarball>) =>
+      ensureBinaryInstalled(
+        'test-agent',
+        '1.0.0',
+        { ...artifact.target, sha256: artifact.sha },
+        cacheDir,
+        concurrentLog,
+        { fetchImpl: binaryFetch(artifact.bytes), beforeCommit },
+      );
+
+    const installed = await Promise.all([install(first), install(second)]);
+
+    expect(arrivals).toBe(2);
+    expect(installed[0]).toBe(installed[1]);
+    expect(
+      installMessages.filter((message) => message === '[acp-launch] agent binary installed'),
+    ).toHaveLength(1);
+    expect(readFileSync(join(installed[0], 'package', 'bin', 'agent'), 'utf8')).toMatch(
+      /echo (first|second)/,
+    );
+    expect(
+      readdirSync(join(cacheDir, 'test-agent')).some((name) => name.startsWith('.install-')),
+    ).toBe(false);
+  });
+
+  test('replaces an incomplete existing directory instead of accepting it', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const versionDir = join(cacheDir, 'test-agent', '1.0.0');
+    mkdirSync(versionDir, { recursive: true });
+    writeFileSync(join(versionDir, 'partial'), 'incomplete');
+
+    const installed = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      { fetchImpl: binaryFetch(artifact.bytes) },
+    );
+
+    expect(installed).toBe(versionDir);
+    expect(existsSync(join(versionDir, 'partial'))).toBe(false);
+    expect(existsSync(join(versionDir, 'package', 'bin', 'agent'))).toBe(true);
+  });
+
+  test('adopts a completed binary when the commit lock times out', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const versionDir = join(cacheDir, 'test-agent', '1.0.0');
+    const command = join(versionDir, 'package', 'bin', 'agent');
+
+    const installed = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      {
+        fetchImpl: binaryFetch(artifact.bytes),
+        commitLockTimeoutMs: 100,
+        beforeCommit: async () => {
+          mkdirSync(join(command, '..'), { recursive: true });
+          writeFileSync(command, '#!/bin/sh\necho winner\n', { mode: 0o755 });
+          const lockPath = `${versionDir}.install.lock`;
+          writeFileSync(lockPath, 'held');
+          const future = new Date(Date.now() + 60_000);
+          utimesSync(lockPath, future, future);
+        },
+      },
+    );
+
+    expect(installed).toBe(versionDir);
+    expect(readFileSync(command, 'utf8')).toContain('winner');
+  });
+
+  test('rejects a lock timeout when no completed binary is available', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const versionDir = join(cacheDir, 'test-agent', '1.0.0');
+
+    const installation = ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      {
+        fetchImpl: binaryFetch(artifact.bytes),
+        commitLockTimeoutMs: 100,
+        beforeCommit: async () => {
+          const lockPath = `${versionDir}.install.lock`;
+          writeFileSync(lockPath, 'held');
+          const future = new Date(Date.now() + 60_000);
+          utimesSync(lockPath, future, future);
+        },
+      },
+    );
+
+    await expect(installation).rejects.toMatchObject({
+      name: 'AgentLaunchError',
+      code: 'install-failed',
+    });
+    await expect(installation).rejects.toThrow(/could not acquire file lock/i);
+    expect(existsSync(versionDir)).toBe(false);
+    expect(
+      readdirSync(join(cacheDir, 'test-agent')).some((name) => name.startsWith('.install-')),
+    ).toBe(false);
+  });
+
+  test('rejects a checksum mismatch without committing or leaving staging behind', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const agentDir = join(cacheDir, 'test-agent');
+    const versionDir = join(agentDir, '1.0.0');
+
+    let caught: unknown;
+    try {
+      await ensureBinaryInstalled(
+        'test-agent',
+        '1.0.0',
+        { ...artifact.target, sha256: '0'.repeat(64) },
+        cacheDir,
+        log,
+        { fetchImpl: binaryFetch(artifact.bytes) },
+      );
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toMatchObject({
+      name: 'AgentLaunchError',
+      code: 'install-failed',
+      message: expect.stringContaining('checksum mismatch'),
+      cause: expect.any(Error),
+    });
+    expect(existsSync(versionDir)).toBe(false);
+    expect(readdirSync(agentDir).some((name) => name.startsWith('.install-'))).toBe(false);
+  });
+
+  test('reuses a valid cached binary without downloading again', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const target = { ...artifact.target, sha256: artifact.sha };
+    const installed = await ensureBinaryInstalled('test-agent', '1.0.0', target, cacheDir, log, {
+      fetchImpl: binaryFetch(artifact.bytes),
+    });
+    const failFetch = (async () => {
+      throw new Error('cached install attempted an unexpected download');
+    }) as typeof fetch;
+
+    const cached = await ensureBinaryInstalled('test-agent', '1.0.0', target, cacheDir, log, {
+      fetchImpl: failFetch,
+    });
+
+    expect(cached).toBe(installed);
+  });
+
+  test('rejects an archive whose command path is a directory', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+
+    await expect(
+      ensureBinaryInstalled(
+        'test-agent',
+        '1.0.0',
+        { ...artifact.target, cmd: './package/bin', sha256: artifact.sha },
+        cacheDir,
+        log,
+        { fetchImpl: binaryFetch(artifact.bytes) },
+      ),
+    ).rejects.toThrow(/no usable command/i);
+  });
+
+  test('installs with a loud warning when the manifest omits sha256', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const warnMessages: string[] = [];
+    const warnLog = {
+      info: log.info.bind(log),
+      warn: (_context: unknown, message?: string) => {
+        if (message !== undefined) warnMessages.push(message);
+      },
+    } as PinoLogger;
+
+    const installed = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      artifact.target,
+      cacheDir,
+      warnLog,
+      { fetchImpl: binaryFetch(artifact.bytes) },
+    );
+
+    expect(installed).toBe(join(cacheDir, 'test-agent', '1.0.0'));
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+    expect(warnMessages.some((message) => message.includes('no sha256'))).toBe(true);
+  });
+
+  test('rejects a manifest cmd that escapes the extracted archive', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+
+    await expect(
+      ensureBinaryInstalled(
+        'test-agent',
+        '1.0.0',
+        { ...artifact.target, cmd: '../outside-agent', sha256: artifact.sha },
+        cacheDir,
+        log,
+        { fetchImpl: binaryFetch(artifact.bytes) },
+      ),
+    ).rejects.toMatchObject({
+      name: 'AgentLaunchError',
+      code: 'install-failed',
+      message: expect.stringContaining('escapes the extracted archive'),
+    });
+    expect(existsSync(join(cacheDir, 'test-agent', '1.0.0'))).toBe(false);
+  });
+
+  // A manifest whose cmd can never resolve inside the verified archive fails
+  // identically on every attempt — without the marker, every launch of a
+  // broken agent re-streamed the full archive just to fail the same way.
+  test('a deterministic manifest failure is remembered and fails fast without re-downloading', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const agentDir = join(cacheDir, 'test-agent');
+    const badTarget = { ...artifact.target, cmd: './package/bin/missing', sha256: artifact.sha };
+
+    await expect(
+      ensureBinaryInstalled('test-agent', '1.0.0', badTarget, cacheDir, log, {
+        fetchImpl: binaryFetch(artifact.bytes),
+      }),
+    ).rejects.toThrow(/no usable command/i);
+    expect(existsSync(join(agentDir, '.install-failed-1.0.0'))).toBe(true);
+
+    let fetched = 0;
+    const countingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetched += 1;
+      return binaryFetch(artifact.bytes)(input, init);
+    }) as typeof fetch;
+    const remembered = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      badTarget,
+      cacheDir,
+      log,
+      { fetchImpl: countingFetch },
+    ).catch((err: unknown) => err);
+    expect(remembered).toMatchObject({
+      name: 'AgentLaunchError',
+      code: 'install-failed',
+      message: expect.stringContaining('remembered from a recent attempt'),
+    });
+    expect(fetched).toBe(0);
+
+    // A corrected manifest mismatches the marker, so the install retries —
+    // and a successful attempt clears the marker.
+    const installed = await ensureBinaryInstalled(
+      'test-agent',
+      '1.0.0',
+      { ...artifact.target, sha256: artifact.sha },
+      cacheDir,
+      log,
+      { fetchImpl: countingFetch },
+    );
+    expect(fetched).toBe(1);
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+    expect(existsSync(join(agentDir, '.install-failed-1.0.0'))).toBe(false);
+  });
+
+  test('a failure marker past its day cap does not block a retry', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const target = { ...artifact.target, sha256: artifact.sha };
+    const agentDir = join(cacheDir, 'test-agent');
+    const markerPath = join(agentDir, '.install-failed-1.0.0');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      markerPath,
+      JSON.stringify({
+        archive: target.archive,
+        cmd: target.cmd,
+        sha256: target.sha256,
+        reason: 'old failure',
+      }),
+    );
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    utimesSync(markerPath, staleTime, staleTime);
+
+    const installed = await ensureBinaryInstalled('test-agent', '1.0.0', target, cacheDir, log, {
+      fetchImpl: binaryFetch(artifact.bytes),
+    });
+
+    expect(existsSync(join(installed, 'package', 'bin', 'agent'))).toBe(true);
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  test('a malformed archive URL fails through the install-failed contract without orphaning staging', async () => {
+    const cacheDir = tmp();
+    const agentDir = join(cacheDir, 'test-agent');
+
+    await expect(
+      ensureBinaryInstalled(
+        'test-agent',
+        '1.0.0',
+        { archive: 'not a url', cmd: './bin/agent' },
+        cacheDir,
+        log,
+        {
+          fetchImpl: (async () => {
+            throw new Error('should not fetch');
+          }) as typeof fetch,
+        },
+      ),
+    ).rejects.toMatchObject({ name: 'AgentLaunchError', code: 'install-failed' });
+    expect(readdirSync(agentDir).some((name) => name.startsWith('.install-'))).toBe(false);
+  });
+
+  // Once the install completes via any other path, later launches take the
+  // fast path and never re-enter the commit lock — the sweep is the only
+  // thing left that can collect a lockfile a crashed holder left behind.
+  test('the fast path sweeps a stale lockfile orphaned by a crashed commit', async () => {
+    const source = tmp();
+    const cacheDir = tmp();
+    const artifact = buildBinaryTarball(source);
+    const target = { ...artifact.target, sha256: artifact.sha };
+    await ensureBinaryInstalled('test-agent', '1.0.0', target, cacheDir, log, {
+      fetchImpl: binaryFetch(artifact.bytes),
+    });
+    const orphanedLock = join(cacheDir, 'test-agent', '1.0.0.install.lock');
+    writeFileSync(orphanedLock, 'held by a crashed process');
+    const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
+    utimesSync(orphanedLock, staleTime, staleTime);
+
+    await ensureBinaryInstalled('test-agent', '1.0.0', target, cacheDir, log, {
+      fetchImpl: (async () => {
+        throw new Error('fast path must not download');
+      }) as typeof fetch,
+    });
+
+    expect(existsSync(orphanedLock)).toBe(false);
+  });
 });
 
 describe('hosted-agent marker', () => {

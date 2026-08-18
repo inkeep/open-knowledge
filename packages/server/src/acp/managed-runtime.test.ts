@@ -303,6 +303,37 @@ describe('ensureManagedRuntime', () => {
     expect(again.kind).toBe('node');
   });
 
+  test('rejects an archive that contains no usable launcher', async () => {
+    const stage = tmp();
+    const root = tmp();
+    const { bytes, sha } = buildTarball(stage, 'node-vTEST', ['bin/notlauncher']);
+
+    const error = await ensureManagedRuntime('node', log, {
+      root,
+      fetchImpl: makeFetch(bytes, sha),
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(RuntimeInstallError);
+    expect((error as Error).message).toContain('no usable launcher');
+    expect(await findManagedRuntime('node', root)).toBeNull();
+  });
+
+  test('preserves the underlying failure as the error cause', async () => {
+    const root = tmp();
+    const failure = new Error('network unreachable');
+    const failingFetch = (async () => {
+      throw failure;
+    }) as unknown as typeof fetch;
+
+    const error = await ensureManagedRuntime('node', log, {
+      root,
+      fetchImpl: failingFetch,
+    }).catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(RuntimeInstallError);
+    expect((error as Error).cause).toBe(failure);
+  });
+
   test('rejects a checksum mismatch and installs nothing', async () => {
     const stage = tmp();
     const root = tmp();

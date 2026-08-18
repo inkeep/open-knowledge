@@ -7,7 +7,8 @@
  * Both download an archive over HTTPS, verify a publisher-supplied SHA-256,
  * extract with the platform's own tar/unzip, and rename the result into a
  * per-version cache dir. Kept here so there is one audited copy of the
- * path-escape guard and the streaming-hash download.
+ * path-escape guard and the streaming-hash download. The staging/commit
+ * concurrency machinery both paths share lives in `staged-install.ts`.
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';

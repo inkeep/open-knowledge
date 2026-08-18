@@ -16,16 +16,17 @@
 
 import { type ChildProcess, spawn } from 'node:child_process';
 import { constants, statSync } from 'node:fs';
-import { access, chmod, stat } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
-import { delimiter, isAbsolute, join, resolve } from 'node:path';
+import { access, chmod, readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
-import { tracedMkdir, tracedRename, tracedRm } from '../fs-traced.ts';
+import { tracedMkdir, tracedRm, tracedWriteFile } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
 import { mergeLoginShellPath } from './login-shell-path.ts';
 import type { ManagedRuntime } from './managed-runtime.ts';
 import type { CustomAgentEntry, RegistryAgent, RegistryBinaryTarget } from './registry.ts';
+import { STALE_INSTALL_ARTIFACT_AGE_MS, stagedInstall } from './staged-install.ts';
 
 export interface ResolvedLaunch {
   cmd: string;
@@ -47,8 +48,8 @@ export class AgentLaunchError extends Error {
     | 'no-distribution'
     | 'install-failed'
     | 'command-not-found';
-  constructor(code: AgentLaunchError['code'], message: string) {
-    super(message);
+  constructor(code: AgentLaunchError['code'], message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'AgentLaunchError';
     this.code = code;
   }
@@ -265,76 +266,195 @@ function prependPath(dir: string, existing: string | undefined): string {
   return existing !== undefined && existing !== '' ? `${dir}${delimiter}${existing}` : dir;
 }
 
+export interface EnsureBinaryInstallOptions {
+  /** Test seam — defaults to global `fetch`. */
+  fetchImpl?: typeof fetch;
+  /** Test seam for synchronizing concurrent installers immediately before commit. */
+  beforeCommit?: () => Promise<void>;
+  /** Test seam — defaults to the production commit-lock timeout. */
+  commitLockTimeoutMs?: number;
+}
+
+/** Return the installed root only when the manifest command is present and executable. */
+async function findInstalledBinary(
+  versionDir: string,
+  target: RegistryBinaryTarget,
+  log: PinoLogger,
+): Promise<string | null> {
+  try {
+    if (!(await stat(versionDir)).isDirectory()) return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn({ err, versionDir }, '[acp-launch] could not inspect cached agent binary');
+    }
+    return null;
+  }
+
+  const cmdPath = resolve(versionDir, target.cmd.replace(/\\/g, '/'));
+  if (!isWithin(versionDir, cmdPath)) return null;
+  if (!(await isExecutableFile(cmdPath))) {
+    return null;
+  }
+  return versionDir;
+}
+
+/**
+ * A failure whose verdict depends only on the checksum-verified archive bytes
+ * and the manifest `cmd` — re-downloading cannot change it. Remembered in a
+ * failure marker so later launches fail fast from cache instead of
+ * re-streaming the archive on every attempt.
+ */
+class DeterministicInstallError extends Error {}
+
+function installFailureMarkerPath(agentDir: string, version: string): string {
+  return join(agentDir, `.install-failed-${sanitizeSegment(version)}`);
+}
+
+/**
+ * The remembered failure reason when a fresh marker matches the current
+ * manifest, else null. A manifest change (new cmd, sha, or archive URL)
+ * mismatches and clears the way for a retry; so does marker age — the day
+ * cap bounds the wedge for unverified manifests whose archive could be
+ * republished at the same URL.
+ */
+async function readInstallFailureMarker(
+  markerPath: string,
+  target: RegistryBinaryTarget,
+  log: PinoLogger,
+): Promise<string | null> {
+  let mtimeMs: number;
+  let raw: string;
+  try {
+    mtimeMs = (await stat(markerPath)).mtimeMs;
+    raw = await readFile(markerPath, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      log.warn({ err, markerPath }, '[acp-launch] could not read the install failure marker');
+    }
+    return null;
+  }
+  if (Date.now() - mtimeMs > STALE_INSTALL_ARTIFACT_AGE_MS) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (
+      parsed.archive !== target.archive ||
+      parsed.cmd !== target.cmd ||
+      parsed.sha256 !== (target.sha256 ?? null)
+    ) {
+      return null;
+    }
+    return typeof parsed.reason === 'string' ? parsed.reason : null;
+  } catch {
+    log.warn(
+      { markerPath },
+      '[acp-launch] install failure marker is malformed — treating it as absent',
+    );
+    return null;
+  }
+}
+
+async function writeInstallFailureMarker(
+  markerPath: string,
+  target: RegistryBinaryTarget,
+  reason: string,
+  log: PinoLogger,
+): Promise<void> {
+  const payload = JSON.stringify({
+    archive: target.archive,
+    cmd: target.cmd,
+    sha256: target.sha256 ?? null,
+    reason,
+  });
+  await tracedWriteFile(markerPath, payload).catch((err) => {
+    log.warn({ err, markerPath }, '[acp-launch] could not record the failed binary install');
+  });
+}
+
 /**
  * Download + extract a binary distribution once per (id, version); later
- * launches reuse the extracted tree. Extraction lands in a temp dir first
- * and is renamed into place so a crash mid-extract never leaves a
- * half-populated version dir that would satisfy the fast-path check.
+ * launches reuse the extracted tree. The commit machinery (beside-destination
+ * staging, single-filesystem atomic rename, commit lock, stale sweeps) is the
+ * shared `stagedInstall`.
  */
-async function ensureBinaryInstalled(
+export async function ensureBinaryInstalled(
   id: string,
   version: string,
   target: RegistryBinaryTarget,
   cacheDir: string,
   log: PinoLogger,
+  opts: EnsureBinaryInstallOptions = {},
 ): Promise<string> {
   const versionDir = join(cacheDir, sanitizeSegment(id), sanitizeSegment(version));
+  const markerPath = installFailureMarkerPath(dirname(versionDir), version);
   try {
-    const st = await stat(versionDir);
-    if (st.isDirectory()) return versionDir;
-  } catch {
-    // Not installed yet.
-  }
+    return await stagedInstall<string>({
+      versionDir,
+      stagingLabel: sanitizeSegment(version),
+      findInstalled: () => findInstalledBinary(versionDir, target, log),
+      prepare: async (stagingDir) => {
+        const remembered = await readInstallFailureMarker(markerPath, target, log);
+        if (remembered !== null) {
+          throw new Error(
+            `${remembered} (remembered from a recent attempt — retried when the manifest changes or after a day)`,
+          );
+        }
+        await tracedRm(markerPath, { force: true });
+        log.info({ id, version, archive: target.archive }, '[acp-launch] downloading agent binary');
+        const isZip = /\.zip$/i.test(new URL(target.archive).pathname);
+        const archivePath = join(stagingDir, isZip ? 'archive.zip' : 'archive.tar.gz');
+        const sha = await downloadToFileWithSha(target.archive, archivePath, {
+          signal: AbortSignal.timeout(120_000),
+          fetchImpl: opts.fetchImpl,
+        });
+        // Binary distributions are opaque executables — verify the publisher's
+        // checksum whenever the manifest carries one, mirroring the managed-
+        // runtime download path. A manifest without one installs with a loud
+        // warning rather than silently skipping verification.
+        if (target.sha256 !== undefined) {
+          if (sha !== target.sha256.toLowerCase()) {
+            throw new Error(`archive checksum mismatch: expected ${target.sha256}, got ${sha}`);
+          }
+        } else {
+          log.warn(
+            { id, version, archive: target.archive },
+            '[acp-launch] manifest carries no sha256 for the binary archive — installing unverified',
+          );
+        }
 
-  log.info({ id, version, archive: target.archive }, '[acp-launch] downloading agent binary');
-  const stagingDir = join(tmpdir(), `ok-acp-install-${process.pid}-${Date.now()}`);
-  await tracedMkdir(stagingDir, { recursive: true });
-  const isZip = /\.zip$/i.test(new URL(target.archive).pathname);
-  const archivePath = join(stagingDir, isZip ? 'archive.zip' : 'archive.tar.gz');
-  try {
-    const sha = await downloadToFileWithSha(target.archive, archivePath, {
-      signal: AbortSignal.timeout(120_000),
+        const extractDir = join(stagingDir, 'extracted');
+        await tracedMkdir(extractDir, { recursive: true });
+        await extractArchive(archivePath, extractDir, isZip);
+        const cmdPath = resolve(extractDir, target.cmd.replace(/\\/g, '/'));
+        if (!isWithin(extractDir, cmdPath)) {
+          throw new DeterministicInstallError('manifest cmd escapes the extracted archive');
+        }
+        await chmod(cmdPath, 0o755).catch(() => {
+          // Windows / already-executable — non-fatal.
+        });
+        if (!(await isExecutableFile(cmdPath))) {
+          throw new DeterministicInstallError(
+            `extracted agent archive has no usable command at ${target.cmd}`,
+          );
+        }
+        return extractDir;
+      },
+      log,
+      logPrefix: '[acp-launch]',
+      logContext: { id, version },
+      installedMessage: 'agent binary installed',
+      missingAfterCommitMessage: 'installed agent binary not found after extract',
+      beforeCommit: opts.beforeCommit,
+      commitLockTimeoutMs: opts.commitLockTimeoutMs,
     });
-    // Binary distributions are opaque executables — verify the publisher's
-    // checksum whenever the manifest carries one, mirroring the managed-
-    // runtime download path. A manifest without one installs with a loud
-    // warning rather than silently skipping verification.
-    if (target.sha256 !== undefined) {
-      if (sha !== target.sha256.toLowerCase()) {
-        throw new Error(`archive checksum mismatch: expected ${target.sha256}, got ${sha}`);
-      }
-    } else {
-      log.warn(
-        { id, version, archive: target.archive },
-        '[acp-launch] manifest carries no sha256 for the binary archive — installing unverified',
-      );
-    }
-
-    const extractDir = join(stagingDir, 'extracted');
-    await tracedMkdir(extractDir, { recursive: true });
-    await extractArchive(archivePath, extractDir, isZip);
-    const cmdPath = resolve(extractDir, target.cmd.replace(/\\/g, '/'));
-    if (!isWithin(extractDir, cmdPath)) {
-      throw new Error('manifest cmd escapes the extracted archive');
-    }
-    await chmod(cmdPath, 0o755).catch(() => {
-      // Windows / already-executable — non-fatal.
-    });
-
-    await tracedMkdir(join(cacheDir, sanitizeSegment(id)), { recursive: true });
-    await tracedRm(versionDir, { recursive: true, force: true });
-    await tracedRename(extractDir, versionDir);
-    log.info({ id, version, versionDir }, '[acp-launch] agent binary installed');
-    return versionDir;
   } catch (err) {
+    if (err instanceof DeterministicInstallError) {
+      await writeInstallFailureMarker(markerPath, target, err.message, log);
+    }
     throw new AgentLaunchError(
       'install-failed',
       `installing ${id}@${version} failed: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
     );
-  } finally {
-    await tracedRm(stagingDir, { recursive: true, force: true }).catch(() => {
-      // Best-effort temp cleanup.
-    });
   }
 }
 
