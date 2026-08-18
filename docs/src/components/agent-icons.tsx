@@ -8,11 +8,11 @@ import { PiIcon } from '@/components/icons/pi';
 
 const AGENTS = [
   { name: 'Claude', Icon: ClaudeIcon },
-  { name: 'Cursor', Icon: CursorIcon },
   { name: 'Codex', Icon: CodexIcon },
+  { name: 'Cursor', Icon: CursorIcon },
   { name: 'OpenCode', Icon: OpenCodeIcon },
-  { name: 'OpenClaw', Icon: OpenClawIcon },
   { name: 'Pi', Icon: PiIcon },
+  { name: 'OpenClaw', Icon: OpenClawIcon },
   { name: 'Antigravity', Icon: AntigravityIcon },
 ] as const;
 
