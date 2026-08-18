@@ -53,6 +53,60 @@ describe('mergedEnv PATH augmentation', () => {
     expect(mergedEnv().HOME).toBe(process.env.HOME);
   });
 
+  test('drops inherited `npm_config_overrides` while preserving user-set npm env', () => {
+    // The bug: pnpm dev exports `npm_config_overrides` with pnpm's flat
+    // `parent>child` key shape. A nested `npx exec` re-enters npm,
+    // arborist rejects the flat key, and launch dies with
+    // `Override without name`. Only that one env var breaks — user-set
+    // npm env (`npm_config_userconfig`, nerf-darted auth tokens like
+    // `npm_config_//<registry>/:_authToken`) and pnpm broadcasts that
+    // merely warn (`registry`, `strict_peer_dependencies`) must reach
+    // the spawned agent unchanged.
+    const priors = {
+      npm_config_overrides: process.env.npm_config_overrides,
+      npm_config_userconfig: process.env.npm_config_userconfig,
+      'npm_config_//registry.example.com/:_authToken':
+        process.env['npm_config_//registry.example.com/:_authToken'],
+      npm_config_registry: process.env.npm_config_registry,
+      NPM_CONFIG_STRICT_PEER_DEPENDENCIES: process.env.NPM_CONFIG_STRICT_PEER_DEPENDENCIES,
+    };
+    process.env.npm_config_overrides = '{"@modelcontextprotocol/sdk>zod":"^3.25.7"}';
+    process.env.npm_config_userconfig = '/home/user/.npmrc-override';
+    process.env['npm_config_//registry.example.com/:_authToken'] = 'secret';
+    process.env.npm_config_registry = 'https://registry.example.com/';
+    process.env.NPM_CONFIG_STRICT_PEER_DEPENDENCIES = 'true';
+    try {
+      const out = mergedEnv();
+      expect(out.npm_config_overrides).toBeUndefined();
+      expect(out.npm_config_userconfig).toBe('/home/user/.npmrc-override');
+      expect(out['npm_config_//registry.example.com/:_authToken']).toBe('secret');
+      expect(out.npm_config_registry).toBe('https://registry.example.com/');
+      expect(out.NPM_CONFIG_STRICT_PEER_DEPENDENCIES).toBe('true');
+    } finally {
+      for (const [k, v] of Object.entries(priors)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  test('managed-runtime overlay wins over a pnpm-broadcast `npm_config_cache` base', () => {
+    // `rewriteLaunchToManagedRuntime` sets `npm_config_cache` on the
+    // returned env to point at the runtime's private cache. In the real
+    // failure scenario pnpm's own `npm_config_cache` is already in
+    // `process.env` — seed it so the assertion pins that path instead of
+    // collapsing into a re-test of the pre-existing overlay-wins merge.
+    const prior = process.env.npm_config_cache;
+    process.env.npm_config_cache = '/pnpm/broadcast/cache';
+    try {
+      const out = mergedEnv({ npm_config_cache: '/tmp/managed-node-cache' });
+      expect(out.npm_config_cache).toBe('/tmp/managed-node-cache');
+    } finally {
+      if (prior === undefined) delete process.env.npm_config_cache;
+      else process.env.npm_config_cache = prior;
+    }
+  });
+
   test('overlaySetsPath sees PATH under any spelling', () => {
     expect(overlaySetsPath({ Path: '/x' })).toBe(true);
     expect(overlaySetsPath({ PATH: '/x' })).toBe(true);

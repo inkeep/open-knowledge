@@ -84,7 +84,23 @@ function isDir(dir: string): boolean {
 export function mergedEnv(overlay?: Record<string, string>): Record<string, string> {
   const base: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
-    if (v !== undefined) base[k] = v;
+    if (v === undefined) continue;
+    // Drop pnpm's `npm_config_overrides` broadcast from the inherited base.
+    // When OK Desktop runs via `pnpm dev`, pnpm flattens its
+    // `pnpm-workspace.yaml` `overrides` block into `npm_config_overrides`
+    // for every child, in pnpm's flat `parent>child` key shape. A nested
+    // `npx exec …` (how npx-kind agents launch) hands that string to npm's
+    // arborist, which rejects the flat key with
+    // `npm error Override without name: <parent>><child>` and the launch
+    // dies during initialize. Every other pnpm broadcast (`patched-
+    // dependencies`, `shared-workspace-lockfile`, `strict-peer-
+    // dependencies`, …) only surfaces as an `Unknown env config` warning,
+    // so the scrub is targeted, not family-wide — env-only npm config the
+    // user actually set (`npm_config_userconfig`, nerf-darted auth tokens
+    // like `npm_config_//registry.example.com/:_authToken`) must reach the
+    // spawned agent unchanged.
+    if (k.toLowerCase() === 'npm_config_overrides') continue;
+    base[k] = v;
   }
   base[pathKey(base)] = augmentAgentSpawnPath(envPath(base), {
     platform: process.platform,
