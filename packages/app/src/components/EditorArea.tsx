@@ -1944,6 +1944,7 @@ function EditorAreaInner({
       <ResizableHandle
         withHandle={terminalColumnPresent}
         className={terminalColumnPresent ? undefined : 'pointer-events-none'}
+        style={terminalColumnPresent ? undefined : { display: 'none' }}
         onPointerDown={(event) => {
           trackHandleDrag(
             event.pointerId,
@@ -1966,6 +1967,14 @@ function EditorAreaInner({
         panelRef={terminalColumnPanelRef}
         defaultSize={terminalColumnPresent ? `${terminalDefaultWidthPx}px` : 0}
         minSize={`${RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX}px`}
+        // Clamp the outer flex item to zero while hidden. RRP's own layout
+        // validator applies `Math.min(maxSize, size)` last (after the collapsible
+        // halfway snap), so a `maxSize` of `0` hard-clamps every redistribution
+        // pass to zero even while `minSize` stays at its normal value — RRP
+        // never assigns nonzero flex share to a hidden column. `style` cannot do
+        // this: `Panel` spreads it onto the inner content div, not the outer
+        // `data-panel` flex item that carries the group-computed `flexGrow`.
+        maxSize={terminalColumnPresent ? undefined : '0px'}
         collapsible
         collapsedSize={0}
         onResize={(size) => {
@@ -1995,6 +2004,7 @@ function EditorAreaInner({
       <ResizableHandle
         withHandle={agentsColumnPresent}
         className={agentsColumnPresent ? undefined : 'pointer-events-none'}
+        style={agentsColumnPresent ? undefined : { display: 'none' }}
         onPointerDown={(event) => {
           trackHandleDrag(
             event.pointerId,
@@ -2017,11 +2027,15 @@ function EditorAreaInner({
         panelRef={agentsColumnPanelRef}
         defaultSize={agentsColumnPresent ? `${initialAgentsWidthPx}px` : 0}
         minSize={`${MIN_AGENTS_PANEL_WIDTH}px`}
-        // The panel can be dragged wide — up to 95% of the group — leaving the
-        // editor a 5% sliver (its panel `minSize` while this column is mounted).
-        // Pair the two: this max plus the editor's min must sum to 100% or the
-        // drag can't reach it. Mirrors the bottom dock's 95%/5% split.
-        maxSize="95%"
+        // While present the panel can be dragged wide — up to 95% of the group —
+        // leaving the editor a 5% sliver (its panel `minSize` while this column
+        // is mounted). Pair the two: this max plus the editor's min must sum to
+        // 100% or the drag can't reach it. Mirrors the bottom dock's 95%/5% split.
+        // While hidden the same knob doubles as the flex-flow clamp: RRP applies
+        // `Math.min(maxSize, size)` last in its layout validator, so `0px` hard-
+        // clamps the outer flex item to zero share every redistribution pass —
+        // the paint window `reclaimHiddenRailColumn` alone couldn't close.
+        maxSize={agentsColumnPresent ? '95%' : '0px'}
         // Collapsible so a drag past half the min width snaps the column shut —
         // the pointerup handler above turns that into a real hide.
         collapsible
