@@ -320,20 +320,24 @@ export function composeReply({ changeset = {}, version, originChannel, coverage 
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);
   }
 
-  lines.push('', updateInstruction(originChannel, normalizedVersion));
+  lines.push('', updateInstruction(originChannel));
 
   return lines.join('\n');
 }
 
 /**
+ * The desktop app is the promoted install path, so it is the only one named
+ * here. A reporter who runs the CLI instead still upgrades from the same
+ * release, and the npm command would only widen a reply whose job is to say the
+ * thing shipped.
+ *
  * Both channels render markdown, so the difference is the link form: GitHub
  * renders an inline link, while a bare URL on Discord expands into an embed
  * card unless it is wrapped in angle brackets.
  */
-function updateInstruction(originChannel, version) {
-  const upgrade = `\`npm install -g @inkeep/open-knowledge@${version}\``;
+function updateInstruction(originChannel) {
   if (originChannel === 'discord-thread') {
-    return `To pick it up, run ${upgrade}, or download the latest desktop build from <${RELEASES_URL}>.`;
+    return `To pick it up, update to the latest desktop app from <${RELEASES_URL}>.`;
   }
-  return `To pick it up, run ${upgrade}, or download the latest desktop build from [the releases page](${RELEASES_URL}).`;
+  return `To pick it up, update to the latest desktop app from [the releases page](${RELEASES_URL}).`;
 }

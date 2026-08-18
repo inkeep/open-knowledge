@@ -285,8 +285,15 @@ describe('reply composition', () => {
     expect(gh).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
     // Bare on Discord it would expand into an embed card; angle brackets suppress that.
     expect(discord).toContain('<https://github.com/inkeep/open-knowledge/releases>');
-    for (const text of [gh, discord]) {
-      expect(text).toContain('npm install -g @inkeep/open-knowledge@0.36.0');
+  });
+
+  test('the update instruction names the desktop app and nothing else', () => {
+    for (const originChannel of ['github-issue', 'discord-thread']) {
+      const text = compose({ originChannel });
+      expect(text).toContain('update to the latest desktop app');
+      // The desktop app is the promoted install path; naming the CLI here would
+      // hand a reporter a second thing to weigh in a reply about one shipped fix.
+      expect(text).not.toContain('npm install');
     }
   });
 
