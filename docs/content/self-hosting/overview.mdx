@@ -1,0 +1,73 @@
+---
+title: Overview
+icon: LuBookOpen
+description: Run OpenKnowledge on a server or container for shared, always-on access from your other devices and agents.
+---
+By default, your knowledge base is only available on the machine it runs on. Set up remote access to open it from another device, point your agents at it, and let everyone work in the same place. Access control lives outside OpenKnowledge for now: a private network, or a login in front. See [Authentication](/docs/self-hosting/authentication).
+
+## How exposure works
+
+Three settings control remote access:
+
+| Setting | What it is | Where it goes |
+| --- | --- | --- |
+| `server.externalUrl` | The address clients will use, e.g. `https://kb.example.com`. | `.ok/config.yml`, committed, so the project's setup is shared with your team. |
+| `server.allowExternal` | Your permission to accept connections from outside the machine. | `.ok/local/config.yml`, which stays on this machine (gitignored), or the `OK_ALLOW_EXTERNAL=1` environment variable. |
+| `server.bind` | Which network addresses the server listens on. Most setups never set it: tunnels work with the default, and the container image sets it for you. | `.ok/local/config.yml`, or the `OK_BIND` environment variable. |
+
+These also exist as environment variables and CLI flags (`OK_EXTERNAL_URL` / `--external-url`) for one-off runs and for containers, where config files aren't the natural home; each walkthrough uses whichever fits. The [Configuration reference](/docs/reference/configuration) has the full details on these settings.
+
+<Callout type="info">
+**Everyone connects as the same owner.** There are no per-person accounts yet, so everyone who connects can read and edit everything, exactly as you can. You choose who that is with the options in [Authentication](/docs/self-hosting/authentication).
+</Callout>
+
+## Choose a deployment method
+
+| You want | Method |
+| --- | --- |
+| To reach the machine you already work on, from your other devices | [npm: your laptop, behind a tunnel](/docs/self-hosting/methods/npm#your-laptop-behind-a-tunnel) |
+| An always-on server you run yourself | [npm: a VPS or any box you manage](/docs/self-hosting/methods/npm#a-server-you-manage) |
+| An always-on server, run for you by a hosting platform | [Docker: a container on a hosting platform](/docs/self-hosting/methods/docker) |
+
+These are recommended pairings, not rules; the pieces mix and match. You can run the container on your own VPS, or run a tunnel next to a container on Railway and skip the public domain entirely. However you assemble it, the server reads the same settings, so every method ends at the same [try-it-out step](#try-it-out) and the same [access-control options](/docs/self-hosting/authentication).
+
+## Try it out
+
+Whichever method you picked, you now have one URL that works two ways: open it in a browser to edit, or point an agent at `/mcp`. Try both.
+
+### In a browser
+
+```
+https://<your-external-url>/
+```
+
+Open it on any device that can reach the address. The editor loads, and edits sync in real time between every connected browser and agent. That's your first proof the whole path works.
+
+Anyone who can open the URL can edit alongside you, all as the same owner, since there are no per-person accounts. Share it deliberately and only with people you trust.
+
+### With agents
+
+```
+https://<your-external-url>/mcp
+```
+
+For a quick check without configuring an agent, do the handshake by hand from any device that can reach the address:
+
+```bash
+curl -sS -X POST https://<your-external-url>/mcp \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+The server responds with its details:
+
+```json
+{"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"open-knowledge","version":"…"}},"jsonrpc":"2.0","id":1}
+```
+
+Then point real agents at that URL. [Connecting agents](/docs/self-hosting/connecting-agents) has per-client setup (Claude, Cursor, Codex, and others), including how a headless agent passes edge-auth credentials. Anyone who can open this URL has full read-write access.
+
+## Turning it off
+
+Withdraw your permission by removing `server.allowExternal` from `.ok/local/config.yml` (or no longer passing `OK_ALLOW_EXTERNAL=1`) and restarting; on the default loopback bind the server goes back to refusing outside connections. A container built from the [Docker method](/docs/self-hosting/methods/docker) bakes a non-loopback `OK_BIND`, so dropping consent there makes it refuse to boot instead of falling back. Stopping the tunnel or removing the container's public domain cuts off access from the other side. If the address may have leaked further than intended, rotate it at the edge: ngrok and Cloudflare mint a fresh URL on restart, Tailscale ACLs can be tightened, and a platform domain can be regenerated.

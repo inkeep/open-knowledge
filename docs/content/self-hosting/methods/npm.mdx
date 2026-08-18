@@ -1,0 +1,212 @@
+---
+title: npm
+icon: custom/Npm
+description: Run OpenKnowledge on your own machine, reached through a tunnel or reverse proxy.
+---
+Install OpenKnowledge from npm, then run the server yourself:
+
+```bash
+npm install -g @inkeep/open-knowledge
+```
+
+Run it on your laptop for the quickest start, or on a server to keep it always available. A tunnel or reverse proxy gives the server its public URL. New to these settings? Read [How exposure works](/docs/self-hosting/overview#how-exposure-works) first.
+
+## Your laptop, behind a tunnel
+
+The quickest path: OpenKnowledge already runs your project, and a tunnel gives it a public HTTPS URL. The catch is that it's only reachable while the machine is awake. Close the lid and your agents lose access. To keep it always available, use [a server you manage](#a-server-you-manage) or the [Docker method](/docs/self-hosting/methods/docker).
+
+### 1. Pin a port and open a tunnel
+
+A local start normally picks a free port dynamically, but a tunnel forwards to one fixed port, so pin it first. Add a `server:` block to the `.ok/config.yml` that `ok init` created (the file is all commented defaults until you add keys):
+
+```yaml title=".ok/config.yml"
+server:
+  port: 8080
+```
+
+Any HTTPS tunnel works. It forwards a public URL to that local port. Pick one:
+
+<Callout type="info">
+Install your tunnel's client on the machine first if it isn't already.
+</Callout>
+
+<Tabs groupId="ok-tunnel" persist items={['Tailscale', 'ngrok', 'Cloudflare Tunnel']}>
+
+<Tab>
+
+Private, only devices on your tailnet can reach it. Requires [HTTPS enabled in your tailnet](https://tailscale.com/kb/1153/enabling-https).
+
+```bash
+tailscale serve --bg 8080
+# → https://<machine>.<tailnet>.ts.net
+```
+
+If `serve` says Tailscale is stopped, run `tailscale up` first (on a Linux server you may also need `sudo systemctl start tailscaled`).
+
+</Tab>
+
+<Tab>
+
+Public URL; add edge auth to restrict (see [Authentication](/docs/self-hosting/authentication)).
+
+```bash
+ngrok http 8080
+# → https://<something>.ngrok.app
+```
+
+</Tab>
+
+<Tab>
+
+A quick public URL on a `*.trycloudflare.com` address, fresh each run. For a stable URL on your own domain, and to pair with [Cloudflare Access](/docs/self-hosting/authentication), set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) instead.
+
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+
+</Tab>
+
+</Tabs>
+
+Each one gives you a public HTTPS URL. That URL is your `server.externalUrl`.
+
+### 2. Configure and start
+
+Declare the public origin in the project config, next to the port:
+
+```yaml title=".ok/config.yml"
+server:
+  port: 8080
+  externalUrl: https://<your-tunnel-url>
+```
+
+<Callout type="warn">
+**`server.externalUrl` must be the exact address people will use**: the full tunnel URL, with `https://` and no trailing path. If it doesn't match what the tunnel forwards, the server turns those requests away with a `403` error.
+</Callout>
+
+Then consent on this machine, in the gitignored per-machine config:
+
+```yaml title=".ok/local/config.yml"
+server:
+  allowExternal: true
+  idleShutdown: "off"
+```
+
+`idleShutdown: "off"` keeps the server from stopping after 30 idle minutes. The idle timer only counts editor connections, not agent calls, so without it a server busy with a remote agent looks idle and shuts down mid-session.
+
+Now start it from the project directory:
+
+```bash
+ok start
+```
+
+The server prints a warning banner naming the public origin on every exposed start. For a one-off session, the environment does the same job without touching config files:
+
+```bash
+OK_ALLOW_EXTERNAL=1 OK_IDLE_SHUTDOWN=off ok start --external-url https://<your-tunnel-url> --port 8080
+```
+
+Now [try it out](/docs/self-hosting/overview#try-it-out).
+
+## A server you manage
+
+A VPS, Mac mini, or any computer you can leave running. It keeps your knowledge base available at all times, and you keep full control of the box.
+
+### Set up the box
+
+On a VPS, providers like Hetzner, DigitalOcean, and Lightsail all work. Pick Ubuntu 24.04 (1 GB RAM is comfortable; 512 MB runs a small knowledge base), add your SSH key at creation, and `ssh root@<ip>` in. Every step below happens in that shell.
+
+Install OpenKnowledge (and Node 24 first, on a fresh box):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - && sudo apt-get install -y nodejs git
+npm install -g @inkeep/open-knowledge
+```
+
+Create the project (`ok init` sets up git for you):
+
+```bash
+mkdir ~/knowledge && cd ~/knowledge && ok init
+```
+
+To start from existing notes, `git clone` them as the project directory instead of `mkdir`, then run `ok init` inside.
+
+### Give it a URL
+
+Two good options:
+
+- **A tunnel**: exactly the [laptop steps above](#1-pin-a-port-and-open-a-tunnel), run on the server. Tailscale is especially natural here: the box joins your tailnet and only your devices can reach it, with nothing exposed to the public internet.
+- **Your own domain with a reverse proxy.** Point DNS at the server and let [Caddy](https://caddyserver.com/) terminate TLS (it provisions certificates automatically):
+
+  ```text title="/etc/caddy/Caddyfile"
+  notes.example.com {
+      reverse_proxy 127.0.0.1:8080
+  }
+  ```
+
+  ```yaml title=".ok/config.yml"
+  server:
+    port: 8080
+    externalUrl: https://notes.example.com
+  ```
+
+  Caddy handles the [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server) (Host preservation, `X-Forwarded-Proto`, no buffering on `/mcp`) automatically; just don't add an `encode` directive on `/mcp`. A different proxy (nginx, etc.) needs those set by hand, or requests 403 and the editor's WebSocket fails.
+
+Either way, consent on the box (`.ok/local/config.yml` with `allowExternal: true` and `idleShutdown: "off"`, as in the laptop path; the same [config-and-start step](#2-configure-and-start) applies unchanged).
+
+### Run it as a service
+
+So it survives logout and reboots:
+
+```ini title="/etc/systemd/system/openknowledge.service"
+[Unit]
+Description=OpenKnowledge server
+After=network-online.target
+
+[Service]
+User=root
+WorkingDirectory=/root/knowledge
+ExecStart=/usr/bin/env ok start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+This matches the `ssh root@<ip>` VPS setup above (project at `/root/knowledge`, `server.*` set in config; the unit needs no flags). If you log in as a different user, set `User` and `WorkingDirectory` to that user and their project path. For a hardened setup, run it under a dedicated unprivileged user (`sudo useradd --system --create-home openknowledge`) rather than `root`, with `User` and `WorkingDirectory` set to match.
+
+Register the service so it starts on every boot, and launch it now:
+
+```bash
+sudo systemctl enable --now openknowledge
+```
+
+<Callout>
+**On macOS**, there's no systemd. Run `ok start` in a terminal, and set the machine not to sleep (System Settings → Energy) for always-on use.
+</Callout>
+
+Now [try it out](/docs/self-hosting/overview#try-it-out), then [restrict who can reach it](/docs/self-hosting/authentication).
+
+## Back up to a git remote
+
+Optional, but recommended for a server. Your knowledge base is a plain git repository, and OpenKnowledge has a built-in sync engine: point it at a GitHub remote and it commits and pushes as agents write, on its own.
+
+Create an empty **private** GitHub repo, then on the machine:
+
+```bash
+gh auth login              # authorize this machine (or add a deploy key with write access)
+cd ~/knowledge
+git remote add origin https://github.com/you/knowledge.git
+git branch -M main && git add -A && git commit -m "knowledge base" && git push -u origin main
+```
+
+Turn on auto-sync:
+
+```bash
+printf '\nautoSync:\n  mode: full\n' >> .ok/local/config.yml
+sudo systemctl restart openknowledge
+```
+
+From now on every edit is committed and pushed automatically. The commit author comes from the machine's git identity (`git config user.name` / `user.email`). A fresh server has none set, so commits fall back to a service identity, **OpenKnowledge**. Signing in with `gh` handles pushing, not authorship. Set a git identity if you'd rather commits carry your name. See [GitHub sync](/docs/features/github-sync) for sync modes, conflict handling, and authentication.
+
+The git remote is also a way to edit locally: `git clone` it on your laptop and open the clone in OK Desktop. That gives you a separate local copy with the full editor. It syncs with the server through git (each side pushes and pulls), not live, so changes cross over on the next sync rather than instantly.

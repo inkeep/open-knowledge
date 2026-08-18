@@ -1,0 +1,6 @@
+{
+  "title": "Deployment methods",
+  "icon": "LuBoxes",
+  "defaultOpen": true,
+  "pages": ["npm", "docker"]
+}

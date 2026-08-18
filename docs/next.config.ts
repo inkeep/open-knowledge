@@ -112,6 +112,26 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: '/docs/deploy/remote-access',
+        destination: '/docs/self-hosting/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/deploy/remote-access/',
+        destination: '/docs/self-hosting/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/deploy/connecting-agents',
+        destination: '/docs/self-hosting/connecting-agents',
+        permanent: true,
+      },
+      {
+        source: '/docs/deploy/connecting-agents/',
+        destination: '/docs/self-hosting/connecting-agents',
+        permanent: true,
+      },
+      {
         source: '/docs/advanced/content-rules/okf',
         destination: '/docs/plugins/okf',
         permanent: true,
