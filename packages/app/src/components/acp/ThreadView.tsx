@@ -18,6 +18,7 @@ import type {
   ThreadFailureDetail,
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { plural } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import {
   ArrowUp,
@@ -230,6 +231,59 @@ const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = ne
 
 function isRetryableFailure(failure: ThreadFailureDetail): boolean {
   return RETRYABLE_FAILURE_REASONS.has(failure.reason);
+}
+
+/**
+ * The one line in an ACP failure's stderr tail that names WHY it failed —
+ * pulled out and rendered above the "Show details" toggle so a reader gets
+ * the diagnostic without expanding a wall of unrelated warnings. Matches
+ * common failure signals from the tools ACP agents spawn (npm/npx, uv/uvx,
+ * shell, node). Returns null when nothing looks like an error signal — the
+ * card then falls back to the plain "Show details" toggle it always had.
+ *
+ * FIRST match wins. npm prints the terminating cause up-front (`npm error
+ * code EUSAGE`) and follows with a metadata + summary block that ends in
+ * `npm error A complete log of this run can be found in: …` — a last-match
+ * heuristic surfaces the log-path epilogue instead of the cause, which is
+ * exactly what this feature exists to skip past. `\s+\S` after the prefix
+ * skips bare `npm error` separator lines (npm block output uses them as
+ * blank rules between metadata groups).
+ */
+const ROOT_CAUSE_PATTERN =
+  /^\s*(?:npm\s+(?:error|ERR!)\s+\S|error:\s*\S|Error:\s*\S|fatal:\s*\S|panic:\s*\S)/;
+function extractRootCauseLine(machineDetail: string): string | null {
+  const lines = machineDetail.split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]?.trim() ?? '';
+    if (line !== '' && ROOT_CAUSE_PATTERN.test(line)) return line;
+  }
+  return null;
+}
+
+/**
+ * Colorize the stderr detail so `error` / `warn` lines are visible at a
+ * glance instead of drowning in a wall of same-color monospace. Same
+ * classifier as `extractRootCauseLine`, plus an `npm warn` / `warning:`
+ * amber tier. Neutral lines keep the container's muted colour.
+ */
+const STDERR_ERROR_PATTERN = /^\s*(?:npm\s+(?:error|ERR!)|error:|Error:|fatal:|panic:)/;
+const STDERR_WARN_PATTERN = /^\s*(?:npm\s+warn|warning:|warn:)/;
+function highlightStderr(machineDetail: string): ReactNode {
+  const lines = machineDetail.split('\n');
+  return lines.map((line, i) => {
+    const key = `${i}:${line.slice(0, 32)}`;
+    const cls = STDERR_ERROR_PATTERN.test(line)
+      ? 'text-red-600 dark:text-red-400'
+      : STDERR_WARN_PATTERN.test(line)
+        ? 'text-amber-700 dark:text-amber-400'
+        : '';
+    return (
+      <span key={key} className={cls}>
+        {line}
+        {i < lines.length - 1 ? '\n' : ''}
+      </span>
+    );
+  });
 }
 
 export function ThreadView({
@@ -2188,6 +2242,10 @@ function ThreadNotice({
     }
   };
   const headline = failure === null ? null : failureHeadline(failure.reason);
+  const rootCauseLine =
+    failure?.machineDetail !== undefined && failure.machineDetail !== ''
+      ? extractRootCauseLine(failure.machineDetail)
+      : null;
   return (
     <div
       className={cn(
@@ -2197,14 +2255,33 @@ function ThreadNotice({
           : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-400',
       )}
       data-testid="agent-thread-notice"
+      data-notice-attempts={item.attempts}
     >
       {failure === null ? (
         item.text
       ) : (
         <>
-          <p>{headline}</p>
+          <p>
+            {headline}
+            {item.attempts > 1 ? (
+              <span className="ml-1.5 opacity-70" data-testid="agent-thread-notice-attempts">
+                {t`(${plural(item.attempts, { one: '# attempt', other: '# attempts' })})`}
+              </span>
+            ) : null}
+          </p>
           {failure.agentMessage !== undefined && failure.agentMessage !== '' ? (
             <p className="mt-1 opacity-80">{failure.agentMessage}</p>
+          ) : null}
+          {rootCauseLine !== null ? (
+            // The one line the reader actually needs — pulled out of the
+            // stderr wall so they don't have to expand "Show details" and
+            // scan for `npm error` / `Error:` themselves.
+            <p
+              className="mt-1 overflow-x-auto whitespace-pre-wrap break-all font-mono text-[11px]"
+              data-testid="agent-thread-notice-root-cause"
+            >
+              {rootCauseLine}
+            </p>
           ) : null}
           {failure.machineDetail !== undefined && failure.machineDetail !== '' ? (
             <>
@@ -2224,7 +2301,7 @@ function ThreadNotice({
                   className="mt-1 overflow-x-auto whitespace-pre-wrap font-mono text-[10px] opacity-70"
                   data-testid="agent-thread-notice-details"
                 >
-                  {failure.machineDetail}
+                  {highlightStderr(failure.machineDetail)}
                 </pre>
               ) : null}
             </>

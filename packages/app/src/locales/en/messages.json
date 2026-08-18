@@ -1538,6 +1538,11 @@
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
     "LZe2vX": [" · references only (no embedded contents)"],
+    "L_mqhg": [
+      "(",
+      ["0", "plural", { "one": ["#", " attempt"], "other": ["#", " attempts"] }],
+      ")"
+    ],
     "LaskKp": ["Send to chat (", ["0"], ")"],
     "Lbl6KA": ["Couldn't install from ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Can't safely edit this tool's config"],

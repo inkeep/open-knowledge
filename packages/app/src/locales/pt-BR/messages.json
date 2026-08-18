@@ -1768,6 +1768,15 @@
     "LXfNU-": ["Navegação e sugestões"],
     "LYufDw": ["Falha ao ativar a busca semântica — ", ["detail"]],
     "LZe2vX": [" · apenas referências (sem conteúdo incorporado)"],
+    "L_mqhg": [
+      "(",
+      [
+        "0",
+        "plural",
+        { "one": ["#", " tentativa"], "many": ["#", " tentativas"], "other": ["#", " tentativas"] }
+      ],
+      ")"
+    ],
     "LaskKp": ["Enviar para o chat (", ["0"], ")"],
     "Lbl6KA": ["Não deu para instalar a partir de ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Não é seguro editar a configuração desta ferramenta"],

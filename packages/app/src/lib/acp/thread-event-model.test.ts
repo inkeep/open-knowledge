@@ -224,9 +224,65 @@ describe('buildThreadRenderModel', () => {
     // A transcript recorded before the server classified failures carries only
     // the headline string — it still renders, with nothing structured to show.
     expect(notices).toEqual([
-      { kind: 'notice', text: 'boom', tone: 'error', failure: null },
-      { kind: 'notice', text: 'sign in', tone: 'info', failure: null },
+      { kind: 'notice', text: 'boom', tone: 'error', failure: null, attempts: 1 },
+      { kind: 'notice', text: 'sign in', tone: 'info', failure: null, attempts: 1 },
     ]);
+  });
+
+  test('coalesces identical adjacent error notices into one card with bumped attempt count', () => {
+    // A retried launch fires the same status:error event per attempt. Without
+    // dedup the transcript stacks three visually-identical cards for one
+    // failure — the reader has to click through each to find the retry
+    // button on the last. Same reason + agentMessage + machineDetail + tone
+    // + text is the "same failure again" heuristic.
+    const failure = {
+      reason: 'connect' as const,
+      agentMessage: 'initialize failed: ACP connection closed',
+      machineDetail: 'npm error Override without name: @modelcontextprotocol/sdk>zod',
+    };
+    const events: ThreadEvent[] = [
+      ev({ kind: 'status', status: 'error', detail: 'connect failed', failure, ts: 1 }),
+      ev({ kind: 'status', status: 'error', detail: 'connect failed', failure, ts: 2 }),
+      ev({ kind: 'status', status: 'error', detail: 'connect failed', failure, ts: 3 }),
+    ];
+    const notices = buildThreadRenderModel(events).items.filter((i) => i.kind === 'notice');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ attempts: 3, failure });
+  });
+
+  test('a live failure after `ready` does NOT merge into the retired notice', () => {
+    // Regression guard for the coalesce/superseded interaction: without the
+    // `last.superseded !== true` guard, an identical failure arriving after
+    // `ready` retired the previous notice would coalesce into that retired
+    // notice (the spread carries `superseded: true` forward), and the view
+    // would filter the merged card out entirely — the live failure would
+    // render nowhere, with no Retry button.
+    const failure = { reason: 'connect' as const, agentMessage: 'boom' };
+    const model = buildThreadRenderModel([
+      ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 1 }),
+      ev({ kind: 'status', status: 'ready', ts: 2 }),
+      ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 3 }),
+    ]);
+    const notices = model.items.filter((i) => i.kind === 'notice');
+    expect(notices).toHaveLength(2);
+    expect(notices[0]?.kind === 'notice' && notices[0].superseded).toBe(true);
+    expect(notices[1]?.kind === 'notice' && notices[1].superseded).not.toBe(true);
+    expect(notices[1]?.kind === 'notice' && notices[1].attempts).toBe(1);
+  });
+
+  test('a genuinely different failure between two attempts gets its own card', () => {
+    // If the machineDetail changes between attempts (different stderr, e.g.
+    // attempt 1 fails on missing node, attempt 2 on install error), the two
+    // failures are genuinely distinct — reader needs to see both.
+    const first = { reason: 'connect' as const, machineDetail: 'boom-A' };
+    const second = { reason: 'connect' as const, machineDetail: 'boom-B' };
+    const events: ThreadEvent[] = [
+      ev({ kind: 'status', status: 'error', detail: 'x', failure: first, ts: 1 }),
+      ev({ kind: 'status', status: 'error', detail: 'x', failure: second, ts: 2 }),
+    ];
+    const notices = buildThreadRenderModel(events).items.filter((i) => i.kind === 'notice');
+    expect(notices).toHaveLength(2);
+    expect(notices.every((n) => n.kind === 'notice' && n.attempts === 1)).toBe(true);
   });
 
   test('carries a structured failure onto the notice it produces', () => {
@@ -577,8 +633,15 @@ describe('startup failures a later ready retires', () => {
     ]);
 
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(0);
-    // Marked, not dropped: positions are load-bearing for the fold's indexes.
-    expect(model.items).toHaveLength(2);
+    // Two identical `auth_required` events coalesce into ONE notice with
+    // `attempts: 2` before `ready` retires it — see the coalesce test in
+    // `buildThreadRenderModel`. Positions still load-bearing: the fold
+    // replaced-in-place instead of pushing, so index maps stayed valid.
+    expect(model.items).toHaveLength(1);
+    const notice = model.items[0];
+    if (notice?.kind !== 'notice') throw new Error('unreachable');
+    expect(notice.attempts).toBe(2);
+    expect(notice.superseded).toBe(true);
   });
 
   // A prompt failure happened inside a live session, so a later `ready` says

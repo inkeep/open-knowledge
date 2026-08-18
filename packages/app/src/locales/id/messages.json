@@ -1558,6 +1558,7 @@
     "LXfNU-": ["Navigasi dan saran"],
     "LYufDw": ["Gagal mengaktifkan pencarian semantik — ", ["detail"]],
     "LZe2vX": [" · hanya referensi (tanpa konten tertanam)"],
+    "L_mqhg": ["(", ["0", "plural", { "other": ["#", " percobaan"] }], ")"],
     "LaskKp": ["Kirim ke obrolan (", ["0"], ")"],
     "Lbl6KA": ["Tidak bisa memasang dari ", ["0"], ": ", ["1"]],
     "LbmLyU": ["Konfigurasi alat ini tidak bisa disunting dengan aman"],

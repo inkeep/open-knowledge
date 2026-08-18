@@ -100,6 +100,11 @@ msgstr "\"{trimmed}\" sudah ada di sini"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "\"frontmatter\" adalah nama properti yang dicadangkan"
 
+#. placeholder {0}: item.attempts
+#: src/components/acp/ThreadView.tsx
+msgid "({0, plural, one {# attempt} other {# attempts}})"
+msgstr "({0, plural, other {# percobaan}})"
+
 #: src/components/settings/LintingSection.tsx
 msgid "(a bare folder name needs /** after it to match what's inside)"
 msgstr "(nama folder saja memerlukan /** setelahnya agar cocok dengan isinya)"

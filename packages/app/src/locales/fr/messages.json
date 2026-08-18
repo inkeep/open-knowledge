@@ -1821,6 +1821,15 @@
     "LXfNU-": ["Navigation et suggestions"],
     "LYufDw": ["Échec de l'activation de la recherche sémantique — ", ["detail"]],
     "LZe2vX": [" · références seulement (pas de contenu intégré)"],
+    "L_mqhg": [
+      "(",
+      [
+        "0",
+        "plural",
+        { "one": ["#", " tentative"], "many": ["#", " tentatives"], "other": ["#", " tentatives"] }
+      ],
+      ")"
+    ],
     "LaskKp": ["Envoyer dans la discussion (", ["0"], ")"],
     "Lbl6KA": ["Impossible d'installer depuis ", ["0"], " : ", ["1"]],
     "LbmLyU": ["Impossible de modifier en toute sécurité la configuration de cet outil"],

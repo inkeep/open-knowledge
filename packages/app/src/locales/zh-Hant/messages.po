@@ -100,6 +100,11 @@ msgstr "「{trimmed}」在這裡已存在"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "「frontmatter」是保留的屬性名稱"
 
+#. placeholder {0}: item.attempts
+#: src/components/acp/ThreadView.tsx
+msgid "({0, plural, one {# attempt} other {# attempts}})"
+msgstr "（{0, plural, other {# 次嘗試}}）"
+
 #: src/components/settings/LintingSection.tsx
 msgid "(a bare folder name needs /** after it to match what's inside)"
 msgstr "（僅寫資料夾名稱時需要在後面加上 /** 才能符合其中的內容）"

@@ -94,6 +94,13 @@ interface RenderedNotice {
    * view.
    */
   superseded?: boolean;
+  /**
+   * How many identical error events collapsed into this notice. 1 for a
+   * single failure; N when the launch retried and every attempt failed with
+   * the same `reason` + `agentMessage` + `machineDetail`. See the coalesce
+   * block in `applyEvent(status)` for the exact match rule.
+   */
+  attempts: number;
 }
 
 /**
@@ -334,12 +341,35 @@ export class ThreadRenderModelBuilder {
           // A structured failure alone is enough: the view composes its own
           // copy from `reason`, so the server no longer has to ship a string.
           if (event.failure !== undefined || (event.detail ?? '') !== '') {
-            this.items.push({
+            const next: RenderedNotice = {
               kind: 'notice',
               text: event.detail ?? '',
               tone: event.status === 'error' ? 'error' : 'info',
               failure: event.failure ?? null,
-            });
+              attempts: 1,
+            };
+            // Coalesce adjacent identical failures into ONE card whose
+            // attempt count grows. The launch's retry loop fires a status
+            // event per attempt, and without this the transcript stacked
+            // three visually-identical error cards for one bad spawn — the
+            // reader had to click through each to find the retry button on
+            // the last. Same `reason` + `agentMessage` + `machineDetail` +
+            // `tone` + text is our proxy for "the same failure, again"; if
+            // any of those differ the failure is genuinely new and gets its
+            // own card.
+            const last = this.items[this.items.length - 1];
+            // A superseded notice was retired by a later `ready`; merging into
+            // it would carry `superseded: true` forward via the spread and the
+            // live failure would render nowhere (ThreadView filters superseded
+            // out entirely). Force a new card in that case.
+            if (last?.kind === 'notice' && last.superseded !== true && isSameFailure(last, next)) {
+              this.items[this.items.length - 1] = {
+                ...last,
+                attempts: last.attempts + 1,
+              };
+            } else {
+              this.items.push(next);
+            }
           }
         }
         break;
@@ -657,6 +687,24 @@ function normalizeLocations(locations: unknown): Array<{ path: string; line?: nu
       path: l.path as string,
       line: typeof l.line === 'number' ? l.line : undefined,
     }));
+}
+
+/**
+ * Two error notices are "the same failure again" when everything the reader
+ * would see matches: tone, headline string, and every field of the structured
+ * failure the card composes copy from. `attempts` is deliberately excluded —
+ * it's the counter we bump on match, not a match input.
+ */
+function isSameFailure(a: RenderedNotice, b: RenderedNotice): boolean {
+  if (a.tone !== b.tone) return false;
+  if (a.text !== b.text) return false;
+  if ((a.failure === null) !== (b.failure === null)) return false;
+  if (a.failure !== null && b.failure !== null) {
+    if (a.failure.reason !== b.failure.reason) return false;
+    if ((a.failure.agentMessage ?? '') !== (b.failure.agentMessage ?? '')) return false;
+    if ((a.failure.machineDetail ?? '') !== (b.failure.machineDetail ?? '')) return false;
+  }
+  return true;
 }
 
 function mergeToolContent(call: RenderedToolCall, content: unknown): void {

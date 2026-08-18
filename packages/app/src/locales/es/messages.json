@@ -1794,6 +1794,15 @@
     "LXfNU-": ["Navegación y sugerencias"],
     "LYufDw": ["No se pudo activar la búsqueda semántica — ", ["detail"]],
     "LZe2vX": [" · solo referencias (sin contenido incrustado)"],
+    "L_mqhg": [
+      "(",
+      [
+        "0",
+        "plural",
+        { "one": ["#", " intento"], "many": ["#", " intentos"], "other": ["#", " intentos"] }
+      ],
+      ")"
+    ],
     "LaskKp": ["Enviar al chat (", ["0"], ")"],
     "Lbl6KA": ["No se pudo instalar desde ", ["0"], ": ", ["1"]],
     "LbmLyU": ["No se puede editar con seguridad la configuración de esta herramienta"],

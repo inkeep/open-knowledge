@@ -1806,6 +1806,7 @@ describe('ThreadView retry', () => {
       text: '',
       tone: 'error',
       failure: { reason, agentMessage: 'harness not installed' },
+      attempts: 1,
     };
   }
 
@@ -1862,6 +1863,7 @@ describe('ThreadView retry', () => {
             reason: 'auth-required',
             authMethods: [{ id: 'test_login', name: 'Test Login' }],
           },
+          attempts: 1,
         },
       ],
     });
@@ -2155,6 +2157,7 @@ describe('ThreadView retry', () => {
             reason: 'auth-required',
             authMethods: [{ id: 'test_login', name: 'Test Login' }],
           },
+          attempts: 1,
         },
       ],
     });
@@ -2190,6 +2193,7 @@ describe('ThreadView retry', () => {
               },
             ],
           },
+          attempts: 1,
         },
       ],
     });
@@ -2257,6 +2261,7 @@ describe('ThreadView failure notices', () => {
       text: '',
       tone: 'error',
       failure: null,
+      attempts: 1,
       ...overrides,
     };
   }
@@ -2330,6 +2335,39 @@ describe('ThreadView failure notices', () => {
     const card = screen.getByTestId('agent-thread-notice');
     expect(card.textContent).toBe('session setup failed: boom');
     expect(screen.queryByTestId('agent-thread-notice-details-toggle')).toBeNull();
+  });
+
+  // Regression guard for extractRootCauseLine: npm prints the cause up-front
+  // and follows it with an "A complete log of this run can be found in: …"
+  // epilogue. A last-match heuristic picks the log-path — the single line
+  // this feature exists to skip past.
+  test('root-cause line picks the CAUSE, not the "complete log" epilogue', () => {
+    const stderr = [
+      'npm error code EUSAGE',
+      'npm error',
+      'npm error usage: npm ci',
+      'npm error',
+      'npm error Run npm help ci for more info',
+      'npm error',
+      'npm error A complete log of this run can be found in: /tmp/log.txt',
+    ].join('\n');
+    model = makeModel({
+      turnActive: false,
+      items: [
+        notice({
+          failure: {
+            reason: 'connect',
+            agentMessage: 'initialize failed',
+            machineDetail: stderr,
+          },
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const rootCause = screen.getByTestId('agent-thread-notice-root-cause');
+    expect(rootCause.textContent).toContain('code EUSAGE');
+    expect(rootCause.textContent).not.toContain('complete log of this run');
   });
 });
 
