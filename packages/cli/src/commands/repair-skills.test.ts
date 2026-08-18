@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SkillInstallEvent } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -1393,6 +1393,54 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
 });
 
 describe('formatRepairSkillsResult — done-branch stdout formatting', () => {
+  it('names the collision skip, so a user running the repro sees why hosts were left alone', () => {
+    const out = formatRepairSkillsResult({
+      status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: false,
+      project: {
+        outcome: 'done',
+        entries: [
+          {
+            editorId: 'cursor',
+            hostDir: '.cursor',
+            path: '/h/.cursor/skills/open-knowledge',
+            outcome: 'skipped-global-collision',
+          },
+          {
+            editorId: 'codex',
+            hostDir: '.codex',
+            path: '/h/.codex/skills/open-knowledge',
+            outcome: 'skipped-global-collision',
+          },
+        ],
+      },
+      user: { outcome: 'done', version: '9.9.9', entries: [] },
+    });
+    expect(out).toContain(
+      'Skipped 2 host(s) whose project config path is their user-global config',
+    );
+    // Collisions must not be folded into a standard counter — a mutation that
+    // counted them as `no-token` would still print a plausible summary.
+    expect(out).toContain('Project: 0 present, 0 created, 0 no-token, 0 failed.');
+  });
+
+  it('omits the collision line when nothing collided', () => {
+    const out = formatRepairSkillsResult({
+      status: 'done',
+      legacySwept: [],
+      legacyCleanupDeclined: false,
+      legacyCleanupFailed: false,
+      project: {
+        outcome: 'done',
+        entries: [{ editorId: 'claude', hostDir: '.claude', path: '/x', outcome: 'present' }],
+      },
+      user: { outcome: 'done', version: '9.9.9', entries: [] },
+    });
+    expect(out).not.toContain('Skipped');
+  });
+
   it('renders per-sweep counts when both sweeps ran to done', () => {
     const out = formatRepairSkillsResult({
       status: 'done',
@@ -1548,6 +1596,45 @@ describe('repairSkillsResultExitCode (PR feedback: standalone exit code mapping)
 
   it('done with any user-sweep failure exits 1', () => {
     expect(repairSkillsResultExitCode(mkDone({ userFailedHost: true }))).toBe(1);
+  });
+
+  // A project-level skip is a real failure and must keep exiting 1. Collisions
+  // are per-host entries inside a `done` sweep, so they never take this branch
+  // — the two must not be conflated by a future edit.
+  it('done-less project skip (bundle-missing) exits 1', () => {
+    expect(
+      repairSkillsResultExitCode({
+        status: 'done',
+        project: { outcome: 'skipped', reason: 'bundle-missing' },
+        user: { outcome: 'done', version: '9.9.9', entries: [] },
+        legacySwept: [],
+        legacyCleanupDeclined: false,
+        legacyCleanupFailed: false,
+      }),
+    ).toBe(1);
+  });
+
+  it('a sweep whose only non-success entries are global collisions exits 0', () => {
+    expect(
+      repairSkillsResultExitCode({
+        status: 'done',
+        project: {
+          outcome: 'done',
+          entries: [
+            {
+              editorId: 'cursor',
+              hostDir: '.cursor',
+              path: '/h/.cursor/skills/open-knowledge',
+              outcome: 'skipped-global-collision',
+            },
+          ],
+        },
+        user: { outcome: 'done', version: '9.9.9', entries: [] },
+        legacySwept: [],
+        legacyCleanupDeclined: false,
+        legacyCleanupFailed: false,
+      }),
+    ).toBe(0);
   });
 });
 
@@ -1855,5 +1942,164 @@ describe('legacy cleanup — an internal failure is never reported as a decline'
     } as unknown as RepairSkillsResult);
     expect(out).toContain('Cleanup: declined');
     expect(out).not.toContain('Cleanup: failed');
+  });
+});
+
+/**
+ * `cd ~ && ok repair-skills` created two PROJECT skill dirs in the home
+ * directory. At `$HOME` an editor's project config path resolves onto its
+ * USER-GLOBAL config, which is OK-wired, so the create-if-wired gate said yes
+ * for the wrong reason. The gate is a per-host path comparison rather than a
+ * `projectDir === home` check because `$HOME` is not the only colliding
+ * directory: OpenCode's global lives at `$XDG_CONFIG_HOME/opencode`, and
+ * `CODEX_HOME` relocates codex's global off `$HOME` entirely.
+ */
+describe('repairSkills — project config that IS the global config is never swept', () => {
+  let scratch: ReturnType<typeof mkScratch>;
+  let projectBundleDir: string;
+  let discoveryBundleDir: string;
+  let logEvents: RepairSkillsLogEvent[];
+
+  const OK_WIRED_MCP_JSON = JSON.stringify({
+    mcpServers: {
+      'open-knowledge': {
+        command: '/bin/sh',
+        args: ['-l', '-c', '# ok-mcp-v2\nexit 127'],
+      },
+    },
+  });
+  const OK_WIRED_TOML =
+    '[mcp_servers.open-knowledge]\ncommand = "/bin/sh"\nargs = ["-l", "-c", "# ok-mcp-v2\\nexit 127"]\n';
+
+  beforeEach(() => {
+    scratch = mkScratch('global-collision');
+    projectBundleDir = join(scratch.bundles, 'project');
+    discoveryBundleDir = join(scratch.bundles, 'discovery');
+    writeBundledSkill(projectBundleDir, '9.9.9');
+    writeBundledSkill(discoveryBundleDir, '9.9.9');
+    logEvents = [];
+  });
+  afterEach(() => {
+    rmSync(scratch.root, { recursive: true, force: true });
+  });
+
+  const run = async (projectDir: string, home = scratch.home): Promise<RepairSkillsResult> =>
+    repairSkills({
+      projectDir,
+      home,
+      logger: (event) => logEvents.push(event),
+      deps: depsBuilder({
+        projectBundleDir,
+        discoveryBundleDir,
+        bundledVersion: '9.9.9',
+        recordedVersion: '9.9.9',
+        writtenVersions: [],
+      }),
+    });
+
+  /** Both hosts the bug report named, each written at its OWN global path. */
+  function writeHomeGlobals(home: string): void {
+    const cursorGlobal = EDITOR_TARGETS.cursor.configPath('', home);
+    const codexGlobal = EDITOR_TARGETS.codex.configPath('', home);
+    mkdirSync(dirname(cursorGlobal), { recursive: true });
+    mkdirSync(dirname(codexGlobal), { recursive: true });
+    writeFileSync(cursorGlobal, OK_WIRED_MCP_JSON);
+    writeFileSync(codexGlobal, OK_WIRED_TOML);
+    // Each editor's PROJECT path at $HOME is that same file — the collision.
+    expect(EDITOR_TARGETS.cursor.projectConfigPath?.(home)).toBe(cursorGlobal);
+    expect(EDITOR_TARGETS.codex.projectConfigPath?.(home)).toBe(codexGlobal);
+  }
+
+  it('writes no project skill dirs into a home whose global configs are OK-wired', async () => {
+    writeHomeGlobals(scratch.home);
+
+    const result = await run(scratch.home);
+
+    if (result.status !== 'done' || result.project.outcome !== 'done')
+      throw new Error('unreachable');
+    // Both reported hosts skipped for the collision, not vacuously absent.
+    for (const editorId of ['cursor', 'codex']) {
+      expect(result.project.entries.find((e) => e.editorId === editorId)?.outcome).toBe(
+        'skipped-global-collision',
+      );
+    }
+    // The regression itself: no project skill dir anywhere under home.
+    for (const host of HOSTS_WITH_USER_SKILL_DIR) {
+      expect(existsSync(join(scratch.home, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME))).toBe(
+        false,
+      );
+    }
+    expect(
+      logEvents.some((e) => e.event === 'project-skill-reclaim-skipped-global-collision'),
+    ).toBe(true);
+  });
+
+  it('exits 0 — skipping colliding hosts is a correct outcome, not a failure', async () => {
+    writeHomeGlobals(scratch.home);
+    expect(repairSkillsResultExitCode(await run(scratch.home))).toBe(0);
+  });
+
+  it('a symlinked home still resolves to the same directory', async () => {
+    writeHomeGlobals(scratch.home);
+    // Asymmetric on purpose: projectDir arrives via a symlink while `home` is
+    // the real path. A plain string compare passes both sides only when they
+    // are already identical, so this is what pins the canonicalization.
+    const linkedHome = join(scratch.root, 'home-link');
+    symlinkSync(scratch.home, linkedHome);
+
+    const result = await run(linkedHome, scratch.home);
+
+    if (result.status !== 'done' || result.project.outcome !== 'done')
+      throw new Error('unreachable');
+    expect(result.project.entries.find((e) => e.editorId === 'cursor')?.outcome).toBe(
+      'skipped-global-collision',
+    );
+    expect(existsSync(join(scratch.home, '.cursor', 'skills', PROJECT_SKILL_DIR_NAME))).toBe(false);
+  });
+
+  it('skips OpenCode at ~/.config/opencode, where the collision is NOT at $HOME', async () => {
+    // The case a `projectDir === home` guard misses entirely: OpenCode's global
+    // is `$XDG_CONFIG_HOME/opencode/opencode.json` and its project path is
+    // `<cwd>/opencode.json`, so they coincide inside the config dir.
+    const openCodeGlobal = EDITOR_TARGETS.opencode.configPath('', scratch.home);
+    const openCodeDir = dirname(openCodeGlobal);
+    mkdirSync(openCodeDir, { recursive: true });
+    // OK-marked on purpose: without it `editorWiredForOk` returns false and the
+    // host is skipped as `no-token` anyway, so the test would pass without the
+    // guard doing anything. Wired content is what makes this prove prevention.
+    writeFileSync(
+      openCodeGlobal,
+      JSON.stringify({
+        mcp: {
+          'open-knowledge': {
+            type: 'local',
+            command: ['/bin/sh', '-l', '-c', '# ok-mcp-v2\nexit 127'],
+          },
+        },
+      }),
+    );
+    expect(EDITOR_TARGETS.opencode.projectConfigPath?.(openCodeDir)).toBe(openCodeGlobal);
+    expect(openCodeDir).not.toBe(scratch.home);
+
+    const result = await run(openCodeDir);
+
+    if (result.status !== 'done' || result.project.outcome !== 'done')
+      throw new Error('unreachable');
+    expect(result.project.entries.find((e) => e.editorId === 'opencode')?.outcome).toBe(
+      'skipped-global-collision',
+    );
+    expect(existsSync(join(openCodeDir, '.opencode', 'skills', PROJECT_SKILL_DIR_NAME))).toBe(
+      false,
+    );
+  });
+
+  it('still sweeps a real project directory beside the same home', async () => {
+    writeFileSync(join(scratch.project, '.mcp.json'), OK_WIRED_MCP_JSON);
+
+    const result = await run(scratch.project);
+
+    if (result.status !== 'done' || result.project.outcome !== 'done')
+      throw new Error('unreachable');
+    expect(result.project.entries.find((e) => e.editorId === 'claude')?.outcome).toBe('created');
   });
 });

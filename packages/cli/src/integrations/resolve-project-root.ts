@@ -78,8 +78,13 @@ export interface ResolveProjectRootOptions {
  *
  * Mirrored in `packages/desktop/src/main/folder-admission.ts`; the two copies
  * must move together (TypeScript cannot catch drift across packages).
+ *
+ * Exported so in-package path-equality checks (e.g. `repair-skills`'s
+ * global-config collision gate) reuse this one implementation instead of
+ * re-deriving the idiom — a re-derived copy loses the `.native` rationale
+ * above and silently disarms the guard on Windows.
  */
-function canonicalizeForCompare(p: string): string {
+export function canonicalizeForCompare(p: string): string {
   try {
     return realpathSync.native(p);
   } catch {

@@ -29,7 +29,7 @@ import {
   writeFileSync as fsWriteFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join, relative, resolve as resolvePath } from 'node:path';
+import { basename, dirname, join, relative, resolve as resolvePath } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import {
@@ -47,6 +47,7 @@ import {
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
+import { canonicalizeForCompare } from '../integrations/resolve-project-root.ts';
 import {
   applyLegacyFanoutSweep,
   type LegacyFanoutSweepPlan,
@@ -55,7 +56,12 @@ import {
 } from '../integrations/skill-teardown.ts';
 import { assertProjectPathSafe } from '../integrations/write-project-skill.ts';
 import { accent, dim, warning } from '../ui/colors.ts';
-import { EDITOR_TARGETS, type EditorId, HOSTS_WITH_USER_SKILL_DIR } from './editors.ts';
+import {
+  EDITOR_TARGETS,
+  type EditorId,
+  type EditorMcpTarget,
+  HOSTS_WITH_USER_SKILL_DIR,
+} from './editors.ts';
 
 // `HOSTS_WITH_USER_SKILL_DIR` is the canonical core constant (derived from
 // PROJECT_SKILL_EDITOR_IDS + EDITOR_PROJECT_SKILL_ROOT), shared with the desktop
@@ -183,7 +189,12 @@ export interface RepairSkillsContext {
   confirmLegacyCleanup?: (plan: LegacyFanoutSweepPlan) => Promise<boolean>;
 }
 
-export type ProjectSkillOutcome = 'no-token' | 'present' | 'created' | 'failed';
+export type ProjectSkillOutcome =
+  | 'no-token'
+  | 'present'
+  | 'created'
+  | 'failed'
+  | 'skipped-global-collision';
 export type UserSkillCentralOutcome = 'written' | 'skipped-present' | 'failed';
 export type UserSkillHostOutcome =
   | 'written'
@@ -492,18 +503,66 @@ function editorWiredForOk(configPath: string | undefined, fs: RepairSkillsFsOps)
 }
 
 /**
+ * True when this editor's PROJECT config path for `projectDir` resolves to the
+ * very file that is its USER-GLOBAL config.
+ *
+ * When they coincide, `editorWiredForOk` is not answering "is this editor wired
+ * for this project?" — it is reading the user's global install and saying yes.
+ * The sweep then writes a PROJECT skill dir into a real global editor tree.
+ *
+ * `$HOME` is the case that surfaced this (`~/.cursor/mcp.json`,
+ * `~/.codex/config.toml`), but it is not the only one, which is why this is a
+ * per-host path comparison rather than a `projectDir === home` guard:
+ *
+ *   - OpenCode's project config is `<cwd>/opencode.json` while its global is
+ *     `$XDG_CONFIG_HOME/opencode/opencode.json`, so `~/.config/opencode`
+ *     collides and `$HOME` does not.
+ *   - `CODEX_HOME` / `COPILOT_HOME` relocate those globals anywhere, moving the
+ *     colliding directory off `$HOME` entirely.
+ *
+ * Compared on canonical paths (shared `canonicalizeForCompare` — see its
+ * `.native` rationale) so a symlinked home does not read as a different
+ * directory. Config paths need not exist yet; the DIRECTORIES are canonicalized
+ * and the filenames appended, because `realpathSync` on an absent file throws.
+ */
+function projectConfigIsGlobalConfig(
+  target: EditorMcpTarget | undefined,
+  projectConfigPath: string | undefined,
+  projectDir: string,
+  home: string,
+): boolean {
+  if (!target || !projectConfigPath) return false;
+  let globalConfigPath: string;
+  try {
+    // Pi and other project-scope targets throw here — no global config exists,
+    // so no collision is possible.
+    globalConfigPath = target.configPath(projectDir, home);
+  } catch {
+    return false;
+  }
+  const canonical = (filePath: string): string =>
+    join(canonicalizeForCompare(dirname(filePath)), basename(filePath));
+  return canonical(projectConfigPath) === canonical(globalConfigPath);
+}
+
+/**
  * Project-scope sweep. Per-host gate: refresh a host whose `SKILL.md` already
  * exists; additionally CREATE the skill for any host whose project MCP config
- * already carries the OK marker (`editorWiredForOk`). Always create-enabled:
- * the only callers are `ok start` (guarded to run inside an `.ok/` project root)
- * and the explicit `ok repair-skills` subcommand, so "this is an OK project" is
- * already established — there is no fresh/non-OK open to guard against here (the
- * Desktop, which DOES see non-OK opens, gates with its own `createIfWired`
- * flag). Heals the cohort of OK projects wired for MCP before the project-skill
- * writer existed.
+ * already carries the OK marker (`editorWiredForOk`). Heals the cohort of OK
+ * projects wired for MCP before the project-skill writer existed.
+ *
+ * `ok start` is guarded to run inside an `.ok/` project root, but
+ * `ok repair-skills` passes `process.cwd()` straight through — so "this is a
+ * project" is NOT established here, and `editorWiredForOk` alone is not enough
+ * to decide. `projectConfigIsGlobalConfig` is the missing half: in a directory
+ * where an editor's project config path IS its user-global config, a wired
+ * "yes" is the user's global install answering, not this directory. The Desktop
+ * has the analogous problem for non-OK opens and gates with its own
+ * `createIfWired` flag.
  */
 function runProjectSweep(
   projectDir: string,
+  home: string,
   deps: Required<RepairSkillsDeps>,
   fs: RepairSkillsFsOps,
   logger: (event: RepairSkillsLogEvent) => void,
@@ -537,8 +596,28 @@ function runProjectSweep(
     // `editorId` is a valid `EDITOR_TARGETS` key by the coverage meta-test, so
     // the lookup + `projectConfigPath` resolution reuse the single source of
     // truth (no duplicated per-editor path table).
-    const projectConfigPath =
-      EDITOR_TARGETS[host.editorId as EditorId]?.projectConfigPath?.(projectDir);
+    const target = EDITOR_TARGETS[host.editorId as EditorId];
+    const projectConfigPath = target?.projectConfigPath?.(projectDir);
+    // Before trusting the wired check: if this project path IS the editor's
+    // global config, the "yes" would come from the user's global install, not
+    // from this directory being a project. Writing then plants a project skill
+    // dir inside a real global editor tree — what `cd ~ && ok repair-skills`
+    // did to `~/.cursor/skills` and `~/.codex/skills`.
+    if (projectConfigIsGlobalConfig(target, projectConfigPath, projectDir, home)) {
+      entries.push({
+        editorId: host.editorId,
+        hostDir: host.hostDir,
+        path: dest,
+        outcome: 'skipped-global-collision',
+      });
+      logger({
+        event: 'project-skill-reclaim-skipped-global-collision',
+        scope: 'project',
+        editorId: host.editorId,
+        path: dest,
+      });
+      continue;
+    }
     const wired = editorWiredForOk(projectConfigPath, fs);
     if (!wired) {
       // Greenfield host that never ran `ok init` AND isn't OK-wired, or a host
@@ -889,7 +968,7 @@ export async function repairSkills(ctx: RepairSkillsContext): Promise<RepairSkil
     return { status: 'skipped', reason: 'reclaim-disabled' };
   }
 
-  const project = runProjectSweep(ctx.projectDir, deps, fs, logger);
+  const project = runProjectSweep(ctx.projectDir, home, deps, fs, logger);
   const user = await runUserSweep(home, deps, fs, logger);
   // Explicit-invocation only, and consent-gated even then. `ok init` must never
   // delete from $HOME unasked — that would answer one scope violation with
@@ -967,9 +1046,17 @@ function formatRepairSkillsResult(result: RepairSkillsResult): string {
     const created = result.project.entries.filter((e) => e.outcome === 'created').length;
     const noToken = result.project.entries.filter((e) => e.outcome === 'no-token').length;
     const failed = result.project.entries.filter((e) => e.outcome === 'failed').length;
+    const globalCollision = result.project.entries.filter(
+      (e) => e.outcome === 'skipped-global-collision',
+    ).length;
     lines.push(
       `  Project: ${present} present, ${created} created, ${noToken} no-token, ${failed} failed.`,
     );
+    if (globalCollision > 0) {
+      lines.push(
+        `  Skipped ${globalCollision} host(s) whose project config path is their user-global config (not a project directory).`,
+      );
+    }
   } else {
     lines.push(`  Project: skipped (${result.project.reason}).`);
   }
