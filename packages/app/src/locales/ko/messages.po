@@ -13525,6 +13525,7 @@ msgstr "{docName}에서 마지막 편집을 실행 취소했습니다."
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts

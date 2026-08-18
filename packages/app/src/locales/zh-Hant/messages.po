@@ -13525,6 +13525,7 @@ msgstr "已復原 {docName} 上的最後一次編輯"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts

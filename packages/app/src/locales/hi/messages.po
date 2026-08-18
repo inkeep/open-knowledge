@@ -13521,6 +13521,7 @@ msgstr "{docName} पर आख़िरी संपादन पूर्व�
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts

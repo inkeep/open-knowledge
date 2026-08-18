@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { useConflictFooterHeightVar } from '@/hooks/use-conflict-footer-height';
+import { mergeAcceptHistory } from './conflict-merge-history';
 import { Button } from './ui/button';
 
 const darkTheme = okCmTheme({
@@ -206,6 +207,7 @@ export function DiffView({
         theme,
         conflictMergeControlTheme,
         EditorView.lineWrapping,
+        mergeAcceptHistory(),
         unifiedMergeView({
           original: oldContent,
           highlightChanges: true,
@@ -336,7 +338,7 @@ export function DiffView({
               size="sm"
               onClick={handleUndo}
             >
-              Undo
+              <Trans>Undo</Trans>
             </Button>
             {onResolve && (
               <Button

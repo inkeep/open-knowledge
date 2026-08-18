@@ -13525,6 +13525,7 @@ msgstr "已撤销 {docName} 上的最后一次编辑"
 
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AppMenubar.tsx
+#: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
