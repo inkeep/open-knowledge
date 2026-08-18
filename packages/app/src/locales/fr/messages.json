@@ -1735,7 +1735,6 @@
     "KOZud0": [
       "Construis une base de connaissances d'étude concurrentielle. Commence par une page de synthèse, puis ajoute des pages liées entre elles pour chaque concurrent, leurs produits et leurs tarifs, ainsi que les sources derrière chaque affirmation."
     ],
-    "KPQZEa": ["Voulez-vous vraiment supprimer « ", ["name"], " » ?"],
     "KPW5WC": ["modèle déplacé"],
     "KQGZuq": ["Réutilisé s'il existe déjà, créé sinon."],
     "KRJ6xh": ["Pas encore d'étiquettes. Continuez à saisir pour en créer une."],
@@ -3669,6 +3668,7 @@
       "La correction automatique ne s'applique qu'aux problèmes ayant une correction mécanique connue."
     ],
     "gBbxn_": ["Vérification de l'état de connexion"],
+    "gDkNHk": ["Voulez-vous vraiment supprimer « ", ["name"], " » ?"],
     "gGVP4q": [
       "Cliquez sur <0>+</0> <1/> <2>Créer une compétence</2> <3/> <4>Envoyer une compétence</4>."
     ],
@@ -3793,7 +3793,6 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Échec de la suppression de ", ["file"]],
     "hh4mVC": ["Demander à l'IA de corriger ", ["flatId"]],
-    "hhI__i": ["Voulez-vous vraiment supprimer « ", ["name"], " » et son contenu ?"],
     "hjO0Mq": ["Ajouter un onglet"],
     "hmYd9H": [
       "Gardez la trace des personnes et des entreprises avec lesquelles vous travaillez et des réunions que vous avez avec elles. Utile pour se rappeler qui est quelqu'un, comment vous le connaissez, et de quoi vous avez parlé la dernière fois."
@@ -5152,6 +5151,7 @@
       "Une branche portant ce nom existe déjà. Ouvrez plutôt son worktree depuis le sélecteur."
     ],
     "x-fZxg": ["Envoyez la branche ", ["branch"], " sur GitHub avant de partager."],
+    "x0RE0M": ["Voulez-vous vraiment supprimer « ", ["name"], " » et son contenu ?"],
     "x2fr_j": ["Graphe"],
     "x3-2ta": [
       ["packName"],

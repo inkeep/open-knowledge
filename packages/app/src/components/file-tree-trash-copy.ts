@@ -2,10 +2,11 @@
  * Pure helpers for the VSCode-parity Move-to-Trash confirm modal copy. Lifted
  * out of FileTree so the verbatim copy variants are testable in isolation —
  * single-file / single-folder / multi-files / multi-folders / multi-mixed are
- * each pinned by name in the test suite. Match VSCode's `fileActions.ts`:
+ * each pinned by name in the test suite. Match VSCode's `fileActions.ts`
+ * (name wrapped in `"…"` here rather than `'…'` — see quote-style note below):
  *
- *   single file:    "Are you sure you want to delete '<name>'?"
- *   single folder:  "Are you sure you want to delete '<name>' and its contents?"
+ *   single file:    "Are you sure you want to delete \"<name>\"?"
+ *   single folder:  "Are you sure you want to delete \"<name>\" and its contents?"
  *   multi files:    "Are you sure you want to delete the following <N> files?"
  *   multi folders:  "Are you sure you want to delete the following <N> directories and their contents?"
  *   multi mixed:    "Are you sure you want to delete the following <N> files/directories and their contents?"
@@ -22,6 +23,18 @@
  * than an English confirm dialog in a translated app; the count-bearing titles
  * are plurals because "1 file" and "3 files" do not share a form in most of
  * the languages this app speaks.
+ *
+ * Quote style — WARN. Wrap interpolated names in `"…"` (double quotes), NOT
+ * `'…'` (single quotes). Lingui compiles its message catalog as ICU
+ * MessageFormat, and in ICU a `'…'`-wrapped section is an **escape**: the
+ * enclosed placeholder is treated as literal text and stripped of its
+ * interpolation slot. Extracting `t\`… '${name}' …\`` writes the msgid
+ * `"… '{name}' …"` to the .po; the compiler then emits `"… {name} …"` as one
+ * flat string with no slot, so the runtime shows a literal `{name}` to the
+ * user. Double quotes have no ICU escape meaning and interpolate correctly.
+ * This also matches the codebase-wide convention (see the `t\`… "${var}" …\``
+ * sites in SeedDialog / TemplateDeleteDialog / CommandPalette / PropertyPanel).
+ * VSCode's own copy uses `'`, but the i18n contract wins over glyph parity.
  */
 
 import { plural, t } from '@lingui/core/macro';
@@ -91,7 +104,7 @@ export function buildTrashConfirmCopyElectron(
     const name = only.name;
     if (only.kind === 'folder') {
       return {
-        title: t`Are you sure you want to delete '${name}' and its contents?`,
+        title: t`Are you sure you want to delete "${name}" and its contents?`,
         detail,
         listedTargets: null,
         confirmLabel,
@@ -99,7 +112,7 @@ export function buildTrashConfirmCopyElectron(
       };
     }
     return {
-      title: t`Are you sure you want to delete '${name}'?`,
+      title: t`Are you sure you want to delete "${name}"?`,
       detail,
       listedTargets: null,
       confirmLabel,

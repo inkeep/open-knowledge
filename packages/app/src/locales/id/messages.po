@@ -1730,11 +1730,11 @@ msgid "Are you sure you want to convert this file into a template? The original 
 msgstr "Yakin ingin mengubah berkas ini menjadi templat? Berkas aslinya akan dihapus. Tindakan ini tidak bisa dibatalkan."
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}' and its contents?"
+msgid "Are you sure you want to delete \"{name}\" and its contents?"
 msgstr "Yakin ingin menghapus \"{name}\" beserta isinya?"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}'?"
+msgid "Are you sure you want to delete \"{name}\"?"
 msgstr "Yakin ingin menghapus \"{name}\"?"
 
 #: src/components/FileTree.tsx

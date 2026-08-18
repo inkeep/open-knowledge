@@ -1476,7 +1476,6 @@
     "KOZud0": [
       "Bangun basis pengetahuan riset pesaing. Mulai dengan halaman ikhtisar, lalu tambahkan halaman yang saling tertaut untuk tiap pesaing, produk dan harganya, serta sumber di balik setiap klaim."
     ],
-    "KPQZEa": ["Yakin ingin menghapus \"", ["name"], "\"?"],
     "KPW5WC": ["templat dipindahkan"],
     "KQGZuq": ["Dipakai ulang jika sudah ada, dibuat jika belum."],
     "KRJ6xh": ["Belum ada tag. Lanjutkan mengetik untuk membuat satu."],
@@ -3139,6 +3138,7 @@
       "Perbaikan otomatis hanya berlaku untuk masalah yang punya perbaikan mekanis yang diketahui."
     ],
     "gBbxn_": ["Memeriksa status masuk"],
+    "gDkNHk": ["Yakin ingin menghapus \"", ["name"], "\"?"],
     "gGVP4q": ["Klik <0>+</0> <1/> <2>Buat keterampilan</2> <3/> <4>Unggah keterampilan</4>."],
     "gHSAWT": ["Buat worktree <0>“<1>", ["typedName"], "</1>”</0>"],
     "gHb5bB": ["Tampilkan komentar yang selesai (", ["0"], ")"],
@@ -3261,7 +3261,6 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Gagal menghapus ", ["file"]],
     "hh4mVC": ["Minta AI memperbaiki ", ["flatId"]],
-    "hhI__i": ["Yakin ingin menghapus \"", ["name"], "\" beserta isinya?"],
     "hjO0Mq": ["Tambah tab"],
     "hmYd9H": [
       "Catat orang dan perusahaan yang bekerja dengan Anda serta pertemuan yang Anda adakan dengan mereka. Cocok untuk mengingat siapa seseorang, dari mana Anda mengenalnya, dan apa yang terakhir Anda bicarakan."
@@ -4439,6 +4438,7 @@
     "wxRR0H": ["Kanvas Excalidraw"],
     "wzq9Rv": ["Cabang dengan nama itu sudah ada. Buka worktree-nya dari pengalih saja."],
     "x-fZxg": ["Push cabang ", ["branch"], " ke GitHub sebelum berbagi."],
+    "x0RE0M": ["Yakin ingin menghapus \"", ["name"], "\" beserta isinya?"],
     "x2fr_j": ["Graf"],
     "x3-2ta": [
       ["packName"],

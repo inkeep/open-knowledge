@@ -1708,7 +1708,6 @@
     "KOZud0": [
       "Crea una base de conocimiento de investigación de la competencia. Empieza con una página general y añade después páginas enlazadas entre sí para cada competidor, sus productos y precios, y las fuentes que respaldan cada afirmación."
     ],
-    "KPQZEa": ["¿Seguro que quieres eliminar «", ["name"], "»?"],
     "KPW5WC": ["plantilla movida"],
     "KQGZuq": ["Se reutiliza si ya existe; si no, se crea."],
     "KRJ6xh": ["Todavía no hay etiquetas. Sigue escribiendo para crear una."],
@@ -3642,6 +3641,7 @@
       "El arreglo automático solo se aplica a los problemas con un arreglo mecánico conocido."
     ],
     "gBbxn_": ["Comprobando el estado de la sesión"],
+    "gDkNHk": ["¿Seguro que quieres eliminar «", ["name"], "»?"],
     "gGVP4q": ["Haz clic en <0>+</0> <1/> <2>Crear habilidad</2> <3/> <4>Subir habilidad</4>."],
     "gHSAWT": ["Crear el worktree <0>“<1>", ["typedName"], "</1>”</0>"],
     "gHb5bB": ["Mostrar comentarios resueltos (", ["0"], ")"],
@@ -3766,7 +3766,6 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["No se pudo eliminar ", ["file"]],
     "hh4mVC": ["Pedir a la IA que arregle ", ["flatId"]],
-    "hhI__i": ["¿Seguro que quieres eliminar «", ["name"], "» y su contenido?"],
     "hjO0Mq": ["Añadir pestaña"],
     "hmYd9H": [
       "Lleva la cuenta de las personas y empresas con las que trabajas y de las reuniones que tienes con ellas. Va bien para recordar quién es alguien, de qué la conoces y de qué hablasteis la última vez."
@@ -5098,6 +5097,7 @@
     "wxRR0H": ["Lienzo de Excalidraw"],
     "wzq9Rv": ["Ya existe una rama con ese nombre. Abre su worktree desde el selector."],
     "x-fZxg": ["Envía la rama ", ["branch"], " a GitHub antes de compartir."],
+    "x0RE0M": ["¿Seguro que quieres eliminar «", ["name"], "» y su contenido?"],
     "x2fr_j": ["Grafo"],
     "x3-2ta": [
       ["packName"],

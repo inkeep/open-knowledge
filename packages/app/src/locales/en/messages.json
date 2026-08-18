@@ -1461,7 +1461,6 @@
     "KOZud0": [
       "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
     ],
-    "KPQZEa": ["Are you sure you want to delete {name}?"],
     "KPW5WC": ["moved template"],
     "KQGZuq": ["Reused if it already exists, created if not."],
     "KRJ6xh": ["No tags yet. Continue typing to create one."],
@@ -3119,6 +3118,7 @@
     "g9Nj4l": ["// note"],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBbxn_": ["Checking sign-in status"],
+    "gDkNHk": ["Are you sure you want to delete \"", ["name"], "\"?"],
     "gGVP4q": ["Click <0>+</0> <1/> <2>Create skill</2> <3/> <4>Upload skill</4>."],
     "gHSAWT": ["Create worktree <0>“<1>", ["typedName"], "</1>”</0>"],
     "gHb5bB": ["Show resolved comments (", ["0"], ")"],
@@ -3237,7 +3237,6 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Failed to delete ", ["file"]],
     "hh4mVC": ["Ask AI to fix ", ["flatId"]],
-    "hhI__i": ["Are you sure you want to delete {name} and its contents?"],
     "hjO0Mq": ["Add tab"],
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -4416,6 +4415,7 @@
       "A branch with that name already exists. Open its worktree from the switcher instead."
     ],
     "x-fZxg": ["Push ", ["branch"], " to GitHub before sharing."],
+    "x0RE0M": ["Are you sure you want to delete \"", ["name"], "\" and its contents?"],
     "x2fr_j": ["Graph"],
     "x3-2ta": [
       ["packName"],

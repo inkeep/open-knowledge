@@ -1734,12 +1734,12 @@ msgid "Are you sure you want to convert this file into a template? The original 
 msgstr "کیا آپ واقعی اس فائل کو ٹیمپلیٹ میں تبدیل کرنا چاہتے ہیں؟ اصل فائل حذف ہو جائے گی۔ یہ عمل واپس نہیں لیا جا سکتا۔"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}' and its contents?"
-msgstr "کیا آپ واقعی '{name}' اور اس کا مواد حذف کرنا چاہتے ہیں؟"
+msgid "Are you sure you want to delete \"{name}\" and its contents?"
+msgstr "کیا آپ واقعی \"{name}\" اور اس کے تمام مواد کو حذف کرنا چاہتے ہیں؟"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}'?"
-msgstr "کیا آپ واقعی '{name}' کو حذف کرنا چاہتے ہیں؟"
+msgid "Are you sure you want to delete \"{name}\"?"
+msgstr "کیا آپ واقعی \"{name}\" کو حذف کرنا چاہتے ہیں؟"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."

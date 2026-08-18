@@ -1734,11 +1734,11 @@ msgid "Are you sure you want to convert this file into a template? The original 
 msgstr "Voulez-vous vraiment convertir ce fichier en modèle ? Le fichier d'origine sera supprimé. Cette action est irréversible."
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}' and its contents?"
+msgid "Are you sure you want to delete \"{name}\" and its contents?"
 msgstr "Voulez-vous vraiment supprimer « {name} » et son contenu ?"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}'?"
+msgid "Are you sure you want to delete \"{name}\"?"
 msgstr "Voulez-vous vraiment supprimer « {name} » ?"
 
 #: src/components/FileTree.tsx

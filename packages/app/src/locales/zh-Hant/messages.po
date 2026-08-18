@@ -1734,12 +1734,12 @@ msgid "Are you sure you want to convert this file into a template? The original 
 msgstr "確定要把這個檔案轉換成範本嗎？原始檔案會被刪除。這個動作無法復原。"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}' and its contents?"
-msgstr "確定要刪除「{name}」及其內容嗎？"
+msgid "Are you sure you want to delete \"{name}\" and its contents?"
+msgstr "確定要刪除「{name}」及其內容嗎?"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}'?"
-msgstr "確定要刪除「{name}」嗎？"
+msgid "Are you sure you want to delete \"{name}\"?"
+msgstr "確定要刪除「{name}」嗎?"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."

@@ -1686,7 +1686,6 @@
     "KOZud0": [
       "Monte uma base de conhecimento sobre a concorrência. Comece com uma página geral e depois acrescente páginas interligadas para cada concorrente, seus produtos e preços, e as fontes por trás de cada afirmação."
     ],
-    "KPQZEa": ["Tem certeza de que deseja excluir \"", ["name"], "\"?"],
     "KPW5WC": ["modelo movido"],
     "KQGZuq": ["Reaproveitada se já existir; criada se não."],
     "KRJ6xh": ["Ainda não há tags. Continue digitando para criar uma."],
@@ -3566,6 +3565,7 @@
     "g9Nj4l": ["// nota"],
     "gAhHu7": ["A correção automática só vale para problemas com uma correção mecânica conhecida."],
     "gBbxn_": ["Verificando o estado da sessão"],
+    "gDkNHk": ["Tem certeza de que deseja excluir \"", ["name"], "\"?"],
     "gGVP4q": ["Clique em <0>+</0> <1/> <2>Criar habilidade</2> <3/> <4>Enviar habilidade</4>."],
     "gHSAWT": ["Criar o worktree <0>“<1>", ["typedName"], "</1>”</0>"],
     "gHb5bB": ["Mostrar comentários resolvidos (", ["0"], ")"],
@@ -3688,7 +3688,6 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Falha ao excluir ", ["file"]],
     "hh4mVC": ["Pedir à IA para corrigir ", ["flatId"]],
-    "hhI__i": ["Tem certeza de que deseja excluir \"", ["name"], "\" e seu conteúdo?"],
     "hjO0Mq": ["Adicionar aba"],
     "hmYd9H": [
       "Acompanhe as pessoas e empresas com quem você trabalha e as reuniões que tem com elas. Bom para lembrar quem é alguém, de onde você a conhece e sobre o que vocês falaram da última vez."
@@ -4986,6 +4985,7 @@
     "wxRR0H": ["Tela do Excalidraw"],
     "wzq9Rv": ["Já existe um ramo com esse nome. Abra o worktree dele pelo seletor."],
     "x-fZxg": ["Envie o ramo ", ["branch"], " para o GitHub antes de compartilhar."],
+    "x0RE0M": ["Tem certeza de que deseja excluir \"", ["name"], "\" e seu conteúdo?"],
     "x2fr_j": ["Grafo"],
     "x3-2ta": [
       ["packName"],

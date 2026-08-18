@@ -100,6 +100,11 @@ msgstr "여기에 \"{trimmed}\"이 이미 있습니다"
 msgid "\"frontmatter\" is a reserved property name"
 msgstr "\"frontmatter\"는 예약된 속성 이름입니다"
 
+#. placeholder {0}: item.attempts
+#: src/components/acp/ThreadView.tsx
+msgid "({0, plural, one {# attempt} other {# attempts}})"
+msgstr "({0, plural, other {# 시도}})"
+
 #: src/components/settings/LintingSection.tsx
 msgid "(a bare folder name needs /** after it to match what's inside)"
 msgstr "(폴더 이름만 입력하면 내부 항목과 일치하도록 뒤에 /**가 필요합니다)"
@@ -1729,12 +1734,12 @@ msgid "Are you sure you want to convert this file into a template? The original 
 msgstr "이 파일을 템플릿으로 변환하시겠습니까? 원본 파일은 삭제됩니다. 이 작업은 취소할 수 없습니다."
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}' and its contents?"
-msgstr "'{name}'과 그 내용을 삭제하시겠습니까?"
+msgid "Are you sure you want to delete \"{name}\" and its contents?"
+msgstr "정말로 \"{name}\" 및 해당 내용을 삭제하시겠어요?"
 
 #: src/components/file-tree-trash-copy.ts
-msgid "Are you sure you want to delete '{name}'?"
-msgstr "'{name}'을 삭제하시겠습니까?"
+msgid "Are you sure you want to delete \"{name}\"?"
+msgstr "정말로 \"{name}\"을(를) 삭제하시겠어요?"
 
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to delete {folderName}/ and all files inside? This action cannot be undone."
