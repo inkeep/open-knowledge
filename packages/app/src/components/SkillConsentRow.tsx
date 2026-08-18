@@ -1,7 +1,7 @@
 /**
  * The one truthful row for a built-in skill offered for install, shared by
- * Settings → AI tools & CLI and the first-launch consent dialog (near-duplicate
- * markup before this). It renders what the skill is (name + its own frontmatter
+ * Settings → Skills Studio (both scopes) and the first-launch consent dialog
+ * (near-duplicate markup before this). It renders what the skill is (name + its own frontmatter
  * description, replacing the hand-written subtext), where it reaches (the
  * existing agent-icon cluster, including custom roots), and what it costs (the
  * compact always-on + on-trigger subset — never a sum).

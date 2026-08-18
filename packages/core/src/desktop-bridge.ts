@@ -617,9 +617,15 @@ export interface OkIntegrationsStatus {
     readonly id: string;
     readonly name: string;
     /** The skill's own frontmatter description; empty when the bundle is
-     *  unreadable. Replaces the hand-written per-id subtext on the row. */
+     *  unreadable. This is the AGENT's trigger text — the install-confirm modal
+     *  quotes it, the row does not. */
     readonly description: string;
     readonly installed: boolean;
+    /** True when first-launch setup offers this bundle. Uninstalled-and-
+     *  onboarding means the user was asked and said no; uninstalled-and-not-
+     *  onboarding means they were never asked. The renderer cannot tell those
+     *  apart from `installed` alone, and only the second is offerable again. */
+    readonly onboarding: boolean;
     readonly paths: readonly string[];
     /** Three-tier context cost from the shared estimator. Absent when the
      *  bundle could not be parsed (broken build) — the row hides the cost. */
@@ -689,8 +695,8 @@ export interface OkProjectIntegrationsStatus {
   readonly skill: {
     readonly installed: boolean;
     readonly paths: readonly string[];
-    /** The skill's own frontmatter description, so the row states what the
-     *  bundle says rather than a hand-written subtext that can drift from it. */
+    /** The skill's own frontmatter description — the agent's trigger text,
+     *  quoted by the install-confirm modal. */
     readonly description: string;
     /** Editor ids this project's skill fans out to — the reach cluster's input.
      *  Project-scoped, so these are the editors with a project skill root here,

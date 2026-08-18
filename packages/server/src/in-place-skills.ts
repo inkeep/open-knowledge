@@ -141,7 +141,7 @@ export function scanHostRootAliases(base: string, scope: SkillScope): Record<str
 }
 
 /** Per-host skills roots for a scope (editor primaries + the `.agents` hub) —
- *  the row source for folder-level surfaces (Settings → Skills folders). */
+ *  the row source for folder-level surfaces (Settings → Skills Studio folders). */
 function hostSkillRootsFor(
   scope: SkillScope,
 ): ReadonlyArray<{ editor: SkillHostId; root: string }> {

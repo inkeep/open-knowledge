@@ -23,7 +23,12 @@ const translate = (strings: TemplateStringsArray | string, ...values: unknown[])
 vi.doMock('@lingui/react/macro', () => ({
   Trans: ({ children }: { children: ReactNode }) => children,
   t: translate,
-  useLingui: () => ({ t: translate }),
+  useLingui: () => ({
+    // Production's useLingui always carries `i18n`; the picker reads
+    // `i18n.locale` to format the shared-folder sentence with Intl.ListFormat.
+    i18n: { locale: 'en' },
+    t: translate,
+  }),
 }));
 
 vi.doMock('sonner', () => ({

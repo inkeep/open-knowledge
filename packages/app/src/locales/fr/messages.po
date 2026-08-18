@@ -373,6 +373,11 @@ msgstr "Propriétés de {0}"
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} lit cette compétence via {poolRootRel}. Cliquez pour que {1} cesse de recevoir « {2} » — {subRoot} garde ses autres compétences mais ne suit plus {poolRootRel}."
 
+#. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{0} share this folder."
+msgstr "{0} partagent ce dossier."
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -1502,11 +1507,6 @@ msgstr "Paramètres de l'agent"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Agent Skill"
 msgstr "Compétence d'agent"
-
-#. Group label above the skill rows in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Agent Skills"
-msgstr "Compétences d'agent"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -3454,7 +3454,9 @@ msgstr "Impossible d'ajouter ce commentaire."
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Impossible d'appliquer la modification : {0}"
 
@@ -3749,6 +3751,14 @@ msgstr "Impossible de lire les commentaires en attente d'envoi : {0}"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
 msgstr "Impossible de lire ce thème ({0})"
+
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't read whether this project's skill is installed."
+msgstr "Impossible de lire si la compétence de ce projet est installée."
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Couldn't read which skills are installed."
+msgstr "Impossible de lire quelles compétences sont installées."
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -4723,6 +4733,11 @@ msgstr "par ex. Changement de projet pendant une synchronisation"
 #: src/components/ReportBugDialogBody.tsx
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "par ex. L'éditeur s'est figé après avoir collé un grand tableau"
+
+#. Says what symlinking two skill folders together buys the user, before any button names it
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
+msgstr "Chaque outil IA lit les compétences depuis son propre dossier. Pointez un dossier vers un autre et les deux outils verront les mêmes compétences : ajoutez une compétence une seule fois au lieu de la copier dans chaque outil."
 
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -5819,10 +5834,6 @@ msgstr "Lien de partage du dossier copié."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Dossier cible : {linkTitle}. Cliquez pour ouvrir la synthèse."
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Folders"
-msgstr "Dossiers"
-
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Follow"
@@ -6086,6 +6097,11 @@ msgstr "Aller à la ligne {0} dans {1}"
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "Bien"
+
+#. Sole button when the intro has nothing left to offer
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Got it"
+msgstr "J'ai compris"
 
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
@@ -6384,6 +6400,18 @@ msgstr "Comment configurer"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "Comment configurer {0} (s'ouvre dans le navigateur)"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to set up new projects with OpenKnowledge."
+msgstr "Comment configurer de nouveaux projets avec OpenKnowledge."
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to use OpenKnowledge and its MCP tools."
+msgstr "Comment utiliser OpenKnowledge et ses outils MCP."
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to write a new skill and install it."
+msgstr "Comment écrire une nouvelle compétence et l'installer."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project."
@@ -6712,9 +6740,10 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Insérez, supprimez, déplacez, copiez et mettez en retrait les lignes de l'éditeur de source via le mappage clavier par défaut de CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
@@ -6722,7 +6751,9 @@ msgstr "Insérez, supprimez, déplacez, copiez et mettez en retrait les lignes d
 msgid "Install"
 msgstr "Installer"
 
+#. placeholder {0}: offer.name
 #. placeholder {0}: skill.name
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr "Installer {0}"
@@ -6731,7 +6762,7 @@ msgstr "Installer {0}"
 msgid "Install {brand} →"
 msgstr "Installer {brand} →"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Install {name}"
 msgstr "Installer {name}"
@@ -6866,6 +6897,7 @@ msgstr "Installation"
 msgid "Installing {agentName}…"
 msgstr "Installation de {agentName}…"
 
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "S'installe dans"
@@ -7326,6 +7358,8 @@ msgstr "Chargement des dépôts"
 msgid "Loading settings"
 msgstr "Chargement des paramètres"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "Loading skills"
 msgstr "Chargement des compétences"
@@ -7473,6 +7507,10 @@ msgstr "La gestion des outils IA n'est pas disponible dans cette version."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "La gestion des outils IA du projet n'est pas disponible dans cette version."
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Managing skills is unavailable in this build."
+msgstr "La gestion des compétences n'est pas disponible dans cette version."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -8512,8 +8550,10 @@ msgstr "Pas dans la barre latérale"
 msgid "Not installed"
 msgstr "Non installé"
 
+#. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
 msgid "Not now"
 msgstr "Pas maintenant"
@@ -9239,8 +9279,8 @@ msgid "Opens in a new tab"
 msgstr "S'ouvre dans un nouvel onglet"
 
 #: src/components/SkillInstallMenu.tsx
-msgid "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
-msgstr "Ouvre Paramètres → Compétences, où vous liez un dossier entier à un autre pour que les deux agents lisent les mêmes compétences, et où vous ajoutez des racines de compétences personnalisées."
+msgid "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+msgstr "Ouvre Paramètres → Studio de compétences, où vous liez un dossier entier à un autre pour que les deux agents lisent les mêmes compétences, et où vous ajoutez des racines de compétences personnalisées."
 
 #: src/components/empty-state/CreateView.tsx
 #: src/components/PackCardGrid.tsx
@@ -9810,11 +9850,6 @@ msgstr "Les plugins de projet constituent la norme de rédaction de votre projet
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "Racine du projet"
-
-#. Group label above the project runtime-skill row in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project skill"
-msgstr "Compétence de projet"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -11401,6 +11436,11 @@ msgstr "Partager le dossier"
 msgid "Share skills"
 msgstr "Partager les compétences"
 
+#. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Share skills between AI tools"
+msgstr "Partager des compétences entre outils IA"
+
 #: src/components/SharingModeField.tsx
 msgid "Share this setup with your team?"
 msgstr "Partager cette configuration avec votre équipe ?"
@@ -11714,8 +11754,6 @@ msgstr "Découverte de compétences propulsée par <0>skills.sh</0>"
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FilesSkillsToggle.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-#: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills"
 msgstr "Compétences"
 
@@ -11723,10 +11761,17 @@ msgstr "Compétences"
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Les compétences sont maintenant partagées. Validez .ok/skills pour les partager avec votre équipe."
 
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Heading above the project's own skill row, in Settings → This project → Skills Studio
+#. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Skills from OpenKnowledge"
+msgstr "Compétences d'OpenKnowledge"
+
+#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
-msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
-msgstr "Les compétences s'installent dans tous les outils IA détectés sur cette machine, indépendamment des connexions MCP choisies ci-dessus."
+msgid "Skills moved to Skills Studio."
+msgstr "Les compétences ont été déplacées vers Studio de compétences."
 
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
@@ -11738,9 +11783,24 @@ msgstr "Compétences réaffectées"
 msgid "Skills section"
 msgstr "Section Compétences"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
-msgid "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
-msgstr "Les compétences apprennent aux agents des tâches répétables. Rédigez-les et gérez-les depuis la section Compétences de l'éditeur ; le menu d'installation de chaque compétence détermine où elle réside. Voici les dossiers de compétences de ce projet."
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills Studio"
+msgstr "Studio de compétences"
+
+#. First-visit explanation of what the Skills Studio settings page is for
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
+msgstr "Les compétences apprennent des tâches répétables à vos outils IA. Installez celles fournies par OpenKnowledge ou écrivez les vôtres dans la barre latérale Compétences de l'éditeur."
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
+msgstr "Les compétences apprennent des tâches répétables à vos outils IA. Écrivez les vôtres dans la barre latérale Compétences de l'éditeur ; cette page sert à les activer et à les partager."
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills that come with this project, and the folders its AI tools read them from."
+msgstr "Les compétences fournies avec ce projet, et les dossiers dans lesquels ses outils IA les lisent."
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12175,10 +12235,6 @@ msgstr "lien symbolique"
 msgid "Symlink"
 msgstr "Lien symbolique"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
-msgstr "Liez un autre dossier à l'un de ceux-ci pour que les deux agents lisent les mêmes compétences ; dissociez pour gérer à nouveau les compétences d'un dossier une par une."
-
 #: src/components/FileTree.tsx
 msgid "Symlink to {targetPath}"
 msgstr "Lien symbolique vers {targetPath}"
@@ -12363,10 +12419,6 @@ msgstr "Liste de tâches"
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "Liste de tâches"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
-msgstr "Apprend aux agents de code de ce projet à lire et écrire via OpenKnowledge."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
@@ -12825,6 +12877,11 @@ msgstr "Ces compétences sont actuellement lues depuis un autre dossier. Après 
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "Ces règles proviennent du fichier <0>{configFile}</0> de votre projet, qui régit entièrement la vérification pour ce projet. Activez ou désactivez des règles et modifiez leurs options ici ; les changements sont réécrits dans le fichier."
 
+#. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr "Elles apprennent à vos outils IA à travailler avec OpenKnowledge. En installer une l'ajoute à tous les outils IA de cette machine."
+
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
 msgstr "Réflexion"
@@ -13054,6 +13111,11 @@ msgstr "Cela déplace <0>{name}</0> de {0} vers {1}, en relocalisant ses fichier
 msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
 msgstr "Celui-ci doit voir vos fichiers, pas seulement le document ouvert, afin qu'il apparaisse lorsque vous exécutez un audit de projet plutôt que pendant que vous tapez."
 
+#. Says what the project skill is for, then the thing that makes it different from the user-scope ones: it is committed to the repo
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
+msgstr "Celle-ci apprend à vos outils IA à travailler avec OpenKnowledge. Elle vit dans le dossier du projet, elle s'installe donc pour toute personne qui ouvre le projet."
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr "Ce pack est déjà configuré ici."
@@ -13151,6 +13213,11 @@ msgstr "Le serveur en cours d'exécution de ce projet ne prend pas en charge l'�
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "Le serveur de ce projet (v{0}) est plus récent que cette application (v{1})."
 
+#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This project's skill moved to Skills Studio."
+msgstr "La compétence de ce projet a été déplacée vers Studio de compétences."
+
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "Ceci retire les paramètres et les intégrations d'OpenKnowledge de votre Mac et des projets que vous sélectionnez ci-dessous, mais conserve votre contenu markdown et les compétences que vous avez écrites."
@@ -13192,11 +13259,6 @@ msgstr "Ce réglage est propre à chaque machine et n'est pas partagé avec les 
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "Ce réglage est propre à chaque machine et n'est pas partagé avec les collaborateurs. Il nécessite une clé API (définie ci-dessous), sauf si votre point de terminaison est un serveur local qui n'en demande pas."
-
-#. Tells the user the project skill is committed to the repo, unlike the user-global skills
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
-msgstr "Cette compétence réside dans le dossier du projet : elle s'installe donc pour toutes les personnes qui ouvrent ce projet, pas seulement pour vous."
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -13560,13 +13622,13 @@ msgstr "Annuler jusqu'à cette modification ?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Annulez, rétablissez, ou parcourez les changements de sélection dans le volet Modifier la source ou dans un champ de propriété de type code."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall"
 msgstr "Désinstaller"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall {name}"
 msgstr "Désinstaller {name}"
@@ -14261,6 +14323,11 @@ msgstr "hier"
 msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 msgstr "Vous avez déjà votre propre compétence nommée « {0} » : la version du pack ne sera pas installée et la vôtre restera intacte. Renommez la vôtre pour installer celle du pack."
 
+#. Label above the optional skill offered on first visit
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "You can add"
+msgstr "Vous pouvez ajouter"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "You can also create one from a terminal with <0>ok bug-report</0>."
 msgstr "Vous pouvez aussi en créer un depuis un terminal avec <0>ok bug-report</0>."
@@ -14448,10 +14515,6 @@ msgstr "Vos requêtes de recherche et le texte intégral des pages correspondant
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "Votre lien de partage est prêt ci-dessous."
-
-#: src/components/settings/SkillsManagerSection.tsx
-msgid "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
-msgstr "Vos dossiers de compétences au niveau utilisateur — disponibles dans tous les projets de cette machine. Le menu d'installation de chaque compétence détermine où elle réside."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

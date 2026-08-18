@@ -1,15 +1,19 @@
 /**
  * Settings → This project → AI tools — the project-scoped sibling of
  * `AiToolsSection.tsx`. Where that surface manages OK's user-global footprint
- * (per-editor USER MCP entries, the shell-PATH shim, user-global skills), this
- * one manages the per-project footprint of the currently-open project:
- * per-editor project MCP config files (`.mcp.json`, `.cursor/mcp.json`,
- * `.codex/config.toml`, …) and the project runtime skill. These live in the
- * project folder and travel with it via git — a `project` (shared), not
+ * (per-editor USER MCP entries, the shell-PATH shim), this one manages the
+ * per-project footprint of the currently-open project: per-editor project MCP
+ * config files (`.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, …).
+ * These live in the project folder and travel with it via git — a `project` (shared), not
  * `project-local` (per-machine), storage scope. Checkboxes reflect
  * LIVE installed state; each click applies immediately (check = install,
  * uncheck = uninstall) over the `projectIntegrations` bridge, which resolves
  * the window's project in main.
+ *
+ * The project runtime skill used to sit at the bottom of this page. PRD-7975
+ * moved it to Settings → This project → Skills Studio (`ProjectSkillSection`),
+ * so that skills live on the skills page at BOTH scopes — a rule with one
+ * exception is worse than no rule.
  *
  * The one thing the global section doesn't carry: per-editor follow-up honesty.
  * A written project config is not always a connected one — Claude Code needs a
@@ -27,8 +31,6 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { Info } from 'lucide-react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { SkillConsentRow } from '@/components/SkillConsentRow';
-import { SkillInstallConfirmDialog } from '@/components/SkillInstallConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -39,7 +41,6 @@ import type {
   OkProjectIntegrationsSetRequest,
   OkProjectIntegrationsStatus,
 } from '@/lib/desktop-bridge-types';
-import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type EditorRow = OkProjectIntegrationsStatus['editors'][number];
@@ -118,9 +119,6 @@ export function ProjectAiToolsSection() {
   const [status, setStatus] = useState<OkProjectIntegrationsStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
-  // The project skill is a single row, so the confirm state is just its mode —
-  // no per-row id like the user-global section needs.
-  const [confirmMode, setConfirmMode] = useState<'install' | 'uninstall' | null>(null);
 
   useEffect(() => {
     if (!bridge) return;
@@ -237,99 +235,11 @@ export function ProjectAiToolsSection() {
         </ul>
       </div>
 
-      {status.skill !== null && (
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-medium text-muted-foreground">
-            <Trans comment="Group label above the project runtime-skill row in Settings → This project → AI tools">
-              Project skill
-            </Trans>
-          </span>
-          <p
-            className="text-xs text-muted-foreground"
-            data-testid="project-ai-tools-skill-scope-note"
-          >
-            <Trans comment="Tells the user the project skill is committed to the repo, unlike the user-global skills">
-              This skill lives in the project folder, so it installs for everyone who opens this
-              project — not just you.
-            </Trans>
-          </p>
-          <ul className="rounded-md border border-border bg-card/50 overflow-hidden">
-            <li className="hover:bg-accent">
-              <SkillConsentRow
-                name="open-knowledge"
-                description={
-                  status.skill.description ||
-                  t`Teaches coding agents in this project to read and write through OpenKnowledge.`
-                }
-                // Defensive: a main process older than this renderer sends no
-                // hosts. An empty set renders the row's own no-destination copy
-                // rather than crashing the whole section.
-                hosts={status.skill.hosts ?? []}
-                size={status.skill.size}
-                onActivate={
-                  status.skill.sourceDir
-                    ? () => {
-                        const source = status.skill?.sourceDir;
-                        if (!source) return;
-                        openSkillPreviewTab({
-                          flavor: 'builtin',
-                          source,
-                          name: 'open-knowledge',
-                          subtitle: '',
-                          level: 'project',
-                        });
-                      }
-                    : undefined
-                }
-                control={
-                  status.skill.installed ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => setConfirmMode('uninstall')}
-                      data-testid="project-ai-tools-skill-uninstall"
-                    >
-                      <Trans>Uninstall</Trans>
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={busy || (status.skill.hosts ?? []).length === 0}
-                      onClick={() => setConfirmMode('install')}
-                      data-testid="project-ai-tools-skill-install"
-                    >
-                      <Trans>Install</Trans>
-                    </Button>
-                  )
-                }
-              />
-            </li>
-          </ul>
-        </div>
-      )}
-
-      {status.skill !== null && confirmMode && (
-        <SkillInstallConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setConfirmMode(null);
-          }}
-          mode={confirmMode}
-          name="open-knowledge"
-          description={
-            status.skill.description ||
-            t`Teaches coding agents in this project to read and write through OpenKnowledge.`
-          }
-          paths={status.skill.paths}
-          size={status.skill.size}
-          onConfirm={() => {
-            const next = confirmMode === 'install';
-            setConfirmMode(null);
-            void applyToggle({ kind: 'skill' }, next);
-          }}
-        />
-      )}
+      <p className="text-xs text-muted-foreground" data-testid="project-ai-tools-skills-moved">
+        <Trans comment="Points at the settings page that now owns the project skill, in Settings → This project → AI tools">
+          This project's skill moved to Skills Studio.
+        </Trans>
+      </p>
     </section>
   );
 }

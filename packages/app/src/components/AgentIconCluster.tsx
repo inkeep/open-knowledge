@@ -25,7 +25,7 @@ type TargetIconId = Parameters<typeof TargetIcon>[0]['id'];
  * Editor ids map to their display name; the vendor-neutral hub reads `.agents`;
  * custom-root hosts ARE paths and show verbatim.
  */
-function hostLabel(host: string): string {
+export function hostLabel(host: string): string {
   if (host === 'agents' || host === '.agents' || host.startsWith('.agents/')) return '.agents';
   if (host.includes('/')) return host;
   return (EDITOR_LABELS as Record<string, string>)[host] ?? host;

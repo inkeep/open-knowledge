@@ -6851,6 +6851,7 @@ function registerIntegrationsSettingsIpc(): void {
             name: d.name,
             description: d.description,
             installed: d.installed,
+            onboarding: (ONBOARDING_BUNDLE_IDS as readonly string[]).includes(id),
             size: d.size,
             sourceDir: d.sourceDir,
             resolvedHosts,
@@ -6956,7 +6957,11 @@ function registerProjectIntegrationsSettingsIpc(): void {
       const sourceDir = resolveBundledSkillDir('project', { checkDesktop: false });
       const parsed = sourceDir ? parseSkillDir(sourceDir) : null;
       if (!parsed) return null;
-      return { sourceDir, description: parsed.description ?? '', size: estimateSkillCost(parsed) };
+      return {
+        sourceDir,
+        description: parsed.description ?? '',
+        size: estimateSkillCost(parsed),
+      };
     },
     entryLocator: (id) => {
       const target = EDITOR_TARGETS[id];

@@ -65,7 +65,9 @@ const baseStatus: OkProjectIntegrationsStatus = {
   skill: {
     installed: true,
     paths: ['.claude/skills/open-knowledge/SKILL.md', '.codex/skills/open-knowledge/SKILL.md'],
-    description: 'Teaches coding agents in this project to read and write through OpenKnowledge.',
+    description:
+      'Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP.',
+    blurb: 'How to use OpenKnowledge and its MCP tools.',
     hosts: ['claude', 'codex'],
     size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
     sourceDir: '/bundled/project',
@@ -128,7 +130,7 @@ describe('ProjectAiToolsSection', () => {
     expect(screen.queryByTestId('project-ai-tools-loading')).toBeNull();
   });
 
-  test('renders each project MCP row + the single skill row', async () => {
+  test('renders each project MCP row, and points at where the skill went', async () => {
     installBridge();
     renderSection();
     await waitFor(() => {
@@ -136,9 +138,11 @@ describe('ProjectAiToolsSection', () => {
     });
     expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
     expect(screen.getByTestId('project-ai-tools-editor-checkbox-codex')).toBeTruthy();
-    // The skill row is no longer a checkbox: an installed project skill offers
-    // Uninstall, and installing is an explicit button behind a confirm screen.
-    expect(screen.getByTestId('project-ai-tools-skill-uninstall')).toBeTruthy();
+    // The project skill moved to Skills Studio; this page names where.
+    expect(screen.queryByTestId('project-ai-tools-skill-uninstall')).toBeNull();
+    expect(screen.getByTestId('project-ai-tools-skills-moved').textContent).toContain(
+      'Skills Studio',
+    );
   });
 
   test('installed/foreign rows are checked; not-installed rows are not', async () => {
@@ -183,30 +187,6 @@ describe('ProjectAiToolsSection', () => {
     expect(setCalls[0]).toEqual({ component: { kind: 'editor', id: 'cursor' }, enabled: true });
   });
 
-  test('the skill row confirms before uninstalling, then fans out via one component ref', async () => {
-    const { setCalls } = installBridge();
-    renderSection();
-    const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-ai-tools-skill-uninstall')).toBeTruthy();
-    });
-
-    // The control alone writes nothing — it opens the consent screen. This is
-    // the whole point of the change: the project skill lands in the repo for
-    // everyone, so it must not move on a single click.
-    await user.click(screen.getByTestId('project-ai-tools-skill-uninstall'));
-    expect(setCalls.length).toBe(0);
-
-    // The confirm names every project-relative destination before acting.
-    const destinations = await screen.findByTestId('skill-destination-list');
-    expect(destinations.textContent).toContain('.claude/skills/open-knowledge/SKILL.md');
-    expect(destinations.textContent).toContain('.codex/skills/open-knowledge/SKILL.md');
-
-    await user.click(screen.getByTestId('skill-confirm-primary'));
-    await waitFor(() => expect(setCalls.length).toBe(1));
-    expect(setCalls[0]).toEqual({ component: { kind: 'skill' }, enabled: false });
-  });
-
   test('a refused toggle surfaces the error as a toast', async () => {
     installBridge({
       setResult: () => ({
@@ -241,8 +221,5 @@ describe('ProjectAiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('project-ai-tools-read-only')).toBeTruthy();
     });
-    expect(screen.getByTestId('project-ai-tools-skill-uninstall').hasAttribute('disabled')).toBe(
-      true,
-    );
   });
 });

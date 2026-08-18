@@ -1048,12 +1048,12 @@ describe('runInit', () => {
       expect(capturedHome).toBe(fakeHome);
     });
 
-    it('an omitted skill choice enables every bundle', async () => {
-      // Enabling is not writing. The folder-creation bug this change fixes
-      // lives in `installUserSkill`, which refuses every destination whose host
-      // root is absent, so a machine with no agent tooling still gets nothing
-      // from this path. Making the bundles opt-in instead would be a product
-      // change rather than a fix, so the flag semantics stay as they were.
+    it('an omitted skill choice installs the onboarding set, not every bundle', async () => {
+      // A bare `ok init` now matches the desktop first launch, which offers
+      // `discovery` alone. `write-skill` is not installed and NO decision
+      // is recorded for it, which `resolveBundleEnabled` reads as "uninstalled
+      // on a fresh machine, untouched where it already exists" — so this never
+      // removes a copy someone already has.
       const installed: (string | undefined)[] = [];
       await runInitForTest({
         skills: undefined,
@@ -1062,7 +1062,8 @@ describe('runInit', () => {
           return 'installed';
         },
       });
-      expect([...installed].sort()).toEqual(['discovery', 'write-skill']);
+      expect([...installed].sort()).toEqual(['discovery']);
+      expect(await readBundleDecision(fakeHome, 'open-knowledge-write-skill')).toBeNull();
     });
 
     it('--no-skills installs nothing and records NOTHING', async () => {
@@ -1127,7 +1128,10 @@ describe('runInit', () => {
 
     it('installs every enabled bundle with force so the shared cli-hosts version key cannot skip the second', async () => {
       const forced: (boolean | undefined)[] = [];
+      // Explicit two-bundle selection: the default is the onboarding set alone,
+      // and a single bundle cannot exercise the shared version key.
       await runInitForTest({
+        skills: 'discovery,write-skill',
         installUserSkill: async (opts) => {
           forced.push(opts?.force);
           return 'installed';
@@ -1159,6 +1163,7 @@ describe('runInit', () => {
 
     it('surfaces the manual-install hint when one bundle fails even if the other installs', async () => {
       const result = await runInitForTest({
+        skills: 'discovery,write-skill',
         installUserSkill: async (opts) =>
           opts?.bundleId === 'write-skill' ? 'failed' : 'installed',
       });
@@ -3311,12 +3316,22 @@ describe('resolveInitSkillEnablement — --skills / --no-skills flag parsing', (
   // Enabling is not writing: `installUserSkill` still refuses every destination
   // whose host root is absent, so a machine with no agent tooling gets nothing
   // regardless of what this returns.
-  it('undefined (no flag) enables every bundle', () => {
-    expect(sorted(undefined)).toEqual(['discovery', 'write-skill']);
+  //
+  // The default is the ONBOARDING set, not every user-global bundle: a bare
+  // `ok init` sets up exactly what the desktop's first launch does.
+  // `write-skill` is an authoring convenience with no bearing on whether the
+  // tools work, so installing it unasked — and recording consent for it — is
+  // the thing the ticket is about.
+  it('undefined (no flag) enables the onboarding set only', () => {
+    expect(sorted(undefined)).toEqual(['discovery']);
   });
 
-  it('true (bare --skills) enables every bundle', () => {
-    expect(sorted(true)).toEqual(['discovery', 'write-skill']);
+  it('true (bare --skills) enables the onboarding set only', () => {
+    expect(sorted(true)).toEqual(['discovery']);
+  });
+
+  it('write-skill is still one flag away', () => {
+    expect(sorted('discovery,write-skill')).toEqual(['discovery', 'write-skill']);
   });
 
   it('false (--no-skills) enables none', () => {

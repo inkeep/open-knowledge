@@ -268,12 +268,12 @@ export function SettingsDialogShell({
         { id: 'account', label: t`Account` },
         // User-scope plugin management (toggle personal plugins like Themes).
         { id: 'user-plugins-manage', label: t`Plugins` },
-        // GLOBAL skill folders (user-home skills roots) — the user-scope half
-        // of the Skills surface; project folders live under This project.
-        { id: 'user-skills', label: t`Skills` },
-        // Machine-level OK footprint (per-editor MCP entries, Agent Skills,
-        // the ok PATH command) — user-scoped, and desktop-only because the
-        // install actors live in the Electron main process.
+        // The user-scope half of the Skills surface: the skills OK ships plus
+        // the user-home skill folders. Project skills live under This project.
+        { id: 'user-skills', label: t`Skills Studio` },
+        // Machine-level OK CONNECTIONS (per-editor MCP entries, the ok PATH
+        // command) — user-scoped, and desktop-only because the install actors
+        // live in the Electron main process. Skills moved to Skills Studio.
         ...(isOkDesktopHost ? [{ id: 'ai-tools', label: t`AI tools & CLI` }] : []),
       ],
     },
@@ -308,14 +308,15 @@ export function SettingsDialogShell({
         { id: 'search', label: t`Search` },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        // Per-project MCP wiring + runtime skill — desktop-only because the
-        // install actors live in the Electron main process.
+        // Per-project MCP wiring — desktop-only because the install actors
+        // live in the Electron main process. The project skill moved to
+        // Skills Studio.
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         // Expose-via-tunnel controls — desktop-only (writes the project-local
         // exposure consent + restarts this window's server via the bridge).
         ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Network access` }] : []),
         { id: 'project-templates', label: t`Templates` },
-        { id: 'skills', label: t`Skills` },
+        { id: 'skills', label: t`Skills Studio` },
         { id: 'okignore', label: t`Ignore patterns` },
       ],
     },

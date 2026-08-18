@@ -37,6 +37,7 @@ import {
   initContent,
   installUserSkill,
   MCP_SERVER_NAME,
+  ONBOARDING_BUNDLE_IDS,
   ProjectGitInitError,
   reportSkillInstall,
   resolveSkillInstallReportSettings,
@@ -790,16 +791,23 @@ export class ContentDirError extends Error {
 
 /**
  * Resolve which user-global bundles `ok init` should enable from the `--skills`
- * / `--no-skills` flag: `undefined`/`true` → every bundle; `false`
- * (`--no-skills`) → none; a comma list (`--skills discovery`) → only the named
- * bundle ids (unknown tokens ignored — the known-id set wins).
+ * / `--no-skills` flag: `undefined`/`true` → the onboarding set; `false`
+ * (`--no-skills`) → none; a comma list (`--skills discovery,write-skill`) →
+ * only the named bundle ids (unknown tokens ignored — the known-id set wins).
+ *
+ * The default is `ONBOARDING_BUNDLE_IDS`, not every user-global bundle, so a
+ * bare `ok init` sets up exactly what the desktop's first launch does.
+ * `write-skill` is an authoring convenience with no bearing on
+ * whether the tools work; installing it unasked — and recording an affirmative
+ * consent for it — is the thing the ticket is about. It stays one `--skills
+ * write-skill` away, and one click away in Settings → Skills Studio.
  *
  * Enabling a bundle is not the same as writing it: `installUserSkill` still
  * refuses every destination whose host root is absent, so a machine with no
  * agent tooling gets nothing regardless of what this returns.
  */
 export function resolveInitSkillEnablement(skills: string | boolean | undefined): Set<BundleId> {
-  if (skills === undefined || skills === true) return new Set(USER_GLOBAL_BUNDLE_IDS);
+  if (skills === undefined || skills === true) return new Set<BundleId>(ONBOARDING_BUNDLE_IDS);
   if (skills === false) return new Set();
   const requested = skills
     .split(',')

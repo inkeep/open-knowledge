@@ -373,6 +373,11 @@ msgstr "{0} প্রপার্টি"
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} এই স্কিলটি {poolRootRel}-এর মাধ্যমে পড়ে। {1}-কে \"{2}\" পাওয়া বন্ধ করতে ক্লিক করুন — {subRoot} তার অন্য স্কিলগুলো রাখবে কিন্তু {poolRootRel} অনুসরণ করা বন্ধ করবে।"
 
+#. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{0} share this folder."
+msgstr "{0} এই ফোল্ডারটি ভাগ করে।"
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -1498,11 +1503,6 @@ msgstr "এজেন্ট সেটিং"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Agent Skill"
 msgstr "Agent Skill"
-
-#. Group label above the skill rows in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Agent Skills"
-msgstr "Agent Skills"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -3450,7 +3450,9 @@ msgstr "ওই মন্তব্যটি যোগ করা যায়ন�
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "পরিবর্তনটি প্রয়োগ করা যায়নি: {0}"
 
@@ -3745,6 +3747,14 @@ msgstr "পাঠানোর অপেক্ষায় থাকা মন্
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
 msgstr "এই থিমটি পড়া যায়নি ({0})"
+
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't read whether this project's skill is installed."
+msgstr "এই প্রকল্পের স্কিল ইনস্টল করা আছে কিনা পড়া যায়নি।"
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Couldn't read which skills are installed."
+msgstr "কোন স্কিলগুলি ইনস্টল করা আছে তা পড়া যায়নি।"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -4719,6 +4729,11 @@ msgstr "যেমন সিঙ্ক চলার সময় প্রকল�
 #: src/components/ReportBugDialogBody.tsx
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "যেমন একটি বড় টেবিল পেস্ট করার পর সম্পাদক জমে গিয়েছিল"
+
+#. Says what symlinking two skill folders together buys the user, before any button names it
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
+msgstr "প্রতিটি AI টুল নিজের ফোল্ডার থেকে স্কিল পড়ে। একটি ফোল্ডারকে আরেকটির দিকে নির্দেশ করুন, তখন দুটি টুলই একই স্কিল দেখবে — প্রতিটি টুলে কপি করার বদলে স্কিল একবারই যোগ করুন।"
 
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -5815,10 +5830,6 @@ msgstr "ফোল্ডার শেয়ার লিংক কপি কর�
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "ফোল্ডার লক্ষ্য: {linkTitle}। সংক্ষিপ্তসার খুলতে ক্লিক করুন।"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Folders"
-msgstr "ফোল্ডার"
-
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Follow"
@@ -6082,6 +6093,11 @@ msgstr "{1}-এ লাইন {0}-এ যান"
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "ভালো"
+
+#. Sole button when the intro has nothing left to offer
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Got it"
+msgstr "বুঝেছি"
 
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
@@ -6380,6 +6396,18 @@ msgstr "কীভাবে সেট আপ করবেন"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "{0} কীভাবে সেট আপ করবেন (ব্রাউজারে খোলে)"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to set up new projects with OpenKnowledge."
+msgstr "OpenKnowledge দিয়ে নতুন প্রকল্প কীভাবে সেট আপ করবেন।"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to use OpenKnowledge and its MCP tools."
+msgstr "OpenKnowledge এবং এর MCP টুল কীভাবে ব্যবহার করবেন।"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to write a new skill and install it."
+msgstr "নতুন স্কিল কীভাবে লিখবেন ও ইনস্টল করবেন।"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project."
@@ -6708,9 +6736,10 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror-এর ডিফল্ট কীম্যাপ দিয়ে সোর্স সম্পাদকের লাইন ঢোকান, মুছুন, সরান, কপি করুন ও ভেতরে নিন।"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
@@ -6718,7 +6747,9 @@ msgstr "CodeMirror-এর ডিফল্ট কীম্যাপ দিয়�
 msgid "Install"
 msgstr "ইনস্টল করুন"
 
+#. placeholder {0}: offer.name
 #. placeholder {0}: skill.name
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr "{0} ইনস্টল করুন"
@@ -6727,7 +6758,7 @@ msgstr "{0} ইনস্টল করুন"
 msgid "Install {brand} →"
 msgstr "{brand} ইনস্টল করুন →"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Install {name}"
 msgstr "{name} ইনস্টল করুন"
@@ -6862,6 +6893,7 @@ msgstr "ইনস্টল করা হচ্ছে"
 msgid "Installing {agentName}…"
 msgstr "{agentName} ইনস্টল করা হচ্ছে…"
 
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "যেখানে ইনস্টল হবে"
@@ -7322,6 +7354,8 @@ msgstr "রিপোজিটরি লোড হচ্ছে"
 msgid "Loading settings"
 msgstr "সেটিং লোড হচ্ছে"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "Loading skills"
 msgstr "স্কিল লোড হচ্ছে"
@@ -7469,6 +7503,10 @@ msgstr "এই বিল্ডে AI টুল সামলানো যায�
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "এই বিল্ডে প্রকল্পের AI টুল সামলানো যায় না।"
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Managing skills is unavailable in this build."
+msgstr "এই বিল্ডে স্কিল ব্যবস্থাপনা উপলব্ধ নয়।"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -8508,8 +8546,10 @@ msgstr "সাইডবারে নেই"
 msgid "Not installed"
 msgstr "ইনস্টল করা নেই"
 
+#. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
 msgid "Not now"
 msgstr "এখন নয়"
@@ -9235,8 +9275,8 @@ msgid "Opens in a new tab"
 msgstr "নতুন ট্যাবে খোলে"
 
 #: src/components/SkillInstallMenu.tsx
-msgid "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
-msgstr "Settings → Skills খোলে, যেখানে আপনি একটি পুরো ফোল্ডার আরেকটির সঙ্গে যুক্ত করেন যাতে দুই এজেন্ট একই স্কিল পড়ে, এবং কাস্টম স্কিল রুট যোগ করেন।"
+msgid "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+msgstr "Settings → Skills Studio খোলে, যেখানে আপনি একটি পুরো ফোল্ডার আরেকটির সঙ্গে যুক্ত করেন যাতে দুই এজেন্ট একই স্কিল পড়ে, এবং কাস্টম স্কিল রুট যোগ করেন।"
 
 #: src/components/empty-state/CreateView.tsx
 #: src/components/PackCardGrid.tsx
@@ -9806,11 +9846,6 @@ msgstr "প্রকল্প প্লাগইন হলো আপনার �
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "প্রকল্পের রুট"
-
-#. Group label above the project runtime-skill row in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project skill"
-msgstr "প্রকল্প স্কিল"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -11397,6 +11432,11 @@ msgstr "ফোল্ডার ভাগ করুন"
 msgid "Share skills"
 msgstr "স্কিল ভাগ করুন"
 
+#. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Share skills between AI tools"
+msgstr "AI টুলগুলির মধ্যে স্কিল ভাগ করুন"
+
 #: src/components/SharingModeField.tsx
 msgid "Share this setup with your team?"
 msgstr "এই সেটআপটি আপনার দলের সঙ্গে ভাগ করবেন?"
@@ -11710,8 +11750,6 @@ msgstr "স্কিল খোঁজা <0>skills.sh</0> দ্বারা চ�
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FilesSkillsToggle.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-#: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills"
 msgstr "স্কিল"
 
@@ -11719,10 +11757,17 @@ msgstr "স্কিল"
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "স্কিল এখন ভাগ করা। আপনার দলের সঙ্গে ভাগ করতে .ok/skills কমিট করুন।"
 
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Heading above the project's own skill row, in Settings → This project → Skills Studio
+#. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Skills from OpenKnowledge"
+msgstr "OpenKnowledge-এর স্কিল"
+
+#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
-msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
-msgstr "স্কিল এই মেশিনে শনাক্ত হওয়া প্রতিটি AI টুলে ইনস্টল হয়, উপরে বেছে নেওয়া MCP সংযোগ যাই হোক না কেন।"
+msgid "Skills moved to Skills Studio."
+msgstr "স্কিল স্কিল স্টুডিওতে সরানো হয়েছে।"
 
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
@@ -11734,9 +11779,24 @@ msgstr "স্কিলগুলো পুনরায় নির্ধার�
 msgid "Skills section"
 msgstr "স্কিল বিভাগ"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
-msgid "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
-msgstr "স্কিল এজেন্টদের পুনরাবৃত্তিযোগ্য কাজ শেখায়। সম্পাদকের Skills বিভাগ থেকে সেগুলো লিখুন ও সামলান; প্রতিটি স্কিলের ইনস্টল মেনু ঠিক করে সেটি কোথায় থাকবে। এগুলো এই প্রকল্পের স্কিল ফোল্ডার।"
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills Studio"
+msgstr "স্কিল স্টুডিও"
+
+#. First-visit explanation of what the Skills Studio settings page is for
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
+msgstr "স্কিল আপনার AI টুলকে পুনরাবৃত্ত কাজ শেখায়। OpenKnowledge-এর সঙ্গে আসা স্কিল ইনস্টল করুন, বা এডিটরের স্কিল সাইডবারে নিজের স্কিল লিখুন।"
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
+msgstr "স্কিল আপনার AI টুলকে পুনরাবৃত্ত কাজ শেখায়। নিজের স্কিল এডিটরের স্কিল সাইডবারে লিখুন; এই পাতায় সেগুলি চালু ও ভাগ করা হয়।"
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills that come with this project, and the folders its AI tools read them from."
+msgstr "এই প্রকল্পের সঙ্গে আসা স্কিল, এবং যে ফোল্ডারগুলি থেকে এর AI টুল সেগুলি পড়ে।"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12171,10 +12231,6 @@ msgstr "সিমলিংক"
 msgid "Symlink"
 msgstr "সিমলিংক"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
-msgstr "এগুলোর একটিতে আরেকটি ফোল্ডার সিমলিংক করুন যাতে দুই এজেন্ট একই স্কিল পড়ে; কোনো ফোল্ডারের স্কিল আবার এক এক করে সামলাতে আনলিংক করুন।"
-
 #: src/components/FileTree.tsx
 msgid "Symlink to {targetPath}"
 msgstr "{targetPath}-এর সিমলিংক"
@@ -12359,10 +12415,6 @@ msgstr "কাজের তালিকা"
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "কাজের তালিকা"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
-msgstr "এই প্রকল্পের কোডিং এজেন্টদের OpenKnowledge-এর মাধ্যমে পড়তে ও লিখতে শেখায়।"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
@@ -12821,6 +12873,11 @@ msgstr "এগুলো বর্তমানে অন্য একটি ফ�
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "এই নিয়মগুলো আপনার প্রকল্পের <0>{configFile}</0> ফাইল থেকে আসে, যা এই প্রকল্পের linting পুরোপুরি নিয়ন্ত্রণ করে। নিয়ম এখানে চালু বা বন্ধ করুন ও তাদের বিকল্প সম্পাদনা করুন; পরিবর্তন সেই ফাইলেই ফিরে লেখা হয়।"
 
+#. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr "এগুলি আপনার AI টুলকে OpenKnowledge-এর সঙ্গে কাজ করতে শেখায়। একটি ইনস্টল করলে সেটি এই মেশিনের প্রতিটি AI টুলে যুক্ত হয়।"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
 msgstr "ভাবছে"
@@ -13050,6 +13107,11 @@ msgstr "এটি <0>{name}</0>-কে {0} থেকে {1}-এ সরায়,
 msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
 msgstr "এটির জন্য আপনার ফাইলগুলি দেখতে হবে, শুধু খোলা নথি নয়, তাই এটি প্রদর্শিত হয় যখন আপনি টাইপ করার পরিবর্তে একটি প্রকল্প অডিট চালান।"
 
+#. Says what the project skill is for, then the thing that makes it different from the user-scope ones: it is committed to the repo
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
+msgstr "এটি আপনার AI টুলকে OpenKnowledge-এর সঙ্গে কাজ করতে শেখায়। এটি প্রকল্প ফোল্ডারে থাকে, তাই যিনিই প্রকল্প খুলবেন তাঁর জন্য ইনস্টল হয়।"
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr "এই প্যাকটি এখানে আগে থেকেই সেট আপ করা আছে।"
@@ -13147,6 +13209,11 @@ msgstr "এই প্রকল্পের চলমান সার্ভার
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "এই প্রকল্পের সার্ভার (v{0}) এই অ্যাপের (v{1}) চেয়ে নতুন।"
 
+#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This project's skill moved to Skills Studio."
+msgstr "এই প্রকল্পের স্কিল স্কিল স্টুডিওতে সরানো হয়েছে।"
+
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "এটি আপনার Mac থেকে এবং নিচে আপনার নির্বাচিত যেকোনো প্রকল্প থেকে OpenKnowledge-এর সেটিং ও সংযুক্তি সরিয়ে দেয়, তবে আপনার markdown বিষয়বস্তু ও লেখা স্কিলগুলো রেখে দেয়।"
@@ -13188,11 +13255,6 @@ msgstr "এই সেটিংটি প্রতি-মেশিন ভিত�
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "এই সেটিংটি প্রতি-মেশিন ভিত্তিক এবং সহযোগীদের সঙ্গে ভাগ করা হয় না। এর জন্য একটি API কী দরকার (নিচে নির্ধারণ করুন), যদি না আপনার এন্ডপয়েন্ট এমন কোনো স্থানীয় সার্ভার হয় যার সেটি লাগে না।"
-
-#. Tells the user the project skill is committed to the repo, unlike the user-global skills
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
-msgstr "এই স্কিলটি প্রজেক্ট ফোল্ডারে থাকে, তাই যিনিই এই প্রজেক্ট খুলবেন তার জন্যই এটি ইনস্টল হয়, শুধু আপনার জন্য নয়।"
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -13556,13 +13618,13 @@ msgstr "এই সম্পাদনা পর্যন্ত পূর্বা
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Edit source প্যানেলে বা কোড-ধাঁচের কোনো প্রপার্টি ফিল্ডে নির্বাচনের পরিবর্তন পূর্বাবস্থায় ফেরান, পুনরায় করুন, বা এক এক করে দেখুন।"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall"
 msgstr "আনইনস্টল করুন"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall {name}"
 msgstr "{name} আনইনস্টল করুন"
@@ -14257,6 +14319,11 @@ msgstr "গতকাল"
 msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 msgstr "“{0}” নামে আপনার নিজের একটি স্কিল আগে থেকেই আছে — প্যাকের সংস্করণ ইনস্টল করা হবে না এবং আপনারটিতে হাত দেওয়া হবে না। প্যাকের সংস্করণ ইনস্টল করতে আপনার স্কিলের নাম বদলান।"
 
+#. Label above the optional skill offered on first visit
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "You can add"
+msgstr "আপনি যোগ করতে পারেন"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "You can also create one from a terminal with <0>ok bug-report</0>."
 msgstr "আপনি টার্মিনাল থেকে <0>ok bug-report</0> দিয়েও একটি তৈরি করতে পারেন।"
@@ -14444,10 +14511,6 @@ msgstr "আপনার অনুসন্ধানের প্রশ্ন ও
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "আপনার শেয়ার লিংক নিচে প্রস্তুত।"
-
-#: src/components/settings/SkillsManagerSection.tsx
-msgid "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
-msgstr "আপনার ব্যবহারকারী-স্তরের স্কিল ফোল্ডার — এই মেশিনের প্রতিটি প্রকল্পে পাওয়া যায়। প্রতিটি স্কিলের ইনস্টল মেনু ঠিক করে সেটি কোথায় থাকবে।"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

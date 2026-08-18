@@ -95,6 +95,9 @@
     "0CvV_9": ["S'installe dans"],
     "0E9DR6": ["Saisissez pour trouver un document"],
     "0Er6-M": ["Redémarrage"],
+    "0ExRWt": [
+      "Les compétences fournies avec ce projet, et les dossiers dans lesquels ses outils IA les lisent."
+    ],
     "0Gd0NU": ["Partagé"],
     "0J6nhG": [
       "Une copie est un vrai dossier à part entière, et OK la maintient alignée sur la source : modifiez la compétence ici et chaque copie est actualisée. Cela s'arrête dès que vous modifiez une copie à la main en dehors d'OK — à partir de là elle suit son propre chemin et apparaît comme une compétence distincte. Un lien symbolique, lui, pointe vers la source, donc rien ne peut diverger, mais un emplacement cesse de fonctionner si la source est supprimée."
@@ -232,7 +235,6 @@
     "27XW26": [
       "Le clonage se fait dans le Navigateur de projets. Recliquez le lien de partage là-bas."
     ],
-    "28B21t": ["Compétences d'agent"],
     "29VNqC": ["Erreur inconnue"],
     "29XZXN": ["Définir l'identité git"],
     "2AIVbm": ["Relisez votre rapport"],
@@ -462,6 +464,7 @@
       "Exposez le serveur de ce projet à un réseau plus large via un tunnel que vous exécutez (par exemple Tailscale). Un visiteur sur le tunnel obtient l'éditeur et le point de terminaison de l'agent, et modifie en direct sur le serveur de cette machine."
     ],
     "58qIOK": ["Commenter cette sélection"],
+    "59CUI8": ["Partager des compétences entre outils IA"],
     "5ALjdr": [
       "Parcourez les résultats de recherche de l'éditeur visuel depuis le champ de recherche."
     ],
@@ -553,6 +556,9 @@
     ],
     "5wV2qQ": ["et plus encore"],
     "5y_9lO": ["En attente d'autorisation"],
+    "5ymuTA": [
+      "Ouvre Paramètres → Studio de compétences, où vous liez un dossier entier à un autre pour que les deux agents lisent les mêmes compétences, et où vous ajoutez des racines de compétences personnalisées."
+    ],
     "6-wLTJ": [["behind"], " en retard sur origin"],
     "60vpJN": ["Que faisiez-vous ?"],
     "61i3cO": ["Activer/désactiver la ligne d'en-tête"],
@@ -564,9 +570,6 @@
       "L'exposition fixe un port afin que la cible du tunnel reste stable d'un redémarrage à l'autre."
     ],
     "67Dpmh": ["Suggestions de commandes slash"],
-    "67TEhP": [
-      "Vos dossiers de compétences au niveau utilisateur — disponibles dans tous les projets de cette machine. Le menu d'installation de chaque compétence détermine où elle réside."
-    ],
     "67f-3g": [
       "Duplication réussie, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"
     ],
@@ -663,6 +666,7 @@
     "75Y1dk": [
       "Bande horizontale de pastilles + panneau actif en dessous ; cliquez sur une pastille pour changer de panneau."
     ],
+    "76gPWk": ["J'ai compris"],
     "77SdEP": ["Supprimer ", ["itemName"]],
     "78G7R3": [
       "Valide le frontmatter des documents à l'aide de fichiers JSON Schema, appliqués à des ensembles de documents par glob."
@@ -875,6 +879,9 @@
     ],
     "9fhQRL": ["Canal bêta"],
     "9fvog2": ["Aperçu indisponible : ", ["errorDetail"]],
+    "9hEdtC": [
+      "Celle-ci apprend à vos outils IA à travailler avec OpenKnowledge. Elle vit dans le dossier du projet, elle s'installe donc pour toute personne qui ouvre le projet."
+    ],
     "9i21pa": ["Les commits se font automatiquement"],
     "9ieZhu": ["Installé dans ", ["path"], " — cliquez pour retirer"],
     "9jnjV0": ["Intègre un fichier audio avec les contrôles natifs du lecteur."],
@@ -1088,6 +1095,7 @@
     "CWzc2T": [
       "<0>~/.ok/bin</0> et <1>~/.ok/env.sh</1> restent dans les deux cas — l'application les maintient toujours."
     ],
+    "CXDYfm": ["Impossible de lire si la compétence de ce projet est installée."],
     "CXTwen": ["Impossible de modifier en toute sécurité la configuration de ce projet"],
     "CXcveY": [
       "Open Knowledge conserve un fichier de navigation nommé index.md dans chaque dossier contenant Markdown, chacun répertoriant les documents de ce dossier par type et établissant un lien vers ses sous-dossiers. Il réécrit ces fichiers à mesure que vos documents changent, et tout ce que vous y modifiez vous-même est remplacé."
@@ -1372,6 +1380,7 @@
     ],
     "FgQ7XZ": ["Impossible de charger vos rapports de bug."],
     "FgRAvd": ["Journaux et informations système"],
+    "FgcPSX": ["La gestion des compétences n'est pas disponible dans cette version."],
     "Fhp4Gn": ["Voir le plugin"],
     "FiyNln": ["Aller au texte sélectionné dans la propriété"],
     "FjkaiT": ["Zoom arrière"],
@@ -1540,7 +1549,6 @@
       "Slidev n'est pas installé, l'action Slidev reste donc masquée. Installez-le, puis revenez à cette fenêtre."
     ],
     "HSI88F": ["Supprimer le tableau"],
-    "HSh8u_": ["Dossiers"],
     "HTW0Zw": [
       "Encore une étape : exécutez <0>claude</0> dans ce projet et approuvez OpenKnowledge une fois."
     ],
@@ -1592,6 +1600,7 @@
       "Déplacez ou renommez ce fichier à l'intérieur de la compétence — le chemin reste sous references/ ou scripts/."
     ],
     "HzVv6g": ["Coller"],
+    "I-6_4S": ["Comment écrire une nouvelle compétence et l'installer."],
     "I1gRhX": ["Échec du renommage"],
     "I4LGsH": ["Réduire tous les groupes de fichiers"],
     "I5685_": ["Essayer une invite"],
@@ -1685,6 +1694,9 @@
     "JOcPqH": ["Récupérer un dépôt distant sur cette machine."],
     "JWsZlx": ["Ouvrez un projet pour le modifier."],
     "JZ8cO6": ["Clair, sombre, ou suivre le système."],
+    "J_jZ5z": [
+      "Chaque outil IA lit les compétences depuis son propre dossier. Pointez un dossier vers un autre et les deux outils verront les mêmes compétences : ajoutez une compétence une seule fois au lieu de la copier dans chaque outil."
+    ],
     "JaU1ld": ["Le nom du thème contient des caractères non pris en charge"],
     "JddocZ": ["Activer/désactiver la colonne d'en-tête"],
     "Jejur6": ["Impossible de charger le document"],
@@ -1717,9 +1729,6 @@
     ],
     "K0N7zS": ["Échec de la lecture de l'état du partage de configuration"],
     "K1ckLX": ["Échec de la création du dossier"],
-    "K1nRu2": [
-      "Cette compétence réside dans le dossier du projet : elle s'installe donc pour toutes les personnes qui ouvrent ce projet, pas seulement pour vous."
-    ],
     "K2v7QF": ["Impossible de partager les compétences"],
     "K4G55s": ["Vérification de la source"],
     "K6MQQk": [
@@ -1878,7 +1887,6 @@
     "Lrsl_h": ["Fichier ", ["identity"], " manquant. Accéder à la référence."],
     "LtI9AS": ["Propriétaire"],
     "LtSYdi": ["Afficher dans le Finder"],
-    "LtiJ5c": ["Compétence de projet"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -2005,9 +2013,6 @@
     ],
     "N6j2JH": ["Modifier ", ["0"]],
     "NBdIgR": ["Commenter"],
-    "NCmYhK": [
-      "Les compétences apprennent aux agents des tâches répétables. Rédigez-les et gérez-les depuis la section Compétences de l'éditeur ; le menu d'installation de chaque compétence détermine où elle réside. Voici les dossiers de compétences de ce projet."
-    ],
     "NErvOX": ["Enregistré dans"],
     "NEzPEh": ["Créez une nouvelle branche, ou extrayez-en une existante, dans sa propre fenêtre."],
     "NIWAux": ["Aucun document enregistré sous #", ["tagDocsName"], "."],
@@ -2114,6 +2119,7 @@
     "ONWvwQ": ["Envoyer"],
     "ONgEZF": ["Chargement des titres de ", ["pageTarget"]],
     "OOIVJo": ["« ", ["0"], " » désinstallé de ", ["1"]],
+    "OOLsBh": [["0"], " partagent ce dossier."],
     "OPOiKn": ["Règles de contenu"],
     "OTF92M": ["Libellé <0>(texte affiché, facultatif)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
@@ -2369,6 +2375,7 @@
     "RnrnTe": ["Déjà configuré — ok est disponible dans votre terminal"],
     "RoafuO": ["Envoyer un retour"],
     "RobAKV": ["Mettez à jour la destination et l'ancre de section facultative."],
+    "RojU4W": ["Compétences d'OpenKnowledge"],
     "Rq1vFD": ["Options de la vue arborescente"],
     "RqSvT0": ["Importation"],
     "RrAIZx": ["Ce que couvre le partage de la configuration"],
@@ -2551,6 +2558,7 @@
     "UJEFJY": ["Impossible de démarrer ", ["0"], " : ", ["1"]],
     "UL-9ej": ["OpenKnowledge a ouvert l'aperçu en direct"],
     "UL8A9w": ["Étiquette"],
+    "UMT9C9": ["Comment utiliser OpenKnowledge et ses outils MCP."],
     "UNwKSz": ["Mise à jour automatique activée pour « ", ["name"], " »"],
     "UPWItY": ["Un dossier contenant SKILL.md."],
     "UPi_yZ": ["En attente"],
@@ -3221,6 +3229,7 @@
     "akmOT9": ["Modifier ce commentaire"],
     "an0aL5": ["Demander à un agent"],
     "anmUZq": ["Une fonctionnalité manquante"],
+    "annvv7": ["Impossible de lire quelles compétences sont installées."],
     "aoT2xX": ["Ce commentaire porte sur toute la propriété"],
     "arUUsK": ["Nouveautés du produit"],
     "ax9kie": [
@@ -3533,6 +3542,9 @@
     ],
     "ebqMh6": [
       "Partagé avec tous les membres du projet. Stocké dans le dossier du projet et le suit via git."
+    ],
+    "ee15Vl": [
+      "Les compétences apprennent des tâches répétables à vos outils IA. Écrivez les vôtres dans la barre latérale Compétences de l'éditeur ; cette page sert à les activer et à les partager."
     ],
     "eiUA4k": [
       [
@@ -3862,6 +3874,7 @@
     "iH8pgl": ["Retour"],
     "iHAJDj": ["Détermination de l'emplacement par défaut"],
     "iIaSUD": ["Espaces"],
+    "iKS6gg": ["Les compétences ont été déplacées vers Studio de compétences."],
     "iKSP5j": ["Retour à la ligne"],
     "iKZkk1": ["Valeur de la propriété"],
     "iKvAeG": ["Vérification"],
@@ -4007,9 +4020,6 @@
     "jp6I-2": ["un nouveau volet à droite de ", ["0"]],
     "jpctdh": ["Affichage"],
     "jpoCue": [".myteam/skills"],
-    "jqe7Yq": [
-      "Ouvre Paramètres → Compétences, où vous liez un dossier entier à un autre pour que les deux agents lisent les mêmes compétences, et où vous ajoutez des racines de compétences personnalisées."
-    ],
     "jtg_8-": [
       "Construis un wiki de connaissances sur les différents types d'oiseaux incapables de voler. Commence par une page de synthèse, puis ajoute des pages liées entre elles pour chaque grand groupe (ratites comme les autruches, les émeus et les kiwis ; manchots ; râles inaptes au vol), les régions où ils vivent, et une chronologie de l'évolution de la perte du vol."
     ],
@@ -4057,6 +4067,9 @@
     ],
     "kCjkGY": ["Cela peut prendre un moment. Votre contenu markdown est conservé."],
     "kCqCyf": ["Ouvre le panneau de diagnostics de vérification de CodeMirror."],
+    "kEiVv6": [
+      "Elles apprennent à vos outils IA à travailler avec OpenKnowledge. En installer une l'ajoute à tous les outils IA de cette machine."
+    ],
     "kFLlsI": [
       "Insère une référence de note de bas de page et l'ébauche de définition correspondante."
     ],
@@ -4111,7 +4124,6 @@
       "Ceci retire les paramètres et les intégrations d'OpenKnowledge de votre Mac et des projets que vous sélectionnez ci-dessous, mais conserve votre contenu markdown et les compétences que vous avez écrites."
     ],
     "kfL8BJ": ["Échec de l'importation : ", ["0"]],
-    "khCa4M": ["Apprend aux agents de code de ce projet à lire et écrire via OpenKnowledge."],
     "kj9pAE": ["Création de la page"],
     "kjlQ9D": ["devient un lien symbolique"],
     "kknhfj": ["Aucune modification"],
@@ -4465,6 +4477,7 @@
     "ogAuyr": ["Retour à la vue document"],
     "ohUJJM": ["Plugins"],
     "ojGc_T": ["Ouvrir le commentaire"],
+    "olb6oq": ["Comment configurer de nouveaux projets avec OpenKnowledge."],
     "omXJcU": ["Fermer les autres"],
     "onTlRk": ["Impossible de mettre à jour le partage des compétences"],
     "opPbzN": ["Copie la compétence dans ", ["path"]],
@@ -4483,6 +4496,7 @@
       " » n'ont pas pu être effacées. Rechargez pour réessayer."
     ],
     "oxdGJn": ["Avant de partir, accepteriez-vous de nous dire pourquoi ?"],
+    "oy5bJW": ["Vous pouvez ajouter"],
     "oyBV3W": ["Chemin du dossier de compétences personnalisé"],
     "p0Iq25": ["Insérer un lien"],
     "p2LEhJ": ["Jeton d'accès personnel"],
@@ -4777,9 +4791,6 @@
     "sJK6pq": ["Permission refusée"],
     "sJWhgo": ["Composant inconnu : ", ["unregisteredComponentName"]],
     "sKEgGd": ["Envoyer dans la discussion"],
-    "sLcbHt": [
-      "Liez un autre dossier à l'un de ceux-ci pour que les deux agents lisent les mêmes compétences ; dissociez pour gérer à nouveau les compétences d'un dossier une par une."
-    ],
     "sNeKjP": ["Échec de l'enregistrement du jeton — réessayez"],
     "sOxZaS": ["Échec du chargement du graphe"],
     "sQoLn0": ["Quitter"],
@@ -4873,6 +4884,9 @@
     "tN5WTS": ["Le fournisseur a rejeté la requête. Vérifiez la clé API et l'id du modèle."],
     "tP5DDk": ["Appliquer le lien"],
     "tUvUfp": ["Utilisez un dossier que vous avez déjà."],
+    "tX8FLX": [
+      "Les compétences apprennent des tâches répétables à vos outils IA. Installez celles fournies par OpenKnowledge ou écrivez les vôtres dans la barre latérale Compétences de l'éditeur."
+    ],
     "t_YqKh": ["Retirer"],
     "tc65fD": ["Les plus installées"],
     "tcjTlU": ["Packs de démarrage"],
@@ -5033,9 +5047,6 @@
     ],
     "vGeNNQ": ["Copiez une invite et collez-la dans votre agent pour configurer votre projet."],
     "vHlhDc": ["Double-cliquez pour modifier"],
-    "vIR6Hp": [
-      "Les compétences s'installent dans tous les outils IA détectés sur cette machine, indépendamment des connexions MCP choisies ci-dessus."
-    ],
     "vIxrEk": ["Ajuster à la largeur"],
     "vLyv1R": ["Masquer"],
     "vO2v-0": ["Masquer les autres"],
@@ -5118,6 +5129,7 @@
     "w61W3L": ["Retirer ", ["0"]],
     "w6sBjd": ["Les paramètres du terminal ne sont pas encore chargés — réessayez dans un instant"],
     "w6sT-y": ["Suivre les modifications de l'agent"],
+    "w7LRoP": ["Studio de compétences"],
     "w7SsvI": ["Ce dossier n'est pas encore un projet OpenKnowledge. L'initialiser et l'ouvrir ?"],
     "w7bnEb": ["Créez une compétence personnelle, disponible dans tous les projets."],
     "w7nm4K": ["Citation en retrait pour les références."],
@@ -5352,6 +5364,7 @@
     "yvG-l1": ["Ouvrir le panneau de vérification de la source"],
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Arrêter la correction. Les fichiers déjà corrigés le restent."],
+    "ywVfOE": ["La compétence de ce projet a été déplacée vers Studio de compétences."],
     "yxF19Y": [
       [
         "0",

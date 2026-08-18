@@ -4,7 +4,7 @@ import type { SkillFolderLinkPreview, SkillScope } from '@inkeep/open-knowledge-
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AgentBrandIcon } from '@/components/AgentIconCluster';
+import { AgentBrandIcon, hostLabel } from '@/components/AgentIconCluster';
 import { ChangedOutsideBadge } from '@/components/ChangedOutsideBadge';
 import { SkillFolderLinkConfirmDialog } from '@/components/settings/SkillFolderLinkConfirmDialog';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useSkillTargets } from '@/hooks/use-skill-targets';
+import { formatToolList } from '@/lib/tool-list-format';
 
 /**
  * The per-scope FOLDERS surface: every host skills folder at this scope with its
@@ -32,7 +33,7 @@ import { useSkillTargets } from '@/hooks/use-skill-targets';
  * believing the folder they had just picked was the one that survived.
  */
 export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
-  const { t } = useLingui();
+  const { i18n, t } = useLingui();
   const { state, saving, folderAction } = useSkillTargets();
   const [newRoot, setNewRoot] = useState('');
   const [pendingLink, setPendingLink] = useState<{
@@ -130,12 +131,14 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
     >
       <div>
         <h4 className="text-sm font-medium">
-          <Trans>Folders</Trans>
+          <Trans comment="Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism">
+            Share skills between AI tools
+          </Trans>
         </h4>
         <p className="text-1sm text-muted-foreground">
-          <Trans>
-            Symlink another folder into one of these so both agents read the same skills; unlink to
-            manage a folder's skills one by one again.
+          <Trans comment="Says what symlinking two skill folders together buys the user, before any button names it">
+            Each AI tool reads skills from its own folder. Point one folder at another and both
+            tools see the same skills — add a skill once instead of copying it into every tool.
           </Trans>
         </p>
       </div>
@@ -248,6 +251,21 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                     </Button>
                   ) : null}
                 </div>
+                {/* The nesting alone never said what it meant. Naming the TOOLS
+                    that end up sharing the folder does, in the words someone
+                    picking a row already has — the paths below are the
+                    mechanism, this is the outcome. */}
+                {following.length > 0 ? (
+                  <p
+                    className="mt-1 ml-6 text-muted-foreground text-xs"
+                    data-testid={`skill-folder-shared-${f.host}`}
+                  >
+                    {t`${formatToolList(
+                      [f.host, ...following.map((o) => o.host)].map(hostLabel),
+                      i18n.locale,
+                    )} share this folder.`}
+                  </p>
+                ) : null}
                 {/* Folders that read THIS one. They are readers, not peers, so
                     they sit under the folder that owns the skills — and each
                     keeps its own unlink, which is the verb that gives it back. */}

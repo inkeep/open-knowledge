@@ -93,6 +93,9 @@
     "0CvV_9": ["Se instala en"],
     "0E9DR6": ["Escribe para encontrar un documento"],
     "0Er6-M": ["Reiniciando"],
+    "0ExRWt": [
+      "Habilidades que vienen con este proyecto y las carpetas desde las que las leen sus herramientas de IA."
+    ],
     "0Gd0NU": ["Compartido"],
     "0J6nhG": [
       "Una copia es una carpeta propia, y OK la mantiene alineada con el origen: edita la habilidad aquí y todas las copias se actualizan. Eso se detiene en cuanto editas a mano una copia fuera de OK; a partir de ahí sigue su propio camino y aparece como una habilidad aparte. Un enlace simbólico, en cambio, apunta al origen, así que nada se desvía, pero una ubicación deja de funcionar si se elimina el origen."
@@ -220,7 +223,6 @@
     "27XW26": [
       "La clonación se hace en el Navegador de proyectos. Vuelve a hacer clic ahí en el enlace compartido."
     ],
-    "28B21t": ["Habilidades de agente"],
     "29VNqC": ["Error desconocido"],
     "29XZXN": ["Definir la identidad de git"],
     "2AIVbm": ["Revisa tu informe"],
@@ -448,6 +450,7 @@
       "Expón el servidor de este proyecto a una red más amplia a través de un túnel que tú gestionas (por ejemplo Tailscale). Un visitante del túnel obtiene el editor y el endpoint del agente, editando en directo contra el servidor de esta máquina."
     ],
     "58qIOK": ["Comentar esta selección"],
+    "59CUI8": ["Compartir habilidades entre herramientas de IA"],
     "5ALjdr": ["Recorre los resultados de búsqueda del editor visual desde el campo de búsqueda."],
     "5Ajb15": ["La fórmula <0>c = √(a² + b²)</0> se renderiza en línea."],
     "5AzM72": ["Este ajuste es de cada equipo y no se comparte con tus colaboradores."],
@@ -531,6 +534,9 @@
     ],
     "5wV2qQ": ["y más"],
     "5y_9lO": ["Esperando la autorización"],
+    "5ymuTA": [
+      "Abre Ajustes → Estudio de habilidades, donde puedes enlazar una carpeta entera dentro de otra para que ambos agentes lean las mismas habilidades, y añadir raíces de habilidades personalizadas."
+    ],
     "6-wLTJ": [["behind"], " por detrás de origin"],
     "60vpJN": ["¿Qué estabas haciendo?"],
     "61i3cO": ["Alternar fila de encabezado"],
@@ -542,9 +548,6 @@
       "Exponer fija un puerto para que el destino del túnel permanezca estable entre reinicios."
     ],
     "67Dpmh": ["Sugerencias de comandos de barra"],
-    "67TEhP": [
-      "Tus carpetas de habilidades de nivel de usuario: disponibles en todos los proyectos de este equipo. El menú de instalación de cada habilidad controla dónde vive."
-    ],
     "67f-3g": [
       "Se duplicó correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
     ],
@@ -639,6 +642,7 @@
     "75Y1dk": [
       "Tira horizontal de pastillas con el panel activo debajo; haz clic en una pastilla para cambiar de panel."
     ],
+    "76gPWk": ["Entendido"],
     "77SdEP": ["Eliminar ", ["itemName"]],
     "78G7R3": [
       "Valida el frontmatter de los documentos contra archivos JSON Schema, acotado a conjuntos de documentos por glob."
@@ -851,6 +855,9 @@
     ],
     "9fhQRL": ["Canal beta"],
     "9fvog2": ["Vista previa no disponible: ", ["errorDetail"]],
+    "9hEdtC": [
+      "Esta enseña a tus herramientas de IA a trabajar con OpenKnowledge. Vive en la carpeta del proyecto, así que se instala para todos los que abran el proyecto."
+    ],
     "9i21pa": ["Los commits se hacen automáticamente"],
     "9ieZhu": ["Instalado en ", ["path"], ": haz clic para quitarlo"],
     "9jnjV0": ["Incrusta un archivo de audio con los controles nativos del reproductor."],
@@ -1066,6 +1073,7 @@
     "CWzc2T": [
       "<0>~/.ok/bin</0> y <1>~/.ok/env.sh</1> se conservan en cualquier caso: la aplicación siempre los mantiene."
     ],
+    "CXDYfm": ["No se pudo leer si la habilidad de este proyecto está instalada."],
     "CXTwen": ["No se puede editar con seguridad la configuración de este proyecto"],
     "CXcveY": [
       "Open Knowledge mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown, cada uno de los cuales enumera los documentos de esa carpeta por tipo y vincula a sus subcarpetas. Reescribe estos archivos a medida que cambian sus documentos y todo lo que edite en ellos se reemplaza."
@@ -1341,6 +1349,7 @@
     ],
     "FgQ7XZ": ["No se pudieron cargar tus informes de error."],
     "FgRAvd": ["Registros e información del sistema"],
+    "FgcPSX": ["La gestión de habilidades no está disponible en esta versión."],
     "Fhp4Gn": ["Ver el complemento"],
     "FiyNln": ["Ir al texto seleccionado en la propiedad"],
     "FjkaiT": ["Alejar"],
@@ -1513,7 +1522,6 @@
       "Slidev no está instalado, así que la acción de Slidev permanece oculta. Instálalo y vuelve a esta ventana."
     ],
     "HSI88F": ["Eliminar tabla"],
-    "HSh8u_": ["Carpetas"],
     "HTW0Zw": [
       "Falta un paso: ejecuta <0>claude</0> en este proyecto y aprueba OpenKnowledge una vez."
     ],
@@ -1569,6 +1577,7 @@
       "Mueve o renombra este archivo dentro de la habilidad: la ruta se mantiene bajo references/ o scripts/."
     ],
     "HzVv6g": ["Pegar"],
+    "I-6_4S": ["Cómo escribir una nueva habilidad e instalarla."],
     "I1gRhX": ["No se pudo renombrar"],
     "I4LGsH": ["Contraer todos los grupos de archivos"],
     "I5685_": ["Prueba un prompt"],
@@ -1662,6 +1671,9 @@
     "JOcPqH": ["Trae un repositorio remoto a este equipo."],
     "JWsZlx": ["Abre un proyecto para editarlo."],
     "JZ8cO6": ["Claro, oscuro o seguir al sistema."],
+    "J_jZ5z": [
+      "Cada herramienta de IA lee las habilidades desde su propia carpeta. Apunta una carpeta a otra y ambas herramientas verán las mismas habilidades: añade una habilidad una sola vez en lugar de copiarla en cada herramienta."
+    ],
     "JaU1ld": ["El nombre del tema contiene caracteres no admitidos"],
     "JddocZ": ["Alternar columna de encabezado"],
     "Jejur6": ["No se pudo cargar el documento"],
@@ -1690,9 +1702,6 @@
     ],
     "K0N7zS": ["No se pudo leer el estado de compartición de la configuración"],
     "K1ckLX": ["No se pudo crear la carpeta"],
-    "K1nRu2": [
-      "Esta habilidad vive en la carpeta del proyecto, así que se instala para todos los que abran este proyecto, no solo para ti."
-    ],
     "K2v7QF": ["No se pudieron compartir las habilidades"],
     "K4G55s": ["Comprobando el origen"],
     "K6MQQk": [
@@ -1851,7 +1860,6 @@
     "Lrsl_h": ["Falta el archivo ", ["identity"], ". Ir a la referencia."],
     "LtI9AS": ["Propietario"],
     "LtSYdi": ["Mostrar en el Finder"],
-    "LtiJ5c": ["Habilidad del proyecto"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -1980,9 +1988,6 @@
     ],
     "N6j2JH": ["Editar ", ["0"]],
     "NBdIgR": ["Comentar"],
-    "NCmYhK": [
-      "Las habilidades enseñan a los agentes tareas repetibles. Créalas y gestiónalas desde la sección Habilidades del editor; el menú de instalación de cada habilidad controla dónde vive. Estas son las carpetas de habilidades de este proyecto."
-    ],
     "NErvOX": ["Guardado en"],
     "NEzPEh": ["Crea una rama nueva, o extrae una existente, en su propia ventana."],
     "NIWAux": ["No hay documentos registrados bajo #", ["tagDocsName"], "."],
@@ -2089,6 +2094,7 @@
     "ONWvwQ": ["Subir"],
     "ONgEZF": ["Cargando los encabezados de ", ["pageTarget"]],
     "OOIVJo": ["Se desinstaló \"", ["0"], "\" de ", ["1"]],
+    "OOLsBh": [["0"], " comparten esta carpeta."],
     "OPOiKn": ["Reglas de contenido"],
     "OTF92M": ["Etiqueta <0>(texto mostrado, opcional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
@@ -2342,6 +2348,7 @@
     "RnrnTe": ["Ya está configurado: ok está disponible en tu terminal"],
     "RoafuO": ["Enviar comentarios"],
     "RobAKV": ["Actualiza el destino y el ancla de sección opcional."],
+    "RojU4W": ["Habilidades de OpenKnowledge"],
     "Rq1vFD": ["Opciones de la vista de árbol"],
     "RqSvT0": ["Importando"],
     "RrAIZx": ["Qué abarca compartir la configuración"],
@@ -2524,6 +2531,7 @@
     "UJEFJY": ["No se pudo iniciar ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge abrió la vista previa en vivo"],
     "UL8A9w": ["Etiqueta"],
+    "UMT9C9": ["Cómo usar OpenKnowledge y sus herramientas MCP."],
     "UNwKSz": ["Actualización automática activada para \"", ["name"], "\""],
     "UPWItY": ["Una carpeta que contiene SKILL.md."],
     "UPi_yZ": ["En espera"],
@@ -3191,6 +3199,7 @@
     "akmOT9": ["Editar este comentario"],
     "an0aL5": ["Preguntar a un agente"],
     "anmUZq": ["Faltaba una función"],
+    "annvv7": ["No se pudo leer qué habilidades están instaladas."],
     "aoT2xX": ["Este comentario es sobre toda la propiedad"],
     "arUUsK": ["Novedades del producto"],
     "ax9kie": [
@@ -3502,6 +3511,9 @@
     ],
     "ebqMh6": [
       "Se comparte con todos los del proyecto. Se guarda en la carpeta del proyecto y viaja con ella mediante git."
+    ],
+    "ee15Vl": [
+      "Las habilidades enseñan tareas repetibles a tus herramientas de IA. Escribe las tuyas en la barra lateral Habilidades del editor; esta página es donde se activan y se comparten."
     ],
     "eiUA4k": [
       [
@@ -3833,6 +3845,7 @@
     "iH8pgl": ["Atrás"],
     "iHAJDj": ["Resolviendo la ubicación por defecto"],
     "iIaSUD": ["Espacios en blanco"],
+    "iKS6gg": ["Las habilidades se movieron a Estudio de habilidades."],
     "iKSP5j": ["Ajuste de línea"],
     "iKZkk1": ["Valor de la propiedad"],
     "iKvAeG": ["Comprobando"],
@@ -3978,9 +3991,6 @@
     "jp6I-2": ["un panel nuevo a la derecha de ", ["0"]],
     "jpctdh": ["Ver"],
     "jpoCue": [".myteam/skills"],
-    "jqe7Yq": [
-      "Abre Ajustes → Habilidades, donde puedes enlazar una carpeta entera dentro de otra para que ambos agentes lean las mismas habilidades, y añadir raíces de habilidades personalizadas."
-    ],
     "jtg_8-": [
       "Crea una wiki de conocimiento sobre los distintos tipos de aves no voladoras. Empieza con una página general y añade después páginas enlazadas entre sí para cada gran grupo (ratites como avestruces, emús y kiwis; pingüinos; y rálidos no voladores), las regiones donde viven y una cronología de cómo evolucionó la pérdida del vuelo."
     ],
@@ -4028,6 +4038,9 @@
     ],
     "kCjkGY": ["Esto puede tardar un momento. Tu contenido markdown se conserva."],
     "kCqCyf": ["Abre el panel de diagnóstico de análisis de CodeMirror."],
+    "kEiVv6": [
+      "Estas enseñan a tus herramientas de IA a trabajar con OpenKnowledge. Al instalar una se añade a todas las herramientas de IA de este equipo."
+    ],
     "kFLlsI": ["Inserta una referencia a nota al pie y su definición correspondiente."],
     "kGp168": ["No se pudo preparar este proyecto para publicarlo."],
     "kI5pWt": ["No se encontró la imagen: ", ["errorLabel"]],
@@ -4080,9 +4093,6 @@
       "Esto quita de tu Mac los ajustes y las integraciones de OpenKnowledge, y también de los proyectos que selecciones abajo, pero conserva tu contenido markdown y las habilidades que hayas creado."
     ],
     "kfL8BJ": ["Falló la importación: ", ["0"]],
-    "khCa4M": [
-      "Enseña a los agentes de programación de este proyecto a leer y escribir a través de OpenKnowledge."
-    ],
     "kj9pAE": ["Creando la página"],
     "kjlQ9D": ["pasa a ser un enlace simbólico"],
     "kknhfj": ["Sin cambios"],
@@ -4432,6 +4442,7 @@
     "ogAuyr": ["Volver a la vista de documento"],
     "ohUJJM": ["Complementos"],
     "ojGc_T": ["Abrir el comentario"],
+    "olb6oq": ["Cómo configurar nuevos proyectos con OpenKnowledge."],
     "omXJcU": ["Cerrar las demás"],
     "onTlRk": ["No se pudo actualizar la compartición de habilidades"],
     "opPbzN": ["Copia la habilidad en ", ["path"]],
@@ -4450,6 +4461,7 @@
       "\". Recarga para reintentarlo."
     ],
     "oxdGJn": ["Antes de irte, ¿nos cuentas por qué?"],
+    "oy5bJW": ["Puedes añadir"],
     "oyBV3W": ["Ruta de la carpeta de habilidades personalizada"],
     "p0Iq25": ["Insertar enlace"],
     "p2LEhJ": ["Token de acceso personal"],
@@ -4726,9 +4738,6 @@
     "sJK6pq": ["Permiso denegado"],
     "sJWhgo": ["Componente desconocido: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Enviar al chat"],
-    "sLcbHt": [
-      "Enlaza otra carpeta dentro de una de estas para que ambos agentes lean las mismas habilidades; desenlaza para volver a gestionar las habilidades de una carpeta una a una."
-    ],
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
@@ -4820,6 +4829,9 @@
     "tN5WTS": ["El proveedor rechazó la solicitud. Revisa la clave de API y el id del modelo."],
     "tP5DDk": ["Aplicar enlace"],
     "tUvUfp": ["Usa una carpeta que ya tengas."],
+    "tX8FLX": [
+      "Las habilidades enseñan tareas repetibles a tus herramientas de IA. Instala las que incluye OpenKnowledge o escribe las tuyas en la barra lateral Habilidades del editor."
+    ],
     "t_YqKh": ["Quitar"],
     "tc65fD": ["Las más instaladas"],
     "tcjTlU": ["Paquetes iniciales"],
@@ -4981,9 +4993,6 @@
     ],
     "vGeNNQ": ["Copia un prompt y pégalo en tu agente para configurar tu proyecto."],
     "vHlhDc": ["Haz doble clic para editar"],
-    "vIR6Hp": [
-      "Las habilidades se instalan en todas las herramientas de IA detectadas en este equipo, con independencia de las conexiones MCP que elegiste arriba."
-    ],
     "vIxrEk": ["Ajustar al ancho"],
     "vLyv1R": ["Ocultar"],
     "vO2v-0": ["Ocultar los demás"],
@@ -5064,6 +5073,7 @@
       "Los ajustes de la terminal aún no se han cargado; inténtalo de nuevo en un momento"
     ],
     "w6sT-y": ["Seguir las ediciones del agente"],
+    "w7LRoP": ["Estudio de habilidades"],
     "w7SsvI": ["Esa carpeta todavía no es un proyecto de OpenKnowledge. ¿Inicializarla y abrirla?"],
     "w7bnEb": ["Crea una habilidad personal, disponible en todos los proyectos."],
     "w7nm4K": ["Cita en bloque con sangría para citar fuentes."],
@@ -5296,6 +5306,7 @@
     "yvG-l1": ["Abrir el panel de análisis del código"],
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Deja de arreglar. Los archivos ya arreglados se quedan como están."],
+    "ywVfOE": ["La habilidad de este proyecto se movió a Estudio de habilidades."],
     "yxF19Y": [
       [
         "0",

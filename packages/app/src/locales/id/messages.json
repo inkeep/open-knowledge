@@ -77,6 +77,9 @@
     "0CvV_9": ["Dipasang di"],
     "0E9DR6": ["Ketik untuk menemukan sebuah dokumen"],
     "0Er6-M": ["Memulai ulang"],
+    "0ExRWt": [
+      "Keterampilan yang disertakan dengan proyek ini, dan folder tempat alat AI-nya membacanya."
+    ],
     "0Gd0NU": ["Dibagikan"],
     "0J6nhG": [
       "Salinan adalah folder tersendiri, dan OK menjaganya tetap selaras dengan sumbernya: sunting keterampilan di sini dan setiap salinan ikut diperbarui. Itu berhenti begitu Anda menyunting sebuah salinan secara manual di luar OK — sejak saat itu ia berjalan sendiri dan muncul sebagai keterampilan terpisah. Symlink justru merupakan penunjuk ke sumbernya, jadi tidak ada yang bisa melenceng, tetapi sebuah lokasi berhenti bekerja jika sumbernya dihapus."
@@ -196,7 +199,6 @@
     "25Pw6a": ["Mengkloning"],
     "27TLNq": ["Aktifkan CLI ", ["displayName"]],
     "27XW26": ["Kloning dilakukan di Navigator Proyek. Klik ulang tautan berbaginya di sana."],
-    "28B21t": ["Keterampilan Agen"],
     "29VNqC": ["Galat tidak diketahui"],
     "29XZXN": ["Setel identitas git"],
     "2AIVbm": ["Tinjau laporan Anda"],
@@ -390,6 +392,7 @@
       "Ekspos server proyek ini ke jaringan yang lebih luas melalui tunnel yang Anda jalankan (misalnya Tailscale). Pemirsa di tunnel mendapatkan editor dan endpoint agen, mengedit secara langsung terhadap server mesin ini."
     ],
     "58qIOK": ["Komentari pilihan ini"],
+    "59CUI8": ["Bagikan keterampilan antar alat AI"],
     "5ALjdr": ["Menelusuri hasil pencarian penyunting visual dari bidang pencarian."],
     "5Ajb15": ["Rumus <0>c = √(a² + b²)</0> dirender sebaris."],
     "5AzM72": ["Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborator."],
@@ -461,6 +464,9 @@
     ],
     "5wV2qQ": ["dan lainnya"],
     "5y_9lO": ["Menunggu otorisasi"],
+    "5ymuTA": [
+      "Membuka Pengaturan → Studio Keterampilan, tempat Anda menautkan satu folder utuh ke folder lain agar kedua agen membaca keterampilan yang sama, dan menambahkan akar keterampilan khusus."
+    ],
     "6-wLTJ": [["behind"], " di belakang origin"],
     "60vpJN": ["Apa yang sedang Anda lakukan?"],
     "61i3cO": ["Alihkan baris header"],
@@ -472,9 +478,6 @@
       "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di seluruh mulai ulang."
     ],
     "67Dpmh": ["Saran perintah garis miring"],
-    "67TEhP": [
-      "Folder keterampilan tingkat pengguna Anda — tersedia di setiap proyek pada komputer ini. Menu pemasangan tiap keterampilan menentukan di mana ia berada."
-    ],
     "67f-3g": [
       "Penggandaan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
@@ -545,6 +548,7 @@
     "75Y1dk": [
       "Deretan pil mendatar + panel aktif di bawahnya; klik sebuah pil untuk berganti panel."
     ],
+    "76gPWk": ["Mengerti"],
     "77SdEP": ["Hapus ", ["itemName"]],
     "78G7R3": [
       "Memvalidasi frontmatter dokumen terhadap berkas JSON Schema, dibatasi ke kumpulan dokumen lewat glob."
@@ -731,6 +735,9 @@
     "9euN0m": [["count", "plural", { "other": ["#", " peserta lagi dari dokumen lain"] }]],
     "9fhQRL": ["Kanal beta"],
     "9fvog2": ["Pratinjau tidak tersedia: ", ["errorDetail"]],
+    "9hEdtC": [
+      "Yang ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek."
+    ],
     "9i21pa": ["Commit terjadi otomatis"],
     "9ieZhu": ["Terpasang di ", ["path"], " — klik untuk menghapus"],
     "9jnjV0": ["Menyematkan berkas audio dengan kendali pemutar bawaan."],
@@ -900,6 +907,7 @@
     "CWzc2T": [
       "<0>~/.ok/bin</0> dan <1>~/.ok/env.sh</1> tetap ada apa pun pilihannya — aplikasi selalu memeliharanya."
     ],
+    "CXDYfm": ["Tidak dapat membaca apakah keterampilan proyek ini terpasang."],
     "CXTwen": ["Konfigurasi proyek ini tidak bisa disunting dengan aman"],
     "CXcveY": [
       "Open Knowledge menyimpan file navigasi bernama index.md di setiap folder yang berisi Markdown, masing-masing mencantumkan dokumen folder tersebut berdasarkan jenis dan tautan ke subfoldernya. Itu menulis ulang file-file ini saat dokumen Anda berubah, dan apa pun yang Anda edit sendiri ke dalamnya akan diganti."
@@ -1164,6 +1172,7 @@
     ],
     "FgQ7XZ": ["Laporan bug Anda tidak bisa dimuat."],
     "FgRAvd": ["Log & info sistem"],
+    "FgcPSX": ["Pengelolaan keterampilan tidak tersedia di build ini."],
     "Fhp4Gn": ["Lihat plugin"],
     "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
@@ -1304,7 +1313,6 @@
       "Slidev belum terpasang, jadi aksi Slidev tetap tersembunyi. Pasang, lalu kembali ke jendela ini."
     ],
     "HSI88F": ["Hapus tabel"],
-    "HSh8u_": ["Folder"],
     "HTW0Zw": [
       "Satu langkah lagi: jalankan <0>claude</0> di proyek ini dan setujui OpenKnowledge sekali."
     ],
@@ -1349,6 +1357,7 @@
       "Pindahkan atau ganti nama berkas ini di dalam keterampilan — jalurnya tetap di bawah references/ atau scripts/."
     ],
     "HzVv6g": ["Tempel"],
+    "I-6_4S": ["Cara menulis keterampilan baru dan memasangnya."],
     "I1gRhX": ["Gagal mengganti nama"],
     "I4LGsH": ["Ciutkan semua grup berkas"],
     "I5685_": ["Coba sebuah prompt"],
@@ -1432,6 +1441,9 @@
     "JOcPqH": ["Bawa repositori remote ke komputer ini."],
     "JWsZlx": ["Buka sebuah proyek untuk menyunting."],
     "JZ8cO6": ["Terang, gelap, atau ikuti sistem."],
+    "J_jZ5z": [
+      "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
+    ],
     "JaU1ld": ["Nama tema berisi karakter yang tidak didukung"],
     "JddocZ": ["Alihkan kolom header"],
     "Jejur6": ["Dokumen tidak bisa dimuat"],
@@ -1460,9 +1472,6 @@
     ],
     "K0N7zS": ["Gagal membaca status berbagi konfigurasi"],
     "K1ckLX": ["Gagal membuat folder"],
-    "K1nRu2": [
-      "Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek ini, bukan hanya Anda."
-    ],
     "K2v7QF": ["Keterampilan tidak bisa dibagikan"],
     "K4G55s": ["Memeriksa sumber"],
     "K6MQQk": ["Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."],
@@ -1599,7 +1608,6 @@
     "Lrsl_h": ["File ", ["identity"], " tidak ditemukan. Buka referensi."],
     "LtI9AS": ["Pemilik"],
     "LtSYdi": ["Tampilkan di Finder"],
-    "LtiJ5c": ["Keterampilan proyek"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -1708,9 +1716,6 @@
     ],
     "N6j2JH": ["Sunting ", ["0"]],
     "NBdIgR": ["Komentari"],
-    "NCmYhK": [
-      "Keterampilan mengajari agen tugas yang berulang. Tulis dan kelola dari bagian Keterampilan di penyunting; menu pemasangan tiap keterampilan menentukan di mana ia berada. Ini adalah folder keterampilan proyek ini."
-    ],
     "NErvOX": ["Disimpan ke"],
     "NEzPEh": ["Buat cabang baru, atau ambil cabang yang sudah ada, di jendelanya sendiri."],
     "NIWAux": ["Tidak ada dokumen yang terdaftar di bawah #", ["tagDocsName"], "."],
@@ -1815,6 +1820,7 @@
     "ONWvwQ": ["Unggah"],
     "ONgEZF": ["Memuat judul untuk ", ["pageTarget"]],
     "OOIVJo": ["\"", ["0"], "\" dicopot dari ", ["1"]],
+    "OOLsBh": [["0"], " berbagi folder ini."],
     "OPOiKn": ["Aturan konten"],
     "OTF92M": ["Label <0>(teks tampilan opsional)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
@@ -2052,6 +2058,7 @@
     "RnrnTe": ["Sudah disiapkan — ok tersedia di terminal Anda"],
     "RoafuO": ["Kirim masukan"],
     "RobAKV": ["Perbarui tujuan dan jangkar bagian opsionalnya."],
+    "RojU4W": ["Keterampilan dari OpenKnowledge"],
     "Rq1vFD": ["Opsi tampilan pohon"],
     "RqSvT0": ["Mengimpor"],
     "RrAIZx": ["Apa saja yang dicakup berbagi konfigurasi"],
@@ -2206,6 +2213,7 @@
     "UJEFJY": ["Tidak dapat menjalankan ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
+    "UMT9C9": ["Cara menggunakan OpenKnowledge dan alat MCP-nya."],
     "UNwKSz": ["Pembaruan otomatis aktif untuk \"", ["name"], "\""],
     "UPWItY": ["Sebuah folder yang berisi SKILL.md."],
     "UPi_yZ": ["Ditahan"],
@@ -2775,6 +2783,7 @@
     "akmOT9": ["Sunting komentar ini"],
     "an0aL5": ["Tanya agen"],
     "anmUZq": ["Ada fitur yang kurang"],
+    "annvv7": ["Tidak dapat membaca keterampilan mana yang terpasang."],
     "aoT2xX": ["Komentar ini berlaku untuk seluruh properti"],
     "arUUsK": ["Kabar terbaru produk"],
     "ax9kie": ["Pengaturan pratinjau tautan belum dimuat — coba lagi sebentar"],
@@ -3039,6 +3048,9 @@
     ],
     "ebqMh6": [
       "Dibagikan ke semua orang di proyek ini. Disimpan di folder proyek dan ikut berpindah lewat git."
+    ],
+    "ee15Vl": [
+      "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Tulis milik Anda di bilah sisi Keterampilan pada editor; halaman ini tempat keterampilan diaktifkan dan dibagikan."
     ],
     "eiUA4k": [["count", "plural", { "other": ["#", " komentar"] }]],
     "ekSPiP": [["0"], " sudah dihapus."],
@@ -3329,6 +3341,7 @@
     "iH8pgl": ["Kembali"],
     "iHAJDj": ["Menentukan lokasi bawaan"],
     "iIaSUD": ["Spasi"],
+    "iKS6gg": ["Keterampilan dipindahkan ke Studio Keterampilan."],
     "iKSP5j": ["Bungkus baris"],
     "iKZkk1": ["Nilai properti"],
     "iKvAeG": ["Memeriksa"],
@@ -3462,9 +3475,6 @@
     "jp6I-2": ["panel baru di sebelah kanan ", ["0"]],
     "jpctdh": ["Tampilan"],
     "jpoCue": [".myteam/skills"],
-    "jqe7Yq": [
-      "Membuka Pengaturan → Keterampilan, tempat Anda menautkan satu folder utuh ke folder lain agar kedua agen membaca keterampilan yang sama, dan menambahkan akar keterampilan khusus."
-    ],
     "jtg_8-": [
       "Bangun wiki pengetahuan tentang berbagai jenis burung yang tidak bisa terbang. Mulai dengan halaman ikhtisar, lalu tambahkan halaman yang saling tertaut untuk tiap kelompok besar (ratit seperti burung unta, emu, dan kiwi; penguin; serta mandar yang tidak bisa terbang), wilayah tempat mereka hidup, dan lini masa bagaimana ketidakmampuan terbang itu berkembang."
     ],
@@ -3512,6 +3522,9 @@
     ],
     "kCjkGY": ["Ini mungkin makan waktu sebentar. Konten markdown Anda dipertahankan."],
     "kCqCyf": ["Membuka panel diagnostik lint CodeMirror."],
+    "kEiVv6": [
+      "Keterampilan ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Memasang satu akan menambahkannya ke setiap alat AI di mesin ini."
+    ],
     "kFLlsI": ["Menyisipkan rujukan catatan kaki + kerangka definisi yang sesuai."],
     "kGp168": ["Tidak dapat menyiapkan proyek ini untuk diterbitkan."],
     "kI5pWt": ["Gambar tidak ditemukan: ", ["errorLabel"]],
@@ -3554,9 +3567,6 @@
       "Ini menghapus pengaturan dan integrasi OpenKnowledge dari Mac Anda serta dari proyek mana pun yang Anda pilih di bawah, tetapi mempertahankan konten markdown dan keterampilan yang Anda tulis."
     ],
     "kfL8BJ": ["Impor gagal: ", ["0"]],
-    "khCa4M": [
-      "Mengajari agen pemrograman di proyek ini untuk membaca dan menulis lewat OpenKnowledge."
-    ],
     "kj9pAE": ["Membuat halaman"],
     "kjlQ9D": ["menjadi tautan simbolik"],
     "kknhfj": ["Tidak ada perubahan"],
@@ -3871,6 +3881,7 @@
     "ogAuyr": ["Kembali ke tampilan dokumen"],
     "ohUJJM": ["Plugin"],
     "ojGc_T": ["Buka komentar"],
+    "olb6oq": ["Cara menyiapkan proyek baru dengan OpenKnowledge."],
     "omXJcU": ["Tutup yang lain"],
     "onTlRk": ["Berbagi keterampilan tidak bisa diperbarui"],
     "opPbzN": ["Menyalin keterampilan ke ", ["path"]],
@@ -3887,6 +3898,7 @@
       "\" tidak dapat dibersihkan. Muat ulang untuk mencoba lagi."
     ],
     "oxdGJn": ["Sebelum pergi, boleh cerita kenapa?"],
+    "oy5bJW": ["Anda dapat menambahkan"],
     "oyBV3W": ["Jalur folder keterampilan khusus"],
     "p0Iq25": ["Sisipkan tautan"],
     "p2LEhJ": ["Token akses pribadi"],
@@ -4125,9 +4137,6 @@
     "sJK6pq": ["Izin ditolak"],
     "sJWhgo": ["Komponen tidak dikenal: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Kirim ke obrolan"],
-    "sLcbHt": [
-      "Tautkan folder lain ke salah satu folder ini agar kedua agen membaca keterampilan yang sama; lepaskan tautannya untuk kembali mengelola keterampilan sebuah folder satu per satu."
-    ],
     "sNeKjP": ["Gagal menyimpan token — coba lagi"],
     "sOxZaS": ["Gagal memuat graf"],
     "sQoLn0": ["Keluar"],
@@ -4210,6 +4219,9 @@
     "tN5WTS": ["Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."],
     "tP5DDk": ["Terapkan tautan"],
     "tUvUfp": ["Pakai folder yang sudah Anda punya."],
+    "tX8FLX": [
+      "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Pasang keterampilan bawaan OpenKnowledge, atau tulis milik Anda di bilah sisi Keterampilan pada editor."
+    ],
     "t_YqKh": ["Hapus"],
     "tc65fD": ["Paling banyak dipasang"],
     "tcjTlU": ["Paket awal"],
@@ -4336,9 +4348,6 @@
     "vGQxBT": ["Pembaruan dari sumbernya berlaku otomatis (kecuali sudah disunting secara lokal)"],
     "vGeNNQ": ["Salin sebuah prompt dan tempelkan ke agen Anda untuk menyiapkan proyek Anda."],
     "vHlhDc": ["Klik dua kali untuk menyunting"],
-    "vIR6Hp": [
-      "Keterampilan dipasang ke setiap alat AI yang terdeteksi di mesin ini, terlepas dari koneksi MCP yang Anda pilih di atas."
-    ],
     "vIxrEk": ["Sesuaikan lebar"],
     "vLyv1R": ["Sembunyikan"],
     "vO2v-0": ["Sembunyikan lainnya"],
@@ -4409,6 +4418,7 @@
     "w61W3L": ["Hapus ", ["0"]],
     "w6sBjd": ["Pengaturan terminal belum dimuat — coba lagi sebentar"],
     "w6sT-y": ["Ikuti suntingan agen"],
+    "w7LRoP": ["Studio Keterampilan"],
     "w7SsvI": ["Folder itu belum menjadi proyek OpenKnowledge. Inisialisasi lalu buka?"],
     "w7bnEb": ["Buat keterampilan pribadi, tersedia di semua proyek."],
     "w7nm4K": ["Kutipan blok berindentasi untuk mengutip sumber."],
@@ -4615,6 +4625,7 @@
     "yvG-l1": ["Buka panel lint sumber"],
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Berhenti memperbaiki. Berkas yang sudah diperbaiki tetap terperbaiki."],
+    "ywVfOE": ["Keterampilan proyek ini dipindahkan ke Studio Keterampilan."],
     "yxF19Y": [["0", "plural", { "other": ["#", " plugin"] }]],
     "yz7wBu": ["Tutup"],
     "yzF66j": ["Tautan"],

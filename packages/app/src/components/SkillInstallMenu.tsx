@@ -813,7 +813,7 @@ export function SkillInstallMenuItems({
           than "Settings", and the hint says where it goes — the row navigates
           away, which a bare gear does not communicate. */}
       <Hint
-        hint={t`Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots.`}
+        hint={t`Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots.`}
       >
         <SkillMenuItem
           menuKind={menuKind}

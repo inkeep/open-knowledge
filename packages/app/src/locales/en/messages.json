@@ -77,6 +77,7 @@
     "0CvV_9": ["Installs to"],
     "0E9DR6": ["Type to find a doc"],
     "0Er6-M": ["Restarting"],
+    "0ExRWt": ["Skills that come with this project, and the folders its AI tools read them from."],
     "0Gd0NU": ["Shared"],
     "0J6nhG": [
       "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
@@ -196,7 +197,6 @@
     "25Pw6a": ["Cloning"],
     "27TLNq": ["Enable ", ["displayName"], " CLI"],
     "27XW26": ["Clone happens in the Project Navigator. Reclick the share link there."],
-    "28B21t": ["Agent Skills"],
     "29VNqC": ["Unknown error"],
     "29XZXN": ["Set git identity"],
     "2AIVbm": ["Review your report"],
@@ -383,6 +383,7 @@
       "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
     ],
     "58qIOK": ["Comment on this selection"],
+    "59CUI8": ["Share skills between AI tools"],
     "5ALjdr": ["Move through visual-editor find results from the find field."],
     "5Ajb15": ["The formula <0>c = √(a² + b²)</0> renders inline."],
     "5AzM72": ["This setting is per-machine and isn't shared with collaborators."],
@@ -452,6 +453,9 @@
     ],
     "5wV2qQ": ["and more"],
     "5y_9lO": ["Waiting for authorization"],
+    "5ymuTA": [
+      "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+    ],
     "6-wLTJ": [["behind"], " behind origin"],
     "60vpJN": ["What were you doing?"],
     "61i3cO": ["Toggle header row"],
@@ -461,9 +465,6 @@
     "64sesb": ["Callouts draw attention to key information."],
     "65Ea2s": ["Exposing pins a fixed port so the tunnel's target stays stable across restarts."],
     "67Dpmh": ["Slash command suggestions"],
-    "67TEhP": [
-      "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
-    ],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "69KLIV": ["Escape"],
     "6ASTuj": [
@@ -537,6 +538,7 @@
     "74C2zx": ["Edit schema ", ["file"]],
     "74eHt-": ["No file or folder selected"],
     "75Y1dk": ["Horizontal pill strip + active panel below; click a pill to switch panels."],
+    "76gPWk": ["Got it"],
     "77SdEP": ["Delete ", ["itemName"]],
     "78G7R3": [
       "Validate document frontmatter against JSON Schema files, scoped to doc sets by glob."
@@ -730,6 +732,9 @@
     ],
     "9fhQRL": ["Beta channel"],
     "9fvog2": ["Preview unavailable: ", ["errorDetail"]],
+    "9hEdtC": [
+      "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
+    ],
     "9i21pa": ["Commits happen automatically"],
     "9ieZhu": ["Installed at ", ["path"], " — click to remove"],
     "9jnjV0": ["Embed an audio file with native player controls."],
@@ -911,6 +916,7 @@
     "CWzc2T": [
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
     ],
+    "CXDYfm": ["Couldn't read whether this project's skill is installed."],
     "CXTwen": ["Can't safely edit this project config"],
     "CXcveY": [
       "Open Knowledge maintains a navigation file named index.md in every folder that contains Markdown, each listing that folder's documents by type and linking to its subfolders. It rewrites these files as your documents change, and anything you edit into them yourself is replaced."
@@ -1168,6 +1174,7 @@
     ],
     "FgQ7XZ": ["Couldn't load your bug reports."],
     "FgRAvd": ["Logs & system info"],
+    "FgcPSX": ["Managing skills is unavailable in this build."],
     "Fhp4Gn": ["View plugin"],
     "FiyNln": ["Jump to selected text in property"],
     "FjkaiT": ["Zoom out"],
@@ -1300,7 +1307,6 @@
       "Slidev isn't installed, so the Slidev action stays hidden. Install it, then return to this window."
     ],
     "HSI88F": ["Delete table"],
-    "HSh8u_": ["Folders"],
     "HTW0Zw": ["One more step: run <0>claude</0> in this project and approve OpenKnowledge once."],
     "HZ7fEu": ["Theme name"],
     "HbcQYf": [
@@ -1342,6 +1348,7 @@
       "Move or rename this file inside the skill — the path stays under references/ or scripts/."
     ],
     "HzVv6g": ["Paste"],
+    "I-6_4S": ["How to write a new skill and install it."],
     "I1gRhX": ["Failed to rename"],
     "I4LGsH": ["Collapse all file groups"],
     "I5685_": ["Try a prompt"],
@@ -1419,6 +1426,9 @@
     "JOcPqH": ["Bring a remote repository onto this machine."],
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],
+    "J_jZ5z": [
+      "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
+    ],
     "JaU1ld": ["Theme name has unsupported characters"],
     "JddocZ": ["Toggle header column"],
     "Jejur6": ["Couldn't load document"],
@@ -1445,9 +1455,6 @@
     ],
     "K0N7zS": ["Config sharing status read failed"],
     "K1ckLX": ["Failed to create folder"],
-    "K1nRu2": [
-      "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
-    ],
     "K2v7QF": ["Couldn't share skills"],
     "K4G55s": ["Checking source"],
     "K6MQQk": ["Sync is failing. See the sync status for details."],
@@ -1583,7 +1590,6 @@
     "Lrsl_h": ["Missing file ", ["identity"], ". Go to reference."],
     "LtI9AS": ["Owner"],
     "LtSYdi": ["Reveal in Finder"],
-    "LtiJ5c": ["Project skill"],
     "LuoJWu": [
       [
         "truncatedShownCount",
@@ -1700,9 +1706,6 @@
     ],
     "N6j2JH": ["Edit ", ["0"]],
     "NBdIgR": ["Comment"],
-    "NCmYhK": [
-      "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
-    ],
     "NErvOX": ["Saved to"],
     "NEzPEh": ["Create a new branch, or check out an existing one, in its own window."],
     "NIWAux": ["No docs registered under #", ["tagDocsName"], "."],
@@ -1805,6 +1808,7 @@
     "ONWvwQ": ["Upload"],
     "ONgEZF": ["Loading headings for ", ["pageTarget"]],
     "OOIVJo": ["Uninstalled \"", ["0"], "\" from ", ["1"]],
+    "OOLsBh": [["0"], " share this folder."],
     "OPOiKn": ["Content rules"],
     "OTF92M": ["Label <0>(optional display text)</0>"],
     "OVjNeX": ["Terminal ", ["0"]],
@@ -2039,6 +2043,7 @@
     "RnrnTe": ["Already set up — ok is available in your terminal"],
     "RoafuO": ["Send feedback"],
     "RobAKV": ["Update the destination and optional section anchor."],
+    "RojU4W": ["Skills from OpenKnowledge"],
     "Rq1vFD": ["Tree view options"],
     "RqSvT0": ["Importing"],
     "RrAIZx": ["What config sharing covers"],
@@ -2193,6 +2198,7 @@
     "UJEFJY": ["Couldn't start ", ["0"], ": ", ["1"]],
     "UL-9ej": ["OpenKnowledge opened the live preview"],
     "UL8A9w": ["Tag"],
+    "UMT9C9": ["How to use OpenKnowledge and its MCP tools."],
     "UNwKSz": ["Auto-update on for \"", ["name"], "\""],
     "UPWItY": ["A folder containing SKILL.md."],
     "UPi_yZ": ["Held"],
@@ -2757,6 +2763,7 @@
     "akmOT9": ["Edit this comment"],
     "an0aL5": ["Ask an agent"],
     "anmUZq": ["Missing a feature"],
+    "annvv7": ["Couldn't read which skills are installed."],
     "aoT2xX": ["This comment is on the whole property"],
     "arUUsK": ["Product updates"],
     "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
@@ -3014,6 +3021,9 @@
     ],
     "ebqMh6": [
       "Shared with everyone on this project. Stored in the project folder and travels with it through git."
+    ],
+    "ee15Vl": [
+      "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
     ],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
     "ekSPiP": [["0"], " was already deleted."],
@@ -3296,6 +3306,7 @@
     "iH8pgl": ["Back"],
     "iHAJDj": ["Resolving default location"],
     "iIaSUD": ["Whitespace"],
+    "iKS6gg": ["Skills moved to Skills Studio."],
     "iKSP5j": ["Word wrap"],
     "iKZkk1": ["Property value"],
     "iKvAeG": ["Checking"],
@@ -3423,9 +3434,6 @@
     "jp6I-2": ["a new pane to the right of ", ["0"]],
     "jpctdh": ["View"],
     "jpoCue": [".myteam/skills"],
-    "jqe7Yq": [
-      "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
-    ],
     "jtg_8-": [
       "Build a knowledge wiki about the different types of flightless birds. Start with an overview page, then add cross-linked pages for each major group (ratites like ostriches, emus, and kiwis; penguins; and flightless rails), the regions they live in, and a timeline of how flightlessness evolved."
     ],
@@ -3473,6 +3481,9 @@
     ],
     "kCjkGY": ["This may take a moment. Your markdown content is kept."],
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
+    "kEiVv6": [
+      "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+    ],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
     "kGp168": ["Couldn't prepare this project for publish."],
     "kI5pWt": ["Image not found: ", ["errorLabel"]],
@@ -3520,7 +3531,6 @@
       "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
     ],
     "kfL8BJ": ["Import failed: ", ["0"]],
-    "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
     "kjlQ9D": ["becomes a symlink"],
     "kknhfj": ["No changes"],
@@ -3834,6 +3844,7 @@
     "ogAuyr": ["Back to document view"],
     "ohUJJM": ["Plugins"],
     "ojGc_T": ["Open comment"],
+    "olb6oq": ["How to set up new projects with OpenKnowledge."],
     "omXJcU": ["Close others"],
     "onTlRk": ["Couldn't update skills sharing"],
     "opPbzN": ["Copies the skill to ", ["path"]],
@@ -3850,6 +3861,7 @@
       "\" could not be cleared. Reload to retry."
     ],
     "oxdGJn": ["Before you go, mind sharing why?"],
+    "oy5bJW": ["You can add"],
     "oyBV3W": ["Custom skills folder path"],
     "p0Iq25": ["Insert link"],
     "p2LEhJ": ["Personal access token"],
@@ -4095,9 +4107,6 @@
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Send to chat"],
-    "sLcbHt": [
-      "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
-    ],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
@@ -4179,6 +4188,9 @@
     "tN5WTS": ["The provider rejected the request. Check the API key and the model id."],
     "tP5DDk": ["Apply link"],
     "tUvUfp": ["Use a folder you already have."],
+    "tX8FLX": [
+      "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
+    ],
     "t_YqKh": ["Remove"],
     "tc65fD": ["Most installed"],
     "tcjTlU": ["Starter packs"],
@@ -4321,9 +4333,6 @@
     "vGQxBT": ["Updates from the source apply automatically (unless edited locally)"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
     "vHlhDc": ["Double-click to edit"],
-    "vIR6Hp": [
-      "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
-    ],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
     "vO2v-0": ["Hide Others"],
@@ -4385,6 +4394,7 @@
     "w61W3L": ["Remove ", ["0"]],
     "w6sBjd": ["Terminal settings not yet loaded — try again in a moment"],
     "w6sT-y": ["Follow the agent's edits"],
+    "w7LRoP": ["Skills Studio"],
     "w7SsvI": ["That folder isn't an OpenKnowledge project yet. Initialize it and open?"],
     "w7bnEb": ["Create a personal skill, available across every project."],
     "w7nm4K": ["Indented blockquote for citations."],
@@ -4596,6 +4606,7 @@
     "yvG-l1": ["Open source lint panel"],
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Stop fixing. Files already fixed stay fixed."],
+    "ywVfOE": ["This project's skill moved to Skills Studio."],
     "yxF19Y": [["0", "plural", { "one": ["#", " plugin"], "other": ["#", " plugins"] }]],
     "yz7wBu": ["Close"],
     "yzF66j": ["Link"],

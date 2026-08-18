@@ -373,6 +373,11 @@ msgstr "{0} 属性"
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} 通过 {poolRootRel} 读取这个技能。点击可让 {1} 不再获取“{2}”——{subRoot} 保留其他技能，但不再跟随 {poolRootRel}。"
 
+#. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{0} share this folder."
+msgstr "{0} 共用此文件夹。"
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -1501,11 +1506,6 @@ msgstr "智能体设置"
 #. Heading above the skill install destinations in the disclosure
 #: src/components/McpConsentDialogBody.tsx
 msgid "Agent Skill"
-msgstr "智能体技能"
-
-#. Group label above the skill rows in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Agent Skills"
 msgstr "智能体技能"
 
 #: src/components/acp/ThreadView.tsx
@@ -3454,7 +3454,9 @@ msgstr "无法添加那条评论。"
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "无法应用该更改：{0}"
 
@@ -3749,6 +3751,14 @@ msgstr "无法读取等待发送的评论：{0}"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
 msgstr "无法读取此主题（{0}）"
+
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't read whether this project's skill is installed."
+msgstr "无法读取本项目的技能是否已安装。"
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Couldn't read which skills are installed."
+msgstr "无法读取已安装的技能。"
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -4723,6 +4733,11 @@ msgstr "例如：同步过程中切换了项目"
 #: src/components/ReportBugDialogBody.tsx
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "例如：粘贴一个很大的表格后编辑器卡住了"
+
+#. Says what symlinking two skill folders together buys the user, before any button names it
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
+msgstr "每个 AI 工具都从各自的文件夹读取技能。将一个文件夹指向另一个，两个工具就会看到相同的技能——只需添加一次技能，而不必复制到每个工具。"
 
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -5819,10 +5834,6 @@ msgstr "已复制文件夹共享链接。"
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "目标文件夹：{linkTitle}。点击可打开总览。"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Folders"
-msgstr "文件夹"
-
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Follow"
@@ -6086,6 +6097,11 @@ msgstr "跳转到 {1} 的第 {0} 行"
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "良好"
+
+#. Sole button when the intro has nothing left to offer
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Got it"
+msgstr "知道了"
 
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
@@ -6384,6 +6400,18 @@ msgstr "如何设置"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "如何设置 {0}（在浏览器中打开）"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to set up new projects with OpenKnowledge."
+msgstr "如何用 OpenKnowledge 设置新项目。"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to use OpenKnowledge and its MCP tools."
+msgstr "如何使用 OpenKnowledge 及其 MCP 工具。"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to write a new skill and install it."
+msgstr "如何编写并安装新技能。"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project."
@@ -6712,9 +6740,10 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、删除、移动、复制和缩进行。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
@@ -6722,7 +6751,9 @@ msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、
 msgid "Install"
 msgstr "安装"
 
+#. placeholder {0}: offer.name
 #. placeholder {0}: skill.name
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr "安装 {0}"
@@ -6731,7 +6762,7 @@ msgstr "安装 {0}"
 msgid "Install {brand} →"
 msgstr "安装 {brand} →"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Install {name}"
 msgstr "安装 {name}"
@@ -6866,6 +6897,7 @@ msgstr "正在安装"
 msgid "Installing {agentName}…"
 msgstr "正在安装 {agentName}…"
 
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "安装到"
@@ -7326,6 +7358,8 @@ msgstr "正在加载仓库"
 msgid "Loading settings"
 msgstr "正在加载设置"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "Loading skills"
 msgstr "正在加载技能"
@@ -7473,6 +7507,10 @@ msgstr "这个版本不支持管理 AI 工具。"
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "这个版本不支持管理项目的 AI 工具。"
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Managing skills is unavailable in this build."
+msgstr "此版本不支持管理技能。"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -8512,8 +8550,10 @@ msgstr "不在侧边栏中"
 msgid "Not installed"
 msgstr "未安装"
 
+#. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
 msgid "Not now"
 msgstr "暂时不用"
@@ -9239,8 +9279,8 @@ msgid "Opens in a new tab"
 msgstr "在新标签页中打开"
 
 #: src/components/SkillInstallMenu.tsx
-msgid "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
-msgstr "打开「设置 → 技能」，在那里你可以把整个文件夹链接到另一个文件夹，让两个智能体读取相同的技能，也可以添加自定义技能根目录。"
+msgid "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+msgstr "打开「设置 → 技能工作室」，在那里你可以把整个文件夹链接到另一个文件夹，让两个智能体读取相同的技能，也可以添加自定义技能根目录。"
 
 #: src/components/empty-state/CreateView.tsx
 #: src/components/PackCardGrid.tsx
@@ -9810,11 +9850,6 @@ msgstr "项目插件是你项目的写作规范——在这里开启或关闭它
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "项目根目录"
-
-#. Group label above the project runtime-skill row in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project skill"
-msgstr "项目技能"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -11401,6 +11436,11 @@ msgstr "共享文件夹"
 msgid "Share skills"
 msgstr "共享技能"
 
+#. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Share skills between AI tools"
+msgstr "在 AI 工具之间共用技能"
+
 #: src/components/SharingModeField.tsx
 msgid "Share this setup with your team?"
 msgstr "要把这套配置分享给你的团队吗？"
@@ -11714,8 +11754,6 @@ msgstr "技能发现由 <0>skills.sh</0> 提供支持"
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FilesSkillsToggle.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-#: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills"
 msgstr "技能"
 
@@ -11723,10 +11761,17 @@ msgstr "技能"
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "技能现在已共享。提交 .ok/skills 即可分享给你的团队。"
 
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Heading above the project's own skill row, in Settings → This project → Skills Studio
+#. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Skills from OpenKnowledge"
+msgstr "来自 OpenKnowledge 的技能"
+
+#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
-msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
-msgstr "技能会安装到本机检测到的每个 AI 工具，与上面选择的 MCP 连接无关。"
+msgid "Skills moved to Skills Studio."
+msgstr "技能已移至技能工作室。"
 
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
@@ -11738,9 +11783,24 @@ msgstr "技能已重新分配"
 msgid "Skills section"
 msgstr "技能区"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
-msgid "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
-msgstr "技能教会智能体完成可重复的任务。可在编辑器的「技能」区中编写和管理它们；每个技能的安装菜单决定它保存在哪里。以下是这个项目的技能文件夹。"
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills Studio"
+msgstr "技能工作室"
+
+#. First-visit explanation of what the Skills Studio settings page is for
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
+msgstr "技能让你的 AI 工具学会可重复的任务。安装 OpenKnowledge 提供的技能，或在编辑器的“技能”侧边栏中编写你自己的技能。"
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
+msgstr "技能让你的 AI 工具学会可重复的任务。在编辑器的“技能”侧边栏中编写你自己的技能；本页用于启用和共用它们。"
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills that come with this project, and the folders its AI tools read them from."
+msgstr "本项目自带的技能，以及它的 AI 工具读取这些技能的文件夹。"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12175,10 +12235,6 @@ msgstr "符号链接"
 msgid "Symlink"
 msgstr "符号链接"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
-msgstr "把另一个文件夹符号链接到其中之一，让两个智能体读取相同的技能；取消链接后可再次逐个管理某个文件夹的技能。"
-
 #: src/components/FileTree.tsx
 msgid "Symlink to {targetPath}"
 msgstr "指向 {targetPath} 的符号链接"
@@ -12363,10 +12419,6 @@ msgstr "任务清单"
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "任务清单"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
-msgstr "教会这个项目中的编程智能体通过 OpenKnowledge 读写内容。"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
@@ -12825,6 +12877,11 @@ msgstr "这些技能目前从另一个文件夹读取。链接后，它们将改
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "这些规则来自你项目的 <0>{configFile}</0> 文件，该文件完全决定了这个项目的检查行为。可以在这里开关规则并编辑它们的选项；更改会写回该文件。"
 
+#. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr "它们教你的 AI 工具如何使用 OpenKnowledge。安装其中一个，会把它添加到本机的每个 AI 工具。"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
 msgstr "思考中"
@@ -13054,6 +13111,11 @@ msgstr "这会把 <0>{name}</0> 从 {0} 移到 {1}，在磁盘上重新放置它
 msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
 msgstr "这个需要查看您的文件，而不仅仅是打开的文档，因此它会在您运行项目审核时出现，而不是在您键入时出现。"
 
+#. Says what the project skill is for, then the thing that makes it different from the user-scope ones: it is committed to the repo
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
+msgstr "这一个教你的 AI 工具如何使用 OpenKnowledge。它位于项目文件夹中，因此会为每个打开本项目的人安装。"
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr "这个包在这里已经设置好了。"
@@ -13151,6 +13213,11 @@ msgstr "这个项目正在运行的服务器不支持实时编辑。重启 OpenK
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "这个项目的服务器（v{0}）比这个应用（v{1}）新。"
 
+#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This project's skill moved to Skills Studio."
+msgstr "本项目的技能已移至技能工作室。"
+
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "这会从你的 Mac 以及你在下方选择的项目中移除 OpenKnowledge 的设置和集成，但保留你的 markdown 内容和自己编写的技能。"
@@ -13192,11 +13259,6 @@ msgstr "这项设置按电脑生效，不会与协作者共享。"
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "这项设置按电脑生效，不会与协作者共享。除非你的端点是不需要密钥的本地服务器，否则需要一个 API 密钥（在下方设置）。"
-
-#. Tells the user the project skill is committed to the repo, unlike the user-global skills
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
-msgstr "此技能位于项目文件夹中，因此会为每个打开该项目的人安装，而不只是你。"
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -13560,13 +13622,13 @@ msgstr "要撤销到这次编辑吗？"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "在「编辑源码」面板或代码类属性字段中撤销、重做，或逐步回溯选区变化。"
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall"
 msgstr "卸载"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall {name}"
 msgstr "卸载 {name}"
@@ -14261,6 +14323,11 @@ msgstr "昨天"
 msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 msgstr "你已有名为“{0}”的自有技能——不会安装入门包中的版本，你的技能也不会被改动。如需安装入门包版本，请重命名你自己的技能。"
 
+#. Label above the optional skill offered on first visit
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "You can add"
+msgstr "你可以添加"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "You can also create one from a terminal with <0>ok bug-report</0>."
 msgstr "你也可以在终端中用 <0>ok bug-report</0> 创建一个。"
@@ -14448,10 +14515,6 @@ msgstr "你的搜索查询和匹配页面的全文会发送到你的嵌入服务
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "你的共享链接已在下方生成。"
-
-#: src/components/settings/SkillsManagerSection.tsx
-msgid "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
-msgstr "你的用户级技能文件夹——在这台电脑的每个项目中都可用。每个技能的安装菜单决定它保存在哪里。"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"

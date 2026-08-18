@@ -581,9 +581,13 @@ export interface IntegrationsSkillStatus {
   readonly id: string;
   readonly name: string;
   /** The skill's own frontmatter description; empty when the bundle is
-   *  unreadable. Replaces the hand-written per-id subtext on the row. */
+   *  unreadable. This is the AGENT's trigger text — the install-confirm modal
+   *  quotes it, the row does not. */
   readonly description: string;
   readonly installed: boolean;
+  /** True when first-launch setup offers this bundle — see the core
+   *  desktop-bridge contract for why `installed` alone cannot answer this. */
+  readonly onboarding: boolean;
   /** Tildified directories a toggle touches: the central `~/.agents/skills`
    *  copy plus each per-host copy whose host root exists on this machine. */
   readonly paths: readonly string[];
@@ -672,8 +676,8 @@ export interface ProjectIntegrationsEditorStatus {
 export interface ProjectIntegrationsSkillStatus {
   readonly installed: boolean;
   readonly paths: readonly string[];
-  /** The bundle's own frontmatter description, so the row states what the skill
-   *  says rather than a hand-written subtext that can drift from it. */
+  /** The bundle's own frontmatter description — the agent's trigger text,
+   *  quoted by the install-confirm modal. */
   readonly description: string;
   /** Editor ids the project skill fans out to — the reach cluster's input.
    *  Project-scoped: the editors with a project skill root HERE, not the

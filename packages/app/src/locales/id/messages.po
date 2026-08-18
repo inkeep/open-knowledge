@@ -373,6 +373,11 @@ msgstr "Properti {0}"
 msgid "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\" — {subRoot} keeps its other skills but stops following {poolRootRel}."
 msgstr "{0} membaca keterampilan ini lewat {poolRootRel}. Klik agar {1} berhenti menerima \"{2}\" — {subRoot} tetap punya keterampilan lainnya tetapi berhenti mengikuti {poolRootRel}."
 
+#. placeholder {0}: formatToolList( [f.host, ...following.map((o) => o.host)].map(hostLabel), i18n.locale, )
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{0} share this folder."
+msgstr "{0} berbagi folder ini."
+
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
 msgid "{0} templates available"
@@ -1497,11 +1502,6 @@ msgstr "Pengaturan agen"
 #. Heading above the skill install destinations in the disclosure
 #: src/components/McpConsentDialogBody.tsx
 msgid "Agent Skill"
-msgstr "Keterampilan Agen"
-
-#. Group label above the skill rows in Settings → AI tools & CLI
-#: src/components/settings/AiToolsSection.tsx
-msgid "Agent Skills"
 msgstr "Keterampilan Agen"
 
 #: src/components/acp/ThreadView.tsx
@@ -3450,7 +3450,9 @@ msgstr "Komentar itu tidak bisa ditambahkan."
 
 #. placeholder {0}: err instanceof Error ? err.message : String(err)
 #: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Perubahannya tidak bisa diterapkan: {0}"
 
@@ -3745,6 +3747,14 @@ msgstr "Komentar yang menunggu dikirim tidak bisa dibaca: {0}"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
 msgstr "Tema ini tidak dapat dibaca ({0})"
+
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't read whether this project's skill is installed."
+msgstr "Tidak dapat membaca apakah keterampilan proyek ini terpasang."
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Couldn't read which skills are installed."
+msgstr "Tidak dapat membaca keterampilan mana yang terpasang."
 
 #: src/components/EditorActivityPool.tsx
 msgid "Couldn't reconnect after server restart"
@@ -4719,6 +4729,11 @@ msgstr "mis. Berpindah proyek saat sinkronisasi sedang berjalan"
 #: src/components/ReportBugDialogBody.tsx
 msgid "e.g. The editor froze after I pasted a large table"
 msgstr "mis. Penyunting membeku setelah saya menempelkan tabel besar"
+
+#. Says what symlinking two skill folders together buys the user, before any button names it
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
+msgstr "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
 
 #: src/components/CreateProjectDialog.tsx
 #: src/components/NavigatorApp.tsx
@@ -5815,10 +5830,6 @@ msgstr "Tautan berbagi folder disalin."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Folder tujuan: {linkTitle}. Klik untuk membuka ikhtisarnya."
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Folders"
-msgstr "Folder"
-
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Follow"
@@ -6082,6 +6093,11 @@ msgstr "Ke baris {0} di {1}"
 #: src/components/FeedbackForm.tsx
 msgid "Good"
 msgstr "Bagus"
+
+#. Sole button when the intro has nothing left to offer
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Got it"
+msgstr "Mengerti"
 
 #: src/components/DocPanel.tsx
 #: src/components/GraphPanel.tsx
@@ -6380,6 +6396,18 @@ msgstr "Cara menyiapkan"
 #: src/components/settings/AiToolsSection.tsx
 msgid "How to set up {0} (opens in browser)"
 msgstr "Cara menyiapkan {0} (terbuka di peramban)"
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to set up new projects with OpenKnowledge."
+msgstr "Cara menyiapkan proyek baru dengan OpenKnowledge."
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to use OpenKnowledge and its MCP tools."
+msgstr "Cara menggunakan OpenKnowledge dan alat MCP-nya."
+
+#: src/components/settings/builtin-skill-copy.ts
+msgid "How to write a new skill and install it."
+msgstr "Cara menulis keterampilan baru dan memasangnya."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How validation findings surface across the project."
@@ -6708,9 +6736,10 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris penyunting sumber lewat peta tombol bawaan CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPreviewTab.tsx
@@ -6718,7 +6747,9 @@ msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris p
 msgid "Install"
 msgstr "Pasang"
 
+#. placeholder {0}: offer.name
 #. placeholder {0}: skill.name
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install {0}"
 msgstr "Pasang {0}"
@@ -6727,7 +6758,7 @@ msgstr "Pasang {0}"
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Install {name}"
 msgstr "Pasang {name}"
@@ -6862,6 +6893,7 @@ msgstr "Memasang"
 msgid "Installing {agentName}…"
 msgstr "Memasang {agentName}…"
 
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "Dipasang di"
@@ -7322,6 +7354,8 @@ msgstr "Memuat repositori"
 msgid "Loading settings"
 msgstr "Memuat pengaturan"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillsSidebarSection.tsx
 msgid "Loading skills"
 msgstr "Memuat keterampilan"
@@ -7469,6 +7503,10 @@ msgstr "Pengelolaan alat AI tidak tersedia pada build ini."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "Pengelolaan alat AI proyek tidak tersedia pada build ini."
+
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "Managing skills is unavailable in this build."
+msgstr "Pengelolaan keterampilan tidak tersedia di build ini."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -8508,8 +8546,10 @@ msgstr "Tidak ada di bilah sisi"
 msgid "Not installed"
 msgstr "Belum terpasang"
 
+#. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/lib/install-server-drift-listener.ts
 msgid "Not now"
 msgstr "Nanti saja"
@@ -9235,8 +9275,8 @@ msgid "Opens in a new tab"
 msgstr "Terbuka di tab baru"
 
 #: src/components/SkillInstallMenu.tsx
-msgid "Opens Settings → Skills, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
-msgstr "Membuka Pengaturan → Keterampilan, tempat Anda menautkan satu folder utuh ke folder lain agar kedua agen membaca keterampilan yang sama, dan menambahkan akar keterampilan khusus."
+msgid "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
+msgstr "Membuka Pengaturan → Studio Keterampilan, tempat Anda menautkan satu folder utuh ke folder lain agar kedua agen membaca keterampilan yang sama, dan menambahkan akar keterampilan khusus."
 
 #: src/components/empty-state/CreateView.tsx
 #: src/components/PackCardGrid.tsx
@@ -9806,11 +9846,6 @@ msgstr "Plugin proyek adalah standar penulisan proyek Anda — nyalakan atau mat
 #: src/components/SeedRootPicker.tsx
 msgid "Project root"
 msgstr "Akar proyek"
-
-#. Group label above the project runtime-skill row in Settings → This project → AI tools
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Project skill"
-msgstr "Keterampilan proyek"
 
 #: src/components/settings/ProjectTemplatesSection.tsx
 msgid "Project templates"
@@ -11397,6 +11432,11 @@ msgstr "Bagikan folder"
 msgid "Share skills"
 msgstr "Bagikan keterampilan"
 
+#. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Share skills between AI tools"
+msgstr "Bagikan keterampilan antar alat AI"
+
 #: src/components/SharingModeField.tsx
 msgid "Share this setup with your team?"
 msgstr "Bagikan penyiapan ini dengan tim Anda?"
@@ -11710,8 +11750,6 @@ msgstr "Penemuan keterampilan ditenagai <0>skills.sh</0>"
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FilesSkillsToggle.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-#: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills"
 msgstr "Keterampilan"
 
@@ -11719,10 +11757,17 @@ msgstr "Keterampilan"
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
 
-#. Tells the user a skill installs to every detected AI tool, independent of the per-tool MCP connections listed above
+#. Heading above the project's own skill row, in Settings → This project → Skills Studio
+#. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Skills from OpenKnowledge"
+msgstr "Keterampilan dari OpenKnowledge"
+
+#. Points at the settings page that now owns skill install, in Settings → AI tools & CLI
 #: src/components/settings/AiToolsSection.tsx
-msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
-msgstr "Keterampilan dipasang ke setiap alat AI yang terdeteksi di mesin ini, terlepas dari koneksi MCP yang Anda pilih di atas."
+msgid "Skills moved to Skills Studio."
+msgstr "Keterampilan dipindahkan ke Studio Keterampilan."
 
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Skills reassigned"
@@ -11734,9 +11779,24 @@ msgstr "Keterampilan dialihkan"
 msgid "Skills section"
 msgstr "Bagian Keterampilan"
 
+#: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
-msgid "Skills teach agents repeatable tasks. Author and manage them from the Skills section in the editor; each skill's install menu controls where it lives. These are this project's skill folders."
-msgstr "Keterampilan mengajari agen tugas yang berulang. Tulis dan kelola dari bagian Keterampilan di penyunting; menu pemasangan tiap keterampilan menentukan di mana ia berada. Ini adalah folder keterampilan proyek ini."
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills Studio"
+msgstr "Studio Keterampilan"
+
+#. First-visit explanation of what the Skills Studio settings page is for
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "Skills teach your AI tools repeatable tasks. Install the ones OpenKnowledge ships, or write your own in the editor's Skills sidebar."
+msgstr "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Pasang keterampilan bawaan OpenKnowledge, atau tulis milik Anda di bilah sisi Keterampilan pada editor."
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
+msgstr "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Tulis milik Anda di bilah sisi Keterampilan pada editor; halaman ini tempat keterampilan diaktifkan dan dibagikan."
+
+#: src/components/settings/SkillsManagerSection.tsx
+msgid "Skills that come with this project, and the folders its AI tools read them from."
+msgstr "Keterampilan yang disertakan dengan proyek ini, dan folder tempat alat AI-nya membacanya."
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12171,10 +12231,6 @@ msgstr "symlink"
 msgid "Symlink"
 msgstr "Symlink"
 
-#: src/components/settings/SkillTargetsPicker.tsx
-msgid "Symlink another folder into one of these so both agents read the same skills; unlink to manage a folder's skills one by one again."
-msgstr "Tautkan folder lain ke salah satu folder ini agar kedua agen membaca keterampilan yang sama; lepaskan tautannya untuk kembali mengelola keterampilan sebuah folder satu per satu."
-
 #: src/components/FileTree.tsx
 msgid "Symlink to {targetPath}"
 msgstr "Symlink ke {targetPath}"
@@ -12359,10 +12415,6 @@ msgstr "Daftar tugas"
 #: src/editor/slash-command/items.tsx
 msgid "Task List"
 msgstr "Daftar Tugas"
-
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "Teaches coding agents in this project to read and write through OpenKnowledge."
-msgstr "Mengajari agen pemrograman di proyek ini untuk membaca dan menulis lewat OpenKnowledge."
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Team Wiki"
@@ -12821,6 +12873,11 @@ msgstr "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, ke
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."
 msgstr "Aturan-aturan ini berasal dari berkas <0>{configFile}</0> proyek Anda, yang sepenuhnya mengatur lint untuk proyek ini. Nyalakan atau matikan aturan dan sunting opsinya di sini; perubahannya ditulis kembali ke berkas itu."
 
+#. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
+#: src/components/settings/BuiltInSkillsSection.tsx
+msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr "Keterampilan ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Memasang satu akan menambahkannya ke setiap alat AI di mesin ini."
+
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
 msgstr "Berpikir"
@@ -13050,6 +13107,11 @@ msgstr "Ini memindahkan <0>{name}</0> dari {0} ke {1}, memindahkan berkasnya di 
 msgid "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
 msgstr "Yang ini perlu melihat file Anda, bukan hanya dokumen yang terbuka, sehingga muncul saat Anda menjalankan audit proyek, bukan saat Anda mengetik."
 
+#. Says what the project skill is for, then the thing that makes it different from the user-scope ones: it is committed to the repo
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "This one teaches your AI tools how to work with OpenKnowledge. It lives in the project folder, so it installs for everyone who opens the project."
+msgstr "Yang ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek."
+
 #: src/components/SeedDialog.tsx
 msgid "This pack is already set up here."
 msgstr "Paket ini sudah disiapkan di sini."
@@ -13147,6 +13209,11 @@ msgstr "Server proyek ini yang sedang berjalan tidak mendukung penyuntingan lang
 msgid "This project's server (v{0}) is newer than this app (v{1})."
 msgstr "Server proyek ini (v{0}) lebih baru daripada aplikasi ini (v{1})."
 
+#. Points at the settings page that now owns the project skill, in Settings → This project → AI tools
+#: src/components/settings/ProjectAiToolsSection.tsx
+msgid "This project's skill moved to Skills Studio."
+msgstr "Keterampilan proyek ini dipindahkan ke Studio Keterampilan."
+
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "Ini menghapus pengaturan dan integrasi OpenKnowledge dari Mac Anda serta dari proyek mana pun yang Anda pilih di bawah, tetapi mempertahankan konten markdown dan keterampilan yang Anda tulis."
@@ -13188,11 +13255,6 @@ msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborat
 #: src/components/settings/SearchSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators. It needs an API key (set below) unless your endpoint is a local server that doesn't require one."
 msgstr "Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborator. Ia memerlukan kunci API (setel di bawah) kecuali endpoint Anda adalah server lokal yang tidak memerlukannya."
-
-#. Tells the user the project skill is committed to the repo, unlike the user-global skills
-#: src/components/settings/ProjectAiToolsSection.tsx
-msgid "This skill lives in the project folder, so it installs for everyone who opens this project — not just you."
-msgstr "Keterampilan ini berada di folder proyek, jadi terpasang untuk semua orang yang membuka proyek ini, bukan hanya Anda."
 
 #: src/components/ImportSkillForm.tsx
 msgid "This source bundles several skills — choose one, then Import."
@@ -13556,13 +13618,13 @@ msgstr "Batalkan hingga suntingan ini?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Membatalkan, mengulangi, atau menelusuri perubahan pilihan di panel Sunting sumber atau bidang properti berbentuk kode."
 
-#: src/components/settings/AiToolsSection.tsx
-#: src/components/settings/ProjectAiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall"
 msgstr "Copot"
 
-#: src/components/settings/AiToolsSection.tsx
+#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Uninstall {name}"
 msgstr "Copot {name}"
@@ -14257,6 +14319,11 @@ msgstr "kemarin"
 msgid "You already have your own skill named \"{0}\" — the pack's version will not be installed, and yours won't be touched. Rename yours to install the pack's version."
 msgstr "Kamu sudah punya skill sendiri bernama “{0}” — versi dari paket tidak akan dipasang, dan milikmu tidak akan diubah. Ganti nama milikmu untuk memasang versi paket."
 
+#. Label above the optional skill offered on first visit
+#: src/components/settings/SkillsStudioIntroDialog.tsx
+msgid "You can add"
+msgstr "Anda dapat menambahkan"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "You can also create one from a terminal with <0>ok bug-report</0>."
 msgstr "Anda juga bisa membuatnya dari terminal dengan <0>ok bug-report</0>."
@@ -14444,10 +14511,6 @@ msgstr "Kueri pencarian Anda dan teks lengkap halaman yang cocok dikirim ke peny
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Your share link is ready below."
 msgstr "Tautan berbagi Anda sudah siap di bawah."
-
-#: src/components/settings/SkillsManagerSection.tsx
-msgid "Your user-level skill folders — available in every project on this machine. Each skill's install menu controls where it lives."
-msgstr "Folder keterampilan tingkat pengguna Anda — tersedia di setiap proyek pada komputer ini. Menu pemasangan tiap keterampilan menentukan di mana ia berada."
 
 #: src/components/ImportSkillForm.tsx
 msgid "Zip file"
