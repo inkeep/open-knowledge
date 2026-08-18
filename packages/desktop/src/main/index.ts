@@ -8428,8 +8428,8 @@ function bootPrimaryInstance(): void {
           : {}),
         // Pre-relaunch teardown — synchronously hard-kill every project-window
         // utility (Hocuspocus host) right before
-        // `autoUpdater.quitAndInstall()` so Squirrel.Mac's `pgrep` against
-        // the bundle path doesn't see a stale process and abort with code -9
+        // `autoUpdater.quitAndInstall()` so Squirrel.Mac's pre-swap
+        // not-still-running validation doesn't see a stale process and abort with code -9
         // ("App Still Running Error"). The graceful `{type:'shutdown'}`
         // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
         // teardown can outlast ShipIt's poll budget.
@@ -8452,7 +8452,7 @@ function bootPrimaryInstance(): void {
           // until they release or 10 s elapses, then escalate to SIGKILL on
           // detached pids whose drain ran long. Awaiting here means the
           // updater's `quitAndInstall` waits for the process tree to be
-          // genuinely clean before ShipIt's pre-swap `pgrep` runs.
+          // genuinely clean before ShipIt's pre-swap validation runs.
           await wm?.stopAllOwnedServers();
           // Drain the async log buffer before `quitAndInstall()` hands off to
           // Squirrel, which SIGKILLs this process for the bundle swap. Without
@@ -8566,6 +8566,14 @@ function bootPrimaryInstance(): void {
     // update`) already captured the richer pre-teardown set, so this no-ops
     // there and only fires for a normal quit.
     captureWindowRestoreSnapshot('before-quit');
+    // Stamp the handoff moment while a live process still exists to observe it.
+    // With a staged update armed, this quit is what commits the install, and
+    // the swap then runs after the exit inside a process the next boot cannot
+    // see — so the next boot's "did the install take?" verdict has only what is
+    // recorded here to tell an install still underway from one that failed.
+    // No-ops when nothing is staged or the moment was already stamped (the
+    // "Relaunch now" path records its own).
+    autoUpdaterHandle?.recordInstallHandoffOnQuit();
     // Flush pending startup telemetry before exit. `emitStartupWaterfall`
     // covers a quit during the post-window-shown flush-deadline window (the
     // `.unref()`'d deadline timer won't fire once the process is exiting): it

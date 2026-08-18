@@ -1200,9 +1200,9 @@ export class WindowManager {
   async stopAllOwnedServers(): Promise<void> {
     // Utility-fork pids (dev path) — hard-kill immediately. These are
     // children of Electron's process tree and would die anyway on
-    // `quitAndInstall`, but ShipIt's pre-swap `pgrep` check (the
-    // `SQRLInstallerErrorDomain Code=-9 "App Still Running"` failure)
-    // wants the tree clean BEFORE it polls.
+    // `quitAndInstall`, but ShipIt's pre-swap not-still-running validation
+    // (the `SQRLInstallerErrorDomain Code=-9 "App Still Running"` failure)
+    // wants the tree clean BEFORE it looks.
     signalStopOwnedUtilityForks(this.windowsByPath.values(), this.deps.log);
 
     // Detached-spawn pids — two-phase SIGTERM → poll → SIGKILL.
