@@ -107,10 +107,12 @@ describe('HelpPopover runtime behavior', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Community' });
     const links = within(nav).getAllByRole('link');
+    // GitHub leads: it is the repo the project actually lives in, and it is the
+    // row that carries the star count.
     expect(links.map(linkShape)).toEqual([
       {
-        label: 'Discord',
-        href: 'https://discord.gg/VRKk2EaGHN',
+        label: 'GitHub',
+        href: 'https://github.com/inkeep/open-knowledge',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,
@@ -123,13 +125,23 @@ describe('HelpPopover runtime behavior', () => {
         hasIcon: true,
       },
       {
-        label: 'GitHub',
-        href: 'https://github.com/inkeep/open-knowledge',
+        label: 'Discord',
+        href: 'https://discord.gg/VRKk2EaGHN',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,
       },
     ]);
+  });
+
+  test('does not advertise the hidden game', async () => {
+    await renderOpenHelpPopover();
+
+    // Blob Run stays an easter egg. The mascot gesture, the command palette,
+    // and the connecting banner's mascot button reach it; the Resources menu
+    // does not.
+    const nav = screen.getByRole('navigation', { name: 'Resources' });
+    expect(within(nav).queryByRole('button', { name: 'Blob Run' })).toBeNull();
   });
 
   test('shows the fetched GitHub star count on the GitHub row', async () => {

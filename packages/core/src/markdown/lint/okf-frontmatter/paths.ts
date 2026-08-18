@@ -1,3 +1,4 @@
+
 import type { OkfRuleId } from '../okf-rule-meta.ts';
 
 export const OKF_SCHEMA_DIR = '.ok/okf';

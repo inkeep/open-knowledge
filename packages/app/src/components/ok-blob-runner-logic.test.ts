@@ -617,20 +617,41 @@ describe('persisted high score', () => {
 });
 
 describe('rage streak (reveal gate)', () => {
-  // One rage burst is the firework and nothing else. The reveal is gated on
-  // doing it twice, so someone who stumbles into the sparkle keeps the sparkle
+  // Reaching rage is the firework and nothing else. The reveal is gated on
+  // staying on it, so someone who stumbles into the sparkle keeps the sparkle
   // and nothing surprising happens to their tab.
+  test('the reveal threshold is the value the product ships', () => {
+    // The cadence tests below drive off the constant, which is what keeps them
+    // honest through a retune — but it also means they would all still pass if
+    // the constant silently went back to 2 and the reveal became a four-click
+    // gesture again. This literal is the guard against that. Retuning is fine;
+    // edit it deliberately, not to make a red suite green.
+    expect(RAGE_STREAK_TO_REVEAL).toBe(6);
+  });
+
   test('a first burst never reaches the reveal threshold', () => {
     expect(nextRageStreak(0, Number.POSITIVE_INFINITY)).toBe(1);
     expect(nextRageStreak(0, 0)).toBe(1);
     expect(nextRageStreak(0, 10)).toBeLessThan(RAGE_STREAK_TO_REVEAL);
   });
 
-  test('a second burst inside the window reaches it', () => {
-    expect(nextRageStreak(1, RAGE_STREAK_WINDOW_MS - 1)).toBe(RAGE_STREAK_TO_REVEAL);
+  test('rage clicks inside the window accumulate to the threshold', () => {
+    let streak = 0;
+    for (let i = 0; i < RAGE_STREAK_TO_REVEAL; i++) {
+      streak = nextRageStreak(streak, RAGE_STREAK_WINDOW_MS - 1);
+    }
+    expect(streak).toBe(RAGE_STREAK_TO_REVEAL);
   });
 
-  test('a second burst after the window restarts the streak', () => {
+  test('one click short of the threshold still hides the game', () => {
+    // The gate is the last click, not an early one — the burst has to be
+    // sustained the whole way or the mascot keeps its secret.
+    expect(nextRageStreak(RAGE_STREAK_TO_REVEAL - 2, RAGE_STREAK_WINDOW_MS - 1)).toBe(
+      RAGE_STREAK_TO_REVEAL - 1,
+    );
+  });
+
+  test('a later burst after the window restarts the streak', () => {
     expect(nextRageStreak(1, RAGE_STREAK_WINDOW_MS)).toBe(1);
     expect(nextRageStreak(1, RAGE_STREAK_WINDOW_MS + 5_000)).toBe(1);
     expect(nextRageStreak(3, 60_000)).toBe(1);

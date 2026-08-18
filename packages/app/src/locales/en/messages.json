@@ -350,7 +350,6 @@
     "4mp6Tv": ["OpenKnowledge listed the installed skills"],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
-    "4o57um": ["Game over · press space to play again"],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
@@ -558,6 +557,7 @@
     ],
     "7ZkJdV": ["No agents selected — the skills are saved but not installed anywhere."],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
+    "7a0YcF": ["Press <0>Space</0> or tap the blob to start"],
     "7aNk5D": ["OpenKnowledge edited ", ["subject"]],
     "7apDiJ": [
       "A folder named <0>",
@@ -626,7 +626,6 @@
     "8PifYj": ["Mermaid diagram"],
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8RtNI0": ["Failed to load documents"],
-    "8SrrDi": ["New best · press space to play again"],
     "8TvlHF": ["Crash dump"],
     "8UmUyc": [
       "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
@@ -1930,7 +1929,6 @@
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
-    "QUhYEG": ["Space to jump · down arrow to duck"],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2735,6 +2733,7 @@
     "ac8G0O": ["on trigger"],
     "adsMWO": ["Resolving deltas"],
     "ah_ekO": ["\"", ["name"], "\" is already up to date"],
+    "ai40UJ": ["New best · press <0>Space</0> to play again"],
     "aiArms": ["We couldn't clone this repository."],
     "aiOceC": ["Enable indexes"],
     "ajHi4O": [
@@ -3840,6 +3839,7 @@
     "pFRz_E": ["Leave these comments out of this message"],
     "pFagOn": ["Source editing"],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
+    "pI_bKs": ["<0>Space</0> to jump · <1>↓</1> to duck"],
     "pJ7XCo": ["This page references no local files or images."],
     "pOo4Aa": ["Plain text"],
     "pSimwP": ["New name for the ", ["editor"], " version"],
@@ -4225,6 +4225,7 @@
       "You don't have permission to push to this repo. Follow can still keep your copy up to date."
     ],
     "uVbUP8": ["Settings…"],
+    "uY5Z7P": ["Game over · press <0>Space</0> to play again"],
     "u_lS4C": ["Clone complete — opening project"],
     "uaUc6t": ["Restart server"],
     "ubMwcO": ["The terminal session ended (signal ", ["0"], ")."],
@@ -4370,7 +4371,6 @@
     ],
     "wGSHzy": ["Activate one of the first eight editor tabs."],
     "wHZ58m": ["Open with AI ", ["displayName"], " Desktop"],
-    "wIM7ul": ["Press space or tap the blob to start"],
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],

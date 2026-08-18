@@ -423,7 +423,6 @@
       "Intégration HTML en bac à sable — écrivez du HTML, voyez l'aperçu se rendre en direct."
     ],
     "4nj6n8": ["/api/config a renvoyé HTTP ", ["code"]],
-    "4o57um": ["Partie terminée · appuyez sur espace pour rejouer"],
     "4pDZ2N": [
       "« ",
       ["0"],
@@ -686,6 +685,7 @@
       "Aucun agent sélectionné — les compétences sont enregistrées mais installées nulle part."
     ],
     "7_bFEL": ["Faites glisser ", ["patternText"], " pour réorganiser"],
+    "7a0YcF": ["Appuyez sur <0>Espace</0> ou touchez le blob pour commencer"],
     "7aNk5D": ["OpenKnowledge a modifié ", ["subject"]],
     "7apDiJ": [
       "Un dossier nommé <0>",
@@ -766,7 +766,6 @@
     "8PifYj": ["Diagramme Mermaid"],
     "8PmoQF": ["Ouvre le menu d'insertion à une position de texte vide ou active."],
     "8RtNI0": ["Échec du chargement des documents"],
-    "8SrrDi": ["Nouveau record · appuyez sur espace pour rejouer"],
     "8TvlHF": ["Vidage de plantage"],
     "8UmUyc": [
       "L'URL publique servie par votre tunnel. Le serveur accepte les requêtes destinées à cet hôte et l'annonce dans les URL qu'il émet."
@@ -2251,7 +2250,6 @@
     "QQbwzK": ["Aucun agent disponible."],
     "QQghPu": ["Installer dans Claude Desktop"],
     "QR5SP1": ["modèle créé"],
-    "QUhYEG": ["Espace pour sauter · flèche bas pour s'accroupir"],
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
@@ -3195,6 +3193,7 @@
     "ac8G0O": ["au déclenchement"],
     "adsMWO": ["Résolution des deltas"],
     "ah_ekO": ["« ", ["name"], " » est déjà à jour"],
+    "ai40UJ": ["Nouveau record · appuyez sur <0>Espace</0> pour rejouer"],
     "aiArms": ["Nous n'avons pas pu cloner ce dépôt."],
     "aiOceC": ["Activer les index"],
     "ajHi4O": [
@@ -4475,6 +4474,7 @@
     "pFRz_E": ["Ne pas inclure ces commentaires dans ce message"],
     "pFagOn": ["Édition de la source"],
     "pHYP6v": ["Ouvrez <0>Personnaliser</0> dans la barre latérale <1/> <2>Compétences</2>."],
+    "pI_bKs": ["<0>Espace</0> pour sauter · <1>↓</1> pour s’accroupir"],
     "pJ7XCo": ["Cette page ne référence aucun fichier ou image local."],
     "pOo4Aa": ["Texte brut"],
     "pSimwP": ["Nouveau nom pour la version ", ["editor"]],
@@ -4926,6 +4926,7 @@
       "Vous n'avez pas la permission de pousser vers ce dépôt. Suivre peut tout de même maintenir votre copie à jour."
     ],
     "uVbUP8": ["Paramètres…"],
+    "uY5Z7P": ["Partie terminée · appuyez sur <0>Espace</0> pour rejouer"],
     "u_lS4C": ["Clonage terminé — ouverture du projet"],
     "uaUc6t": ["Redémarrer le serveur"],
     "ubMwcO": ["La session de terminal s'est terminée (signal ", ["0"], ")."],
@@ -5103,7 +5104,6 @@
     ],
     "wGSHzy": ["Active l'un des huit premiers onglets de l'éditeur."],
     "wHZ58m": ["Ouvrir avec l'IA ", ["displayName"], " Desktop"],
-    "wIM7ul": ["Appuyez sur espace ou touchez le blob pour commencer"],
     "wJijgU": ["Emplacement"],
     "wJo9oS": ["Fermer la recherche"],
     "wQp1V3": ["Miroir de <0>", ["src"], "</0>"],

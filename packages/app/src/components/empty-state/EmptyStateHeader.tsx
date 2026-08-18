@@ -15,9 +15,10 @@ interface EmptyStateHeaderProps {
    *  seed (or any other parent-triggered moment). Increment to fire. */
   readonly celebrateSignal: number;
   /**
-   * Fired when the user rage-clicks the mascot twice in a row. One burst is
-   * just the firework; the second is the gesture. Optional, so surfaces that
-   * do not host the easter egg simply omit it.
+   * Fired once the user has held a rage-click streak long enough to count as a
+   * deliberate gesture rather than a stumble. Reaching rage is just the
+   * firework. Optional, so surfaces that do not host the easter egg simply
+   * omit it.
    */
   readonly onRageStreak?: () => void;
 }
@@ -42,8 +43,8 @@ export function EmptyStateHeader({
   const lastRageAtRef = useRef<number | null>(null);
 
   function handleRage() {
-    // The firework already fired inside OkBlob; this only decides whether the
-    // burst was the SECOND in a row.
+    // The firework already fired inside OkBlob; this only counts how many rage
+    // clicks have landed in a row and decides when that clears the gate.
     const now =
       typeof performance !== 'undefined' && typeof performance.now === 'function'
         ? performance.now()

@@ -24,7 +24,9 @@ describe('OkBlobRunnerEasterEgg', () => {
     expect(game()).toBeNull();
     expect(screen.getByTestId('ok-blob-probe').dataset.variant).toBe('sleeping');
     // An easter egg that advertises itself is just a feature in a strange place.
-    expect(screen.queryByText(/press space/i)).toBeNull();
+    // Asserted on the slot, not the copy: key names render inside `<kbd>` caps,
+    // so a text matcher would find nothing whether or not the hint is there.
+    expect(document.querySelector('[data-slot="ok-blob-runner-hint"]')).toBeNull();
   });
 
   test('ArrowUp wakes it', async () => {

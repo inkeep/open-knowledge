@@ -355,7 +355,6 @@
     "4mp6Tv": ["OpenKnowledge menampilkan daftar keterampilan yang terpasang"],
     "4niEzY": ["Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."],
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
-    "4o57um": ["Permainan berakhir · tekan spasi untuk main lagi"],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
     "4sKwf6": ["Berkas sudah ada"],
     "4sUdTJ": ["pratinjau bertema"],
@@ -568,6 +567,7 @@
       "Tidak ada agen yang dipilih — keterampilannya tersimpan tetapi tidak dipasang di mana pun."
     ],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
+    "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
     "7aNk5D": ["OpenKnowledge menyunting ", ["subject"]],
     "7apDiJ": [
       "Folder bernama <0>",
@@ -632,7 +632,6 @@
     "8PifYj": ["Diagram Mermaid"],
     "8PmoQF": ["Membuka menu sisip pada posisi teks yang kosong atau aktif."],
     "8RtNI0": ["Gagal memuat dokumen"],
-    "8SrrDi": ["Rekor baru · tekan spasi untuk main lagi"],
     "8TvlHF": ["Crash dump"],
     "8UmUyc": [
       "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
@@ -1950,7 +1949,6 @@
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
-    "QUhYEG": ["Spasi untuk melompat · panah bawah untuk menunduk"],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
@@ -2749,6 +2747,7 @@
     "ac8G0O": ["saat dipicu"],
     "adsMWO": ["Menyelesaikan delta"],
     "ah_ekO": ["\"", ["name"], "\" sudah yang terbaru"],
+    "ai40UJ": ["Rekor baru · tekan <0>Spasi</0> untuk main lagi"],
     "aiArms": ["Kami tidak bisa mengkloning repositori ini."],
     "aiOceC": ["Aktifkan indeks"],
     "ajHi4O": [
@@ -3879,6 +3878,7 @@
     "pFRz_E": ["Jangan sertakan komentar ini dalam pesan ini"],
     "pFagOn": ["Penyuntingan sumber"],
     "pHYP6v": ["Buka <0>Sesuaikan</0> di bilah sisi <1/> <2>Keterampilan</2>."],
+    "pI_bKs": ["<0>Spasi</0> untuk melompat · <1>↓</1> untuk menunduk"],
     "pJ7XCo": ["Halaman ini tidak merujuk ke berkas atau gambar lokal apa pun."],
     "pOo4Aa": ["Teks biasa"],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
@@ -4257,6 +4257,7 @@
       "Anda tidak punya izin push ke repo ini. Ikuti tetap bisa menjaga salinan Anda mutakhir."
     ],
     "uVbUP8": ["Pengaturan…"],
+    "uY5Z7P": ["Permainan berakhir · tekan <0>Spasi</0> untuk main lagi"],
     "u_lS4C": ["Kloning selesai — membuka proyek"],
     "uaUc6t": ["Mulai ulang server"],
     "ubMwcO": ["Sesi terminal berakhir (sinyal ", ["0"], ")."],
@@ -4394,7 +4395,6 @@
     ],
     "wGSHzy": ["Mengaktifkan salah satu dari delapan tab penyunting pertama."],
     "wHZ58m": ["Buka dengan AI ", ["displayName"], " Desktop"],
-    "wIM7ul": ["Tekan spasi atau ketuk blob untuk mulai"],
     "wJijgU": ["Lokasi"],
     "wJo9oS": ["Tutup pencarian"],
     "wQp1V3": ["Cermin dari <0>", ["src"], "</0>"],

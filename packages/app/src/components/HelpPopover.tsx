@@ -4,16 +4,7 @@ import { getGitHubStars } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import {
-  BookOpen,
-  Bug,
-  CircleHelp,
-  Gamepad2,
-  Mail,
-  Megaphone,
-  MessageSquare,
-  Star,
-} from 'lucide-react';
+import { BookOpen, Bug, CircleHelp, Mail, Megaphone, MessageSquare, Star } from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
@@ -21,7 +12,6 @@ import { SubscribeForm } from '@/components/SubscribeForm';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useOpenBlobRunner } from '@/editor/DocumentContext';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { feedbackNudgeStore } from '@/lib/feedback-nudge-store';
 import { DISCORD_INVITE_URL, GITHUB_REPO_URL, X_PROFILE_URL } from '@/lib/social-links';
@@ -57,9 +47,9 @@ const sections: ResourceSection[] = [
     key: 'community',
     heading: msg`Community`,
     links: [
-      { label: 'Discord', href: DISCORD_INVITE_URL, icon: DiscordIcon },
-      { label: 'X (Twitter)', href: X_PROFILE_URL, icon: XTwitterIcon },
       { label: 'GitHub', href: GITHUB_REPO_URL, icon: GithubIcon },
+      { label: 'X (Twitter)', href: X_PROFILE_URL, icon: XTwitterIcon },
+      { label: 'Discord', href: DISCORD_INVITE_URL, icon: DiscordIcon },
     ],
   },
 ];
@@ -142,7 +132,6 @@ export const HelpPopover: FC = () => {
   const [subscribeOpen, setSubscribeOpen] = useState(false);
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const openBlobRunner = useOpenBlobRunner();
   const [starCount, setStarCount] = useState<number | null>(null);
 
   // The Report-a-bug flow (bundle create + upload) lives entirely behind the
@@ -237,17 +226,6 @@ export const HelpPopover: FC = () => {
                       >
                         <Trans>Send feedback</Trans>
                       </ActionRow>
-                      {openBlobRunner ? (
-                        <ActionRow
-                          icon={Gamepad2}
-                          onSelect={() => {
-                            setPopoverOpen(false);
-                            openBlobRunner();
-                          }}
-                        >
-                          <Trans>Blob Run</Trans>
-                        </ActionRow>
-                      ) : null}
                     </>
                   )}
                 </ul>

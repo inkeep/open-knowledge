@@ -997,6 +997,10 @@ msgstr "<0>Se eliminó la fuente del espejo.</0> El documento <1>{src}</1> ya no
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más adelante desde el menú Archivo. La terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
 
+#: src/components/OkBlobRunner.tsx
+msgid "<0>Space</0> to jump · <1>↓</1> to duck"
+msgstr "<0>Espacio</0> para saltar · <1>↓</1> para agacharse"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2023,7 +2027,6 @@ msgstr "Nota en blanco"
 
 #: src/components/command-palette-commands.ts
 #: src/components/EditorTabs.tsx
-#: src/components/HelpPopover.tsx
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Blob Run"
 msgstr "Blob Run"
@@ -5920,8 +5923,8 @@ msgid "Full sync — your edits are committed and pushed to your remote automati
 msgstr "Sincronización completa: tus ediciones se confirman y se suben a tu remoto automáticamente."
 
 #: src/components/OkBlobRunner.tsx
-msgid "Game over · press space to play again"
-msgstr "Fin del juego · pulsa espacio para jugar de nuevo"
+msgid "Game over · press <0>Space</0> to play again"
+msgstr "Fin del juego · pulsa <0>Espacio</0> para jugar de nuevo"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "General"
@@ -7878,8 +7881,8 @@ msgid "New {0} chat"
 msgstr "Nuevo chat de {0}"
 
 #: src/components/OkBlobRunner.tsx
-msgid "New best · press space to play again"
-msgstr "Nuevo récord · pulsa espacio para jugar de nuevo"
+msgid "New best · press <0>Space</0> to play again"
+msgstr "Nuevo récord · pulsa <0>Espacio</0> para jugar de nuevo"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "New branch <0>{trimmed}</0> will be created from <1>{currentBaseLabel}</1>, in its own worktree under <2>.ok/worktrees/</2>."
@@ -9630,8 +9633,8 @@ msgid "Present a document as a slide deck in its own window. Works in the OpenKn
 msgstr "Presenta un documento como una presentación de diapositivas en su propia ventana. Solo funciona en la aplicación de escritorio de OpenKnowledge y necesita la CLI de Slidev, que se instala por separado. Cuando está activado, aparece en Plugins en la barra lateral."
 
 #: src/components/OkBlobRunner.tsx
-msgid "Press space or tap the blob to start"
-msgstr "Pulsa espacio o toca el blob para empezar"
+msgid "Press <0>Space</0> or tap the blob to start"
+msgstr "Pulsa <0>Espacio</0> o toca el blob para empezar"
 
 #: src/components/EditorWorkspace.tsx
 msgid "Press Space to pick up a tab. Use the arrow keys to move it within a tab strip, then press Space or Enter to drop it. Press Shift+F10 or the Menu key to open the tab context menu for split, close, pin, and other tab actions."
@@ -11843,10 +11846,6 @@ msgstr "Búsqueda en el código"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
 msgstr "Deshacer o rehacer en el código"
-
-#: src/components/OkBlobRunner.tsx
-msgid "Space to jump · down arrow to duck"
-msgstr "Espacio para saltar · flecha abajo para agacharse"
 
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."

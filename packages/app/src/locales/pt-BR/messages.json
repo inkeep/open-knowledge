@@ -405,7 +405,6 @@
       "HTML incorporado em modo isolado — escreva HTML e veja a pré-visualização renderizada ao vivo."
     ],
     "4nj6n8": ["/api/config devolveu HTTP ", ["code"]],
-    "4o57um": ["Fim de jogo · pressione espaço para jogar de novo"],
     "4pDZ2N": [
       "\"",
       ["0"],
@@ -658,6 +657,7 @@
       "Nenhum agente selecionado — as habilidades ficam salvas, mas não são instaladas em lugar nenhum."
     ],
     "7_bFEL": ["Arraste ", ["patternText"], " para reordenar"],
+    "7a0YcF": ["Pressione <0>Espaço</0> ou toque no blob para começar"],
     "7aNk5D": ["OpenKnowledge editou ", ["subject"]],
     "7apDiJ": [
       "Uma pasta chamada <0>",
@@ -732,7 +732,6 @@
     "8PifYj": ["Diagrama do Mermaid"],
     "8PmoQF": ["Abre o menu de inserção em uma posição de texto vazia ou ativa."],
     "8RtNI0": ["Falha ao carregar os documentos"],
-    "8SrrDi": ["Novo recorde · pressione espaço para jogar de novo"],
     "8TvlHF": ["Despejo de falha"],
     "8UmUyc": [
       "A URL pública que o seu túnel serve. O servidor aceita requisições para este host e o anuncia nas URLs que emite."
@@ -2198,7 +2197,6 @@
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
-    "QUhYEG": ["Espaço para pular · seta para baixo para agachar"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
@@ -3102,6 +3100,7 @@
     "ac8G0O": ["ao acionar"],
     "adsMWO": ["Resolvendo deltas"],
     "ah_ekO": ["\"", ["name"], "\" já está atualizado"],
+    "ai40UJ": ["Novo recorde · pressione <0>Espaço</0> para jogar de novo"],
     "aiArms": ["Não foi possível clonar este repositório."],
     "aiOceC": ["Habilitar índices"],
     "ajHi4O": [
@@ -4352,6 +4351,7 @@
     "pFRz_E": ["Deixar estes comentários fora desta mensagem"],
     "pFagOn": ["Edição de código"],
     "pHYP6v": ["Abra <0>Personalizar</0> na barra lateral <1/> <2>Habilidades</2>."],
+    "pI_bKs": ["<0>Espaço</0> para pular · <1>↓</1> para agachar"],
     "pJ7XCo": ["Esta página não faz referência a nenhum arquivo ou imagem local."],
     "pOo4Aa": ["Texto simples"],
     "pSimwP": ["Novo nome para a versão do ", ["editor"]],
@@ -4781,6 +4781,7 @@
       "Você não tem permissão para enviar a este repositório. Acompanhar ainda consegue manter sua cópia atualizada."
     ],
     "uVbUP8": ["Configurações…"],
+    "uY5Z7P": ["Fim de jogo · pressione <0>Espaço</0> para jogar de novo"],
     "u_lS4C": ["Clonagem concluída — abrindo o projeto"],
     "uaUc6t": ["Reiniciar o servidor"],
     "ubMwcO": ["A sessão de terminal terminou (sinal ", ["0"], ")."],
@@ -4942,7 +4943,6 @@
     ],
     "wGSHzy": ["Ativa uma das oito primeiras abas do editor."],
     "wHZ58m": ["Abrir com a IA ", ["displayName"], " Desktop"],
-    "wIM7ul": ["Pressione espaço ou toque no blob para começar"],
     "wJijgU": ["Local"],
     "wJo9oS": ["Fechar busca"],
     "wQp1V3": ["Espelho de <0>", ["src"], "</0>"],

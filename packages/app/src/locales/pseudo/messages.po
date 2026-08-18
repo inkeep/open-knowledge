@@ -993,6 +993,10 @@ msgstr ""
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr ""
 
+#: src/components/OkBlobRunner.tsx
+msgid "<0>Space</0> to jump · <1>↓</1> to duck"
+msgstr ""
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr ""
@@ -2019,7 +2023,6 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 #: src/components/EditorTabs.tsx
-#: src/components/HelpPopover.tsx
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Blob Run"
 msgstr ""
@@ -5916,7 +5919,7 @@ msgid "Full sync — your edits are committed and pushed to your remote automati
 msgstr ""
 
 #: src/components/OkBlobRunner.tsx
-msgid "Game over · press space to play again"
+msgid "Game over · press <0>Space</0> to play again"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -7874,7 +7877,7 @@ msgid "New {0} chat"
 msgstr ""
 
 #: src/components/OkBlobRunner.tsx
-msgid "New best · press space to play again"
+msgid "New best · press <0>Space</0> to play again"
 msgstr ""
 
 #: src/components/NewWorktreeDialog.tsx
@@ -9626,7 +9629,7 @@ msgid "Present a document as a slide deck in its own window. Works in the OpenKn
 msgstr ""
 
 #: src/components/OkBlobRunner.tsx
-msgid "Press space or tap the blob to start"
+msgid "Press <0>Space</0> or tap the blob to start"
 msgstr ""
 
 #: src/components/EditorWorkspace.tsx
@@ -11838,10 +11841,6 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Source undo or redo"
-msgstr ""
-
-#: src/components/OkBlobRunner.tsx
-msgid "Space to jump · down arrow to duck"
 msgstr ""
 
 #: src/components/OkBlobRunnerPage.tsx

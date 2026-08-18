@@ -1,13 +1,16 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { RAGE_STREAK_TO_REVEAL } from '@/components/ok-blob-runner-logic';
 import {
   expectVisualClassTokens,
   expectVisualClassTokensAbsent,
 } from '@/test-utils/visual-contract';
 
 vi.doMock('@/components/OkBlob', () => ({
-  // `onRage` is exposed as a click so the reveal gate can be driven from a test;
-  // the real OkBlob fires it after three rapid clicks inside its rage window.
+  // `onRage` is exposed as a click so the reveal gate can be driven from a test.
+  // The real OkBlob fires it on the third rapid click inside its rage window and
+  // again on every rapid click that holds the rage, so one click here stands for
+  // one rage click there.
   OkBlob: ({
     celebrateSignal,
     size,
@@ -82,6 +85,26 @@ describe('EmptyStateHeader rage-streak reveal gate', () => {
     return screen.getByTestId('ok-blob-probe');
   }
 
+  /** Spacing between clicks — comfortably inside the streak window. */
+  const CLICK_GAP_MS = 500;
+
+  /**
+   * Drive `count` rage clicks in a row. Driven off the threshold rather than a
+   * literal count so retuning the gate does not silently turn these into tests
+   * of a cadence the product no longer has.
+   */
+  function rage(
+    blob: HTMLElement,
+    now: { mockReturnValue(value: number): unknown },
+    count: number,
+    startMs = 0,
+  ) {
+    for (let i = 0; i < count; i++) {
+      now.mockReturnValue(startMs + i * CLICK_GAP_MS);
+      fireEvent.click(blob);
+    }
+  }
+
   test('one burst never reveals — the first sparkle is just a sparkle', async () => {
     const onRageStreak = vi.fn();
     const blob = await mount(onRageStreak);
@@ -89,43 +112,39 @@ describe('EmptyStateHeader rage-streak reveal gate', () => {
     expect(onRageStreak).not.toHaveBeenCalled();
   });
 
-  test('a second burst inside the window reveals, exactly once', async () => {
+  test('a full streak inside the window reveals, exactly once', async () => {
     const onRageStreak = vi.fn();
     const now = vi.spyOn(performance, 'now');
     const blob = await mount(onRageStreak);
 
-    now.mockReturnValue(0);
-    fireEvent.click(blob);
-    now.mockReturnValue(1_000);
-    fireEvent.click(blob);
+    rage(blob, now, RAGE_STREAK_TO_REVEAL - 1);
+    expect(onRageStreak).not.toHaveBeenCalled();
+
+    rage(blob, now, 1, (RAGE_STREAK_TO_REVEAL - 1) * CLICK_GAP_MS);
     expect(onRageStreak).toHaveBeenCalledTimes(1);
   });
 
-  test('a second burst after the window restarts the streak', async () => {
+  test('a gap longer than the window restarts the streak', async () => {
     const onRageStreak = vi.fn();
     const now = vi.spyOn(performance, 'now');
     const blob = await mount(onRageStreak);
 
-    now.mockReturnValue(0);
-    fireEvent.click(blob);
-    now.mockReturnValue(60_000);
-    fireEvent.click(blob);
+    rage(blob, now, RAGE_STREAK_TO_REVEAL - 1);
+    // The click that would have completed the streak lands too late to count,
+    // so it starts a new one instead of finishing the old.
+    rage(blob, now, 1, 60_000);
     expect(onRageStreak).not.toHaveBeenCalled();
   });
 
-  test('the streak resets after a reveal, so a third burst does not re-fire', async () => {
+  test('the streak resets after a reveal, so a further burst does not re-fire', async () => {
     const onRageStreak = vi.fn();
     const now = vi.spyOn(performance, 'now');
     const blob = await mount(onRageStreak);
 
-    now.mockReturnValue(0);
-    fireEvent.click(blob);
-    now.mockReturnValue(500);
-    fireEvent.click(blob);
+    rage(blob, now, RAGE_STREAK_TO_REVEAL);
     expect(onRageStreak).toHaveBeenCalledTimes(1);
 
-    now.mockReturnValue(900);
-    fireEvent.click(blob);
+    rage(blob, now, 1, RAGE_STREAK_TO_REVEAL * CLICK_GAP_MS);
     expect(onRageStreak).toHaveBeenCalledTimes(1);
   });
 

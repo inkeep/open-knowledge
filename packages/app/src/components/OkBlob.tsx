@@ -33,7 +33,9 @@ interface OkBlobProps {
   celebrateSignal?: number;
   /**
    * Fired when the USER rage-clicks (three rapid clicks inside the rage
-   * window). Deliberately not fired by `celebrateSignal`, which is programmatic
+   * window), then again on every rapid click that holds the rage — the reveal
+   * gate upstream counts those to decide when it has been earned.
+   * Deliberately not fired by `celebrateSignal`, which is programmatic
    * and would otherwise let a seed celebration trigger a user gesture.
    */
   onRage?: () => void;
@@ -141,7 +143,13 @@ export function OkBlob({
   const eyeOffsetRef = useRef({ x: 0, y: 0 });
   const [clickLevel, setClickLevel] = useState<ClickLevel>(0);
   const [clickSeq, setClickSeq] = useState(0);
+  // Separate from `clickSeq` because the two keys mean different things: the
+  // body replays its bounce on every click, while the firework must survive
+  // the clicks that land while it is still in flight.
+  const [burstSeq, setBurstSeq] = useState(0);
   const [particles, setParticles] = useState<FireworkParticle[]>([]);
+  /** When the burst on screen started, so a click can tell in-flight from spent. */
+  const burstStartedAtRef = useRef(0);
   const lastClickTimeRef = useRef<number>(0);
   const decayTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isSleeping = variant === 'sleeping';
@@ -158,10 +166,25 @@ export function OkBlob({
       lastClickTimeRef.current === 0 ? Number.POSITIVE_INFINITY : now - lastClickTimeRef.current;
     lastClickTimeRef.current = now;
     const level = nextClickLevel(clickLevel, dt);
+    // A click that lands while the burst is still in the air leaves it alone.
+    // Re-detonating on every click restarted it from zero, so a fast clicker
+    // only ever saw its first few frames — the reward for clicking was erased
+    // by clicking. The click still bounces the body and still counts toward the
+    // reveal. Once the burst has run out, sustained rage earns a fresh one
+    // rather than nothing: `IDLE_RESET_MS` is the tested-outlasts-the-particles
+    // bound, so a click past it has watched the whole thing.
+    const burstInFlight = clickLevel === 3 && now - burstStartedAtRef.current < IDLE_RESET_MS;
+    const sustainingRage = level === 3 && burstInFlight;
     if (level === 3) onRage?.();
     setClickLevel(level);
     setClickSeq((prev) => prev + 1);
-    setParticles(generateFireworkParticles(level));
+    if (!sustainingRage) {
+      setParticles(generateFireworkParticles(level));
+      if (level === 3) {
+        burstStartedAtRef.current = now;
+        setBurstSeq((prev) => prev + 1);
+      }
+    }
     clearTimeout(decayTimerRef.current);
     decayTimerRef.current = setTimeout(() => {
       setClickLevel(0);
@@ -179,6 +202,15 @@ export function OkBlob({
     setClickLevel(3);
     setClickSeq((prev) => prev + 1);
     setParticles(generateFireworkParticles(3));
+    // Stamped like a click-driven burst, so a RAGE-level click during a
+    // celebration leaves it in the air. Narrow on purpose: a single tap still
+    // clears the celebration, because that click resolves to level 1, which
+    // carries no particles.
+    burstStartedAtRef.current =
+      typeof performance !== 'undefined' && typeof performance.now === 'function'
+        ? performance.now()
+        : Date.now();
+    setBurstSeq((prev) => prev + 1);
     clearTimeout(decayTimerRef.current);
     decayTimerRef.current = setTimeout(() => {
       setClickLevel(0);
@@ -421,7 +453,7 @@ export function OkBlob({
         {/* Firework burst — rage-click (level 3) only. Particles live outside
           the bounce group so they fly free of the body squish. */}
         {particles.length > 0 && (
-          <g key={`firework-${clickSeq}`}>
+          <g key={`firework-${burstSeq}`} data-slot="ok-blob-burst">
             {particles.map((p) => (
               <circle
                 key={p.id}

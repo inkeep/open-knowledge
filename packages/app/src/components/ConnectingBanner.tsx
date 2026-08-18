@@ -198,6 +198,10 @@ export function ConnectingBanner() {
             {restarting ? <Trans>Restarting</Trans> : <Trans>Restart server</Trans>}
           </button>
         ) : null}
+        {/* Deliberate exception to the hidden-game gate: waking the mascot
+            elsewhere costs a rage-click streak, but this banner only appears
+            while the user is stuck waiting on the server, which is the wait
+            the game was built for. One click here is the point. */}
         {openBlobRunner ? (
           <button
             type="button"

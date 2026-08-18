@@ -505,19 +505,30 @@ export function writeBestScore(score: number, storage = defaultBestScoreStorage(
 }
 
 /**
- * How long a second rage-click burst still counts as "in a row". Generous
- * enough that a deliberate second go registers, short enough that two
- * unrelated bursts minutes apart do not.
+ * How long the next rage click still counts as "in a row". Generous enough
+ * that a deliberate second go registers, short enough that two unrelated
+ * bursts minutes apart do not.
  */
 export const RAGE_STREAK_WINDOW_MS = 4000;
 
-/** Consecutive rage bursts required to reveal the game. */
-export const RAGE_STREAK_TO_REVEAL = 2;
+/**
+ * Rage clicks required to reveal the game. The first one is the third rapid
+ * click — the one that detonates the firework — so the reveal costs eight
+ * rapid clicks in total.
+ *
+ * Sized against the burst rather than picked round: the firework runs for
+ * close to three seconds, and a reveal that lands in its first instants
+ * replaces the reward with the thing it was rewarding. Six keeps the gesture
+ * deliberate and leaves the burst visibly running when the game takes over.
+ * Every click along the way bounces the mascot, so the climb reads as
+ * progress rather than as nothing happening.
+ */
+export const RAGE_STREAK_TO_REVEAL = 6;
 
 /**
- * Consecutive-rage counter. One burst is the firework and nothing else; the
- * reveal is deliberately gated behind doing it twice, so a user who stumbles
- * into the sparkle once keeps the sparkle and nothing surprising happens.
+ * Consecutive-rage counter. Rage alone is the firework and nothing else; the
+ * reveal is gated behind staying on it, so a user who stumbles into the
+ * sparkle keeps the sparkle and nothing surprising happens.
  *
  * Pure so the cadence can be asserted without a clock. Mirrors
  * `nextClickLevel`, which does the same job one level down.

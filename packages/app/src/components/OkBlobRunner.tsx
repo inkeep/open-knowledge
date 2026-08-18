@@ -21,8 +21,9 @@
  */
 
 import { Trans } from '@lingui/react/macro';
-import { useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { OkBlob } from '@/components/OkBlob';
+import { Kbd } from '@/components/ui/kbd';
 import { focusIsOnAControl, gameMayHandleKey } from '@/lib/blob-run-keyboard';
 import { MASCOT_VIEW_TRANSITION_NAME } from '@/lib/view-transition';
 import {
@@ -80,6 +81,15 @@ const DUCK_BAND_FRACTION = 0.45;
 interface OkBlobRunnerProps {
   /** Begin a run on mount. Used by the reveal, where the player already acted. */
   autoStart?: boolean;
+}
+
+/**
+ * Key cap sized for the hint line. The shared `Kbd` is built for menu rows and
+ * stands taller than 11px HUD text, so the trim lands here rather than on every
+ * other surface that uses it.
+ */
+function HintKey({ children }: { children: ReactNode }) {
+  return <Kbd className="h-4 min-w-4 px-1.5 align-middle text-[10px]">{children}</Kbd>;
 }
 
 export function OkBlobRunner({ autoStart = false }: OkBlobRunnerProps = {}) {
@@ -280,15 +290,6 @@ export function OkBlobRunner({ autoStart = false }: OkBlobRunnerProps = {}) {
         onPointerCancel={releaseDuck}
         onPointerLeave={releaseDuck}
       >
-        <div className="absolute top-0 end-0 flex gap-3 font-mono text-xs tabular-nums text-muted-foreground/60">
-          {best > 0 ? (
-            <span className={beatBest ? 'text-muted-foreground' : undefined}>
-              <Trans>HI</Trans> {String(best).padStart(SCORE_DIGITS, '0')}
-            </span>
-          ) : null}
-          <span ref={scoreRef}>{String(score).padStart(SCORE_DIGITS, '0')}</span>
-        </div>
-
         <div
           ref={playerRef}
           className="absolute bottom-0 flex origin-bottom will-change-transform"
@@ -328,17 +329,53 @@ export function OkBlobRunner({ autoStart = false }: OkBlobRunnerProps = {}) {
         ))}
       </div>
 
-      <p className="mt-2 text-center font-mono text-[11px] uppercase tracking-wide text-muted-foreground/60">
+      {/* Score sits under the blob rather than in a far corner. The player is
+        watching him, and mid-run nobody looks away to read the opposite end of
+        the track.
+        Anchored the same way the player is — absolute, physical `left` — rather
+        than padded into the flow. The track is a physical coordinate space (see
+        the obstacle note above), so the blob stays on the left under RTL; a
+        flow-positioned row would pack its content to the right there and put
+        the score at the opposite end from the thing it belongs to. The wrapper
+        carries the height the absolute child no longer contributes, so the hint
+        below keeps its place. */}
+      <div className="relative mt-1.5 h-5">
+        <div
+          data-slot="ok-blob-runner-score"
+          className="absolute top-0 flex gap-3 font-mono text-xs tabular-nums text-muted-foreground/60"
+          style={{ left: PLAYER_X }}
+        >
+          {best > 0 ? (
+            <span className={beatBest ? 'text-muted-foreground' : undefined}>
+              <Trans>HI</Trans> {String(best).padStart(SCORE_DIGITS, '0')}
+            </span>
+          ) : null}
+          <span ref={scoreRef}>{String(score).padStart(SCORE_DIGITS, '0')}</span>
+        </div>
+      </div>
+
+      <p
+        data-slot="ok-blob-runner-hint"
+        className="mt-2 text-center font-mono text-[11px] uppercase tracking-wide text-muted-foreground/60"
+      >
         {phase === 'over' ? (
           beatBest ? (
-            <Trans>New best · press space to play again</Trans>
+            <Trans>
+              New best · press <HintKey>Space</HintKey> to play again
+            </Trans>
           ) : (
-            <Trans>Game over · press space to play again</Trans>
+            <Trans>
+              Game over · press <HintKey>Space</HintKey> to play again
+            </Trans>
           )
         ) : phase === 'running' ? (
-          <Trans>Space to jump · down arrow to duck</Trans>
+          <Trans>
+            <HintKey>Space</HintKey> to jump · <HintKey>↓</HintKey> to duck
+          </Trans>
         ) : (
-          <Trans>Press space or tap the blob to start</Trans>
+          <Trans>
+            Press <HintKey>Space</HintKey> or tap the blob to start
+          </Trans>
         )}
       </p>
     </div>
