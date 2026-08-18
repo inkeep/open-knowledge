@@ -21,7 +21,10 @@ import { createRestartableServer, pollUntil, seedPoolServerInstanceId } from './
  * Pinned contract: a dirty entry is never torn down by the plain recycle;
  * the edit survives both identity-changed reconnects (via the mismatch
  * path's buffer-and-replay) and identity-stable offline windows (edit stays
- * live in the un-recycled doc), and a clean entry still recycles normally.
+ * live in the un-recycled doc). A clean entry whose doc has materialized
+ * content is preserved outright — the debounced recycle is armed only for
+ * contentless providers, so a warm doc never flashes empty on an ordinary
+ * disconnect.
  */
 
 const SEED = `# Seed
@@ -216,7 +219,7 @@ describe('disconnect-recycle window vs local edit', () => {
    * after the window elapses.
    *
    */
-  test('a clean entry still recycles after the debounce window elapses', async () => {
+  test('a clean content-bearing entry is preserved across the debounce window', async () => {
     const server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
 
@@ -239,8 +242,21 @@ describe('disconnect-recycle window vs local edit', () => {
     server.killNetwork();
     await pollUntil(() => pool.getActive()?.syncState === 'disconnected', 5_000, 20);
 
-    // No local edit — the entry is clean, so the timer should recycle it.
-    await pollUntil(() => pool.getActive()?.provider !== firstProvider, 5_000, 20);
-    expect(pool.getActive()?.provider).not.toBe(firstProvider);
+    // No local edit — the entry is clean, but its doc has materialized
+    // content, so the disconnect handler must not arm the debounced recycle.
+    expect(pool.getActive()?.pendingRecycleTimer ?? null).toBeNull();
+
+    // Wait well past the debounce window: the provider identity and the
+    // synced content must both survive.
+    await wait(600);
+    expect(pool.getActive()?.provider).toBe(firstProvider);
+    expect(firstProvider.document.getText('source').toString()).toContain('Adeline: 1652');
+
+    // Re-open while still offline (what every workspace commit does for
+    // visible docs): the open() hit path shares the preservation policy,
+    // so the warm provider survives the switch-back as well.
+    const reopened = pool.open(docName);
+    expect(reopened?.provider).toBe(firstProvider);
+    expect(firstProvider.document.getText('source').toString()).toContain('Adeline: 1652');
   }, 40_000);
 });

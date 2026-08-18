@@ -1,3 +1,4 @@
+
 import { findFirstDivergenceIndex } from './tolerance-telemetry.ts';
 
 export const BRIDGE_LINE_KINDS = [

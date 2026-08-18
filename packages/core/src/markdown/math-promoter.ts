@@ -1,3 +1,4 @@
+
 import type { Code, Root } from 'mdast';
 import type { Math as MdastMath } from 'mdast-util-math';
 import type { MdxJsxAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';

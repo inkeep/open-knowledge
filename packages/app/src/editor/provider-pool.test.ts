@@ -498,7 +498,7 @@ describe('ProviderPool disconnect recycling', () => {
     expect(pool.getActive()?.provider).toBe(originalProvider);
   });
 
-  test('recycles the active provider after disconnect when no unsynced changes remain', async () => {
+  test('recycles a contentless active provider after disconnect when no unsynced changes remain', async () => {
     // Use recycleDebounceMs: 50 for fast test execution
     pool = new ProviderPool(3, DUMMY_WS, { recycleDebounceMs: 50 });
     const entry = pool.open('doc1');
@@ -521,6 +521,44 @@ describe('ProviderPool disconnect recycling', () => {
     expect(recycled).not.toBeNull();
     expect(recycled?.provider).not.toBe(originalProvider);
     expect(recycled?.docName).toBe('doc1');
+  });
+
+  test('preserves synced local content across disconnect debounce after tab switch', async () => {
+    pool = new ProviderPool(3, DUMMY_WS, { recycleDebounceMs: 50 });
+    const foo = pool.open('foo');
+    const bar = pool.open('bar');
+    if (!foo || !bar) throw new Error('expected entries');
+    pool.setActive('foo');
+
+    const originalProvider = foo.provider;
+    const source = originalProvider.document.getText('source');
+    source.insert(0, '# Foo\n\nLarge synced body\n');
+    originalProvider.emit('synced', { state: true });
+    originalProvider.unsyncedChanges = 0;
+
+    originalProvider.emit('disconnect', {
+      event: { code: 1006, reason: 'server restart', wasClean: false },
+    });
+    pool.setActive('bar');
+
+    expect(foo.pendingRecycleTimer).toBeNull();
+
+    await wait(100);
+
+    expect(pool.has('foo')).toBe(true);
+    expect(pool.entries.get('foo')?.provider).toBe(originalProvider);
+    expect(source.toString()).toContain('Large synced body');
+    expect(pool.getActiveDocName()).toBe('bar');
+
+    // Switch back while still disconnected: the open() hit path runs the
+    // same policy, so the warm provider survives the re-open too (without
+    // the mirrored guard this is where the preserved entry used to die,
+    // on the next workspace commit's open of the visible doc).
+    const reopened = pool.open('foo');
+    expect(reopened?.provider).toBe(originalProvider);
+    pool.setActive('foo');
+    expect(pool.getActive()?.provider).toBe(originalProvider);
+    expect(source.toString()).toContain('Large synced body');
   });
 
   // MECHANISM-ONLY test.
@@ -718,7 +756,7 @@ describe('ProviderPool setupObservers init-throw recovery (S4)', () => {
     expect(newEntry?.bridgeSetupFailed).toBe(false);
   });
 
-  test('non-active background doc disconnect triggers debounced destroy without re-open', async () => {
+  test('contentless background doc disconnect triggers debounced destroy without re-open', async () => {
     // Use recycleDebounceMs: 50 for fast test execution
     pool = new ProviderPool(3, DUMMY_WS, { recycleDebounceMs: 50 });
     let onChangeCalls = 0;
@@ -2579,7 +2617,7 @@ describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
     expect(__syncPromiseCacheSize()).toBe(1);
   });
 
-  test('recycle after disconnect invalidates the cached syncPromise', async () => {
+  test('contentless recycle after disconnect invalidates the cached syncPromise', async () => {
     pool = new ProviderPool(3, DUMMY_WS, { recycleDebounceMs: 50 });
     const entry = pool.open('doc1');
     if (!entry) throw new Error('expected entry');
@@ -2588,7 +2626,7 @@ describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
     // setupObservers against a dummy provider.
     entry.observerCleanup = () => {};
 
-    // Simulate initial sync so the disconnect→recycle guard path is taken
+    // Simulate initial sync without local content so the disconnect→recycle guard path is taken
     entry.hasSynced = true;
     entry.syncState = 'synced';
     entry.provider.unsyncedChanges = 0;

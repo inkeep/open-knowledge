@@ -105,9 +105,9 @@ const IDLE_SERVER_RESTART_RECOVERY: ServerRestartRecoveryState = Object.freeze({
  *
  * Note on `bridgeSetupFailed`: kept as a flag on `Active` rather than a
  * third variant. A bridge-failed entry stays pool-resident with
- * persistence still attached and the recycle-on-disconnect path still
- * functional — the only narrowing benefit of a separate variant would be
- * `observerCleanup === null`, which doesn't earn its variant weight.
+ * persistence still attached. The only narrowing benefit of a separate
+ * variant would be `observerCleanup === null`, which doesn't earn its
+ * variant weight.
  *
  * Note on stale-closure checks: variants don't subsume the
  * `this.entries.get(docName) !== entry` guard in event handlers. That
@@ -313,19 +313,31 @@ function getEditorSchema(): ReturnType<typeof getSchema> {
 }
 
 /**
- * How long to wait after a disconnect before recycling the provider (ms).
- * During this window the provider's built-in exponential backoff handles
- * reconnection attempts. If it reconnects and syncs, the pending recycle is
- * cancelled. If the window expires with the provider still disconnected, a
- * single recycle fires. Rapid disconnect events (server flapping) reset the
- * timer — collapsing a flap storm into one recycle at the end.
+ * How long to wait after a contentless provider disconnects before recycling
+ * it (ms). During this window the provider's built-in exponential backoff
+ * handles reconnection attempts. If it reconnects and syncs, the pending
+ * recycle is cancelled. If the window expires with the contentless provider
+ * still disconnected, a single recycle fires.
  *
  * 4s is long enough to ride out a server restart cycle (typically 1-3s) and
- * short enough that the user doesn't stare at a stale disconnected state.
+ * short enough that a provider which never materialized content does not sit
+ * around indefinitely.
  * Validated by the Liveblocks `lostConnectionTimeout` pattern (default 5s).
  */
 const RECYCLE_DEBOUNCE_MS = 4_000;
 const CLEAR_DATA_TIMEOUT_MS = 10_000;
+
+function hasMaterializedLocalContent(doc: Y.Doc): boolean {
+  // Runs inside the disconnect handler, where a throw would escape as an
+  // uncaught exception. A doc that cannot be read (e.g. the bridge-failed S4
+  // state, whose recovery path deliberately breaks the doc) is not one worth
+  // preserving — report no content so the recycle path stays available.
+  try {
+    return doc.getText('source').length > 0 || doc.getXmlFragment('default').length > 0;
+  } catch {
+    return false;
+  }
+}
 
 type ClientPersistenceFactory = (args: {
   branch: string;
@@ -439,8 +451,10 @@ export const MAX_POOL = readNumericOverride('MAX_POOL', 10);
  * port), this pool continues targeting the original URL.
  *
  * Why we accept this today: the built-in HocuspocusProvider exponential
- * backoff + our 4s recycle debounce handle server-restart-on-same-port
- * transparently, which is the common case. Port-change-on-restart is rare
+ * backoff handles server-restart-on-same-port transparently, which is
+ * the common case; contentless providers additionally get a debounced
+ * recycle, and server-instance mismatch has its own explicit clear +
+ * recycle path. Port-change-on-restart is rare
  * enough that a full page reload is an acceptable recovery path — and
  * tearing down live providers mid-session would require deciding about
  * unsaved-CRDT-state preservation, which is out of scope for the
@@ -1723,26 +1737,34 @@ export class ProviderPool {
   open(docName: string): PoolEntry | null {
     if (isSystemDoc(docName)) return null;
 
-    // A pooled provider whose socket has already dropped can never emit
-    // `synced` again, so handing it back on the hit path parks the caller's
-    // `syncPromise` on an event that cannot arrive: it burns the full sync
-    // timeout, and only then does `DocumentErrorBoundary` recycle the entry
-    // and reload the same doc in a few hundred ms. Do that recovery eagerly
-    // instead. Skipped while the provider still holds unsynced local edits —
-    // this path has no buffer-and-replay (that exists only for
+    // Eagerly recycle a disconnected CONTENTLESS entry on the hit path:
+    // handing back a dropped-socket provider parks the caller's
+    // `syncPromise` on an event that may not arrive soon, burning the full
+    // sync timeout before `DocumentErrorBoundary` recycles it anyway.
+    // Skipped while the provider still holds unsynced local edits — this
+    // path has no buffer-and-replay (that exists only for
     // `server-instance-mismatch`), the same reason the debounced
     // disconnect-recycle re-checks `unsyncedChanges` at fire time. Gated on
     // `hasSynced` for the same reason that path is: an entry still working
     // through its first connect is waiting on a sync that its own backoff
     // will deliver, and recycling it would discard a pending persistence
     // attach on every open.
+    //
+    // The content check mirrors the onDisconnect guard — one policy, two
+    // sites. Without it, a provider preserved across the disconnect is
+    // destroyed by the next workspace commit's `open()` of the same doc
+    // (the switch back to the tab, exactly when the user would see the
+    // blank flash). A content-bearing entry keeps its warm doc either way:
+    // if the server is reachable the provider's own backoff resyncs it,
+    // and if it is not, a fresh provider could not sync either.
     const pooled = this.entries.get(docName);
     if (
       pooled !== undefined &&
       pooled.kind === 'active' &&
       pooled.hasSynced &&
       pooled.syncState === 'disconnected' &&
-      pooled.provider.unsyncedChanges === 0
+      pooled.provider.unsyncedChanges === 0 &&
+      !hasMaterializedLocalContent(pooled.provider.document)
     ) {
       mark('ok/pool/recycle-disconnected-on-open', { docName });
       this.emitStructuredClientBreadcrumb({
@@ -2030,14 +2052,21 @@ export class ProviderPool {
       entry.syncState = 'disconnected';
       this.notify();
 
-      // If this provider has no local-only CRDT changes buffered, schedule a
-      // debounced recycle. During the debounce window the provider's built-in
-      // exponential backoff handles reconnection — if it syncs before the timer
-      // fires, onSynced cancels the pending recycle. Only the FIRST disconnect
-      // sets the timer; subsequent disconnects (from failed reconnect attempts)
-      // are no-ops — they shouldn't extend the window because each one just
-      // means "still can't reach the server."
-      if (entry.hasSynced && provider.unsyncedChanges === 0 && !entry.pendingRecycleTimer) {
+      // Preserve providers that already materialized content locally. Recycle
+      // on ordinary disconnect would destroy the cached Y.Doc/editor and make
+      // a warm tab look empty until a fresh provider finishes syncing again.
+      // Explicit server-instance mismatch and branch-switch recovery still
+      // call recycleDisconnectedEntry because those paths first clear stale
+      // persistence and intentionally need a fresh Y.Doc. For contentless
+      // providers: only the FIRST disconnect sets the timer; subsequent
+      // disconnects (from failed reconnect attempts) are no-ops — each one
+      // just means "still can't reach the server."
+      if (
+        entry.hasSynced &&
+        provider.unsyncedChanges === 0 &&
+        !hasMaterializedLocalContent(provider.document) &&
+        !entry.pendingRecycleTimer
+      ) {
         this.emitStructuredClientBreadcrumb({
           event: 'ok-pool-recycle-timer-armed',
           docName,
