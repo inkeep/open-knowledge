@@ -47,6 +47,12 @@
     "-q4abP": [
       "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
     ],
+    "-qBQVd": [
+      ["pick"],
+      " holds entries that aren't skills: ",
+      ["0"],
+      ". Remove or move them from the folder and try again."
+    ],
     "-slrNR": ["Toggle a task list."],
     "-uaQnI": ["No matching worktrees or branches."],
     "-yOx8u": ["Saving changes…"],
@@ -108,6 +114,7 @@
     "0g7rCZ": ["Duplicated to \"", ["0"], "\""],
     "0jD-Gn": ["A team knowledge base, a personal wiki, project docs..."],
     "0kTAXe": ["Open source: ", ["mirrorSrc"]],
+    "0m4Snh": ["Skills reassigned"],
     "0pZmTP": ["Can't share this path."],
     "0qyKG6": ["Synced from disk"],
     "0r6d6v": ["Changes saved automatically."],
@@ -197,6 +204,7 @@
     "2BBAbc": ["List"],
     "2C-6zf": ["Not sent"],
     "2CHoQv": ["Force Reload"],
+    "2Ce6hp": ["Move across"],
     "2D1x3Y": ["Apply and restart project server"],
     "2FYpfJ": ["More"],
     "2FnYUD": [
@@ -1104,6 +1112,7 @@
     "Es3G-g": [
       "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
     ],
+    "Eu-LIb": ["Link these skill folders?"],
     "Ev2r9A": ["No results"],
     "EvIJVD": ["Tool call"],
     "EvPX7f": ["Opens a folder picker to choose where to clone the repository."],
@@ -1276,6 +1285,7 @@
     "H1TmTu": ["Stopped fixing. Files already fixed stay fixed."],
     "H3oH0g": ["Redo"],
     "H86f9p": ["Collapse"],
+    "H8DVOJ": ["Identical in both — ", ["pick"], " still reads them."],
     "HAkEqR": ["Recent files"],
     "HAvHev": ["Auto-update off for \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "one": ["skill"], "other": ["skills"] }]],
@@ -1375,6 +1385,7 @@
     "It9ARY": ["Toggle the right document panel."],
     "It9oAP": ["The ", ["editor"], " version is now the source"],
     "ItxGi3": ["Attachments must total under 3 MB."],
+    "IvKbeq": ["Both agents end up reading everything in ", ["keep"], "."],
     "Ix0K8o": ["Hide external URL nodes"],
     "IxHMdF": ["Couldn't delete that comment."],
     "IxyZXD": ["Screenshot"],
@@ -1484,6 +1495,7 @@
     "Kiytqd": ["Exception: skills are shared"],
     "KjTmeO": ["Update OpenKnowledge to open this share."],
     "KkEAud": ["Create a file from the current document or folder context."],
+    "KkRyMI": ["Could not classify the merge — try again."],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Enable external link previews"],
@@ -2032,6 +2044,7 @@
     "RrAIZx": ["What config sharing covers"],
     "Rsdhj9": ["Configuration warnings"],
     "Rx5ReQ": ["Rename ", ["keyName"]],
+    "RxF-am": ["Duplicates dropped"],
     "RyIKxy": [
       "This ",
       ["targetNoun"],
@@ -2785,6 +2798,7 @@
     "bcDHUM": [["descriptorLabel"], " — render error, source editable below"],
     "bcjYUA": ["Fold or unfold source"],
     "bcm0pR": ["the open agent"],
+    "beHZo4": ["OK can't move these, so they go when ", ["pick"], " does."],
     "bi2C2s": ["Couldn't reach ", ["displayName"], " — please try again later."],
     "bjsEcb": ["Bring All to Front"],
     "bkQRMh": ["Paragraph"],
@@ -3020,6 +3034,7 @@
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Shell session"],
     "ezUmoU": ["Allowed element values (empty = any)"],
+    "f1-q9m": ["keeps the skills"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Move block"],
     "f65AOQ": ["Start from"],
@@ -3246,6 +3261,7 @@
     "hpzRlK": ["Reopen closed tab"],
     "hqCwRf": ["No file selected"],
     "hqVQbT": ["Add Comment"],
+    "hs5BRR": ["Deleted for good"],
     "hvZwVx": ["Convert"],
     "hwFOFD": ["Settings failed to load"],
     "hxBHxQ": ["A line with a footnote<0><1>[1]</1></0> and a definition shown below."],
@@ -3367,6 +3383,11 @@
     "jDhTLC": ["Choose icon"],
     "jENU1Q": [
       "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+    ],
+    "jEVipR": [
+      "These currently read from another folder. After linking, they read from ",
+      ["keep"],
+      " instead."
     ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Missing page: ", ["linkTitle"], ". Click to create."],
@@ -3501,6 +3522,7 @@
     "kfL8BJ": ["Import failed: ", ["0"]],
     "khCa4M": ["Teaches coding agents in this project to read and write through OpenKnowledge."],
     "kj9pAE": ["Creating page"],
+    "kjlQ9D": ["becomes a symlink"],
     "kknhfj": ["No changes"],
     "kkux8f": ["Couldn’t delete ", ["0"], ". Try again."],
     "klPS-L": ["Original file — before this agent's edits."],
@@ -3520,6 +3542,14 @@
     "l17ab4": ["Could not write project files. Try a different location."],
     "l1aQKz": ["Visual editor table"],
     "l1l8sj": [["0"], "d ago"],
+    "l2BOXd": [
+      ["pick"],
+      " and ",
+      ["keep"],
+      " both hold a different version of: ",
+      ["0"],
+      ". Resolve those first — a symlink can only keep one of each."
+    ],
     "l3s5ri": ["Import"],
     "l3zD7w": ["Starting the agent…"],
     "l46MqT": ["Next tab"],
@@ -3820,6 +3850,7 @@
       "\" could not be cleared. Reload to retry."
     ],
     "oxdGJn": ["Before you go, mind sharing why?"],
+    "oyBV3W": ["Custom skills folder path"],
     "p0Iq25": ["Insert link"],
     "p2LEhJ": ["Personal access token"],
     "p3m_Gk": [
@@ -4007,6 +4038,7 @@
     "rbrHTd": ["Approved — ", ["optionName"]],
     "rcJmK8": ["Convert locations to copies"],
     "rdU729": ["Layout"],
+    "rf0tV1": ["Link folders"],
     "rf8fiC": ["Close window"],
     "rfFpcF": ["Remove ", ["chip"]],
     "rg7hNd": ["Rate your experience"],

@@ -59,6 +59,12 @@
     "-q4abP": [
       "Resultados limitados: este espacio de trabajo tiene más archivos de los que la búsqueda puede indexar. Un archivo que falte puede deberse al límite, no a una errata."
     ],
+    "-qBQVd": [
+      ["pick"],
+      " contiene elementos que no son habilidades: ",
+      ["0"],
+      ". Elimínalos o sácalos de la carpeta y vuelve a intentarlo."
+    ],
     "-slrNR": ["Activa o desactiva una lista de tareas."],
     "-uaQnI": ["Ningún worktree ni rama coincide."],
     "-yOx8u": ["Guardando cambios…"],
@@ -126,6 +132,7 @@
       "Una base de conocimiento de equipo, una wiki personal, documentación de proyecto..."
     ],
     "0kTAXe": ["Abrir el origen: ", ["mirrorSrc"]],
+    "0m4Snh": ["Habilidades reasignadas"],
     "0pZmTP": ["No se puede compartir esta ruta."],
     "0qyKG6": ["Sincronizado desde el disco"],
     "0r6d6v": ["Los cambios se guardaron automáticamente."],
@@ -221,6 +228,7 @@
     "2BBAbc": ["Lista"],
     "2C-6zf": ["No enviado"],
     "2CHoQv": ["Recargar a la fuerza"],
+    "2Ce6hp": ["Se trasladan"],
     "2D1x3Y": ["Aplicar y reiniciar el servidor del proyecto"],
     "2FYpfJ": ["Más"],
     "2FnYUD": [
@@ -1277,6 +1285,7 @@
     "Es3G-g": [
       "Vive en este proyecto (esté donde esté la carpeta de la habilidad) y se comparte con tus colaboradores mediante git."
     ],
+    "Eu-LIb": ["¿Enlazar estas carpetas de habilidades?"],
     "Ev2r9A": ["Sin resultados"],
     "EvIJVD": ["Llamada a herramienta"],
     "EvPX7f": ["Abre un selector de carpetas para elegir dónde clonar el repositorio."],
@@ -1481,6 +1490,7 @@
     "H1TmTu": ["Se dejó de arreglar. Los archivos ya arreglados se quedan como están."],
     "H3oH0g": ["Rehacer"],
     "H86f9p": ["Contraer"],
+    "H8DVOJ": ["Idénticas en ambas: ", ["pick"], " las sigue leyendo."],
     "HAkEqR": ["Archivos recientes"],
     "HAvHev": ["Actualización automática desactivada para \"", ["name"], "\""],
     "HAvRAI": [
@@ -1612,6 +1622,7 @@
     "It9ARY": ["Muestra u oculta el panel derecho del documento."],
     "It9oAP": ["La versión de ", ["editor"], " es ahora el origen"],
     "ItxGi3": ["Los adjuntos deben sumar menos de 3 MB."],
+    "IvKbeq": ["Ambos agentes acaban leyendo todo lo que hay en ", ["keep"], "."],
     "Ix0K8o": ["Ocultar los nodos de URL externas"],
     "IxHMdF": ["No se pudo eliminar ese comentario."],
     "IxyZXD": ["Captura de pantalla"],
@@ -1733,6 +1744,7 @@
     "Kiytqd": ["Excepción: las habilidades se comparten"],
     "KjTmeO": ["Actualiza OpenKnowledge para abrir este elemento compartido."],
     "KkEAud": ["Crea un archivo a partir del documento o la carpeta actuales."],
+    "KkRyMI": ["No se pudo clasificar la fusión. Inténtalo de nuevo."],
     "KmydK6": ["Negrita"],
     "KnoB--": ["Se guardará como <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Activar la vista previa de enlaces externos"],
@@ -2335,6 +2347,7 @@
     "RrAIZx": ["Qué abarca compartir la configuración"],
     "Rsdhj9": ["Advertencias de configuración"],
     "Rx5ReQ": ["Renombrar ", ["keyName"]],
+    "RxF-am": ["Duplicados descartados"],
     "RyIKxy": [
       "Este ",
       ["targetNoun"],
@@ -3232,6 +3245,7 @@
     "bcDHUM": [["descriptorLabel"], " — error de renderizado, el código se puede editar abajo"],
     "bcjYUA": ["Plegar o desplegar el código"],
     "bcm0pR": ["el agente abierto"],
+    "beHZo4": ["OK no puede mover esto, así que desaparece junto con ", ["pick"], "."],
     "bi2C2s": ["No se pudo conectar con ", ["displayName"], ". Inténtalo de nuevo más tarde."],
     "bjsEcb": ["Traer todo al frente"],
     "bkQRMh": ["Párrafo"],
@@ -3520,6 +3534,7 @@
     "evs0iw": ["Etiquetas que coinciden con \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sesión de shell"],
     "ezUmoU": ["Valores de elemento permitidos (vacío = cualquiera)"],
+    "f1-q9m": ["conserva las habilidades"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover el bloque"],
     "f65AOQ": ["Empezar desde"],
@@ -3775,6 +3790,7 @@
     "hpzRlK": ["Reabrir la pestaña cerrada"],
     "hqCwRf": ["No hay ningún archivo seleccionado"],
     "hqVQbT": ["Añadir comentario"],
+    "hs5BRR": ["Se eliminan definitivamente"],
     "hvZwVx": ["Convertir"],
     "hwFOFD": ["No se pudieron cargar los ajustes"],
     "hxBHxQ": [
@@ -3912,6 +3928,11 @@
     "jDhTLC": ["Elegir icono"],
     "jENU1Q": [
       "Se aplica a todos los proyectos de este equipo. Claude y Codex, iniciados desde la terminal integrada, aprueban automáticamente las herramientas de lectura y escritura de OpenKnowledge (Claude además ejecuta \"ok open\" por su cuenta). Eliminar, mover, compartir, importar o instalar habilidades, otros comandos y las ediciones de archivos ajenos a OpenKnowledge siguen preguntando. Cursor, OpenCode y Pi no se ven afectados. Es un esfuerzo por agente, sin garantías."
+    ],
+    "jEVipR": [
+      "Actualmente se leen desde otra carpeta. Después de vincularlas, se leerán desde ",
+      ["keep"],
+      "."
     ],
     "jEZ6Lf": ["provisional"],
     "jEdF24": ["Página inexistente: ", ["linkTitle"], ". Haz clic para crearla."],
@@ -4063,6 +4084,7 @@
       "Enseña a los agentes de programación de este proyecto a leer y escribir a través de OpenKnowledge."
     ],
     "kj9pAE": ["Creando la página"],
+    "kjlQ9D": ["pasa a ser un enlace simbólico"],
     "kknhfj": ["Sin cambios"],
     "kkux8f": ["No se pudo eliminar ", ["0"], ". Inténtalo de nuevo."],
     "klPS-L": ["Archivo original, antes de las ediciones de este agente."],
@@ -4084,6 +4106,14 @@
     "l17ab4": ["No se pudieron escribir los archivos del proyecto. Prueba con otra ubicación."],
     "l1aQKz": ["Tabla del editor visual"],
     "l1l8sj": ["hace ", ["0"], " d"],
+    "l2BOXd": [
+      ["pick"],
+      " y ",
+      ["keep"],
+      " contienen versiones distintas de: ",
+      ["0"],
+      ". Resuélvelas primero: un enlace simbólico solo puede conservar una de cada una."
+    ],
     "l3s5ri": ["Importar"],
     "l3zD7w": ["Iniciando el agente…"],
     "l46MqT": ["Pestaña siguiente"],
@@ -4420,6 +4450,7 @@
       "\". Recarga para reintentarlo."
     ],
     "oxdGJn": ["Antes de irte, ¿nos cuentas por qué?"],
+    "oyBV3W": ["Ruta de la carpeta de habilidades personalizada"],
     "p0Iq25": ["Insertar enlace"],
     "p2LEhJ": ["Token de acceso personal"],
     "p3m_Gk": [
@@ -4632,6 +4663,7 @@
     "rbrHTd": ["Aprobado — ", ["optionName"]],
     "rcJmK8": ["Convertir las ubicaciones en copias"],
     "rdU729": ["Diseño"],
+    "rf0tV1": ["Enlazar carpetas"],
     "rf8fiC": ["Cerrar ventana"],
     "rfFpcF": ["Quitar ", ["chip"]],
     "rg7hNd": ["Valora tu experiencia"],

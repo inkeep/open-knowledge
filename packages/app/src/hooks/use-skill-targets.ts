@@ -1,4 +1,5 @@
 import {
+  type SkillFolderLinkPreview,
   type SkillScope,
   type SkillTargetsGetSuccess,
   SkillTargetsGetSuccessSchema,
@@ -16,13 +17,16 @@ export interface SkillTargetsHandle {
   saving: boolean;
   /** Folder-level verb: LINK a host's skills folder into a root (merge-then-
    *  swap; conflicts reject with a message) or UNLINK it back into per-skill
-   *  symlinks. Refreshes the snapshot + skills list on success. */
+   *  symlinks. Refreshes the snapshot + skills list on success. `preview`
+   *  classifies a LINK and resolves with the plan instead — nothing is written,
+   *  so nothing is refreshed. */
   folderAction: (action: {
     scope: SkillScope;
     root: string;
     action: 'link' | 'unlink' | 'add-root';
     target?: string;
-  }) => Promise<void>;
+    preview?: boolean;
+  }) => Promise<SkillFolderLinkPreview | undefined>;
 }
 
 /**
@@ -81,7 +85,8 @@ export function useSkillTargets(): SkillTargetsHandle {
     root: string;
     action: 'link' | 'unlink' | 'add-root';
     target?: string;
-  }): Promise<void> => {
+    preview?: boolean;
+  }): Promise<SkillFolderLinkPreview | undefined> => {
     setSaving(true);
     // One client for this endpoint. Two independently-written ones had drifted
     // into reporting different fields of the same error body.
@@ -90,9 +95,14 @@ export function useSkillTargets(): SkillTargetsHandle {
       setSaving(false);
       throw new Error(result.error);
     }
+    if (action.preview) {
+      setSaving(false);
+      return result.preview;
+    }
     emitSkillsChanged();
     setRefreshKey((k) => k + 1);
     setSaving(false);
+    return undefined;
   };
 
   return { state, saving, folderAction };

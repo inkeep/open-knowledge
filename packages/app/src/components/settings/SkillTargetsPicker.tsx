@@ -1,11 +1,12 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import type { SkillScope } from '@inkeep/open-knowledge-core';
+import type { SkillFolderLinkPreview, SkillScope } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
 import { ChangedOutsideBadge } from '@/components/ChangedOutsideBadge';
+import { SkillFolderLinkConfirmDialog } from '@/components/settings/SkillFolderLinkConfirmDialog';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -34,6 +35,13 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
   const { t } = useLingui();
   const { state, saving, folderAction } = useSkillTargets();
   const [newRoot, setNewRoot] = useState('');
+  const [pendingLink, setPendingLink] = useState<{
+    root: string;
+    target: string;
+    pick: string;
+    keep: string;
+    preview: SkillFolderLinkPreview;
+  } | null>(null);
 
   const folders =
     state.status === 'ready' ? (state.data.folders ?? []).filter((f) => f.scope === scope) : [];
@@ -65,6 +73,56 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
     );
   };
 
+  const displayRoot = (root: string) => (scope === 'global' ? `~/${root}` : root);
+
+  /**
+   * A link only asks when it costs you something. Moves change what the
+   * surviving folder's agent reads; destroyed entries and replaced deliveries
+   * are outright losses. Duplicate drops are none of those — the folder becomes
+   * a symlink to the folder holding the identical copies, so every agent reads
+   * exactly what it read before — so they never open the dialog on their own.
+   * The two refusals are reported here rather than fired at a request that can
+   * only 409.
+   */
+  const runFolderLink = (root: string, target: string) => {
+    const pick = displayRoot(root);
+    const keep = displayRoot(target);
+    void folderAction({ scope, root, action: 'link', target, preview: true })
+      .then((p) => {
+        if (!p) {
+          toast.error(t`Could not classify the merge — try again.`);
+          return;
+        }
+        if (p.conflicts.length > 0) {
+          toast.error(
+            t`${pick} and ${keep} both hold a different version of: ${p.conflicts.join(', ')}. Resolve those first — a symlink can only keep one of each.`,
+          );
+          return;
+        }
+        if (p.strays.length > 0) {
+          toast.error(
+            t`${pick} holds entries that aren't skills: ${p.strays.join(', ')}. Remove or move them from the folder and try again.`,
+          );
+          return;
+        }
+        if (p.moves.length + p.removes.length + p.replaces.length > 0) {
+          setPendingLink({ root, target, pick, keep, preview: p });
+          return;
+        }
+        return folderAction({ scope, root, action: 'link', target });
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : String(err)));
+  };
+
+  const confirmPendingLink = () => {
+    if (!pendingLink) return;
+    const { root, target } = pendingLink;
+    setPendingLink(null);
+    void folderAction({ scope, root, action: 'link', target }).catch((err) =>
+      toast.error(err instanceof Error ? err.message : String(err)),
+    );
+  };
+
   return (
     <section
       className="space-y-2 rounded-lg border bg-card p-3"
@@ -93,7 +151,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
       ) : (
         <ul className="space-y-1 pt-1">
           {rows.map((f) => {
-            const display = scope === 'global' ? `~/${f.root}` : f.root;
+            const display = displayRoot(f.root);
             const following = followers.get(f.root) ?? [];
             // Offerable: every OTHER root at this scope that can still BECOME a
             // symlink to this one. A folder that is already a symlink (its own,
@@ -152,7 +210,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                           title={t`Pick a folder to merge INTO ${display}. That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge.`}
                           data-testid={`skill-folder-link-${f.host}`}
                         >
-                          <Trans>symlink</Trans>
+                          <Trans>Link</Trans>
                         </Button>
                       </DropdownMenuTrigger>
                       {/* Size to the widest item, not the tiny trigger: the base
@@ -164,7 +222,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                             key={o.root}
                             // THIS row survives: the PICKED folder is the one that
                             // merges in and becomes the symlink.
-                            onSelect={() => runFolderAction(o.root, 'link', f.root)}
+                            onSelect={() => runFolderLink(o.root, f.root)}
                             data-testid={`skill-folder-link-${f.host}-to-${o.root}`}
                           >
                             <AgentBrandIcon host={o.host} aria-hidden className="size-4" />
@@ -256,6 +314,7 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
         <Input
           value={newRoot}
           onChange={(e) => setNewRoot(e.target.value)}
+          aria-label={t`Custom skills folder path`}
           placeholder={scope === 'global' ? t`~/.myteam/skills` : t`.myteam/skills`}
           className="h-7 flex-1 font-mono text-xs"
           disabled={saving}
@@ -271,6 +330,18 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
           <Trans>Add custom path</Trans>
         </Button>
       </form>
+      {pendingLink ? (
+        <SkillFolderLinkConfirmDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setPendingLink(null);
+          }}
+          pick={pendingLink.pick}
+          keep={pendingLink.keep}
+          preview={pendingLink.preview}
+          onConfirm={confirmPendingLink}
+        />
+      ) : null}
     </section>
   );
 }

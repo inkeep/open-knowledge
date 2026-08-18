@@ -814,6 +814,16 @@ msgstr "{percent}% مستخدَم ({left}% متبقٍّ)"
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
 
+#. placeholder {0}: p.conflicts.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} and {keep} both hold a different version of: {0}. Resolve those first — a symlink can only keep one of each."
+msgstr "يحتوي كل من {pick} و{keep} على نسخة مختلفة من: {0}. عالج ذلك أولًا: الرابط الرمزي لا يمكنه الاحتفاظ إلا بنسخة واحدة من كل مهارة."
+
+#. placeholder {0}: p.strays.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
+msgstr "{pick} يحتوي على عناصر ليست مهارات: {0}. أزلها من المجلد أو انقلها، ثم حاول مرة أخرى."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, zero {إضافات} one {إضافة} two {إضافتان} few {إضافات} many {إضافة} other {إضافة}}"
@@ -1980,6 +1990,10 @@ msgstr "لم تطابق استجابة الروابط الخلفية الشكل 
 msgid "Base branch"
 msgstr "الفرع الأساسي"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "becomes a symlink"
+msgstr "يصبح رابطًا رمزيًا"
+
 #: src/components/TemplateBody.tsx
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "يصبح محتوى المستند عندما ينشئ أحدهم مستندًا من هذا القالب. اكتب <0>{dateToken}</0> أو <1>{userToken}</1> لملء تاريخ اليوم أو اسم المؤلف تلقائيًا."
@@ -2050,6 +2064,10 @@ msgstr "عريض"
 #: src/components/GraphPanel.tsx
 msgid "Both"
 msgstr "كلاهما"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Both agents end up reading everything in {keep}."
+msgstr "سيقرأ الوكيلان في النهاية كل ما في {keep}."
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -2247,6 +2265,7 @@ msgstr "تعذّرت مشاركة هذا المسار."
 #: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
@@ -3284,6 +3303,10 @@ msgstr "يجري النسخ"
 msgid "Copying..."
 msgstr "يجري النسخ..."
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Could not classify the merge — try again."
+msgstr "تعذّر تصنيف الدمج — حاول مرة أخرى."
+
 #: src/components/FileTree.tsx
 msgid "Could not complete delete"
 msgstr "تعذّر إتمام الحذف"
@@ -4125,6 +4148,10 @@ msgstr "HTML مخصص مع لوحة معاينة حية (إطار معزول)."
 msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
 msgstr "مدخل open-knowledge مخصص — غير مُدار من OpenKnowledge"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Custom skills folder path"
+msgstr "مسار مجلد المهارات المخصص"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Custom theme"
 msgstr "سمة مخصصة"
@@ -4267,6 +4294,10 @@ msgstr "تم حذف {file}"
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Deleted {filePath}"
 msgstr "تم حذف {filePath}"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Deleted for good"
+msgstr "تُحذف نهائيًا"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
@@ -4668,6 +4699,10 @@ msgstr "كرّر عنصر شجرة الملفات المركَّز عليه عن
 #: src/components/skill-actions.tsx
 msgid "Duplicated to \"{0}\""
 msgstr "تم التكرار إلى «{0}»"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Duplicates dropped"
+msgstr "إسقاط المكرر"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "e.g. assets/uploads"
@@ -6391,6 +6426,10 @@ msgstr "منتقي الأيقونات"
 msgid "ID: {0}"
 msgstr "المعرّف: {0}"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Identical in both — {pick} still reads them."
+msgstr "متطابقة في الاثنين، وسيظل {pick} يقرأها."
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "إذا وصل تحديث لشيء تحرّره، فأنت من يختار أي نسخة يُبقي، مثل تعارض الدمج."
@@ -6982,6 +7021,10 @@ msgstr "أبقِ هذا المشروع متزامنًا مع مستودعك ال
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "تتبّع الأشخاص والشركات التي تعمل معها والاجتماعات التي تعقدها معهم. مناسب لتذكّر من يكون أحدهم، وكيف تعرفه، وآخر ما تحدثتما عنه."
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "keeps the skills"
+msgstr "يحتفظ بالمهارات"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
 msgstr "يحافظ على توافق قاعدة معارفك مع Open Knowledge Format."
@@ -7070,6 +7113,7 @@ msgstr "فاتح أو داكن أو تتبع نظام التشغيل."
 msgid "line {displayLine}"
 msgstr "السطر {displayLine}"
 
+#: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -7079,6 +7123,10 @@ msgstr "رابط"
 #: src/lib/share/run-share-action.ts
 msgid "Link copied."
 msgstr "تم نسخ الرابط."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link folders"
+msgstr "اربط المجلدين"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Link preview settings not yet loaded — try again in a moment"
@@ -7112,6 +7160,10 @@ msgstr "هدف الرابط \"{shown}\" لا يشير إلى ملف موجود."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "اربط النص المحدد، أو حرّر الرابط الواقع تحت المؤشر."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link these skill folders?"
+msgstr "هل تربط مجلدي المهارات هذين؟"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Link to a page or external URL."
@@ -7621,6 +7673,10 @@ msgstr "الأكثر تثبيتًا"
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "Move"
 msgstr "نقل"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Move across"
+msgstr "تنتقل"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move between table cells"
@@ -8532,6 +8588,10 @@ msgstr "معطّل — يرتّب البحث بالكلمات المفتاحية
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "غير متصل"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "OK can't move these, so they go when {pick} does."
+msgstr "لا يستطيع OK نقل هذه العناصر، لذا تختفي مع {pick}."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "OK Desktop"
@@ -11668,6 +11728,10 @@ msgstr "أصبحت المهارات مشتركة. أودع .ok/skills لمشار
 msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
 msgstr "تُثبَّت المهارات في كل أداة ذكاء اصطناعي مكتشفة على هذا الجهاز، بغض النظر عن اتصالات MCP التي اخترتها أعلاه."
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Skills reassigned"
+msgstr "أُعيد إسناد المهارات"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -12103,7 +12167,6 @@ msgstr "يجري تبديل الفروع"
 msgid "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
 msgstr "سيُرفض التبديل إلى <0>local-only</0> حتى يُلغى تتبّعها عبر<1> git rm --cached</1>."
 
-#: src/components/settings/SkillTargetsPicker.tsx
 #: src/components/SkillInstallMenu.tsx
 msgid "symlink"
 msgstr "رابط رمزي"
@@ -12753,6 +12816,10 @@ msgstr "السمات"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "There's no project folder for this window, so a terminal can't start here."
 msgstr "لا يوجد مجلد مشروع لهذه النافذة، لذا لا يمكن بدء طرفية هنا."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "These currently read from another folder. After linking, they read from {keep} instead."
+msgstr "تُقرأ هذه حاليًا من مجلد آخر. بعد الربط، ستُقرأ من {keep} بدلًا منه."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

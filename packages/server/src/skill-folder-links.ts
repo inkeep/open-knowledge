@@ -92,21 +92,28 @@ export type FolderLinkResult =
  *  into any browsed directory, so treating every dotfile as a stray would
  *  permanently block LINK for a developer who opened `.claude/skills/` in
  *  Finder. These are ignored (neither bundle nor stray); other dotfiles stay
- *  strays so genuinely unexpected hidden content still trips the guard. */
+ *  strays so genuinely unexpected hidden content still trips the guard.
+ *
+ *  `.git` is deliberately NOT here. A link deletes the folder it consumes, so
+ *  a skills folder that is itself a clone loses its history — the one loss in
+ *  this set that can't be undone. Leaving it out routes it through the
+ *  dot-entry branch below, where it gets disclosed before the write. */
 const BENIGN_DOTFILES = new Set([
   '.DS_Store',
   '.localized',
   'Thumbs.db',
-  '.git',
   '.gitignore',
   '.gitkeep',
   '.gitattributes',
 ]);
 
-/** Bundle dir names (entries containing a SKILL.md) directly under `root`. */
-function bundleNames(rootAbs: string): { bundles: string[]; strays: string[] } {
+/** Bundle dir names (entries containing a SKILL.md) directly under `root`.
+ *  `ignored` are the entries a LINK neither moves nor treats as strays — they
+ *  go away with the folder, so callers can disclose that before writing. */
+function bundleNames(rootAbs: string): { bundles: string[]; strays: string[]; ignored: string[] } {
   const bundles: string[] = [];
   const strays: string[] = [];
+  const ignored: string[] = [];
   for (const e of readdirSync(rootAbs, { withFileTypes: true })) {
     if (BENIGN_DOTFILES.has(e.name)) continue;
     // A skill dir name can't begin with a dot, so a dot-entry here is the
@@ -114,7 +121,10 @@ function bundleNames(rootAbs: string): { bundles: string[]; strays: string[] } {
     // skills under `.system`. Treating those as strays meant a harness that
     // writes anything beside your skills could never have its folder linked,
     // which is not a state the user can clean up.
-    if (e.name.startsWith('.')) continue;
+    if (e.name.startsWith('.')) {
+      ignored.push(e.name);
+      continue;
+    }
     const p = join(rootAbs, e.name);
     if (existsSync(join(p, 'SKILL.md'))) {
       bundles.push(e.name);
@@ -126,7 +136,7 @@ function bundleNames(rootAbs: string): { bundles: string[]; strays: string[] } {
     if (e.isDirectory() && isEmptyDir(p)) continue;
     strays.push(e.name);
   }
-  return { bundles, strays };
+  return { bundles, strays, ignored };
 }
 
 /** True when `dirAbs` has no entries. Unreadable counts as non-empty: a folder
@@ -139,15 +149,38 @@ function isEmptyDir(dirAbs: string): boolean {
   }
 }
 
+/** What a LINK would do. `toDrop` and `removes` are deletions from the folder
+ *  being consumed; `removes` are the entries no bundle move covers — they go
+ *  away when the folder is replaced by the symlink. `liveDestLinks` is the one
+ *  deletion on the OTHER side: a per-skill delivery link in the target that the
+ *  merge overwrites, so that skill stops following the root it came from. */
+interface FolderLinkPlan {
+  toMove: string[];
+  toDrop: string[];
+  destLinks: string[];
+  liveDestLinks: string[];
+  linkedBundlesToMove: Array<{ name: string; target: string }>;
+  removes: string[];
+}
+
+export type FolderLinkPreview =
+  | { kind: 'plan'; plan: FolderLinkPlan }
+  /** Nothing to merge — the link is a bare symlink creation. */
+  | { kind: 'absent' }
+  | { kind: 'not-linkable' }
+  | { kind: 'stray-entries'; strays: string[] }
+  | { kind: 'conflicts'; conflicts: string[] };
+
 /**
- * Merge-then-swap: `folderRel` (an editor's own skills folder under `base`)
- * merges into `targetRootRel` and becomes a symlink to it.
+ * Classify what `linkEditorSkillFolder` would do, WITHOUT writing anything.
+ * The link runs this first and applies the plan, so a caller can disclose the
+ * exact moves and deletions before asking for them.
  */
-export function linkEditorSkillFolder(opts: {
+export function previewEditorFolderLink(opts: {
   base: string;
   folderRel: string;
   targetRootRel: string;
-}): FolderLinkResult {
+}): FolderLinkPreview {
   const { base, folderRel, targetRootRel } = opts;
   const folderAbs = join(base, folderRel);
   const targetAbs = join(base, targetRootRel);
@@ -155,27 +188,23 @@ export function linkEditorSkillFolder(opts: {
   try {
     st = lstatSync(folderAbs);
   } catch {
-    // Absent folder: nothing to merge — create the link directly.
-    tracedMkdirSync(dirname(folderAbs), { recursive: true });
-    tracedMkdirSync(targetAbs, { recursive: true });
-    tracedSymlinkSync(relative(dirname(folderAbs), targetAbs), folderAbs, 'dir');
-    return { ok: true, moved: [], dropped: [], linked: [folderRel] };
+    return { kind: 'absent' };
   }
-  if (st.isSymbolicLink()) return { ok: false, reason: 'not-linkable' }; // already a link
-  if (!st.isDirectory()) return { ok: false, reason: 'not-linkable' };
+  if (st.isSymbolicLink()) return { kind: 'not-linkable' }; // already a link
+  if (!st.isDirectory()) return { kind: 'not-linkable' };
   try {
-    if (realpathSync(folderAbs) === realpathSync(targetAbs))
-      return { ok: false, reason: 'not-linkable' }; // same physical dir (parent alias)
+    if (realpathSync(folderAbs) === realpathSync(targetAbs)) return { kind: 'not-linkable' }; // same physical dir (parent alias)
   } catch {
-    // target absent — created below
+    // target absent — created by the link
   }
-  const { bundles, strays } = bundleNames(folderAbs);
-  if (strays.length > 0) return { ok: false, reason: 'stray-entries', strays };
-  // Pass 1 — classify EVERYTHING before touching anything (abort must be a no-op).
+  const { bundles, strays, ignored } = bundleNames(folderAbs);
+  if (strays.length > 0) return { kind: 'stray-entries', strays };
+  // Classify EVERYTHING before touching anything (abort must be a no-op).
   const conflicts: string[] = [];
   const toMove: string[] = [];
   const toDrop: string[] = [];
   const destLinks: string[] = [];
+  const liveDestLinks: string[] = [];
   const linkedBundlesToMove: Array<{ name: string; target: string }> = [];
   for (const name of bundles) {
     const ownDir = join(folderAbs, name);
@@ -211,6 +240,10 @@ export function linkEditorSkillFolder(opts: {
     }
     if (destIsLink) {
       destLinks.push(name);
+      // A link that still RESOLVES is a working delivery this merge overwrites
+      // — the one thing a link destroys outside the folder it consumes, so it
+      // needs saying. A dangling one points at nothing and is pure cleanup.
+      if (existsSync(destDir)) liveDestLinks.push(name);
       toMove.push(name);
       continue;
     }
@@ -223,8 +256,40 @@ export function linkEditorSkillFolder(opts: {
     if (ownHash !== undefined && ownHash === destHash) toDrop.push(name);
     else conflicts.push(name);
   }
-  if (conflicts.length > 0) return { ok: false, reason: 'conflicts', conflicts };
-  // Pass 2 — apply. Each move is a complete per-bundle rename, so a failure
+  if (conflicts.length > 0) return { kind: 'conflicts', conflicts };
+  return {
+    kind: 'plan',
+    plan: { toMove, toDrop, destLinks, liveDestLinks, linkedBundlesToMove, removes: ignored },
+  };
+}
+
+/**
+ * Merge-then-swap: `folderRel` (an editor's own skills folder under `base`)
+ * merges into `targetRootRel` and becomes a symlink to it.
+ */
+export function linkEditorSkillFolder(opts: {
+  base: string;
+  folderRel: string;
+  targetRootRel: string;
+}): FolderLinkResult {
+  const { base, folderRel, targetRootRel } = opts;
+  const folderAbs = join(base, folderRel);
+  const targetAbs = join(base, targetRootRel);
+  const preview = previewEditorFolderLink({ base, folderRel, targetRootRel });
+  if (preview.kind === 'absent') {
+    // Absent folder: nothing to merge — create the link directly.
+    tracedMkdirSync(dirname(folderAbs), { recursive: true });
+    tracedMkdirSync(targetAbs, { recursive: true });
+    tracedSymlinkSync(relative(dirname(folderAbs), targetAbs), folderAbs, 'dir');
+    return { ok: true, moved: [], dropped: [], linked: [folderRel] };
+  }
+  if (preview.kind === 'not-linkable') return { ok: false, reason: 'not-linkable' };
+  if (preview.kind === 'stray-entries')
+    return { ok: false, reason: 'stray-entries', strays: preview.strays };
+  if (preview.kind === 'conflicts')
+    return { ok: false, reason: 'conflicts', conflicts: preview.conflicts };
+  const { toMove, toDrop, destLinks, linkedBundlesToMove } = preview.plan;
+  // Apply. Each move is a complete per-bundle rename, so a failure
   // midway leaves a RESUMABLE half-merge (already-moved bundles classify as
   // same-hash/absent on the next run) — report it structurally, never a bare
   // throw: the caller tells the user to re-run the link.

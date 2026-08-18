@@ -43,6 +43,12 @@
     "-q4abP": [
       "Hasil dibatasi — ruang kerja ini punya lebih banyak berkas daripada yang bisa diindeks pencarian. Berkas yang hilang bisa jadi efek batasan itu, bukan salah ketik."
     ],
+    "-qBQVd": [
+      ["pick"],
+      " berisi entri yang bukan keterampilan: ",
+      ["0"],
+      ". Hapus atau pindahkan entri tersebut dari folder, lalu coba lagi."
+    ],
     "-slrNR": ["Menyalakan atau mematikan daftar tugas."],
     "-uaQnI": ["Tidak ada worktree atau cabang yang cocok."],
     "-yOx8u": ["Menyimpan perubahan…"],
@@ -108,6 +114,7 @@
     "0g7rCZ": ["Digandakan menjadi \"", ["0"], "\""],
     "0jD-Gn": ["Basis pengetahuan tim, wiki pribadi, dokumentasi proyek..."],
     "0kTAXe": ["Buka sumber: ", ["mirrorSrc"]],
+    "0m4Snh": ["Keterampilan dialihkan"],
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
     "0qyKG6": ["Tersinkron dari disk"],
     "0r6d6v": ["Perubahan disimpan otomatis."],
@@ -197,6 +204,7 @@
     "2BBAbc": ["Daftar"],
     "2C-6zf": ["Belum terkirim"],
     "2CHoQv": ["Muat Ulang Paksa"],
+    "2Ce6hp": ["Dipindahkan"],
     "2D1x3Y": ["Terapkan dan mulai ulang server proyek"],
     "2FYpfJ": ["Lainnya"],
     "2FnYUD": [
@@ -1100,6 +1108,7 @@
     "Es3G-g": [
       "Berada di proyek ini (di mana pun folder keterampilannya) dan dibagikan ke kolaborator lewat git."
     ],
+    "Eu-LIb": ["Tautkan folder keterampilan ini?"],
     "Ev2r9A": ["Tidak ada hasil"],
     "EvIJVD": ["Panggilan alat"],
     "EvPX7f": ["Membuka pemilih folder untuk memilih tempat mengkloning repositorinya."],
@@ -1278,6 +1287,7 @@
     "H1TmTu": ["Perbaikan dihentikan. Berkas yang sudah diperbaiki tetap terperbaiki."],
     "H3oH0g": ["Ulangi"],
     "H86f9p": ["Ciutkan"],
+    "H8DVOJ": ["Identik di keduanya — ", ["pick"], " tetap membacanya."],
     "HAkEqR": ["Berkas terbaru"],
     "HAvHev": ["Pembaruan otomatis mati untuk \"", ["name"], "\""],
     "HAvRAI": [["skillCount", "plural", { "other": ["keterampilan"] }]],
@@ -1386,6 +1396,7 @@
     "It9ARY": ["Menampilkan atau menyembunyikan panel dokumen di kanan."],
     "It9oAP": ["Versi ", ["editor"], " kini menjadi sumbernya"],
     "ItxGi3": ["Total lampiran harus di bawah 3 MB."],
+    "IvKbeq": ["Kedua agen akhirnya membaca semua yang ada di ", ["keep"], "."],
     "Ix0K8o": ["Sembunyikan simpul URL eksternal"],
     "IxHMdF": ["Komentar itu tidak bisa dihapus."],
     "IxyZXD": ["Tangkapan layar"],
@@ -1501,6 +1512,7 @@
     "Kiytqd": ["Pengecualian: keterampilan dibagikan"],
     "KjTmeO": ["Perbarui OpenKnowledge untuk membuka konten berbagi ini."],
     "KkEAud": ["Membuat berkas dari konteks dokumen atau folder saat ini."],
+    "KkRyMI": ["Penggabungan tidak dapat diklasifikasikan — coba lagi."],
     "KmydK6": ["Tebal"],
     "KnoB--": ["Akan disimpan sebagai <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Aktifkan pratinjau tautan eksternal"],
@@ -2045,6 +2057,7 @@
     "RrAIZx": ["Apa saja yang dicakup berbagi konfigurasi"],
     "Rsdhj9": ["Peringatan konfigurasi"],
     "Rx5ReQ": ["Ganti nama ", ["keyName"]],
+    "RxF-am": ["Duplikat dibuang"],
     "RyIKxy": [
       ["targetNoun"],
       " ini sudah dipindahkan, diganti nama, atau dihapus di salinan lokal Anda, dan perubahan itu belum tersinkron."
@@ -2808,6 +2821,7 @@
     "bcDHUM": [["descriptorLabel"], " — galat render, sumber bisa disunting di bawah"],
     "bcjYUA": ["Lipat atau buka lipatan sumber"],
     "bcm0pR": ["agen yang terbuka"],
+    "beHZo4": ["OK tidak bisa memindahkan ini, jadi ikut hilang bersama ", ["pick"], "."],
     "bi2C2s": ["Tidak dapat menghubungi ", ["displayName"], ". Silakan coba lagi nanti."],
     "bjsEcb": ["Bawa semua ke depan"],
     "bkQRMh": ["Paragraf"],
@@ -3045,6 +3059,7 @@
     "evs0iw": ["Tag yang cocok dengan \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sesi shell"],
     "ezUmoU": ["Nilai elemen yang diizinkan (kosong = apa saja)"],
+    "f1-q9m": ["menyimpan keterampilan"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
     "f65AOQ": ["Mulai dari"],
@@ -3270,6 +3285,7 @@
     "hpzRlK": ["Buka lagi tab yang ditutup"],
     "hqCwRf": ["Tidak ada berkas yang dipilih"],
     "hqVQbT": ["Tambah Komentar"],
+    "hs5BRR": ["Dihapus permanen"],
     "hvZwVx": ["Ubah"],
     "hwFOFD": ["Gagal memuat pengaturan"],
     "hxBHxQ": [
@@ -3402,6 +3418,11 @@
     "jDhTLC": ["Pilih ikon"],
     "jENU1Q": [
       "Berlaku untuk semua proyek di komputer ini. Claude dan Codex, yang dijalankan dari terminal bawaan, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga menjalankan \"ok open\" sendiri). Menghapus, memindahkan, membagikan, mengimpor atau memasang keterampilan, perintah lain, dan penyuntingan berkas di luar OpenKnowledge tetap ditanyakan. Cursor, OpenCode, dan Pi tidak terpengaruh. Sebaik mungkin, per agen."
+    ],
+    "jEVipR": [
+      "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari ",
+      ["keep"],
+      "."
     ],
     "jEZ6Lf": ["sementara"],
     "jEdF24": ["Halaman belum ada: ", ["linkTitle"], ". Klik untuk membuat."],
@@ -3537,6 +3558,7 @@
       "Mengajari agen pemrograman di proyek ini untuk membaca dan menulis lewat OpenKnowledge."
     ],
     "kj9pAE": ["Membuat halaman"],
+    "kjlQ9D": ["menjadi tautan simbolik"],
     "kknhfj": ["Tidak ada perubahan"],
     "kkux8f": [["0"], " tidak dapat dihapus. Coba lagi."],
     "klPS-L": ["Berkas asli — sebelum suntingan agen ini."],
@@ -3558,6 +3580,14 @@
     "l17ab4": ["Berkas proyek tidak dapat ditulis. Coba lokasi lain."],
     "l1aQKz": ["Tabel penyunting visual"],
     "l1l8sj": [["0"], " hr lalu"],
+    "l2BOXd": [
+      ["pick"],
+      " dan ",
+      ["keep"],
+      " sama-sama memuat versi berbeda dari: ",
+      ["0"],
+      ". Selesaikan itu dulu: satu tautan simbolik hanya bisa menyimpan satu versi untuk masing-masing."
+    ],
     "l3s5ri": ["Impor"],
     "l3zD7w": ["Memulai agennya…"],
     "l46MqT": ["Tab berikutnya"],
@@ -3857,6 +3887,7 @@
       "\" tidak dapat dibersihkan. Muat ulang untuk mencoba lagi."
     ],
     "oxdGJn": ["Sebelum pergi, boleh cerita kenapa?"],
+    "oyBV3W": ["Jalur folder keterampilan khusus"],
     "p0Iq25": ["Sisipkan tautan"],
     "p2LEhJ": ["Token akses pribadi"],
     "p3m_Gk": [
@@ -4035,6 +4066,7 @@
     "rbrHTd": ["Disetujui — ", ["optionName"]],
     "rcJmK8": ["Ubah lokasi menjadi salinan"],
     "rdU729": ["Tata letak"],
+    "rf0tV1": ["Tautkan folder"],
     "rf8fiC": ["Tutup jendela"],
     "rfFpcF": ["Hapus ", ["chip"]],
     "rg7hNd": ["Nilai pengalaman Anda"],

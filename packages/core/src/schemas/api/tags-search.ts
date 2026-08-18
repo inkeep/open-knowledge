@@ -1258,43 +1258,70 @@ export type SkillTargetsGetSuccess = z.infer<typeof SkillTargetsGetSuccessSchema
  * - `add-root` — declare a NEW custom skills root; it becomes a folder row
  *   and a link/install target from declaration (no first placement needed).
  */
+const SkillFolderLinkBase = z.object({
+  action: z.literal('link'),
+  scope: SkillScopeSchema,
+  root: z.string().min(1).meta({ description: 'The folder to link (e.g. ".codex/skills").' }),
+  target: z
+    .string()
+    .min(1)
+    .meta({ description: 'The root it merges into (e.g. ".agents/skills"). Required.' }),
+});
+
+const SkillFolderUnlinkSchema = z
+  .object({
+    action: z.literal('unlink'),
+    scope: SkillScopeSchema,
+    root: z.string().min(1).meta({ description: 'The linked folder to materialize back.' }),
+    /** Skill names to leave out of the materialized links — "stop this
+     *  agent reading that skill": the folder keeps everything else it sees
+     *  today but stops following the target root. */
+    exclude: z.array(z.string().min(1)).optional().meta({
+      description:
+        'Skill names to LEAVE OUT when materializing — the folder keeps every other skill it currently sees (as per-skill links) and stops auto-following the target root.',
+    }),
+  })
+  .strict();
+
+const SkillFolderAddRootSchema = z
+  .object({
+    action: z.literal('add-root'),
+    scope: SkillScopeSchema,
+    root: SkillRootPathSchema.meta({
+      description: 'New custom skills root to declare (base-relative, e.g. ".team/skills").',
+    }),
+  })
+  .strict();
+
 export const SkillFolderActionSchema = z.discriminatedUnion('action', [
-  z
-    .object({
-      action: z.literal('link'),
-      scope: SkillScopeSchema,
-      root: z.string().min(1).meta({ description: 'The folder to link (e.g. ".codex/skills").' }),
-      target: z
-        .string()
-        .min(1)
-        .meta({ description: 'The root it merges into (e.g. ".agents/skills"). Required.' }),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal('unlink'),
-      scope: SkillScopeSchema,
-      root: z.string().min(1).meta({ description: 'The linked folder to materialize back.' }),
-      /** Skill names to leave out of the materialized links — "stop this
-       *  agent reading that skill": the folder keeps everything else it sees
-       *  today but stops following the target root. */
-      exclude: z.array(z.string().min(1)).optional().meta({
-        description:
-          'Skill names to LEAVE OUT when materializing — the folder keeps every other skill it currently sees (as per-skill links) and stops auto-following the target root.',
-      }),
-    })
-    .strict(),
-  z
-    .object({
-      action: z.literal('add-root'),
-      scope: SkillScopeSchema,
-      root: SkillRootPathSchema.meta({
-        description: 'New custom skills root to declare (base-relative, e.g. ".team/skills").',
-      }),
-    })
-    .strict(),
+  SkillFolderLinkBase.extend({
+    /** Canonical classify-without-writing field for new APIs. Classifies the
+     *  merge without touching disk so callers can disclose its effects first.
+     *  Legacy siblings: `dryRun` (reimport), `apply: false` (track-in-git). */
+    preview: z.boolean().optional().meta({
+      description:
+        'Return the merge plan only (moves, drops, removes, conflicts, strays) — nothing is written.',
+    }),
+  }).strict(),
+  SkillFolderUnlinkSchema,
+  SkillFolderAddRootSchema,
 ]);
 export type SkillFolderAction = z.infer<typeof SkillFolderActionSchema>;
+
+/**
+ * The same verbs without `preview`. A preview classifies and returns; it does
+ * NOT link. The MCP `install` tool summarizes a folder verb from the response's
+ * `folder` field, which a preview response doesn't carry — so accepting the
+ * flag there reports a completed link for an operation that never ran. The
+ * disclosure is a UI affordance (it needs someone to show the plan to), so the
+ * flag stays off this surface rather than growing an MCP rendering for it.
+ */
+export const SkillFolderActionMcpSchema = z.discriminatedUnion('action', [
+  SkillFolderLinkBase.strict(),
+  SkillFolderUnlinkSchema,
+  SkillFolderAddRootSchema,
+]);
+export type SkillFolderActionMcp = z.infer<typeof SkillFolderActionMcpSchema>;
 
 /**
  * Request body for `PUT /api/skill-targets` — set the committed target set.
@@ -1307,6 +1334,28 @@ export const SkillTargetsPutRequestSchema = z
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillTargetsPutRequest = z.infer<typeof SkillTargetsPutRequestSchema>;
+
+/**
+ * What a folder LINK would do, computed without writing. `moves` land in the
+ * target; `drops` are same-hash duplicates and `removes` are entries no move
+ * covers (a harness's own dot-entries, `.git`) — both disappear with the
+ * folder. `replaces` are the deletions on the OTHER side: live per-skill
+ * delivery links in the target that a move overwrites, so those skills stop
+ * following the root they came from. A non-empty `conflicts` or `strays` means
+ * the link would refuse.
+ */
+export const SkillFolderLinkPreviewSchema = z
+  .object({
+    moves: z.array(z.string()),
+    drops: z.array(z.string()),
+    removes: z.array(z.string()),
+    // Deletions in the TARGET: per-skill delivery links the merge overwrites.
+    replaces: z.array(z.string()),
+    conflicts: z.array(z.string()),
+    strays: z.array(z.string()),
+  })
+  .strict();
+export type SkillFolderLinkPreview = z.infer<typeof SkillFolderLinkPreviewSchema>;
 
 /**
  * Success body for `PUT /api/skill-targets`. `reprojected` lists each managed
@@ -1329,6 +1378,8 @@ export const SkillTargetsPutSuccessSchema = z
       })
       .strict()
       .optional(),
+    /** Merge plan (present when the request asked for `preview`). Nothing was written. */
+    preview: SkillFolderLinkPreviewSchema.optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillTargetsPutSuccess = z.infer<typeof SkillTargetsPutSuccessSchema>;

@@ -814,6 +814,16 @@ msgstr "已使用 {percent}%（剩余 {left}%）"
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
 
+#. placeholder {0}: p.conflicts.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} and {keep} both hold a different version of: {0}. Resolve those first — a symlink can only keep one of each."
+msgstr "{pick} 和 {keep} 各自保存着不同版本的：{0}。请先处理这些冲突：符号链接对每个技能只能保留一个版本。"
+
+#. placeholder {0}: p.strays.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
+msgstr "{pick} 中包含非技能条目：{0}。请将它们从文件夹中删除或移走，然后重试。"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, other {插件}}"
@@ -1980,6 +1990,10 @@ msgstr "反向链接响应的结构与预期不符。"
 msgid "Base branch"
 msgstr "基础分支"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "becomes a symlink"
+msgstr "变成符号链接"
+
 #: src/components/TemplateBody.tsx
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "当有人用这个模板创建文档时，这会成为该文档的内容。输入 <0>{dateToken}</0> 或 <1>{userToken}</1> 可自动填入今天的日期或作者姓名。"
@@ -2050,6 +2064,10 @@ msgstr "粗体"
 #: src/components/GraphPanel.tsx
 msgid "Both"
 msgstr "两者"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Both agents end up reading everything in {keep}."
+msgstr "两个智能体最终都会读取 {keep} 中的全部内容。"
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -2247,6 +2265,7 @@ msgstr "无法共享此路径。"
 #: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
@@ -3284,6 +3303,10 @@ msgstr "正在复制"
 msgid "Copying..."
 msgstr "正在复制…"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Could not classify the merge — try again."
+msgstr "无法对合并进行分类，请重试。"
+
 #: src/components/FileTree.tsx
 msgid "Could not complete delete"
 msgstr "无法完成删除"
@@ -4125,6 +4148,10 @@ msgstr "带实时预览面板的自定义 HTML（沙箱 iframe）。"
 msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
 msgstr "自定义 open-knowledge 条目——不由 OpenKnowledge 管理"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Custom skills folder path"
+msgstr "自定义技能文件夹路径"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Custom theme"
 msgstr "自定义主题"
@@ -4267,6 +4294,10 @@ msgstr "已删除 {file}"
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Deleted {filePath}"
 msgstr "已删除 {filePath}"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Deleted for good"
+msgstr "彻底删除"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
@@ -4668,6 +4699,10 @@ msgstr "当焦点在「文件」侧边栏时，为聚焦的文件树项目创建
 #: src/components/skill-actions.tsx
 msgid "Duplicated to \"{0}\""
 msgstr "已创建副本 \"{0}\""
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Duplicates dropped"
+msgstr "丢弃重复项"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "e.g. assets/uploads"
@@ -6391,6 +6426,10 @@ msgstr "图标选择器"
 msgid "ID: {0}"
 msgstr "ID：{0}"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Identical in both — {pick} still reads them."
+msgstr "两边完全相同，{pick} 仍会读取它们。"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "如果你正在编辑的内容收到更新，你可以像处理合并冲突那样选择保留哪个版本。"
@@ -6982,6 +7021,10 @@ msgstr "让这个项目与你的 git 远程保持同步。「跟随」只获取�
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "记录你打交道的人和公司，以及你们之间的会面。适合用来记住某人是谁、你怎么认识他们，以及上次聊了什么。"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "keeps the skills"
+msgstr "保留这些技能"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
 msgstr "让您的知识库与 Open Knowledge Format 保持一致。"
@@ -7070,6 +7113,7 @@ msgstr "浅色、深色，或跟随系统。"
 msgid "line {displayLine}"
 msgstr "第 {displayLine} 行"
 
+#: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -7079,6 +7123,10 @@ msgstr "链接"
 #: src/lib/share/run-share-action.ts
 msgid "Link copied."
 msgstr "链接已复制。"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link folders"
+msgstr "链接文件夹"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Link preview settings not yet loaded — try again in a moment"
@@ -7112,6 +7160,10 @@ msgstr "链接目标“{shown}”未指向现有文件。"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "为选中的文本加链接，或编辑光标处的链接。"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link these skill folders?"
+msgstr "要链接这两个技能文件夹吗？"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Link to a page or external URL."
@@ -7621,6 +7673,10 @@ msgstr "安装量最高"
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "Move"
 msgstr "移动"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Move across"
+msgstr "移动过去"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move between table cells"
@@ -8532,6 +8588,10 @@ msgstr "关闭——搜索仅按关键词排序。不会有任何内容离开这
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "离线"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "OK can't move these, so they go when {pick} does."
+msgstr "OK 无法移动这些内容，它们会随 {pick} 一起消失。"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "OK Desktop"
@@ -11668,6 +11728,10 @@ msgstr "技能现在已共享。提交 .ok/skills 即可分享给你的团队。
 msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
 msgstr "技能会安装到本机检测到的每个 AI 工具，与上面选择的 MCP 连接无关。"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Skills reassigned"
+msgstr "技能已重新分配"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -12103,7 +12167,6 @@ msgstr "正在切换分支"
 msgid "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
 msgstr "在用<1> git rm --cached</1> 取消跟踪之前，切换到<0>仅本地</0>会被拒绝。"
 
-#: src/components/settings/SkillTargetsPicker.tsx
 #: src/components/SkillInstallMenu.tsx
 msgid "symlink"
 msgstr "符号链接"
@@ -12753,6 +12816,10 @@ msgstr "主题"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "There's no project folder for this window, so a terminal can't start here."
 msgstr "这个窗口没有对应的项目文件夹，因此无法在这里启动终端。"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "These currently read from another folder. After linking, they read from {keep} instead."
+msgstr "这些技能目前从另一个文件夹读取。链接后，它们将改为从 {keep} 读取。"
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

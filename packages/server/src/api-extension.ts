@@ -718,6 +718,7 @@ import {
 import { createSingleFlight } from './single-flight.ts';
 import {
   linkEditorSkillFolder,
+  previewEditorFolderLink,
   scanSkillFolderStates,
   unlinkEditorSkillFolder,
 } from './skill-folder-links.ts';
@@ -18857,6 +18858,40 @@ export function createApiExtension(
               'urn:ok:error:invalid-request',
               'Folder and target must be distinct standard skills roots.',
               { handler: 'skill-targets-put', detail: `${fa.root} -> ${target}` },
+            );
+            return;
+          }
+          // PREVIEW: classify the merge and return it, writing nothing — the
+          // Folders surface discloses what a link moves and deletes before it
+          // asks for it. No receipt, no change signal: nothing changed.
+          if (fa.action === 'link' && fa.preview) {
+            const p = previewEditorFolderLink({
+              base,
+              folderRel: fa.root,
+              targetRootRel: target,
+            });
+            const plan = p.kind === 'plan' ? p.plan : null;
+            successResponse(
+              res,
+              200,
+              SkillTargetsPutSuccessSchema,
+              {
+                targets: resolveSkillTargets(projectDir ?? ''),
+                reprojected: [],
+                bundleHosts: [],
+                removedFrom: [],
+                preview: {
+                  moves: plan
+                    ? [...plan.linkedBundlesToMove.map(({ name }) => name), ...plan.toMove]
+                    : [],
+                  drops: plan?.toDrop ?? [],
+                  removes: plan?.removes ?? [],
+                  replaces: plan?.liveDestLinks ?? [],
+                  conflicts: p.kind === 'conflicts' ? p.conflicts : [],
+                  strays: p.kind === 'stray-entries' ? p.strays : [],
+                },
+              },
+              { handler: 'skill-targets-put' },
             );
             return;
           }

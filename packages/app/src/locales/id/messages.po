@@ -814,6 +814,16 @@ msgstr "{percent}% terpakai (sisa {left}%)"
 msgid "{phase} — {pct}%"
 msgstr "{phase} — {pct}%"
 
+#. placeholder {0}: p.conflicts.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} and {keep} both hold a different version of: {0}. Resolve those first — a symlink can only keep one of each."
+msgstr "{pick} dan {keep} sama-sama memuat versi berbeda dari: {0}. Selesaikan itu dulu: satu tautan simbolik hanya bisa menyimpan satu versi untuk masing-masing."
+
+#. placeholder {0}: p.strays.join(', ')
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
+msgstr "{pick} berisi entri yang bukan keterampilan: {0}. Hapus atau pindahkan entri tersebut dari folder, lalu coba lagi."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, other {plugin}}"
@@ -1976,6 +1986,10 @@ msgstr "Respons tautan balik tidak sesuai bentuk yang diharapkan."
 msgid "Base branch"
 msgstr "Cabang dasar"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "becomes a symlink"
+msgstr "menjadi tautan simbolik"
+
 #: src/components/TemplateBody.tsx
 msgid "Becomes the document's content when someone creates a doc from this template. Type <0>{dateToken}</0> or <1>{userToken}</1> to fill in today's date or the author's name automatically."
 msgstr "Menjadi isi dokumen ketika seseorang membuat dokumen dari templat ini. Ketik <0>{dateToken}</0> atau <1>{userToken}</1> untuk mengisi tanggal hari ini atau nama penulis secara otomatis."
@@ -2046,6 +2060,10 @@ msgstr "Tebal"
 #: src/components/GraphPanel.tsx
 msgid "Both"
 msgstr "Keduanya"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Both agents end up reading everything in {keep}."
+msgstr "Kedua agen akhirnya membaca semua yang ada di {keep}."
 
 #: src/components/share-metadata-rows.tsx
 msgid "Branch"
@@ -2243,6 +2261,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/settings/NetworkAccessSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
@@ -3280,6 +3299,10 @@ msgstr "Menyalin"
 msgid "Copying..."
 msgstr "Menyalin..."
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Could not classify the merge — try again."
+msgstr "Penggabungan tidak dapat diklasifikasikan — coba lagi."
+
 #: src/components/FileTree.tsx
 msgid "Could not complete delete"
 msgstr "Penghapusan tidak dapat diselesaikan"
@@ -4121,6 +4144,10 @@ msgstr "HTML khusus dengan panel pratinjau langsung (iframe tersekat)."
 msgid "Custom open-knowledge entry — not managed by OpenKnowledge"
 msgstr "Entri open-knowledge khusus — tidak dikelola OpenKnowledge"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Custom skills folder path"
+msgstr "Jalur folder keterampilan khusus"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Custom theme"
 msgstr "Tema khusus"
@@ -4263,6 +4290,10 @@ msgstr "{file} dihapus"
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "Deleted {filePath}"
 msgstr "{filePath} dihapus"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Deleted for good"
+msgstr "Dihapus permanen"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
@@ -4664,6 +4695,10 @@ msgstr "Menggandakan item pohon berkas yang difokus ketika fokus ada di bilah si
 #: src/components/skill-actions.tsx
 msgid "Duplicated to \"{0}\""
 msgstr "Digandakan menjadi \"{0}\""
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Duplicates dropped"
+msgstr "Duplikat dibuang"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "e.g. assets/uploads"
@@ -6387,6 +6422,10 @@ msgstr "Pemilih ikon"
 msgid "ID: {0}"
 msgstr "ID: {0}"
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Identical in both — {pick} still reads them."
+msgstr "Identik di keduanya — {pick} tetap membacanya."
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "Jika sebuah pembaruan datang untuk hal yang sedang Anda sunting, Anda memilih versi mana yang disimpan, seperti konflik penggabungan."
@@ -6978,6 +7017,10 @@ msgstr "Jaga proyek ini tetap selaras dengan remote git Anda. Ikuti mengambil pe
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
 msgstr "Catat orang dan perusahaan yang bekerja dengan Anda serta pertemuan yang Anda adakan dengan mereka. Cocok untuk mengingat siapa seseorang, dari mana Anda mengenalnya, dan apa yang terakhir Anda bicarakan."
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "keeps the skills"
+msgstr "menyimpan keterampilan"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Keeps your knowledge base aligned with the Open Knowledge Format."
 msgstr "Menjaga basis pengetahuan Anda tetap selaras dengan Open Knowledge Format."
@@ -7066,6 +7109,7 @@ msgstr "Terang, gelap, atau ikuti sistem."
 msgid "line {displayLine}"
 msgstr "baris {displayLine}"
 
+#: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
 msgid "Link"
@@ -7075,6 +7119,10 @@ msgstr "Tautan"
 #: src/lib/share/run-share-action.ts
 msgid "Link copied."
 msgstr "Tautan disalin."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link folders"
+msgstr "Tautkan folder"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Link preview settings not yet loaded — try again in a moment"
@@ -7108,6 +7156,10 @@ msgstr "Target tautan \"{shown}\" tidak merujuk ke file yang ada."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Link the selected text, or edit the link under the caret."
 msgstr "Menautkan teks yang dipilih, atau menyunting tautan di bawah kursor."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Link these skill folders?"
+msgstr "Tautkan folder keterampilan ini?"
 
 #: src/editor/slash-command/component-items.tsx
 msgid "Link to a page or external URL."
@@ -7617,6 +7669,10 @@ msgstr "Paling banyak dipasang"
 #: src/components/SkillScopeMoveDialog.tsx
 msgid "Move"
 msgstr "Pindahkan"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Move across"
+msgstr "Dipindahkan"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Move between table cells"
@@ -8528,6 +8584,10 @@ msgstr "Mati — pencarian hanya memeringkat berdasarkan kata kunci. Tidak ada k
 #: src/components/SyncStatusBadge.tsx
 msgid "Offline"
 msgstr "Luring"
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "OK can't move these, so they go when {pick} does."
+msgstr "OK tidak bisa memindahkan ini, jadi ikut hilang bersama {pick}."
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "OK Desktop"
@@ -11664,6 +11724,10 @@ msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membag
 msgid "Skills install to every AI tool detected on this machine, independent of the MCP connections you chose above."
 msgstr "Keterampilan dipasang ke setiap alat AI yang terdeteksi di mesin ini, terlepas dari koneksi MCP yang Anda pilih di atas."
 
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "Skills reassigned"
+msgstr "Keterampilan dialihkan"
+
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
@@ -12099,7 +12163,6 @@ msgstr "Mengganti cabang"
 msgid "Switching to <0>local-only</0> will refuse until they're untracked via<1> git rm --cached</1>."
 msgstr "Beralih ke <0>lokal saja</0> akan ditolak sampai semuanya berhenti dilacak lewat<1> git rm --cached</1>."
 
-#: src/components/settings/SkillTargetsPicker.tsx
 #: src/components/SkillInstallMenu.tsx
 msgid "symlink"
 msgstr "symlink"
@@ -12749,6 +12812,10 @@ msgstr "Tema"
 #: src/components/TerminalRefusalNotice.tsx
 msgid "There's no project folder for this window, so a terminal can't start here."
 msgstr "Tidak ada folder proyek untuk jendela ini, jadi terminal tidak bisa dimulai di sini."
+
+#: src/components/settings/SkillFolderLinkConfirmDialog.tsx
+msgid "These currently read from another folder. After linking, they read from {keep} instead."
+msgstr "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari {keep}."
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "These rules come from your project's <0>{configFile}</0> file, which fully governs linting for this project. Turn rules on or off and edit their options here; changes write back to the file."

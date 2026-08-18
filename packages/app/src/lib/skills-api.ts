@@ -2,6 +2,7 @@ import type {
   SeedInstallPackSkillSuccess,
   SkillDetail,
   SkillDiscover,
+  SkillFolderLinkPreview,
   SkillFrontmatter,
   SkillInstallWarningCode,
   SkillPreview,
@@ -12,7 +13,7 @@ import type {
   SkillsListEntry,
   SkillsSearchSuccess,
 } from '@inkeep/open-knowledge-core';
-import { SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
+import { SkillFolderLinkPreviewSchema, SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
@@ -982,7 +983,9 @@ export async function putSkillFolderAction(action: {
   action: 'link' | 'unlink' | 'add-root';
   target?: string;
   exclude?: string[];
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+  /** `link` only — classify the merge and return it, writing nothing. */
+  preview?: boolean;
+}): Promise<{ ok: true; preview?: SkillFolderLinkPreview } | { ok: false; error: string }> {
   try {
     const res = await fetch('/api/skill-targets', {
       method: 'PUT',
@@ -990,7 +993,20 @@ export async function putSkillFolderAction(action: {
       body: JSON.stringify({ folderAction: action }),
     });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    return { ok: true };
+    // Non-preview verbs carry no body worth reading — the 2xx is the receipt.
+    if (!action.preview) return { ok: true };
+    // A preview asked for the plan; if none comes back (unreadable body, or a
+    // response missing it) fail CLOSED. The caller merges only on a plan it has
+    // seen — never on the strength of an absent one, which would run the
+    // destructive link with nothing disclosed.
+    const payload: unknown = await res.json().catch(() => null);
+    const preview =
+      typeof payload === 'object' && payload !== null && 'preview' in payload
+        ? payload.preview
+        : undefined;
+    const parsed = SkillFolderLinkPreviewSchema.safeParse(preview);
+    if (!parsed.success) return { ok: false, error: t`Server returned a malformed response.` };
+    return { ok: true, preview: parsed.data };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

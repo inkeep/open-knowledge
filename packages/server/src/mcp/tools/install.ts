@@ -12,8 +12,8 @@
  */
 import {
   SKILL_INSTALL_WARNING_CODES,
-  type SkillFolderAction,
-  SkillFolderActionSchema,
+  type SkillFolderActionMcp,
+  SkillFolderActionMcpSchema,
   type SkillLocationId,
   SkillLocationIdSchema,
   type SkillScope,
@@ -67,7 +67,7 @@ const DESCRIPTION = [
  */
 async function runSkillFolderAction(
   deps: InstallDeps,
-  action: SkillFolderAction,
+  action: SkillFolderActionMcp,
   cwd: string | undefined,
 ): Promise<ReturnType<typeof textResult>> {
   const context = await requireProjectServer(deps.resolveCwd, deps.config, deps.serverUrl, cwd);
@@ -110,7 +110,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
           .string()
           .optional()
           .describe(`${SKILL_NAME_DESCRIBE} Required unless \`skillFolders\` is given.`),
-        skillFolders: SkillFolderActionSchema.optional().describe(
+        skillFolders: SkillFolderActionMcpSchema.optional().describe(
           'Folder-level skill-topology verb (link / unlink / add-root). Lives here rather than on `config` so that `config` stays a pure read and hosts can auto-approve it. Run alone, without `name`.',
         ),
         add: z
@@ -188,7 +188,7 @@ export function register(server: ServerInstance, deps: InstallDeps): void {
     },
     async (args: {
       name?: string;
-      skillFolders?: SkillFolderAction;
+      skillFolders?: SkillFolderActionMcp;
       add?: SkillLocationId[];
       remove?: SkillLocationId[];
       convert?: SkillLocationId[];

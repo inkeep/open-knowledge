@@ -37,6 +37,31 @@ function captureInstall(serverUrl: string): Handler {
   return handler;
 }
 
+/** The `inputSchema` the tool registers — what the MCP SDK validates a caller's
+ *  args against before the handler ever runs. `captureInstall` keeps only the
+ *  handler, so schema-level contracts have to be read from here. */
+function registeredInstallInputSchema(): Record<
+  string,
+  { safeParse: (v: unknown) => { success: boolean } }
+> {
+  let cfg: { inputSchema?: unknown } | undefined;
+  const server = {
+    registerTool(_name: string, c: { inputSchema?: unknown }, _h: Handler) {
+      cfg = c;
+    },
+  } as unknown as ServerInstance;
+  registerInstall(server, {
+    serverUrl: 'http://localhost:1234',
+    config: BASE_CONFIG,
+    resolveCwd: async () => process.cwd(),
+  });
+  const schema = cfg?.inputSchema as
+    | Record<string, { safeParse: (v: unknown) => { success: boolean } }>
+    | undefined;
+  if (!schema) throw new Error('tool registered no inputSchema');
+  return schema;
+}
+
 const text = (r: ToolResult) => r.content.map((c) => c.text).join('\n');
 
 let originalFetch: typeof fetch;
@@ -188,6 +213,20 @@ describe('skillFolders — folder topology, moved off the read-only `config` too
     });
     expect(text(res)).toContain('moved 2 skill(s)');
     expect(text(res)).toContain('dropped 1 duplicate(s)');
+  });
+
+  // The HTTP surface takes `preview` to classify a merge without running it.
+  // This surface summarizes from the response's `folder`, which a preview
+  // never carries — so accepting the flag would print a completed-link receipt
+  // for an operation that never ran. Asserted against the schema the tool
+  // REGISTERS (what the SDK validates against before the handler is reached),
+  // not the handler, which the harness below calls directly.
+  test('the registered skillFolders schema refuses a link carrying preview', () => {
+    const schema = registeredInstallInputSchema().skillFolders;
+    const link = { action: 'link', scope: 'project', root: '.cursor/skills', target: '.a/skills' };
+
+    expect(schema.safeParse(link).success).toBe(true);
+    expect(schema.safeParse({ ...link, preview: true }).success).toBe(false);
   });
 
   test('reports an unlink verb as reversible, not as a removal', async () => {

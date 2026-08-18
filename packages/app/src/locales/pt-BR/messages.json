@@ -59,6 +59,12 @@
     "-q4abP": [
       "Resultados limitados — este espaço de trabalho tem mais arquivos do que a busca consegue indexar. Um arquivo que falte pode ser efeito do limite, não um erro de digitação."
     ],
+    "-qBQVd": [
+      ["pick"],
+      " contém itens que não são habilidades: ",
+      ["0"],
+      ". Remova-os ou mova-os para fora da pasta e tente novamente."
+    ],
     "-slrNR": ["Liga ou desliga uma lista de tarefas."],
     "-uaQnI": ["Nenhum worktree ou ramo corresponde."],
     "-yOx8u": ["Salvando alterações…"],
@@ -122,6 +128,7 @@
     "0g7rCZ": ["Duplicado em \"", ["0"], "\""],
     "0jD-Gn": ["Uma base de conhecimento de equipe, uma wiki pessoal, documentação de projeto..."],
     "0kTAXe": ["Abrir a fonte: ", ["mirrorSrc"]],
+    "0m4Snh": ["Habilidades reatribuídas"],
     "0pZmTP": ["Não é possível compartilhar este caminho."],
     "0qyKG6": ["Sincronizado a partir do disco"],
     "0r6d6v": ["Alterações salvas automaticamente."],
@@ -217,6 +224,7 @@
     "2BBAbc": ["Lista"],
     "2C-6zf": ["Não enviado"],
     "2CHoQv": ["Recarregar à força"],
+    "2Ce6hp": ["São movidas"],
     "2D1x3Y": ["Aplicar e reiniciar o servidor do projeto"],
     "2FYpfJ": ["Mais"],
     "2FnYUD": [
@@ -1263,6 +1271,7 @@
     "Es3G-g": [
       "Fica neste projeto (onde quer que esteja a pasta da habilidade) e é compartilhada com os colaboradores pelo git."
     ],
+    "Eu-LIb": ["Vincular estas pastas de habilidades?"],
     "Ev2r9A": ["Sem resultados"],
     "EvIJVD": ["Chamada de ferramenta"],
     "EvPX7f": ["Abre um seletor de pastas para escolher onde clonar o repositório."],
@@ -1467,6 +1476,7 @@
     "H1TmTu": ["A correção parou. Os arquivos já corrigidos continuam corrigidos."],
     "H3oH0g": ["Refazer"],
     "H86f9p": ["Recolher"],
+    "H8DVOJ": ["Idênticas nas duas: ", ["pick"], " continua lendo."],
     "HAkEqR": ["Arquivos recentes"],
     "HAvHev": ["Atualização automática desligada para \"", ["name"], "\""],
     "HAvRAI": [
@@ -1590,6 +1600,7 @@
     "It9ARY": ["Mostra ou oculta o painel direito do documento."],
     "It9oAP": ["A versão do ", ["editor"], " agora é a fonte"],
     "ItxGi3": ["Os anexos devem somar menos de 3 MB."],
+    "IvKbeq": ["Os dois agentes passam a ler tudo o que está em ", ["keep"], "."],
     "Ix0K8o": ["Ocultar os nós de URL externa"],
     "IxHMdF": ["Não deu para excluir esse comentário."],
     "IxyZXD": ["Captura de tela"],
@@ -1711,6 +1722,7 @@
     "Kiytqd": ["Exceção: as habilidades são compartilhadas"],
     "KjTmeO": ["Atualize o OpenKnowledge para abrir este compartilhamento."],
     "KkEAud": ["Cria um arquivo a partir do documento ou da pasta atual."],
+    "KkRyMI": ["Não foi possível classificar a mesclagem. Tente novamente."],
     "KmydK6": ["Negrito"],
     "KnoB--": ["Será salvo como <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Ativar a pré-visualização de links externos"],
@@ -2305,6 +2317,7 @@
     "RrAIZx": ["O que o compartilhamento de configuração abrange"],
     "Rsdhj9": ["Avisos de configuração"],
     "Rx5ReQ": ["Renomear ", ["keyName"]],
+    "RxF-am": ["Duplicatas descartadas"],
     "RyIKxy": [
       "Este ",
       ["targetNoun"],
@@ -3165,6 +3178,7 @@
     "bcDHUM": [["descriptorLabel"], " — erro de renderização, código editável abaixo"],
     "bcjYUA": ["Dobrar ou desdobrar o código"],
     "bcm0pR": ["o agente aberto"],
+    "beHZo4": ["OK não consegue mover isto, então some junto com ", ["pick"], "."],
     "bi2C2s": ["Não foi possível acessar ", ["displayName"], ". Tente novamente mais tarde."],
     "bjsEcb": ["Trazer tudo para a frente"],
     "bkQRMh": ["Parágrafo"],
@@ -3448,6 +3462,7 @@
     "evs0iw": ["Tags que correspondem a \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sessão de shell"],
     "ezUmoU": ["Valores de elemento permitidos (vazio = qualquer)"],
+    "f1-q9m": ["mantém as habilidades"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover o bloco"],
     "f65AOQ": ["Começar a partir de"],
@@ -3697,6 +3712,7 @@
     "hpzRlK": ["Reabrir a aba fechada"],
     "hqCwRf": ["Nenhum arquivo selecionado"],
     "hqVQbT": ["Adicionar comentário"],
+    "hs5BRR": ["Excluídas de vez"],
     "hvZwVx": ["Converter"],
     "hwFOFD": ["Falha ao carregar as configurações"],
     "hxBHxQ": [
@@ -3834,6 +3850,11 @@
     "jDhTLC": ["Escolher ícone"],
     "jENU1Q": [
       "Aplica-se a todos os projetos deste computador. Claude e Codex, iniciados pelo terminal integrado, aprovam automaticamente as ferramentas de leitura e escrita do OpenKnowledge (o Claude também executa \"ok open\" sozinho). Excluir, mover, compartilhar, importar ou instalar habilidades, outros comandos e edições de arquivos fora do OpenKnowledge continuam perguntando. Cursor, OpenCode e Pi não são afetados. É um esforço por agente, sem garantias."
+    ],
+    "jEVipR": [
+      "Elas são lidas de outra pasta no momento. Após a vinculação, serão lidas de ",
+      ["keep"],
+      "."
     ],
     "jEZ6Lf": ["provisório"],
     "jEdF24": ["Página inexistente: ", ["linkTitle"], ". Clique para criar."],
@@ -3983,6 +4004,7 @@
       "Ensina os agentes de programação deste projeto a ler e escrever pelo OpenKnowledge."
     ],
     "kj9pAE": ["Criando a página"],
+    "kjlQ9D": ["vira um link simbólico"],
     "kknhfj": ["Sem alterações"],
     "kkux8f": ["Não foi possível excluir ", ["0"], ". Tente novamente."],
     "klPS-L": ["Arquivo original — antes das edições deste agente."],
@@ -4004,6 +4026,14 @@
     "l17ab4": ["Não foi possível gravar os arquivos do projeto. Tente outro local."],
     "l1aQKz": ["Tabela do editor visual"],
     "l1l8sj": ["há ", ["0"], " d"],
+    "l2BOXd": [
+      ["pick"],
+      " e ",
+      ["keep"],
+      " contêm versões diferentes de: ",
+      ["0"],
+      ". Resolva isso primeiro: um link simbólico só pode manter uma de cada."
+    ],
     "l3s5ri": ["Importar"],
     "l3zD7w": ["Iniciando o agente…"],
     "l46MqT": ["Próxima aba"],
@@ -4332,6 +4362,7 @@
       "\". Recarregue para tentar de novo."
     ],
     "oxdGJn": ["Antes de ir, quer contar por quê?"],
+    "oyBV3W": ["Caminho da pasta de habilidades personalizada"],
     "p0Iq25": ["Inserir link"],
     "p2LEhJ": ["Token de acesso pessoal"],
     "p3m_Gk": [
@@ -4538,6 +4569,7 @@
     "rbrHTd": ["Aprovado — ", ["optionName"]],
     "rcJmK8": ["Converter os locais em cópias"],
     "rdU729": ["Layout"],
+    "rf0tV1": ["Vincular pastas"],
     "rf8fiC": ["Fechar janela"],
     "rfFpcF": ["Remover ", ["chip"]],
     "rg7hNd": ["Avalie sua experiência"],
