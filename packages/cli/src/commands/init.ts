@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { inspect } from 'node:util';
 import {
   type McpLauncherDeclineReason,
@@ -1013,6 +1013,38 @@ function isEditorTargetAvailable(target: EditorMcpTarget, cwd: string, home?: st
 }
 
 /**
+ * True when writing this editor's config would CREATE the very directory
+ * `isEditorTargetAvailable` probes — so the write manufactures the evidence
+ * every later detection pass reads back.
+ *
+ * `mkdirSync(dirname(configPath), { recursive: true })` below is what does it.
+ * Five editors sit in this shape because their `detectPath` is literally
+ * `dirname(configPath)`: Claude Desktop, Cursor, Codex, Copilot, OpenCode. Tick
+ * one in the consent dialog on a machine without it and `~/.cursor` appears,
+ * after which `detectInstalledEditors` reports Cursor installed forever.
+ *
+ * Claude Code is NOT in this shape — it probes `~/.claude` while its config is
+ * `~/.claude.json`, so the write lands beside the probe rather than inside it,
+ * and an explicit tick stays honoured. Derived from the target rather than
+ * listed by id so a new editor cannot be added into the trap silently.
+ */
+function writeWouldFabricateDetection(
+  target: EditorMcpTarget,
+  cwd: string,
+  home?: string,
+): boolean {
+  try {
+    const configDir = resolve(dirname(target.configPath(cwd, home)));
+    const probePath = resolve(target.detectPath?.(cwd, home) ?? configDir);
+    // Equal: the probe dir IS the config dir. Ancestor: the probe is a parent
+    // of the config dir, which `recursive: true` creates on the way down.
+    return probePath === configDir || configDir.startsWith(probePath + sep);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Per-editor MCP config writer. Exported so `@inkeep/open-knowledge`
  * consumers — specifically Electron main's first-launch consent flow via
  * `writeUserMcpConfigs` — can invoke the same write logic that the
@@ -1022,6 +1054,15 @@ function isEditorTargetAvailable(target: EditorMcpTarget, cwd: string, home?: st
  * empty config dirs for editors they haven't installed; the consent flow
  * bypasses the check because the user explicitly toggled the editor
  * checkbox in the dialog.
+ *
+ * The bypass does NOT extend to editors whose config dir doubles as their
+ * detection probe — see `writeWouldFabricateDetection`. Those resolve to
+ * `skipped-missing`, which BOTH consumers of this outcome handle:
+ * the first-launch consent flow ignores it (only `failed` surfaces an error),
+ * and Settings → AI tools maps it to an explicit "not found on this machine"
+ * message in `integrations-settings.ts`'s `setEditor`. Settings is the
+ * reachable path — its rows keep a live checkbox regardless of detection,
+ * whereas the consent dialog only ever offers detected editors.
  */
 export function writeEditorMcpConfig(
   target: EditorMcpTarget,
@@ -1052,13 +1093,18 @@ export function writeEditorMcpConfig(
   // (configPathOverride set) — the project directory always exists by
   // definition.
   //
-  // `offerOnlyWhenDetected` editors (OpenClaw, Antigravity) are the exception:
-  // their config root must exist even under the consent bypass, so we never
-  // create a config for a global tool that isn't installed. Project-scope writes
-  // stay exempt — neither has a project config, so `configPathOverride` never
-  // applies to them.
+  // Two exceptions keep the bypass from creating a home for a tool that isn't
+  // installed. `offerOnlyWhenDetected` editors declare it explicitly (four
+  // today — OpenClaw, Antigravity, LM Studio, Hermes — but read the flag, not
+  // this list). `writeWouldFabricateDetection` catches the rest structurally:
+  // when the config dir IS the probe dir, writing it would make OK detect a tool
+  // purely because OK wrote there. Both leave Claude Code's tick honoured —
+  // its config sits beside its probe, not inside it. Project-scope
+  // writes stay exempt: `configPathOverride` short-circuits before either.
   const enforceAvailability =
-    !installOptions.skipAvailabilityCheck || target.offerOnlyWhenDetected === true;
+    !installOptions.skipAvailabilityCheck ||
+    target.offerOnlyWhenDetected === true ||
+    writeWouldFabricateDetection(target, cwd, home);
   if (!configPathOverride && enforceAvailability && !isEditorTargetAvailable(target, cwd, home)) {
     return {
       editorId: target.id,
@@ -1402,6 +1448,11 @@ export interface UserMcpConfigsOptions {
  * Bypasses `isEditorTargetAvailable` via `skipAvailabilityCheck: true` — the
  * user explicitly toggled the editor checkbox; their click IS the consent,
  * so skip-on-missing would silently drop their selection.
+ *
+ * Consent is consent to WIRE a tool, never to invent one: the bypass stops at
+ * editors whose config dir is also their detection probe, where writing would
+ * make OK detect a tool it only detects because it wrote there. Those come
+ * back `skipped-missing` instead.
  */
 export async function writeUserMcpConfigs(opts: UserMcpConfigsOptions): Promise<EditorMcpResult[]> {
   // Filter out `scope: 'project'` targets (Pi) defensively: they have no

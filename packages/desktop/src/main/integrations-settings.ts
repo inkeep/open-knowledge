@@ -372,6 +372,17 @@ export function registerIntegrationsSettings(
             ok: false,
             error: `Couldn't safely edit ${label}'s config — it was left unchanged.`,
           };
+        case 'skipped-missing':
+          // The editor's config dir doubles as its detection probe, so writing
+          // would create the very directory OK later reads back as "installed"
+          // — the write is refused rather than fabricating that evidence. Every
+          // row here keeps a live checkbox regardless of detection, so this is
+          // reachable by design; say the tool is missing rather than blaming OK
+          // for a failure. The row's own `How to set up` link covers what next.
+          return {
+            ok: false,
+            error: `${label} wasn't found on this machine. Install it first, then connect it here.`,
+          };
         default:
           return {
             ok: false,

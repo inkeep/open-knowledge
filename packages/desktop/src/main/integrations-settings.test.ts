@@ -73,7 +73,7 @@ interface CliOverrides {
   classifications?: Partial<
     Record<McpWiringEditorId, ReturnType<IntegrationsCliSurface['classifyExistingMcpEntry']>>
   >;
-  writeAction?: 'written' | 'overwritten' | 'failed' | 'declined';
+  writeAction?: 'written' | 'overwritten' | 'failed' | 'declined' | 'skipped-missing';
   writeError?: string;
   removeKind?: 'removed' | 'not-present' | 'left-foreign' | 'declined';
   detected?: McpWiringEditorId[];
@@ -403,6 +403,23 @@ describe('ok:integrations:dispatch — set editor', () => {
     const result = await set({ component: { kind: 'editor', id: 'cursor' }, enabled: true });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("Couldn't safely edit Cursor's config");
+  });
+
+  test('an undetected self-probing editor says the tool is missing, not that OK failed', async () => {
+    // Cursor's config dir doubles as its detection probe, so the CLI refuses
+    // the write rather than creating the dir OK would later read back as
+    // "installed". Settings rows keep a live checkbox regardless of detection,
+    // so this outcome is reachable here — and before it was handled it fell to
+    // the generic branch and blamed OK for a tool the user never installed.
+    const { set } = setup({ cli: makeCli({ writeAction: 'skipped-missing' }) });
+    const result = await set({ component: { kind: 'editor', id: 'cursor' }, enabled: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("Cursor wasn't found on this machine");
+      expect(result.error).not.toContain("Couldn't add OpenKnowledge");
+      // No dangling empty parenthetical — `skipped-missing` carries no `error`.
+      expect(result.error).not.toContain('()');
+    }
   });
 
   test('a failed write surfaces its error', async () => {

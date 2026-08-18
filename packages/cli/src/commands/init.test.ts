@@ -28,6 +28,7 @@ import {
   resolveClaudeCodeConfigPath,
   resolveClaudeDesktopConfigPath,
   resolveCodexConfigPath,
+  resolveCopilotConfigPath,
   resolveCursorConfigPath,
   resolveLmStudioConfigPath,
   resolveOpenCodeConfigPath,
@@ -2456,6 +2457,11 @@ describe('writeUserMcpConfigs', () => {
   });
 
   it('writes the canonical chain shape for every selected editor', async () => {
+    // Cursor's config dir doubles as its detection probe, so the consent write
+    // is gated on the tool really being present. Model a machine
+    // that HAS Cursor — otherwise this asserts the phantom-dir bug.
+    mkdirSync(dirname(resolveCursorConfigPath({ home: fakeHome })), { recursive: true });
+
     const results: EditorMcpResult[] = await writeUserMcpConfigs({
       editors: ['claude', 'cursor'],
       home: fakeHome,
@@ -3348,5 +3354,117 @@ describe('resolveInitSkillEnablement — --skills / --no-skills flag parsing', (
     expect(sorted(' discovery , write-skill ')).toEqual(['discovery', 'write-skill']);
     expect(sorted('discovery,bogus')).toEqual(['discovery']);
     expect(sorted('bogus')).toEqual([]);
+  });
+});
+
+/**
+ * The consent bypass must not create the directory that detection later reads
+ * back as proof the editor is installed.
+ */
+describe('consent bypass never fabricates its own detection evidence (PRD-8007)', () => {
+  let fakeHome: string;
+  let testDir: string;
+  const originalPlatform = process.platform;
+  const originalHome = process.env.HOME;
+
+  beforeEach(() => {
+    testDir = resolve(
+      tmpdir(),
+      `mcp-fabricated-detection-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
+    mkdirSync(testDir, { recursive: true });
+    fakeHome = join(testDir, 'fakehome');
+    mkdirSync(fakeHome, { recursive: true });
+    process.env.HOME = fakeHome;
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  // The five editors whose `detectPath` IS `dirname(configPath)`. Writing their
+  // config creates the probe dir, which is what made detection self-fulfilling.
+  const SELF_PROBING = [
+    ['cursor', resolveCursorConfigPath],
+    ['codex', resolveCodexConfigPath],
+    ['claude-desktop', resolveClaudeDesktopConfigPath],
+    ['opencode', resolveOpenCodeConfigPath],
+    ['copilot', resolveCopilotConfigPath],
+  ] as const;
+
+  for (const [editorId, resolvePath] of SELF_PROBING) {
+    it(`${editorId}: an explicit tick on an absent tool writes nothing`, () => {
+      const configPath = resolvePath({ home: fakeHome });
+      expect(existsSync(dirname(configPath))).toBe(false);
+
+      const result = writeEditorMcpConfig(
+        EDITOR_TARGETS[editorId],
+        '',
+        { skipAvailabilityCheck: true },
+        fakeHome,
+      );
+
+      expect(result.action).toBe('skipped-missing');
+      // The actual regression: no directory, so no phantom detection.
+      expect(existsSync(dirname(configPath))).toBe(false);
+      expect(detectInstalledEditors('', fakeHome)).not.toContain(editorId);
+    });
+
+    it(`${editorId}: the tick is still honoured once the tool is really there`, () => {
+      const configPath = resolvePath({ home: fakeHome });
+      mkdirSync(dirname(configPath), { recursive: true });
+
+      const result = writeEditorMcpConfig(
+        EDITOR_TARGETS[editorId],
+        '',
+        { skipAvailabilityCheck: true },
+        fakeHome,
+      );
+
+      expect(result.action).toBe('written');
+      expect(existsSync(configPath)).toBe(true);
+    });
+  }
+
+  it('Claude Code keeps the bypass — its config sits beside the probe, not inside it', () => {
+    const configPath = resolveClaudeCodeConfigPath({ home: fakeHome });
+    // `~/.claude` absent, yet the config is `~/.claude.json`: writing it cannot
+    // manufacture the probe, so an explicit tick must still be honoured.
+    expect(existsSync(join(fakeHome, '.claude'))).toBe(false);
+
+    const result = writeEditorMcpConfig(
+      EDITOR_TARGETS.claude,
+      '',
+      { skipAvailabilityCheck: true },
+      fakeHome,
+    );
+
+    expect(result.action).toBe('written');
+    expect(existsSync(configPath)).toBe(true);
+    expect(existsSync(join(fakeHome, '.claude'))).toBe(false);
+  });
+
+  it('the whole consent write leaves an empty home empty apart from Claude Code', async () => {
+    const results: EditorMcpResult[] = await writeUserMcpConfigs({
+      editors: ['claude', 'cursor', 'codex', 'claude-desktop', 'opencode', 'copilot'],
+      home: fakeHome,
+    });
+
+    expect(results.filter((r) => r.action === 'written').map((r) => r.editorId)).toEqual([
+      'claude',
+    ]);
+    expect(
+      results
+        .filter((r) => r.action === 'skipped-missing')
+        .map((r) => r.editorId)
+        .sort(),
+    ).toEqual(['claude-desktop', 'codex', 'copilot', 'cursor', 'opencode']);
+    // Detection afterwards reports only what was genuinely present.
+    expect(detectInstalledEditors('', fakeHome)).not.toContain('cursor');
+    expect(detectInstalledEditors('', fakeHome)).not.toContain('codex');
   });
 });
