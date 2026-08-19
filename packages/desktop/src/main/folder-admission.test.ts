@@ -207,6 +207,73 @@ const writeOkConfig = (dir: string, contents = '$schema: x\n'): void => {
   writeFileSync(resolve(dir, '.ok/config.yml'), contents);
 };
 
+/**
+ * Picking `$HOME` in the folder picker used to land on the `fresh` branch with
+ * `projectDir === $HOME`: the ancestor walk breaks AT home without testing it,
+ * and git-root promotion is strict-descendant-only, so nothing above rejected
+ * it. Confirming the dialog then ran `ensureProjectGit($HOME)` + `initContent`
+ * + the project-scope editor writes, which at home are the editors'
+ * user-global configs. Rejecting here means the dialog never opens.
+ */
+describe('discoverProject — the home directory is never a project', () => {
+  test('rejects a home pick instead of classifying it fresh', async () => {
+    const result = await discoverProject(fakeHome, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('rejected');
+    if (result.kind !== 'rejected') return;
+    expect(result.reason).toBe('home-directory');
+  });
+
+  test('rejects a home that already carries the pre-fix .ok/config.yml', async () => {
+    // `~/.ok/` is OpenKnowledge's user-global directory, so this shape exists
+    // on any machine where the old `ok init` bug fired. Re-opening it must not
+    // resurrect a project at home.
+    writeOkConfig(fakeHome);
+
+    const result = await discoverProject(fakeHome, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('rejected');
+    if (result.kind !== 'rejected') return;
+    expect(result.reason).toBe('home-directory');
+  });
+
+  test('rejects a symlinked spelling of home', async () => {
+    const link = resolve(tmpReal, 'home-link');
+    symlinkSync(fakeHome, link);
+
+    const result = await discoverProject(link, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('rejected');
+    if (result.kind !== 'rejected') return;
+    expect(result.reason).toBe('home-directory');
+  });
+
+  test('a folder inside home is unaffected', async () => {
+    const project = resolve(fakeHome, 'notes');
+    mkdirSync(project, { recursive: true });
+
+    const result = await discoverProject(project, {
+      homeDir: fakeHome,
+      gitTopLevel: stubGitTopLevel({}),
+      dirSizeProbe: null,
+    });
+
+    expect(result.kind).toBe('fresh');
+  });
+});
+
 describe('discoverProject — managed kind (ancestor walk)', () => {
   test('returns managed at picked path when .ok/config.yml is at picked', async () => {
     const project = resolve(fakeHome, 'project');
@@ -265,16 +332,26 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
     expect(result.ancestorPromoted).toBe(true);
   });
 
-  test('walk excludes home itself — picking home returns fresh, not managed', async () => {
+  // Was: 'walk excludes home itself — picking home returns fresh, not managed'.
+  // The walk still excludes home, but `fresh` was the wrong destination: it
+  // carried `projectDir === $HOME` into `ensureProjectGit` + `initContent`.
+  // Home is now rejected outright, above the walk (see the home-directory
+  // suite); this case keeps the ancestor-walk half of the original assertion.
+  test('walk excludes home itself — a home .ok/ never promotes a child', async () => {
     writeOkConfig(fakeHome);
+    const sub = resolve(fakeHome, 'sub');
+    mkdirSync(sub, { recursive: true });
 
-    const result = await discoverProject(fakeHome, {
+    const result = await discoverProject(sub, {
       homeDir: fakeHome,
       gitTopLevel: stubGitTopLevel({}),
       dirSizeProbe: null,
     });
 
+    // Not `managed` at home — the walk broke before testing it.
     expect(result.kind).toBe('fresh');
+    if (result.kind !== 'fresh') return;
+    expect(result.projectDir).toBe(sub);
   });
 
   test('legacy .ok/ below git root wins over git-root promotion', async () => {
@@ -605,7 +682,11 @@ describe('discoverProject — type surface', () => {
   });
 
   test('RejectionReason union is exhaustively enumerated', () => {
-    const allReasons: readonly RejectionReason[] = ['symlink-escape', 'unreadable'];
+    const allReasons: readonly RejectionReason[] = [
+      'symlink-escape',
+      'unreadable',
+      'home-directory',
+    ];
     for (const r of allReasons) expect(typeof r).toBe('string');
   });
 

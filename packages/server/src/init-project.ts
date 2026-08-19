@@ -22,6 +22,7 @@ import {
   PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
 } from '@inkeep/open-knowledge-core';
 import { tracedMkdirSync, tracedWriteFileSync } from './fs-traced.ts';
+import { assertNotHomeProjectRoot } from './home-project-root.ts';
 
 /**
  * Project config filename inside `.ok/`. Constant lives here (not in core)
@@ -341,6 +342,10 @@ export interface InitContentResult {
  * scaffold write to whatever target the attacker chose.
  */
 export function initContent(projectDir: string, options?: InitContentOptions): InitContentResult {
+  // `~/.ok/` is OpenKnowledge's user-global directory, so scaffolding a project
+  // at home writes `config.yml` into the user-global store. Refused here rather
+  // than per-caller because this is where all five scaffold entry points meet.
+  assertNotHomeProjectRoot(projectDir);
   const okDir = resolve(projectDir, OK_DIR);
   const created: string[] = [];
   const updated: string[] = [];

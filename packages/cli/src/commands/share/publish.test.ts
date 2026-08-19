@@ -16,8 +16,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Octokit } from '@octokit/rest';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { classifyOctokitError, runPublishFlow } from './publish.ts';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { classifyOctokitError, runPublishFlow, sharePublishCommand } from './publish.ts';
 
 // ─── Octokit fake factory ─────────────────────────────────────────────────────
 
@@ -488,6 +488,42 @@ describe('runPublishFlow (e2e against bare repo)', () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+    }
+  });
+});
+
+/**
+ * `initContent` refuses `$HOME`, but `runPublishFlow`'s contract is "never
+ * throw on a documented failure mode", so its catch would flatten the refusal
+ * into `init-failed` and erase the message that says what to do about it. The
+ * command wrapper checks first so `--project-dir ~` reads like `ok init` at
+ * home.
+ */
+describe('share publish — refuses --project-dir $HOME', () => {
+  test('prints the actionable refusal and exits 64, not a generic init-failed', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-publish-home-'));
+    const savedExitCode = process.exitCode;
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    // Never reached: the guard sits ahead of token resolution and Octokit.
+    const tokenStore = async () => ({}) as never;
+    try {
+      vi.stubEnv('HOME', home);
+
+      await sharePublishCommand(tokenStore).parseAsync(
+        ['--owner', 'someone', '--name', 'notes', '--visibility', 'private', '--project-dir', home],
+        { from: 'user' },
+      );
+
+      expect(process.exitCode).toBe(64);
+      const printed = stderrSpy.mock.calls.map((call) => String(call[0])).join('');
+      expect(printed).toContain('home directory');
+      expect(printed).toContain('Make a folder for this project');
+      expect(printed).not.toContain('init-failed');
+    } finally {
+      process.exitCode = savedExitCode;
+      stderrSpy.mockRestore();
+      vi.unstubAllEnvs();
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

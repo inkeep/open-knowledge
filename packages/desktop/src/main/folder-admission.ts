@@ -19,7 +19,7 @@ import { homedir as nodeHomedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import { isProjectRoot } from '@inkeep/open-knowledge-server';
+import { canonicalizeForCompare, isHomeDir, isProjectRoot } from '@inkeep/open-knowledge-server';
 
 const execFileAsync = promisify(execFile);
 
@@ -120,7 +120,7 @@ export type GitState = 'present' | 'absent' | 'shell-only';
  * Reasons `discoverProject` may refuse the picked path. Surfaces to the user
  * as a non-consent error dialog rather than feeding into the consent flow.
  */
-export type RejectionReason = 'symlink-escape' | 'unreadable';
+export type RejectionReason = 'symlink-escape' | 'unreadable' | 'home-directory';
 
 /**
  * Discriminated result of `discoverProject`. `pickedPath` is preserved on
@@ -248,6 +248,19 @@ export async function discoverProject(
     return { kind: 'rejected', reason: 'symlink-escape' };
   }
 
+  // Home is never a project. The ancestor walk below breaks AT home without
+  // testing it, and git-root promotion is strict-descendant-only, so a home
+  // pick used to fall through to `fresh` with `projectDir === $HOME` — and
+  // confirming the dialog then ran `ensureProjectGit($HOME)` + `initContent`
+  // + the project-scope editor writes, which at home are the editors'
+  // user-global configs. Refused up here so the whole flow (dialog included)
+  // never starts, rather than surfacing as a mid-scaffold writer error.
+  // `~/.ok/` is OpenKnowledge's user-global directory, so this also refuses
+  // re-opening a home "project" left behind by the pre-fix `ok init`.
+  if (isHomeDir(realPicked, home)) {
+    return { kind: 'rejected', reason: 'home-directory' };
+  }
+
   // Linked-worktree carveout: an UN-initialized linked-worktree root is a
   // standalone project regardless of any ancestor's .ok/. A `git worktree
   // add .claude/worktrees/feat-bar` produces a worktree at
@@ -345,45 +358,6 @@ function isDescendantOrEqual(child: string, parent: string): boolean {
   if (child === parent) return true;
   const rel = relative(parent, child);
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel);
-}
-
-/**
- * Canonicalize a path so two spellings of the SAME directory compare equal.
- *
- * Windows keeps a legacy 8.3 alias for most long names (`C:\Users\runneradmin`
- * is also reachable as `C:\Users\RUNNER~1`), and the two forms are different
- * strings that no separator normalization can reconcile — only the filesystem
- * knows they are one directory. `fs.realpathSync` does NOT expand the alias;
- * `fs.realpathSync.native` does (it goes through `GetFinalPathNameByHandle`).
- *
- * This matters because the two operands below arrive by different routes:
- * `home` / the picked path come from `os.homedir()` + `realpathSync`, which
- * preserve whatever form the caller had, while `gitTopLevel` shells out to
- * `git rev-parse --show-toplevel`, which always reports the LONG name. Compare
- * a short-form home against a long-form git root and `relative()` escapes with
- * `..`, so the descendant check says "outside home" for a directory that is
- * plainly inside it — and git-root promotion silently never fires.
- *
- * Verified on a Windows 11 ARM64 VM:
- *   realpathSync('…\\OK-SN-~2\\LONGDI~1')        -> unchanged (still short)
- *   realpathSync.native(same)                    -> '…\\ok-sn-UtSXeQ\\longdirectoryname'
- *   git rev-parse --show-toplevel                -> 'C:/Users/…/longdirectoryname/website'
- *   relative(shortHome, longGitRoot)             -> '..\\..\\ok-sn-…\\website'  (escapes)
- *
- * No-op in practice on POSIX, where `.native` and the JS implementation agree.
- * Falls back to the input when the path cannot be resolved (deleted between
- * calls, permission denied) — a best-effort canonicalizer must never be the
- * thing that throws.
- *
- * Mirrored in `packages/cli/src/integrations/resolve-project-root.ts`; the two
- * copies must move together (TypeScript cannot catch drift across packages).
- */
-function canonicalizeForCompare(p: string): string {
-  try {
-    return realpathSync.native(p);
-  } catch {
-    return p;
-  }
 }
 
 /** Strict descendant — equal-to-home does NOT promote. */

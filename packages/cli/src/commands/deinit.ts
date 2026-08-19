@@ -9,6 +9,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { isHomeDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { accent, dim, error as errorColor } from '../ui/colors.ts';
 import { confirmDestructive } from '../ui/confirm.ts';
@@ -43,6 +44,26 @@ export interface DeinitResult {
 export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult> {
   const projectRoot = resolve(opts.cwd ?? process.cwd());
   const home = opts.home ?? homedir();
+
+  // Home is never a project, and here that matters more than anywhere else:
+  // `~/.ok/` is OpenKnowledge's USER-GLOBAL directory, so the `.ok/` existence
+  // check below is satisfied on every machine, and the plan would queue
+  // `remove-path` for `global.yml`, `skills/` (the user's own unversioned
+  // skills), `auth.yml` and `secrets.yml`. `--yes` skips the destructive
+  // prompt, and the plan lines read like ordinary project paths. This is also
+  // the command someone reaches for to undo an `ok init` that anchored them to
+  // home, which is the worst possible place for that hazard.
+  if (isHomeDir(projectRoot, home)) {
+    return {
+      status: 'failed',
+      message:
+        `${errorColor('Refusing to deinit your home directory.')}\n` +
+        `  ${projectRoot}/.ok is OpenKnowledge's user-global directory (global.yml, skills/,\n` +
+        `  auth.yml), not a project. Removing it would delete your global settings and skills.\n` +
+        `  To remove OpenKnowledge everywhere, use 'ok uninstall'.`,
+      exitCode: 64,
+    };
+  }
 
   // `.ok/` is the project marker; without it there is no OpenKnowledge footprint
   // to remove here (a stray editor-config entry would be handled by uninstall's

@@ -34,6 +34,7 @@ import {
   ensureProjectSkillGitignore,
   GitNotAvailableError,
   GitTooOldError,
+  HomeProjectRootError,
   initContent,
   installUserSkill,
   MCP_SERVER_NAME,
@@ -62,7 +63,7 @@ import { isCollection, parseDocument, stringify as stringifyYaml } from 'yaml';
 import { CONFIG_FILENAME, OK_DIR } from '../constants.ts';
 import { formatPreviewBlock, type PreviewResult } from '../content/preview.ts';
 import { buildPiExtensionSource, makePiManagedFileEntry } from '../integrations/pi-extension.ts';
-import { resolveProjectRoot } from '../integrations/resolve-project-root.ts';
+import { isHomeDir, resolveProjectRoot } from '../integrations/resolve-project-root.ts';
 import {
   assertProjectPathSafe,
   type ProjectSkillResult,
@@ -788,6 +789,14 @@ export class ContentDirError extends Error {
     this.name = 'ContentDirError';
   }
 }
+
+/**
+ * Re-exported from the server package, where the scaffold writers throw it.
+ * `runInit` throws the same class earlier (before `ensureProjectGit` can run)
+ * purely so the CLI refuses with its own message and exit code rather than
+ * surfacing a writer-level failure mid-scaffold.
+ */
+export { HomeProjectRootError };
 
 /**
  * Resolve which user-global bundles `ok init` should enable from the `--skills`
@@ -1687,6 +1696,18 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
   // happens here — every other path stays silent.
   const resolution = resolveProjectRoot(cwd, { homeDir: options.home });
   const projectRoot = resolution.projectRoot;
+  // Refuse the home directory before ANY side effect. Nothing `ok init` does
+  // is scoped correctly there: `ensureProjectGit` would `git init` the user's
+  // home, `initContent` would write `config.yml` into `~/.ok/` (OpenKnowledge's
+  // own user-global directory), and every project-scope editor path resolves
+  // onto that editor's user-global config, so the project MCP write and the
+  // project skill install land in `~/.cursor/`, `~/.codex/` and `~/.claude/`.
+  // The `.ok/config.yml` left behind is the worst part: `findEnclosingProjectRoot`
+  // has no home stop, so every later command run from any non-project directory
+  // under home would anchor to home as its project.
+  if (isHomeDir(projectRoot, options.home ?? homedir())) {
+    throw new HomeProjectRootError(projectRoot);
+  }
   const willScaffold = !existsSync(join(projectRoot, OK_DIR));
   // `gitRootPromoted` guarantees cwd is a strict descendant of projectRoot, so
   // `relative` is non-empty. Captured for the result so `formatInitResult` can
@@ -2670,10 +2691,12 @@ export function initCommand(): Command {
               skills: opts.skills,
             });
           } catch (err) {
-            // Invalid `--content-dir` (outside the project, missing, or a file):
-            // print the message cleanly and exit EX_USAGE (64) — a usage error,
-            // distinct from the git-preflight EX_CONFIG (78) below.
-            if (err instanceof ContentDirError) {
+            // Ran somewhere `ok init` cannot mean what the user wants: an
+            // invalid `--content-dir` (outside the project, missing, or a
+            // file), or the home directory as the project root. Print the
+            // message cleanly and exit EX_USAGE (64) — a usage error, distinct
+            // from the git-preflight EX_CONFIG (78) below.
+            if (err instanceof ContentDirError || err instanceof HomeProjectRootError) {
               process.stderr.write(`${err.message}\n`);
               process.exitCode = 64;
               return;

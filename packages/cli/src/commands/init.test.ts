@@ -3,6 +3,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -15,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { resolveBundleEnabled } from '@inkeep/open-knowledge-core';
 import { readBundleDecision } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
 import { loadConfig } from '../config/loader.ts';
 import { OK_DIR } from '../constants.ts';
@@ -53,6 +54,7 @@ import {
   type EditorMcpResult,
   formatInitResult,
   formatSharingOutcome,
+  HomeProjectRootError,
   initCommand,
   MANAGED_FILE_BUILDERS,
   readExistingMcpEntry,
@@ -2115,6 +2117,131 @@ describe('runInit — projectRoot threading', () => {
     expect(summary.contentDirRequested).toBeNull();
     expect(summary.contentDirApplied).toBe(true);
     expect(summary.contentFileCount).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runInit — the home directory is never a project root
+// ---------------------------------------------------------------------------
+
+/**
+ * `cd ~ && ok init` set up a project in the user's home directory: `git init`
+ * in `$HOME`, `config.yml` written into `~/.ok/` (OpenKnowledge's own
+ * user-global directory), and — because every project-scope editor path at
+ * home resolves onto that editor's user-global config — the project MCP write
+ * and project skill install landing in `~/.cursor/`, `~/.codex/`, `~/.claude/`.
+ *
+ * The refusal is checked at the resolved projectRoot rather than at `cwd`
+ * because promotion runs first; both spellings must be refused.
+ */
+describe('runInit — refuses the home directory as a project root', () => {
+  let testDir: string;
+  let fakeHome: string;
+  const originalHome = process.env.HOME;
+  const originalPlatform = process.platform;
+  const defaultInstallUserSkill = async () => 'installed' as const;
+
+  beforeEach(() => {
+    testDir = realpathSync(mkdtempSync(join(tmpdir(), 'init-home-refusal-test-')));
+    fakeHome = join(testDir, 'fakehome');
+    mkdirSync(join(fakeHome, '.claude'), { recursive: true });
+    process.env.HOME = fakeHome;
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  const runAtHome = (cwd: string) =>
+    runInit({
+      cwd,
+      home: fakeHome,
+      installUserSkill: defaultInstallUserSkill,
+      scope: 'project',
+      skills: true,
+    });
+
+  it('throws HomeProjectRootError instead of setting up a project', async () => {
+    await expect(runAtHome(fakeHome)).rejects.toBeInstanceOf(HomeProjectRootError);
+  });
+
+  it('writes nothing at all — no git repo, no .ok/, no project skills', async () => {
+    // The whole point is that the refusal happens BEFORE any side effect, so
+    // this asserts every write site named in the bug report at once.
+    await expect(runAtHome(fakeHome)).rejects.toThrow();
+
+    expect(existsSync(join(fakeHome, '.git'))).toBe(false);
+    expect(existsSync(join(fakeHome, OK_DIR))).toBe(false);
+    expect(existsSync(join(fakeHome, '.okignore'))).toBe(false);
+    for (const hostDir of ['.claude', '.cursor', '.codex']) {
+      expect(existsSync(join(fakeHome, hostDir, 'skills', 'open-knowledge'))).toBe(false);
+    }
+    // The user-global MCP configs the project-scope write would have landed on.
+    expect(existsSync(join(fakeHome, '.cursor', 'mcp.json'))).toBe(false);
+    expect(existsSync(join(fakeHome, '.codex', 'config.toml'))).toBe(false);
+  });
+
+  it('refuses a symlinked spelling of home too', async () => {
+    // Asymmetric on purpose: `cwd` arrives via a symlink while `home` is the
+    // real path, so a plain string compare would let this through.
+    const linkedHome = join(testDir, 'home-link');
+    symlinkSync(fakeHome, linkedHome);
+
+    await expect(runAtHome(linkedHome)).rejects.toBeInstanceOf(HomeProjectRootError);
+    expect(existsSync(join(fakeHome, '.git'))).toBe(false);
+  });
+
+  it('the command action prints the refusal and exits 64 rather than throwing', async () => {
+    // `runInit` throwing is only half the contract. The user-facing half lives
+    // in the command action's catch: a clean message on stderr (no stack) and
+    // EX_USAGE 64, which a script can branch on. Driven in-process against
+    // `initCommand()` — the same idiom `config.test.ts` uses for its exit-code
+    // assertions — so this pins the handler without depending on a built dist.
+    const savedCwd = process.cwd();
+    const savedExitCode = process.exitCode;
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      process.chdir(fakeHome);
+
+      await initCommand().parseAsync([], { from: 'user' });
+
+      expect(process.exitCode).toBe(64);
+      const printed = stderrSpy.mock.calls.map((call) => String(call[0])).join('');
+      expect(printed).toContain(
+        'Refusing to set up an OpenKnowledge project in your home directory',
+      );
+      // A rethrow would surface as an unhandled rejection with a stack instead.
+      expect(printed).not.toContain('at runInit');
+    } finally {
+      process.chdir(savedCwd);
+      // Restore before the assertion can leak exit code 64 to the test runner.
+      process.exitCode = savedExitCode;
+      stderrSpy.mockRestore();
+    }
+  });
+
+  it('still initializes a folder inside home', async () => {
+    // Control: the refusal is scoped to home itself, not to living under it.
+    const project = join(fakeHome, 'notes');
+    mkdirSync(project, { recursive: true });
+
+    const result = await runInit({
+      cwd: project,
+      home: fakeHome,
+      installUserSkill: defaultInstallUserSkill,
+      scope: 'user',
+      skills: true,
+    });
+
+    expect(result.projectRoot).toBe(project);
+    expect(existsSync(join(project, OK_DIR, 'config.yml'))).toBe(true);
   });
 });
 

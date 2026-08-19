@@ -1,10 +1,11 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
+  isHomeDir,
   type ResolveProjectRootOptions,
   type ResolveProjectRootResult,
   resolveProjectRoot,
@@ -99,6 +100,9 @@ describe('resolveProjectRoot — ancestor walk wins', () => {
     expect(result.defaultContentDir).toBe('.');
   });
 
+  // This pins the WALK only: home is not a project ancestor. It is not a
+  // statement that home is a usable project root — `runInit` refuses that
+  // root outright via `isHomeDir` (see the HomeProjectRootError suite).
   test('walk excludes home itself — picking home does not match home/.ok/', () => {
     writeOkConfig(fakeHome);
 
@@ -315,5 +319,24 @@ describe('resolveProjectRoot — integration with real git', () => {
     expect(result.projectRoot).toBe(folder);
     expect(result.gitRootPromoted).toBe(false);
     expect(result.defaultContentDir).toBe('.');
+  });
+});
+
+describe('isHomeDir', () => {
+  test('true for home itself, false for a folder inside it', () => {
+    const inside = resolve(fakeHome, 'notes');
+    mkdirSync(inside, { recursive: true });
+
+    expect(isHomeDir(fakeHome, fakeHome)).toBe(true);
+    expect(isHomeDir(inside, fakeHome)).toBe(false);
+  });
+
+  test('a symlinked spelling of home still compares equal', () => {
+    // The reason this is a canonicalizing compare and not `===`: the two
+    // operands reach `runInit` by different routes (`cwd` vs `os.homedir()`).
+    const linked = resolve(tmpReal, 'home-link');
+    symlinkSync(fakeHome, linked);
+
+    expect(isHomeDir(linked, fakeHome)).toBe(true);
   });
 });

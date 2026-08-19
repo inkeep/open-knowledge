@@ -29,7 +29,12 @@
 import { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { initContent, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
+import {
+  HomeProjectRootError,
+  initContent,
+  isHomeDir,
+  withHiddenWindowsConsole,
+} from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
@@ -464,6 +469,18 @@ function emitPublishEvent(json: boolean, result: PublishResult): void {
 async function runSharePublish(opts: PublishOptions, tokenStore: TokenStore): Promise<void> {
   const { host, owner, name, visibility, description, projectDir, json } = opts;
   validateGitHubHost(host);
+  // `initContent` inside the flow refuses `$HOME`, but `runPublishFlow`'s
+  // contract is "never throw on a documented failure mode", so its bare catch
+  // would flatten that refusal into `init-failed` and erase the message that
+  // tells the user what to do. Checked here, in the command wrapper, so
+  // `--project-dir ~` reads like `ok init` at home: the actionable message and
+  // EX_USAGE 64. Adding a `PublishErrorCode` instead would have meant a new
+  // case in the desktop wizard's mapping for a CLI-only input mistake.
+  if (isHomeDir(projectDir)) {
+    process.stderr.write(`${new HomeProjectRootError(resolve(projectDir)).message}\n`);
+    process.exitCode = 64;
+    return;
+  }
   const token = await resolveReposToken(host, tokenStore);
   if (token == null) {
     emitPublishEvent(json, { kind: 'error', code: 'auth-required' });

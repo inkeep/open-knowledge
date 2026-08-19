@@ -225,6 +225,12 @@ export {
 } from './handoff-api.ts';
 export { type ProjectHeadState, readProjectHeadState } from './head-watcher.ts';
 export {
+  assertNotHomeProjectRoot,
+  canonicalizeForCompare,
+  HomeProjectRootError,
+  isHomeDir,
+} from './home-project-root.ts';
+export {
   createStreamingErrorWriter,
   errorResponse,
   type HttpErrorStatus,

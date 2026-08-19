@@ -30,7 +30,27 @@ import { execFileSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { homedir as nodeHomedir } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
-import { isProjectRoot, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
+import {
+  canonicalizeForCompare,
+  isHomeDir,
+  isProjectRoot,
+  withHiddenWindowsConsole,
+} from '@inkeep/open-knowledge-server';
+
+/**
+ * Re-exported so this module stays the CLI's one stop for "how do we classify a
+ * picked directory" — `runInit` refuses the root `isHomeDir` names, and the walk
+ * below is why the fall-through branch can hand back home in the first place.
+ * Both implementations live in the server package: the scaffold writers
+ * (`ensureProjectGit`, `initContent`) enforce the same home invariant for the
+ * four non-CLI entry points, and the server is below both the CLI and the
+ * desktop in the dependency graph, so one `canonicalizeForCompare` replaces
+ * what used to be three byte-identical copies kept in sync by drift comments.
+ *
+ * `canonicalizeForCompare` keeps this import path because `repair-skills`'s
+ * global-config collision gate already imports it from here.
+ */
+export { canonicalizeForCompare, isHomeDir };
 
 const ANCESTOR_WALK_DEPTH_LIMIT = 30;
 
@@ -60,36 +80,6 @@ export interface ResolveProjectRootOptions {
    * to `git rev-parse --show-toplevel`. Tests inject a deterministic stub
    * to avoid spinning up real git fixtures for unit-level coverage. */
   gitTopLevel?: (cwd: string) => string | null;
-}
-
-/**
- * Canonicalize a path so two spellings of the SAME directory compare equal.
- *
- * Windows keeps a legacy 8.3 alias for most long names (`C:\Users\runneradmin`
- * is also `C:\Users\RUNNER~1`); the forms are different strings that no
- * separator normalization can reconcile. `fs.realpathSync` does NOT expand the
- * alias, `fs.realpathSync.native` does. The operands below arrive by different
- * routes — `home` from `os.homedir()`, `gitRoot` from
- * `git rev-parse --show-toplevel`, which always reports the LONG name — so a
- * short-form home vs a long-form git root makes `relative()` escape with `..`
- * and promotion silently never fires. Real-Windows-verified.
- *
- * Best-effort: falls back to the input if the path cannot be resolved.
- *
- * Mirrored in `packages/desktop/src/main/folder-admission.ts`; the two copies
- * must move together (TypeScript cannot catch drift across packages).
- *
- * Exported so in-package path-equality checks (e.g. `repair-skills`'s
- * global-config collision gate) reuse this one implementation instead of
- * re-deriving the idiom — a re-derived copy loses the `.native` rationale
- * above and silently disarms the guard on Windows.
- */
-export function canonicalizeForCompare(p: string): string {
-  try {
-    return realpathSync.native(p);
-  } catch {
-    return p;
-  }
 }
 
 /**
