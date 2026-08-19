@@ -1818,14 +1818,181 @@ describe('ThreadView retry', () => {
     expect(retryThread).toHaveBeenCalledWith('thread-1');
   });
 
-  // The session is live and the message is what failed — sending it again IS
-  // the retry, so a second control here would only be a worse way to do it.
-  test('a prompt failure offers no Retry', () => {
-    model = makeModel({ turnActive: false, items: [failureNotice('prompt')] });
+  // Restore-to-composer is the prompt-failure counterpart to Retry: the session
+  // is live so a launch respawn is wrong, but the failed text isn't retrievable
+  // from the composer either (only from the transcript row above the notice).
+  // The button seeds the composer from the nearest preceding user_message.
+  test('a prompt failure offers Edit and resend instead of Retry, seeds the composer, and hides the failed pair', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'message',
+          role: 'user',
+          text: 'give me a haiku about tokens',
+          messageId: 'u1',
+        },
+        failureNotice('prompt'),
+      ],
+    });
     render(<ThreadView info={makeInfo({ status: 'error' })} />);
 
-    expect(screen.getByTestId('agent-thread-notice')).toBeDefined();
     expect(screen.queryByTestId('agent-thread-retry')).toBeNull();
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('');
+    expect(screen.getByTestId('agent-thread-user-message')).toBeDefined();
+    expect(screen.getByTestId('agent-thread-notice')).toBeDefined();
+
+    await userEvent.click(screen.getByTestId('agent-thread-restore'));
+
+    // Edit-and-resend is a revert, not an append: the failed message + its
+    // notice leave the transcript and the composer takes the text so the
+    // user can edit and send anew. The transcript keeps other turns intact.
+    expect(composer.value).toBe('give me a haiku about tokens');
+    expect(screen.queryByTestId('agent-thread-user-message')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-notice')).toBeNull();
+  });
+
+  // Only the most-recent prompt failure carries the button, mirroring Retry's
+  // one-card discipline. Older failures stay in the log as history — and the
+  // restore reverse-scans from the notice for the NEAREST user message, not
+  // the earliest, so the last failure resurfaces the last prompt (not the
+  // first). A forward-scan regression would still leave the button count at
+  // one but seed the wrong text; the click assertion is what guards that.
+  test('only the last prompt failure carries the button, seeds from nearest, and hides only the reverted pair', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'first try', messageId: 'u1' },
+        failureNotice('prompt'),
+        { kind: 'message', role: 'user', text: 'second try', messageId: 'u2' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const buttons = screen.getAllByTestId('agent-thread-restore');
+    expect(buttons).toHaveLength(1);
+    expect(screen.getAllByTestId('agent-thread-user-message')).toHaveLength(2);
+    expect(screen.getAllByTestId('agent-thread-notice')).toHaveLength(2);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    const button = buttons[0];
+    if (!button) throw new Error('restore button missing');
+    await userEvent.click(button);
+
+    expect(composer.value).toBe('second try');
+    // Only the reverted pair hides. The earlier failed turn stays as history.
+    const users = screen.getAllByTestId('agent-thread-user-message');
+    expect(users).toHaveLength(1);
+    expect(users[0]?.textContent).toContain('first try');
+    expect(screen.getAllByTestId('agent-thread-notice')).toHaveLength(1);
+  });
+
+  // Restore-to-composer is inert unless the composer is actually usable after
+  // it. A prompt failure leaves `status: 'error'` (the session is alive, but
+  // the top-level status still records the failed turn), and the composer's
+  // Send is normally gated by `status === 'ready'`. The guard has to admit
+  // this mid-session recoverable case or the button seeds text into a dead
+  // composer.
+  test('after Edit-and-resend the composer is usable — Send button becomes enabled and can send', async () => {
+    const promptFn = prompt as ReturnType<typeof vi.fn>;
+    promptFn.mockClear();
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'give me a haiku', messageId: 'u1' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    // Before the restore the composer is empty and Send is disabled.
+    const send = screen.getByTestId('agent-thread-send');
+    expect(send.hasAttribute('disabled')).toBe(true);
+
+    await userEvent.click(screen.getByTestId('agent-thread-restore'));
+
+    // The seed lands, and the Send button lights up because the mid-session
+    // failure guard now admits `status === 'error'` with a prompt reason.
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('give me a haiku');
+    expect(send.hasAttribute('disabled')).toBe(false);
+
+    // A real click flows through the send path — the wire call fires, so the
+    // user can actually retry the prompt they just edited.
+    await userEvent.click(send);
+    expect(promptFn).toHaveBeenCalledWith('thread-1', 'give me a haiku', undefined);
+  });
+
+  // The `restoreNoticeIndex` guard tests both `!archived` and `status !==
+  // 'exited'`. An exited thread has no live agent, so restore has no
+  // destination; the sibling test to `archived thread offers no
+  // Edit-and-resend` closes the other branch of the same guard.
+  test('an exited thread offers no Edit-and-resend', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'give me a haiku', messageId: 'u1' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'exited', archived: false })} />);
+
+    expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
+  });
+
+  // An attachment-only prompt lands as a real user item with `text: ''` in
+  // the fold. The scan stops at the first `role === 'user'` regardless of
+  // text so it can't step past this row into an earlier turn.
+  test('Edit-and-resend is a no-op when the failed prompt has no text', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: '', messageId: 'u1' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    await userEvent.click(screen.getByTestId('agent-thread-restore'));
+    expect(composer.value).toBe('');
+  });
+
+  // The wrong-turn hazard: the scan must stop at the failed prompt's OWN user
+  // row even when that row has no text — otherwise an attachment-only prompt
+  // that failed pulls text from an earlier, unrelated turn's user message.
+  test('an attachment-only failed prompt does not restore text from an earlier turn', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'earlier unrelated turn', messageId: 'u1' },
+        { kind: 'message', role: 'agent', text: 'ok', messageId: 'a1' },
+        { kind: 'message', role: 'user', text: '', messageId: 'u2' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    await userEvent.click(screen.getByTestId('agent-thread-restore'));
+    expect(composer.value).toBe('');
+  });
+
+  // Archived threads are read-only — the composer is disabled — so the
+  // restore action has no destination.
+  test('an archived thread offers no Edit-and-resend', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'give me a haiku', messageId: 'u1' },
+        failureNotice('prompt'),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error', archived: true })} />);
+
+    expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
   });
 
   // A transcript accumulates a notice per failed attempt; Retry belongs to the

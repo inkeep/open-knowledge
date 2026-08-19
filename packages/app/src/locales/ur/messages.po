@@ -4777,6 +4777,10 @@ msgstr "{tag} میں ترمیم کریں"
 msgid "Edit a copy"
 msgstr "ایک نقل میں ترمیم کریں"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Edit and resend"
+msgstr "ترمیم کر کے دوبارہ بھیجیں"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "کنفیگ فائل میں ترمیم کریں"

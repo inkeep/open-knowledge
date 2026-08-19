@@ -2540,6 +2540,7 @@
     "cMMb6H": ["已安装 ", ["imported"], " 个，但 ", ["failed"], " 个失败：", ["failedNames"]],
     "cN1Gcp": [["shareBranch"], " 的 worktree 文件夹已存在。"],
     "cNsIJf": ["已修改"],
+    "cNvGbn": ["编辑并重发"],
     "cOJyVj": ["禁用主题"],
     "cOSAfL": ["在你的 GitHub 账户中没有找到仓库。"],
     "cOrTMo": ["你的共享链接已在下方生成。"],

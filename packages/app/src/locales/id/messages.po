@@ -4773,6 +4773,10 @@ msgstr "Sunting {tag}"
 msgid "Edit a copy"
 msgstr "Sunting salinan"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Edit and resend"
+msgstr "Ubah dan kirim ulang"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "Sunting di berkas konfigurasi"

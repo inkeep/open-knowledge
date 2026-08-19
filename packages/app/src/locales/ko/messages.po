@@ -4777,6 +4777,10 @@ msgstr "{tag} 편집"
 msgid "Edit a copy"
 msgstr "복사본 편집"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Edit and resend"
+msgstr "편집하여 다시 보내기"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "config 파일에서 편집"

@@ -4777,6 +4777,10 @@ msgstr "Editar {tag}"
 msgid "Edit a copy"
 msgstr "Editar una copia"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Edit and resend"
+msgstr "Editar y reenviar"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "Editar en el archivo de configuración"

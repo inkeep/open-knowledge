@@ -467,7 +467,20 @@ export function ThreadView({
   const thinkingLine = useThinkingLine(turnActive);
   const [resumePending, setResumePending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
-  const canPrompt = archived ? !resumePending : status === 'ready' && !turnActive;
+  // Prompt failures don't kill the session — the child is alive and the
+  // server accepts another `session/prompt` — so the composer stays usable
+  // after one. Without this, Edit-and-resend seeds text into a Send button
+  // still disabled because `status === 'error'` from the failed turn.
+  const hasRecoverablePromptFailure =
+    !archived &&
+    status === 'error' &&
+    (model?.items ?? []).some(
+      (item) =>
+        item.kind === 'notice' && item.superseded !== true && item.failure?.reason === 'prompt',
+    );
+  const canPrompt = archived
+    ? !resumePending
+    : (status === 'ready' || hasRecoverablePromptFailure) && !turnActive;
   // A live thread sitting in a failure status never opened a session, so the
   // launch can simply be run again — see the server's `retryThread` guards.
   // The sign-in prompt owns both halves of the wait: the offer, and the round
@@ -479,6 +492,11 @@ export function ThreadView({
   // the server treats an in-flight one as retryable for exactly that reason.
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
   const [retryPending, setRetryPending] = useState(false);
+  // Positions in `foldedItems` the user reverted via Edit-and-resend. Session-
+  // scoped (a reload restores the failed pair from the CRDT log) — a wire-level
+  // revert event would carry across reloads and clients, but the immediate
+  // affordance is what the user typed against, so the hide lives here for now.
+  const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   // Mid-turn sends don't reject anymore — the server queues them behind the
   // active turn and drains FIFO (`ThreadInfo.queue`).
   const canQueue = !archived && turnActive;
@@ -881,15 +899,22 @@ export function ThreadView({
 
   // Retry belongs to the failure the user is looking at — the LAST startup
   // failure, once. An allowlist rather than "not a prompt failure": a reason
-  // added later is only retryable once someone decides it is, and a prompt
-  // failure never is (that session is live, and re-sending IS the retry).
-  // Failures a later `ready` retired stay in the log but leave the screen —
-  // see `superseded` in the fold. One list so the Retry index and the render
+  // added later is only retryable once someone decides it is. A prompt
+  // failure takes a separate action (`restoreNoticeIndex` below) rather than
+  // the launch-retrying Retry — the session is live, so a respawn is wrong
+  // and re-sending happens through the composer instead. Failures a later
+  // `ready` retired stay in the log but leave the screen — see `superseded`
+  // in the fold. One list so the Retry / restore indexes and the render
   // cannot disagree about which row is which.
-  const visibleItems =
+  // Two-stage fold: strip superseded notices first (fold-visible items keep
+  // aligned indices with the transcript the reverse-scan walks), then hide
+  // pairs the user reverted this session. `visibleItems` is what renders and
+  // what `retryNoticeIndex` / `restoreNoticeIndex` index against.
+  const foldedItems =
     model === null
       ? []
       : model.items.filter((item) => item.kind !== 'notice' || item.superseded !== true);
+  const visibleItems = foldedItems.filter((_, index) => !revertedPositions.has(index));
   let retryNoticeIndex = -1;
   if (canRetry) {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -900,6 +925,63 @@ export function ThreadView({
       }
     }
   }
+  // The action that turns a failed-prompt card into a way forward. The card
+  // itself doesn't reveal the message text (that's the preceding user bubble),
+  // so a "just retype it" workaround is the friction here — long prompts, or
+  // ones tuned once that the user wants to send again under a setting they
+  // just changed. Only the most-recent prompt failure carries the button,
+  // mirroring Retry's one-card discipline; older failures stay in the log
+  // as history.
+  let restoreNoticeIndex = -1;
+  if (!archived && status !== 'exited') {
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
+      if (item?.kind === 'notice' && item.failure?.reason === 'prompt') {
+        restoreNoticeIndex = index;
+        break;
+      }
+    }
+  }
+  const restoreFailedPromptToComposer = (visibleNoticeIndex: number): void => {
+    // Translate the visibleItems index into a foldedItems index (visibleItems
+    // drops previously-reverted positions), then walk back for the failed
+    // prompt's OWN user row. Stop at the first `role === 'user'` regardless
+    // of text: an attachment-only prompt lands as a real user item with
+    // `text: ''` in the fold, so an empty-text predicate here would step
+    // past it and pull text from an earlier, unrelated turn. On success,
+    // seed the composer AND hide the failed pair — the user's mental model
+    // is that Edit-and-resend replaces the send, not appends alongside it.
+    const foldedNoticeIndex = mapVisibleToFolded(visibleNoticeIndex);
+    if (foldedNoticeIndex === -1) return;
+    for (let index = foldedNoticeIndex - 1; index >= 0; index -= 1) {
+      const item = foldedItems[index];
+      if (item?.kind === 'message' && item.role === 'user') {
+        if (item.text !== '') {
+          composerRef.current?.appendText(item.text);
+          scrollApiRef.current?.scrollToEnd();
+        }
+        setRevertedPositions((prev) => {
+          const next = new Set(prev);
+          next.add(index);
+          next.add(foldedNoticeIndex);
+          return next;
+        });
+        return;
+      }
+    }
+  };
+  // Visible indices skip previously-reverted foldedItems positions. Walk
+  // foldedItems, counting only positions that pass the revert filter, until
+  // we reach the requested visible index.
+  const mapVisibleToFolded = (target: number): number => {
+    let seen = -1;
+    for (let index = 0; index < foldedItems.length; index += 1) {
+      if (revertedPositions.has(index)) continue;
+      seen += 1;
+      if (seen === target) return index;
+    }
+    return -1;
+  };
 
   // A thread waiting on sign-in has nothing else to show: it never opened a
   // session, so its transcript is startup diagnostics the sign-in supersedes.
@@ -1030,6 +1112,8 @@ export function ThreadView({
                           showRetry={index === retryNoticeIndex}
                           retryPending={retryPending}
                           onRetry={retryThread}
+                          showRestore={index === restoreNoticeIndex}
+                          onRestore={() => restoreFailedPromptToComposer(index)}
                         />
                       </MessageScrollerItem>
                     );
@@ -1838,6 +1922,8 @@ function ThreadItem({
   showRetry,
   retryPending,
   onRetry,
+  showRestore,
+  onRestore,
 }: {
   item: RenderedItem;
   threadId: string;
@@ -1852,6 +1938,9 @@ function ThreadItem({
   showRetry: boolean;
   retryPending: boolean;
   onRetry: () => void;
+  /** This notice is the one that offers Edit-and-resend (at most one). */
+  showRestore: boolean;
+  onRestore: () => void;
 }): ReactNode {
   switch (item.kind) {
     case 'message':
@@ -1881,6 +1970,8 @@ function ThreadItem({
           showRetry={showRetry}
           retryPending={retryPending}
           onRetry={onRetry}
+          showRestore={showRestore}
+          onRestore={onRestore}
         />
       );
   }
@@ -2213,12 +2304,16 @@ function ThreadNotice({
   showRetry,
   retryPending,
   onRetry,
+  showRestore,
+  onRestore,
 }: {
   item: Extract<RenderedItem, { kind: 'notice' }>;
   agentName: string;
   showRetry: boolean;
   retryPending: boolean;
   onRetry: () => void;
+  showRestore: boolean;
+  onRestore: () => void;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
@@ -2325,6 +2420,20 @@ function ThreadNotice({
                 ) : (
                   t`Retry`
                 )}
+              </Button>
+            </div>
+          ) : null}
+          {showRestore ? (
+            <div className="mt-1.5">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={onRestore}
+                data-testid="agent-thread-restore"
+              >
+                {t`Edit and resend`}
               </Button>
             </div>
           ) : null}

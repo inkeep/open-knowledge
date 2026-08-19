@@ -2564,6 +2564,7 @@
     "cMMb6H": ["已安裝 ", ["imported"], " 個，但 ", ["failed"], " 個失敗：", ["failedNames"]],
     "cN1Gcp": [["shareBranch"], " 的 worktree 資料夾已存在。"],
     "cNsIJf": ["已修改"],
+    "cNvGbn": ["編輯並重新傳送"],
     "cOJyVj": ["停用主題"],
     "cOSAfL": ["在你的 GitHub 帳戶中找不到儲存庫。"],
     "cOrTMo": ["你的分享連結已經在下面產生好了。"],

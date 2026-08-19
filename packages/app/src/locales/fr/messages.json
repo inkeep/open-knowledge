@@ -3343,6 +3343,7 @@
     "cMMb6H": [["imported"], " installées, mais ", ["failed"], " ont échoué : ", ["failedNames"]],
     "cN1Gcp": ["Un dossier de worktree pour ", ["shareBranch"], " existe déjà."],
     "cNsIJf": ["Modifié"],
+    "cNvGbn": ["Modifier et renvoyer"],
     "cOJyVj": ["Désactiver les thèmes"],
     "cOSAfL": ["Aucun dépôt trouvé sur votre compte GitHub."],
     "cOrTMo": ["Votre lien de partage est prêt ci-dessous."],

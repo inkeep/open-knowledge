@@ -2850,6 +2850,7 @@
     "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
     "cN1Gcp": ["A worktree folder for ", ["shareBranch"], " already exists."],
     "cNsIJf": ["Changed"],
+    "cNvGbn": ["Edit and resend"],
     "cOJyVj": ["Disable Themes"],
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
