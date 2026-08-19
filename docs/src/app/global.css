@@ -185,7 +185,10 @@
        over --slide-bg (#fbf9f4). Solid color so dashed borders + small
        squares render cleanly without alpha self-overlap. */
     --border: #e4e3e0;
-    --primary: oklch(0.6321 0.1983 259.59);
+    /* Tracks the app's light-theme primary. At the previous lightness this
+       failed WCAG 2 AA both as a fill under white label text and as link text
+       on the page background, the same way --slide-accent above does. */
+    --primary: oklch(0.5621 0.1983 259.59);
   }
 
   .dark {

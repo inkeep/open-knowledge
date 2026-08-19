@@ -21,6 +21,7 @@
  * src` gate is the right home.
  */
 
+import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -233,5 +234,101 @@ describe('HtmlPreview space reservation', () => {
     const withIframe = reservedHeight();
 
     expect(firstPaintReserve(BLOCK_A)).toBe(withIframe);
+  });
+});
+
+/**
+ * Token parity with the editor's preview iframe.
+ *
+ * The component's header promises an authored `html preview` block looks the
+ * same in the OK editor and here. The editor injects its tokens from
+ * `PREVIEW_THEME_TOKENS`, generated from `packages/app/src/globals.css` and
+ * drift-tested there; this component hardcodes a hand-maintained copy. The two
+ * drifted silently the first time a light-theme token moved in the app, which
+ * is the failure these tests exist to make loud.
+ *
+ * Read off the rendered `srcDoc` rather than the module constants, because
+ * `srcDoc` is what a reader's iframe actually resolves `var()` against.
+ */
+describe('preview theme tokens track the editor', () => {
+  /** Dark-mode tokens the docs iframe deliberately does not take from the app. */
+  const DARK_OVERRIDES = new Map([
+    // The docs iframe sits on a docs card, not the editor's canvas, so its dark
+    // surfaces are lifted to stay visible against the page behind them.
+    ['--background', 'sits on the docs card surface, not the editor canvas'],
+    ['--card', 'sits on the docs card surface, not the editor canvas'],
+    // Not a notation difference: `/ 0.14` is 14% alpha and `/ 10%` is 10%, so
+    // the docs border is genuinely more opaque. The docs card sits lighter than
+    // the editor canvas, where a white border at the editor's alpha would carry
+    // less separation, which is the only reason the gap holds up. Nobody
+    // recorded the intent when the constant was hand-copied, so treat the value
+    // as load-bearing until someone re-derives it rather than normalizing the
+    // two strings together.
+    ['--border', 'docs card is lighter, so its border runs 14% alpha against the editor 10%'],
+  ]);
+
+  const tokensFrom = (srcDoc: string, selector: RegExp): Map<string, string> => {
+    const block = selector.exec(srcDoc);
+    if (!block) throw new Error(`no token block matching ${selector} in srcDoc`);
+    return new Map(
+      block[1]
+        .split(';')
+        .filter((decl) => decl.startsWith('--'))
+        .map((decl) => {
+          const colon = decl.indexOf(':');
+          return [decl.slice(0, colon), decl.slice(colon + 1)] as const;
+        }),
+    );
+  };
+
+  const renderedTokens = () => {
+    render(BLOCK_A);
+    const iframe = container.querySelector<HTMLIFrameElement>(
+      'iframe[title="Interactive preview"]',
+    );
+    if (!iframe) throw new Error('component rendered no iframe to read tokens from');
+    const srcDoc = iframe.getAttribute('srcdoc') ?? '';
+    return {
+      light: tokensFrom(srcDoc, /:root\{([^}]*)\}/),
+      dark: tokensFrom(srcDoc, /:root\[data-theme="dark"\]\{([^}]*)\}/),
+    };
+  };
+
+  test('light-theme values match the tokens the editor injects', () => {
+    const { light } = renderedTokens();
+    const shared = PREVIEW_THEME_TOKENS.filter((token) => light.has(token.name));
+
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.map((token) => [token.name, light.get(token.name)])).toEqual(
+      shared.map((token) => [token.name, token.light]),
+    );
+  });
+
+  test('dark-theme values match except where the docs surface deliberately differs', () => {
+    const { dark } = renderedTokens();
+    const shared = PREVIEW_THEME_TOKENS.filter(
+      (token) => dark.has(token.name) && !DARK_OVERRIDES.has(token.name),
+    );
+
+    expect(shared.length).toBeGreaterThan(0);
+    expect(shared.map((token) => [token.name, dark.get(token.name)])).toEqual(
+      shared.map((token) => [token.name, token.dark]),
+    );
+  });
+
+  test('every declared dark override is still a real divergence', () => {
+    // Without this the allowlist becomes a place stale exemptions accumulate: an
+    // override that has since converged would keep a real future drift on that
+    // token permanently exempt.
+    const { dark } = renderedTokens();
+
+    for (const [name] of DARK_OVERRIDES) {
+      const token = PREVIEW_THEME_TOKENS.find((candidate) => candidate.name === name);
+      expect(token, `${name} is no longer an injected token`).toBeDefined();
+      expect(
+        dark.get(name),
+        `${name} now matches the editor; drop it from DARK_OVERRIDES`,
+      ).not.toBe(token?.dark);
+    }
   });
 });

@@ -330,23 +330,20 @@ test('A11Y09: Wildcard block chrome has accessible name', async ({ page, api }) 
 // ── A11Y10: Zero axe-core violations on fixture document ───────
 //
 // Notes on scope:
-//   - `color-contrast` is disabled here because axe flags a pre-existing
-//     WCAG 2 AA violation on the default light-theme link color (`#3784ff`,
-//     measured contrast 3.55 vs the 4.5 requirement). The violation lives
-//     in the design-system's light-theme link token, NOT in any surface
-//     this PR introduces. Fixing the token is the right action, but it's
-//     a cross-surface change (impacts every anchor in the product, not
-//     just editor-embedded ones) that belongs in a dedicated design-
-//     system PR. Disabling the rule here keeps the fuller axe matrix
-//     (keyboard, ARIA roles, form labels, landmarks, link purpose, …)
-//     actively enforced on this PR's surface so regressions surface.
+//   - `color-contrast` runs. It was disabled for a long stretch because the
+//     light-theme `--link-color` token, which every document link paints,
+//     failed WCAG 2 AA at 3.56:1, a design-system fault rather than anything
+//     this fixture renders. That token now resolves to `--color-azure-600`
+//     at 5.2:1, and `--primary`, which paints `Button variant="link"`, was
+//     raised alongside it to 4.76:1, so the rule is back on. The fixture
+//     carries a link specifically so the rule covers the link token rather
+//     than passing vacuously on it: this is the only axe surface in the
+//     suite that renders one. If it reds on a link, re-measure
+//     `--link-color` in `globals.css` before touching the fixture.
 //   - `aria-allowed-attr` is NOT disabled: the wrapper's `role="group"`
 //     intentionally omits `aria-selected` (see precedent #36) and axe
 //     agrees, so the rule passes.
-test('A11Y10: Zero axe-core violations on 5-pack fixture (excluding color-contrast)', async ({
-  page,
-  api,
-}) => {
+test('A11Y10: Zero axe-core violations on 5-pack fixture', async ({ page, api }) => {
   // Build a realistic document with the 5-pack.
   const content = [
     '# 5-Pack Accessibility Test',
@@ -379,7 +376,11 @@ test('A11Y10: Zero axe-core violations on 5-pack fixture (excluding color-contra
     '',
     '<audio src="/sample.mp3" />',
     '',
-    'Some paragraph with normal text.',
+    // The link is load-bearing, not decoration: it is the only element in
+    // this fixture painted with `--link-color`, so it is what makes the
+    // re-enabled `color-contrast` rule actually cover the document-link
+    // token. Without it the rule passes vacuously on that token.
+    'Some paragraph with normal text and [a link to the docs](https://example.com/docs).',
   ].join('\n');
 
   await setupDoc(page, api, content);
@@ -391,7 +392,6 @@ test('A11Y10: Zero axe-core violations on 5-pack fixture (excluding color-contra
 
   // Run axe-core against the editor surface. Runner chrome (sidebar, header)
   // is shared with other surfaces and not this suite's responsibility.
-  // `disableRules(['color-contrast'])` is explained in the test header.
   // axe-core's keyboard / aria / form-label / landmark / link-purpose rules
   // already enforce tabindex correctness and accessible names on every
   // rendered element — the previously-here structural for-loops were
@@ -399,10 +399,28 @@ test('A11Y10: Zero axe-core violations on 5-pack fixture (excluding color-contra
   // interactive elements. axe-core's `violations: []`
   // expectation is the load-bearing assertion; keeping the loops added
   // failure-shape redundancy without coverage gain.
+  // Pin the link-token coverage rather than asserting it in a comment: if the
+  // link stops rendering, `color-contrast` goes back to passing vacuously on
+  // `--link-color` and nothing else in the suite would notice. OK paints
+  // document links as a `role="link"` span, not an anchor, so `a[href]` would
+  // silently match nothing.
+  const link = page.locator('.ProseMirror').first().locator('[data-link][role="link"]');
+  await expect(link).toHaveCount(1);
+  // The fixture is seeded through the agent-write API, so every inserted range
+  // carries the 1.4s insert-flash wash. Measuring under it reports the wash
+  // tint as the background rather than the page background, which both
+  // understates real contrast and varies run to run with where in the
+  // animation the scan lands. Wait for the decoration sweep so axe sees the
+  // steady reading state.
+  await expect(page.locator('.ok-agent-insert-flash')).toHaveCount(0, { timeout: 5_000 });
+  // `color-contrast` resolves a background by hit-testing the element's center
+  // point, so it silently skips anything below the fold. Without this scroll
+  // the link paints `--link-color` and axe still never measures it.
+  await link.scrollIntoViewIfNeeded();
+
   const axeResults = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .include('.ProseMirror')
-    .disableRules(['color-contrast'])
     .analyze();
   expect(axeResults.violations).toEqual([]);
 });

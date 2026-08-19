@@ -3,7 +3,7 @@
  * preview token subset from `packages/app/src/globals.css`, resolves `var()`
  * indirections, and writes the constants module verbatim. Run via:
  *
- *   bun run packages/core/scripts/generate-preview-theme-tokens.ts
+ *   pnpm exec tsx packages/core/scripts/generate-preview-theme-tokens.ts
  *
  * After running, diff the output — landing it should only flip values when a
  * listed token in `globals.css` actually moved. The drift test in

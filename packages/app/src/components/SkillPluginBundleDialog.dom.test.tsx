@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
 type GlobalWithDomShims = typeof globalThis &
@@ -102,5 +103,42 @@ describe('SkillPluginBundleDialog', () => {
     expect(installSkill).not.toHaveBeenCalled();
     expect(onInstalled).toHaveBeenCalledWith(new Map([['alpha', 'alpha']]));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test('the install footer weights the confirm above the dismiss', async () => {
+    render(
+      <SkillPluginBundleDialog
+        bundle={{ plugin: 'Example', names: ['alpha', 'beta'] }}
+        source="https://example.com/plugin"
+        defaultScope="project"
+        onInstalled={vi.fn()}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Install from Example' });
+    // Let the bundle discovery resolve before reading the footer, so the
+    // assertions run against a settled tree rather than the pending one.
+    await within(dialog).findByRole('checkbox', { name: /alpha/i });
+
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    const confirm = within(dialog).getByTestId('plugin-bundle-install');
+
+    expect(cancel.getAttribute('data-variant')).toBe('outline');
+    expect(confirm.getAttribute('data-variant')).toBe('default');
+    // Asserted on the merged class list rather than on the authored prop, so
+    // this holds whether the treatment arrives from the variant or from a
+    // hand-added className. The fill tokens are the point of the assertion:
+    // `data-variant` reports the authored prop, but `cn`'s tailwind-merge lets
+    // a hand-added `bg-*` override the variant's fill while `data-variant`
+    // still reads `default`. That is the same hand-added-className shape the
+    // bug this test guards was authored in, so the merged list is the only
+    // place a demotion of that form shows up.
+    expectVisualClassTokens(confirm.className, [
+      'font-mono',
+      'uppercase',
+      'bg-primary',
+      'text-primary-foreground',
+    ]);
   });
 });

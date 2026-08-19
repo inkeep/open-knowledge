@@ -3100,7 +3100,15 @@ button:active:not(:disabled) {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.6321 0.1983 259.59);
+  /* Lightness is pinned by the WCAG 2 AA floor, not by taste: this token is
+     both a fill under --primary-foreground (Button variant="default") and a
+     text color on --background (Button variant="link"). At L 0.6321 it read
+     3.41:1 against the fill's foreground and 3.56:1 as link text, so both
+     surfaces failed the 4.5:1 requirement for normal-weight body text. L
+     0.5621 is the first step that clears it on both (4.56:1 and 4.76:1) while
+     holding chroma and hue, so the blue is the same blue, just deeper. Do not
+     lighten without re-measuring both pairs. */
+  --primary: oklch(0.5621 0.1983 259.59);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
@@ -3182,7 +3190,14 @@ button:active:not(:disabled) {
   --syntax-bg: oklch(0.97 0 0);
 
   /* Editor affordances a theme repaints. */
-  --link-color: var(--color-azure-blue);
+  /* Every document link paints this token, so it is normal-weight body text
+     and owes the WCAG 2 AA 4.5:1 floor. `--color-azure-blue` (#3784ff) reads
+     3.56:1 on --background and cannot be used here. It stays the palette
+     entry for SVG fills, strokes and selection color-mix, where no text
+     contrast requirement applies, so the fix is this declaration rather than
+     the palette entry. `--color-azure-600` is the next step up the same ramp
+     at 5.2:1. Do not point this back at --color-azure-blue. */
+  --link-color: var(--color-azure-600);
   --broken-link-color: oklch(55% 0.15 25);
   --lint-warning-color: oklch(70% 0.15 75);
   --lint-error-color: oklch(55% 0.15 25);

@@ -7,7 +7,7 @@
  * GENERATED FILE — do not hand-edit. Regenerate after changing any listed
  * token in `packages/app/src/globals.css`:
  *
- *     bun run packages/core/scripts/generate-preview-theme-tokens.ts
+ *     pnpm exec tsx packages/core/scripts/generate-preview-theme-tokens.ts
  *
  * Drift between this file and the CSS is caught by
  * `preview-theme-tokens.test.ts` (re-resolves from globals.css).
@@ -28,7 +28,7 @@ export const PREVIEW_THEME_TOKENS: readonly PreviewThemeToken[] = [
   { name: '--chart-3', light: 'oklch(0.62 0.15 70)', dark: 'oklch(0.77 0.14 70)' },
   { name: '--chart-4', light: 'oklch(0.55 0.18 290)', dark: 'oklch(0.72 0.16 290)' },
   { name: '--chart-5', light: 'oklch(0.58 0.21 25)', dark: 'oklch(0.72 0.2 25)' },
-  { name: '--primary', light: 'oklch(0.6321 0.1983 259.59)', dark: '#69a3ff' },
+  { name: '--primary', light: 'oklch(0.5621 0.1983 259.59)', dark: '#69a3ff' },
   { name: '--primary-foreground', light: 'oklch(0.985 0 0)', dark: 'oklch(0.205 0 0)' },
   { name: '--foreground', light: 'oklch(0.145 0 0)', dark: 'oklch(0.985 0 0)' },
   { name: '--background', light: 'oklch(1 0 0)', dark: 'oklch(0.145 0 0)' },

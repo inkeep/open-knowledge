@@ -799,8 +799,6 @@ export function OkfPluginSection() {
                 </Button>
               </DialogClose>
               <Button
-                variant="secondary"
-                className="font-mono uppercase"
                 onClick={() => void confirmGenerateIndex()}
                 disabled={generatedIndexSettings.pending}
                 data-testid="settings-okf-generate-index-confirm-accept"

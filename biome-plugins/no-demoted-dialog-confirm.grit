@@ -1,0 +1,56 @@
+// no-demoted-dialog-confirm — a dialog footer's confirm must outrank its dismiss.
+//
+// `secondary` is the variant behind the real footers this rule was written
+// for: `bg-secondary` sits within roughly 1.1:1 of the dialog surface in both
+// themes, and the base class draws `border-transparent`, so the button reads
+// as flat text and LOSES the emphasis contest with the `outline` Cancel
+// standing beside it. A footer authored that way inverts the visual
+// hierarchy: the escape action reads as the primary one and the actual
+// primary CTA reads as de-emphasized text.
+//
+// `ghost`, `link` and `link-muted` are flat at rest too, so the failure shape
+// is not unique to `secondary`. They are not plausible footer-confirm choices
+// and no such footer exists in the codebase, so the pattern below stays
+// narrow rather than widening to catch a shape nobody writes. If one lands,
+// widen the pattern rather than assuming it is already covered.
+//
+// The confirm belongs on `default` (or `destructive` when the action is
+// irreversible removal). Both bake `font-mono uppercase` into their variant
+// string, so the footer's typographic treatment comes with the variant —
+// there is nothing to hand-add. Canonical shape, matching every other
+// confirm dialog in the codebase, is to omit the prop entirely and let
+// `defaultVariants` supply `default`:
+//
+//   <DialogFooter>
+//     <Button variant="outline" onClick={close}>Cancel</Button>
+//     <Button onClick={submit}>Publish</Button>
+//   </DialogFooter>
+//
+// The rule reads the footer element's whole text, so a confirm composed
+// indirectly (passed in as a prop, rendered by a shared sub-component) is
+// outside its reach. That ceiling is deliberate — it keeps the rule to one
+// structural predicate rather than a type-aware analysis.
+//
+// Suppress a footer that genuinely wants a muted control (a tertiary action
+// sitting alongside a properly-weighted confirm) with:
+//   // biome-ignore lint/plugin/no-demoted-dialog-confirm: <reason>
+//
+// See PRECEDENTS.md #42 (custom Biome enforcement is GritQL plugins).
+
+language js
+
+// Matched as one whole element rather than as `<Tag $...>$body</Tag>`,
+// because a footer holds two or more children and a single `$body` capture
+// binds only an arity-one child list. GritQL regex matches the ENTIRE node
+// text, so the leading tag name anchors the match to footers themselves and
+// not to any ancestor that happens to contain one. `(?s)` lets `.` cross
+// newlines; capturing groups silently never match in Biome's dialect, hence
+// `(?:…)`.
+jsx_element() as $footer where {
+    $footer <: r"(?s)<(?:Alert)?DialogFooter[\s>].*",
+    $footer <: r"(?s).*variant=\"secondary\".*",
+    register_diagnostic(
+        span = $footer,
+        message = "Demoted confirm in a dialog footer. `secondary` draws no border and its `bg-secondary` fill sits within about 1.1:1 of the dialog surface, so it reads as flat text and loses the emphasis contest with the `outline` dismiss beside it. Drop the variant prop and let the confirm take `default` (or `destructive` for irreversible removal), which also supplies the footer's font-mono uppercase treatment. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-demoted-dialog-confirmgrit"
+    )
+}

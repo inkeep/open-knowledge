@@ -376,8 +376,6 @@ function OpenSkillPluginBundleDialog({
             <Trans>Cancel</Trans>
           </Button>
           <Button
-            variant="secondary"
-            className="font-mono uppercase"
             data-testid="plugin-bundle-install"
             disabled={busy || selected.size === 0}
             onClick={() => void install()}

@@ -114,7 +114,11 @@ const CATPPUCCIN_LATTE: Base16Scheme = {
     base0A: '#df8e1d',
     base0B: '#40a02b',
     base0C: '#179299',
-    base0D: '#1e66f5',
+    // Upstream Catppuccin Latte blue is #1e66f5, which lands at 4.35:1 against
+    // base00. That is below the WCAG 2 AA 4.5:1 floor both as a `--primary` fill
+    // under `--primary-foreground` and as link text on the page background.
+    // Darkened 3.6% to clear the floor. Keep any future palette resync above 4.5:1.
+    base0D: '#1d62ec',
     base0E: '#8839ef',
     base0F: '#dd7878',
   },
@@ -186,7 +190,14 @@ const SOLARIZED: Base16Scheme = {
     base0A: '#b58900',
     base0B: '#859900',
     base0C: '#2aa198',
-    base0D: '#268bd2',
+    // Upstream Solarized blue is #268bd2, which lands at 4.08:1 against base00.
+    // That is below the WCAG 2 AA 4.5:1 floor both as a `--primary` fill under
+    // `--primary-foreground` and as link text on the page background. base00
+    // fills both roles (label on the button, background on the page), and this
+    // is a dark scheme, so base00 is near-black either way: raising base0D's
+    // luminance widens the gap on both surfaces. Lightened 7% to clear the
+    // floor. Keep any future palette resync above 4.5:1.
+    base0D: '#2995e1',
     base0E: '#6c71c4',
     base0F: '#d33682',
   },

@@ -16,6 +16,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { expectVisualClassTokens } from '@/test-utils/visual-contract';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import { describedTextOf } from './settings-a11y.test-helper';
 
@@ -820,6 +821,42 @@ describe('OkfPluginSection', () => {
     expect(screen.getByTestId('settings-okf-generate-index').getAttribute('aria-checked')).toBe(
       'false',
     );
+  });
+
+  test('the confirmation footer weights the confirm above the dismiss', async () => {
+    const user = userEvent.setup();
+    const { binding } = makeBinding();
+    mockProjectBinding = binding;
+    mockProjectConfig = configWith({ okf: {} });
+    renderPanel();
+
+    await user.click(await generatedIndexToggle());
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Maintain generated indexes in every folder?',
+    });
+
+    // Select the dismiss by role rather than slot: it is wrapped in
+    // `DialogClose asChild`, so the rendered element carries the close slot
+    // while still emitting the Button's own variant attribute.
+    const cancel = within(dialog).getByRole('button', { name: 'Cancel' });
+    const confirm = within(dialog).getByTestId('settings-okf-generate-index-confirm-accept');
+
+    expect(cancel.getAttribute('data-variant')).toBe('outline');
+    expect(confirm.getAttribute('data-variant')).toBe('default');
+    // Asserted on the merged class list rather than on the authored prop, so
+    // this holds whether the treatment arrives from the variant or from a
+    // hand-added className. The fill tokens are the point of the assertion:
+    // `data-variant` reports the authored prop, but `cn`'s tailwind-merge lets
+    // a hand-added `bg-*` override the variant's fill while `data-variant`
+    // still reads `default`. That is the same hand-added-className shape the
+    // bug this test guards was authored in, so the merged list is the only
+    // place a demotion of that form shows up.
+    expectVisualClassTokens(confirm.className, [
+      'font-mono',
+      'uppercase',
+      'bg-primary',
+      'text-primary-foreground',
+    ]);
   });
 
   test('declining the confirmation leaves generation off and writes nothing', async () => {

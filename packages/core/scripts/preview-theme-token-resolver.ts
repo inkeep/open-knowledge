@@ -180,7 +180,7 @@ export function renderPreviewThemeTokensModule(tokens: ResolvedPreviewToken[]): 
  * GENERATED FILE — do not hand-edit. Regenerate after changing any listed
  * token in \`packages/app/src/globals.css\`:
  *
- *     bun run packages/core/scripts/generate-preview-theme-tokens.ts
+ *     pnpm exec tsx packages/core/scripts/generate-preview-theme-tokens.ts
  *
  * Drift between this file and the CSS is caught by
  * \`preview-theme-tokens.test.ts\` (re-resolves from globals.css).
