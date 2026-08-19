@@ -151,6 +151,8 @@ import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
+import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
+import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
   decideFollowNavigation,
   type FollowNavState,
@@ -505,7 +507,30 @@ export function ThreadView({
   // file would open a blank create-on-open tab. `pageListFollowOptions`
   // arms the predicate only when the page-list snapshot is authoritative;
   // the exact loading/error rules live at the helper (unit-tested there).
-  const followOptions = pageListFollowOptions(useOptionalPageList());
+  // Extract `pageList` once and drive both follow-file (page-existence
+  // check) and the doc-path-link resolver from the same snapshot — avoids
+  // two independent `useOptionalPageList` sites racing to consume it, and
+  // avoids per-message `useWorkspace` calls that would each fire a
+  // `/api/workspace` fetch on web hosts.
+  const pageList = useOptionalPageList();
+  const followOptions = pageListFollowOptions(pageList);
+  // Trust the last-known `pages` set even when the provider surfaces an
+  // `error` from a background refetch: `PageListProvider.refetch` fires on
+  // window focus / visibilitychange / CC1 `files` push and, on failure, sets
+  // an error string WITHOUT clearing `serverPages`. Gating on `error === null`
+  // here would flip the resolver null on a transient blip, remount every
+  // Streamdown twice (drop → restore), and strip every doc link across the
+  // transcript for the paint window between them.
+  const pages =
+    pageList !== null && !pageList.loading && pageList.pages.size > 0 ? pageList.pages : null;
+  const docPathResolver = pages === null ? null : buildDocPathResolver({ workspace, pages });
+  // Push into the module-scoped resolver DURING render so Streamdown's parse
+  // (which happens synchronously inside its Block) sees the current value. A
+  // `useEffect` write lands after the parse, leaving the first render of a
+  // stable-text agent message unlinked. The write is idempotent (every
+  // ThreadView derives from the same workspace + page list).
+  setDocPathResolver(docPathResolver);
+  const resolverReady = docPathResolver !== null;
   const transcriptFollowTarget =
     model !== null ? latestFollowTarget(model.items, workspace, followOptions) : null;
 
@@ -1039,200 +1064,204 @@ export function ThreadView({
           void ingestFiles(files);
         }}
       >
-        <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-        {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
-        {authPrompt !== null || model === null || visibleItems.length === 0 ? (
-          // No messages yet: the empty state centers itself via `h-full`, which needs
-          // a plain definite-height block host. The scroller's managed flex layout
-          // won't provide one, so only real transcripts go through the scroller.
-          <div
-            className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-            data-testid="agent-thread-transcript"
-          >
-            {authPrompt !== null ? (
-              <div className="flex min-h-full items-center justify-center">
-                <ThreadAuthPrompt
-                  failure={authPrompt}
-                  agent={info.agent}
-                  agentName={agentDisplayName(info.agent.name)}
-                  signingIn={signingIn}
-                  signInOutput={info.signInOutput}
-                  showRetry={canRetry}
-                  retryPending={retryPending}
-                  onRetry={retryThread}
-                  onAuthenticate={authenticateThread}
-                />
-              </div>
-            ) : (
-              <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
-            )}
-          </div>
-        ) : (
-          // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
-          // reopens archived/resumed threads at the final turn. The bridge lifts the
-          // scroller's imperative API up so send/resume can jump to the live edge.
-          <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
-            <ScrollToEndBridge apiRef={scrollApiRef} />
-            <MessageScroller className="min-h-0 flex-1">
-              <MessageScrollerViewport
-                // Overrides the primitive's hardcoded "Messages" — this focusable
-                // region is one agent's transcript, and its name must translate.
-                aria-label={t`Agent transcript`}
-                className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                data-testid="agent-thread-transcript"
-              >
-                <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                  {visibleItems.map((item, index) => {
-                    const id = transcriptItemId(item, index);
-                    return (
-                      <MessageScrollerItem
-                        key={id}
-                        messageId={id}
-                        // Each item hosts its own flex column so per-message alignment
-                        // (the user bubble's ml-auto hug-and-right) survives the wrapper
-                        // the scroller requires for anchoring/measurement.
-                        className="flex flex-col"
-                        // A new user turn is the anchor the scroller peeks above.
-                        scrollAnchor={item.kind === 'message' && item.role === 'user'}
-                        // Re-hosts the adjacent-tool-call spacing selector on the wrapper.
-                        data-tool-call={item.kind === 'tool_call' ? '' : undefined}
-                      >
-                        <ThreadItem
-                          item={item}
-                          threadId={info.threadId}
-                          agent={info.agent}
-                          // Thread liveness, not turn liveness: the server keeps an
-                          // unanswered request answerable until its timeout even after
-                          // the prompt settles (and some agents ask outside a turn) —
-                          // only a dead thread makes answering impossible.
-                          actionable={!archived && status !== 'exited' && status !== 'error'}
-                          streaming={turnActive && index === visibleItems.length - 1}
-                          terminals={model.terminals}
-                          permissionsByToolCall={model.permissionsByToolCall}
-                          showRetry={index === retryNoticeIndex}
-                          retryPending={retryPending}
-                          onRetry={retryThread}
-                          showRestore={index === restoreNoticeIndex}
-                          onRestore={() => restoreFailedPromptToComposer(index)}
+        <DocPathResolverReadyContext value={resolverReady}>
+          <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+          {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
+          {authPrompt !== null || model === null || visibleItems.length === 0 ? (
+            // No messages yet: the empty state centers itself via `h-full`, which needs
+            // a plain definite-height block host. The scroller's managed flex layout
+            // won't provide one, so only real transcripts go through the scroller.
+            <div
+              className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+              data-testid="agent-thread-transcript"
+            >
+              {authPrompt !== null ? (
+                <div className="flex min-h-full items-center justify-center">
+                  <ThreadAuthPrompt
+                    failure={authPrompt}
+                    agent={info.agent}
+                    agentName={agentDisplayName(info.agent.name)}
+                    signingIn={signingIn}
+                    signInOutput={info.signInOutput}
+                    showRetry={canRetry}
+                    retryPending={retryPending}
+                    onRetry={retryThread}
+                    onAuthenticate={authenticateThread}
+                  />
+                </div>
+              ) : (
+                <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+              )}
+            </div>
+          ) : (
+            // autoScroll = stick-to-bottom that yields to reader intent; last-anchor
+            // reopens archived/resumed threads at the final turn. The bridge lifts the
+            // scroller's imperative API up so send/resume can jump to the live edge.
+            <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+              <ScrollToEndBridge apiRef={scrollApiRef} />
+              <MessageScroller className="min-h-0 flex-1">
+                <MessageScrollerViewport
+                  // Overrides the primitive's hardcoded "Messages" — this focusable
+                  // region is one agent's transcript, and its name must translate.
+                  aria-label={t`Agent transcript`}
+                  className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                  data-testid="agent-thread-transcript"
+                >
+                  <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                    {visibleItems.map((item, index) => {
+                      const id = transcriptItemId(item, index);
+                      return (
+                        <MessageScrollerItem
+                          key={id}
+                          messageId={id}
+                          // Each item hosts its own flex column so per-message alignment
+                          // (the user bubble's ml-auto hug-and-right) survives the wrapper
+                          // the scroller requires for anchoring/measurement.
+                          className="flex flex-col"
+                          // A new user turn is the anchor the scroller peeks above.
+                          scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                          // Re-hosts the adjacent-tool-call spacing selector on the wrapper.
+                          data-tool-call={item.kind === 'tool_call' ? '' : undefined}
+                        >
+                          <ThreadItem
+                            item={item}
+                            threadId={info.threadId}
+                            agent={info.agent}
+                            // Thread liveness, not turn liveness: the server keeps an
+                            // unanswered request answerable until its timeout even after
+                            // the prompt settles (and some agents ask outside a turn) —
+                            // only a dead thread makes answering impossible.
+                            actionable={!archived && status !== 'exited' && status !== 'error'}
+                            streaming={turnActive && index === visibleItems.length - 1}
+                            terminals={model.terminals}
+                            permissionsByToolCall={model.permissionsByToolCall}
+                            showRetry={index === retryNoticeIndex}
+                            retryPending={retryPending}
+                            onRetry={retryThread}
+                            showRestore={index === restoreNoticeIndex}
+                            onRestore={() => restoreFailedPromptToComposer(index)}
+                          />
+                        </MessageScrollerItem>
+                      );
+                    })}
+                    {turnActive ? (
+                      status === 'awaiting_permission' ? (
+                        <div
+                          className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                          data-testid="agent-thread-awaiting-permission"
+                        >
+                          <span>{t`Waiting for your approval`}</span>
+                        </div>
+                      ) : (
+                        <WorkingAvatar
+                          status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                          className="px-1 py-1"
+                          testId="agent-thread-working"
                         />
-                      </MessageScrollerItem>
-                    );
-                  })}
-                  {turnActive ? (
-                    status === 'awaiting_permission' ? (
+                      )
+                    ) : status === 'installing' || status === 'spawning' ? (
+                      // A resume respawning its agent: the optimistic message echo is
+                      // already in the transcript above — show that the agent is on
+                      // its way rather than a silent gap until the turn opens.
                       <div
-                        className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                        data-testid="agent-thread-awaiting-permission"
+                        className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                        data-testid="agent-thread-starting"
                       >
-                        <span>{t`Waiting for your approval`}</span>
-                      </div>
-                    ) : (
-                      <WorkingAvatar
-                        status={workingStatusText(activeToolKind(model.items), thinkingLine)}
-                        className="px-1 py-1"
-                        testId="agent-thread-working"
-                      />
-                    )
-                  ) : status === 'installing' || status === 'spawning' ? (
-                    // A resume respawning its agent: the optimistic message echo is
-                    // already in the transcript above — show that the agent is on
-                    // its way rather than a silent gap until the turn opens.
-                    <div
-                      className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
-                      data-testid="agent-thread-starting"
-                    >
-                      <Spinner className="size-3.5" aria-hidden="true" />
-                      {/* `shimmer` sets `color: transparent`, which a container
+                        <Spinner className="size-3.5" aria-hidden="true" />
+                        {/* `shimmer` sets `color: transparent`, which a container
                         would inherit into the spinner's currentColor stroke —
                         keep it scoped to the text. */}
-                      <span className="shimmer">{t`Starting the agent…`}</span>
-                    </div>
-                  ) : null}
-                </MessageScrollerContent>
-              </MessageScrollerViewport>
-              <MessageScrollerButton direction="end" />
-            </MessageScroller>
-          </MessageScrollerProvider>
-        )}
-        {info.steer !== undefined && !archived ? (
-          <div
-            className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-            data-testid="agent-thread-steer-pending"
-          >
-            <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
-            <span className="min-w-0 flex-1 truncate text-foreground/80">{info.steer.content}</span>
-          </div>
-        ) : null}
-        {cancelStalled && turnActive ? (
-          <div
-            className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-            data-testid="agent-thread-cancel-stalled"
-          >
-            <span className="flex-1">
-              {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              className="h-6 text-xs"
-              onClick={() => client.closeThread(info.threadId)}
-              data-testid="agent-thread-force-stop"
+                        <span className="shimmer">{t`Starting the agent…`}</span>
+                      </div>
+                    ) : null}
+                  </MessageScrollerContent>
+                </MessageScrollerViewport>
+                <MessageScrollerButton direction="end" />
+              </MessageScroller>
+            </MessageScrollerProvider>
+          )}
+          {info.steer !== undefined && !archived ? (
+            <div
+              className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+              data-testid="agent-thread-steer-pending"
             >
-              {t`Force stop`}
-            </Button>
-          </div>
-        ) : null}
-        {archived && resumeError !== null ? (
-          <div
-            className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-            data-testid="agent-thread-resume-failed"
-          >
-            <span className="flex-1">
-              {resumeError.code === 'resume-unsupported'
-                ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
-                : t`Couldn't resume this chat: ${resumeError.message}`}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-6 shrink-0 text-xs"
-              onClick={startFreshThread}
-              data-testid="agent-thread-resume-fallback-new"
+              <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground/80">
+                {info.steer.content}
+              </span>
+            </div>
+          ) : null}
+          {cancelStalled && turnActive ? (
+            <div
+              className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+              data-testid="agent-thread-cancel-stalled"
             >
-              {t`New chat with ${info.agent.name}`}
-            </Button>
-          </div>
-        ) : null}
-        <ThreadComposer
-          info={info}
-          composerRef={composerRef}
-          onSubmit={submit}
-          canPrompt={canPrompt}
-          canQueue={canQueue}
-          turnActive={turnActive}
-          cancelPending={cancelPending}
-          onCancel={requestCancel}
-          onSteer={requestSteer}
-          status={status}
-          archived={archived}
-          resumePending={resumePending}
-          usage={model?.tokenUsage ?? null}
-          selectedCommentCount={selectedCommentCount}
-          selectedCommentDocs={selectedCommentDocs}
-          hasQueuedComments={hasQueuedComments}
-          onAttachComments={() => setCommentsAttached(true)}
-          onDismissComments={() => setCommentsAttached(false)}
-          pendingAttachments={pendingAttachments}
-          pendingUploads={pendingUploads}
-          imagesAccepted={imagesAccepted}
-          onIngestImageFiles={ingestFiles}
-          onIngestAllFiles={ingestFiles}
-          onRemovePendingAttachment={removePendingAttachment}
-        />
-        {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+              <span className="flex-1">
+                {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="h-6 text-xs"
+                onClick={() => client.closeThread(info.threadId)}
+                data-testid="agent-thread-force-stop"
+              >
+                {t`Force stop`}
+              </Button>
+            </div>
+          ) : null}
+          {archived && resumeError !== null ? (
+            <div
+              className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+              data-testid="agent-thread-resume-failed"
+            >
+              <span className="flex-1">
+                {resumeError.code === 'resume-unsupported'
+                  ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
+                  : t`Couldn't resume this chat: ${resumeError.message}`}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 shrink-0 text-xs"
+                onClick={startFreshThread}
+                data-testid="agent-thread-resume-fallback-new"
+              >
+                {t`New chat with ${info.agent.name}`}
+              </Button>
+            </div>
+          ) : null}
+          <ThreadComposer
+            info={info}
+            composerRef={composerRef}
+            onSubmit={submit}
+            canPrompt={canPrompt}
+            canQueue={canQueue}
+            turnActive={turnActive}
+            cancelPending={cancelPending}
+            onCancel={requestCancel}
+            onSteer={requestSteer}
+            status={status}
+            archived={archived}
+            resumePending={resumePending}
+            usage={model?.tokenUsage ?? null}
+            selectedCommentCount={selectedCommentCount}
+            selectedCommentDocs={selectedCommentDocs}
+            hasQueuedComments={hasQueuedComments}
+            onAttachComments={() => setCommentsAttached(true)}
+            onDismissComments={() => setCommentsAttached(false)}
+            pendingAttachments={pendingAttachments}
+            pendingUploads={pendingUploads}
+            imagesAccepted={imagesAccepted}
+            onIngestImageFiles={ingestFiles}
+            onIngestAllFiles={ingestFiles}
+            onRemovePendingAttachment={removePendingAttachment}
+          />
+          {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+        </DocPathResolverReadyContext>
       </div>
     </ImagePreviewContext.Provider>
   );

@@ -8754,6 +8754,10 @@ msgstr "Ouvrir {basename}"
 msgid "Open {displayName} Desktop"
 msgstr "Ouvrir {displayName} Desktop"
 
+#: src/components/acp/AgentMarkdown.tsx
+msgid "Open {docName}"
+msgstr "Ouvrir {docName}"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "Ouvrir {keyName} dans le navigateur"

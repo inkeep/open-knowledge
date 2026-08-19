@@ -4282,6 +4282,7 @@
     "mPy9lS": [
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
     ],
+    "mPzgTS": ["Ouvrir ", ["docName"]],
     "mR3Bly": [
       "Les fichiers de configuration comprennent : <0>.ok/</0>, les configurations MCP des outils IA (<1>.mcp.json</1> et les fichiers propres à chaque outil), les compétences du projet.<2/><3>Partagé</3> les valide dans git, donc toute personne qui clone le dépôt obtient la même configuration. <4/><5>Moi uniquement</5> les tient à l'écart de git (via <6>.git/info/exclude</6>)."
     ],

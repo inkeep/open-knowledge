@@ -8754,6 +8754,10 @@ msgstr "{basename} 열기"
 msgid "Open {displayName} Desktop"
 msgstr "{displayName} Desktop 열기"
 
+#: src/components/acp/AgentMarkdown.tsx
+msgid "Open {docName}"
+msgstr "{docName} 열기"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "브라우저에서 {keyName} 열기"

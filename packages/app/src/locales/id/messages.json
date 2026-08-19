@@ -3712,6 +3712,7 @@
     "mPy9lS": [
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."
     ],
+    "mPzgTS": ["Buka ", ["docName"]],
     "mR3Bly": [
       "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat), keterampilan proyek.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
     ],

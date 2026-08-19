@@ -8750,6 +8750,10 @@ msgstr "{basename} खोलें"
 msgid "Open {displayName} Desktop"
 msgstr "{displayName} Desktop खोलें"
 
+#: src/components/acp/AgentMarkdown.tsx
+msgid "Open {docName}"
+msgstr "{docName} खोलें"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "{keyName} को ब्राउज़र में खोलें"

@@ -7,22 +7,97 @@
  * changes the text.
  */
 
-import type { ReactNode } from 'react';
+import { useLingui } from '@lingui/react/macro';
+import { type ReactNode, use } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
-import { defaultRemarkPlugins, Streamdown } from 'streamdown';
+import { type Components, defaultRemarkPlugins, Streamdown } from 'streamdown';
 import { codeHighlighter } from '@/lib/acp/code-highlighter';
 import { remarkHardBreaks } from '@/lib/acp/remark-hard-breaks';
+import { remarkDocPathLinks } from './doc-path-links';
+import { DocPathResolverReadyContext } from './doc-path-links-context';
+
+/** Anchor override. Two cases:
+ *  - `#/<docName>` hash → in-app link (no `target=_blank`), Lingui'd `title`.
+ *  - Anything else → keep Streamdown's own `MarkdownA` classes so external
+ *    links still read as links (color + underline + `wrap-anywhere` for long
+ *    URLs in the narrow transcript). Overriding `components.a` REPLACES
+ *    `MarkdownA` — a bare `<a>` with no class list would leave every ordinary
+ *    external link colourless and un-underlined under Tailwind's preflight
+ *    (`a { color: inherit; text-decoration: inherit }`).
+ *
+ *  Streamdown's Components index-signature widens prop types to a records
+ *  shape, so we take the raw record and narrow href back out ourselves. */
+function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode {
+  const { t } = useLingui();
+  const { href, children } = props;
+  if (href?.startsWith('#/')) {
+    const docName = decodeDocNameFromHash(href);
+    return (
+      <a
+        href={href}
+        data-testid="agent-thread-doc-link"
+        title={t`Open ${docName}`}
+        className="text-primary underline underline-offset-2 decoration-primary/40 hover:decoration-primary"
+      >
+        {children}
+      </a>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-streamdown="link"
+      className="wrap-anywhere font-medium text-primary underline"
+    >
+      {children}
+    </a>
+  );
+}
+
+/** `#/<docName>[#anchor]` → `<docName>`. Mirrors `docNameFromHash`'s shape
+ *  without pulling in its stricter validation — the href we're reading was
+ *  built by `hashFromDocName` in the same render pass. */
+function decodeDocNameFromHash(hash: string): string {
+  const withoutPrefix = hash.slice(2);
+  const anchorAt = withoutPrefix.indexOf('#');
+  return anchorAt === -1 ? withoutPrefix : withoutPrefix.slice(0, anchorAt);
+}
 
 export function AgentMarkdown({ text }: { text: string }): ReactNode {
+  // Reads the resolver-ready flag from context so ThreadView can derive
+  // workspace + page list ONCE above the transcript instead of per message
+  // bubble (which fires `/api/workspace` per bubble on web hosts).
+  const resolverReady = use(DocPathResolverReadyContext);
   return (
     <ErrorBoundary
       resetKeys={[text]}
       fallbackRender={() => <span className="whitespace-pre-wrap">{text}</span>}
       onError={(error) => {
-        console.warn('[AgentMarkdown] markdown render failed, falling back to plain text', error);
+        console.error('[AgentMarkdown] markdown render failed, falling back to plain text', error);
       }}
     >
       <Streamdown
+        // Key on resolver-availability so every mounted Streamdown remounts
+        // exactly once when the resolver becomes ready. Streamdown's Block
+        // memoizes its unified processor at first mount and never re-parses
+        // when a later render passes a different plugin closure, so a mount
+        // that happened before workspace + page list arrived (the transcript
+        // on cold page load) would leave those older messages' paths
+        // unlinked forever. Text is stable across the null → ready transition
+        // (workspace + pages arrive on the first tick; transcript-render
+        // lands after), so the remount is imperceptible.
+        //
+        // Residual race, deliberately not solved: a doc the agent creates
+        // mid-thread reaches `pageList.pages` via the CC1 `files` push
+        // (300ms coalesce + a `/api/documents` fetch). A short agent message
+        // that finishes streaming inside that window keeps its own path as
+        // dead text for the rest of the session — the resolver-availability
+        // shape never flips again. Keying on a page-set version would fix
+        // this but remounts every message on every doc-create burst; the
+        // trade isn't worth it for the tail case.
+        key={resolverReady ? 'with-resolver' : 'no-resolver'}
         // The `pre code>span` rule restores per-line block display in code
         // blocks: Streamdown bundles it into the line-number counter classes,
         // so `lineNumbers={false}` alone collapses multi-line code onto one
@@ -57,7 +132,16 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // silently dropped remark-gfm with it — tables and strikethrough stopped
         // rendering in agent output, nowhere near the line that caused it.
         // `defaultRemarkPlugins` is a RECORD keyed by name, not a list.
-        remarkPlugins={[...Object.values(defaultRemarkPlugins), remarkHardBreaks]}
+        remarkPlugins={[
+          ...Object.values(defaultRemarkPlugins),
+          remarkHardBreaks,
+          // Pre-called (unlike `remarkHardBreaks`, which is a standard
+          // `() => Transformer` Plugin passed by reference). The extra factory
+          // layer keeps Streamdown's per-Block processor cache from freezing a
+          // stale resolver closure — see doc-path-links.ts.
+          remarkDocPathLinks(),
+        ]}
+        components={{ a: AgentAnchor } as Components}
         lineNumbers={false}
         controls={{ code: { copy: true, download: false }, table: false, mermaid: false }}
         // Shiki-backed syntax highlighting via the in-house curated-grammar

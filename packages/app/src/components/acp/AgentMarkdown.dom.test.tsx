@@ -8,7 +8,10 @@
 
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
+import type { Workspace } from '@/lib/workspace-paths';
 import { AgentMarkdown } from './AgentMarkdown';
+import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
+import { DocPathResolverReadyContext } from './doc-path-links-context';
 
 describe('AgentMarkdown', () => {
   afterEach(cleanup);
@@ -101,5 +104,121 @@ describe('single newlines', () => {
 
     const strike = render(<AgentMarkdown text={'~~gone~~'} />);
     expect(strike.container.querySelector('del')).not.toBeNull();
+  });
+});
+
+// The doc-path-links block. `AgentMarkdown` reads a `DocPathResolverReady`
+// context to decide whether to key its Streamdown for the resolver-available
+// render, so we wrap the render tree in the provider and populate the
+// module-scoped `currentResolver` directly (ThreadView owns those writes in
+// production). This isolates the feature under test without pulling in a
+// PageList provider tree.
+const workspace: Workspace = {
+  contentDir: '/Users/abraham/repo/public/open-knowledge',
+  pathSeparator: '/',
+};
+const pages = new Set(['reports/foo/REPORT', 'notes/haiku']);
+
+function renderWithResolver(text: string) {
+  const resolver = buildDocPathResolver({ workspace, pages });
+  setDocPathResolver(resolver);
+  return render(
+    <DocPathResolverReadyContext value={resolver !== null}>
+      <AgentMarkdown text={text} />
+    </DocPathResolverReadyContext>,
+  );
+}
+
+describe('AgentMarkdown doc-path links', () => {
+  afterEach(() => {
+    cleanup();
+    setDocPathResolver(null);
+  });
+
+  test('a repo-root-relative .md path in prose renders as an in-app hash link', () => {
+    const { container } = renderWithResolver(
+      'Written to public/open-knowledge/reports/foo/REPORT.md (458 lines)',
+    );
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+    // No target=_blank — in-app hash router, not external.
+    expect(link?.getAttribute('target')).toBeNull();
+    expect(link?.textContent).toContain('public/open-knowledge/reports/foo/REPORT.md');
+  });
+
+  test('a backticked path resolves too — the mono styling survives the wrap', () => {
+    const { container } = renderWithResolver('see `notes/haiku.md` for the poem');
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/notes/haiku');
+    expect(link?.querySelector('code')?.textContent).toBe('notes/haiku.md');
+  });
+
+  test('an unresolvable path stays plain text — no link, no create-on-open trap', () => {
+    const { container } = renderWithResolver('wrote reports/DOES-NOT-EXIST.md just now');
+    expect(container.querySelector('a[data-testid="agent-thread-doc-link"]')).toBeNull();
+    expect(container.textContent).toContain('reports/DOES-NOT-EXIST.md');
+  });
+
+  test('paths become links when the resolver flips null → ready — the cold-page-load path', async () => {
+    // Every other test in this suite mounts with the resolver already ready.
+    // The `key` on Streamdown exists specifically for the transition case —
+    // Streamdown caches its per-Block processor at first mount and never
+    // re-parses when a later render passes a different plugin closure, so a
+    // regression that swapped the key values or dropped context propagation
+    // would leave every message rendered during the cold-page-load window
+    // showing dead paths for the entire session.
+    setDocPathResolver(null);
+    const text = 'see reports/foo/REPORT.md please';
+    const { container, rerender } = render(
+      <DocPathResolverReadyContext value={false}>
+        <AgentMarkdown text={text} />
+      </DocPathResolverReadyContext>,
+    );
+    expect(container.querySelector('a[data-testid="agent-thread-doc-link"]')).toBeNull();
+
+    const resolver = buildDocPathResolver({ workspace, pages });
+    setDocPathResolver(resolver);
+    rerender(
+      <DocPathResolverReadyContext value={resolver !== null}>
+        <AgentMarkdown text={text} />
+      </DocPathResolverReadyContext>,
+    );
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+  });
+
+  test('an .mdx path renders as an in-app link — the docs site is a Fumadocs .mdx tree', () => {
+    // The mocked page set in renderWithResolver only includes .md docs, so
+    // build a fresh render with a page set that has an .mdx target.
+    const resolver = buildDocPathResolver({
+      workspace,
+      pages: new Set(['docs/intro']),
+    });
+    setDocPathResolver(resolver);
+    const { container } = render(
+      <DocPathResolverReadyContext value={resolver !== null}>
+        <AgentMarkdown text={'open docs/intro.mdx for the setup steps'} />
+      </DocPathResolverReadyContext>,
+    );
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/docs/intro');
+    expect(link?.textContent).toBe('docs/intro.mdx');
+  });
+
+  test('an external link keeps target=_blank + Streamdown link styling', () => {
+    const { container } = renderWithResolver('see [docs](https://example.com/x)');
+    const link = container.querySelector('a[href="https://example.com/x"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toContain('noreferrer');
+    // Overriding components.a replaces Streamdown's MarkdownA — the external
+    // branch has to keep the same class list so external links stay visible.
+    expect(link?.getAttribute('class')).toContain('underline');
+    expect(link?.getAttribute('class')).toContain('text-primary');
+    expect(link?.getAttribute('data-streamdown')).toBe('link');
   });
 });

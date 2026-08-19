@@ -3667,6 +3667,7 @@
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],
+    "mPzgTS": ["Open ", ["docName"]],
     "mR3Bly": [
       "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
     ],

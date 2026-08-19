@@ -4247,6 +4247,7 @@
     "mPy9lS": [
       "Organiza mis especificaciones existentes en un índice enlazado y agrupado por área, y señala las que se hayan desincronizado del código actual."
     ],
+    "mPzgTS": ["Abrir ", ["docName"]],
     "mR3Bly": [
       "Los archivos de configuración incluyen: <0>.ok/</0>, las configuraciones MCP de las herramientas de IA (<1>.mcp.json</1> y los archivos de cada herramienta) y las habilidades del proyecto.<2/><3>Compartido</3> los guarda en git, así que quien clone el repositorio tendrá la misma configuración. <4/><5>Solo yo</5> los mantiene fuera de git (mediante <6>.git/info/exclude</6>)."
     ],

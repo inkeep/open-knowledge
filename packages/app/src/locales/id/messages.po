@@ -8750,6 +8750,10 @@ msgstr "Buka {basename}"
 msgid "Open {displayName} Desktop"
 msgstr "Buka {displayName} Desktop"
 
+#: src/components/acp/AgentMarkdown.tsx
+msgid "Open {docName}"
+msgstr "Buka {docName}"
+
 #: src/components/PropertyWidgets.tsx
 msgid "Open {keyName} in browser"
 msgstr "Buka {keyName} di peramban"
