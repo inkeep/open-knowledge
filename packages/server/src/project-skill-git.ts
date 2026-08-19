@@ -86,7 +86,8 @@ export async function untrackTrackedProjectSkillProjection(
     return { kind: 'skipped', reason: 'operation-in-progress' };
   }
 
-  const handle = createGitInstance(projectDir);
+  // Local-only: index and tree plumbing, no remote.
+  const handle = createGitInstance(projectDir, { credentialConfig: [] });
 
   const trackedDirs = await listTrackedProjectionDirs(handle);
   if (trackedDirs.length === 0) return { kind: 'nothing-tracked' };
@@ -106,7 +107,7 @@ export async function untrackTrackedProjectSkillProjection(
       if (dirsNow.length === 0) return { kind: 'nothing-tracked' };
 
       const tmpIndex = join(tmpdir(), `ok-untrack-idx-${process.pid}-${Date.now()}.idx`);
-      const iso = createGitInstance(projectDir, { gitIndexFile: tmpIndex });
+      const iso = createGitInstance(projectDir, { gitIndexFile: tmpIndex, credentialConfig: [] });
 
       // Seed the isolated index from HEAD, drop the projection dirs, write the
       // reduced tree. `--ignore-unmatch` tolerates a dir that vanished from the

@@ -93,14 +93,17 @@ describe('createGitInstance locale stabilization', () => {
   }
 
   test('spawns git with LANG=C and LC_ALL=C so stderr stays English', () => {
-    const handle = createGitInstance('/tmp');
+    const handle = createGitInstance('/tmp', { credentialConfig: [] });
     const env = readEnv(handle);
     expect(env.LANG).toBe('C');
     expect(env.LC_ALL).toBe('C');
   });
 
   test('preserves LANG/LC_ALL when GIT_INDEX_FILE is set', () => {
-    const handle = createGitInstance('/tmp', { gitIndexFile: '.git/custom-index' });
+    const handle = createGitInstance('/tmp', {
+      gitIndexFile: '.git/custom-index',
+      credentialConfig: [],
+    });
     const env = readEnv(handle);
     expect(env.LANG).toBe('C');
     expect(env.LC_ALL).toBe('C');
@@ -205,7 +208,7 @@ describe('runCheckoutFlow against real git', () => {
       await git(main, 'worktree', 'add', '-b', 'feat-bar', wt);
 
       // Now attempt to check out feat-bar from main — git refuses.
-      const outcome = await runCheckoutFlow(main, 'feat-bar');
+      const outcome = await runCheckoutFlow(main, 'feat-bar', { credentialConfig: [] });
       expect(outcome.ok).toBe(false);
       if (!outcome.ok) {
         expect(outcome.reason).toBe('branch-in-other-worktree');
@@ -228,7 +231,7 @@ describe('runCheckoutFlow against real git', () => {
       await git(main, 'commit', '-m', 'initial');
       await git(main, 'branch', 'feat-bar');
 
-      const outcome = await runCheckoutFlow(main, 'feat-bar');
+      const outcome = await runCheckoutFlow(main, 'feat-bar', { credentialConfig: [] });
       expect(outcome.ok).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -276,7 +279,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     const receiver = setupReceiverWithLocalFeature(t);
     advanceOriginFeature(t);
 
-    const outcome = await fastForwardBranchToOrigin(receiver, 'feature');
+    const outcome = await fastForwardBranchToOrigin(receiver, 'feature', []);
     expect(outcome).toBe('advanced');
     // The local feature ref now points at origin's advanced tip.
     expect(t.git(receiver, ['rev-parse', 'refs/heads/feature'])).toBe(
@@ -298,7 +301,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     const localBefore = t.git(receiver, ['rev-parse', 'refs/heads/feature']);
     advanceOriginFeature(t);
 
-    const outcome = await fastForwardBranchToOrigin(receiver, 'feature');
+    const outcome = await fastForwardBranchToOrigin(receiver, 'feature', []);
     expect(outcome).toBe('diverged');
     // Nothing mutated — the divergent local ref stands, untouched.
     expect(t.git(receiver, ['rev-parse', 'refs/heads/feature'])).toBe(localBefore);
@@ -307,7 +310,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
   test('already up to date: local branch equals origin, no-op', async () => {
     const t = newTriangle();
     const receiver = setupReceiverWithLocalFeature(t);
-    const outcome = await fastForwardBranchToOrigin(receiver, 'feature');
+    const outcome = await fastForwardBranchToOrigin(receiver, 'feature', []);
     expect(outcome).toBe('up-to-date');
   });
 
@@ -320,7 +323,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     t.git(t.senderDir, ['push', 'origin', 'feature']);
     t.git(t.senderDir, ['checkout', 'main']);
     const receiver = t.cloneReceiver();
-    const outcome = await fastForwardBranchToOrigin(receiver, 'feature');
+    const outcome = await fastForwardBranchToOrigin(receiver, 'feature', []);
     expect(outcome).toBe('up-to-date');
   });
 
@@ -329,7 +332,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     const receiver = setupReceiverWithLocalFeature(t);
     const localBefore = t.git(receiver, ['rev-parse', 'refs/heads/feature']);
     t.git(receiver, ['remote', 'remove', 'origin']);
-    const outcome = await fastForwardBranchToOrigin(receiver, 'feature');
+    const outcome = await fastForwardBranchToOrigin(receiver, 'feature', []);
     expect(outcome).toBe('unavailable');
     expect(t.git(receiver, ['rev-parse', 'refs/heads/feature'])).toBe(localBefore);
   });
@@ -339,7 +342,10 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     const receiver = setupReceiverWithLocalFeature(t);
     advanceOriginFeature(t);
 
-    const outcome = await runCheckoutFlow(receiver, 'feature', { fastForward: true });
+    const outcome = await runCheckoutFlow(receiver, 'feature', {
+      fastForward: true,
+      credentialConfig: [],
+    });
     expect(outcome.ok).toBe(true);
     // HEAD switched to feature AND the working tree carries origin's v2 — the
     // FF advanced the stale local ref before the checkout landed on it.
@@ -357,7 +363,10 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     t.git(receiver, ['checkout', 'main']);
     advanceOriginFeature(t);
 
-    const outcome = await runCheckoutFlow(receiver, 'feature', { fastForward: true });
+    const outcome = await runCheckoutFlow(receiver, 'feature', {
+      fastForward: true,
+      credentialConfig: [],
+    });
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) expect(outcome.reason).toBe('ff-diverged');
     // Checkout was NOT attempted — the receiver is still on main.
@@ -369,7 +378,7 @@ describe('fastForwardBranchToOrigin (FR9 FF-only pre-checkout update)', () => {
     const receiver = setupReceiverWithLocalFeature(t);
     advanceOriginFeature(t);
 
-    const outcome = await runCheckoutFlow(receiver, 'feature');
+    const outcome = await runCheckoutFlow(receiver, 'feature', { credentialConfig: [] });
     expect(outcome.ok).toBe(true);
     // Without the flag the branch is not fast-forwarded, so the checkout lands
     // on the receiver's stale local tip (v1), not origin's v2.

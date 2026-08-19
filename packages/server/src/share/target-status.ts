@@ -2,11 +2,15 @@
  * Receive-side verdict for `POST /api/share/target-status`: when a receiver
  * opens a share link and the target isn't on their current ref, why — did it
  * move, get deleted, or was it never here? Runs a targeted `git fetch origin
- * <branch>` (via `createGitInstance`, so the user's ambient git credential
- * helper authenticates it exactly as checkout's fetch does — no explicit OK
- * token is injected) bounded by a block timeout, so a stale local ref can't
+ * <branch>` via `createGitInstance` with the caller-supplied
+ * `credentialConfig`, bounded by a block timeout, so a stale local ref can't
  * misreport a recently-added target as gone, then classifies the miss from
  * git's own rename detection.
+ *
+ * Which credential answers that fetch is the caller's decision, not this
+ * module's: on a GitHub or GHES origin the inherited helper chain is reset and
+ * OK's own helper is the sole authenticator, while on a known non-GitHub forge
+ * the ambient chain is preserved because OK has no credential to offer there.
  *
  * Everything is fail-open: a fetch failure, a broken git, or an ambiguous
  * classification returns `unknown`, and the caller falls back to today's
@@ -74,7 +78,7 @@ export async function computeShareTargetStatus(
   branch: string,
   gitPath: string,
   kind: 'doc' | 'folder',
-  opts: { skipFetch?: boolean; fetchTimeoutMs?: number } = {},
+  opts: { skipFetch?: boolean; fetchTimeoutMs?: number; credentialConfig: string[] },
 ): Promise<ShareTargetStatusResponse> {
   const log = getLogger('share');
   const emit = (result: ShareTargetStatusResponse): ShareTargetStatusResponse => {
@@ -84,7 +88,12 @@ export async function computeShareTargetStatus(
 
   const { git } = createGitInstance(
     projectDir,
-    opts.skipFetch ? {} : { timeoutMs: opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS },
+    opts.skipFetch
+      ? { credentialConfig: [] }
+      : {
+          timeoutMs: opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS,
+          credentialConfig: opts.credentialConfig,
+        },
   );
 
   if (!opts.skipFetch) {

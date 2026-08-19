@@ -93,7 +93,8 @@ export async function computeBranchInfo(
   path: string,
   kind: 'doc' | 'folder',
 ): Promise<BranchInfo> {
-  const { git } = createGitInstance(projectDir);
+  // Local-only: symbolic-ref / rev-parse / cat-file against local refs.
+  const { git } = createGitInstance(projectDir, { credentialConfig: [] });
 
   // Fail-fast on non-git directories so the downstream Promise.all doesn't
   // swallow "not a git repository" errors via the per-probe catch handlers.

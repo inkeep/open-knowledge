@@ -597,7 +597,7 @@ import {
   isValidBranchName,
 } from './git-branch-info.ts';
 import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from './git-checkout.ts';
-import { withParentLock } from './git-handle.ts';
+import { buildSyncCredentialConfig, withParentLock } from './git-handle.ts';
 import { writeGitIdentity } from './git-identity.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { catchErrors } from './http/catch-errors.ts';
@@ -715,6 +715,7 @@ import {
   type TimelineRescueEntry,
   type WriterIdentity,
 } from './shadow-repo.ts';
+import { shouldResetAmbientCredentials } from './share/git-context.ts';
 import { createSingleFlight } from './single-flight.ts';
 import {
   linkEditorSkillFolder,
@@ -20209,6 +20210,11 @@ export function createApiExtension(
           body.branch,
           body.path,
           body.kind,
+          {
+            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
+              resetAmbient: shouldResetAmbientCredentials(projectDir),
+            }),
+          },
         );
         const contentStatus =
           status.verdict !== 'renamed' || body.contentRootDepth === undefined
@@ -20274,7 +20280,12 @@ export function createApiExtension(
 
       try {
         const outcome = await withParentLock(() =>
-          runCheckoutFlow(projectDir, body.branch, { fastForward: body.fastForward === true }),
+          runCheckoutFlow(projectDir, body.branch, {
+            fastForward: body.fastForward === true,
+            credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
+              resetAmbient: shouldResetAmbientCredentials(projectDir),
+            }),
+          }),
         );
         successResponse(res, 200, CheckoutResponseSchema, outcome, {
           handler: CHECKOUT_HANDLER_TAG,

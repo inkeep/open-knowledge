@@ -152,16 +152,16 @@ export const isBranchNotFoundFetchError = isBranchNotFoundGitError;
 export async function runCheckoutFlow(
   projectDir: string,
   branch: string,
-  opts?: { readonly fastForward?: boolean },
+  opts: { readonly fastForward?: boolean; readonly credentialConfig: string[] },
 ): Promise<CheckoutOutcome> {
-  if (opts?.fastForward) {
-    const ff = await fastForwardBranchToOrigin(projectDir, branch);
+  if (opts.fastForward) {
+    const ff = await fastForwardBranchToOrigin(projectDir, branch, opts.credentialConfig);
     if (ff === 'diverged') {
       return { ok: false, reason: 'ff-diverged' };
     }
   }
 
-  const { git } = createGitInstance(projectDir);
+  const { git } = createGitInstance(projectDir, { credentialConfig: opts.credentialConfig });
 
   const branchIsLocal = await git
     .raw(['rev-parse', '--verify', `refs/heads/${branch}`])
@@ -268,8 +268,12 @@ export type FastForwardOutcome = 'advanced' | 'up-to-date' | 'diverged' | 'unava
 export async function fastForwardBranchToOrigin(
   projectDir: string,
   branch: string,
+  credentialConfig: string[],
 ): Promise<FastForwardOutcome> {
-  const { git } = createGitInstance(projectDir, { timeoutMs: FF_FETCH_TIMEOUT_MS });
+  const { git } = createGitInstance(projectDir, {
+    timeoutMs: FF_FETCH_TIMEOUT_MS,
+    credentialConfig,
+  });
 
   const revParse = (ref: string): Promise<string | null> =>
     git

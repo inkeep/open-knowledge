@@ -36,7 +36,8 @@ export async function dirtyFilesOverlapWith(
   cwd: string,
   targetRef: string,
 ): Promise<DirtyOverlapResult> {
-  const { git } = createGitInstance(cwd);
+  // Local-only: `rev-parse --git-dir` and status reads never reach a remote.
+  const { git } = createGitInstance(cwd, { credentialConfig: [] });
 
   const [dirtyResult, changedResult] = await Promise.allSettled([
     listPorcelainPaths(git),

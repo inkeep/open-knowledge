@@ -43,7 +43,11 @@ export async function computeShareFreshness(
   kind: 'doc' | 'folder',
 ): Promise<ShareFreshness | undefined> {
   try {
-    const { git } = createGitInstance(projectDir, { timeoutMs: FRESHNESS_PROBE_TIMEOUT_MS });
+    // Local-only: reads already-fetched `refs/remotes/...` via rev-parse/cat-file.
+    const { git } = createGitInstance(projectDir, {
+      timeoutMs: FRESHNESS_PROBE_TIMEOUT_MS,
+      credentialConfig: [],
+    });
     const ref = `refs/remotes/origin/${branch}`;
 
     // Fail-fast: the git binary works AND the remote-tracking ref resolves.

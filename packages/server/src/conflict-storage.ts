@@ -187,14 +187,8 @@ export class ConflictStore {
    * @param file     File path relative to projectDir.
    * @param strategy How to resolve.
    * @param content  Required when strategy === 'content'.
-   * @param credentialArgs  Credential args for the git handle.
    */
-  async resolveConflict(
-    file: string,
-    strategy: ResolveStrategy,
-    content?: string,
-    credentialArgs: string[] = [],
-  ): Promise<void> {
+  async resolveConflict(file: string, strategy: ResolveStrategy, content?: string): Promise<void> {
     const entry = this.conflicts.find((c) => c.file === file);
     if (!entry) {
       throw new Error(`[conflicts] no conflict tracked for file: ${file}`);
@@ -209,13 +203,14 @@ export class ConflictStore {
     // before the merge-native path so its `git checkout --ours/--theirs` +
     // `git commit --no-edit` semantics stay untouched.
     if (entry.variant === 'working-tree') {
-      await this.resolveWorkingTreeConflict(entry, strategy, content, credentialArgs);
+      await this.resolveWorkingTreeConflict(entry, strategy, content);
       return;
     }
 
     // Dynamic import so CRUD tests don't load simple-git (broken symlink in test env)
+    // No credential config: every git op below is local (checkout/add/rm/commit).
     const { createGitInstance } = await import('./git-handle.ts');
-    const handle = createGitInstance(this.projectDir, { credentialArgs });
+    const handle = createGitInstance(this.projectDir, { credentialConfig: [] });
 
     switch (strategy) {
       case 'mine':
@@ -358,7 +353,6 @@ export class ConflictStore {
     entry: ConflictEntry,
     strategy: ResolveStrategy,
     content: string | undefined,
-    credentialArgs: string[],
   ): Promise<void> {
     const projectRoot = resolve(this.projectDir);
     const absPath = resolve(projectRoot, entry.file);
@@ -382,7 +376,8 @@ export class ConflictStore {
           );
         }
         const { createGitInstance } = await import('./git-handle.ts');
-        const handle = createGitInstance(this.projectDir, { credentialArgs });
+        // Local-only `cat-file` read — no credential config needed.
+        const handle = createGitInstance(this.projectDir, { credentialConfig: [] });
         const theirsBytes = await handle.git.raw(['cat-file', 'blob', entry.theirsSha]);
         // The realpath guard above ran before this `await`, which yielded the
         // event loop; a concurrent pull cycle could have materialized a symlink

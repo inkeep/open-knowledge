@@ -72,7 +72,6 @@ import {
   type HocuspocusAuthRejectionReason,
   parseHocuspocusAuthToken,
 } from './auth-token-schema.ts';
-import { shellEscape } from './bash/shell-escape.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
   type BridgeDeriveLossReporter,
@@ -152,6 +151,7 @@ import {
   type WatcherHandle,
 } from './file-watcher.ts';
 import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts';
+import { buildSyncCredentialConfig } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhFn,
@@ -249,6 +249,7 @@ import {
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
+import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -605,33 +606,6 @@ const GENERATED_ARTIFACT_ORIGIN = (() => {
     context: ctx,
   }) satisfies PairedWriteOrigin;
 })();
-
-/**
- * Build the git `-c credential.helper=…` args that let SyncEngine's fetch/push
- * authenticate by shelling out to our own CLI's `auth git-credential` helper.
- *
- * Git runs a `!`-prefixed credential helper through the shell, so every argv
- * element must be shell-quoted. The packaged macOS CLI path lives under
- * `/Applications/OpenKnowledge.app/…` — the space splits unquoted, the shell
- * fails to exec, the helper returns no credentials, and git falls back to an
- * interactive username prompt with no TTY ("could not read Username … Device
- * not configured"). `shellEscape` per argv element is the fix.
- *
- * Deliberately NO empty `credential.helper=` reset here, unlike the clone
- * path's `resolveAuth` (cli/src/auth/resolve-auth.ts), which prepends one to
- * neutralize stale ambient helpers. Sync's helper is append-only: ambient
- * helpers (a broken `!gh` from a past `gh auth setup-git`, osxkeychain) run
- * first and can add stderr noise or answer with a stale credential before
- * ours does — long-standing behavior that background sync's retry/degrade
- * handling already absorbs. Clone is a one-shot user-facing action with no
- * retry, so it needs the determinism; adding the reset HERE changes every
- * user's sync credential order and needs its own change with its own soak.
- */
-export function buildSyncCredentialArgs(localOpCliArgs?: string[]): string[] {
-  const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
-  const cliPrefix = argv.map(shellEscape).join(' ');
-  return ['-c', `credential.helper=!${cliPrefix} auth git-credential`];
-}
 
 export interface UpstreamAuthor {
   name: string;
@@ -5388,7 +5362,23 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
 
     // Start SyncEngine: remote detection + auto-sync.
-    const syncCredentialArgs = buildSyncCredentialArgs(localOpCliArgs);
+    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir);
+    // Which credential chain sync authenticates with is invisible from the
+    // outside: a wrong answer surfaces only as a 401 much later, and the
+    // original ordering defect was diagnosable only by the ABSENCE of helper
+    // log lines. Record the decision and its basis so the next report of
+    // "sync says signed out" can be answered from the log alone. The origin is
+    // re-read rather than derived from the boolean on purpose: inlining the
+    // kind comparison here would give the rule a second home that can drift
+    // from the predicate. Boot-time, once, on a small file. No raw path — the
+    // kind is a bounded enum, the projectDir is not.
+    log.debug(
+      { resetAmbientCredentials, originKind: readOriginGitHubRepo(projectDir).kind },
+      '[sync] ambient credential-chain reset decision at boot',
+    );
+    const syncCredentialConfig = buildSyncCredentialConfig(localOpCliArgs, {
+      resetAmbient: resetAmbientCredentials,
+    });
     const bootAutoSyncMode = readProjectAutoSyncMode();
     if (bootAutoSyncMode.mode !== 'off') {
       // A never-asked machine booting into a committed-default mode is the main
@@ -5409,7 +5399,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         mode: bootAutoSyncMode.mode,
         pullIntervalSeconds: options.pullIntervalSeconds,
         pushIntervalSeconds: options.pushIntervalSeconds,
-        credentialArgs: syncCredentialArgs,
+        credentialConfig: syncCredentialConfig,
         cc1Broadcaster,
         // Push-permission probe auth seam — production callers (CLI `ok start`)
         // pass concrete `detectGh` + `tokenStore` so the probe runs under the

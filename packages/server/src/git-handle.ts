@@ -11,6 +11,7 @@ import { homedir } from 'node:os';
 import { delimiter, resolve } from 'node:path';
 import { augmentGitSpawnPath } from '@inkeep/open-knowledge-core';
 import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
+import { shellEscape } from './bash/shell-escape.ts';
 
 /** Existence probe for `augmentGitSpawnPath` — directories only. Named to
  *  match the `GitSpawnPathOptions.isDir` seam (and the desktop twin in
@@ -47,8 +48,19 @@ export interface RelayGhToken {
 }
 
 interface GitHandleOptions {
-  /** git -c flags for credential injection (from resolveAuth) */
-  credentialArgs?: string[];
+  /**
+   * Ordered `credential.helper=` config VALUES (from
+   * `buildSyncCredentialConfig`: empty reset first, OK's helper last),
+   * forwarded verbatim into the spawn's `-c` config list.
+   *
+   * REQUIRED, and `[]` is a meaningful value rather than a default: omitting it
+   * used to be indistinguishable between "local-only op, needs no credential"
+   * and "remote op, forgot to pass it", and the latter authenticates with
+   * whatever ambient helper the machine happens to have. Every call site now
+   * states its intent, so a remote spawn cannot silently inherit the ambient
+   * chain.
+   */
+  credentialConfig: string[];
   /** Override GIT_INDEX_FILE env var for index isolation */
   gitIndexFile?: string;
   /** gh token relayed to the credential helper via env (see {@link RelayGhToken}). */
@@ -66,7 +78,7 @@ interface GitHandleOptions {
 export interface GitHandle {
   git: SimpleGit;
   projectDir: string;
-  credentialArgs: string[];
+  credentialConfig: string[];
   env: Record<string, string>;
 }
 
@@ -117,9 +129,13 @@ const GIT_AUTH_ENV_KEYS = [
  *   a bare command (`!open-knowledge auth git-credential` — the dev /
  *   CLI-on-PATH path) is found instead of failing "command not found".
  * - The `GIT_AUTH_ENV_KEYS` allowlist (`HOME`, `SSH_AUTH_SOCK`, the Windows
- *   home/profile vars, etc.): so the SSH transport finds `~/.ssh` and the
- *   user's credential helpers reach their home-based stores. Without these,
- *   SSH remotes and home-rooted helpers can't authenticate during sync.
+ *   home/profile vars, etc.): so the SSH transport finds `~/.ssh`, OK's own
+ *   helper can reach its home-based store, and — on origins where the ambient
+ *   chain is deliberately preserved (see `shouldResetAmbientCredentials`) —
+ *   the user's own helpers reach theirs. Without these, SSH remotes and
+ *   home-rooted helpers can't authenticate during sync. Note this is about
+ *   REACHING a store, not about ordering: on a GitHub origin the reset means
+ *   ambient helpers are not consulted for HTTPS credentials at all.
  * - `ELECTRON_RUN_AS_NODE`: in packaged desktop builds the server runs as
  *   Electron-as-Node and sets `localOpCliArgs` to `[electronBinary, cli.mjs]`,
  *   so the credential helper re-invokes that binary directly (it bypasses the
@@ -217,8 +233,8 @@ export function applyGitEnv(
  * for local-only work (log reads, shadow-ref plumbing) — but the moment such a
  * call site grows a `fetch`/`push`/`ls-remote`, it must move to this factory.
  */
-export function createGitInstance(projectDir: string, options: GitHandleOptions = {}): GitHandle {
-  const { credentialArgs = [], gitIndexFile, ghToken, timeoutMs } = options;
+export function createGitInstance(projectDir: string, options: GitHandleOptions): GitHandle {
+  const { credentialConfig, gitIndexFile, ghToken, timeoutMs } = options;
 
   const env: Record<string, string | undefined> = buildGitEnv(ghToken);
   if (gitIndexFile) {
@@ -253,7 +269,7 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions 
     'commit.gpgsign=false',
     'core.autocrlf=false',
     'credential.interactive=false',
-    ...(credentialArgs.length >= 2 ? [credentialArgs[1]] : []),
+    ...credentialConfig,
   ];
 
   // simple-git 3.36 gates credential.helper behind a runtime-only unsafe flag
@@ -267,5 +283,51 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions 
 
   const git = simpleGit(gitOptions as Partial<SimpleGitOptions>).env(env as Record<string, string>);
 
-  return { git, projectDir, credentialArgs, env: env as Record<string, string> };
+  return { git, projectDir, credentialConfig, env: env as Record<string, string> };
+}
+
+/**
+ * Build the ordered git config VALUES (spread into `createGitInstance`'s `-c`
+ * list) that let SyncEngine's fetch/push authenticate by shelling out to our
+ * own CLI's `auth git-credential` helper.
+ *
+ * Git runs a `!`-prefixed credential helper through the shell, so every argv
+ * element must be shell-quoted. The packaged macOS CLI path lives under
+ * `/Applications/OpenKnowledge.app/…` — the space splits unquoted, the shell
+ * fails to exec, the helper returns no credentials, and git falls back to an
+ * interactive username prompt with no TTY ("could not read Username … Device
+ * not configured"). `shellEscape` per argv element is the fix.
+ *
+ * The leading empty `credential.helper=` value, when present, is load-bearing.
+ * `credential.helper` is multi-valued — git accumulates every configured value
+ * (system → global → repo-local → `-c`, in that order) and asks helpers in
+ * order, stopping at the first that returns a complete credential. Without the
+ * reset, an ambient helper (macOS Command Line Tools install a system-wide
+ * osxkeychain; Git for Windows ships `manager`) answers `get` with whatever it
+ * holds — possibly stale — before OK's helper is ever consulted, while OK's
+ * valid token sits unused in the relay env. An empty value clears the list
+ * accumulated so far, making OK's helper the only one consulted for these
+ * spawns; `-c` is per-spawn, so the user's own terminal/IDE git is untouched.
+ * Same convention as the clone path's `resolveAuth`
+ * (cli/src/auth/resolve-auth.ts, `ResolvedAuth.gitConfig`) — keep the two in
+ * step: config values, reset first, our helper last. Like clone's `none` tier,
+ * the reset is conditional rather than unconditional: it is emitted only where
+ * OK can actually issue a credential for the origin. On a GitHub or GHES
+ * origin, a user whose only working credential was ambient is deliberately
+ * routed to OK's sign-in rather than silently borrowing it. On a known
+ * non-GitHub forge OK can never issue one — `validateGitHubHost` rejects those
+ * hosts at login and the gh relay is host-scoped — so clearing the chain there
+ * would strand sync with no in-app remedy. `shouldResetAmbientCredentials`
+ * makes that call.
+ */
+export function buildSyncCredentialConfig(
+  localOpCliArgs: string[] | undefined,
+  opts: { resetAmbient: boolean },
+): string[] {
+  const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
+  const cliPrefix = argv.map(shellEscape).join(' ');
+  const helper = `credential.helper=!${cliPrefix} auth git-credential`;
+  // The reset is what makes OK's helper authoritative, but it is only safe
+  // where OK can actually supply a credential — see shouldResetAmbientCredentials.
+  return opts.resetAmbient ? ['credential.helper=', helper] : [helper];
 }

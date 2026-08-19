@@ -8,6 +8,7 @@ import {
   readGitHeadBranch,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
+  shouldResetAmbientCredentials,
 } from './git-context.ts';
 
 function seedRepo(
@@ -354,6 +355,64 @@ describe('originGitHubHost', () => {
 
   test('falls back to github.com when there is no .git at all', () => {
     expect(originGitHubHost(dir)).toBe('github.com');
+  });
+});
+
+describe('shouldResetAmbientCredentials', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'share-git-reset-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test('github.com origin resets — OK can supply a credential there', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
+  });
+
+  test('GHES origin resets — sign-in accepts unknown hosts as enterprise', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://ghes.acme.test/acme/kb.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
+  });
+
+  // The reset follows the HOST, not the transport. An SSH clone still runs
+  // HTTPS sub-operations that consult credential helpers, so a transport
+  // conditional here would silently strand them; the HTTPS cases above cannot
+  // catch that on their own.
+  test('github.com SSH origin resets — the decision is host-scoped', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git@github.com:inkeep/open-knowledge.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
+  });
+
+  // The regression this guards: clearing the chain for a forge OK cannot
+  // authenticate strands the user with no credential and no in-app recovery,
+  // because signing in only ever yields a GitHub token.
+  test('gitlab origin does NOT reset — its ambient credential is the only one', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(false);
+  });
+
+  test('bitbucket origin does NOT reset', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git@bitbucket.org:team/notes.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(false);
+  });
+
+  test('no remote resets — nothing ambient to preserve, sync is dormant anyway', () => {
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
   });
 });
 

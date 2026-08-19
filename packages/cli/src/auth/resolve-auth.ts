@@ -53,7 +53,7 @@ interface ResolveAuthOptions {
  * credential helper. `selfCliArgs` is the argv that re-execs the CLI; each
  * element is shell-quoted so a bundled path with spaces
  * (`/Applications/OpenKnowledge.app/…`) survives git running the `!`-prefixed
- * helper through `sh -c`. Mirrors the sync path's `buildSyncCredentialArgs` —
+ * helper through `sh -c`. Mirrors the sync path's `buildSyncCredentialConfig` —
  * the bare `open-knowledge` form this replaces isn't resolvable in the packaged
  * desktop app (no such binary on the git subprocess PATH).
  */

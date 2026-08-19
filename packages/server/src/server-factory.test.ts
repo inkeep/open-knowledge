@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LOCAL_DIR, REMOVED_KEYS } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
-import shellQuote from 'shell-quote';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
@@ -41,7 +40,7 @@ import {
 } from './managed-rename-journal.ts';
 import { ensureProjectGit } from './project-git.ts';
 import { saveRemovedDocsJournal } from './removed-docs-journal.ts';
-import { buildSyncCredentialArgs, createServer, type ServerInstance } from './server-factory.ts';
+import { createServer, type ServerInstance } from './server-factory.ts';
 import { releaseServerLock } from './server-lock.ts';
 import { initShadowRepo, shadowGit } from './shadow-repo.ts';
 import { TagIndex } from './tag-index.ts';
@@ -3690,66 +3689,6 @@ describe('createServer() — push-permission auth wiring', () => {
   });
 });
 
-describe('buildSyncCredentialArgs()', () => {
-  // Git runs a `!`-prefixed credential helper through the shell, so the helper
-  // string after `!` is whatever the shell tokenizes back out. Parsing it with
-  // shell-quote reproduces the argv git would exec — the load-bearing property.
-  const argvFromHelper = (args: string[]): unknown[] => {
-    expect(args[0]).toBe('-c');
-    const prefix = 'credential.helper=!';
-    expect(args[1].startsWith(prefix)).toBe(true);
-    const suffix = ' auth git-credential';
-    expect(args[1].endsWith(suffix)).toBe(true);
-    const shellCmd = args[1].slice(prefix.length);
-    return shellQuote.parse(shellCmd);
-  };
-
-  test('packaged macOS bundle path survives the shell as one intact token', () => {
-    // Regression: the bundled CLI lives under "/Applications/OpenKnowledge.app/…".
-    // Unquoted, the shell split at the space, tried to exec "/Applications/Open",
-    // returned no credentials, and git failed with "could not read Username …
-    // Device not configured". The path must round-trip as a single argv element.
-    const bundlePath = '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh';
-    const args = buildSyncCredentialArgs([bundlePath]);
-    expect(argvFromHelper(args)).toEqual([bundlePath, 'auth', 'git-credential']);
-  });
-
-  test('bare command (dev default) stays unquoted', () => {
-    const args = buildSyncCredentialArgs(['open-knowledge']);
-    expect(args).toEqual(['-c', 'credential.helper=!open-knowledge auth git-credential']);
-    expect(argvFromHelper(args)).toEqual(['open-knowledge', 'auth', 'git-credential']);
-  });
-
-  test('undefined / empty argv falls back to the bare CLI name', () => {
-    const expected = ['-c', 'credential.helper=!open-knowledge auth git-credential'];
-    expect(buildSyncCredentialArgs(undefined)).toEqual(expected);
-    expect(buildSyncCredentialArgs([])).toEqual(expected);
-  });
-
-  test('multi-element argv escapes each element independently', () => {
-    const argv = ['/Users/me/Library/Application Support/bun', '/opt/ok cli/cli.mjs'];
-    const args = buildSyncCredentialArgs(argv);
-    expect(argvFromHelper(args)).toEqual([...argv, 'auth', 'git-credential']);
-  });
-
-  test('embedded single quote in the path round-trips safely', () => {
-    const argv = ["/Users/o'brien/OpenKnowledge.app/cli.sh"];
-    const args = buildSyncCredentialArgs(argv);
-    expect(argvFromHelper(args)).toEqual([...argv, 'auth', 'git-credential']);
-  });
-});
-
-/**
- * The generated index's WIRING, at real fidelity — a real server, a real
- * watcher, real disk, a real shadow repo.
- *
- * This layer is where the feature's two shipped bugs lived, and neither was
- * visible to a unit test: the config key was dropped in the persisted→runtime
- * lift, and the delete branch for an unloaded document never scheduled a
- * rebuild. Both left every pure test green. So each trigger gets exercised
- * end-to-end against the index file it is supposed to move, rather than against
- * the scheduler being called.
- */
 describe('createServer() — generated index wiring', () => {
   let projectDir: string;
   let contentDir: string;

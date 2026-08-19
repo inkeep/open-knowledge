@@ -295,6 +295,7 @@ describe('target-status fetch timeout', () => {
     try {
       const start = performance.now();
       const status = await computeShareTargetStatus(receiver, t.branch, 'doc.md', 'doc', {
+        credentialConfig: [],
         fetchTimeoutMs: 2000,
       });
       const elapsed = performance.now() - start;

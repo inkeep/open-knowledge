@@ -173,6 +173,22 @@ export function originGitHubHost(projectDir: string): string {
 }
 
 /**
+ * Whether OK should clear the inherited credential-helper chain for git spawns
+ * against this project's origin.
+ *
+ * OK can only produce a credential for GitHub hosts: sign-in rejects known
+ * non-GitHub forges outright (`validateGitHubHost`), and the relayed gh token
+ * is host-scoped, so neither tier can answer for e.g. gitlab.com. Clearing the
+ * chain there can only subtract — it removes the ambient credential the user is
+ * actually syncing with and leaves nothing in its place, and the in-app "Sign
+ * in" affordance cannot help because it only ever yields a GitHub token. Those
+ * origins keep their inherited chain.
+ */
+export function shouldResetAmbientCredentials(projectDir: string): boolean {
+  return readOriginGitHubRepo(projectDir).kind !== 'non-github';
+}
+
+/**
  * UI-facing summary of the origin remote for the sync-status payload.
  * `webUrl` is non-null for GitHub-host origins — github.com AND GHES (the
  * Sync UI renders it as a link); known non-GitHub forges yield a readable

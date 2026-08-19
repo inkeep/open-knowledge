@@ -325,8 +325,8 @@ interface SyncEngineOptions {
    * is provided.
    */
   syncEnabled?: boolean;
-  /** Credential args for simple-git (e.g. ['-c', 'credential.helper=…']). */
-  credentialArgs?: string[];
+  /** Ordered credential config values for simple-git (e.g. ['credential.helper=', 'credential.helper=!…']). */
+  credentialConfig?: string[];
   /** CC1 broadcaster for sync-status channel signals. */
   cc1Broadcaster?: CC1Broadcaster | null;
   /** Called on every state transition. */
@@ -490,7 +490,7 @@ export class SyncEngine {
    * a pull-only project.
    */
   private mode: SyncMode;
-  private credentialArgs: string[];
+  private credentialConfig: string[];
   private cc1Broadcaster: CC1Broadcaster | null;
   private onStateChange: ((state: SyncState) => void) | undefined;
   private onContentConflictsDetected: ((files: string[]) => void | Promise<void>) | undefined;
@@ -580,7 +580,7 @@ export class SyncEngine {
     // `mode` wins; fall back to the legacy boolean so callers that still pass
     // `syncEnabled` keep their exact prior semantics (true→full, else off).
     this.mode = options.mode ?? (options.syncEnabled === true ? 'full' : 'off');
-    this.credentialArgs = options.credentialArgs ?? [];
+    this.credentialConfig = options.credentialConfig ?? [];
     this.cc1Broadcaster = options.cc1Broadcaster ?? null;
     this.onStateChange = options.onStateChange;
     this.onContentConflictsDetected = options.onContentConflictsDetected;
@@ -615,7 +615,7 @@ export class SyncEngine {
 
   /**
    * Single construction point for every git handle the engine spawns. Threads
-   * the credential args plus the cached gh token (scoped to the origin's
+   * the credential config plus the cached gh token (scoped to the origin's
    * GitHub host) so fetch/push authenticate via gh when available. Local-only
    * handles (e.g. `remote -v`, `merge --abort`) carry the token harmlessly —
    * the cache keeps resolution to at most one `gh` spawn per minute
@@ -623,7 +623,7 @@ export class SyncEngine {
    */
   private gitHandle(gitIndexFile?: string): GitHandle {
     return createGitInstance(this.projectDir, {
-      credentialArgs: this.credentialArgs,
+      credentialConfig: this.credentialConfig,
       gitIndexFile,
       ghToken: this.ghTokenSource.get(this.syncGhTokenHost()) ?? undefined,
       timeoutMs: GIT_BLOCK_TIMEOUT_MS,
