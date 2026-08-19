@@ -2724,6 +2724,9 @@ button {
 button:active:not(:disabled) {
   transform: scale(0.97);
 }
+[data-agent-thread-root] button:active:not(:disabled) {
+  transform: none;
+}
 
 .subtle-scrollbar {
   @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-muted-foreground/30 dark:scrollbar-thumb-muted-foreground/50;
