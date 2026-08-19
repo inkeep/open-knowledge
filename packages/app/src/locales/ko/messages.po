@@ -661,6 +661,15 @@ msgstr "{docName}은 {0}입니다. OpenKnowledge는 현재 최대 {1} 크기의 
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0}개 켜짐"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorCount, plural, one {# error} other {# errors}}"
+msgstr "{errorCount, plural, other {오류 #개}}"
+
+#. Joins the two counts in a file-tree problem tooltip. Reaches a translator as two placeholders and a conjunction, so: errorText is already pluralized ("2 errors"), warningText likewise ("1 warning"), and the result is the subject of the sentence that follows it.
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorText} and {warningText}"
+msgstr "{errorText}, {warningText}"
+
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
 msgid "{failed} of {0} comments could not be updated."
@@ -897,6 +906,10 @@ msgstr "{source}에서 스킬 {count}개를 게시합니다. 원하는 스킬을
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr "{strandedCommitCount, plural, other {공유하지 않은 변경 사항이 #개 있습니다. 이 변경 사항은 이 컴퓨터에 남습니다.}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{summary} in this file. Open the Problems panel for details."
+msgstr "이 파일에 {summary}가 있습니다. 자세한 내용은 문제 패널을 여세요."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr "{templateCount, plural, other {템플릿}}"
@@ -933,6 +946,10 @@ msgstr "{userName} · {tabCount, plural, other {탭 #개}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, other {동시 탭 #개}}"
+
+#: src/components/file-tree-problem-indicators.ts
+msgid "{warningCount, plural, one {# warning} other {# warnings}}"
+msgstr "{warningCount, plural, other {경고 #개}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"

@@ -2633,7 +2633,14 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   // without a DOM mutation (e.g. a project audit landing while the tree is
   // idle). Our own attribute writes are outside the `data-item-path` filter
   // and the badge write is value-gated, so the observer stays quiescent.
+  //
+  // `i18n.locale` is a dep because the badge's tooltip and accessible name are
+  // written from an effect, not during render. `dynamicActivate` swaps the
+  // locale in place with no reload, so subscribing via `useLingui()` re-renders
+  // this component but would leave every chip already on screen in the old
+  // language until the tree next mutated or an audit landed.
   const problemIndicatorsEnabled = merged?.validation?.fileTreeIndicators !== false;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: i18n.locale is an intentional re-run trigger, not a value the body reads; the strings it controls are written inside applyProblemIndicators.
   useEffect(() => {
     if (loading || documents.length === 0) return;
     const shadow = fileTreeHostRef.current?.querySelector(FILE_TREE_TAG_NAME)?.shadowRoot;
@@ -2658,7 +2665,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       observer.disconnect();
       unsubscribe();
     };
-  }, [loading, documents.length, problemIndicatorsEnabled]);
+  }, [loading, documents.length, problemIndicatorsEnabled, i18n.locale]);
 
   // Select Pierre's rename-input stem while keeping the extension visible and
   // editable. Kept separate from the badge observer because the watched event

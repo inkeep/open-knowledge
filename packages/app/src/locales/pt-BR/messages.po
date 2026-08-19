@@ -661,6 +661,15 @@ msgstr "{docName} ocupa {0}. Por enquanto, o OpenKnowledge abre arquivos de até
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0} ativos"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorCount, plural, one {# error} other {# errors}}"
+msgstr "{errorCount, plural, one {# erro} many {# erros} other {# erros}}"
+
+#. Joins the two counts in a file-tree problem tooltip. Reaches a translator as two placeholders and a conjunction, so: errorText is already pluralized ("2 errors"), warningText likewise ("1 warning"), and the result is the subject of the sentence that follows it.
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorText} and {warningText}"
+msgstr "{errorText} e {warningText}"
+
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
 msgid "{failed} of {0} comments could not be updated."
@@ -897,6 +906,10 @@ msgstr "{source} publica {count} habilidades. Instale todas de uma vez."
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr "{strandedCommitCount, plural, one {Você tem 1 alteração que não compartilhou. Ela vai ficar neste computador.} many {Você tem # alterações que não compartilhou. Elas vão ficar neste computador.} other {Você tem # alterações que não compartilhou. Elas vão ficar neste computador.}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{summary} in this file. Open the Problems panel for details."
+msgstr "{summary} neste arquivo. Abra o painel Problemas para ver os detalhes."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr "{templateCount, plural, one {modelo} many {modelos} other {modelos}}"
@@ -933,6 +946,10 @@ msgstr "{userName} · {tabCount, plural, one {# aba} many {# abas} other {# abas
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, one {# aba simultânea} many {# abas simultâneas} other {# abas simultâneas}}"
+
+#: src/components/file-tree-problem-indicators.ts
+msgid "{warningCount, plural, one {# warning} other {# warnings}}"
+msgstr "{warningCount, plural, one {# aviso} many {# avisos} other {# avisos}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"

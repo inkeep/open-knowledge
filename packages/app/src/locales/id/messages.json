@@ -650,6 +650,7 @@
     ],
     "8Uv5e6": ["Agen"],
     "8Vq20-": ["Ganti worktree"],
+    "8WTrGF": [["summary"], " di file ini. Buka panel Masalah untuk detailnya."],
     "8Wav8y": [
       "Jika sebuah pembaruan datang untuk hal yang sedang Anda sunting, Anda memilih versi mana yang disimpan, seperti konflik penggabungan."
     ],
@@ -698,6 +699,7 @@
     ],
     "99eR72": ["Pilihan tabel penyunting visual"],
     "9Bd18D": ["Gagal memuat halaman pusat"],
+    "9E_WAi": [["errorText"], " dan ", ["warningText"]],
     "9EykGQ": ["Sisipkan kolom di kanan"],
     "9GbR5F": ["MAKS"],
     "9HKBNN": ["perintah"],
@@ -875,6 +877,7 @@
     ],
     "C-twqs": ["Konten yang dipulihkan"],
     "C-xgad": ["atau pakai paket awal"],
+    "C0C43b": [["warningCount", "plural", { "other": ["#", " peringatan"] }]],
     "C0Ciaj": ["Diimpor sebagai \"", ["0"], "\" — nama \"", ["1"], "\" sudah dipakai."],
     "C0cll5": ["Terpasang di ", ["0"], " — klik untuk menghapus"],
     "C0hoX6": ["Selalu disertakan"],
@@ -2114,6 +2117,7 @@
     ],
     "ScwcF2": ["Sudah ada proyek di lokasi ini. Pilih folder induk lain."],
     "SfxQX8": ["Menulis konfigurasi MCP proyek untuk setiap alat yang dipilih."],
+    "Sg-6Bo": [["errorCount", "plural", { "other": ["#", " galat"] }]],
     "SgKLfA": ["Tidak terhubung ke GitHub."],
     "Sh3Qkg": ["Tidak ada cabang yang cocok."],
     "Si7mIR": ["Buat laporan"],

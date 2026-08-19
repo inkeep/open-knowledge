@@ -661,6 +661,15 @@ msgstr "{docName} {0}। OpenKnowledge এখন {1} পর্যন্ত ফ�
 msgid "{enabledCount}/{0} on"
 msgstr "{0}টির মধ্যে {enabledCount}টি চালু"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorCount, plural, one {# error} other {# errors}}"
+msgstr "{errorCount, plural, one {# ত্রুটি} other {# ত্রুটি}}"
+
+#. Joins the two counts in a file-tree problem tooltip. Reaches a translator as two placeholders and a conjunction, so: errorText is already pluralized ("2 errors"), warningText likewise ("1 warning"), and the result is the subject of the sentence that follows it.
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorText} and {warningText}"
+msgstr "{errorText} এবং {warningText}"
+
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
 msgid "{failed} of {0} comments could not be updated."
@@ -897,6 +906,10 @@ msgstr "{source} {count}টি স্কিল প্রকাশ করে। �
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr "{strandedCommitCount, plural, one {আপনার ১টি পরিবর্তন আছে যা আপনি ভাগ করেননি। এটি এই কম্পিউটারেই থাকবে।} other {আপনার # পরিবর্তন আছে যা আপনি ভাগ করেননি। সেগুলো এই কম্পিউটারেই থাকবে।}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{summary} in this file. Open the Problems panel for details."
+msgstr "এই ফাইলে {summary}। বিস্তারিত জানতে সমস্যা প্যানেল খুলুন।"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr "{templateCount, plural, one {টেমপ্লেট} other {টেমপ্লেট}}"
@@ -933,6 +946,10 @@ msgstr "{userName} · {tabCount, plural, one {# ট্যাব} other {# ট্
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, one {# একযোগে ট্যাব} other {# একযোগে ট্যাব}}"
+
+#: src/components/file-tree-problem-indicators.ts
+msgid "{warningCount, plural, one {# warning} other {# warnings}}"
+msgstr "{warningCount, plural, one {# সতর্কতা} other {# সতর্কতা}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"

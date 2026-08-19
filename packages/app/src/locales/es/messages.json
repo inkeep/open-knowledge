@@ -760,6 +760,7 @@
     ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Cambiar de worktree"],
+    "8WTrGF": [["summary"], " en este archivo. Abre el panel Problemas para ver los detalles."],
     "8Wav8y": [
       "Si llega una actualización de algo que estás editando, tú eliges qué versión conservar, como en un conflicto de fusión."
     ],
@@ -808,6 +809,7 @@
     ],
     "99eR72": ["Selección de tabla del editor visual"],
     "9Bd18D": ["No se pudieron cargar las páginas índice"],
+    "9E_WAi": [["errorText"], " y ", ["warningText"]],
     "9EykGQ": ["Insertar columna a la derecha"],
     "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
@@ -1033,6 +1035,17 @@
     ],
     "C-twqs": ["Contenido recuperado"],
     "C-xgad": ["o usa un paquete inicial"],
+    "C0C43b": [
+      [
+        "warningCount",
+        "plural",
+        {
+          "one": ["#", " advertencia"],
+          "many": ["#", " advertencias"],
+          "other": ["#", " advertencias"]
+        }
+      ]
+    ],
     "C0Ciaj": ["Se importó como \"", ["0"], "\": el nombre \"", ["1"], "\" ya estaba ocupado."],
     "C0cll5": ["Instalado en ", ["0"], ": haz clic para quitarlo"],
     "C0hoX6": ["Siempre incluido"],
@@ -2416,6 +2429,13 @@
     ],
     "ScwcF2": ["Ya existe un proyecto en esta ubicación. Elige otra carpeta superior."],
     "SfxQX8": ["Escribe una configuración MCP de proyecto para cada herramienta seleccionada."],
+    "Sg-6Bo": [
+      [
+        "errorCount",
+        "plural",
+        { "one": ["#", " error"], "many": ["#", " errores"], "other": ["#", " errores"] }
+      ]
+    ],
     "SgKLfA": ["No hay conexión con GitHub."],
     "Sh3Qkg": ["Ninguna rama coincide."],
     "Si7mIR": ["Crear informe"],

@@ -661,6 +661,15 @@ msgstr "حجم {docName} هو {0}. يفتح OpenKnowledge حاليًا ملفا�
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0} مفعَّل"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorCount, plural, one {# error} other {# errors}}"
+msgstr "{errorCount, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأً} other {# خطأ}}"
+
+#. Joins the two counts in a file-tree problem tooltip. Reaches a translator as two placeholders and a conjunction, so: errorText is already pluralized ("2 errors"), warningText likewise ("1 warning"), and the result is the subject of the sentence that follows it.
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorText} and {warningText}"
+msgstr "{errorText} و{warningText}"
+
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
 msgid "{failed} of {0} comments could not be updated."
@@ -897,6 +906,10 @@ msgstr "ينشر {source} {count} مهارة. ثبِّت أيًّا منها م�
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr "{strandedCommitCount, plural, zero {لديك # تغيير لم تشاركه. سيبقى على هذا الجهاز.} one {لديك تغيير واحد لم تشاركه. سيبقى على هذا الجهاز.} two {لديك تغييران لم تشاركهما. سيبقيان على هذا الجهاز.} few {لديك # تغييرات لم تشاركها. ستبقى على هذا الجهاز.} many {لديك # تغييرًا لم تشاركها. ستبقى على هذا الجهاز.} other {لديك # تغيير لم تشاركه. سيبقى على هذا الجهاز.}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{summary} in this file. Open the Problems panel for details."
+msgstr "{summary} في هذا الملف. افتح لوحة المشكلات لمزيد من التفاصيل."
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr "{templateCount, plural, zero {قوالب} one {قالب} two {قالبان} few {قوالب} many {قالبًا} other {قالب}}"
@@ -933,6 +946,10 @@ msgstr "{userName} · {tabCount, plural, zero {# تبويب} one {تبويب و�
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}، {tabCount, plural, zero {# تبويب متزامن} one {تبويب واحد متزامن} two {تبويبان متزامنان} few {# تبويبات متزامنة} many {# تبويبًا متزامنًا} other {# تبويب متزامن}}"
+
+#: src/components/file-tree-problem-indicators.ts
+msgid "{warningCount, plural, one {# warning} other {# warnings}}"
+msgstr "{warningCount, plural, zero {# تحذير} one {تحذير واحد} two {تحذيران} few {# تحذيرات} many {# تحذيرًا} other {# تحذير}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"

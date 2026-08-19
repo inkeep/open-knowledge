@@ -150,11 +150,23 @@ test.describe('unified Problems — file-tree indicators', () => {
       })
       .toBe('warning');
 
-    // Count badge is injected next to the label.
-    const badgeText = await (await treeRowHandle(page, `${linkDocName}.md`)).evaluate(
-      (el) => el?.querySelector('[data-ok-problem-badge]')?.textContent ?? null,
-    );
-    expect(badgeText).toBe('1');
+    // Count badge is injected next to the label, and carries its own hover
+    // explanation. Both halves of that need the real browser: the DOM test can
+    // only read the stylesheet source, and jsdom never resolves hit-testing.
+    const badge = await (await treeRowHandle(page, `${linkDocName}.md`)).evaluate((el) => {
+      const node = el?.querySelector('[data-ok-problem-badge]');
+      if (!node) return null;
+      return {
+        text: node.textContent,
+        title: (node as HTMLElement).title,
+        pointerEvents: getComputedStyle(node).pointerEvents,
+      };
+    });
+    expect(badge?.text).toBe('1');
+    // Not `none`: the cursor has to resolve on the badge, or it falls through
+    // to the row and surfaces the row's full-path title instead.
+    expect(badge?.pointerEvents).not.toBe('none');
+    expect(badge?.title).toBe('1 warning in this file. Open the Problems panel for details.');
 
     // The unsafeCSS actually paints: a tinted row's label color differs from a
     // clean row's — the pixels jsdom cannot verify.

@@ -661,6 +661,15 @@ msgstr "{docName} کا حجم {0} ہے۔ OpenKnowledge فی الحال {1} تک 
 msgid "{enabledCount}/{0} on"
 msgstr "{enabledCount}/{0} فعال"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorCount, plural, one {# error} other {# errors}}"
+msgstr "{errorCount, plural, one {# خرابی} other {# خرابیاں}}"
+
+#. Joins the two counts in a file-tree problem tooltip. Reaches a translator as two placeholders and a conjunction, so: errorText is already pluralized ("2 errors"), warningText likewise ("1 warning"), and the result is the subject of the sentence that follows it.
+#: src/components/file-tree-problem-indicators.ts
+msgid "{errorText} and {warningText}"
+msgstr "{errorText} اور {warningText}"
+
 #. placeholder {0}: ids.length
 #: src/comments/store.ts
 msgid "{failed} of {0} comments could not be updated."
@@ -897,6 +906,10 @@ msgstr "{source} {count} مہارتیں شائع کرتا ہے۔ ان میں س�
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
 msgstr "{strandedCommitCount, plural, one {آپ کے پاس 1 تبدیلی ہے جو آپ نے شیئر نہیں کی۔ یہ اسی کمپیوٹر پر رہے گی۔} other {آپ کے پاس # تبدیلیاں ہیں جو آپ نے شیئر نہیں کیں۔ یہ اسی کمپیوٹر پر رہیں گی۔}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{summary} in this file. Open the Problems panel for details."
+msgstr "اس فائل میں {summary}۔ تفصیلات کے لیے مسائل پینل کھولیں۔"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{templateCount, plural, one {template} other {templates}}"
 msgstr "{templateCount, plural, one {ٹیمپلیٹ} other {ٹیمپلیٹس}}"
@@ -933,6 +946,10 @@ msgstr "{userName} · {tabCount, plural, one {# ٹیب} other {# ٹیبز}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}، {tabCount, plural, one {# بیک وقت ٹیب} other {# بیک وقت ٹیبز}}"
+
+#: src/components/file-tree-problem-indicators.ts
+msgid "{warningCount, plural, one {# warning} other {# warnings}}"
+msgstr "{warningCount, plural, one {# انتباہ} other {# انتباہات}}"
 
 #: src/components/EditorFooter.tsx
 msgid "{words, plural, one {word} other {words}}"

@@ -642,6 +642,7 @@
     ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Switch worktree"],
+    "8WTrGF": [["summary"], " in this file. Open the Problems panel for details."],
     "8Wav8y": [
       "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
     ],
@@ -690,6 +691,7 @@
     ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
+    "9E_WAi": [["errorText"], " and ", ["warningText"]],
     "9EykGQ": ["Insert column right"],
     "9GbR5F": ["HI"],
     "9HKBNN": ["commands"],
@@ -884,6 +886,9 @@
     ],
     "C-twqs": ["Recovered content"],
     "C-xgad": ["or use a starter pack"],
+    "C0C43b": [
+      ["warningCount", "plural", { "one": ["#", " warning"], "other": ["#", " warnings"] }]
+    ],
     "C0Ciaj": ["Imported as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
     "C0cll5": ["Installed at ", ["0"], " — click to remove"],
     "C0hoX6": ["Always included"],
@@ -2104,6 +2109,7 @@
     ],
     "ScwcF2": ["A project already exists at this location. Pick a different parent folder."],
     "SfxQX8": ["Writes a project-MCP config for each selected tool."],
+    "Sg-6Bo": [["errorCount", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "SgKLfA": ["Not connected to GitHub."],
     "Sh3Qkg": ["No matching branches."],
     "Si7mIR": ["Create report"],

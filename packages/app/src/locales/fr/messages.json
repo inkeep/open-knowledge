@@ -784,6 +784,7 @@
     ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Changer de worktree"],
+    "8WTrGF": [["summary"], " dans ce fichier. Ouvrez le panneau Problèmes pour plus de détails."],
     "8Wav8y": [
       "Si une mise à jour arrive pour ce que vous êtes en train de modifier, vous choisissez quelle version conserver, comme pour un conflit de fusion."
     ],
@@ -832,6 +833,7 @@
     ],
     "99eR72": ["Sélection de tableau de l'éditeur visuel"],
     "9Bd18D": ["Échec du chargement des pages pivots"],
+    "9E_WAi": [["errorText"], " et ", ["warningText"]],
     "9EykGQ": ["Insérer une colonne à droite"],
     "9GbR5F": ["MAX"],
     "9HKBNN": ["commandes"],
@@ -1057,6 +1059,17 @@
     ],
     "C-twqs": ["Contenu récupéré"],
     "C-xgad": ["ou utilisez un pack de démarrage"],
+    "C0C43b": [
+      [
+        "warningCount",
+        "plural",
+        {
+          "one": ["#", " avertissement"],
+          "many": ["#", " avertissements"],
+          "other": ["#", " avertissements"]
+        }
+      ]
+    ],
     "C0Ciaj": ["Importé sous « ", ["0"], " » — le nom « ", ["1"], " » était déjà pris."],
     "C0cll5": ["Installé dans ", ["0"], " — cliquez pour retirer"],
     "C0hoX6": ["Toujours inclus"],
@@ -2443,6 +2456,13 @@
     ],
     "ScwcF2": ["Un projet existe déjà à cet emplacement. Choisissez un autre dossier parent."],
     "SfxQX8": ["Écrit une configuration MCP de projet pour chaque outil sélectionné."],
+    "Sg-6Bo": [
+      [
+        "errorCount",
+        "plural",
+        { "one": ["#", " erreur"], "many": ["#", " erreurs"], "other": ["#", " erreurs"] }
+      ]
+    ],
     "SgKLfA": ["Non connecté à GitHub."],
     "Sh3Qkg": ["Aucune branche correspondante."],
     "Si7mIR": ["Créer un rapport"],

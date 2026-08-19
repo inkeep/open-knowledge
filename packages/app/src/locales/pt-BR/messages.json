@@ -750,6 +750,7 @@
     ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Trocar de worktree"],
+    "8WTrGF": [["summary"], " neste arquivo. Abra o painel Problemas para ver os detalhes."],
     "8Wav8y": [
       "Se chegar uma atualização de algo que você está editando, você escolhe qual versão manter, como em um conflito de mesclagem."
     ],
@@ -798,6 +799,7 @@
     ],
     "99eR72": ["Seleção de tabela do editor visual"],
     "9Bd18D": ["Falha ao carregar as páginas de índice"],
+    "9E_WAi": [["errorText"], " e ", ["warningText"]],
     "9EykGQ": ["Inserir coluna à direita"],
     "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
@@ -1019,6 +1021,13 @@
     ],
     "C-twqs": ["Conteúdo recuperado"],
     "C-xgad": ["ou use um pacote inicial"],
+    "C0C43b": [
+      [
+        "warningCount",
+        "plural",
+        { "one": ["#", " aviso"], "many": ["#", " avisos"], "other": ["#", " avisos"] }
+      ]
+    ],
     "C0Ciaj": ["Importado como \"", ["0"], "\" — o nome \"", ["1"], "\" já estava em uso."],
     "C0cll5": ["Instalado em ", ["0"], " — clique para remover"],
     "C0hoX6": ["Sempre incluído"],
@@ -2386,6 +2395,13 @@
     ],
     "ScwcF2": ["Já existe um projeto neste local. Escolha outra pasta acima."],
     "SfxQX8": ["Grava uma configuração MCP de projeto para cada ferramenta selecionada."],
+    "Sg-6Bo": [
+      [
+        "errorCount",
+        "plural",
+        { "one": ["#", " erro"], "many": ["#", " erros"], "other": ["#", " erros"] }
+      ]
+    ],
     "SgKLfA": ["Não conectado ao GitHub."],
     "Sh3Qkg": ["Nenhum ramo corresponde."],
     "Si7mIR": ["Criar relatório"],
