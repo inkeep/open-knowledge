@@ -10076,14 +10076,6 @@ msgstr "Read-only copy of a MirrorSource block from another doc. Edit at the sou
 msgid "Read-only file in the {name} skill"
 msgstr "Read-only file in the {name} skill"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "Reading from {tail}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "Reading from this workspace"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Reading…"

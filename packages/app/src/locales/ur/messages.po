@@ -10076,14 +10076,6 @@ msgstr "کسی دوسری دستاویز کے MirrorSource بلاک کی صرف 
 msgid "Read-only file in the {name} skill"
 msgstr "{name} مہارت میں صرف پڑھنے والی فائل"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "{tail} سے پڑھ رہا ہے"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "اس ورک اسپیس سے پڑھ رہا ہے"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "پڑھا جا رہا ہے…"

@@ -10072,14 +10072,6 @@ msgstr "Cópia somente leitura de um bloco MirrorSource de outro documento. Edit
 msgid "Read-only file in the {name} skill"
 msgstr "Arquivo somente leitura na habilidade {name}"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "Lendo de {tail}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "Lendo deste espaço de trabalho"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Lendo…"

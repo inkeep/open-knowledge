@@ -1797,6 +1797,54 @@ describe('ThreadView send-vs-queue labelling', () => {
   });
 });
 
+describe('ThreadView attachment disclosure', () => {
+  test('a references-only agent explains that behavior on the attachment affordance', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: false });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          promptCapabilities: { embeddedContext: false },
+        })}
+      />,
+    );
+
+    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe(
+      'Attach a file · references only (no embedded contents)',
+    );
+  });
+
+  test('an embedding-capable agent keeps the attachment tooltip concise', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: false });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          promptCapabilities: { embeddedContext: true },
+        })}
+      />,
+    );
+
+    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+  });
+
+  test('unknown capabilities do not flash a references-only claim during handshake', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready', promptCapabilities: null })} />);
+
+    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+  });
+});
+
 describe('ThreadView retry', () => {
   function failureNotice(
     reason: 'auth-required' | 'connect' | 'session-setup' | 'prompt',

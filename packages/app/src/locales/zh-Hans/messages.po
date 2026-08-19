@@ -10076,14 +10076,6 @@ msgstr "来自另一个文档的 MirrorSource 块的只读副本。在来源处�
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 技能中的只读文件"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "从 {tail} 读取"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "从此工作区读取"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "正在阅读…"

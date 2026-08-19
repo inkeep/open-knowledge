@@ -10076,14 +10076,6 @@ msgstr "다른 문서의 MirrorSource 블록을 읽기 전용으로 복사한 �
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 스킬의 읽기 전용 파일"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "{tail}에서 읽는 중"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "이 워크스페이스에서 읽는 중"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "읽는 중…"

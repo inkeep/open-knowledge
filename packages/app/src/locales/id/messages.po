@@ -10072,14 +10072,6 @@ msgstr "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di su
 msgid "Read-only file in the {name} skill"
 msgstr "Berkas hanya-baca di keterampilan {name}"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "Membaca dari {tail}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "Membaca dari ruang kerja ini"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Membaca…"

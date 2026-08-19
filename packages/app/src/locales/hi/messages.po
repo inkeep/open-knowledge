@@ -10072,14 +10072,6 @@ msgstr "किसी दूसरे दस्तावेज़ के MirrorSo
 msgid "Read-only file in the {name} skill"
 msgstr "{name} स्किल में केवल पढ़ने योग्य फ़ाइल"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "{tail} से पढ़ रहे हैं"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "इस कार्यक्षेत्र से पढ़ रहे हैं"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "पढ़ा जा रहा है…"

@@ -10072,14 +10072,6 @@ msgstr ""
 msgid "Read-only file in the {name} skill"
 msgstr ""
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr ""
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr ""
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr ""

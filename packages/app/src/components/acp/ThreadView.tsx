@@ -3665,7 +3665,6 @@ function ThreadComposer({
           up on focus. Every control is a real in-flow sibling (natural Tab order,
           own focus ring) and the send button lives on its own row, so there's no
           reserved text gutter narrowing the input on multi-line drafts. */}
-      <WorkspaceReachHint info={info} />
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
       <div
         onMouseDown={(event) => focusComposerInputOnCardPointer(event, composerRef)}
@@ -3768,7 +3767,17 @@ function ThreadComposer({
             options, showing a disabled trigger instead of vanishing). */}
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
           <AgentSettingsPopover info={info} />
-          <AttachFilesButton onFiles={onIngestAllFiles} />
+          <AttachFilesButton
+            onFiles={onIngestAllFiles}
+            referencesOnly={
+              // Null/undefined means the handshake has not advertised capabilities
+              // yet, not that it declined embedding. Avoid a transient restrictive
+              // claim in the tooltip while that capability is still unknown.
+              info.promptCapabilities !== null &&
+              info.promptCapabilities !== undefined &&
+              info.promptCapabilities.embeddedContext !== true
+            }
+          />
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
@@ -4162,42 +4171,6 @@ function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNo
 }
 
 /**
- * Small footer line above the composer showing the workspace root the
- * agent can reach — so the user knows which folder they're referencing
- * before they attach anything. Falls back to a warmup label until
- * `useWorkspace` resolves on web hosts.
- */
-function WorkspaceReachHint({ info }: { info: ThreadInfo }): ReactNode {
-  const { t } = useLingui();
-  const workspace = useWorkspace();
-  const caps = info.promptCapabilities;
-  // Show only the last two path segments — the full absolute path is noisy
-  // and rarely differs from what the tab title already tells the user.
-  const workspaceLabel =
-    workspace === null
-      ? t`Reading from this workspace`
-      : (() => {
-          const sep = workspace.pathSeparator === '\\' ? '\\' : '/';
-          const parts = workspace.contentDir.split(sep).filter((p) => p !== '');
-          const tail = parts.slice(-2).join(sep);
-          return t`Reading from ${tail}`;
-        })();
-  const embedNote =
-    caps !== null && caps !== undefined && caps.embeddedContext !== true
-      ? t` · references only (no embedded contents)`
-      : '';
-  return (
-    <div
-      className="px-2 pb-1 text-[11px] text-muted-foreground"
-      data-testid="agent-thread-workspace-reach"
-    >
-      {workspaceLabel}
-      {embedNote}
-    </div>
-  );
-}
-
-/**
  * OS file-picker trigger for the composer action bar — the keyboard-and-AT
  * counterpart to drag-and-drop. A `+` icon button opens the picker via an
  * imperatively-created `<input type="file" multiple>`; picked files ride
@@ -4209,8 +4182,10 @@ function WorkspaceReachHint({ info }: { info: ThreadInfo }): ReactNode {
  */
 function AttachFilesButton({
   onFiles,
+  referencesOnly,
 }: {
   onFiles: (files: readonly File[]) => Promise<void>;
+  referencesOnly: boolean;
 }): ReactNode {
   const { t } = useLingui();
   const openFilePicker = () => {
@@ -4242,7 +4217,10 @@ function AttachFilesButton({
           <Plus className="size-4" aria-hidden="true" />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="top">{t`Attach a file`}</TooltipContent>
+      <TooltipContent side="top">
+        {t`Attach a file`}
+        {referencesOnly ? t` · references only (no embedded contents)` : null}
+      </TooltipContent>
     </Tooltip>
   );
 }

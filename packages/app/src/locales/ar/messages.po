@@ -10076,14 +10076,6 @@ msgstr "نسخة للقراءة فقط من كتلة MirrorSource في مستن�
 msgid "Read-only file in the {name} skill"
 msgstr "ملف للقراءة فقط في مهارة {name}"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from {tail}"
-msgstr "القراءة من {tail}"
-
-#: src/components/acp/ThreadView.tsx
-msgid "Reading from this workspace"
-msgstr "القراءة من مساحة العمل هذه"
-
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "يجري القراءة…"
