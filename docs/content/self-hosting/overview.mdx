@@ -1,73 +1,60 @@
 ---
 title: Overview
 icon: LuBookOpen
-description: Run OpenKnowledge on a server or container for shared, always-on access from your other devices and agents.
+description: Set up remote access to your OpenKnowledge server.
 ---
-By default, your knowledge base is only available on the machine it runs on. Set up remote control to open it from another device, point your agents at it, and let everyone work in the same place. Access control lives outside OpenKnowledge for now: a private network, or a login in front. See [Authentication](/docs/self-hosting/authentication).
+By default, OpenKnowledge is only available on the machine where it runs. Remote access lets your other devices, teammates, and agents connect to one shared project without installing OpenKnowledge on every machine.
 
-## How exposure works
+The setup has four parts: run the server, make it reachable, add access control, then connect through the browser or MCP.
 
-Remote control uses three settings:
+## Run the server
 
-| Setting | What it is | Where it goes |
-| --- | --- | --- |
-| `server.externalUrl` | The address clients will use, e.g. `https://kb.example.com`. | `.ok/config.yml`, committed, so the project's setup is shared with your team. |
-| `server.allowExternal` | Your permission to accept connections from outside the machine. | `.ok/local/config.yml`, which stays on this machine (gitignored), or the `OK_ALLOW_EXTERNAL=1` environment variable. |
-| `server.bind` | Which network addresses the server listens on. Most setups never set it: tunnels work with the default, and the container image sets it for you. | `.ok/local/config.yml`, or the `OK_BIND` environment variable. |
+There are three ways to run an OpenKnowledge server:
 
-These also exist as environment variables and CLI flags (`OK_EXTERNAL_URL` / `--external-url`) for one-off runs and for containers, where config files aren't the natural home; each walkthrough uses whichever fits. The [Configuration reference](/docs/reference/configuration) has the full details on these settings.
+- [**Desktop**](/docs/get-started/quickstart#install-the-desktop-app-macos-windows-linux)
+- [**CLI**](/docs/self-hosting/methods/cli)
+- [**Docker**](/docs/self-hosting/methods/docker)
 
-<Callout type="info">
-**Everyone connects as the same owner.** There are no per-person accounts yet, so everyone who connects can read and edit everything, exactly as you can. You choose who that is with the options in [Authentication](/docs/self-hosting/authentication).
+## Make the server reachable
+
+Choose the instructions that match where your server runs:
+
+| Your setup | What to follow |
+| --- | --- |
+| Desktop or CLI on your computer | [Connect the computer through a private network or tunnel](/docs/self-hosting/methods/cli#your-laptop-behind-a-tunnel). If Desktop already runs the project, skip the CLI installation step. The networking settings are the same. |
+| CLI on an always-on machine | [Set up a server you manage](/docs/self-hosting/methods/cli#a-server-you-manage). |
+| Docker | [Deploy the container](/docs/self-hosting/methods/docker). |
+
+Each method provides an HTTPS URL and the required configuration. See the [configuration reference](/docs/reference/configuration) for all available settings.
+
+## Add access control
+
+<Callout type="warn">
+**Never expose OpenKnowledge directly to the public internet.** Use a private network, or put authentication in front of the server before opening or sharing a public URL.
 </Callout>
 
-## Choose a deployment method
+OpenKnowledge does not have built-in user accounts yet. Everyone who can reach the server has full read and write access as the same owner.
 
-| You want | Method |
-| --- | --- |
-| To reach the machine you already work on, from your other devices | [npm: your laptop, behind a tunnel](/docs/self-hosting/methods/npm#your-laptop-behind-a-tunnel) |
-| An always-on server you run yourself | [npm: a VPS or any box you manage](/docs/self-hosting/methods/npm#a-server-you-manage) |
-| An always-on server, run for you by a hosting platform | [Docker: a container on a hosting platform](/docs/self-hosting/methods/docker) |
-
-These are recommended pairings, not rules; the pieces mix and match. You can run the container on your own VPS, or run a tunnel next to a container on Railway and skip the public domain entirely. However you assemble it, the server reads the same settings, so every method ends at the same [try-it-out step](#try-it-out) and the same [access-control options](/docs/self-hosting/authentication).
+A private network such as Tailscale can be the access-control layer. A public URL needs an authentication edge or proxy in front of it. Follow [Authentication](/docs/self-hosting/authentication) before continuing.
 
 ## Try it out
 
-Whichever method you picked, you now have one URL that works two ways: open it in a browser to edit, or point an agent at `/mcp`. Try both.
+Once the server is reachable and protected, the same URL provides both connection points.
 
-### In a browser
+Open the editor in a browser:
 
-```
+```text
 https://<your-external-url>/
 ```
 
-Open it on any device that can reach the address. The editor loads, and edits sync in real time between every connected browser and agent. That's your first proof the whole path works.
+Connect agents to the MCP endpoint:
 
-Anyone who can open the URL can edit alongside you, all as the same owner, since there are no per-person accounts. Share it deliberately and only with people you trust.
-
-### With agents
-
-```
+```text
 https://<your-external-url>/mcp
 ```
 
-For a quick check without configuring an agent, do the handshake by hand from any device that can reach the address:
+Open the browser URL first to confirm the editor loads. Then follow [Connect remote agents](/docs/self-hosting/connecting-agents) for Claude, Cursor, Codex, and other MCP clients. Give teammates the browser URL plus any network access or credential required by your access-control setup.
 
-```bash
-curl -sS -X POST https://<your-external-url>/mcp \
-  -H 'content-type: application/json' \
-  -H 'accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
-```
+## Turn off remote access
 
-The server responds with its details:
-
-```json
-{"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"open-knowledge","version":"…"}},"jsonrpc":"2.0","id":1}
-```
-
-Then point real agents at that URL. [Connecting agents](/docs/self-hosting/connecting-agents) has per-client setup (Claude, Cursor, Codex, and others), including how a headless agent passes edge-auth credentials. Anyone who can open this URL has full read-write access.
-
-## Turning it off
-
-Withdraw your permission by removing `server.allowExternal` from `.ok/local/config.yml` (or no longer passing `OK_ALLOW_EXTERNAL=1`) and restarting; on the default loopback bind the server goes back to refusing outside connections. A container built from the [Docker method](/docs/self-hosting/methods/docker) bakes a non-loopback `OK_BIND`, so dropping consent there makes it refuse to boot instead of falling back. Stopping the tunnel or removing the container's public domain cuts off access from the other side. If the address may have leaked further than intended, rotate it at the edge: ngrok and Cloudflare mint a fresh URL on restart, Tailscale ACLs can be tightened, and a platform domain can be regenerated.
+Remove `allowExternal: true` from `.ok/local/config.yml`, or remove `OK_ALLOW_EXTERNAL=1`, then restart OpenKnowledge. The Docker setup on this site uses `OK_BIND=0.0.0.0`, so the container will refuse to start without external-access consent. Stop the tunnel or disable the public domain to close network access. If a public URL was exposed, regenerate it or rotate the domain at your tunnel or hosting provider.

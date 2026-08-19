@@ -3,17 +3,17 @@ title: Docker
 icon: custom/Docker
 description: Build the OpenKnowledge container image and run it on Railway, Fly.io, or any Docker host.
 ---
-For an always-on knowledge base without managing a box, run the server as a container on a hosting platform (Railway, Fly.io, or your own Docker host). The platform provides the domain and TLS; a volume holds the project; the `OK_*` environment variables carry the same declarations as every other path. Read [How exposure works](/docs/self-hosting/overview#how-exposure-works) first if you haven't.
+For an always-on knowledge base without managing a box, run the server as a container on a hosting platform (Railway, Fly.io, or your own Docker host). The platform provides the domain and TLS. A volume holds the project. The `OK_*` environment variables carry the same declarations as every other path. Start with the [self-hosting overview](/docs/self-hosting/overview) if you have not chosen an access path yet.
 
 ## What any host must provide
 
 The recipes on this page are examples, not requirements. The server runs anywhere that provides:
 
-- **One always-on instance.** The collaboration server is single-writer: exactly one server process per project. Don't scale to multiple replicas, and don't scale to zero between requests.
+- **Run one always-on instance.** The collaboration server supports one server process per project. Keep the replica count at one and do not scale to zero between requests.
 - **A persistent volume with a real filesystem**, mounted at `/data`. The project is a live git repository the server watches and writes. Container-layer storage is lost on recreate, and network filesystems built for object storage fit it poorly.
-- **HTTP ingress that supports WebSockets and doesn't buffer streaming responses.** Live editing runs over a WebSocket, and `/mcp` streams server-sent events (details in the [proxy rules](#rules-for-anything-in-front-of-the-server) below).
-- **TLS at the edge, with `X-Forwarded-Proto: https` preserved on the way in.** Every platform edge does this out of the box; if you insert your own plain-HTTP proxy, set the header yourself.
-- **The two declarations from [How exposure works](/docs/self-hosting/overview#how-exposure-works)**: `OK_EXTERNAL_URL` naming the public origin, and `OK_ALLOW_EXTERNAL=1` consenting to exposure.
+- **Use HTTP ingress that supports WebSockets and unbuffered streaming responses.** Live editing uses a WebSocket. `/mcp` uses server-sent events. See the [proxy rules](#rules-for-anything-in-front-of-the-server).
+- **Use TLS at the edge and preserve `X-Forwarded-Proto: https`.** Hosting platforms usually handle this automatically. If you add your own plain HTTP proxy, set the header yourself.
+- **The two remote-access declarations from the [configuration reference](/docs/reference/configuration)**: `OK_EXTERNAL_URL` names the public origin, and `OK_ALLOW_EXTERNAL=1` consents to exposure.
 
 Anything that checks those boxes, whether a hosting platform, an orchestrator, or a box under your desk, will run the image.
 
@@ -33,7 +33,7 @@ RUN apt-get update \
 RUN npm install -g @inkeep/open-knowledge
 
 # PORT is the platform-injection contract: Railway/Fly/Cloud Run override
-# it at run time; 8080 is only the local-run default.
+# it at run time. 8080 is only the local default.
 # OK_BIND=0.0.0.0 makes the listener reachable from the container network.
 # Consent (OK_ALLOW_EXTERNAL=1) is deliberately NOT baked: a run without it
 # refuses to boot and names the fix. That refusal is the secure default.
@@ -52,17 +52,20 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 ```
 
-The entrypoint is the container's boot script, run on every start. `ok start` needs an initialized project, and no one is inside the container to run `ok init` by hand, so the script does it: the first boot against an empty volume initializes the project, and every boot after finds `.ok/` already there and goes straight to the server. It's the same pattern the official database images use for an empty data directory. (`--no-mcp --no-skills` only skip scaffolding local agent config and skill files the container doesn't need; the server's own `/mcp` endpoint is always served.)
+The entrypoint is the container's boot script. It runs every time the container starts. `ok start` needs an initialized project, but no one is inside the container to run `ok init`. The script handles this automatically. The first boot initializes the project on the empty volume. Later boots find `.ok/` and start the server directly. Official database images use the same pattern for empty data directories.
+
+The `--no-mcp --no-skills` flags only skip local agent configuration and skill files that the container does not need. The server still provides its `/mcp` endpoint.
 
 ```sh title="entrypoint.sh"
 #!/bin/sh
 # First-boot init: scaffold the project exactly once, on an empty volume.
-# Any initialized (or restored) volume skips straight to `ok start`.
+# An initialized or restored volume starts the server.
 # stdin is closed so `ok init` takes its non-TTY defaults and can never
 # hang on a prompt.
 set -eu
-if [ ! -d /data/.ok ]; then
-  echo "[entrypoint] /data not initialized — running: ok init --no-mcp --no-skills"
+if [ ! -d /data/.ok ]
+then
+  echo "[entrypoint] /data is not initialized. Running ok init --no-mcp --no-skills"
   ok init --no-mcp --no-skills < /dev/null
 fi
 exec ok start
@@ -80,11 +83,11 @@ docker run --rm -p 8080:8080 -e OK_ALLOW_EXTERNAL=1 -v ok-data:/data open-knowle
 
 | Variable | Container default | Meaning |
 | --- | --- | --- |
-| `PORT` | `8080` | Listen port. Platform-injected `PORT` (Railway, Fly, Cloud Run) overrides it at run time; don't set it yourself on those platforms. |
-| `OK_BIND` | `0.0.0.0` | Bind address list. On an IPv6-only network set `::` instead (dual-stack, serves IPv4 too); don't combine `0.0.0.0 ::` on one port, since the dual-stack listener collides. |
+| `PORT` | `8080` | Listen port. Railway, Fly, and Cloud Run set `PORT` automatically. Do not set it yourself on those platforms. |
+| `OK_BIND` | `0.0.0.0` | Bind address list. On an IPv6-only network, use `::` instead. It also serves IPv4. Do not combine `0.0.0.0 ::` on one port because the listeners conflict. |
 | `OK_ALLOW_EXTERNAL` | unset | Run-time exposure consent. Without it the interlock refuses to boot. |
 | `OK_EXTERNAL_URL` | unset | The public origin the deployment is reached at. Required behind any real domain, or hostname requests are rejected with `403`. |
-| `OK_IDLE_SHUTDOWN` | unset | Idle shutdown already defaults to `off` on a non-loopback bind; set a duration (`30m`) to opt back in. |
+| `OK_IDLE_SHUTDOWN` | unset | Idle shutdown defaults to `off` on a non-loopback bind. Set a duration such as `30m` to turn it back on. |
 
 Health endpoints for platform checks: `GET /healthz` (liveness) and `GET /readyz` (readiness).
 
@@ -94,7 +97,7 @@ The collaboration server is single-writer: one server process per project volume
 
 ## Deploy on Railway
 
-Railway builds the Dockerfile server-side, injects `PORT` and TLS, and hands out a domain; the whole flow is one deploy. From the directory with the `Dockerfile` and `entrypoint.sh`:
+Railway builds the Dockerfile, sets `PORT`, enables TLS, and provides a domain. The full setup takes one deploy. Run these commands from the directory that contains `Dockerfile` and `entrypoint.sh`:
 
 ```bash
 railway login
@@ -103,15 +106,15 @@ railway add --service my-kb --variables "OK_ALLOW_EXTERNAL=1"    # create the se
 railway volume --service <service-id> add --mount-path /data     # persistent volume (see note below)
 railway domain --service my-kb --port 8080                       # generate the domain (works pre-deploy)
 railway variables --service my-kb --set 'OK_EXTERNAL_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}'
-railway up --service my-kb --detach                              # one deploy; externalUrl correct from first boot
+railway up --service my-kb --detach                              # one deploy with externalUrl set on first boot
 railway logs --service my-kb                                     # watch the first boot
 ```
 
-`${{RAILWAY_PUBLIC_DOMAIN}}` is a Railway reference variable that resolves to the generated domain at deploy time, so `OK_EXTERNAL_URL` is right from the first boot, with no deploy-then-set-then-redeploy loop. On first boot the entrypoint initializes the empty volume, then the server comes up; the log shows the exposure banner naming your domain. Set the platform health check to `/readyz`.
+`${{RAILWAY_PUBLIC_DOMAIN}}` is a Railway reference variable. It resolves to the generated domain during deployment, so `OK_EXTERNAL_URL` is correct on the first boot. The entrypoint initializes the empty volume and starts the server. The log shows an exposure banner with your domain. Set the platform health check to `/readyz`.
 
 A few Railway-specific caveats:
 
-- **Don't set `PORT`.** Railway injects it, and setting it yourself fights the platform.
+- **Do not set `PORT`.** Railway sets it automatically.
 - **Leave replicas at 1** (see the single-writer callout above).
 - **`railway volume` wants the service ID, not the name.** Every other command above accepts the service name, but on current CLIs `volume` can crash on a name. Get the ID from `railway status --json`.
 - **Subcommand flags drift across Railway CLI versions.** If a command errors, check `railway <cmd> --help` for where the `--service` flag goes.
@@ -119,27 +122,29 @@ A few Railway-specific caveats:
 
 ## Other platforms
 
-The same image runs anywhere Docker does. On Fly.io, mount a volume at `/data`, set the same two `OK_*` variables with the `.fly.dev` domain, and point a check at `/readyz`. With Docker Compose (on a platform *or* your own VPS; the pieces mix and match), you can instead add a `cloudflared` sidecar as the only ingress, skip the public domain entirely, and set `OK_EXTERNAL_URL` to the tunnel hostname.
+The same image runs anywhere Docker is available. On Fly.io, mount a volume at `/data`, set the same two `OK_*` variables with the `.fly.dev` domain, and point a health check at `/readyz`.
 
-The big clouds (AWS, GCP, Azure) run the image well on a VM with Docker, or you can use the [npm method](/docs/self-hosting/methods/npm#a-server-you-manage) directly. Their serverless container products are a weaker fit: they don't always provide a persistent disk that meets the [requirements above](#what-any-host-must-provide), and some scale in ways the single-writer server can't use. Fully serverless platforms (Vercel, Netlify) can't host it: the server is one long-lived stateful process, not request-scoped functions.
+With Docker Compose, you can add a `cloudflared` sidecar as the only ingress. This works on a hosting platform or your own VPS. You do not need a separate public domain. Set `OK_EXTERNAL_URL` to the tunnel hostname.
+
+AWS, Google Cloud, and Azure can run the image on a virtual machine with Docker. You can also use the [CLI method](/docs/self-hosting/methods/cli#a-server-you-manage) on a virtual machine. Serverless container services must provide persistent storage and support one always-on replica. Vercel and Netlify cannot host OpenKnowledge because they run request-based functions instead of one long-lived stateful process.
 
 ## Upgrading
 
-The image installs whatever version of `@inkeep/open-knowledge` is current at build time, so upgrading means rebuilding the image and redeploying onto the same volume. The entrypoint finds the volume already initialized and goes straight to the server; your content, history, and settings all live on the volume and carry over. On Railway, that's `railway up` again from the Dockerfile directory.
+The image installs the current version of `@inkeep/open-knowledge` when you build it. To upgrade, rebuild the image and deploy it to the same volume. The entrypoint finds the existing project and starts the server. Your content, history, and settings remain on the volume. On Railway, run `railway up` again from the Dockerfile directory.
 
 Two practices make this predictable:
 
-- **Pin the version in the Dockerfile** (`RUN npm install -g @inkeep/open-knowledge@<version>`) and bump the line to upgrade. An unpinned install can silently reuse Docker's cached build layer, leaving you on the old version while looking freshly deployed; a pinned bump changes the line, which busts the cache, and it gives you an exact version to rebuild if you ever want to go back.
-- **Snapshot the volume before upgrading**: your platform's volume backup, or a plain tar of `/data`. A snapshot restored onto a fresh volume boots straight to the server, since the entrypoint treats any initialized volume as ready.
+- **Pin the version in the Dockerfile.** Use `RUN npm install -g @inkeep/open-knowledge@<version>` and update the version when you upgrade. An unpinned install can reuse Docker's cached build layer and leave you on an older version. Changing a pinned version clears that cache and gives you an exact version to rebuild later.
+- **Back up the volume before upgrading.** Use the hosting platform's volume backup or create a tar archive of `/data`. Restoring the backup to a new volume preserves the initialized project.
 
 ## Rules for anything in front of the server
 
 Three rules apply to any proxy you place between clients and the container (an auth proxy, nginx, a CDN layer):
 
-- **Preserve the original `Host` header.** The server admits requests by their `Host`, matched against `OK_EXTERNAL_URL`. Many reverse proxies rewrite `Host` to the *upstream* address (`ok:8080`) by default, which no longer matches and gets rejected with `403` on **every** request. Forward the client's host instead: Caddy `header_up Host {host}`, nginx `proxy_set_header Host $host;`. Platform edges preserve it automatically; a proxy you add yourself usually does not.
-- **Never buffer `/mcp`.** It's a streaming (server-sent events) endpoint; a proxy that buffers or compresses it hangs every agent connection until timeout. nginx needs `proxy_buffering off;` on that path; Caddy streams by default; platform edges pass SSE through. The rule applies to any proxy *you* add.
-- **A TLS-terminating proxy that speaks plain HTTP to the server must set `X-Forwarded-Proto: https`.** The server derives secure WebSocket URLs (`wss://`) from that header; a proxy that stamps it back to `http` makes the editor try an insecure `ws://` from an `https://` page, which browsers block, leaving the editor stuck on loading skeletons. Platform edges set it correctly; an auth proxy between the edge and the server often does not.
+- **Preserve the original `Host` header.** The server compares each request's `Host` with `OK_EXTERNAL_URL`. Many reverse proxies replace `Host` with the upstream address, such as `ok:8080`. The server rejects these requests with `403`. Forward the client's host instead. In Caddy, use `header_up Host {host}`. In nginx, set the `Host` header to `$host` with `proxy_set_header`. Hosting platform edges usually preserve it automatically. A proxy you add may not.
+- **Never buffer `/mcp`.** It is a streaming endpoint that uses server-sent events. A proxy that buffers or compresses the response causes agent connections to time out. In nginx, set `proxy_buffering` to `off` for this path. Caddy streams by default. Hosting platform edges pass server-sent events through. Apply this rule to any proxy you add.
+- **A TLS proxy that uses plain HTTP to reach the server must set `X-Forwarded-Proto: https`.** The server uses this header to create secure WebSocket URLs with `wss://`. If the proxy reports `http`, the editor tries to open an insecure `ws://` connection from an `https://` page. Browsers block the connection and the editor does not load. Hosting platform edges usually set the header correctly. An authentication proxy between the edge and the server may not.
 
 ## Next steps
 
-[Try the deployment](/docs/self-hosting/overview#try-it-out) with a real MCP handshake against the public domain, then lock it down: the platform domain has no login of its own, so anyone who finds the URL has full read-write control until you [add authentication](/docs/self-hosting/authentication).
+The platform domain has no login of its own, so anyone who finds the URL has full read and write access. [Add authentication](/docs/self-hosting/authentication) before opening the public domain. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out), then [Connect remote agents](/docs/self-hosting/connecting-agents).

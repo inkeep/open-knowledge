@@ -5,26 +5,28 @@ description: Control who can reach your knowledge base.
 ---
 ## How access works
 
-To control access, you put a gate in front of the server, and that gate has to cover two kinds of clients that sign in differently:
+Add access control in front of the server. The browser and MCP clients use different authentication methods:
 
-- **People** use the editor in a browser. They sign in with an ordinary login (Google or your SSO), and the browser then sends a session cookie on every request, including the live-editing connection.
-- **AI agents** connect to `/mcp` with no browser, so an agent presents a token instead. Usually that is a preset token you generate. Some MCP-aware proxies can instead give the agent its own OAuth popup (via [dynamic client registration](https://datatracker.ietf.org/doc/html/rfc7591) or [client ID metadata documents](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/)), so it signs in and receives its token automatically instead of using a preset one; see [MCP-native edges](#mcp-native-edges).
+- **Browser users** sign in with Google or your SSO. The browser sends a session cookie with editor and live collaboration requests.
+- **AI agents** connect to `/mcp` without a browser. Use a token or an MCP-aware OAuth proxy. OAuth proxies can authenticate agents through [dynamic client registration](https://datatracker.ietf.org/doc/html/rfc7591) or [client ID metadata documents](https://datatracker.ietf.org/doc/draft-ietf-oauth-client-id-metadata-document/). See [MCP-native edges](#mcp-native-edges).
 
-A login fits people but not agents, and a token fits agents but not the editor, so a complete setup provides **both**: a login on the editor and a token on `/mcp`. That pairing is the split, and it shapes every recipe below.
+For a public deployment, protect the editor with a browser login. Protect `/mcp` with a token or MCP-compatible OAuth.
 
-You add the gate in one of two places: on the tunnel or network that reaches the server, or in a proxy in front of it. A tunnel or private network is quickest when you run the server yourself ([npm method](/docs/self-hosting/methods/npm)); a proxy suits a container on a hosting platform ([Docker method](/docs/self-hosting/methods/docker)). The two mix, so a container can sit behind a tunnel and let the tunnel gate it.
+Add access control to the tunnel, private network, or proxy in front of the server. Use a tunnel or private network with the [CLI method](/docs/self-hosting/methods/cli). Use a proxy with the [Docker method](/docs/self-hosting/methods/docker). A container can also run behind a protected tunnel.
 
 ## Tunnels and private networks
 
-If you reach the server through a tunnel or private network, that same layer is the natural place to gate access.
+A tunnel or private network can restrict access before requests reach the server.
 
 ### Tailscale
 
-The simplest option: it sidesteps [the split](#how-access-works). `tailscale serve` admits only devices on your tailnet, so the network itself is the authentication: one gate covering the editor and agents alike, with no login pages and no tokens to mint. Narrow it further with [tailnet ACLs](https://tailscale.com/kb/1018/acls). But `serve` is tailnet-only: it can't reach mobile or cloud agents (Claude iOS, Cursor cloud), which dial from the provider's cloud, not your tailnet. For those, make it public with `tailscale funnel` plus a gate, see [Example: Pomerium](#example-pomerium). If everyone who needs access can join your tailnet, `serve` is usually the right answer.
+`tailscale serve` limits access to devices on your tailnet. It protects both the editor and `/mcp` without a separate login or token. Use [tailnet ACLs](https://tailscale.com/kb/1018/acls) to restrict access further.
+
+`tailscale serve` cannot reach mobile or cloud agents such as Claude on iOS or Cursor cloud because they connect from the provider's network. To support those clients, use `tailscale funnel` with access control such as [Pomerium](#example-pomerium).
 
 ### ngrok
 
-It puts a login at its edge, and expresses the split in a single path-branched policy: an OAuth login for the browser, a Basic credential for agents.
+ngrok can apply separate access rules by path. Use OAuth for the editor and Basic authentication for `/mcp`.
 
 ```yaml title="policy.yaml"
 on_http_request:
@@ -38,26 +40,26 @@ on_http_request:
         config: { provider: google }
 ```
 
-Run the tunnel with `--traffic-policy-file policy.yaml`. Browsers get the Google login; an agent connects headlessly by sending the Basic credential as a header (see [Connecting agents](/docs/self-hosting/connecting-agents)). Replace `CHANGE_ME` with a strong secret (`openssl rand -hex 24`). For SSO instead of consumer OAuth, ngrok's `--oidc` covers Okta, Azure AD, and Google Workspace.
+Run the tunnel with `--traffic-policy-file policy.yaml`. Browsers get the Google login. An agent connects by sending the Basic credential as a header. See [Connect remote agents](/docs/self-hosting/connecting-agents). Replace `CHANGE_ME` with a strong secret from `openssl rand -hex 24`. For SSO, ngrok's `--oidc` supports Okta, Azure AD, and Google Workspace.
 
 ### Cloudflare Tunnel
 
-It pairs with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/): a login policy on the hostname for the browser, and [service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) for agents (standing credentials, with no hourly expiry). Its [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) can go one step further and serve MCP's own OAuth popup to agents (see [MCP-native edges](#mcp-native-edges)); it requires your domain on Cloudflare.
+Pair it with [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/policies/access/). Use a login policy on the hostname for browsers and [service tokens](https://developers.cloudflare.com/cloudflare-one/identity/service-tokens/) for agents. Service tokens do not expire every hour. [Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/) can also provide an OAuth popup for agents. See [MCP-native edges](#mcp-native-edges). Managed OAuth requires your domain to use Cloudflare.
 
 ## In front of a container
 
-A container on a hosting platform gets a public domain with no login of its own, so the gate is a proxy you add. Browsers always get a login; the choice is how agents authenticate:
+Hosting platforms provide a public domain without access control. Add an authentication proxy in front of the container. Use one of these methods for agents:
 
-- A **static bearer token** you generate once and every agent sends as a header. Simplest to run, and the recipe below works this way; the trade-off is one secret shared by everyone.
+- A **static bearer token** sent by every agent as a header. The recipe below uses one shared token.
 - An **MCP OAuth popup**, where the agent logs in with nothing to copy, and the only path that reaches mobile and cloud connectors (Claude iOS, Cursor cloud). The [Pomerium recipe](#example-pomerium) below sets it up.
 
 ### Example: Caddy + oauth2-proxy
 
-Two small proxy services sit in front of the server, and the routing is what makes the [split](#how-access-works) clean. **Caddy** is the public ingress: it sends `/mcp` straight to the server behind a shared bearer token, and everything else through **[oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/)**, which runs the Google login for the browser. Agents never touch the login; browsers never see the token; and because `/mcp` bypasses oauth2-proxy, its streaming stays clear of the login proxy entirely. Three services, none needing a database.
+Two small proxy services sit in front of the server. **Caddy** receives public traffic. It sends `/mcp` directly to the server behind a shared bearer token. It sends everything else through **[oauth2-proxy](https://oauth2-proxy.github.io/oauth2-proxy/)**, which handles Google login for the browser. Agents do not use the browser login. Browsers do not see the agent token. Because `/mcp` bypasses oauth2-proxy, its streaming response is not interrupted by the login proxy. None of the three services needs a database.
 
 The hostnames below are Railway's private network (`*.railway.internal`, IPv6-only). On another Docker host, swap them for your compose service names.
 
-**Caddy** is the public ingress. Bake the config into a small image, since managed platforms can't mount a file:
+**Caddy** receives public traffic. Include its configuration in the image because managed platforms may not support mounting a file:
 
 ```dockerfile title="Dockerfile (caddy)"
 FROM caddy:2
@@ -66,7 +68,7 @@ COPY Caddyfile /etc/caddy/Caddyfile
 
 ```text title="Caddyfile"
 :{$PORT} {
-	# Agents: a shared bearer token, straight to the server.
+	# Agents use a shared bearer token.
 	@mcp path /mcp /mcp/*
 	handle @mcp {
 		route {
@@ -88,7 +90,7 @@ COPY Caddyfile /etc/caddy/Caddyfile
 }
 ```
 
-Set `MCP_TOKEN` on the Caddy service to a value from `openssl rand -hex 24`; that string is what agents send.
+Set `MCP_TOKEN` on the Caddy service to a value from `openssl rand -hex 24`. Agents send this value when they connect.
 
 **oauth2-proxy** runs the browser login. Use the `quay.io/oauth2-proxy/oauth2-proxy:v7` image with your own Google OAuth client (a **Web application** client whose redirect URI is `https://<your-domain>/oauth2/callback`):
 
@@ -124,21 +126,23 @@ An agent then connects with the token and no browser step:
 Four settings decide whether this boots the first time:
 
 - **`OAUTH2_PROXY_WHITELIST_DOMAINS` must list your public domain.** Behind Caddy, oauth2-proxy builds its post-login redirect from the forwarded host and refuses any host not on this list, so without it the login silently loops back to itself.
-- **`OAUTH2_PROXY_COOKIE_SECRET` must decode to 16, 24, or 32 bytes.** `openssl rand -hex 16` gives a valid 32-character value; `openssl rand -base64 32` gives 44 characters, and oauth2-proxy refuses to start.
-- **Caddy must send `X-Forwarded-Proto: https`** (the two `header_up` lines above). TLS terminates at the platform edge, so Caddy speaks plain HTTP inward and would otherwise report the request as `http`, so the server hands the editor a `ws://` socket, which the browser blocks as mixed content on an `https` page and the editor hangs. oauth2-proxy relays that header to its upstream on its own; `OAUTH2_PROXY_REVERSE_PROXY=true` is what makes it trust the forwarded headers for its own client-IP and post-login redirect logic, which the `WHITELIST_DOMAINS` note above depends on. `FLUSH_INTERVAL=100ms` is the [never-buffer rule](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server) for the same path.
+- **`OAUTH2_PROXY_COOKIE_SECRET` must decode to 16, 24, or 32 bytes.** Use `openssl rand -hex 16` to create a valid 32-character value. Do not use `openssl rand -base64 32` because it creates 44 characters and oauth2-proxy will not start.
+- **Caddy must send `X-Forwarded-Proto: https`** using the two `header_up` lines above. TLS ends at the platform edge, so Caddy uses plain HTTP between the edge and the server. Without this header, the server gives the editor a `ws://` connection. The browser blocks it as mixed content on an `https` page and the editor does not load. oauth2-proxy forwards the header automatically. Set `OAUTH2_PROXY_REVERSE_PROXY=true` so oauth2-proxy trusts forwarded headers for client IP addresses and post-login redirects. Set `FLUSH_INTERVAL=100ms` to follow the [never-buffer rule](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server).
 - **Bind to IPv6 where the platform's private network requires it.** Railway's is IPv6-only, so `OK_BIND=::` and `HTTP_ADDRESS=[::]:4180`, and Caddy dials the `*.railway.internal` names.
 
 ### Example: Pomerium
 
-Use this when you need OpenKnowledge from mobile or cloud agents (Claude iOS, Cursor cloud) with a per-user login: a public endpoint where each agent gets its own OAuth token, no shared secret and no tailnet membership. It is two layers, not one. Any public recipe (ngrok, Cloudflare, the Caddy one above) gives you the **public endpoint**; [Pomerium](https://www.pomerium.com/) adds **per-user OAuth** at the gate, serving MCP's own OAuth on `/mcp` and a cookie login for the editor from one config.
+Use this setup when mobile or cloud agents need their own login. Examples include Claude on iOS and Cursor cloud. Each agent gets its own OAuth token, so there is no shared secret or tailnet membership.
 
-The reason those clients specifically need this: Claude iOS and Cursor's cloud agents dial your server from the provider's cloud, not from the device, so the endpoint has to be genuinely public. A phone has no `mcp-remote` fallback and isn't on your tailnet, so `tailscale serve` can't reach it; `tailscale funnel` (public) plus Pomerium can.
+This setup has two layers. A public access method such as ngrok, Cloudflare, or the Caddy example above provides the **public endpoint**. [Pomerium](https://www.pomerium.com/) adds **per-user OAuth**. It provides OAuth for `/mcp` and a cookie login for the editor from one configuration.
+
+Claude on iOS and Cursor's cloud agents connect from the provider's cloud, not from your device. The endpoint must be publicly reachable. A phone cannot use the `mcp-remote` fallback and is not on your tailnet. `tailscale serve` cannot reach it. You can use the public `tailscale funnel` with Pomerium instead.
 
 ```text
 Internet  (Claude / Cursor cloud dial in from here)
    |  https://<host>/ (editor)   +   https://<host>/mcp (agents)
    v  Tailscale funnel: public TLS on your *.ts.net name
-   v  Pomerium: per-user Google login; MCP OAuth on /mcp, cookie login on the editor
+   v  Pomerium: MCP OAuth on /mcp, cookie session for the browser editor
    v  OpenKnowledge: loopback, told its public externalUrl
 ```
 
@@ -154,7 +158,7 @@ The "external access enabled, no server-side auth" banner is expected here: Pome
 **Pomerium** runs as a container with a persistent databroker, so sessions and tokens survive a restart. It needs your own Google OAuth client (a **Web application** client whose redirect URI is `https://<host>:8443/oauth2/callback`), plus two secrets and a signing key you generate locally:
 
 ```bash
-# Run this to write .env (the $(...) execute now; they are not literal values).
+# Run this to write .env. The $(...) expressions execute now.
 cat > .env <<EOF
 SHARED_SECRET=$(openssl rand -base64 32)
 COOKIE_SECRET=$(openssl rand -base64 32)
@@ -176,7 +180,7 @@ autocert: false
 databroker_storage_type: file
 databroker_storage_connection_string: file:///data/databroker
 
-# Claude authenticates with client ID metadata documents (CIMD); Cursor with
+# Claude uses client ID metadata documents (CIMD). Cursor uses
 # dynamic client registration (DCR). Enable both.
 runtime_flags:
   mcp_dynamic_client_registration: true
@@ -226,7 +230,9 @@ volumes:
   pomerium-data:
 ```
 
-Bring it up with `docker compose up -d`. Two portability notes: the `pomerium/pomerium:main` tag is required for now, since Pomerium's MCP support is recent and not yet in a stable release. And on Linux without Docker Desktop, `host.docker.internal` may not reach a loopback-bound server (`host-gateway` resolves to the Docker bridge IP, not `127.0.0.1`); run Pomerium with `--network host`, or bind the server to the bridge gateway and restrict it with a firewall rule.
+Start it with `docker compose up -d`. The `pomerium/pomerium:main` tag is required because Pomerium's MCP support is not yet in a stable release.
+
+On Linux without Docker Desktop, `host.docker.internal` may not reach a server bound to loopback. `host-gateway` resolves to the Docker bridge IP instead of `127.0.0.1`. Run Pomerium with `--network host`, or bind the server to the bridge gateway and restrict it with a firewall rule.
 
 **Tailscale funnel** makes it public on your `*.ts.net` name (MagicDNS, HTTPS, and Funnel must be enabled for the node):
 
@@ -235,30 +241,30 @@ tailscale funnel --bg --https=443  https+insecure://127.0.0.1:8085
 tailscale funnel --bg --https=8443 https+insecure://127.0.0.1:8085
 ```
 
-Then point a custom MCP connector in Claude (iOS or Desktop) or Cursor at `https://<host>/mcp` and complete the Google login. [Connecting agents](/docs/self-hosting/connecting-agents) has the per-client steps.
+Then point a custom MCP connector in Claude (iOS or Desktop) or Cursor at `https://<host>/mcp` and complete the Google login. [Connect remote agents](/docs/self-hosting/connecting-agents) has the per-client steps.
 
 The settings that are easy to miss:
 
 - **Two routes, not one.** A single `mcp: server` route answers the browser with "This is an MCP route." Split `/mcp` (agents) from the catch-all (editor).
 - **`allow_websockets: true`** on the editor route, or the editor loads but never syncs (the `/collab` socket is blocked).
-- **`preserve_host_header: true`** so the public host reaches the server as its `externalUrl`; without it every request is a `403`.
-- **Both DCR and CIMD.** `mcp_dynamic_client_registration: true` covers Cursor; `mcp_allowed_client_id_domains` covers Claude, whose `client_id` is a URL that Pomerium fetches and checks against that list.
+- **Set `preserve_host_header: true`.** This sends the public host to the server as its `externalUrl`. Without it, every request returns `403`.
+- **Enable both DCR and CIMD.** `mcp_dynamic_client_registration: true` supports Cursor. `mcp_allowed_client_id_domains` supports Claude. Pomerium fetches Claude's `client_id` URL and checks it against this list.
 - **A persistent databroker** (above), or a restart drops every token.
 
 ### MCP-native edges
 
 Alternatives to the Pomerium recipe above, as pointers rather than full recipes:
 - **[obot mcp-oauth-proxy](https://github.com/obot-platform/mcp-oauth-proxy)**: an MCP-aware OAuth proxy that implements dynamic client registration, the flavor today's clients (Cursor among them) speak.
-- **[Cloudflare Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/)**: serves the MCP OAuth popup at Cloudflare's edge, alongside the [Access](#tunnels-and-private-networks) login for the UI; it requires your domain on Cloudflare.
+- **[Cloudflare Managed OAuth](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/managed-oauth/)** provides the MCP OAuth popup at Cloudflare's edge. It works with the [Access](#tunnels-and-private-networks) login for the UI and requires your domain to use Cloudflare.
 
 ## Troubleshooting
 
 Common symptoms and their fixes:
 
 - **The editor loads but never syncs, and the browser console shows a `ws://` "Mixed Content" error.** The proxy terminates TLS but reports the request to the server as plain HTTP, so the server hands the editor an insecure `ws://` socket. Make the proxy forward `X-Forwarded-Proto: https` (Caddy: `header_up X-Forwarded-Proto https`).
-- **Every request returns `403`.** The `Host` reaching the server doesn't match `OK_EXTERNAL_URL`, usually because the proxy rewrote `Host` to the upstream address. Preserve the client's `Host` (Caddy: `header_up Host {host}`) and point `OK_EXTERNAL_URL` at the public origin. Full [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server).
-- **The browser login loops back to the login page.** oauth2-proxy is rejecting its own post-login redirect because the domain isn't allowed. Add your public domain to `OAUTH2_PROXY_WHITELIST_DOMAINS`.
-- **An agent gets an HTML login page back from `/mcp`.** The `/mcp` path is behind the browser login instead of a token. Route `/mcp` around the login proxy and gate it with a token, or if you use an MCP-OAuth edge, confirm the client supports it (see [Connecting agents](/docs/self-hosting/connecting-agents)).
-- **`/mcp` hangs or times out.** A proxy in front is buffering the streamed response. Turn buffering off on `/mcp` (nginx `proxy_buffering off;`, oauth2-proxy `FLUSH_INTERVAL=100ms`; Caddy streams by default).
+- **Every request returns `403`.** The request `Host` does not match `OK_EXTERNAL_URL`. Configure the proxy to preserve the client's `Host`. For Caddy, use `header_up Host {host}`. Set `OK_EXTERNAL_URL` to the public origin. See the full [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server).
+- **The browser login returns to the login page.** oauth2-proxy is rejecting the post-login redirect because the domain is not allowed. Add the public domain to `OAUTH2_PROXY_WHITELIST_DOMAINS`.
+- **An agent gets an HTML login page back from `/mcp`.** The `/mcp` path is behind the browser login instead of a token. Route `/mcp` around the login proxy and gate it with a token, or if you use an MCP-OAuth edge, confirm the client supports it (see [Connect remote agents](/docs/self-hosting/connecting-agents)).
+- **`/mcp` hangs or times out.** A proxy is buffering the streamed response. Turn off buffering for `/mcp`. In nginx, set `proxy_buffering` to `off`. For oauth2-proxy, set `FLUSH_INTERVAL=100ms`. Caddy streams by default.
 
-Once auth is in place, [Connecting agents](/docs/self-hosting/connecting-agents) covers how each client presents its credential.
+Once auth is in place, [Connect remote agents](/docs/self-hosting/connecting-agents) covers how each client presents its credential.

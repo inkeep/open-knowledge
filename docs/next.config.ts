@@ -122,6 +122,16 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
       {
+        source: '/docs/self-hosting/methods/npm',
+        destination: '/docs/self-hosting/methods/cli',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/methods/npm/',
+        destination: '/docs/self-hosting/methods/cli',
+        permanent: true,
+      },
+      {
         source: '/docs/deploy/connecting-agents',
         destination: '/docs/self-hosting/connecting-agents',
         permanent: true,

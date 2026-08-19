@@ -1,7 +1,7 @@
 ---
-title: npm
-icon: custom/Npm
-description: Run OpenKnowledge on your own machine, reached through a tunnel or reverse proxy.
+title: CLI
+icon: LuTerminal
+description: Run OpenKnowledge with the CLI on your computer, a VM, or a server.
 ---
 Install OpenKnowledge from npm, then run the server yourself:
 
@@ -9,11 +9,11 @@ Install OpenKnowledge from npm, then run the server yourself:
 npm install -g @inkeep/open-knowledge
 ```
 
-Run it on your laptop for the quickest start, or on a server to keep it always available. A tunnel or reverse proxy gives the server its public URL. New to these settings? Read [How exposure works](/docs/self-hosting/overview#how-exposure-works) first.
+Run OpenKnowledge on a laptop or an always-on server. Use a private network, tunnel, or reverse proxy to make it reachable. See the [self-hosting overview](/docs/self-hosting/overview) to choose an access method.
 
 ## Your laptop, behind a tunnel
 
-The quickest path: OpenKnowledge already runs your project, and a tunnel gives it a public HTTPS URL. The catch is that it's only reachable while the machine is awake. Close the lid and your agents lose access. To keep it always available, use [a server you manage](#a-server-you-manage) or the [Docker method](/docs/self-hosting/methods/docker).
+A tunnel gives the OpenKnowledge server on your laptop an HTTPS URL. The server is available only while the laptop is awake. For continuous access, use [an always-on server](#a-server-you-manage) or the [Docker method](/docs/self-hosting/methods/docker).
 
 ### 1. Pin a port and open a tunnel
 
@@ -27,7 +27,11 @@ server:
 Any HTTPS tunnel works. It forwards a public URL to that local port. Pick one:
 
 <Callout type="info">
-Install your tunnel's client on the machine first if it isn't already.
+Install the tunnel client on the machine before continuing.
+</Callout>
+
+<Callout type="warn">
+Tailscale Serve stays inside your tailnet. Before starting ngrok or Cloudflare Tunnel, [set up authentication](/docs/self-hosting/authentication) at that edge. Do not open an unprotected public URL.
 </Callout>
 
 <Tabs groupId="ok-tunnel" persist items={['Tailscale', 'ngrok', 'Cloudflare Tunnel']}>
@@ -47,7 +51,7 @@ If `serve` says Tailscale is stopped, run `tailscale up` first (on a Linux serve
 
 <Tab>
 
-Public URL; add edge auth to restrict (see [Authentication](/docs/self-hosting/authentication)).
+Public URL. Add access control at the edge. See [Authentication](/docs/self-hosting/authentication).
 
 ```bash
 ngrok http 8080
@@ -68,7 +72,7 @@ cloudflared tunnel --url http://localhost:8080
 
 </Tabs>
 
-Each one gives you a public HTTPS URL. That URL is your `server.externalUrl`.
+Each one gives you an HTTPS URL that clients can reach. Tailscale keeps it private. ngrok and Cloudflare need access control at the edge. That URL is your `server.externalUrl`.
 
 ### 2. Configure and start
 
@@ -81,7 +85,7 @@ server:
 ```
 
 <Callout type="warn">
-**`server.externalUrl` must be the exact address people will use**: the full tunnel URL, with `https://` and no trailing path. If it doesn't match what the tunnel forwards, the server turns those requests away with a `403` error.
+**`server.externalUrl` must match the public address.** Use the full tunnel URL with `https://` and no trailing path. A mismatch returns `403`.
 </Callout>
 
 Then consent on this machine, in the gitignored per-machine config:
@@ -106,17 +110,17 @@ The server prints a warning banner naming the public origin on every exposed sta
 OK_ALLOW_EXTERNAL=1 OK_IDLE_SHUTDOWN=off ok start --external-url https://<your-tunnel-url> --port 8080
 ```
 
-Now [try it out](/docs/self-hosting/overview#try-it-out).
+If the URL is public, [add access control](/docs/self-hosting/authentication) before opening it. Tailscale Serve already limits access to your tailnet. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out).
 
 ## A server you manage
 
-A VPS, Mac mini, or any computer you can leave running. It keeps your knowledge base available at all times, and you keep full control of the box.
+Use a VPS, Mac mini, or another always-on computer. This keeps the knowledge base available continuously.
 
-### Set up the box
+### Set up the server
 
-On a VPS, providers like Hetzner, DigitalOcean, and Lightsail all work. Pick Ubuntu 24.04 (1 GB RAM is comfortable; 512 MB runs a small knowledge base), add your SSH key at creation, and `ssh root@<ip>` in. Every step below happens in that shell.
+Create an Ubuntu 24.04 VPS with Hetzner, DigitalOcean, Lightsail, or another provider. Allocate 1 GB of RAM. A small knowledge base can run with 512 MB. Add an SSH key during setup, then connect with `ssh root@<ip>`. Run the following commands in that shell.
 
-Install OpenKnowledge (and Node 24 first, on a fresh box):
+Install Node 24 and OpenKnowledge:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo bash - && sudo apt-get install -y nodejs git
@@ -131,11 +135,11 @@ mkdir ~/knowledge && cd ~/knowledge && ok init
 
 To start from existing notes, `git clone` them as the project directory instead of `mkdir`, then run `ok init` inside.
 
-### Give it a URL
+### Configure network access
 
-Two good options:
+Choose one of these access methods:
 
-- **A tunnel**: exactly the [laptop steps above](#1-pin-a-port-and-open-a-tunnel), run on the server. Tailscale is especially natural here: the box joins your tailnet and only your devices can reach it, with nothing exposed to the public internet.
+- **A tunnel.** Follow the [laptop tunnel steps](#1-pin-a-port-and-open-a-tunnel) on the server. With Tailscale, add the server to your tailnet. Only devices on the tailnet can connect.
 - **Your own domain with a reverse proxy.** Point DNS at the server and let [Caddy](https://caddyserver.com/) terminate TLS (it provisions certificates automatically):
 
   ```text title="/etc/caddy/Caddyfile"
@@ -150,9 +154,9 @@ Two good options:
     externalUrl: https://notes.example.com
   ```
 
-  Caddy handles the [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server) (Host preservation, `X-Forwarded-Proto`, no buffering on `/mcp`) automatically; just don't add an `encode` directive on `/mcp`. A different proxy (nginx, etc.) needs those set by hand, or requests 403 and the editor's WebSocket fails.
+  Caddy automatically handles the [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server), including Host preservation, `X-Forwarded-Proto`, and no buffering on `/mcp`. Do not add an `encode` directive on `/mcp`. Configure these rules yourself when using another proxy such as nginx. Without them, requests may return `403` and the editor's WebSocket may fail.
 
-Either way, consent on the box (`.ok/local/config.yml` with `allowExternal: true` and `idleShutdown: "off"`, as in the laptop path; the same [config-and-start step](#2-configure-and-start) applies unchanged).
+For either option, allow external access in `.ok/local/config.yml` by setting `allowExternal: true` and `idleShutdown: "off"`. Use the same [configuration and start steps](#2-configure-and-start) as the laptop setup.
 
 ### Run it as a service
 
@@ -173,7 +177,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-This matches the `ssh root@<ip>` VPS setup above (project at `/root/knowledge`, `server.*` set in config; the unit needs no flags). If you log in as a different user, set `User` and `WorkingDirectory` to that user and their project path. For a hardened setup, run it under a dedicated unprivileged user (`sudo useradd --system --create-home openknowledge`) rather than `root`, with `User` and `WorkingDirectory` set to match.
+This matches the `ssh root@<ip>` VPS setup above. The project is at `/root/knowledge`, and the `server.*` settings are in the config file, so the unit needs no flags. If you use a different account, update `User` and `WorkingDirectory` to match that account and project path. For a more secure setup, create a dedicated unprivileged account with `sudo useradd --system --create-home openknowledge`. Then update `User` and `WorkingDirectory` to match.
 
 Register the service so it starts on every boot, and launch it now:
 
@@ -182,10 +186,10 @@ sudo systemctl enable --now openknowledge
 ```
 
 <Callout>
-**On macOS and Windows**, systemd isn't available. For a simple always-on setup, run `ok start` in a terminal and configure the machine not to sleep. For unattended restarts, use the platform's service manager: launchd on macOS or Task Scheduler / a Windows service on Windows.
+**macOS and Windows do not use systemd.** Run `ok start` in a terminal and disable sleep. For automatic restarts, use launchd on macOS, or Task Scheduler or a Windows service on Windows.
 </Callout>
 
-Now [try it out](/docs/self-hosting/overview#try-it-out), then [restrict who can reach it](/docs/self-hosting/authentication).
+If the URL is public, [add access control](/docs/self-hosting/authentication) before opening it. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out).
 
 ## Back up to a git remote
 
