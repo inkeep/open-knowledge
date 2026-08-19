@@ -1,6 +1,16 @@
 {
   "name": "@inkeep/open-knowledge",
   "version": "0.58.4",
+  "description": "Local-first, agent-friendly Markdown knowledge base with a cross-platform CLI and web editor",
+  "keywords": [
+    "knowledge-base",
+    "markdown",
+    "local-first",
+    "mcp",
+    "ai",
+    "cli"
+  ],
+  "homepage": "https://openknowledge.ai",
   "license": "GPL-3.0-or-later",
   "private": false,
   "type": "module",
@@ -43,7 +53,8 @@
     "test": "pnpm run build:schema && vitest run",
     "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build"
+    "verify:package": "node scripts/verify-package-surface.mjs",
+    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run verify:package"
   },
   "dependencies": {
     "@inquirer/checkbox": "^5.0.11",
