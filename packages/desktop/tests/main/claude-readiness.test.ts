@@ -105,16 +105,22 @@ describe('mcpStatusFromClassification', () => {
 });
 
 describe('cliProbeArgs', () => {
-  test('builds the login-interactive `command -v <bin>` argv for any binary', () => {
-    expect(cliProbeArgs('codex')).toEqual(['-l', '-i', '-c', 'command -v codex']);
-    expect(cliProbeArgs('cursor-agent')).toEqual(['-l', '-i', '-c', 'command -v cursor-agent']);
+  test('matches each platform’s interactive PTY argv for any binary', () => {
+    expect(cliProbeArgs('codex', 'darwin')).toEqual(['-l', '-i', '-c', 'command -v codex']);
+    expect(cliProbeArgs('codex', 'linux')).toEqual(['-i', '-c', 'command -v codex']);
+    expect(cliProbeArgs('cursor-agent', 'darwin')).toEqual([
+      '-l',
+      '-i',
+      '-c',
+      'command -v cursor-agent',
+    ]);
     // The claude argv is just the generic builder applied to `claude`.
-    expect(CLAUDE_PROBE_ARGS).toEqual(cliProbeArgs('claude'));
+    expect(CLAUDE_PROBE_ARGS).toEqual(cliProbeArgs('claude', process.platform));
   });
 });
 
 describe('runLoginShellProbe', () => {
-  test('spawns the supplied shell with the login-interactive command -v argv', async () => {
+  test('spawns the supplied shell with the platform command-v argv', async () => {
     const { child, emitExit } = makeFakeChild();
     const { timers } = makeFakeTimers();
     let spawnedFile = '';
@@ -146,7 +152,7 @@ describe('runLoginShellProbe', () => {
       'zsh',
       timers,
       undefined,
-      cliProbeArgs('cursor-agent'),
+      cliProbeArgs('cursor-agent', 'darwin'),
     );
     emitExit(0);
     await p;
@@ -464,7 +470,7 @@ describe('resolvePlatformCliInstalledMap', () => {
     expect(probeWindows).toHaveBeenCalledWith('cursor-agent');
   });
 
-  test('POSIX hosts keep using the login-shell probe', async () => {
+  test('macOS probes with the login-interactive shell argv', async () => {
     const probePosix = vi.fn(async (args: readonly string[]) =>
       args.at(-1) === 'command -v cursor-agent' ? 0 : 127,
     );
@@ -479,6 +485,23 @@ describe('resolvePlatformCliInstalledMap', () => {
     expect(map.cursor).toBe(true);
     expect(map.codex).toBe(false);
     expect(probeWindows).not.toHaveBeenCalled();
-    expect(probePosix).toHaveBeenCalledWith(cliProbeArgs('cursor-agent'));
+    expect(probePosix).toHaveBeenCalledWith(cliProbeArgs('cursor-agent', 'darwin'));
+  });
+
+  test('Linux probes with the same non-login interactive argv as its PTY', async () => {
+    const probed: readonly string[][] = [];
+    const probePosix = vi.fn(async (args: readonly string[]) => {
+      (probed as string[][]).push([...args]);
+      return 127;
+    });
+
+    await resolvePlatformCliInstalledMap({
+      platform: 'linux',
+      probePosix,
+      probeWindows: vi.fn(async () => false),
+    });
+
+    expect(probed).toContainEqual(['-i', '-c', 'command -v claude']);
+    expect(probed).toContainEqual(['-i', '-c', 'command -v cursor-agent']);
   });
 });

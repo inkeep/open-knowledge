@@ -23,13 +23,17 @@ vi.doMock('@lingui/react/macro', () => ({
 
 type DispatchMock = ReturnType<typeof vi.fn>;
 
-function installBridge(platform: string, mode: 'editor' | 'note' = 'editor'): DispatchMock {
-  // `query` resolves null so the snapshot-gated rows stay hidden; the two
-  // rows under test are unconditional.
-  const dispatch = vi.fn(() => Promise.resolve(null));
+function installBridge(
+  platform: string,
+  mode: 'editor' | 'note' = 'editor',
+  options: { ptyAvailable?: boolean; queryResult?: unknown } = {},
+): DispatchMock {
+  const dispatch = vi.fn((request: { kind: string }) =>
+    Promise.resolve(request.kind === 'query' ? (options.queryResult ?? null) : undefined),
+  );
   (window as unknown as { okDesktop?: unknown }).okDesktop = {
     platform,
-    config: { mode },
+    config: { mode, ptyAvailable: options.ptyAvailable ?? false },
     menu: { dispatch },
   };
   return dispatch;
@@ -166,5 +170,76 @@ describe('AppMenubar View navigation history', () => {
       kind: 'menu-action',
       action: 'navigate-forward',
     });
+  });
+});
+
+describe('AppMenubar View terminal toggle', () => {
+  const snapshot = (terminalVisible: boolean) => ({
+    recentProjects: [],
+    spellCheckEnabled: true,
+    showDevToolsMenu: false,
+    canCheckForUpdates: false,
+    canReconfigureMcpWiring: false,
+    activeTarget: { kind: null },
+    viewMenuState: {
+      showHiddenFiles: false,
+      showOkFolders: false,
+      showOnlyMarkdownFiles: false,
+      showSkillsSection: true,
+      canExpandAll: true,
+      canCollapseAll: true,
+      sidebarVisible: true,
+      docPanelVisible: true,
+      terminalVisible,
+    },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    cleanup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+  });
+
+  test('Linux shows the terminal toggle and dispatches it through the shared menu action', async () => {
+    const dispatch = installBridge('linux', 'editor', {
+      ptyAvailable: true,
+      queryResult: snapshot(false),
+    });
+    await openMenu('View');
+
+    const item = await screen.findByRole('menuitem', { name: /Show Terminal/ });
+    expect(item.textContent).toContain('Ctrl+J');
+    dispatch.mockClear();
+
+    await userEvent.click(item);
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: 'menu-action',
+      action: 'toggle-terminal',
+    });
+  });
+
+  test('Linux labels a visible terminal with the inverse action', async () => {
+    installBridge('linux', 'editor', {
+      ptyAvailable: true,
+      queryResult: snapshot(true),
+    });
+    await openMenu('View');
+
+    expect(await screen.findByRole('menuitem', { name: /Hide Terminal/ })).not.toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Show Terminal/ })).toBeNull();
+  });
+
+  test('Windows keeps the terminal toggle absent while PTYs are unavailable', async () => {
+    installBridge('win32', 'editor', {
+      ptyAvailable: false,
+      queryResult: snapshot(false),
+    });
+    await openMenu('View');
+
+    expect(screen.queryByRole('menuitem', { name: /Show Terminal/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Hide Terminal/ })).toBeNull();
   });
 });

@@ -6351,6 +6351,7 @@ msgstr "Sembunyikan bilah sisi"
 msgid "Hide skill nodes"
 msgstr "Sembunyikan simpul keterampilan"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Sembunyikan Terminal"
@@ -11667,6 +11668,7 @@ msgstr "Tampilkan simpul keterampilan"
 msgid "Show source"
 msgstr "Tampilkan sumber"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Tampilkan Terminal"

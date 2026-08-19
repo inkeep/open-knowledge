@@ -56,15 +56,13 @@ type Availability =
 function useSlidevStatus(): Availability {
   const [availability, setAvailability] = useState<Availability>({ kind: 'checking' });
 
-  // `probe` is defined inside the effect (not the component body) so it shares
-  // the effect's `active` flag and keeps a single stable identity — the same
-  // function reference registers the focus listener below and removes it on
-  // cleanup, which a body-level callback (unmemoizable under the React Compiler)
-  // could not guarantee.
+  // `probe` lives inside the effect so it shares the `active` flag and keeps
+  // one identity for registering and removing the focus listener. A body-level
+  // callback cannot guarantee that under the React Compiler.
   useEffect(() => {
     // Guards a late `status()` resolution from writing state into an unmounted
-    // panel — the round-trip outlives a quick open-and-close of Settings. The
-    // sibling probe in SlidesToolbarControls carries the same flag.
+    // panel after Settings closes quickly. The sibling probe in
+    // SlidesToolbarControls carries the same flag.
     let active = true;
     const probe = () => {
       const slides = window.okDesktop?.slides;
@@ -81,20 +79,19 @@ function useSlidevStatus(): Availability {
           );
         })
         // Trust boundary: an IPC round-trip to a separate process. A rejected
-        // invoke means the probe could not run — reported as `check-failed`
-        // (neutral copy), NOT `missing`: telling the user to install Slidev when
-        // the bridge broke would send them after software that may be present.
-        // Logged so a broken bridge stays distinguishable in diagnostics.
+        // invoke means the probe could not run, so report neutral `check-failed`
+        // instead of `missing`. Otherwise a broken bridge could tell the user
+        // to install software that is already present. Logging keeps those
+        // failures distinguishable in diagnostics.
         .catch((err: unknown) => {
           console.warn('[slides] settings availability probe failed:', err);
           if (active) setAvailability({ kind: 'check-failed' });
         });
     };
     probe();
-    // Re-probe when the user comes back to the window. The common first-run
-    // path is: see "not installed" → install in a terminal → switch back. That
-    // switch is the focus event, so the panel is correct by the time they look
-    // at it.
+    // Re-probe when the user returns to the window. The common first-run path
+    // is: see "not installed" → install in a terminal → switch back. That focus
+    // event refreshes the panel before they look at it.
     window.addEventListener('focus', probe);
     return () => {
       active = false;
@@ -108,8 +105,8 @@ function useSlidevStatus(): Availability {
 /**
  * Whether this host can actually open a terminal tab and run something in it.
  *
- * The terminal dock is dark on Windows and Linux — node-pty ships macOS-only,
- * so `config.ptyAvailable` is false there. Without this gate, "Run in terminal"
+ * `config.ptyAvailable` is false where the packaged app cannot spawn a PTY.
+ * Without this gate, "Run in terminal"
  * would close Settings, fire the request, and produce no session at all: the
  * dock never creates a PTY, so the click reads as the app swallowing it. Same
  * rule EditorPane states for every terminal affordance — a control that cannot
@@ -192,9 +189,9 @@ function StatusRow({ availability }: { availability: Availability }) {
             variant="outline"
             data-testid="slides-run-install"
             onClick={() => {
-              // Close Settings first: the dialog is hash-routed and its close is a
-              // single `history.back()`, so leaving it open would put the terminal
-              // behind a modal the user then has to dismiss to watch the install.
+              // Close Settings first. The hash-routed dialog closes through one
+              // `history.back()`; leaving it open would hide the terminal behind
+              // a modal while the install runs.
               if (typeof window !== 'undefined' && isSettingsHashOpen(window.location.hash)) {
                 window.history.back();
               }
@@ -211,8 +208,8 @@ function StatusRow({ availability }: { availability: Availability }) {
           rel="noopener noreferrer"
           onClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
           onAuxClick={(e) => dispatchExternalLinkClick(e, SLIDEV_INSTALL_DOCS)}
-          // Names its destination for anyone listing links out of context, where
-          // a bare "Other ways to install" says less.
+          // Name the destination for link lists where a bare “Other ways to
+          // install” lacks context.
           aria-label={t`Other ways to install Slidev`}
           className="inline-flex items-center gap-0.5 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
           data-testid="slides-install-docs-link"
@@ -236,8 +233,8 @@ export function SlidesPluginSection() {
     >
       <SettingsSectionHeader
         titleId="settings-plugin-slides-title"
-        // A product name, not a translatable label — passed raw the way the
-        // markdownlint panel passes its own.
+        // Product name, not a translatable label; the markdownlint panel passes
+        // its name raw too.
         title="Slidev"
         scope="user"
         beta

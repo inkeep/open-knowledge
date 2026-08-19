@@ -6355,6 +6355,7 @@ msgstr "Ocultar la barra lateral"
 msgid "Hide skill nodes"
 msgstr "Ocultar los nodos de habilidades"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Ocultar Terminal"
@@ -11671,6 +11672,7 @@ msgstr "Mostrar los nodos de habilidades"
 msgid "Show source"
 msgstr "Mostrar el código"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Mostrar Terminal"

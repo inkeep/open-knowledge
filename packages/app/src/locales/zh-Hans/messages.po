@@ -6355,6 +6355,7 @@ msgstr "隐藏侧边栏"
 msgid "Hide skill nodes"
 msgstr "隐藏技能节点"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "隐藏 Terminal"
@@ -11671,6 +11672,7 @@ msgstr "显示技能节点"
 msgid "Show source"
 msgstr "显示源码"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "显示 Terminal"

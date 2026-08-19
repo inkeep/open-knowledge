@@ -6355,6 +6355,7 @@ msgstr "سائیڈ بار چھپائیں"
 msgid "Hide skill nodes"
 msgstr "مہارت نوڈز چھپائیں"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Terminal چھپائیں"
@@ -11671,6 +11672,7 @@ msgstr "مہارت نوڈز دکھائیں"
 msgid "Show source"
 msgstr "سورس دکھائیں"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Terminal دکھائیں"

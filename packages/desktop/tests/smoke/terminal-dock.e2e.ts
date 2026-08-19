@@ -9,7 +9,8 @@
  * banner.
  *
  * Skip gates mirror the sibling smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, and the electron-vite build must exist (out/main/index.js).
+ * a PTY-capable platform, and the electron-vite build must exist
+ * (out/main/index.js).
  */
 
 import {
@@ -24,17 +25,18 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 interface SeedOpts {
   /** Pre-grant consent by seeding .ok/local/config.yml terminal.enabled: true. */
@@ -193,10 +195,22 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
+async function dispatchRendererMenuAction(
+  app: ElectronApplication,
+  action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
+): Promise<void> {
+  const page = await findEditorWindow(app);
+  await page.evaluate(async (menuAction) => {
+    const menu = window.okDesktop?.menu;
+    if (!menu) throw new Error('renderer menu bridge is unavailable');
+    await menu.dispatch({ kind: 'menu-action', action: menuAction });
+  }, action);
+}
+
 /** Click the View → Show/Hide Terminal application-menu item (real toggle path
- *  on desktop — ⌘J is its OS-captured accelerator). Returns the item label. */
+ *  on desktop — CmdOrCtrl+J is its OS-captured accelerator). Returns the item label. */
 async function clickViewTerminalItem(app: ElectronApplication): Promise<string> {
-  return app.evaluate(async ({ Menu }) => {
+  const label = await app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) throw new Error('application menu is unavailable');
     const view = menu.items.find((i) => i.label === 'View');
@@ -205,9 +219,11 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<string> 
     );
     if (!item) throw new Error('View menu is missing the required Terminal visibility item');
     const label = item.label;
-    item.click();
+    if (process.platform === 'darwin') item.click();
     return label;
   });
+  if (process.platform !== 'darwin') await dispatchRendererMenuAction(app, 'toggle-terminal');
+  return label;
 }
 
 async function viewTerminalLabel(app: ElectronApplication): Promise<string> {
@@ -221,6 +237,19 @@ async function viewTerminalLabel(app: ElectronApplication): Promise<string> {
     if (!item) throw new Error('View menu is missing the required Terminal visibility item');
     return item.label;
   });
+}
+
+async function waitForMenuSelectionState(page: Page, expected: boolean): Promise<void> {
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const menu = window.okDesktop?.menu;
+        if (!menu) return undefined;
+        const snapshot = await menu.dispatch({ kind: 'query' });
+        return snapshot?.viewMenuState.hasEditorSelection;
+      }),
+    )
+    .toBe(expected);
 }
 
 async function terminalPlacementLabel(app: ElectronApplication): Promise<string> {
@@ -237,6 +266,10 @@ async function terminalPlacementLabel(app: ElectronApplication): Promise<string>
 }
 
 async function clickTerminalPlacementItem(app: ElectronApplication): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await dispatchRendererMenuAction(app, 'move-terminal');
+    return;
+  }
   await app.evaluate(async ({ Menu }) => {
     const terminal = Menu.getApplicationMenu()?.items.find((i) => i.label === 'Terminal');
     const item = terminal?.submenu?.items.find(
@@ -248,6 +281,10 @@ async function clickTerminalPlacementItem(app: ElectronApplication): Promise<voi
 }
 
 async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await dispatchRendererMenuAction(app, 'toggle-agent-panel');
+    return;
+  }
   await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
     const item = view?.submenu?.items.find(
@@ -265,6 +302,15 @@ const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
 // strict mode. Scope the claude-readiness banner by its stable test seam instead.
 const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-banner');
 
+async function revealTerminalSurface(app: ElectronApplication, target: Locator): Promise<void> {
+  await expect(async () => {
+    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
+    if (await target.isVisible()) return;
+    await clickViewTerminalItem(app);
+    await expect(target).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 async function expectCollapsedRailColumn(page: Page, selector: string): Promise<void> {
   const column = page.locator(selector);
   await expect(column).toHaveCount(1);
@@ -275,8 +321,7 @@ async function expectCollapsedRailColumn(page: Page, selector: string): Promise<
 
 /** Open the dock (via the real menu toggle) and wait for the panel to mount. */
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
-  await clickViewTerminalItem(app);
-  await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
+  await revealTerminalSurface(app, terminalSection(page));
 }
 
 async function waitForStatus(page: Page, status: string, timeoutMs = 20_000): Promise<void> {
@@ -318,7 +363,7 @@ function track(...paths: string[]): void {
 
 test.describe('Docked terminal — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Desktop is darwin-only.');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {
@@ -383,10 +428,7 @@ test.describe('Docked terminal — live Electron', () => {
 
     // The opted-out gate renders the "Terminal disabled" region, NOT the panel
     // section — so openTerminal() (which waits on the panel) would never resolve.
-    await clickViewTerminalItem(app);
-    await expect(page.getByRole('region', { name: 'Terminal disabled' })).toBeVisible({
-      timeout: 15_000,
-    });
+    await revealTerminalSurface(app, page.getByRole('region', { name: 'Terminal disabled' }));
     await expect(page.getByRole('button', { name: 'Enable terminal' })).toBeVisible();
     // No PTY/panel in the opted-out state.
     await expect(terminalStatus(page)).toHaveCount(0);
@@ -408,8 +450,7 @@ test.describe('Docked terminal — live Electron', () => {
     const page = await findEditorWindow(app);
 
     expect(await viewTerminalLabel(app)).toBe('Show Terminal');
-    await clickViewTerminalItem(app);
-    await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
+    await revealTerminalSurface(app, terminalSection(page));
     await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
 
     await clickViewTerminalItem(app);
@@ -581,8 +622,9 @@ test.describe('Docked terminal — live Electron', () => {
   // but coalesces the PTY resize (leading + trailing throttle), so a storm
   // must (1) never wedge the shell and (2) always settle the PTY at the final
   // fitted grid — a dropped trailing resize would leave the shell's winsize at
-  // a mid-drag width. The storm returns the window to its starting size, so
-  // `tput cols` before and after must agree.
+  // a mid-drag width. Chromium may reclaim a scrollbar-width sliver when the
+  // window returns to its starting size, so the fitted grid can legitimately
+  // differ by a couple of columns.
   test('a window-resize storm keeps the shell responsive and settles the PTY at the fitted grid', async ({
     captureStderrFor,
   }) => {
@@ -618,10 +660,17 @@ test.describe('Docked terminal — live Electron', () => {
     // the last step, but the storm's queued SIGWINCH redraws drain async.
     await typeInTerminal(page, 'echo AFTER_COLS=$(tput cols)\r');
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/AFTER_COLS=\d+/);
-    expect(before).toBeTruthy();
+    const beforeColumns = Number(before);
+    expect(beforeColumns).toBeGreaterThan(0);
     await expect
-      .poll(() => readTerminalText(page), { timeout: 10_000 })
-      .toContain(`AFTER_COLS=${before}`);
+      .poll(
+        async () => {
+          const after = (await readTerminalText(page)).match(/AFTER_COLS=(\d+)/)?.[1];
+          return after == null ? Number.POSITIVE_INFINITY : Math.abs(Number(after) - beforeColumns);
+        },
+        { timeout: 10_000 },
+      )
+      .toBeLessThanOrEqual(2);
   });
 
   // Dock controls in the live build keep the explicit Terminal collapse name.
@@ -686,9 +735,9 @@ test.describe('Docked terminal — live Electron', () => {
 
   // Escape is delivered to the terminal (NOT swallowed): terminal apps
   // (vim, the `claude` TUI) need it. The no-keyboard-trap exit (WCAG 2.1.2) is
-  // ⌘J — the View → Hide Terminal toggle — which collapses the dock and returns
-  // focus to the editor.
-  test('QA-019 Escape reaches the terminal; ⌘J is the no-trap exit', async ({
+  // CmdOrCtrl+J — the View → Hide Terminal toggle — which collapses the dock
+  // and returns focus to the editor.
+  test('QA-019 Escape reaches the terminal; CmdOrCtrl+J is the no-trap exit', async ({
     captureStderrFor,
   }) => {
     const s = seed('escape', { consent: true });
@@ -715,16 +764,16 @@ test.describe('Docked terminal — live Electron', () => {
     await page.keyboard.press('Escape');
     await expect.poll(focusInTerminal).toBe(true);
 
-    // The documented keyboard exit is ⌘J (here via its View-menu accelerator):
-    // it collapses the dock and returns focus to the editor — satisfying WCAG
-    // 2.1.2 without consuming Escape.
+    // The documented keyboard exit is CmdOrCtrl+J (here via its View-menu
+    // accelerator): it collapses the dock and returns focus to the editor —
+    // satisfying WCAG 2.1.2 without consuming Escape.
     await clickViewTerminalItem(app);
     await expect.poll(focusInTerminal).toBe(false);
   });
 
   // ⌃` is the dock's second chord and the only one the RENDERER delivers on
-  // desktop — ⌘J is an OS-captured menu accelerator, and a menu item may hold
-  // only one. That makes this the case no unit test can stand in for: the
+  // desktop — CmdOrCtrl+J is an OS-captured menu accelerator, and a menu item
+  // may hold only one. That makes this the case no unit test can stand in for: the
   // listener is capture-phase on `window` precisely so a focused xterm's hidden
   // textarea cannot consume the chord first. If it ever regressed to bubble
   // phase, or the listener went back to skipping the desktop host, the dock
@@ -940,8 +989,8 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(page.getByRole('button', { name: 'Connect tools' })).toBeVisible();
   });
 
-  // A renderer reload (View → Reload, or the window reload macOS sleep/wake
-  // forces) must NOT lose the open terminal. The PTY survives in the main
+  // A renderer reload (View → Reload, or an OS resume-triggered reload) must
+  // NOT lose the open terminal. The PTY survives in the main
   // process; the reloaded renderer must rehydrate the dock from it — same shell,
   // not a fresh spawn. This is the canonical reload-survival contract. It
   // RED-fails on origin/main, where the dock comes back collapsed/empty: the
@@ -949,8 +998,8 @@ test.describe('Docked terminal — live Electron', () => {
   // orphaned and the dock seeds nothing.
   //
   // Desktop-only — the dock renders only on the Electron host (it needs the real
-  // preload bridge + the per-window PTY host), so this runs on a real macOS
-  // desktop (OK_DESKTOP_E2E_SMOKE=1), never headless. It is intentionally the
+  // preload bridge + the per-window PTY host), so this runs in a real desktop
+  // Electron process (OK_DESKTOP_E2E_SMOKE=1), never headless. It is intentionally the
   // highest-fidelity rung for this fix; the renderer + main-process halves are
   // pinned headless in the reload-survival dom test and main-process test.
   test('a renderer reload preserves the open terminal and its live session', async ({
@@ -991,12 +1040,13 @@ test.describe('Docked terminal — live Electron', () => {
       .toContain('marker=[OKRELOAD_SURVIVED_351]');
   });
 
-  // Shortcut behavior at the live-Electron rung: ⇧⌘J stages a REAL editor
-  // selection into a REAL CLI PTY, then the View-menu route proves ⌘J remains a
-  // pure visibility toggle even while another selection is live. The fake
+  // Shortcut behavior at the live-Electron rung: the platform's primary
+  // modifier + Shift+J stages a REAL editor selection into a REAL CLI PTY,
+  // then the View-menu route proves primary-modifier+J remains a pure
+  // visibility toggle even while another selection is live. The fake
   // `claude` is a TUI stand-in (`exec cat`) that holds the PTY open reading
   // stdin, so staged bytes and session survival stay observable in xterm.
-  test('⇧⌘J stages into a new CLI tab; ⌘J stays a pure visibility toggle', async ({
+  test('the primary-modifier J shortcuts stage a new CLI tab and toggle visibility', async ({
     captureStderrFor,
   }) => {
     // This composed flow walks doc-load + launch + staged write + menu delivery,
@@ -1031,16 +1081,16 @@ test.describe('Docked terminal — live Electron', () => {
     // empty doc publishes an empty snapshot, so wait for the seeded text first.
     await expect(editor).toContainText('Seed document', { timeout: 30_000 });
     await editor.click();
-    await page.keyboard.press('Meta+a');
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+a`);
     await expect
       .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
       .toContain('Seed document');
-    await page.waitForTimeout(500);
+    await waitForMenuSelectionState(page, true);
 
-    // ⇧⌘J: the renderer-owned chord (capture-phase window keydown — no menu item
+    // The renderer-owned chord (capture-phase window keydown — no menu item
     // claims it) opens a NEW CLI tab with the grounded passage staged into its
     // input once the PTY is live.
-    await page.keyboard.press('Meta+Shift+j');
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+j`);
     await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
     await waitForStatus(page, 'running', 25_000);
     // The staged bytes reached the CLI's PTY: the composed prompt names the doc
@@ -1050,18 +1100,19 @@ test.describe('Docked terminal — live Electron', () => {
     const terminalTabs = () => terminalSection(page).getByRole('tab');
     const tabsAfterLaunch = await terminalTabs().count();
 
-    // Grow the doc with a distinguishing marker and re-select, then take the ⌘J
-    // route via its View-menu accelerator item (the real menu→IPC→renderer
+    // Grow the doc with a distinguishing marker and re-select, then take the
+    // CmdOrCtrl+J route via its View-menu accelerator item (the real menu→IPC→renderer
     // chain; raw OS key capture is not synthesizable from Playwright). A live
     // selection must not change the toggle contract or leak into the PTY.
     await editor.click();
-    await page.keyboard.press('Meta+a');
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+a`);
     await page.keyboard.type('Reuse marker OKSTAGE_REUSE_742 body');
-    await page.keyboard.press('Meta+a');
+    await waitForMenuSelectionState(page, false);
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+a`);
     await expect
       .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
       .toContain('OKSTAGE_REUSE_742');
-    await page.waitForTimeout(500);
+    await waitForMenuSelectionState(page, true);
 
     expect(await clickViewTerminalItem(app)).toBe('Hide Terminal');
     await expect(terminalSection(page)).toBeHidden();

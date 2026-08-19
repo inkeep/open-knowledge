@@ -17,10 +17,8 @@
  * that drives the native menu's rendering — refreshed each time a menu
  * opens, so it is at most one open stale.
  *
- * The Terminal menu is deliberately absent: the pty-backed dock is dark on
- * Windows/Linux (`config.ptyAvailable`), and every Terminal item is
- * pty-scoped. Re-add it from the native template if node-pty ever ships
- * off-mac.
+ * Terminal controls stay capability-gated: Linux exposes the View toggle,
+ * while Windows keeps it absent until its PTY implementation ships.
  */
 
 import { useLingui } from '@lingui/react/macro';
@@ -291,6 +289,14 @@ export function AppMenubar() {
             {view?.docPanelVisible === false ? t`Show document panel` : t`Hide document panel`}
             <MenubarShortcut>Ctrl+Alt+B</MenubarShortcut>
           </MenubarItem>
+          {bridge.config.ptyAvailable && (
+            <MenubarItem
+              onSelect={() => dispatch({ kind: 'menu-action', action: 'toggle-terminal' })}
+            >
+              {view?.terminalVisible === true ? t`Hide Terminal` : t`Show Terminal`}
+              <MenubarShortcut>Ctrl+J</MenubarShortcut>
+            </MenubarItem>
+          )}
           <MenubarSeparator />
           <MenubarCheckboxItem
             checked={view?.showHiddenFiles ?? false}

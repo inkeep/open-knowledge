@@ -1104,6 +1104,13 @@ export function isEditableShortcutTarget(target: ShortcutTargetLike): boolean {
   return tagName === 'INPUT' || tagName === 'TEXTAREA';
 }
 
+export function matchesPrimaryModifier(
+  event: Pick<ShortcutEventLike, 'ctrlKey' | 'metaKey'>,
+  platform: ShortcutPlatform = currentShortcutPlatform(),
+): boolean {
+  return platform === 'mac' ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
 export function matchesKeyboardShortcut(
   event: ShortcutEventLike,
   id: KeyboardShortcutId,

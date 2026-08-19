@@ -172,8 +172,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // The terminal feature (dock + header New chat / toggle) needs not just a
   // desktop bridge but one that actually exposes the `terminal` surface — a
   // session-only bridge (some E2E hosts) has none — AND a host that can
-  // actually spawn a PTY: `config.ptyAvailable` is false on Windows/Linux
-  // (node-pty is not bundled there; terminal dock dark off-mac), where a
+  // actually spawn a PTY: `config.ptyAvailable` is false on Windows, where a
   // rendered affordance would only surface a spawn failure. Gate every
   // terminal affordance on both so a control that can't launch never renders.
   // A popped-out note window is a reading/writing surface for one document, so
@@ -647,7 +646,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useNoPushPermissionToast(syncStatus?.pausedReason);
 
   // One-time notice when this window is a worktree that inherited the root
-  // project's auto-sync setting (fires + self-clears its seeded flag).
+  // project's auto-sync setting; it fires once and clears its seeded flag.
   useWorktreeAutoSyncNotice();
 
   function handleModeChange(mode: EditorModeValue) {
@@ -668,14 +667,14 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       requestPreviewTabPromotion(activeDocName);
     }
     setEditorMode(mode);
-    // User-initiated change — persist globally. Tool-driven flips (e.g.
-    // RAW_MDX_NAV_EVENT → source) are session-only and deliberately do NOT
-    // call setPersistedMode.
+    // User-initiated change — persist globally. Tool-driven flips such as
+    // RAW_MDX_NAV_EVENT → source are session-only and deliberately do not call
+    // setPersistedMode.
     setPersistedMode(mode);
   }
 
-  // Effect Events so the once-bound keydown listener below reads the current
-  // closures (mode, active doc/provider) without re-subscribing on every change.
+  // Effect Events let the once-bound keydown listener read current mode, doc,
+  // and provider state without re-subscribing on every change.
   const toggleEditorModeEvent = useEffectEvent(() => {
     handleModeChange(editorMode === 'source' ? 'wysiwyg' : 'source');
   });

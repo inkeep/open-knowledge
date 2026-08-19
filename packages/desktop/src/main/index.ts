@@ -166,6 +166,7 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
+import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
@@ -322,6 +323,7 @@ import {
   runMcpWiringOnFirstLaunch,
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
+import { resolveMenuActionTarget } from './menu-action-target.ts';
 import type { MenuTranslator } from './menu-translator.ts';
 import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
 import {
@@ -3210,8 +3212,8 @@ async function runApplicationMenuRefresh(): Promise<void> {
           // Window torn down mid-dispatch — the click degrades to a no-op.
         });
     },
-    onReportBug: () => sendMenuActionToFocused('report-bug'),
-    onSendFeedback: () => sendMenuActionToFocused('send-feedback'),
+    onReportBug: () => sendMenuAction('report-bug'),
+    onSendFeedback: () => sendMenuAction('send-feedback'),
     // App-menu / Help-menu "Check for Updates…" entries fire this. Returns
     // void: the menu doesn't surface in-flight progress; the existing
     // `update-available` / `update-not-available` electron-updater events
@@ -3235,8 +3237,8 @@ async function runApplicationMenuRefresh(): Promise<void> {
           })
       : undefined,
     // View menu history traversal uses the same focused-renderer action channel.
-    onNavigateBack: () => sendMenuActionToFocused('navigate-back'),
-    onNavigateForward: () => sendMenuActionToFocused('navigate-forward'),
+    onNavigateBack: () => sendMenuAction('navigate-back'),
+    onNavigateForward: () => sendMenuAction('navigate-forward'),
     noteWindow: focusedWindow !== null && getNoteWindowContext(focusedWindow.id) !== undefined,
     // File menu state-aware items. activeTarget drives enable/disable;
     // per-item handlers fire `ok:menu-action` to the focused renderer which
@@ -3255,40 +3257,39 @@ async function runApplicationMenuRefresh(): Promise<void> {
       if (!docName) return;
       openNoteWindowForDoc({ origin: focused, docName, entryPoint: 'window-menu' });
     },
-    onNewFile: () => sendMenuActionToFocused('new-doc'),
-    onNewFolder: () => sendMenuActionToFocused('new-folder'),
-    onNewFromTemplate: () => sendMenuActionToFocused('new-from-template'),
+    onNewFile: () => sendMenuAction('new-doc'),
+    onNewFolder: () => sendMenuAction('new-folder'),
+    onNewFromTemplate: () => sendMenuAction('new-from-template'),
     // New project… — opens the create-new-project dialog in the
     // focused window. Both window kinds (editor App, NavigatorApp) subscribe
     // to this action and mount CreateProjectDialog.
-    onNewProject: () => sendMenuActionToFocused('new-project'),
+    onNewProject: () => sendMenuAction('new-project'),
     // Worktree selector (worktree = window). Both delegate to the
     // focused renderer's ProjectSwitcher surface: `new-worktree` opens the
     // create dialog, `switch-worktree` opens the sidebar switcher.
-    onNewWorktree: () => sendMenuActionToFocused('new-worktree'),
-    onSwitchWorktree: () => sendMenuActionToFocused('switch-worktree'),
-    onRename: () => sendMenuActionToFocused('rename'),
-    onDuplicate: () => sendMenuActionToFocused('duplicate'),
-    onMoveToTrash: () => sendMenuActionToFocused('move-to-trash'),
-    onCloseActiveTabOrWindow: () => sendMenuActionToFocused('close-active-tab-or-window'),
-    onRevealInFinder: () => sendMenuActionToFocused('reveal-in-finder'),
-    onSendToAi: () => sendMenuActionToFocused('send-to-ai'),
-    onCopyFullPath: () => sendMenuActionToFocused('copy-full-path'),
-    onCopyRelativePath: () => sendMenuActionToFocused('copy-relative-path'),
+    onNewWorktree: () => sendMenuAction('new-worktree'),
+    onSwitchWorktree: () => sendMenuAction('switch-worktree'),
+    onRename: () => sendMenuAction('rename'),
+    onDuplicate: () => sendMenuAction('duplicate'),
+    onMoveToTrash: () => sendMenuAction('move-to-trash'),
+    onCloseActiveTabOrWindow: () => sendMenuAction('close-active-tab-or-window'),
+    onRevealInFinder: () => sendMenuAction('reveal-in-finder'),
+    onSendToAi: () => sendMenuAction('send-to-ai'),
+    onCopyFullPath: () => sendMenuAction('copy-full-path'),
+    onCopyRelativePath: () => sendMenuAction('copy-relative-path'),
     // View menu items reflect the latest renderer-pushed snapshot via
     // `ok:editor:view-menu-state-changed`; `buildViewMenuStateDeps` owns the
     // field/action mapping. Toggling fires `ok:menu-action` which the
     // renderer routes through `projectLocalBinding.patch(...)`; the
     // resulting CRDT mutation triggers a sibling push back so the checkmark
     // snaps.
-    ...buildViewMenuStateDeps(editorViewMenuState, sendMenuActionToFocused),
-    // Terminal dock is dark off-mac (windows-linux-port terminal posture): node-pty
-    // is not bundled on win/linux, so strip every terminal handler there —
-    // the menu items render disabled instead of surfacing a spawn failure.
+    ...buildViewMenuStateDeps(editorViewMenuState, sendMenuAction),
+    // Unsupported platforms strip every PTY-backed terminal handler so their
+    // menu items render disabled instead of surfacing a spawn failure.
     // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
     // `onToggleAgentPanel` is deliberately absent from the strip list: agent
     // threads are server-hosted, so the agents panel works everywhere pty does not.
-    ...(process.platform === 'darwin'
+    ...(isTerminalPlatform(process.platform)
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
           onToggleTerminal: undefined,
@@ -4022,15 +4023,19 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
 }
 
 /**
- * Dispatch an `OkMenuAction` to the focused renderer window. Mirrors the
- * `openInstallSkillDialog` / `openSettings` pattern — falls back to the first
- * BrowserWindow when no window is focused (menu clicked from the Dock).
+ * Dispatch an `OkMenuAction` to its originating renderer when available.
+ * Native-menu callers have no sender and use the focused window, then the first
+ * BrowserWindow (for a menu click from the Dock).
  * Silent no-op when no windows are open (e.g. last project closed but app
  * still running on macOS via the Dock).
  */
 
-function sendMenuActionToFocused(action: OkMenuAction): void {
-  const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+function sendMenuAction(action: OkMenuAction, sender: WebContents | null = null): void {
+  const target = resolveMenuActionTarget(sender, {
+    fromWebContents: (contents) => BrowserWindow.fromWebContents(contents),
+    getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
+    getAllWindows: () => BrowserWindow.getAllWindows(),
+  });
   if (!target) return;
   sendToRenderer(target.webContents, 'ok:menu-action', action);
 }
@@ -4630,7 +4635,7 @@ function formatUnknownError(err: unknown): string {
 }
 
 /**
- * Run a login-shell `command -v <bin>` probe in the real shell (the same
+ * Run an interactive-shell `command -v <bin>` probe in the real shell (the same
  * `resolveShell` the PTY spawns), with `spawn` + timers wired to the OS. Shared
  * by the Claude readiness path and the generic non-Claude CLI path; the
  * timeout/exit-code routing is unit-tested in claude-readiness.test.ts via an
@@ -4674,7 +4679,7 @@ function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null>
         },
       };
     },
-    resolveShell(process.env),
+    resolveShell(process.env, { platform: process.platform }),
     {
       setTimer: (cb, ms) => setTimeout(cb, ms),
       clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
@@ -4705,7 +4710,7 @@ function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
 
 /**
  * Resolve docked-terminal Claude Code readiness: probe `claude` on the
- * login-shell PATH, classify the user-global `open-knowledge` entry in
+ * terminal shell's PATH, classify the user-global `open-knowledge` entry in
  * `~/.claude.json`, and verify the PROJECT's `.mcp.json` `open-knowledge` entry
  * is OK's own (gates MCP pre-approval). The real subprocess + config reads are
  * the runtime e2e rung (a built terminal).
@@ -4727,7 +4732,7 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
  */
 function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   return resolveCliOnPath({
-    probe: () => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin)),
+    probe: () => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin, process.platform)),
     // Codex-only: report whether OK's `open-knowledge` server is already in the
     // user's codex config, so the launch site adds the `-c` tool-auto-approve
     // override only when it won't break config load (a `-c` under an undefined
@@ -5664,7 +5669,8 @@ function registerIpcHandlers() {
   // Windows/Linux renderer-menubar dispatch (the windows-linux-port renderer-menubar decision).
   // The renderer-drawn menu bar routes every click here so menu semantics
   // stay single-sourced with the native template: `menu-action` relays
-  // through the exact `sendMenuActionToFocused` path the native items use,
+  // through the same menu-action path the native items use while preferring
+  // the dispatching renderer over focus state,
   // `role` maps onto what Electron menu roles do, `command` reuses the
   // same click handlers the native deps wire, and `query` returns the
   // aggregated state (`activeTarget` + view-menu snapshot + recents +
@@ -5688,7 +5694,7 @@ function registerIpcHandlers() {
           })(),
         };
       case 'menu-action':
-        sendMenuActionToFocused(request.action);
+        sendMenuAction(request.action, event.sender);
         return undefined;
       case 'open-recent-project':
         await openProjectOrFallbackToNavigator(request.path, 'recents');
@@ -5733,10 +5739,9 @@ function registerIpcHandlers() {
       // Ephemeral single-file windows carry teardown state on `ctx.ephemeral`;
       // its presence IS the single-file signal for the renderer's chrome gate.
       singleFile: ctx.ephemeral !== undefined,
-      // Mirrors the preload's cold-start config: pty capability is a
-      // platform fact (node-pty ships on macOS only), identical for a
-      // re-queried live window.
-      ptyAvailable: process.platform === 'darwin',
+      // Mirrors the preload's cold-start config: PTY capability is the same
+      // platform fact for a re-queried live window.
+      ptyAvailable: isTerminalPlatform(process.platform),
       // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
@@ -5781,7 +5786,7 @@ function registerIpcHandlers() {
         : undefined;
     const probes = {
       isExecutableFile: realIsExecutableFile,
-      // The login-shell probe exists for the macOS/Linux GUI-PATH problem: a
+      // The interactive-shell probe exists for the macOS/Linux GUI-PATH problem: a
       // desktop-launched process does not source the user's rc files, so a
       // globally-installed binary is invisible to `process.env.PATH`. Windows
       // has neither that problem (a GUI process inherits the user PATH from the
@@ -5790,7 +5795,7 @@ function registerIpcHandlers() {
       isOnLoginPath: async (bin: string) =>
         process.platform === 'win32'
           ? await probeWindowsPath(bin)
-          : (await probeLoginShellOnPath(cliProbeArgs(bin))) === 0,
+          : (await probeLoginShellOnPath(cliProbeArgs(bin, process.platform))) === 0,
     };
     if (request.kind === 'status') {
       return handleSlidesStatus(projectRoot, probes);
@@ -5844,7 +5849,10 @@ function registerIpcHandlers() {
       startDeps: {
         findFreePort,
         spawnSlidev: (port) => {
-          const base = { docPath: resolvedDocPath, shell: resolveShell(process.env) };
+          const base = {
+            docPath: resolvedDocPath,
+            shell: resolveShell(process.env, { platform: process.platform }),
+          };
           return realSpawnSlidev(
             resolution.source === 'project-local'
               ? { ...base, source: 'project-local', projectRoot: containedRoot }

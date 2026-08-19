@@ -5,7 +5,7 @@
  * TerminalGate (the heavy consent + xterm session) is stubbed with a session
  * stand-in that spawns a PTY on mount and reaps it on unmount — the same
  * pattern as TerminalDock.dom.test.tsx — so the assertions pin what the window
- * owns: one shell on mount, the new-tab affordance, ⌘1–9 switching with no
+ * owns: one shell on mount, the new-tab affordance, primary-modifier tab switching with no
  * scope gate, and close-last → window.close(). The window mounts the shared
  * TerminalSessionsHost (window variant), so the session model — including the
  * New-chat split button — is the dock's. The sibling root surfaces are
@@ -61,7 +61,7 @@ vi.doMock('@/components/NavigatorApp', () => ({
 const { TerminalWindowApp } = await import('./TerminalWindowApp');
 const { selectDesktopRootApp } = await import('./desktop-root-app');
 
-function makeBridge() {
+function makeBridge(platform: OkDesktopBridge['platform'] = 'darwin') {
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
   let ptyCounter = 0;
   const create = vi.fn(async () => {
@@ -70,6 +70,7 @@ function makeBridge() {
   });
   const kill = vi.fn(async (_id: string) => {});
   const bridge = {
+    platform,
     config: { mode: 'terminal' },
     onMenuAction: () => () => {},
     editor: {
@@ -163,6 +164,33 @@ describe('TerminalWindowApp', () => {
     const event = new KeyboardEvent('keydown', {
       key: '1',
       metaKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    act(() => {
+      window.dispatchEvent(event);
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+    expect(activePanelId()).toBe(sessionPanels()[0]?.getAttribute('data-terminal-session'));
+  });
+
+  test('Ctrl+number switches tabs in a Linux terminal window', async () => {
+    const user = userEvent.setup();
+    const { bridge } = makeBridge('linux');
+    render(
+      <TooltipProvider>
+        <TerminalWindowApp bridge={bridge} />
+      </TooltipProvider>,
+    );
+    await addTerminalTab(user);
+
+    const event = new KeyboardEvent('keydown', {
+      key: '1',
+      ctrlKey: true,
       cancelable: true,
       bubbles: true,
     });

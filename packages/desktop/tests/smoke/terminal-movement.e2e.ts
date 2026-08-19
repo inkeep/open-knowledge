@@ -5,13 +5,14 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 type TerminalHome = 'bottom' | 'right';
 
@@ -93,7 +94,23 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
+async function dispatchRendererMenuAction(
+  app: ElectronApplication,
+  action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
+): Promise<void> {
+  const page = await findEditorWindow(app);
+  await page.evaluate(async (menuAction) => {
+    const menu = window.okDesktop?.menu;
+    if (!menu) throw new Error('renderer menu bridge is unavailable');
+    await menu.dispatch({ kind: 'menu-action', action: menuAction });
+  }, action);
+}
+
 async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await dispatchRendererMenuAction(app, 'toggle-terminal');
+    return;
+  }
   await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
     const terminal = view?.submenu?.items.find(
@@ -105,6 +122,10 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
 }
 
 async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await dispatchRendererMenuAction(app, 'toggle-agent-panel');
+    return;
+  }
   await app.evaluate(async ({ Menu }) => {
     const view = Menu.getApplicationMenu()?.items.find((item) => item.label === 'View');
     const item = view?.submenu?.items.find(
@@ -116,6 +137,10 @@ async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
 }
 
 async function clickTerminalPlacementItem(app: ElectronApplication): Promise<void> {
+  if (process.platform !== 'darwin') {
+    await dispatchRendererMenuAction(app, 'move-terminal');
+    return;
+  }
   await app.evaluate(async ({ Menu }) => {
     const terminal = Menu.getApplicationMenu()?.items.find((item) => item.label === 'Terminal');
     const placement = terminal?.submenu?.items.find(
@@ -130,6 +155,12 @@ async function clickTerminalPlacementItemRapidly(
   app: ElectronApplication,
   count: number,
 ): Promise<void> {
+  if (process.platform !== 'darwin') {
+    for (let index = 0; index < count; index += 1) {
+      await dispatchRendererMenuAction(app, 'move-terminal');
+    }
+    return;
+  }
   await app.evaluate(async ({ Menu }, clickCount) => {
     const terminal = Menu.getApplicationMenu()?.items.find((item) => item.label === 'Terminal');
     const placement = terminal?.submenu?.items.find(
@@ -145,9 +176,14 @@ const terminalTabs = (page: Page) =>
   page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
 
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
-  await clickViewTerminalItem(app);
-  await expect(visibleTerminal(page)).toBeVisible({ timeout: 15_000 });
-  await expect(visibleTerminal(page).locator('[data-terminal-status]')).toHaveAttribute(
+  const terminal = visibleTerminal(page);
+  await expect(async () => {
+    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
+    if (await terminal.isVisible()) return;
+    await clickViewTerminalItem(app);
+    await expect(terminal).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(terminal.locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
     'running',
     { timeout: 25_000 },
@@ -189,7 +225,10 @@ async function readScrollbackContaining(page: Page, marker: string): Promise<str
   for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
     const text = await readActiveTerminal(page);
     if (text.includes(marker)) return text;
-    await page.mouse.wheel(0, -10_000);
+    await page.mouse.wheel(0, -1_000);
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
   }
   const text = await readActiveTerminal(page);
   if (text.includes(marker)) return text;
@@ -291,7 +330,7 @@ async function expectCollapsedRailColumn(page: Page, selector: string): Promise<
 
 test.describe('Terminal placement continuity — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Desktop is darwin-only.');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('moving a populated terminal preserves every live session', async ({ captureStderrFor }) => {
@@ -413,7 +452,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     // owns pointer-drag behavior. Reordering in the bottom dock keeps this
     // setup independent of right-column overlay geometry.
     await visibleTerminal(page).locator('.xterm').click();
-    await page.keyboard.press('Meta+Shift+ArrowLeft');
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
     await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
     await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',

@@ -6,6 +6,7 @@ import {
   ensureNodePtySpawnHelperExecutable,
   ensureNodePtySpawnHelperExecutableInNodeModules,
   ensureNodePtySpawnHelperExecutableInNodeModulesSafe,
+  shouldEnsureNodePtySpawnHelper,
 } from '../../scripts/ensure-node-pty-exec.mjs';
 
 /**
@@ -83,9 +84,9 @@ describe('ensureNodePtySpawnHelperExecutable', () => {
 
 /**
  * Behavioral coverage for the dev/CI build+install path — the analog of the
- * afterPack chmod above. `bun install` lands node-pty's prebuilt spawn-helper
+ * afterPack chmod above. `pnpm install` lands node-pty's prebuilt spawn-helper
  * non-executable under the real `node_modules/node-pty/prebuilds/...` tree, and
- * the dev build (`bun run build:desktop`, electron-vite, no afterPack) has no
+ * the dev build (`pnpm run build:desktop`, electron-vite, no afterPack) has no
  * step to fix it, so the in-app terminal dies with "posix_spawnp failed". The
  * desktop postinstall runs this against the real `node_modules` layout; we
  * exercise the real mode bits against a fixture mirroring it — no mocks.
@@ -103,7 +104,7 @@ function makeNodeModulesFixture(archDirs: string[]): string {
     const helper = nodeModulesHelperPath(nodePtyDir, arch);
     mkdirSync(join(helper, '..'), { recursive: true });
     writeFileSync(helper, 'fake-mach-o');
-    // Mirror the non-executable mode bun install leaves behind.
+    // Mirror the non-executable mode pnpm install leaves behind.
     chmodSync(helper, 0o644);
   }
   return nodePtyDir;
@@ -142,7 +143,7 @@ describe('ensureNodePtySpawnHelperExecutableInNodeModules', () => {
 
 /**
  * The postinstall's non-throwing contract: a pathological node-pty layout must NEVER
- * fail `bun install` (that would gate the whole monorepo). The Safe wrapper converts
+ * fail `pnpm install` (that would gate the whole monorepo). The Safe wrapper converts
  * the hard-error throw above into an `{ ok: false, error }` result so the postinstall
  * caller stays exit-0. Pinned here so a refactor that drops the swallowing regresses.
  */
@@ -166,5 +167,13 @@ describe('ensureNodePtySpawnHelperExecutableInNodeModulesSafe', () => {
     if (!result.ok) {
       expect(result.error.message).toMatch(/darwin-arm64 spawn-helper missing/);
     }
+  });
+});
+
+describe('shouldEnsureNodePtySpawnHelper', () => {
+  test('runs the spawn-helper chmod only on Darwin', () => {
+    expect(shouldEnsureNodePtySpawnHelper('darwin')).toBe(true);
+    expect(shouldEnsureNodePtySpawnHelper('linux')).toBe(false);
+    expect(shouldEnsureNodePtySpawnHelper('win32')).toBe(false);
   });
 });

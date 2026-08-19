@@ -503,7 +503,10 @@ function TerminalSession({
     });
 
     // Every key (including Escape) goes to the PTY so terminal apps (vim, the
-    // `claude` TUI) work — the keyboard exit is ⌘J. Two Shift-chord patches:
+    // `claude` TUI) work — the keyboard exit is ⌘J. Linux owns the conventional
+    // Ctrl+Shift+C/V clipboard chords; plain Ctrl+C/V still run through xterm
+    // after cancelling Electron's hidden Edit-menu accelerator. The remaining
+    // two Shift-chord patches are shared across platforms:
     //
     //  - Shift+Tab: xterm emits the reverse-tab sequence (ESC [ Z) but, unlike
     //    plain Tab, does NOT call preventDefault, so the browser's
@@ -515,7 +518,44 @@ function TerminalSession({
     //    rather than submitting — matching how Ghostty / Cursor map this chord.
     //    Return false so xterm does NOT also emit its default \r.
     term.attachCustomKeyEventHandler((event) => {
-      if (event.type !== 'keydown' || !event.shiftKey) return true;
+      if (event.type !== 'keydown') return true;
+
+      const key = event.key.toLowerCase();
+      const linuxClipboardKey =
+        bridge.platform === 'linux' &&
+        event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (key === 'c' || key === 'v');
+      if (linuxClipboardKey) {
+        // Prevent Electron's hidden native Edit menu from consuming Ctrl+C/V.
+        // Returning true for the plain chords still tells xterm to encode them
+        // for the PTY (SIGINT / literal-next); shifted chords are handled here.
+        event.preventDefault();
+        if (!event.shiftKey) return true;
+
+        if (key === 'c') {
+          if (term.hasSelection() && navigator.clipboard?.writeText) {
+            void navigator.clipboard
+              .writeText(term.getSelection())
+              .catch((err) => console.warn('[terminal] clipboard copy failed', err));
+          }
+          return false;
+        }
+
+        if (navigator.clipboard?.readText) {
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              const ptyId = ptyIdRef.current;
+              if (!cancelled && ptyId !== null) term.paste(text);
+            })
+            .catch((err) => console.warn('[terminal] clipboard paste failed', err));
+        }
+        return false;
+      }
+
+      if (!event.shiftKey) return true;
       if (event.key === 'Tab') {
         event.preventDefault();
         return true;

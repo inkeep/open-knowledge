@@ -183,7 +183,7 @@ const { SessionsHost } = await import('./SessionsHost');
 // After the vi.doMock block (a static import would load the real xterm).
 const { STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel');
 
-function makeBridge() {
+function makeBridge(platform: OkDesktopBridge['platform'] = 'darwin') {
   const viewMenuPushes: Array<{ terminalLive?: boolean }> = [];
   // Hand each session a distinct PTY id (pty-1, pty-2, …) so a close can assert
   // exactly which session's PTY was reaped — the demux the dock owns.
@@ -197,6 +197,7 @@ function makeBridge() {
   // existing PTY (it opens its own tab), so tests assert `input` stays unused.
   const input = vi.fn((_ptyId: string, _data: string) => {});
   const bridge = {
+    platform,
     onMenuAction: () => () => {},
     editor: {
       notifyViewMenuStateChanged(state: { terminalLive?: boolean }) {
@@ -277,9 +278,14 @@ function DockHarness({
   );
 }
 
-function renderDock(visible: boolean, launch?: TestLaunch | null, placement = 'bottom') {
+function renderDock(
+  visible: boolean,
+  launch?: TestLaunch | null,
+  placement = 'bottom',
+  platform: OkDesktopBridge['platform'] = 'darwin',
+) {
   const onVisibleChange = vi.fn((_v: boolean) => {});
-  const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge();
+  const { bridge, create, kill, input, viewMenuPushes, dispatchMenuAction } = makeBridge(platform);
   const ui = (v: boolean, l?: TestLaunch | null, p = placement, targetAvailable = true) => (
     <DockHarness
       v={v}
@@ -703,10 +709,11 @@ describe('TerminalDock multi-session', () => {
   }
   function dispatchChord(
     key: string,
-    mods: { metaKey?: boolean; shiftKey?: boolean },
+    mods: { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
   ): KeyboardEvent {
     const event = new KeyboardEvent('keydown', {
       key,
+      ctrlKey: mods.ctrlKey ?? false,
       metaKey: mods.metaKey ?? false,
       shiftKey: mods.shiftKey ?? false,
       cancelable: true,
@@ -737,6 +744,19 @@ describe('TerminalDock multi-session', () => {
         'Moved Terminal 3 to position 2 of 3',
       ),
     );
+  });
+
+  test('Ctrl+Shift+Left moves the active tab on Linux', async () => {
+    const user = userEvent.setup();
+    renderDock(true, null, 'bottom', 'linux');
+    await addTerminalTab(user);
+    const panels = sessionPanels();
+    act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+
+    const event = dispatchChord('ArrowLeft', { ctrlKey: true, shiftKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(tabLabels()).toEqual(['Terminal 2', 'Terminal 1']);
   });
 
   test('⌘⇧→ at the last slot is a no-op left for the shell', async () => {
@@ -791,6 +811,21 @@ describe('TerminalDock multi-session', () => {
     const jump = dispatchChord('1', { metaKey: true });
     expect(jump.defaultPrevented).toBe(true);
     expect(screen.getByRole('tab', { name: 'Terminal 2' }).getAttribute('aria-selected')).toBe(
+      'true',
+    );
+  });
+
+  test('Ctrl+1 selects the first terminal tab on Linux', async () => {
+    const user = userEvent.setup();
+    renderDock(true, null, 'bottom', 'linux');
+    await addTerminalTab(user);
+    const panels = sessionPanels();
+    act(() => panels[1]?.querySelector<HTMLElement>('.xterm-helper-textarea')?.focus());
+
+    const event = dispatchChord('1', { ctrlKey: true });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(screen.getByRole('tab', { name: 'Terminal 1' }).getAttribute('aria-selected')).toBe(
       'true',
     );
   });

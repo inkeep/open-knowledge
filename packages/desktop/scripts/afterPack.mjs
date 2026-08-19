@@ -99,9 +99,9 @@ export default async function afterPack(context) {
   // Everything below is darwin-only: the LSUIElement helper bundle exists to
   // suppress the macOS Dock "exec" placeholder (no Dock/LaunchServices
   // concept on win/linux — resolve-detached-spawn-args.ts uses
-  // parentExecPath directly there), and the node-pty spawn-helper chmod is
-  // moot off-mac (the terminal dock is dark on win/linux per D7; node-pty is
-  // excluded from those packages via win.files/linux.files).
+  // parentExecPath directly there). The node-pty chmod is also mac-specific:
+  // Linux prebuilds do not use a separate spawn-helper, while the Windows
+  // package excludes node-pty.
   if (electronPlatformName !== 'darwin') {
     console.log(
       `[afterPack] fuses done; skipping darwin-only helper-bundle + node-pty steps on "${electronPlatformName}"`,

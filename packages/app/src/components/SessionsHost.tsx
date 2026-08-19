@@ -54,6 +54,7 @@ import {
   readWebDockSessionOrder,
   writeDockSessionOrder,
 } from '@/lib/dock-session-persistence';
+import { matchesPrimaryModifier, type ShortcutPlatform } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -177,7 +178,7 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
  */
 export type SessionSurface = 'terminal-dock' | 'agents-panel' | 'terminal-window';
 
-/** Focus-gate for the host's capture-phase chords (⌘1–9, ⌘⇧←/→): always in the
+/** Focus-gate for the host's primary-modifier chords (tab selection and reorder): always in the
  *  standalone window (the whole window IS the terminal), in a docked panel only
  *  while focus sits inside the host. */
 function chordTargetsHost(hostEl: HTMLElement | null, isWindow: boolean): boolean {
@@ -375,6 +376,12 @@ export function SessionsHost({
   // into, so it does not persist at all.
   const persistSurface: DockSurface = hostThreads ? 'agents' : 'terminal';
   const persistsOrder = !isWindow;
+  const shortcutPlatform: ShortcutPlatform | undefined =
+    bridge?.platform === 'darwin'
+      ? 'mac'
+      : bridge?.platform === 'linux' || bridge?.platform === 'win32'
+        ? 'windowsLinux'
+        : undefined;
 
   // The single stable host div for the session subtree. Created once via a
   // useState lazy initializer (never a render-time ref write — React Compiler
@@ -1534,10 +1541,11 @@ export function SessionsHost({
     });
   }, [isWindow, hostTerminals, terminalAvailable]);
 
-  // ⌘1–⌘9 jump straight to the Nth tab (capture phase, focus-scoped in the dock).
+  // Primary modifier + 1–9 jumps straight to the Nth tab (capture phase, focus-scoped in the dock).
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (!matchesPrimaryModifier(event, shortcutPlatform) || event.altKey || event.shiftKey)
+        return;
       if (!/^[1-9]$/.test(event.key)) return;
       if (!chordTargetsHost(hostEl, isWindow)) return;
       // `chordTargetsHost` short-circuits to true in the dedicated terminal
@@ -1552,12 +1560,14 @@ export function SessionsHost({
     }
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [hostEl, isWindow]);
+  }, [hostEl, isWindow, shortcutPlatform]);
 
-  // ⌘⇧← / ⌘⇧→ move the ACTIVE tab one slot (capture phase + focus-gate).
+  // Primary modifier + Shift + Left/Right moves the active tab one slot.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (!event.metaKey || !event.shiftKey || event.ctrlKey || event.altKey) return;
+      if (!matchesPrimaryModifier(event, shortcutPlatform) || !event.shiftKey || event.altKey) {
+        return;
+      }
       const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0;
       if (direction === 0) return;
       if (!chordTargetsHost(hostEl, isWindow)) return;
@@ -1587,7 +1597,7 @@ export function SessionsHost({
         announceTimerRef.current = null;
       }
     };
-  }, [hostEl, isWindow, t]);
+  }, [hostEl, isWindow, shortcutPlatform, t]);
 
   // Reflect terminal liveness to main so the Terminal menu's "Kill Terminal"
   // enables only while at least one TERMINAL session is live.

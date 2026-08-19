@@ -4,19 +4,25 @@
  * process over `parentPort`.
  *
  * `setupPtyHost` is a pure factory with an injected `spawn`, so the
- * message-routing logic is unit-testable under Bun without a real PTY; the
+ * message-routing logic is unit-testable under Vitest without a real PTY; the
  * production bootstrap at the bottom wires real `process.parentPort` +
- * `node-pty`. node-pty's PTY-fd reads do not pump under Bun's event loop, so
- * the real-shell-I/O path is exercised by a Node-runtime harness rather than
- * `bun test` (see `tests/utility/pty-host.real-io-harness.ts`).
+ * `node-pty`. The real-shell-I/O path is exercised by a Node-runtime harness
+ * (see `tests/utility/pty-host.real-io-harness.ts`).
  */
 
-import { delimiter, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { userInfo } from 'node:os';
+import { basename, delimiter, join } from 'node:path';
 import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
+import { interactiveShellArgs } from '../shared/terminal-shell.ts';
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 
-const STRIPPED_ENV_MARKERS = ['OK_ELECTRON_PROTOCOL_HOST', 'OK_LOCK_KIND'] as const;
+const STRIPPED_ENV_MARKERS = [
+  'OK_ELECTRON_PROTOCOL_HOST',
+  'OK_LOCK_KIND',
+  'ELECTRON_RUN_AS_NODE',
+] as const;
 
 export interface PtyCreateMessage {
   type: 'create';
@@ -24,16 +30,16 @@ export interface PtyCreateMessage {
   cwd: string;
   cols: number;
   rows: number;
-  /** Test-only shell override. Production omits → `$SHELL` or the darwin fallback. */
+  /** Test-only shell override. Production uses the platform shell resolver. */
   shell?: string;
   /**
    * "Open in <Agent>" launch: the fixed `<bin> [pre-approve] '<prompt>'` shape
    * (built by core's `buildCliLaunchArgString`, no trailing `\r`). When present,
-   * the shell is spawned as `$SHELL -l -i -c '<launchCommand>; exec $SHELL -l -i'`
+   * the shell is spawned with the platform's interactive argv plus `-c`
    * so the agent runs WITHOUT the command being typed through the line editor —
-   * i.e. it never lands in the user's shell history (`~/.zsh_history`). The
+   * i.e. it never lands in the user's shell history. The
    * `exec` tail hands the tab back to a fresh interactive shell after the agent
-   * exits. Omitted for a plain terminal tab (spawned as the bare `$SHELL -l -i`).
+   * exits. Omitted for a plain terminal tab.
    */
   launchCommand?: string;
 }
@@ -118,6 +124,21 @@ interface PtyHostParentPort {
   postMessage(value: PtyHostOutgoingMessage): void;
 }
 
+export function installPtyImportFailureReply(
+  parentPort: PtyHostParentPort,
+  error: unknown,
+  logger?: { warn(data: Record<string, unknown>, message: string): void },
+): void {
+  const message = error instanceof Error ? error.message : String(error);
+  logger?.warn({ event: 'pty-host-import-failed', error: message }, 'node-pty import failed');
+  parentPort.on('message', (event) => {
+    const msg = asIncomingMessage(event.data);
+    if (msg?.type === 'create') {
+      parentPort.postMessage({ type: 'spawn-error', ptyId: msg.ptyId, message });
+    }
+  });
+}
+
 export interface SetupPtyHostDeps {
   /** `process.parentPort` in the utility runtime; a fake in tests. */
   parentPort: PtyHostParentPort | null;
@@ -125,6 +146,12 @@ export interface SetupPtyHostDeps {
   spawn: SpawnPty;
   /** Defaults to `process.env`. Injected so env-stripping is unit-testable. */
   env?: Record<string, string | undefined>;
+  /** Defaults to `process.platform`. */
+  platform?: NodeJS.Platform;
+  /** Defaults to `os.userInfo().shell`. */
+  userInfoShell?: () => string | null;
+  /** Defaults to `existsSync`. */
+  shellExists?: (path: string) => boolean;
   /** Optional structured warn sink for unrecognized/malformed messages. */
   logger?: { warn: (o: Record<string, unknown>) => void };
 }
@@ -177,38 +204,98 @@ export interface PtyHostHandle {
   killActive(): void;
 }
 
-/** Login interactive shell: sources profiles so `claude`/git/npm resolve on PATH. */
-export function resolveShell(env: Record<string, string | undefined>, override?: string): string {
-  if (override && override.length > 0) return override;
-  const shell = env.SHELL;
-  return typeof shell === 'string' && shell.length > 0 ? shell : DARWIN_FALLBACK_SHELL;
+export interface ResolveShellOptions {
+  platform: NodeJS.Platform;
+  override?: string;
+  userInfoShell?: () => string | null;
+  shellExists?: (path: string) => boolean;
+  logger?: { warn: (o: Record<string, unknown>) => void };
+}
+
+function isFalseStyleShell(shell: string): boolean {
+  const command = basename(shell);
+  return command === 'false' || command === 'nologin';
+}
+
+function isUsableShell(
+  shell: string | null | undefined,
+  shellExists: (path: string) => boolean,
+): shell is string {
+  return (
+    typeof shell === 'string' && shell.length > 0 && !isFalseStyleShell(shell) && shellExists(shell)
+  );
+}
+
+/** Resolve the user's interactive shell with platform-native fallbacks. */
+export function resolveShell(
+  env: Record<string, string | undefined>,
+  options: ResolveShellOptions,
+): string {
+  if (options.override && options.override.length > 0) return options.override;
+
+  const configuredShell = env.SHELL;
+  if (options.platform === 'darwin') {
+    return typeof configuredShell === 'string' && configuredShell.length > 0
+      ? configuredShell
+      : DARWIN_FALLBACK_SHELL;
+  }
+  if (options.platform !== 'linux') {
+    return typeof configuredShell === 'string' && configuredShell.length > 0
+      ? configuredShell
+      : '/bin/sh';
+  }
+
+  const shellExists = options.shellExists ?? existsSync;
+  if (isUsableShell(configuredShell, shellExists)) return configuredShell;
+
+  let passwdShell: string | null = null;
+  try {
+    passwdShell = (options.userInfoShell ?? (() => userInfo().shell))();
+  } catch (err) {
+    const code = (err as { code?: unknown } | null)?.code;
+    options.logger?.warn({
+      event: 'pty-host-user-info-shell-failed',
+      code: typeof code === 'string' ? code : 'unknown',
+    });
+    passwdShell = null;
+  }
+  if (isUsableShell(passwdShell, shellExists)) return passwdShell;
+  return shellExists('/bin/bash') ? '/bin/bash' : '/bin/sh';
 }
 
 /**
  * Compute the shell argv for a PTY.
  *
- * - Plain tab → `['-l', '-i']`: a login interactive shell (sources profiles for
- *   PATH; interactive for the user's normal prompt + history).
- * - "Open in <Agent>" launch → `['-l', '-i', '-c', '<launchCommand>; exec <shell> -l -i']`:
- *   the SAME login-interactive shell (so `.zshrc`-sourced PATH is byte-identical
- *   to the plain tab), but the agent command rides on `-c`. A `-c` command is run
+ * macOS uses a login interactive shell; Linux uses an interactive non-login
+ * shell, matching each platform's terminal convention. "Open in <Agent>"
+ * keeps the same flags in its exec tail, but the agent command rides on `-c`.
+ * A `-c` command is run
  *   directly rather than entered through the shell's line editor, so it is NOT
  *   written to the user's persistent history — fixing both the launch-line
  *   clutter and the doc-content-on-disk leak (the prompt would otherwise be saved
- *   in plaintext to `~/.zsh_history`, outside `.ok/`). The `exec <shell> -l -i`
- *   tail replaces the launcher with a fresh interactive shell once the agent
+ *   in plaintext to the shell's history file, outside `.ok/`). The `exec` tail
+ *   replaces the launcher with a fresh interactive shell once the agent
  *   exits, so the user keeps working in the same tab and THEIR commands record
  *   normally — only OK's machine-generated launch line is suppressed.
  *
  * The agent still gets a real PTY (node-pty allocates the tty), so its TUI runs
  * interactively regardless of the shell being driven by `-c`.
  */
-export function buildShellArgs(shell: string, launchCommand?: string): string[] {
-  if (launchCommand === undefined || launchCommand.length === 0) return ['-l', '-i'];
+export function buildShellArgs(
+  platform: NodeJS.Platform,
+  shell: string,
+  launchCommand?: string,
+): string[] {
+  const interactiveArgs = [...interactiveShellArgs(platform)];
+  if (launchCommand === undefined || launchCommand.length === 0) return interactiveArgs;
   // Single-quote the shell path in the `exec` tail (POSIX close-escape-reopen),
   // so a shell path containing a space or quote can't break the launcher line.
   const quotedShell = `'${shell.replace(/'/g, "'\\''")}'`;
-  return ['-l', '-i', '-c', `${launchCommand}; exec ${quotedShell} -l -i`];
+  return [
+    ...interactiveArgs,
+    '-c',
+    `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+  ];
 }
 
 /**
@@ -224,15 +311,14 @@ export function buildShellEnv(
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(parentEnv)) {
     if (value === undefined) continue;
-    if (stripped.has(key)) continue;
+    if (stripped.has(key) || key.startsWith('GDK_PIXBUF_')) continue;
     out[key] = value;
   }
   // `ok` must resolve in OK's own terminal regardless of the shell-PATH
   // rc-consent decision: OK spawns this process, so prepending `~/.ok/bin`
   // here touches no file OK doesn't own. The env shim the rc block sources
   // dedups by substring match, so a consenting user's login shell won't
-  // re-prepend it. A missing HOME (never the case on a macOS GUI launch)
-  // just skips the injection.
+  // re-prepend it. A missing HOME just skips the injection.
   const home = out.HOME;
   if (home) {
     const okBin = join(home, '.ok', 'bin');
@@ -252,6 +338,7 @@ export function buildShellEnv(
 
 export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const env = deps.env ?? (process.env as Record<string, string | undefined>);
+  const platform = deps.platform ?? process.platform;
   // One host per window multiplexes every terminal tab's shell, keyed by the
   // renderer-minted ptyId. Each create adds an entry; tabs are independent.
   const sessions = new Map<string, PtyProcessLike>();
@@ -287,11 +374,17 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       safeKill(stale);
       sessions.delete(ptyId);
     }
-    const shell = resolveShell(env, message.shell);
+    const shell = resolveShell(env, {
+      platform,
+      override: message.shell,
+      userInfoShell: deps.userInfoShell,
+      shellExists: deps.shellExists,
+      logger: deps.logger,
+    });
     const shellEnv = buildShellEnv(env);
     let pty: PtyProcessLike;
     try {
-      pty = deps.spawn(shell, buildShellArgs(shell, message.launchCommand), {
+      pty = deps.spawn(shell, buildShellArgs(platform, shell, message.launchCommand), {
         name: 'xterm-256color',
         cols: message.cols,
         rows: message.rows,
@@ -439,12 +532,26 @@ export function installHostReaping(handle: PtyHostHandle, proc: HostReapProcess)
 }
 
 // Production entry — auto-runs when imported by `utilityProcess.fork(<this-file>)`.
-// `process.parentPort` is non-null only in the utility runtime; under Bun/Node
-// unit tests and the Node harness it is undefined, so this branch stays dormant
+// `process.parentPort` is non-null only in the utility runtime; under Vitest/Node
+// and the Node harness it is undefined, so this branch stays dormant
 // and node-pty is never imported there.
 if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
   const parentPort = (process as NodeJS.Process & { parentPort: PtyHostParentPort }).parentPort;
   void (async () => {
+    let log: {
+      warn(data: Record<string, unknown>, message?: string): void;
+    } = {
+      warn: (data, message) => console.warn(message ?? '[pty-host] warning', data),
+    };
+    try {
+      const { getLogger } = await import('../main/desktop-logger.ts');
+      log = getLogger('pty-host');
+    } catch (err) {
+      const code = (err as { code?: unknown } | null)?.code;
+      console.warn('[pty-host] logger unavailable; using console fallback', {
+        code: typeof code === 'string' ? code : 'unknown',
+      });
+    }
     let spawn: SpawnPty;
     try {
       ({ spawn } = await import('node-pty'));
@@ -454,17 +561,9 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
       // the unhandled rejection leaves the renderer in `'running'` with no
       // output and no signal. Reply to any `create` with a spawn-error so the
       // panel shows its error/restart state instead of hanging.
-      const message = err instanceof Error ? err.message : String(err);
-      parentPort.on('message', (event) => {
-        const msg = asIncomingMessage(event.data);
-        if (msg?.type === 'create') {
-          parentPort.postMessage({ type: 'spawn-error', ptyId: msg.ptyId, message });
-        }
-      });
+      installPtyImportFailureReply(parentPort, err, log);
       return;
     }
-    const { getLogger } = await import('../main/desktop-logger.ts');
-    const log = getLogger('pty-host');
     const handle = setupPtyHost({
       parentPort,
       spawn,

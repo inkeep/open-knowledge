@@ -1355,9 +1355,9 @@ describe('buildMenuTemplate — View → Show/Hide Agents', () => {
   });
 
   // The panel is server-hosted, not pty-backed, so its toggle must survive the
-  // off-mac strip that darkens every terminal handler (index.ts's darwin gate).
-  // A regression that folded it into that branch would kill agents on win/linux.
-  test('Agents stays wired when every terminal handler is stripped (off-mac shape)', () => {
+  // unsupported-platform strip that darkens every PTY-backed terminal handler.
+  // A regression that folded it into that branch would kill agents there too.
+  test('Agents stays wired when every terminal handler is stripped', () => {
     const template = buildMenuTemplate(
       makeDeps({
         onToggleAgentPanel: vi.fn(() => {}),
@@ -1478,8 +1478,8 @@ describe('buildMenuTemplate — top-level Terminal menu', () => {
     expect(onKillTerminal).toHaveBeenCalledTimes(1);
   });
 
-  test('PTY-backed commands stay disabled off macOS even when handlers are wired', () => {
-    const template = buildMenuTemplateForPlatform(
+  test('PTY-backed commands are enabled on Linux when handlers are wired', () => {
+    const linux = buildMenuTemplateForPlatform(
       'linux',
       makeDeps({
         onToggleTerminal: vi.fn(() => {}),
@@ -1491,11 +1491,31 @@ describe('buildMenuTemplate — top-level Terminal menu', () => {
       }),
     );
 
-    expect(findByLabel(template, 'Show Terminal')?.enabled).toBe(false);
-    expect(findByLabel(template, 'Move Terminal to right')?.enabled).toBe(false);
-    expect(findByLabel(template, 'New Terminal')?.enabled).toBe(false);
-    expect(findByLabel(template, 'New Terminal Window')?.enabled).toBe(false);
-    expect(findByLabel(template, 'Kill Terminal')?.enabled).toBe(false);
+    expect(findByLabel(linux, 'Show Terminal')?.enabled).toBe(true);
+    expect(findByLabel(linux, 'Move Terminal to right')?.enabled).toBe(true);
+    expect(findByLabel(linux, 'New Terminal')?.enabled).toBe(true);
+    expect(findByLabel(linux, 'New Terminal Window')?.enabled).toBe(true);
+    expect(findByLabel(linux, 'Kill Terminal')?.enabled).toBe(true);
+  });
+
+  test('PTY-backed commands stay disabled on unsupported platforms', () => {
+    const windows = buildMenuTemplateForPlatform(
+      'win32',
+      makeDeps({
+        onToggleTerminal: vi.fn(() => {}),
+        onMoveTerminal: vi.fn(() => {}),
+        onNewTerminal: vi.fn(() => {}),
+        onNewTerminalWindow: vi.fn(() => {}),
+        onKillTerminal: vi.fn(() => {}),
+        terminalLive: true,
+      }),
+    );
+
+    expect(findByLabel(windows, 'Show Terminal')?.enabled).toBe(false);
+    expect(findByLabel(windows, 'Move Terminal to right')?.enabled).toBe(false);
+    expect(findByLabel(windows, 'New Terminal')?.enabled).toBe(false);
+    expect(findByLabel(windows, 'New Terminal Window')?.enabled).toBe(false);
+    expect(findByLabel(windows, 'Kill Terminal')?.enabled).toBe(false);
   });
 
   test('the View → Show/Hide Terminal toggle is preserved alongside the Terminal menu', () => {

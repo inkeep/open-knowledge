@@ -20,10 +20,10 @@ minimumReleaseAgeExclude:
 # Dependency build scripts are blocked by default under pnpm; only these run.
 # electron downloads its platform binary in a postinstall. The napi native addon
 # (@inkeep/open-knowledge-native-config) builds via its own turbo `napi build`
-# task, not a dependency install script, so it needs no entry here. node-pty ships
-# prebuilds for darwin + win32 only — no Linux prebuild — so on Linux its install
-# script must run to compile pty.node from source, or the Node-runtime pty tests
-# can't load the native module (darwin/win32 resolve the shipped prebuild, no build).
+# task, not a dependency install script, so it needs no entry here. node-pty
+# publishes N-API prebuilds for the supported desktop platforms; its install
+# script remains allowlisted as a source-build fallback when no matching
+# prebuild is present.
 onlyBuiltDependencies:
   - electron
   - node-pty

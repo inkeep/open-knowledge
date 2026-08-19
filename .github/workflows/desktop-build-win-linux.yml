@@ -325,9 +325,11 @@ jobs:
           - runner: ubuntu-latest
             arch: x64
             targets: deb:x64 rpm:x64
+            unpacked_dir: linux-unpacked
           - runner: ubuntu-24.04-arm
             arch: arm64
             targets: deb:arm64 rpm:arm64
+            unpacked_dir: linux-arm64-unpacked
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -408,6 +410,12 @@ jobs:
         run: |
           pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never \
             --config electron-builder.linux.yml
+
+      - name: Assert Linux terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_LINUX_PACKAGE_DIR: dist-desktop/${{ matrix.unpacked_dir }}
+        run: pnpm exec vitest run tests/unit/linux-package-native-guards.test.ts
 
       # Fail before uploading an installer that cannot start (see the Windows
       # step for the full rationale). This is the control that would have caught

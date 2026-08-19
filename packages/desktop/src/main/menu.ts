@@ -21,8 +21,8 @@
  * (Electron recommends full rebuild on state change).
  *
  * Electron import discipline: `electron` named exports (Menu, app, dialog,
- * shell) are only resolvable at runtime inside an Electron process. Bun's
- * unit-test runner loads the `electron` npm package, which is just a string
+ * shell) are only resolvable at runtime inside an Electron process. Vitest's
+ * Node runtime loads the `electron` npm package, which is just a string
  * path to the binary — it has NO named exports. So this module uses
  * type-only imports for interface types (MenuItemConstructorOptions) and
  * pulls the one runtime value we need (`app.name`) + side-effecting APIs
@@ -50,6 +50,7 @@ import {
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
+import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
@@ -66,7 +67,7 @@ export interface MenuDeps {
   showDevToolsMenu: boolean;
   /** `electron.dialog` — injected so the File → Open folder click handler
    *  can call `promptForExistingFolder(dialog)` without importing `dialog`
-   *  at module scope (breaks Bun-test module load). */
+   *  at module scope (breaks Vitest module load). */
   dialog: Dialog;
   /** Open the Project Navigator window (File → Switch project…). */
   openNavigator(): void;
@@ -191,7 +192,7 @@ export interface MenuDeps {
    * File → New file click handler. Routes through the renderer-side
    * inline-rename flow at FileTree's startCreating helper — same path the
    * sidebar empty-space context menu uses. Optional because the menu is
-   * also built in contexts that don't wire it (Bun unit tests).
+   * also built in contexts that don't wire it (Vitest unit tests).
    */
   onNewFile?(): void;
   /** File → New folder click handler. Sibling of `onNewFile`. */
@@ -204,7 +205,7 @@ export interface MenuDeps {
    * Project…, which lists/opens existing projects): this scaffolds a brand-new
    * project. Always enabled when wired (no `activeTarget` gate — creating a
    * project is project-scope-independent). Optional because the menu is also
-   * built in contexts that don't wire it (Bun unit tests).
+   * built in contexts that don't wire it (Vitest unit tests).
    */
   onNewProject?(): void;
   /**
@@ -460,7 +461,7 @@ function roleLabelSource(role: string, isMac: boolean): string | undefined {
 
 /**
  * Install the template as the application menu. Dynamically imports
- * `Menu` so the module-top scope stays Bun-test-loadable; callers must
+ * `Menu` so the module-top scope stays Vitest-loadable; callers must
  * be in an async context (typically `app.whenReady().then(async () => ...)`).
  */
 export async function installApplicationMenu(deps: MenuDeps): Promise<void> {
@@ -699,7 +700,7 @@ function menuCommandContext(deps: MenuDeps): CommandContext {
     activeTargetKind: menuTargetKind(deps.activeTarget),
     // The native menu has no single-file concept; those commands never gate here.
     singleFile: false,
-    terminalCapable: process.platform === 'darwin',
+    terminalCapable: isTerminalPlatform(process.platform),
     terminalLive: deps.terminalLive === true,
     canExpandAll: deps.canExpandAll ?? true,
     canCollapseAll: deps.canCollapseAll ?? true,

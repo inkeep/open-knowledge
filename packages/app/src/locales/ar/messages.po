@@ -6355,6 +6355,7 @@ msgstr "إخفاء الشريط الجانبي"
 msgid "Hide skill nodes"
 msgstr "إخفاء عقد المهارات"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "إخفاء Terminal"
@@ -11671,6 +11672,7 @@ msgstr "إظهار عقد المهارات"
 msgid "Show source"
 msgstr "إظهار المصدر"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "إظهار Terminal"

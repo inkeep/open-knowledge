@@ -7,8 +7,8 @@ import { describe, expect, test } from 'vitest';
 /**
  * No-orphan OUTCOME seam. Verifies the system property the feature requires:
  * killing a PTY host process leaves no surviving shell. Real shell +
- * real signal are required, and node-pty does not pump under Bun, so the drive
- * runs in `pty-host.reap-harness.ts` under Node; this test spawns it, reads the
+ * real signal are required, so the drive runs in an isolated Node subprocess;
+ * this test spawns it, reads the
  * shell pid it spawned, kills the host, and asserts the shell pid is gone.
  *
  * No-orphan is defense-in-depth — the explicit `installHostReaping` `pty.kill()`
@@ -19,7 +19,6 @@ import { describe, expect, test } from 'vitest';
  * alone — both must leave no orphan, including under a forced host crash.
  */
 
-const NODE = Bun.which('node');
 const HARNESS = new URL('./pty-host.reap-harness.ts', import.meta.url).pathname;
 
 async function readShellPid(
@@ -54,7 +53,7 @@ async function waitForReaped(pid: number, timeoutMs: number): Promise<boolean> {
 }
 
 async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> {
-  const child = nodeSpawn(NODE as string, [HARNESS], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const child = nodeSpawn(process.execPath, [HARNESS], { stdio: ['ignore', 'pipe', 'inherit'] });
   const childStdout = child.stdout;
   if (!childStdout) throw new Error('spawned harness has no stdout pipe');
   const proc = {
@@ -86,20 +85,10 @@ async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> 
 
 describe('PTY host — no orphan on host teardown (Node runtime)', () => {
   test('a SIGTERM to the host leaves no orphan shell (graceful reap path)', async () => {
-    if (!NODE) {
-      throw new Error(
-        'node was not found on PATH but is required (package engines: >=24) to spawn a real PTY — node-pty is silent under Bun',
-      );
-    }
     await assertNoOrphan('SIGTERM');
   }, 60_000);
 
   test('a SIGKILL to the host leaves no orphan shell (OS backstop, no handler runs)', async () => {
-    if (!NODE) {
-      throw new Error(
-        'node was not found on PATH but is required (package engines: >=24) to spawn a real PTY — node-pty is silent under Bun',
-      );
-    }
     await assertNoOrphan('SIGKILL');
   }, 60_000);
 });

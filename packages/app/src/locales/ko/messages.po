@@ -6355,6 +6355,7 @@ msgstr "사이드바 가리기"
 msgid "Hide skill nodes"
 msgstr "스킬 노드 숨기기"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "터미널 가리기"
@@ -11671,6 +11672,7 @@ msgstr "스킬 노드 보기"
 msgid "Show source"
 msgstr "소스 보기"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "터미널 표시"

@@ -47,7 +47,7 @@ const TERMINAL_TAB_SORTABLE_SELECTOR = '[data-terminal-tab-sortable]';
  * One terminal tab as a `@dnd-kit/sortable` node. Only the pointer listeners +
  * transform are wired (no `attributes` spread and no `KeyboardSensor`): dnd-kit's
  * `attributes` would overwrite the Radix trigger's tab semantics, while keyboard
- * reorder belongs to the host's dedicated ⌘⇧←/→ chord rather than dnd-kit's
+ * reorder belongs to the host's dedicated primary-modifier chord rather than dnd-kit's
  * Space-lift model. The pointer listeners attach to the trigger, but without a
  * keyboard sensor they do not claim Radix arrow keys or F2. `disabled`
  * short-circuits sortable while any rename is open.
@@ -185,7 +185,7 @@ interface TerminalTabStripProps {
   readonly onReorder?: (newOrderIds: readonly string[]) => void;
   /**
    * Reports whether a pointer drag is currently lifted, so the host can suppress
-   * the ⌘⇧←/→ keyboard-reorder chord while a drag is in flight.
+   * the primary-modifier keyboard-reorder chord while a drag is in flight.
    */
   readonly onDragActiveChange?: (active: boolean) => void;
   /** Which edge this panel occupies — drives the collapse chevron's direction.
@@ -337,7 +337,7 @@ export function TerminalTabStrip({
 
   // Pointer-drag reorder. PointerSensor distance:8 keeps a plain click (activate
   // / double-click-to-rename) from starting a drag. No KeyboardSensor — keyboard
-  // reorder is the host's ⌘⇧←/→ chord, so arrow keys stay with Radix roving focus.
+  // reorder is the host's primary-modifier chord, so arrow keys stay with Radix roving focus.
   // Drag is disabled entirely while a rename is open. The chrome module (shared
   // with editor tabs) supplies the horizontal clamp, edge-snap collision, and
   // width stabilization; bounds are measured against the row on drag start.

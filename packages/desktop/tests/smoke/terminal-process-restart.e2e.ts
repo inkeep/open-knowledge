@@ -5,11 +5,13 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 const ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 interface RestartSeed {
   tmpHome: string;
@@ -102,32 +104,28 @@ async function setWindowSize(
     .toBeGreaterThanOrEqual(width - 100);
 }
 
-async function clickMenuItem(
-  app: ElectronApplication,
-  topLabel: string,
-  labels: string[],
+async function dispatchRendererMenuAction(
+  page: Page,
+  action: 'move-terminal' | 'toggle-terminal',
 ): Promise<void> {
-  await app.evaluate(
-    ({ Menu }, payload) => {
-      const top = Menu.getApplicationMenu()?.items.find((item) => item.label === payload.topLabel);
-      const item = top?.submenu?.items.find((candidate) =>
-        payload.labels.includes(candidate.label),
-      );
-      if (!item)
-        throw new Error(`missing ${payload.topLabel} menu item: ${payload.labels.join(' / ')}`);
-      item.click();
-    },
-    { topLabel, labels },
-  );
+  await page.evaluate(async (menuAction) => {
+    const menu = window.okDesktop?.menu;
+    if (!menu) throw new Error('renderer menu bridge is unavailable');
+    await menu.dispatch({ kind: 'menu-action', action: menuAction });
+  }, action);
 }
 
 const terminalTabs = (page: Page) =>
   page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
 
-async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
-  await clickMenuItem(app, 'View', ['Show Terminal']);
+async function openTerminal(page: Page): Promise<void> {
   const terminal = page.locator('section[aria-label="Terminal"]:visible');
-  await expect(terminal).toBeVisible({ timeout: 15_000 });
+  await expect(async () => {
+    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
+    if (await terminal.isVisible()) return;
+    await dispatchRendererMenuAction(page, 'toggle-terminal');
+    await expect(terminal).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
   await expect(terminal.locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
     'running',
@@ -141,21 +139,21 @@ async function openBareTab(page: Page): Promise<void> {
   await expect(terminalTabs(page)).toHaveCount(2, { timeout: 25_000 });
 }
 
-async function growRightTerminal(page: Page, deltaPx: number): Promise<number> {
+async function applyPersistedRightTerminalWidth(page: Page, width: number): Promise<number> {
+  await page.evaluate((nextWidth) => {
+    localStorage.setItem('ok-terminal-right-width-v1', String(nextWidth));
+  }, width);
+  await page.reload({ waitUntil: 'domcontentloaded' });
   const column = page.locator('#terminal-column');
-  const before = await column.evaluate((element) => element.getBoundingClientRect().width);
-  const handle = await column.evaluate((element) => {
-    const rect = element.previousElementSibling?.getBoundingClientRect();
-    return rect == null ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-  });
-  if (!handle) throw new Error('right Terminal resize handle unavailable');
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handle.x - deltaPx, handle.y + handle.height / 2, { steps: 12 });
-  await page.mouse.up();
+  await expect(column).toBeVisible({ timeout: 20_000 });
   await expect
-    .poll(() => column.evaluate((element) => element.getBoundingClientRect().width))
-    .toBeGreaterThan(before + deltaPx / 2);
+    .poll(async () => {
+      const renderedWidth = await column.evaluate(
+        (element) => element.getBoundingClientRect().width,
+      );
+      return Math.abs(renderedWidth - width);
+    })
+    .toBeLessThan(20);
   return column.evaluate((element) => element.getBoundingClientRect().width);
 }
 
@@ -177,7 +175,7 @@ async function quitAndWait(app: ElectronApplication, child: ChildProcess): Promi
 
 test.describe('terminal process restart', () => {
   test.skip(!ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1');
-  test.skip(process.platform !== 'darwin', 'Desktop is darwin-only');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('restores placement, width, tab order, and active tab in a separate Electron process', async ({
@@ -191,21 +189,28 @@ test.describe('terminal process restart', () => {
     const firstProcess = firstApp.process();
     const firstPage = await findEditorWindow(firstApp);
     await setWindowSize(firstApp, firstPage, 1900, 900);
-    await openTerminal(firstApp, firstPage);
+    await openTerminal(firstPage);
     await openBareTab(firstPage);
     // This test owns process-restart persistence; the dedicated terminal-tabs
     // smoke owns pointer-drag behavior. Reordering in the bottom dock keeps
     // this setup independent of right-column overlay geometry.
     await firstPage.locator('section[aria-label="Terminal"]:visible .xterm').click();
-    await firstPage.keyboard.press('Meta+Shift+ArrowLeft');
+    await firstPage.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
     await expect(terminalTabs(firstPage)).toHaveText(['Terminal 2', 'Terminal 1']);
     await expect(firstPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await clickMenuItem(firstApp, 'Terminal', ['Move Terminal to right']);
+    await dispatchRendererMenuAction(firstPage, 'move-terminal');
     await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
-    const retainedWidth = await growRightTerminal(firstPage, 120);
+    // Pointer-drag behavior has its own live smoke. Here a deterministic
+    // persisted width isolates the cross-process contract this test owns.
+    const retainedWidth = await applyPersistedRightTerminalWidth(firstPage, 860);
+    await expect(terminalTabs(firstPage)).toHaveText(['Terminal 2', 'Terminal 1']);
+    await expect(firstPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await quitAndWait(firstApp, firstProcess);
 
     const secondApp = await launchRestartProfile(seed);

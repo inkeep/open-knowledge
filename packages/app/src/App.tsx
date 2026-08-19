@@ -70,8 +70,8 @@ import {
 } from '@/lib/use-settings-route';
 
 // Cold-path receive surface: only mounts when main routes a
-// 'project-branch-switch' payload. Lazy so its branch-info / checkout / variant
-// code (and the target-status client it pulls in) splits out of the main bundle.
+// 'project-branch-switch' payload. Lazy-loading keeps its branch-info, checkout,
+// variant, and target-status code out of the main bundle.
 const ShareBranchSwitchDialog = lazy(() =>
   import('@/components/ShareBranchSwitchDialog').then((m) => ({
     default: m.ShareBranchSwitchDialog,
@@ -79,9 +79,9 @@ const ShareBranchSwitchDialog = lazy(() =>
 );
 
 // Cold-path receive surface: the honest verdict modal for a share deep link
-// whose target is absent on the receiver's branch. Self-gates on
-// `missDialogStore`; lazy so its verdict-fetch code splits out of the main
-// bundle until a miss actually occurs.
+// whose target is absent on the receiver's branch. It self-gates on
+// `missDialogStore`; lazy-loading keeps verdict-fetch code out of the main
+// bundle until a miss occurs.
 const ShareReceiveMissDialog = lazy(() =>
   import('@/components/ShareReceiveMissDialog').then((m) => ({
     default: m.ShareReceiveMissDialog,
@@ -730,8 +730,8 @@ function AppBody() {
   // carries: the terminal launches next to an already-open editor, so that
   // directive would point the agent at a surface the user is already viewing.
   // Null on the web host (no real OS shell) AND on desktop hosts where the PTY
-  // is unavailable (`config.ptyAvailable` is false on Windows/Linux — node-pty
-  // is excluded from those packages), so the menu rows that consume it render
+  // is unavailable (`config.ptyAvailable` is false on Windows), so the menu
+  // rows that consume it render
   // nothing rather than a silent no-op: the docked terminal in EditorPane is
   // gated on the same `ptyAvailable` flag, so a Terminal row here would launch
   // into a surface that never mounts. Mirrors the gate in EditorPane / Settings

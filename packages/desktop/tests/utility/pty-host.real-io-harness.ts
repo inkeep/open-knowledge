@@ -1,12 +1,10 @@
 /**
- * Real-shell-I/O harness for the PTY host — RUN UNDER NODE, not Bun.
+ * Real-shell-I/O harness for the PTY host.
  *
- * node-pty's PTY-fd reads are driven by libuv and do not pump under Bun's
- * event loop (a spawned shell produces zero bytes), so `bun test` cannot
- * exercise the real shell. This harness drives the actual `setupPtyHost`
- * factory with a real `node-pty` spawn under the Node runtime and asserts the
- * real-I/O contract end to end. `pty-host-real-io.test.ts` invokes it as a
- * Node subprocess from Bun and asserts on its exit code + result line.
+ * This harness drives the actual `setupPtyHost` factory with a real `node-pty`
+ * spawn under Node and asserts the real-I/O contract end to end.
+ * `pty-host-real-io.test.ts` invokes it as an isolated subprocess and asserts
+ * on its exit code + result line.
  *
  * Scenarios: real command round-trip, cwd binding + env-marker stripping,
  * host-survives-PTY-death containment, bad-shell async exit.
@@ -180,7 +178,7 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-// Hard ceiling so a wedged shell can never hang the parent `bun test`.
+// Hard ceiling so a wedged shell can never hang the parent Vitest worker.
 const hardTimeout = setTimeout(() => {
   console.log('HARNESS_RESULT ok=0 fail=1 :: hard timeout');
   process.exit(1);

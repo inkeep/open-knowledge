@@ -1,10 +1,10 @@
 /**
- * No-orphan reap harness — RUN UNDER NODE, not Bun.
+ * No-orphan reap harness.
  *
  * Proves the OS-level no-orphan guarantee: a host that is SIGTERM'd (what
  * Electron's `utilityProcess.kill()` delivers) reaps its real node-pty shell
- * instead of orphaning it. node-pty's PTY-fd reads do not pump under Bun, so
- * this runs under Node; `pty-host-reap.test.ts` spawns it, reads the shell pid
+ * instead of orphaning it. `pty-host-reap.test.ts` spawns this under Node,
+ * reads the shell pid
  * it prints, SIGTERMs it, and asserts that pid is gone.
  *
  * Shape: spawn a real login shell, print `SHELLPID=<pid>` (the shell's own

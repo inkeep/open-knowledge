@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
  * node-pty ships prebuilt binaries under
  * `node-pty/prebuilds/<platform>-<arch>/{pty.node,spawn-helper}`, and the
  * prebuilt `spawn-helper` is mode 0644 — not executable (node-pty#850). Both
- * producers that lay it on disk preserve that non-executable mode — `bun install`
+ * producers that lay it on disk preserve that non-executable mode — `pnpm install`
  * for the dev tree, electron-builder's asarUnpack for the packed app — so
  * `pty.fork()` dies at runtime with "posix_spawnp failed" and the in-app terminal
  * never spawns a shell.
@@ -20,7 +20,7 @@ import { dirname, join } from 'node:path';
  *     electron-builder re-signs (the Developer ID signature covers the +x bit).
  *   - DEV / CI (`ensureNodePtySpawnHelperExecutableInNodeModules`) — the desktop
  *     postinstall, against the real `node_modules/node-pty/prebuilds` tree, so
- *     `bun run build:desktop` / `dev:electron` / smoke launches get a working
+ *     `pnpm run build:desktop` / `dev:electron` / smoke launches get a working
  *     terminal without packaging.
  *
  * We ship arm64-only (mac.target), so the darwin-arm64 helper is load-bearing and
@@ -29,6 +29,11 @@ import { dirname, join } from 'node:path';
  */
 
 const SHIPPED_ARCH = 'darwin-arm64';
+
+/** The spawn-helper is a Darwin node-pty prebuild detail. */
+export function shouldEnsureNodePtySpawnHelper(platform = process.platform) {
+  return platform === 'darwin';
+}
 
 /**
  * chmod 0755 every `<arch>/spawn-helper` under a node-pty `prebuilds` directory.
@@ -89,8 +94,8 @@ export function ensureNodePtySpawnHelperExecutable(resourcesDir) {
 /**
  * DEV / CI build+install path (desktop postinstall).
  *
- * `bun install` leaves the prebuilt helper non-executable, and the dev build
- * (`bun run build:desktop` / `dev:electron`, electron-vite, no afterPack) has no
+ * `pnpm install` leaves the prebuilt helper non-executable, and the dev build
+ * (`pnpm run build:desktop` / `dev:electron`, electron-vite, no afterPack) has no
  * step to fix it. Resolves the same node-pty the runtime loads; the `nodePtyDir`
  * parameter is for tests to point at a fixture.
  *
@@ -100,7 +105,7 @@ export function ensureNodePtySpawnHelperExecutable(resourcesDir) {
 export function ensureNodePtySpawnHelperExecutableInNodeModules(nodePtyDir = resolveNodePtyDir()) {
   return chmodSpawnHelpersUnderPrebuilds(
     join(nodePtyDir, 'prebuilds'),
-    `Confirm node-pty is installed (it is a desktop dependency) and 'bun install' did not run ` +
+    `Confirm node-pty is installed (it is a desktop dependency) and 'pnpm install' did not run ` +
       `with --ignore-scripts — without an executable spawn-helper, pty.fork() fails at runtime ` +
       `with "posix_spawnp failed" and the in-app terminal cannot spawn a shell.`,
   );
@@ -112,7 +117,7 @@ export function ensureNodePtySpawnHelperExecutableInNodeModules(nodePtyDir = res
 
 /**
  * Non-throwing wrapper around {@link ensureNodePtySpawnHelperExecutableInNodeModules}
- * for the desktop postinstall. The postinstall must NEVER fail `bun install` over a
+ * for the desktop postinstall. The postinstall must NEVER fail `pnpm install` over a
  * pathological node-pty layout (a partially-broken install, an absent shipped-arch
  * prebuild) — that would gate the whole monorepo. This converts the throw into a
  * `{ ok: false, error }` result so the caller stays exit-0; the caller owns logging.

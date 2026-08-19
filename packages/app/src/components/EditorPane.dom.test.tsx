@@ -490,6 +490,7 @@ function makeOkDesktopStub(
     terminalVisible: false,
     agentPanelVisible: false,
   }),
+  ptyAvailable = true,
 ) {
   const menuHandlers: Array<(action: string) => void> = [];
   const viewMenuPushes: Array<{
@@ -506,9 +507,8 @@ function makeOkDesktopStub(
     },
     stub: {
       // The terminal affordances gate on the host's pty capability
-      // (`config.ptyAvailable`, false on win/linux where node-pty isn't
-      // bundled) — these tests model the capable macOS host.
-      config: { ptyAvailable: true },
+      // (`config.ptyAvailable`, false where node-pty is unavailable).
+      config: { ptyAvailable },
       onMenuAction(cb: (action: string) => void) {
         menuHandlers.push(cb);
         return () => {
@@ -583,6 +583,18 @@ describe('EditorPane session-panel wiring', () => {
       expect(panel.getAttribute('data-has-bridge')).toBe('true');
       expect(panel.getAttribute('data-terminal-capable')).toBe('true');
     }
+  });
+
+  test('desktop host without PTY capability keeps the terminal dock unmounted', async () => {
+    const desk = makeOkDesktopStub(undefined, false);
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    await renderEditorPane();
+
+    expect(screen.queryByTestId('terminal-dock')).toBeNull();
+    expect(screen.getByTestId('agents-panel').getAttribute('data-terminal-capable')).toBe('false');
+
+    act(() => desk.dispatchMenuAction('toggle-terminal'));
+    expect(screen.queryByTestId('terminal-dock')).toBeNull();
   });
 
   test('desktop: the two panels open and close independently', async () => {

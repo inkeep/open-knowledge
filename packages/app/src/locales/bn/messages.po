@@ -6351,6 +6351,7 @@ msgstr "সাইডবার লুকান"
 msgid "Hide skill nodes"
 msgstr "স্কিল নোড লুকান"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Terminal লুকান"
@@ -11667,6 +11668,7 @@ msgstr "স্কিল নোড দেখান"
 msgid "Show source"
 msgstr "সোর্স দেখান"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Terminal দেখান"

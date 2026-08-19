@@ -7,8 +7,8 @@
  *   - closing a tab reaps only that tab's shell — the survivor stays interactive;
  *   - a manual rename pins over the program's OSC 0/2 title (the running shell
  *     sets a title; the user's custom name wins);
- *   - keyboard reorder (⌘⇧←/→) changes tab order, keeps each session's sticky
- *     number, and PRESERVES the moved tab's live shell + scrollback — the
+ *   - keyboard reorder (CmdOrCtrl+Shift+Left/Right) changes tab order, keeps
+ *     each session's sticky number, and PRESERVES the moved tab's live shell + scrollback — the
  *     regression that shipped ("reorder resets my terminal"): reordering moved
  *     the panel's xterm container in the DOM, disrupting the running program.
  *
@@ -19,8 +19,9 @@
  * reorder); this pins the live-session outcome.
  *
  * Skip gates mirror the sibling terminal smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, and the electron-vite build must exist (out/main/index.js). Runs
- * in local dev / the release gate. Not part of `pnpm check`.
+ * a PTY-capable platform, and the electron-vite build must exist
+ * (out/main/index.js). Runs in local dev / the release gate. Not part of
+ * `pnpm check`.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,14 +30,15 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 interface Seed {
   tmpHome: string;
@@ -224,7 +226,7 @@ function track(...paths: string[]): void {
 
 test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Desktop is darwin-only.');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {
@@ -334,8 +336,8 @@ test.describe('Terminal tabs — live Electron', () => {
     await activateTab(page, 'Terminal 1');
     await visibleSection(page).locator('.xterm').click();
 
-    // ⌘⇧→ moves the active tab (Terminal 1) one slot right.
-    await page.keyboard.press('Meta+Shift+ArrowRight');
+    // CmdOrCtrl+Shift+Right moves the active tab (Terminal 1) one slot right.
+    await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowRight`);
 
     // Order changed; the sticky numbers rode with their sessions (NOT renumbered
     // by position).

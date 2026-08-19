@@ -25,9 +25,9 @@
     "*.node"
   ],
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
-    "test": "cargo test"
+    "build": "node scripts/build.mjs --release",
+    "build:debug": "node scripts/build.mjs",
+    "test": "cargo test && node --test scripts/build.test.mjs"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3.7.2"

@@ -9,22 +9,25 @@
  * first place — they launch Electron, poke the renderer, and read main-process
  * state.
  *
- * Two categories now exist, and the distinction is deliberate:
+ * Three categories now exist, and the distinction is deliberate:
  *
  *   - CROSS-PLATFORM specs gate on {@link PLATFORM_SUPPORTED}. They run on
  *     every OS the harness can drive. A spec belongs here when nothing in it
  *     is macOS-specific.
+ *   - PTY specs gate on {@link PTY_PLATFORM_SUPPORTED}. The terminal ships on
+ *     macOS and Linux; Windows remains outside this capability until its
+ *     ConPTY implementation lands.
  *   - DARWIN-ONLY specs keep their local `DARWIN` constant. A spec belongs
  *     there when it drives a genuinely macOS-only surface: `open(1)` / Apple
- *     Event URL delivery, the node-pty terminal dock (excluded from the
- *     Windows/Linux packages by `electron-builder.yml`'s per-platform `files`),
- *     or the darwin chrome stack (vibrancy / hiddenInset traffic lights).
+ *     Event URL delivery or the darwin chrome stack (vibrancy / hiddenInset
+ *     traffic lights).
  *
  * Moving a spec between categories is a one-line change; prefer growing the
  * cross-platform set over adding platform branches inside a spec.
  */
 
 import { join } from 'node:path';
+import { isTerminalPlatform } from '../../../src/shared/terminal-platform.ts';
 
 /** Opt-in gate shared by every smoke spec. */
 export const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
@@ -40,6 +43,11 @@ const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(['darwin', 'win32', 'linux'
 export const PLATFORM_SUPPORTED = SUPPORTED_PLATFORMS.has(process.platform);
 
 export const PLATFORM_SKIP_REASON = `Smoke harness does not support platform "${process.platform}".`;
+
+/** True on every platform that ships the desktop PTY capability. */
+export const PTY_PLATFORM_SUPPORTED = isTerminalPlatform(process.platform);
+
+export const PTY_PLATFORM_SKIP_REASON = `Desktop terminal does not support platform "${process.platform}".`;
 
 /**
  * Environment overrides that actually redirect the app's home directory on

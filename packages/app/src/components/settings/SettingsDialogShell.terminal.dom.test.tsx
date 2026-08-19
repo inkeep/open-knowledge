@@ -119,8 +119,7 @@ function setDesktopHost(present: boolean, opts: { ptyAvailable?: boolean } = {})
   const w = window as unknown as { okDesktop?: unknown };
   if (present) {
     // The Terminal subsection additionally gates on the host's pty capability
-    // (`config.ptyAvailable`, false on win/linux where node-pty isn't
-    // bundled) — model the capable macOS host by default.
+    // (`config.ptyAvailable`, false where node-pty is unavailable).
     w.okDesktop = { config: { ptyAvailable: opts.ptyAvailable ?? true } };
   } else {
     w.okDesktop = undefined;
@@ -203,7 +202,7 @@ describe('SettingsDialogShell terminal subsection (desktop-only)', () => {
     expect(screen.queryByTestId(SUBSECTION_RESULT_ID)).toBeNull();
   });
 
-  test('drops the Terminal search entry on a pty-less Electron host (win/linux)', async () => {
+  test('drops the Terminal search entry on a PTY-less Electron host', async () => {
     setDesktopHost(true, { ptyAvailable: false });
     const user = userEvent.setup();
     render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);

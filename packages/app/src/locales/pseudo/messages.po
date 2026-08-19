@@ -6351,6 +6351,7 @@ msgstr ""
 msgid "Hide skill nodes"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr ""
@@ -11667,6 +11668,7 @@ msgstr ""
 msgid "Show source"
 msgstr ""
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr ""

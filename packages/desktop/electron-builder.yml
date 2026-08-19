@@ -11,8 +11,9 @@ copyright: Copyright © 2026 Inkeep
 # electron-rebuild / native-module ABI compilation cannot drift.
 electronVersion: "41.9.1"
 
-# @electron/rebuild runs for mac and Windows from this config: mac needs
-# node-pty's ABI rebuilt, Windows cross-builds its per-arch binaries.
+# @electron/rebuild stays enabled for mac and Windows from this config because
+# other native modules still use that pass. node-pty's N-API prebuilds do not
+# require an Electron ABI rebuild.
 #
 # Linux skips the pass instead, via the `electron-builder.linux.yml` overlay
 # (`npmRebuild: false`) — Linux builds MUST pass `--config
@@ -396,7 +397,7 @@ win:
   # belong hardcoded here while unknown. Unsigned Windows artifacts are
   # never published (internal QA only).
   #
-  # The terminal dock is dark off-mac: node-pty and its
+  # The terminal dock is dark on Windows: node-pty and its
   # prebuilds must not ship in the Windows package. `files` merges with the
   # top-level list.
   #
@@ -514,10 +515,15 @@ linux:
   # in builder-util rewrites `${arch}` per extension). deb and rpm therefore
   # never collide on a filename even where the arch word differs.
   artifactName: ${productName}-${arch}.${ext}
-  # Terminal dock dark off-mac — keep node-pty out, and keep native-config's
-  # darwin cargo `target/` tree out (see win.files for the rationale).
+  # node-pty publishes every platform prebuild in one package. Drop
+  # foreign-platform binaries and Windows debug symbols, but keep both Linux
+  # prebuilds so each installer carries the correct ELF regardless of builder
+  # architecture. native-config's darwin cargo `target/` tree stays excluded
+  # (see win.files for the rationale).
   files:
-    - "!**/node_modules/node-pty/**"
+    - "!**/node_modules/node-pty/prebuilds/**/*.pdb"
+    - "!**/node_modules/node-pty/prebuilds/darwin-*/**"
+    - "!**/node_modules/node-pty/prebuilds/win32-*/**"
     - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
   extraResources:
     # Linux-layout wrapper ships under the same canonical destination as

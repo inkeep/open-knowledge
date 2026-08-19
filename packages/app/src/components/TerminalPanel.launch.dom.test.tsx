@@ -40,6 +40,8 @@ class MockTerminal {
   onDataCb: ((d: string) => void) | null = null;
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   options: Record<string, unknown>;
+  hasSelection = vi.fn(() => false);
+  getSelection = vi.fn(() => '');
   open = vi.fn(() => {});
   focus = vi.fn(() => {});
   dispose = vi.fn(() => {});
@@ -101,7 +103,11 @@ const ON_PATH: CliReadiness = { onPath: 'present' };
  *  the gate that lets the launch add the `-c` tool-auto-approve override. */
 const CODEX_OK_CONFIGURED: CliReadiness = { onPath: 'present', okServerConfigured: true };
 
-function makeBridge(preflight: ClaudeReadiness = WIRED, cliReadiness: CliReadiness = ON_PATH) {
+function makeBridge(
+  preflight: ClaudeReadiness = WIRED,
+  cliReadiness: CliReadiness = ON_PATH,
+  platform: OkDesktopBridge['platform'] = 'darwin',
+) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const terminal = {
     create: vi.fn(async (_opts: { cols: number; rows: number; launchCommand?: string }) => ({
@@ -132,6 +138,7 @@ function makeBridge(preflight: ClaudeReadiness = WIRED, cliReadiness: CliReadine
       terminal,
       shell: { openExternal: vi.fn(async () => {}) },
       config: { e2eSmoke: false },
+      platform,
     } as unknown as OkDesktopBridge,
     terminal,
     pushData: (m: OkPtyData) => {

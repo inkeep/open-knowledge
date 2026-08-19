@@ -54,6 +54,9 @@ class MockTerminal {
   // the flush the glyphs land one frame late — a visible blank flash).
   renderFlush = vi.fn(() => {});
   refresh = vi.fn((_start: number, _end: number) => {});
+  selection = '';
+  hasSelection = vi.fn(() => this.selection.length > 0);
+  getSelection = vi.fn(() => this.selection);
   get _core() {
     return {
       coreMouseService: { activeEncoding: this.mouseEncoding },
@@ -115,6 +118,7 @@ class MockTerminal {
   });
   focus = vi.fn(() => {});
   dispose = vi.fn(() => {});
+  paste = vi.fn((_data: string) => {});
   write = vi.fn((_data: string, cb?: () => void) => {
     cb?.();
   });
@@ -206,6 +210,7 @@ function makeBridge(
     ok: true,
     replay: '',
   }),
+  platform: OkDesktopBridge['platform'] = 'darwin',
 ) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
   const exitSubs: Array<(m: OkPtyExit) => void> = [];
@@ -252,6 +257,7 @@ function makeBridge(
       shell: { openExternal, openAsset, revealAsset, revealExternal },
       project: { checkTargetExists },
       config: { e2eSmoke: false, projectPath: '/Users/me/project' },
+      platform,
       // Stand in for Electron `webUtils.getPathForFile`: a dropped File resolves
       // to a deterministic on-disk path so the drop→input wiring is assertable.
       getPathForFile: (file: File) => `/dropped/${file.name}`,
@@ -286,6 +292,13 @@ describe('TerminalPanel', () => {
     webglThrows = false;
     mockResolvedTheme = 'dark';
     (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        readText: vi.fn(async () => 'clipboard paste'),
+        writeText: vi.fn(async () => {}),
+      },
+    });
   });
   afterEach(() => {
     cleanup();
@@ -788,6 +801,171 @@ describe('TerminalPanel', () => {
     } as unknown as KeyboardEvent;
     expect(handler?.(plainEnter)).toBe(true);
     expect(plainEnterPreventDefault).not.toHaveBeenCalled();
+  });
+
+  test('Linux Ctrl+C and Ctrl+V bypass menu accelerators and still reach the PTY', async () => {
+    const { bridge, terminal } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      WIRED,
+      undefined,
+      'linux',
+    );
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+    const handler = lastTerm?.keyHandler;
+    expect(handler).toBeTruthy();
+
+    for (const [key, bytes] of [
+      ['c', '\x03'],
+      ['v', '\x16'],
+    ] as const) {
+      const preventDefault = vi.fn(() => {});
+      expect(
+        handler?.({
+          type: 'keydown',
+          key,
+          ctrlKey: true,
+          shiftKey: false,
+          altKey: false,
+          metaKey: false,
+          preventDefault,
+        } as unknown as KeyboardEvent),
+      ).toBe(true);
+      expect(preventDefault).toHaveBeenCalledTimes(1);
+      act(() => lastTerm?.onDataCb?.(bytes));
+      expect(terminal.input).toHaveBeenLastCalledWith('pty-1', bytes);
+    }
+  });
+
+  test('Linux Ctrl+Shift+C copies the xterm selection and Ctrl+Shift+V pastes clipboard text', async () => {
+    const { bridge, terminal } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      WIRED,
+      undefined,
+      'linux',
+    );
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+    const handler = lastTerm?.keyHandler;
+    expect(handler).toBeTruthy();
+    if (lastTerm) lastTerm.selection = 'selected output';
+
+    const copyPreventDefault = vi.fn(() => {});
+    expect(
+      handler?.({
+        type: 'keydown',
+        key: 'C',
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: false,
+        metaKey: false,
+        preventDefault: copyPreventDefault,
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    expect(copyPreventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('selected output'),
+    );
+
+    const pastePreventDefault = vi.fn(() => {});
+    expect(
+      handler?.({
+        type: 'keydown',
+        key: 'V',
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: false,
+        metaKey: false,
+        preventDefault: pastePreventDefault,
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    expect(pastePreventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(lastTerm?.paste).toHaveBeenCalledWith('clipboard paste'));
+    expect(terminal.input).not.toHaveBeenCalledWith('pty-1', 'clipboard paste');
+  });
+
+  test('Linux Ctrl+Shift+C consumes the clipboard chord when xterm has no selection', async () => {
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, WIRED, undefined, 'linux');
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.keyHandler).toBeTruthy());
+
+    const preventDefault = vi.fn(() => {});
+    expect(
+      lastTerm?.keyHandler?.({
+        type: 'keydown',
+        key: 'C',
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: false,
+        metaKey: false,
+        preventDefault,
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+  });
+
+  test('Linux paste ignores clipboard text that resolves after the terminal unmounts', async () => {
+    let resolveClipboard: ((text: string) => void) | null = null;
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        readText: vi.fn(
+          () =>
+            new Promise<string>((resolve) => {
+              resolveClipboard = resolve;
+            }),
+        ),
+        writeText: vi.fn(async () => {}),
+      },
+    });
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' }, WIRED, undefined, 'linux');
+    const { unmount } = render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.keyHandler).toBeTruthy());
+
+    expect(
+      lastTerm?.keyHandler?.({
+        type: 'keydown',
+        key: 'V',
+        ctrlKey: true,
+        shiftKey: true,
+        altKey: false,
+        metaKey: false,
+        preventDefault: vi.fn(() => {}),
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    const term = lastTerm;
+    unmount();
+    await act(async () => resolveClipboard?.('late clipboard text'));
+
+    expect(term?.paste).not.toHaveBeenCalled();
+  });
+
+  test('macOS leaves Ctrl+Shift+C and Ctrl+Shift+V on xterm’s existing path', async () => {
+    const { bridge, terminal } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+    const handler = lastTerm?.keyHandler;
+
+    for (const key of ['C', 'V']) {
+      const preventDefault = vi.fn(() => {});
+      expect(
+        handler?.({
+          type: 'keydown',
+          key,
+          ctrlKey: true,
+          shiftKey: true,
+          altKey: false,
+          metaKey: false,
+          preventDefault,
+        } as unknown as KeyboardEvent),
+      ).toBe(true);
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+    expect(navigator.clipboard.readText).not.toHaveBeenCalled();
+    expect(lastTerm?.paste).not.toHaveBeenCalled();
+    expect(terminal.input).not.toHaveBeenCalledWith('pty-1', 'clipboard paste');
   });
 
   test('wheel handler defers to xterm in normal scrollback, drives the PTY in mouse mode', async () => {

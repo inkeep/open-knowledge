@@ -36,12 +36,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, type SmokeFixtures, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 
 function git(cwd: string, ...args: string[]): void {
   execFileSync('git', args, {
@@ -241,7 +241,7 @@ async function expectDeletedTargetMiss(
 
 test.describe('share-receive miss terminal smoke', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Deep-link URL scheme is macOS-only in v0.');
+  test.skip(!PLATFORM_SUPPORTED, PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('a deleted share target lands the receiver on the miss dialog, never create-mode', async ({

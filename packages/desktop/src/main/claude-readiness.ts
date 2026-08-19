@@ -2,47 +2,51 @@
  * Claude Code readiness for the docked terminal.
  *
  * Two facts make typing `claude` "just work" inside the terminal:
- *   1. `claude` resolves on the login shell's PATH (so the user gets a real
+ *   1. `claude` resolves on the interactive shell's PATH (so the user gets a real
  *      Claude Code, not "command not found").
  *   2. `~/.claude.json` carries the `open-knowledge` MCP server (so that
  *      `claude` already sees OK tools — the once-per-Mac MCP consent may have
  *      been skipped or raced, leaving a `claude` with no tools).
  *
- * This module computes both. The PATH check is a one-shot login-shell probe
- * (`$SHELL -l -i -c 'command -v claude'`, matching the PTY's own
- * `$SHELL -l -i`), with the `spawn` and timer injected so the probe's
+ * This module computes both. The PATH check is a one-shot interactive-shell
+ * probe, matching the PTY's platform argv (`-l -i` on macOS, `-i` on Linux),
+ * with the `spawn` and timer injected so the probe's
  * timeout/exit-code/error logic is unit-testable without a real subprocess.
  * The MCP check reuses the CLI's `classifyExistingMcpEntry` (passed in by the
  * caller as a thunk over `~/.claude.json`).
  *
  * Electron-free by construction — no `electron` import, every effect injected —
- * so the routing logic runs under `bun test`. The real subprocess + the real
+ * so the routing logic runs under Vitest. The real subprocess + the real
  * `~/.claude.json` read are the runtime e2e rung (a built terminal).
  */
 
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import type { ClaudeReadiness, CliReadiness } from '../shared/bridge-contract.ts';
+import { interactiveShellArgs } from '../shared/terminal-shell.ts';
 import { getLogger } from './desktop-logger.ts';
 
 export type ClaudeOnPath = ClaudeReadiness['claude'];
 export type McpWiringStatus = ClaudeReadiness['mcp'];
 
 /**
- * Probe argv for a given binary. Matches the PTY's `$SHELL -l -i` (pty-host.ts)
- * plus `-c` so the probe resolves `<bin>` against exactly the PATH the
- * interactive shell will have (login + interactive profiles sourced).
+ * Probe argv for a given binary. Matches the PTY's interactive argv
+ * (pty-host.ts) plus `-c` so the probe resolves `<bin>` against exactly the
+ * PATH the terminal shell will have.
  * `command -v` is POSIX, exits 0 iff `<bin>` resolves. `<bin>` is a fixed
  * registry value (`TERMINAL_CLIS[*].bin`), never user input — no injection
  * surface.
  */
-export function cliProbeArgs(bin: string): readonly string[] {
-  return ['-l', '-i', '-c', `command -v ${bin}`];
+export function cliProbeArgs(
+  bin: string,
+  platform: NodeJS.Platform = process.platform,
+): readonly string[] {
+  return [...interactiveShellArgs(platform), '-c', `command -v ${bin}`];
 }
 
 /** The `claude` probe argv — `cliProbeArgs('claude')`, named for the legacy
  *  readiness path + its unit tests. */
-export const CLAUDE_PROBE_ARGS: readonly string[] = cliProbeArgs('claude');
+export const CLAUDE_PROBE_ARGS: readonly string[] = cliProbeArgs('claude', process.platform);
 
 const PROBE_TIMEOUT_MS = 5000;
 
@@ -66,7 +70,7 @@ export interface ProbeTimers {
 }
 
 /**
- * Run the login-shell `command -v claude` probe. Resolves the child's exit
+ * Run the interactive-shell `command -v claude` probe. Resolves the child's exit
  * code, or `null` when the probe could not produce a verdict — a synchronous
  * `spawn` throw (EMFILE/ENOMEM resource exhaustion), an async `'error'`
  * (ENOENT shell, EACCES), or a timeout (an interactive shell that hung). `null`
@@ -94,18 +98,18 @@ export function runLoginShellProbe(
     } catch (err) {
       // partial-failure boundary: spawn can throw synchronously on resource
       // exhaustion. Claude presence is UNKNOWN, not absent.
-      getLogger('login-shell-probe').warn(
+      getLogger('interactive-shell-probe').warn(
         { shell, args, err },
-        'login-shell PATH probe spawn threw; presence unknown',
+        'interactive-shell PATH probe spawn threw; presence unknown',
       );
       resolve(null);
       return;
     }
     let settled = false;
     const timer = timers.setTimer(() => {
-      getLogger('login-shell-probe').warn(
+      getLogger('interactive-shell-probe').warn(
         { shell, args, timeoutMs },
-        'login-shell PATH probe timed out; presence unknown',
+        'interactive-shell PATH probe timed out; presence unknown',
       );
       child.kill();
       finish(null);
@@ -118,9 +122,9 @@ export function runLoginShellProbe(
     }
     child.onError((err) => {
       if (!settled) {
-        getLogger('login-shell-probe').warn(
+        getLogger('interactive-shell-probe').warn(
           { shell, args, err },
-          'login-shell PATH probe failed to run; presence unknown',
+          'interactive-shell PATH probe failed to run; presence unknown',
         );
       }
       finish(null);
@@ -142,7 +146,7 @@ export function mcpStatusFromClassification(kind: McpEntryKind): McpWiringStatus
 }
 
 export interface ResolveClaudeReadinessDeps {
-  /** Runs the login-shell PATH probe; resolves the exit code or `null`. */
+  /** Runs the interactive-shell PATH probe; resolves the exit code or `null`. */
   probeClaude(): Promise<number | null>;
   /** `classifyExistingMcpEntry('claude', home).kind` over `~/.claude.json`. */
   classifyMcpEntry(): McpEntryKind;
@@ -200,7 +204,7 @@ export async function resolveClaudeReadiness(
 }
 
 export interface ResolveCliOnPathDeps {
-  /** Runs the login-shell PATH probe for the CLI's binary; resolves the exit
+  /** Runs the interactive-shell PATH probe for the CLI's binary; resolves the exit
    *  code or `null` (probe failed → UNKNOWN). */
   probe(): Promise<number | null>;
   /** Codex-only: whether OK's MCP server is already configured in the user's
@@ -293,7 +297,7 @@ export function resolvePlatformCliInstalledMap(
     probe: async (cli) => {
       const bin = TERMINAL_CLIS[cli].bin;
       if (deps.platform === 'win32') return (await deps.probeWindows(bin)) ? 0 : 127;
-      return deps.probePosix(cliProbeArgs(bin));
+      return deps.probePosix(cliProbeArgs(bin, deps.platform));
     },
   });
 }

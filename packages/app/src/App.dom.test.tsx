@@ -144,6 +144,14 @@ vi.doMock('@/lib/config-context', () => ({
   useConfigContext: () => ({ merged: mergedConfig }),
 }));
 
+vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
+  TerminalLaunchProvider: ({ value, children }: { value: unknown; children: ReactNode }) => (
+    <div data-testid="terminal-launch-provider" data-enabled={String(value !== null)}>
+      {children}
+    </div>
+  ),
+}));
+
 vi.doMock('@/lib/api-config', () => ({
   fetchApiConfig: (...args: Parameters<typeof fetchApiConfigMock>) => fetchApiConfigMock(...args),
 }));
@@ -275,17 +283,17 @@ vi.doMock('@/lib/transports/clone-transport', () => ({
 
 const { App } = await import('./App');
 
-function createBridge() {
+function createBridge({ ptyAvailable = true }: { ptyAvailable?: boolean } = {}) {
   return {
     editor: {
       notifyActiveTargetChanged: vi.fn(() => {}),
     },
     // The real preload always exposes `config`; App reads `config.ptyAvailable`
-    // to gate the terminal-launch provider (mac-only PTY). Mirror that shape so
+    // to gate the terminal-launch provider. Mirror that shape so
     // the gate resolves instead of dereferencing undefined.
     config: {
       mode: 'editor' as const,
-      ptyAvailable: true,
+      ptyAvailable,
     },
   };
 }
@@ -399,6 +407,14 @@ describe('App runtime wiring', () => {
     expect(screen.getByTestId('system-doc-subscriber')).not.toBeNull();
     expect(screen.getByTestId('file-sidebar')).not.toBeNull();
     expect(screen.getByTestId('editor-pane')).not.toBeNull();
+  });
+
+  test('a desktop host without PTY capability keeps terminal launching disabled', () => {
+    renderApp({ bridge: createBridge({ ptyAvailable: false }) });
+
+    expect(screen.getByTestId('terminal-launch-provider').getAttribute('data-enabled')).toBe(
+      'false',
+    );
   });
 
   test('promotes preview tabs when the setting changes from enabled to disabled', async () => {

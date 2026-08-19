@@ -71,6 +71,7 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
+import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
@@ -265,12 +266,10 @@ function readConfigFromArgv(): OkDesktopConfig {
   // when OTel is enabled in main; the renderer extracts it to parent its startup
   // span into the launch trace. Absent → renderer skips the startup span.
   const startupTraceparent = parseArg('startup-traceparent');
-  // Terminal-dock pty capability (windows-linux-port terminal posture): node-pty is
-  // bundled on macOS only, so off-mac the renderer must hide the terminal
-  // affordances rather than let a spawn fail. Platform is the whole signal —
-  // a mac install with a broken node-pty still surfaces the existing
+  // Terminal-dock PTY capability. Platform is the whole signal: a supported
+  // install with a broken node-pty still surfaces the existing
   // spawn-error UX, which is the correct diagnostic there.
-  const ptyAvailable = process.platform === 'darwin';
+  const ptyAvailable = isTerminalPlatform(process.platform);
   return Object.freeze({
     collabUrl,
     apiOrigin,

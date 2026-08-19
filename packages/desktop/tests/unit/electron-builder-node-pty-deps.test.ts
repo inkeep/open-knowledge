@@ -5,22 +5,22 @@ import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
 
 /**
- * Regression guard for node-pty packaging on the arm64 desktop build.
+ * Regression guard for node-pty packaging on the desktop builds.
  *
- * node-pty ships its native addon and an extensionless `spawn-helper` binary
- * under `prebuilds/<platform>-<arch>/`. Three things must hold together or the
- * in-app terminal is dead on arrival in the packaged `.app`:
+ * node-pty ships its native addons under `prebuilds/<platform>-<arch>/`;
+ * Darwin also carries an extensionless `spawn-helper`. These invariants must
+ * hold together or the in-app terminal is dead on arrival in the packaged app:
  *
  *   1. node-pty is the upstream package, pinned in optionalDependencies — NOT
  *      `@lydell/node-pty`, whose per-arch optionalDependency layout recreates
  *      the keyring universal-merge hazard that forced this build arm64-only.
  *      optionalDependencies placement is itself load-bearing in the other
  *      direction: node-pty's node-gyp build needs a C toolchain, and a failed
- *      optional install is dropped by bun instead of failing the whole repo's
- *      install (the built-in terminal is macOS-only).
+ *      optional install is dropped by pnpm instead of failing the whole
+ *      workspace install when a host has no native toolchain.
  *      electron-builder packs installed optional production deps the same as
  *      regular ones, so the packaged app is unaffected on the macOS build
- *      host, where the native build always runs.
+ *      host.
  *   2. `**\/node-pty/prebuilds/**` is in asarUnpack. The generic `**\/*.node`
  *      rule unpacks `pty.node` but NOT `spawn-helper` (no `.node` extension);
  *      node-pty resolves the helper from `app.asar.unpacked` at runtime, so it
@@ -30,6 +30,8 @@ import { parse } from 'yaml';
  *      it 0644 (node-pty#850) and asarUnpack preserves that mode. Behavior of
  *      that chmod is covered by ensure-node-pty-exec.test.ts; this guard only
  *      pins that the call site still exists alongside the unpack rule.
+ *   4. Linux packages retain both ELF addons while excluding foreign-platform
+ *      prebuilds and Windows debug symbols.
  *
  * The build also stays arm64-only (no universal target) — node-pty would add a
  * second per-arch native into any universal lipo-merge.
@@ -43,6 +45,7 @@ const afterPack = resolve(desktopRoot, 'scripts', 'afterPack.mjs');
 
 function readBuilderConfig(): {
   asarUnpack?: string[];
+  linux?: { files?: string[] };
   mac?: { target?: Array<{ target?: string; arch?: string[] }> };
 } {
   return parse(readFileSync(builderYml, 'utf8'));
@@ -70,12 +73,12 @@ describe('node-pty desktop packaging config', () => {
       pkg.optionalDependencies?.['node-pty'],
       'node-pty must be a pinned optionalDependency: electron-builder still packs installed ' +
         'optional production deps into the app, and optional placement keeps a failed node-gyp ' +
-        'build (Linux contributor without a C toolchain) from failing the whole repo bun install.',
-    ).toBe('1.1.0');
+        'build from failing the whole workspace install.',
+    ).toBe('1.2.0-beta.15');
     expect(
       pkg.dependencies?.['node-pty'],
       'node-pty must not also appear in dependencies — that placement makes its native build ' +
-        'failure fatal to bun install on machines without a C toolchain.',
+        'failure fatal to pnpm install on machines without a C toolchain.',
     ).toBeUndefined();
     expect(
       '@lydell/node-pty' in deps,
@@ -92,6 +95,33 @@ describe('node-pty desktop packaging config', () => {
         'resolves that helper from app.asar.unpacked at runtime — packed-in-asar means ' +
         'pty.fork() fails with "posix_spawnp failed".',
     ).toBe(true);
+  });
+
+  test.each([
+    ['linux-x64', 62],
+    ['linux-arm64', 183],
+  ])('%s ships an ELF pty.node for the declared architecture', (platformArch, elfMachine) => {
+    const addon = resolve(
+      desktopRoot,
+      'node_modules',
+      'node-pty',
+      'prebuilds',
+      platformArch,
+      'pty.node',
+    );
+    expect(existsSync(addon), `node-pty must ship ${platformArch}/pty.node`).toBe(true);
+
+    const binary = readFileSync(addon);
+    expect([...binary.subarray(0, 4)]).toEqual([0x7f, 0x45, 0x4c, 0x46]);
+    expect(binary.readUInt16LE(18)).toBe(elfMachine);
+  });
+
+  test('linux packages node-pty but excludes foreign prebuilds and debug symbols', () => {
+    const patterns = readBuilderConfig().linux?.files ?? [];
+    expect(patterns).not.toContain('!**/node_modules/node-pty/**');
+    expect(patterns).toContain('!**/node_modules/node-pty/prebuilds/**/*.pdb');
+    expect(patterns).toContain('!**/node_modules/node-pty/prebuilds/darwin-*/**');
+    expect(patterns).toContain('!**/node_modules/node-pty/prebuilds/win32-*/**');
   });
 
   test('afterPack makes the unpacked spawn-helper executable (unpack rule + chmod move together)', () => {

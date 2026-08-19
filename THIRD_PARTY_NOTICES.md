@@ -4607,7 +4607,7 @@ Homepage: https://github.com/prebuild/node-gyp-build
 
 Copyright (c) 2017 Mathias Buus
 
-### `node-pty@1.1.0`
+### `node-pty@1.2.0-beta.15`
 Homepage: https://github.com/microsoft/node-pty
 
 Copyright (c) 2012-2015, Christopher Jeffrey (https://github.com/chjj/)

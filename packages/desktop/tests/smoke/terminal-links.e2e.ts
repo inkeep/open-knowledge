@@ -12,7 +12,8 @@
  *     navigates to that doc (hash route).
  *
  * Skip gates mirror the sibling terminal smokes: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, and the electron-vite build must exist (out/main/index.js).
+ * a PTY-capable platform, and the electron-vite build must exist
+ * (out/main/index.js).
  */
 
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -21,13 +22,13 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface Seed {
@@ -199,10 +200,9 @@ function track(...paths: string[]): void {
 }
 
 test.describe('Terminal clickable links — live Electron', () => {
-  test.skip(
-    !SMOKE_ENABLED || !DARWIN || !TARGET.exists,
-    `Live-Electron smoke: set OK_DESKTOP_E2E_SMOKE=1 on darwin. ${TARGET.missingReason}`,
-  );
+  test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
+  test.skip(!TARGET.exists, TARGET.missingReason);
   test.afterAll(() => {
     for (const p of cleanup.splice(0)) rmSync(p, { recursive: true, force: true });
   });

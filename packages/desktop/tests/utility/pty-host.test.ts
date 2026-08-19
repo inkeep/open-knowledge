@@ -1,10 +1,12 @@
 import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
+import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
 import {
   buildShellArgs,
   buildShellEnv,
   type HostReapProcess,
   installHostReaping,
+  installPtyImportFailureReply,
   type PtyCreateMessage,
   type PtyHostHandle,
   type PtyHostIncomingMessage,
@@ -19,7 +21,7 @@ import {
 /**
  * Unit tests for the PTY host message-routing contract. node-pty is injected
  * as a controllable fake — the real-shell-I/O path runs under Node via
- * `pty-host.real-io-harness.ts` (node-pty's reads don't pump under Bun).
+ * `pty-host.real-io-harness.ts` in an isolated Node subprocess.
  */
 
 interface FakePty extends PtyProcessLike {
@@ -87,6 +89,9 @@ function makeHarness(opts?: {
   pty?: FakePty;
   spawn?: SpawnPty;
   env?: Record<string, string | undefined>;
+  platform?: NodeJS.Platform;
+  userInfoShell?: () => string | null;
+  shellExists?: (path: string) => boolean;
   logger?: { warn: (o: Record<string, unknown>) => void };
 }): Harness {
   let handler: ((event: { data: unknown }) => void) | null = null;
@@ -110,6 +115,9 @@ function makeHarness(opts?: {
     },
     spawn,
     env: opts?.env ?? { SHELL: '/bin/zsh', PATH: '/usr/bin' },
+    platform: opts?.platform ?? 'darwin',
+    userInfoShell: opts?.userInfoShell,
+    shellExists: opts?.shellExists,
     logger: opts?.logger,
   });
   return {
@@ -140,6 +148,19 @@ describe('setupPtyHost — create', () => {
     expect(h.spawnCalls[0]?.options.cwd).toBe('/project/root');
     expect(h.spawnCalls[0]?.options.cols).toBe(80);
     expect(h.spawnCalls[0]?.options.rows).toBe(24);
+  });
+
+  test('Linux creates the PTY with interactive non-login argv', () => {
+    const h = makeHarness({
+      platform: 'linux',
+      env: { SHELL: '/bin/bash', PATH: '/usr/bin' },
+      shellExists: (path) => path === '/bin/bash',
+    });
+    h.fire(CREATE());
+
+    expect(h.spawnCalls[0]?.file).toBe('/bin/bash');
+    expect(h.spawnCalls[0]?.args).toEqual(['-i']);
+    expect(h.spawnCalls[0]?.args).not.toContain('-l');
   });
 
   test('bakes a launch command into a non-history `-c` spawn with an interactive exec tail', () => {
@@ -599,13 +620,15 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
 });
 
 describe('buildShellArgs', () => {
-  test('a plain tab is the bare login interactive shell', () => {
-    expect(buildShellArgs('/bin/zsh')).toEqual(['-l', '-i']);
-    expect(buildShellArgs('/bin/zsh', '')).toEqual(['-l', '-i']);
+  test('a plain tab follows the platform interactive-shell convention', () => {
+    expect(buildShellArgs('darwin', '/bin/zsh')).toEqual(['-l', '-i']);
+    expect(buildShellArgs('darwin', '/bin/zsh', '')).toEqual(['-l', '-i']);
+    expect(buildShellArgs('linux', '/bin/bash')).toEqual(['-i']);
+    expect(buildShellArgs('linux', '/bin/bash', '')).toEqual(['-i']);
   });
 
-  test('a launch bakes the command on `-c` and execs into a fresh interactive shell', () => {
-    expect(buildShellArgs('/bin/zsh', "codex 'hi'")).toEqual([
+  test('a macOS launch keeps login flags in the launcher and exec tail', () => {
+    expect(buildShellArgs('darwin', '/bin/zsh', "codex 'hi'")).toEqual([
       '-l',
       '-i',
       '-c',
@@ -613,8 +636,21 @@ describe('buildShellArgs', () => {
     ]);
   });
 
+  test('a Linux launch is interactive without forcing login semantics', () => {
+    expect(buildShellArgs('linux', '/bin/bash', "codex 'hi'")).toEqual([
+      '-i',
+      '-c',
+      "codex 'hi'; exec '/bin/bash' -i",
+    ]);
+  });
+
   test('single-quotes the shell path in the exec tail (space/quote-safe)', () => {
-    expect(buildShellArgs("/odd path/o'sh", "claude 'x'")).toEqual([
+    expect(buildShellArgs('linux', "/odd path/o'sh", "claude 'x'")).toEqual([
+      '-i',
+      '-c',
+      "claude 'x'; exec '/odd path/o'\\''sh' -i",
+    ]);
+    expect(buildShellArgs('darwin', "/odd path/o'sh", "claude 'x'")).toEqual([
       '-l',
       '-i',
       '-c',
@@ -630,6 +666,11 @@ describe('buildShellEnv', () => {
       HOME: '/Users/x',
       OK_ELECTRON_PROTOCOL_HOST: '1',
       OK_LOCK_KIND: 'interactive',
+      ELECTRON_RUN_AS_NODE: '1',
+      GDK_PIXBUF_MODULEDIR: '/app/lib/gdk-pixbuf',
+      GDK_PIXBUF_MODULE_FILE: '/app/lib/loaders.cache',
+      ELECTRON_TRASH: 'gio',
+      GDK_THEME: 'Adwaita',
       MAYBE: undefined,
     });
     // `~/.ok/bin` rides in front of the inherited PATH — OK's own spawned
@@ -637,17 +678,177 @@ describe('buildShellEnv', () => {
     expect(env).toEqual({
       PATH: '/Users/x/.ok/bin:/usr/bin',
       HOME: '/Users/x',
+      ELECTRON_TRASH: 'gio',
+      GDK_THEME: 'Adwaita',
       [OK_DESKTOP_TERMINAL_ENV]: '1',
     });
   });
 });
 
 describe('resolveShell', () => {
-  test('prefers an override, then $SHELL, then the darwin fallback', () => {
-    expect(resolveShell({ SHELL: '/bin/bash' }, '/usr/bin/fish')).toBe('/usr/bin/fish');
-    expect(resolveShell({ SHELL: '/bin/bash' })).toBe('/bin/bash');
-    expect(resolveShell({})).toBe('/bin/zsh');
-    expect(resolveShell({ SHELL: '' })).toBe('/bin/zsh');
+  const shellExists = (paths: string[]) => (path: string) => paths.includes(path);
+
+  test('macOS preserves override, $SHELL, and zsh fallback behavior', () => {
+    expect(
+      resolveShell({ SHELL: '/bin/bash' }, { platform: 'darwin', override: '/usr/bin/fish' }),
+    ).toBe('/usr/bin/fish');
+    expect(resolveShell({ SHELL: '/bin/bash' }, { platform: 'darwin' })).toBe('/bin/bash');
+    expect(resolveShell({}, { platform: 'darwin' })).toBe('/bin/zsh');
+    expect(resolveShell({ SHELL: '' }, { platform: 'darwin' })).toBe('/bin/zsh');
+  });
+
+  test('Linux prefers $SHELL, then the passwd shell', () => {
+    expect(
+      resolveShell(
+        { SHELL: '/usr/bin/fish' },
+        {
+          platform: 'linux',
+          userInfoShell: () => '/bin/zsh',
+          shellExists: shellExists(['/usr/bin/fish', '/bin/zsh']),
+        },
+      ),
+    ).toBe('/usr/bin/fish');
+    expect(
+      resolveShell(
+        { SHELL: '' },
+        {
+          platform: 'linux',
+          userInfoShell: () => '/bin/zsh',
+          shellExists: shellExists(['/bin/zsh']),
+        },
+      ),
+    ).toBe('/bin/zsh');
+  });
+
+  test('Linux treats false-style and nonexistent configured shells as unset', () => {
+    for (const configuredShell of [
+      '/bin/false',
+      '/usr/bin/false',
+      '/usr/sbin/nologin',
+      '/missing',
+    ]) {
+      expect(
+        resolveShell(
+          { SHELL: configuredShell },
+          {
+            platform: 'linux',
+            userInfoShell: () => '/bin/fish',
+            shellExists: shellExists(['/bin/fish']),
+          },
+        ),
+      ).toBe('/bin/fish');
+    }
+  });
+
+  test('Linux falls back through bash to sh when passwd lookup is absent', () => {
+    expect(
+      resolveShell(
+        {},
+        {
+          platform: 'linux',
+          userInfoShell: () => null,
+          shellExists: shellExists(['/bin/bash', '/bin/sh']),
+        },
+      ),
+    ).toBe('/bin/bash');
+    expect(
+      resolveShell(
+        {},
+        {
+          platform: 'linux',
+          userInfoShell: () => null,
+          shellExists: shellExists(['/bin/sh']),
+        },
+      ),
+    ).toBe('/bin/sh');
+  });
+
+  test('Linux logs and falls back when passwd lookup throws', () => {
+    const warnings: Record<string, unknown>[] = [];
+
+    expect(
+      resolveShell(
+        {},
+        {
+          platform: 'linux',
+          userInfoShell: () => {
+            throw Object.assign(new Error('no passwd entry'), { code: 'ENOENT' });
+          },
+          shellExists: shellExists(['/bin/bash', '/bin/sh']),
+          logger: { warn: (data) => warnings.push(data) },
+        },
+      ),
+    ).toBe('/bin/bash');
+    expect(warnings).toContainEqual({
+      event: 'pty-host-user-info-shell-failed',
+      code: 'ENOENT',
+    });
+  });
+
+  test('Linux ignores a false-style passwd shell before falling back', () => {
+    expect(
+      resolveShell(
+        {},
+        {
+          platform: 'linux',
+          userInfoShell: () => '/bin/false',
+          shellExists: shellExists(['/bin/false', '/bin/bash', '/bin/sh']),
+        },
+      ),
+    ).toBe('/bin/bash');
+  });
+});
+
+describe('node-pty import failure', () => {
+  test('a Linux-capable host replies to create with the existing spawn-error contract', () => {
+    expect(isTerminalPlatform('linux')).toBe(true);
+
+    let handler: ((event: { data: unknown }) => void) | null = null;
+    const posted: PtyHostOutgoingMessage[] = [];
+    const warnings: Array<{ data: Record<string, unknown>; message: string }> = [];
+    installPtyImportFailureReply(
+      {
+        on(_event, nextHandler) {
+          handler = nextHandler;
+        },
+        postMessage(message) {
+          posted.push(message);
+        },
+      },
+      new Error('node-pty Linux prebuild could not be loaded'),
+      {
+        warn(data, message) {
+          warnings.push({ data, message });
+        },
+      },
+    );
+
+    handler?.({
+      data: {
+        type: 'create',
+        ptyId: 'linux-pty',
+        cwd: '/project',
+        cols: 80,
+        rows: 24,
+      },
+    });
+
+    expect(posted).toEqual([
+      {
+        type: 'spawn-error',
+        ptyId: 'linux-pty',
+        message: 'node-pty Linux prebuild could not be loaded',
+      },
+    ]);
+    expect(warnings).toEqual([
+      {
+        data: {
+          event: 'pty-host-import-failed',
+          error: 'node-pty Linux prebuild could not be loaded',
+        },
+        message: 'node-pty import failed',
+      },
+    ]);
   });
 });
 

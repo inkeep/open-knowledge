@@ -10,8 +10,9 @@
  * kills the host); this asserts the observable window-close.
  *
  * Skip gates mirror terminal-dock.e2e.ts: opt-in via OK_DESKTOP_E2E_SMOKE=1,
- * darwin-only, and the electron-vite build must exist. Not part of `pnpm check`;
- * run via `pnpm exec playwright test` or `pnpm run check:full:parallel`.
+ * a PTY-capable platform, and the electron-vite build must exist. Not part of
+ * `pnpm check`; run via `pnpm exec playwright test` or
+ * `pnpm run check:full:parallel`.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -20,12 +21,12 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DARWIN = process.platform === 'darwin';
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 interface Seed {
@@ -147,7 +148,7 @@ function track(...paths: string[]): void {
 
 test.describe('Standalone terminal window — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
-  test.skip(!DARWIN, 'Desktop is darwin-only.');
+  test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
   test.afterEach(() => {
     for (const target of cleanup.splice(0)) {

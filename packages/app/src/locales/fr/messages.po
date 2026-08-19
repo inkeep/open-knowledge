@@ -6355,6 +6355,7 @@ msgstr "Masquer la barre latérale"
 msgid "Hide skill nodes"
 msgstr "Masquer les nœuds de compétences"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Hide Terminal"
 msgstr "Masquer Terminal"
@@ -11671,6 +11672,7 @@ msgstr "Afficher les nœuds de compétences"
 msgid "Show source"
 msgstr "Afficher la source"
 
+#: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 msgid "Show Terminal"
 msgstr "Afficher Terminal"

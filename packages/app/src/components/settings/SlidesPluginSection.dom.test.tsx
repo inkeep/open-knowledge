@@ -212,9 +212,8 @@ describe('SlidesPluginSection — single source for the command', () => {
 });
 
 describe('SlidesPluginSection — terminal availability', () => {
-  test('hides Run in terminal where no PTY can be spawned (Windows / Linux)', async () => {
-    // node-pty is macOS-only, so the dock is dark off-mac and `ptyAvailable` is
-    // false. Rendering the button there would close Settings, fire the request,
+  test('hides Run in terminal where no PTY can be spawned', async () => {
+    // Rendering the button on a PTY-less host would close Settings, fire the request,
     // and produce no session — the click would look swallowed.
     installBridge(() => Promise.resolve({ kind: 'status', available: false }), {
       ptyAvailable: false,
