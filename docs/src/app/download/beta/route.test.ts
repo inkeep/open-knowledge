@@ -50,7 +50,7 @@ function call(): Promise<Response> {
 }
 
 describe('GET /download/beta', () => {
-  test('302 to the fresh beta URL and fires dmg_downloaded (beta)', async () => {
+  test('serves the Apple Silicon macOS beta and reports that fixed target', async () => {
     _redirect = { kind: 'fresh', url: TEST_DMG_URL };
     _lastCapture = null;
     const res = await call();

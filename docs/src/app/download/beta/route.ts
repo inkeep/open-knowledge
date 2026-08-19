@@ -2,9 +2,12 @@ import { createBetaResolver, toRedirectResponse } from '@/lib/download-links';
 import { attribution, captureServerEvent, isPrefetchRequest, resolveDistinctId } from '@/lib/track';
 
 /**
- * Perennial beta-channel download URL: openknowledge.ai/download/beta
- * 302s to the newest published `-beta.N` DMG on inkeep/open-knowledge,
- * degrading to the releases page when resolution fails (never an error
+ * Perennial Apple Silicon macOS beta URL: openknowledge.ai/download/beta
+ * 302s to the newest published `-beta.N` DMG on inkeep/open-knowledge.
+ * Windows and Linux beta users must choose an asset on the releases page;
+ * this route intentionally does not infer or accept another platform target.
+ *
+ * Resolution degrades to the releases page when it fails (never an error
  * page — shared links must land somewhere actionable).
  *
  * force-dynamic keeps `next build` from prerendering this route, which

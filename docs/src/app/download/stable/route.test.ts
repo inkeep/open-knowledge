@@ -23,7 +23,7 @@ vi.doMock('../../../lib/track.ts', () => ({
 const { GET } = await import('./route.ts');
 
 describe('GET /download/stable', () => {
-  test('302 to the stable DMG URL, uncached, and fires dmg_downloaded', () => {
+  test('keeps the bare legacy URL on the stable Apple Silicon DMG', () => {
     _lastCapture = null;
     const res = GET(new Request('https://openknowledge.ai/download/stable'));
     expect(res.status).toBe(302);
