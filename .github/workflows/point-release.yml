@@ -193,6 +193,13 @@ jobs:
           owner: inkeep
           repositories: agents-private
 
+      - name: Attest production reader before point release
+        if: inputs.dry_run == false
+        uses: ./.github/composite-actions/share-contract-reader-gate
+        with:
+          origin: https://openknowledge.ai
+          evidence-name: share-contract-point-release-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Run the point release
         id: plan
         env:

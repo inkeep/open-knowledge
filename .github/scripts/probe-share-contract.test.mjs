@@ -132,6 +132,38 @@ describe('share-contract reader probe', () => {
     }
   });
 
+  test('normalizes a scheme-less Vercel deployment URL to HTTPS', async () => {
+    const reader = compatibleReader();
+    const requestedUrls = [];
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      requestedUrls.push(url.href);
+      if (url.pathname === '/.well-known/openknowledge-share-contract.json') {
+        return new Response(JSON.stringify(reader.manifest), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      const page = reader.pages.get(url.pathname);
+      return page === undefined
+        ? new Response('missing', { status: 404 })
+        : new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    };
+
+    const evidence = await probeShareContract({
+      origin: 'reader.example.vercel.app',
+      corpus: CORPUS,
+      corpusBytes: CORPUS_BYTES,
+      expectedDeploymentSha: EXPECTED_DEPLOYMENT_SHA,
+      fetchImpl,
+    });
+
+    expect(evidence.status).toBe('compatible');
+    expect(requestedUrls).not.toHaveLength(0);
+    expect(requestedUrls.every((url) => url.startsWith('https://reader.example.vercel.app/'))).toBe(
+      true,
+    );
+  });
+
   test('retries once past a transient network blip on the first fetch', async () => {
     const origin = await startReader(compatibleReader());
     let attempts = 0;

@@ -6,7 +6,7 @@
  *     (`.mdx` → `.md` → directory) or pinned via `kind`. The six-case
  *     matrix lives in the "target resolution" describe block.
  *   - Trailing `.md`/`.mdx` normalization on doc paths.
- *   - The five `ShareConstructUrlErrorCode` business-logic branches map to
+ *   - The six `ShareConstructUrlErrorCode` business-logic branches map to
  *     distinct, agent-actionable messages. `no-remote` is the load-bearing
  *     one — it must direct the user at publishing (not run it).
  *   - Tool-local codes (`target-not-found`, `kind-mismatch`, `unknown`) are
@@ -133,10 +133,10 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
-function makeDeps(serverUrl: string | undefined): ShareLinkDeps {
+function makeDeps(serverUrl: string | undefined, config: Config = BASE_CONFIG): ShareLinkDeps {
   return {
     serverUrl,
-    config: BASE_CONFIG,
+    config,
     resolveCwd: async () => tmpDir,
   };
 }
@@ -327,6 +327,49 @@ describe('share_link — target resolution (FR9 matrix)', () => {
     expect(result.isError).toBeUndefined();
     expect(result.structuredContent).toMatchObject({ ok: true, resolvedKind: 'doc' });
     expect(seenRequests[0]?.body).toEqual({ kind: 'doc', docPath: 'guide.md' });
+  });
+
+  test('non-root content dir posts content-relative doc and folder paths', async () => {
+    const config = ConfigSchema.parse({ content: { dir: 'vault' } });
+    await mkdir(resolve(tmpDir, 'vault', 'guides'), { recursive: true });
+    await writeFile(resolve(tmpDir, 'vault', 'notes.md'), '# notes');
+    mockResponse = { status: 200, body: successBody() };
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, config));
+
+    const docResult = await getTool().handler({ path: 'notes', kind: 'doc' });
+    const folderResult = await getTool().handler({ path: 'guides', kind: 'folder' });
+
+    expect(docResult.isError).toBeUndefined();
+    expect(folderResult.isError).toBeUndefined();
+    expect(seenRequests.map(({ body }) => body)).toEqual([
+      { kind: 'doc', docPath: 'notes.md' },
+      { kind: 'folder', folderPath: 'guides' },
+    ]);
+  });
+
+  test('auto-probe (no kind) under a non-root content dir posts content-relative paths', async () => {
+    // The auto-probe branch resolves through its own return path, so the
+    // explicit-kind cases above do not cover it: a re-projection regression
+    // here would post `vault/...` and mint a link at the wrong subtree.
+    const config = ConfigSchema.parse({ content: { dir: 'vault' } });
+    await mkdir(resolve(tmpDir, 'vault', 'guides'), { recursive: true });
+    await writeFile(resolve(tmpDir, 'vault', 'notes.md'), '# notes');
+    mockResponse = { status: 200, body: successBody() };
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, config));
+
+    const docResult = await getTool().handler({ path: 'notes' });
+    const folderResult = await getTool().handler({ path: 'guides' });
+
+    expect(docResult.isError).toBeUndefined();
+    expect(docResult.structuredContent).toMatchObject({ ok: true, resolvedKind: 'doc' });
+    expect(folderResult.isError).toBeUndefined();
+    expect(folderResult.structuredContent).toMatchObject({ ok: true, resolvedKind: 'folder' });
+    expect(seenRequests.map(({ body }) => body)).toEqual([
+      { kind: 'doc', docPath: 'notes.md' },
+      { kind: 'folder', folderPath: 'guides' },
+    ]);
   });
 
   test('rejects paths escaping the content root as target-not-found', async () => {
@@ -565,6 +608,22 @@ describe('share_link — business-logic errors', () => {
     expect(message).not.toContain('Document');
   });
 
+  test('unsupported-share-url: gives bounded recovery guidance', async () => {
+    await writeFile(resolve(tmpDir, 'page.md'), '# page');
+    mockResponse = { status: 200, body: { ok: false, error: 'unsupported-share-url' } };
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl));
+    const result = await getTool().handler({ path: 'page' });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({
+      ok: false,
+      error: 'unsupported-share-url',
+    });
+    const message = (result.structuredContent as { message: string }).message;
+    expect(message).toContain('canonical DNS GitHub host');
+    expect(message).toContain('shorter repository path');
+  });
+
   test('branch-not-on-origin: message carries the stale-fetch recovery hint', async () => {
     await writeFile(resolve(tmpDir, 'page.md'), '# page');
     mockResponse = {
@@ -602,6 +661,7 @@ describe('share_link — message coverage', () => {
     'branch-not-on-origin',
     'non-github-remote',
     'invalid-path',
+    'unsupported-share-url',
   ] as const;
 
   for (const code of SERVER_CODES) {

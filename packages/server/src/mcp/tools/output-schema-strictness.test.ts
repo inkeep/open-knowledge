@@ -343,7 +343,7 @@ describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)'
   }
 });
 
-describe('share_link outputSchema admits the freshness success payloads (S3)', () => {
+describe('share_link outputSchema admits emitted success and error payloads', () => {
   // The `{text}`-only sweep can't catch a handler-emitted field the schema
   // omits (it never sends `freshness`), so validate the EXACT success
   // structuredContent — with and without freshness — against the compiled
@@ -398,11 +398,19 @@ describe('share_link outputSchema admits the freshness success payloads (S3)', (
     freshness: 'empty',
     text: "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document.\n\nShare link for folder `hollow` on branch `main`:\nhttps://openknowledge.ai/d/enc",
   };
+  const withUnsupportedUrlError = {
+    ok: false,
+    error: 'unsupported-share-url',
+    message:
+      'The GitHub URL cannot be represented by the share-link format. Use a canonical DNS GitHub host and a shorter repository path.',
+    text: 'Error: The GitHub URL cannot be represented by the share-link format. Use a canonical DNS GitHub host and a shorter repository path.',
+  };
 
   for (const [label, payload] of [
     ['success with freshness', withFreshness],
     ['success without freshness (happy-path passthrough)', withoutFreshness],
     ['success with the empty-folder verdict', withEmptyFreshness],
+    ['unsupported share URL error', withUnsupportedUrlError],
   ] as const) {
     test(`${label} structuredContent validates against the compiled share_link schema`, () => {
       const validator = new AjvJsonSchemaValidator();

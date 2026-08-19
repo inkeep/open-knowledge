@@ -333,6 +333,12 @@ describe('ShareConstructUrlResponseSchema freshness field', () => {
     expect(
       ShareConstructUrlResponseSchema.safeParse({ ok: false, error: 'invalid-path' }).success,
     ).toBe(true);
+    expect(
+      ShareConstructUrlResponseSchema.safeParse({
+        ok: false,
+        error: 'unsupported-share-url',
+      }).success,
+    ).toBe(true);
     // A freshness value is not an error code — adding `freshness` never
     // widened the error enum.
     expect(ShareConstructUrlResponseSchema.safeParse({ ok: false, error: 'stale' }).success).toBe(

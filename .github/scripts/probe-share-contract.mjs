@@ -55,9 +55,10 @@ function fail(code, message, now, manifest, probeId) {
 }
 
 function normalizeOrigin(origin) {
+  const candidate = /^[A-Za-z][A-Za-z\d+.-]*:/.test(origin) ? origin : `https://${origin}`;
   let parsed;
   try {
-    parsed = new URL(origin);
+    parsed = new URL(candidate);
   } catch {
     throw new Error('origin must be an absolute HTTP(S) URL');
   }

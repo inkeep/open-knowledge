@@ -13081,6 +13081,10 @@ msgstr "এই ফোল্ডারটি {expectedOwner}/{expectedRepo}-এর
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr "এই ফোল্ডারটি এখনও GitHub-এ নেই। এটি না পাঠানো পর্যন্ত লিংকটি কাজ করবে না।"
 
+#: src/lib/share/run-share-action.ts
+msgid "This GitHub URL can't be shared."
+msgstr "এই GitHub URL শেয়ার করা যাবে না।"
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "এটি {boldName}-এর একটি প্রাকদর্শন — Open Knowledge-এর সঙ্গে আসা একটি অন্তর্নির্মিত স্কিল। এটি শুধু পড়ার জন্য।"

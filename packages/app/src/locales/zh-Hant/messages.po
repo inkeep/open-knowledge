@@ -13085,6 +13085,10 @@ msgstr "這個資料夾不是 {expectedOwner}/{expectedRepo} 的複本。要換�
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr "這個資料夾還不在 GitHub 上。在推送之前連結不會生效。"
 
+#: src/lib/share/run-share-action.ts
+msgid "This GitHub URL can't be shared."
+msgstr "無法分享此 GitHub URL。"
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "這是 {boldName} 的預覽——一個隨 Open Knowledge 一起提供的內建技能。它是唯讀的。"

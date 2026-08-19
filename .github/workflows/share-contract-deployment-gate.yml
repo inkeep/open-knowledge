@@ -1,0 +1,88 @@
+name: Share contract deployment gate
+
+on:
+  repository_dispatch:
+    types: [vercel.deployment.ready]
+  workflow_dispatch:
+    inputs:
+      origin:
+        description: Absolute deployment origin to probe.
+        required: true
+        type: string
+      expected_deployment_sha:
+        description: Optional SHA that the reader manifest must report.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: share-contract-deployment-${{ github.event.client_payload.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  reader-contract:
+    name: share-contract-v2-runner
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.client_payload.environment == 'production' &&
+      github.event.client_payload.project.name == 'open-knowledge-docs')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Mark candidate reader check pending
+        if: github.event_name == 'repository_dispatch'
+        env:
+          DEPLOYMENT_SHA: ${{ github.event.client_payload.git.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${DEPLOYMENT_SHA}" \
+            -f state=pending \
+            -f context=share-contract-v2 \
+            -f description='Checking the v2 reader contract' \
+            -f target_url="$RUN_URL"
+
+      - name: Checkout candidate deployment SHA
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.client_payload.git.sha || github.sha }}
+
+      - name: Probe candidate reader contract
+        id: reader
+        continue-on-error: true
+        uses: ./.github/composite-actions/share-contract-reader-gate
+        with:
+          origin: ${{ github.event.client_payload.url || inputs.origin }}
+          expected-deployment-sha: ${{ github.event.client_payload.git.sha || inputs.expected_deployment_sha }}
+          evidence-name: share-contract-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Report candidate reader result to Vercel
+        if: always() && github.event_name == 'repository_dispatch'
+        env:
+          DEPLOYMENT_SHA: ${{ github.event.client_payload.git.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          READER_OUTCOME: ${{ steps.reader.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [[ "$READER_OUTCOME" == 'success' ]]; then
+            state=success
+            description='The candidate accepts the v2 share contract'
+          else
+            state=failure
+            description='The candidate rejects the v2 share contract'
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${DEPLOYMENT_SHA}" \
+            -f state="$state" \
+            -f context=share-contract-v2 \
+            -f description="$description" \
+            -f target_url="$RUN_URL"
+
+      - name: Refuse an incompatible candidate
+        if: always() && steps.reader.outcome == 'failure'
+        run: exit 1

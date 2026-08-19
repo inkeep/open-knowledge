@@ -13085,6 +13085,10 @@ msgstr "هذا المجلد ليس نسخة من {expectedOwner}/{expectedRepo}.
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr "هذا المجلد ليس على GitHub بعد. لن يعمل الرابط حتى يُدفع."
 
+#: src/lib/share/run-share-action.ts
+msgid "This GitHub URL can't be shared."
+msgstr "لا يمكن مشاركة عنوان URL هذا على GitHub."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "هذه معاينة لـ {boldName} — مهارة مدمجة تُشحن مع Open Knowledge. وهي للقراءة فقط."

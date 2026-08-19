@@ -11,6 +11,8 @@
 
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo, Socket } from 'node:net';
+import { join } from 'node:path';
+import { decodeShareUrl } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { bootEndpointServer, type EndpointRig } from './endpoint-http.test-helper.ts';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
@@ -265,6 +267,116 @@ describe('POST /api/share/construct-url (freshness computed through the endpoint
     expect((await res.json()) as Record<string, unknown>).toMatchObject({
       ok: true,
       freshness: 'empty',
+    });
+  });
+});
+
+describe('POST /api/share/construct-url (v2 minting through the endpoint)', () => {
+  function shareToken(json: Record<string, unknown>): string {
+    return (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+  }
+
+  test('a nested content root mints v2 with current freshness and the reader-decodable source', async () => {
+    const t = newTriangle();
+    t.seedAndPush('knowledge base/handbook/guides/getting started.md', '# Getting started\n');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({
+      projectDir: t.senderDir,
+      contentDir: join(t.senderDir, 'knowledge base/handbook'),
+    });
+    const res = await postConstructUrl(rig.port, {
+      kind: 'doc',
+      docPath: 'guides/getting started.md',
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    // `current` needs real pushed blobs — the seeded-`.git` unit rig cannot
+    // produce it — so the join of content root and content-relative target that
+    // feeds the freshness probe is pinned here, at the tier where a wrong join
+    // misreports the verdict for every nested-content share.
+    expect(json).toMatchObject({ ok: true, freshness: 'current' });
+    expect(decodeShareUrl(shareToken(json))).toEqual({
+      version: 2,
+      sharedUrl:
+        'https://github.com/o/r/blob/main/knowledge%20base/handbook/guides/getting%20started.md',
+      contentRootDepth: 2,
+      source: {
+        host: 'github.com',
+        owner: 'o',
+        repo: 'r',
+        branch: 'main',
+        kind: 'doc',
+        targetSegments: ['knowledge base', 'handbook', 'guides', 'getting started.md'],
+      },
+      target: { kind: 'doc', docPath: 'guides/getting started.md' },
+    });
+  });
+
+  test('a nested content root returns a business error when its origin cannot be encoded as v2', async () => {
+    const t = newTriangle();
+    t.seedAndPush('knowledge/doc.md', '# Document\n');
+    t.git(t.senderDir, ['remote', 'set-url', 'origin', 'https://127.0.0.1/o/r.git']);
+
+    rig = await bootEndpointServer({
+      projectDir: t.senderDir,
+      contentDir: join(t.senderDir, 'knowledge'),
+    });
+    const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'doc.md' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: false, error: 'unsupported-share-url' });
+  });
+
+  test('the nested content-root folder share is current and decodes to the root target', async () => {
+    const t = newTriangle();
+    t.seedAndPush('knowledge base/handbook/guides/getting started.md', '# Getting started\n');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({
+      projectDir: t.senderDir,
+      contentDir: join(t.senderDir, 'knowledge base/handbook'),
+    });
+    const res = await postConstructUrl(rig.port, { kind: 'folder', folderPath: '' });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json).toMatchObject({ ok: true, freshness: 'current' });
+    expect(decodeShareUrl(shareToken(json))).toEqual({
+      version: 2,
+      sharedUrl: 'https://github.com/o/r/tree/main/knowledge%20base/handbook',
+      contentRootDepth: 2,
+      source: {
+        host: 'github.com',
+        owner: 'o',
+        repo: 'r',
+        branch: 'main',
+        kind: 'folder',
+        targetSegments: ['knowledge base', 'handbook'],
+      },
+      target: { kind: 'folder', folderPath: '' },
+    });
+  });
+
+  test('a repository-root content dir still mints v1 for the same pushed target', async () => {
+    const t = newTriangle();
+    t.seedAndPush('knowledge base/handbook/guides/getting started.md', '# Getting started\n');
+    repointOriginAtGitHub(t);
+
+    rig = await bootEndpointServer({ projectDir: t.senderDir });
+    const res = await postConstructUrl(rig.port, {
+      kind: 'doc',
+      docPath: 'knowledge base/handbook/guides/getting started.md',
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json).toMatchObject({ ok: true, freshness: 'current' });
+    expect(decodeShareUrl(shareToken(json))).toEqual({
+      version: 1,
+      sharedUrl:
+        'https://github.com/o/r/blob/main/knowledge%20base/handbook/guides/getting%20started.md',
     });
   });
 });

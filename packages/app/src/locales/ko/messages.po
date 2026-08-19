@@ -13085,6 +13085,10 @@ msgstr "이 폴더는 {expectedOwner}/{expectedRepo} 클론이 아닙니다. 다
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr "이 폴더는 아직 GitHub에 없습니다. 푸시해야 링크가 작동합니다."
 
+#: src/lib/share/run-share-action.ts
+msgid "This GitHub URL can't be shared."
+msgstr "이 GitHub URL은 공유할 수 없습니다."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "이것은 {boldName}의 미리보기입니다. Open Knowledge에 내장된 스킬이며 읽기 전용입니다."

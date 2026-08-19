@@ -257,6 +257,13 @@ jobs:
             echo "Triggered manually or by external repository_dispatch." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - name: Attest production reader before promotion
+        if: steps.ver.outputs.skip != 'true'
+        uses: ./.github/composite-actions/share-contract-reader-gate
+        with:
+          origin: https://openknowledge.ai
+          evidence-name: share-contract-promote-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Tag stable at beta SHA
         if: steps.ver.outputs.skip != 'true'
         env:

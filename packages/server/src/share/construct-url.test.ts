@@ -22,7 +22,11 @@ interface TestRig {
 
 async function bootRig(
   initProject?: (projectDir: string) => void,
-  opts?: { contentDirIsRoot?: boolean; contentDirEscapes?: boolean },
+  opts?: {
+    contentDirIsRoot?: boolean;
+    contentDirEscapes?: boolean;
+    contentDirRelative?: string;
+  },
 ): Promise<TestRig> {
   const tmpRoot = await mkdtemp(join(tmpdir(), 'share-construct-url-'));
   const projectDir = join(tmpRoot, 'project');
@@ -36,7 +40,7 @@ async function bootRig(
     ? join(tmpRoot, 'escaped-content')
     : opts?.contentDirIsRoot
       ? projectDir
-      : join(projectDir, 'content');
+      : join(projectDir, opts?.contentDirRelative ?? 'content');
   mkdirSync(contentDir, { recursive: true });
   initProject?.(projectDir);
 
@@ -129,7 +133,7 @@ describe('POST /api/share/construct-url', () => {
     if (rig) await rig.cleanup();
   });
 
-  test('happy path: returns encoded share URL that round-trips via decodeShareUrl', async () => {
+  test('nested content dir mints a v2 document share with a content-relative target', async () => {
     rig = await bootRig((projectDir) => {
       seedRemoteAndHead(projectDir, {
         head: 'ref: refs/heads/main\n',
@@ -142,15 +146,66 @@ describe('POST /api/share/construct-url', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
     expect(json.branch).toBe('main');
-    expect(json.sharedUrl).toBe('https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md');
+    expect(json.sharedUrl).toBe(
+      'https://github.com/inkeep/open-knowledge/blob/main/content/docs/guide.md',
+    );
     expect(typeof json.shareUrl).toBe('string');
     expect(json.shareUrl).toMatch(/^https:\/\/openknowledge\.ai\/d\/[A-Za-z0-9_-]+$/);
     const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
     const decoded = decodeShareUrl(encoded);
-    expect(decoded.version).toBe(1);
-    expect(decoded.sharedUrl).toBe(
-      'https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md',
+    expect(decoded).toMatchObject({
+      version: 2,
+      sharedUrl: 'https://github.com/inkeep/open-knowledge/blob/main/content/docs/guide.md',
+      contentRootDepth: 1,
+      target: { kind: 'doc', docPath: 'docs/guide.md' },
+    });
+  });
+
+  test('repository-root content dir keeps document shares on v1', async () => {
+    rig = await bootRig(
+      (projectDir) => {
+        seedRemoteAndHead(projectDir, {
+          head: 'ref: refs/heads/main\n',
+          originUrl: 'https://github.com/inkeep/open-knowledge.git',
+          branchesOnOrigin: ['main'],
+        });
+      },
+      { contentDirIsRoot: true },
     );
+    const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'docs/guide.md' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.sharedUrl).toBe('https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md');
+    const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+    expect(decodeShareUrl(encoded)).toEqual({
+      version: 1,
+      sharedUrl: 'https://github.com/inkeep/open-knowledge/blob/main/docs/guide.md',
+    });
+  });
+
+  test('a two-segment content dir mints content-root depth two', async () => {
+    rig = await bootRig(
+      (projectDir) => {
+        seedRemoteAndHead(projectDir, {
+          head: 'ref: refs/heads/main\n',
+          originUrl: 'https://github.com/inkeep/open-knowledge.git',
+          branchesOnOrigin: ['main'],
+        });
+      },
+      { contentDirRelative: 'knowledge base/handbook' },
+    );
+    const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'start here.md' });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.sharedUrl).toBe(
+      'https://github.com/inkeep/open-knowledge/blob/main/knowledge%20base/handbook/start%20here.md',
+    );
+    const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+    expect(decodeShareUrl(encoded)).toMatchObject({
+      version: 2,
+      contentRootDepth: 2,
+      target: { kind: 'doc', docPath: 'start here.md' },
+    });
   });
 
   test('no-remote: project has no origin section', async () => {
@@ -230,7 +285,13 @@ describe('POST /api/share/construct-url', () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
-    expect(json.sharedUrl).toBe('https://ghes.acme.test/team/notes/blob/main/a.md');
+    expect(json.sharedUrl).toBe('https://ghes.acme.test/team/notes/blob/main/content/a.md');
+    const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+    expect(decodeShareUrl(encoded)).toMatchObject({
+      version: 2,
+      contentRootDepth: 1,
+      target: { kind: 'doc', docPath: 'a.md' },
+    });
   });
 
   test('invalid-path: rejects .. segment', async () => {
@@ -289,7 +350,7 @@ describe('POST /api/share/construct-url', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
     expect(json.sharedUrl).toBe(
-      `https://github.com/inkeep/open-knowledge/blob/main/${encodeURIComponent('Q4 OKRs — Marketing.md').replace(/^/, 'docs/')}`,
+      `https://github.com/inkeep/open-knowledge/blob/main/content/${encodeURIComponent('Q4 OKRs — Marketing.md').replace(/^/, 'docs/')}`,
     );
     const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
     const decoded = decodeShareUrl(encoded);
@@ -301,7 +362,12 @@ describe('POST /api/share/construct-url', () => {
       .slice(5)
       .map((s) => decodeURIComponent(s))
       .join('/');
-    expect(decodedDocPath).toBe(docPath);
+    expect(decodedDocPath).toBe(`content/${docPath}`);
+    expect(decoded).toMatchObject({
+      version: 2,
+      contentRootDepth: 1,
+      target: { kind: 'doc', docPath },
+    });
   });
 
   test('happy path: branch with slash via loose ref encodes as single segment', async () => {
@@ -318,7 +384,7 @@ describe('POST /api/share/construct-url', () => {
     expect(json.ok).toBe(true);
     expect(json.branch).toBe('feat/sharing-virality-flow');
     expect(json.sharedUrl).toBe(
-      'https://github.com/inkeep/open-knowledge/blob/feat%2Fsharing-virality-flow/docs/guide.md',
+      'https://github.com/inkeep/open-knowledge/blob/feat%2Fsharing-virality-flow/content/docs/guide.md',
     );
     const sharedUrl = new URL(json.sharedUrl as string);
     const segments = sharedUrl.pathname.split('/').filter(Boolean);
@@ -388,12 +454,19 @@ describe('POST /api/share/construct-url', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
     expect(json.branch).toBe('main');
-    expect(json.sharedUrl).toBe('https://github.com/inkeep/open-knowledge/tree/main/docs/guides');
+    expect(json.sharedUrl).toBe(
+      'https://github.com/inkeep/open-knowledge/tree/main/content/docs/guides',
+    );
     const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
     const decoded = decodeShareUrl(encoded);
     expect(decoded.sharedUrl).toBe(
-      'https://github.com/inkeep/open-knowledge/tree/main/docs/guides',
+      'https://github.com/inkeep/open-knowledge/tree/main/content/docs/guides',
     );
+    expect(decoded).toMatchObject({
+      version: 2,
+      contentRootDepth: 1,
+      target: { kind: 'folder', folderPath: 'docs/guides' },
+    });
   });
 
   test('folder ROOT (folderPath: "") with content.dir === "." degenerates to tree/<branch>', async () => {
@@ -412,6 +485,8 @@ describe('POST /api/share/construct-url', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
     expect(json.sharedUrl).toBe('https://github.com/inkeep/open-knowledge/tree/main');
+    const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+    expect(decodeShareUrl(encoded).version).toBe(1);
   });
 
   test('folder ROOT (folderPath: "") with content.dir subdir maps to tree/<branch>/<content.dir>', async () => {
@@ -428,6 +503,12 @@ describe('POST /api/share/construct-url', () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.ok).toBe(true);
     expect(json.sharedUrl).toBe('https://github.com/inkeep/open-knowledge/tree/main/content');
+    const encoded = (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
+    expect(decodeShareUrl(encoded)).toMatchObject({
+      version: 2,
+      contentRootDepth: 1,
+      target: { kind: 'folder', folderPath: '' },
+    });
   });
 
   test('folder ROOT (folderPath: "") with contentDir escaping projectDir fails loud (500), not a repo-root link', async () => {

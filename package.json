@@ -22,6 +22,7 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:vitest-selftest": "vitest run",
+    "smoke:share-v2": "node --import tsx --conditions=development packages/server/share-v2-smoke.ts",
     "lint": "pnpm run lint:biome && pnpm run lint:oxlint",
     "lint:biome": "biome check packages docs *.json *.jsonc *.ts --error-on-warnings",
     "lint:oxlint": "oxlint --max-warnings 0 .",

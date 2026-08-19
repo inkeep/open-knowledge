@@ -47,7 +47,7 @@ const LOCALES_DIR = join(import.meta.dir, '..', 'locales', 'en');
  * one" would stay green after all but one string was unwrapped.
  */
 const MIGRATED_MODULES: ReadonlyArray<readonly [path: string, messages: number]> = [
-  ['src/lib/share/run-share-action.ts', 10],
+  ['src/lib/share/run-share-action.ts', 11],
   ['src/lib/share/receive-flow.ts', 6],
   ['src/lib/share/publish-wizard.ts', 7],
   ['src/hooks/use-folder-config.ts', 2],
@@ -110,6 +110,7 @@ describe('helper messages round-trip to a catalog id with named placeholders', (
     ['share error: no branch name', () => mapShareErrorToToast('branch-not-on-origin')],
     ['share error: non-GitHub remote', () => mapShareErrorToToast('non-github-remote')],
     ['share error: unshareable path', () => mapShareErrorToToast('invalid-path')],
+    ['share error: unsupported share URL', () => mapShareErrorToToast('unsupported-share-url')],
     ['share error: no remote', () => mapShareErrorToToast('no-remote')],
     [
       'receive: folder is not a repository',

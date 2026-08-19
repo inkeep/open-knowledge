@@ -152,6 +152,15 @@ jobs:
           #   fix from Linear PRD-6701).
           ref: ${{ github.event.client_payload.ref || github.sha }}
 
+      - name: Restore reader gate from workflow revision
+        if: github.event.action == 'publish-stable'
+        run: |
+          set -euo pipefail
+          git checkout "$GITHUB_SHA" -- \
+            .github/composite-actions/share-contract-reader-gate/action.yml \
+            .github/scripts/probe-share-contract.mjs \
+            test-support/fixtures/share-url-v1-v2.json
+
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
       - name: Get pnpm store directory
         shell: bash
@@ -417,6 +426,13 @@ jobs:
             echo "version=$VERSION"
             echo "tag=$TAG"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Attest production reader before release
+        if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'
+        uses: ./.github/composite-actions/share-contract-reader-gate
+        with:
+          origin: https://openknowledge.ai
+          evidence-name: share-contract-release-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Override fixed-group versions to X.Y.Z-beta.N
         if: steps.compute-beta.outputs.run_beta == 'true'

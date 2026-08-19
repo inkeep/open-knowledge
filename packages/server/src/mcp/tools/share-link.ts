@@ -17,6 +17,7 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type ShareConstructUrlErrorCode,
+  ShareConstructUrlErrorCodeSchema,
   ShareConstructUrlResponseSchema,
   type ShareFreshness,
   ShareFreshnessSchema,
@@ -92,10 +93,10 @@ function freshnessWarning(freshness: ShareFreshness | undefined, kind: ShareKind
 }
 
 /**
- * Tool-local failure codes. The five `ShareConstructUrlErrorCode` server codes
+ * Tool-local failure codes. The six `ShareConstructUrlErrorCode` server codes
  * flow through verbatim; `target-not-found`, `kind-mismatch`, and `unknown`
  * are produced INLINE by this wrapper (not by `messageForShareError`, whose
- * `never`-guard must keep covering exactly the five server codes).
+ * `never`-guard must keep covering exactly the six server codes).
  *
  * `target-not-found` / `kind-mismatch` are distinct from the system-wide
  * `urn:ok:error:doc-not-found` problem+json envelope — they live only in this
@@ -141,12 +142,14 @@ function messageForShareError(error: ShareConstructUrlErrorCode, branch?: string
       return 'Origin is a non-GitHub remote (GitLab, Bitbucket, etc.). Share links require a GitHub remote (`github.com` or GitHub Enterprise Server).';
     case 'invalid-path':
       return 'The resolved share path is not shareable (escapes the project root or names the `.git` subtree). Pass a normal target path under the content directory.';
+    case 'unsupported-share-url':
+      return 'The GitHub URL cannot be represented by the share-link format. Use a canonical DNS GitHub host and a shorter repository path.';
     default: {
       // Exhaustiveness guard: adding a new variant to `ShareConstructUrlErrorCodeSchema`
       // becomes a compile error here. The runtime fallback is informational only —
       // TypeScript catches the divergence before we ship. Tool-local codes
       // (target-not-found / kind-mismatch / unknown) are handled at their inline
-      // call sites, never routed here, so the `never` guard stays over the five
+      // call sites, never routed here, so the `never` guard stays over the six
       // server codes.
       const _exhaustive: never = error;
       return `Unknown share-construct-url error: ${String(_exhaustive)}`;
@@ -164,9 +167,9 @@ function isExistingDirectory(abs: string): boolean {
 }
 
 /**
- * Probe `<absBase>.mdx` then `.md`; return the project-relative path of the
+ * Probe `<absBase>.mdx` then `.md`; return the content-relative path of the
  * first existing file, or `null` when neither exists / the file escapes the
- * project root.
+ * content root.
  *
  * Precedence matches `SUPPORTED_DOC_EXTENSIONS` in `doc-extensions.ts`:
  * `.mdx` wins over `.md` when both exist (industry convention — `.mdx` is a
@@ -180,15 +183,15 @@ function isExistingDirectory(abs: string): boolean {
  * Hocuspocus over HTTP. The existsSync probe is the out-of-process equivalent;
  * it iterates `SUPPORTED_DOC_EXTENSIONS` directly so the precedence can't drift.
  */
-function resolveExistingDocPath(projectDir: string, absBase: string): string | null {
+function resolveExistingDocPath(contentDir: string, absBase: string): string | null {
   for (const ext of SUPPORTED_DOC_EXTENSIONS) {
     const absWithExt = `${absBase}${ext}`;
     if (existsSync(absWithExt)) {
-      const projectContained = resolveWithinRoot(projectDir, absWithExt);
-      if (!projectContained.ok) return null;
+      const contentContained = resolveWithinRoot(contentDir, absWithExt);
+      if (!contentContained.ok) return null;
       // `path.relative` returns `/`-separated paths on POSIX (the OK server's
       // target platform per `path-safety.ts`), so no separator normalization needed.
-      return projectContained.rel;
+      return contentContained.rel;
     }
   }
   return null;
@@ -199,11 +202,9 @@ type ResolveShareTargetResult =
   | { ok: false; code: 'target-not-found' | 'kind-mismatch' | 'invalid-path' };
 
 /**
- * Resolve a caller-supplied `path` (+ optional `kind`) to the project-relative
+ * Resolve a caller-supplied `path` (+ optional `kind`) to the content-relative
  * share path + kind the construct-url endpoint expects. Doc and folder share
- * the SAME containment + relative-to-content-root convention as the prior
- * doc-only resolver (`resolveWithinRoot` against `contentDir`, then re-project
- * the absolute hit against `projectDir`).
+ * the same containment + relative-to-content-root convention.
  *
  * Decision logic:
  *   - `path === ''` (root sentinel): valid ONLY for `kind === 'folder'` →
@@ -223,7 +224,6 @@ type ResolveShareTargetResult =
  * `target-not-found`, mirroring the prior doc-only resolver's null-on-escape.
  */
 function resolveShareTarget(
-  projectDir: string,
   contentDir: string,
   path: string,
   kind?: ShareKind,
@@ -243,7 +243,7 @@ function resolveShareTarget(
   // as `path: 'notes'`. Folder probe uses the raw `contained.abs` (a directory
   // named `foo.md` is its own literal path, not `foo`).
   const docBase = contained.abs.replace(/\.(mdx|md)$/i, '');
-  const docPath = resolveExistingDocPath(projectDir, docBase);
+  const docPath = resolveExistingDocPath(contentDir, docBase);
   const dirExists = isExistingDirectory(contained.abs);
 
   if (kind === 'doc') {
@@ -253,9 +253,7 @@ function resolveShareTarget(
   }
   if (kind === 'folder') {
     if (dirExists) {
-      const folderContained = resolveWithinRoot(projectDir, contained.abs);
-      if (!folderContained.ok) return { ok: false, code: 'target-not-found' };
-      return { ok: true, kind: 'folder', sharePath: folderContained.rel };
+      return { ok: true, kind: 'folder', sharePath: contained.rel };
     }
     if (docPath !== null) return { ok: false, code: 'kind-mismatch' };
     return { ok: false, code: 'target-not-found' };
@@ -264,9 +262,7 @@ function resolveShareTarget(
   // Auto-probe: first hit wins in `.mdx` → `.md` → directory order.
   if (docPath !== null) return { ok: true, kind: 'doc', sharePath: docPath };
   if (dirExists) {
-    const folderContained = resolveWithinRoot(projectDir, contained.abs);
-    if (!folderContained.ok) return { ok: false, code: 'target-not-found' };
-    return { ok: true, kind: 'folder', sharePath: folderContained.rel };
+    return { ok: true, kind: 'folder', sharePath: contained.rel };
   }
   return { ok: false, code: 'target-not-found' };
 }
@@ -303,11 +299,7 @@ const OutputSchema = outputSchemaWithText({
   ),
   error: z
     .enum([
-      'no-remote',
-      'detached-head',
-      'branch-not-on-origin',
-      'non-github-remote',
-      'invalid-path',
+      ...ShareConstructUrlErrorCodeSchema.options,
       'target-not-found',
       'kind-mismatch',
       'unknown',
@@ -362,7 +354,7 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
       if (!url) return textResult(HOCUSPOCUS_NOT_RUNNING_ERROR, true);
 
       const contentDir = join(cwd, config.content.dir);
-      const resolved = resolveShareTarget(cwd, contentDir, args.path, args.kind);
+      const resolved = resolveShareTarget(contentDir, args.path, args.kind);
       if (!resolved.ok) {
         let message: string;
         if (resolved.code === 'kind-mismatch') {
@@ -383,7 +375,7 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
           ? { kind: 'doc' as const, docPath: resolved.sharePath }
           : { kind: 'folder' as const, folderPath: resolved.sharePath };
 
-      // construct-url returns HTTP 200 for BOTH the happy path AND the five
+      // construct-url returns HTTP 200 for BOTH the happy path AND the six
       // business-logic failures, discriminated on body `ok`. Routing through
       // `httpPost`/`normalizeResponse` would strip the body's `ok` field and
       // force `ok: true` on every 200, so go direct and parse with the

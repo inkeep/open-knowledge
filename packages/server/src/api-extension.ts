@@ -97,6 +97,7 @@ import {
   type InlineAssetMediaKind,
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
+  InvalidShareUrlError,
   instantiateDoc,
   isDetectedSkillInProject,
   isFrontmatterSchemaAsset,
@@ -144,6 +145,7 @@ import {
   type Principal,
   PrincipalSuccessSchema,
   type ProblemType,
+  parseCanonicalGitHubShareUrl,
   parseFrontmatterRecord,
   parseTemplateFile,
   prependFrontmatter,
@@ -19879,10 +19881,10 @@ export function createApiExtension(
    * the toast prompts the user to
    * push, the retry succeeds.
    *
-   * Returns HTTP 200 with `{ok: false, error: code}` for the five business-
+   * Returns HTTP 200 with `{ok: false, error: code}` for the six business-
    * logic failures (no-remote, detached-head, branch-not-on-origin,
-   * non-github-remote, invalid-path) — DELIBERATE departure from RFC 9457
-   * for these branches. The Share UI maps each code to a per-toast string;
+   * non-github-remote, invalid-path, unsupported-share-url) — DELIBERATE
+   * departure from RFC 9457 for these branches. The Share UI maps each code to a per-toast string;
    * routing through 4xx would conflate share-flow outcomes with transport
    * errors the client retries differently. Transport-class failures
    * (loopback gate, payload-too-large, body-parse) still emit RFC 9457 via
@@ -19998,22 +20000,12 @@ export function createApiExtension(
         if (contentRel === null) {
           throw new Error('content dir is not contained within the project dir');
         }
-        // A non-root content.dir link keeps its historical shallow source URL:
-        // the content-relative target is NOT prefixed with content.dir. Older
-        // installed apps treat a received URL as the content-relative path
-        // directly, and in-app receive navigation is already content-relative and
-        // lands correctly — so prefixing content.dir into the source here would
-        // double-count against the receiver. The tradeoff is that the raw
-        // github.com link may point one level too shallow; warn so that mis-point
-        // is observable in ops rather than silent.
-        const sharingNonRootTarget =
-          body.kind === 'doc' ? body.docPath !== '' : body.folderPath !== '';
-        if (contentRel !== '' && sharingNonRootTarget) {
-          getLogger('share').warn(
-            { action: 'construct-url', kind: body.kind },
-            '[share] content.dir != "." — non-root share URL omits the content.dir prefix; the github.com link may point at the wrong subtree. In-app receive navigation is content-relative and lands correctly.',
-          );
-        }
+        const repositorySharePath =
+          contentRel === ''
+            ? sharePath
+            : sharePath === ''
+              ? contentRel
+              : `${contentRel}/${sharePath}`;
         let sharedUrl: string;
         if (body.kind === 'doc') {
           sharedUrl = buildGitHubBlobUrl(
@@ -20021,28 +20013,48 @@ export function createApiExtension(
             origin.owner,
             origin.repo,
             branch,
-            body.docPath,
+            repositorySharePath,
           );
         } else {
-          // Folder ROOT (empty folderPath) maps to the content dir:
-          // `tree/<branch>/<content.dir>`, degenerating to `tree/<branch>`
-          // when `content.dir === '.'` (contentRel is '' then). Non-root folder
-          // paths pass straight through.
-          const treePath = body.folderPath === '' ? contentRel : body.folderPath;
-          sharedUrl = buildGitHubTreeUrl(origin.host, origin.owner, origin.repo, branch, treePath);
+          sharedUrl = buildGitHubTreeUrl(
+            origin.host,
+            origin.owner,
+            origin.repo,
+            branch,
+            repositorySharePath,
+          );
         }
-        const shareUrl = `${SHARE_BASE_URL}${encodeShareUrl(sharedUrl)}`;
-        // Freshness probes the repo-relative path of the shared target: it
-        // lives under content.dir, so join contentRel with the content-relative
-        // share path. For the dominant content.dir === '.' case contentRel is
-        // '' and this is just sharePath; an empty result is the content root.
-        const freshnessPath =
-          contentRel === ''
-            ? sharePath
-            : sharePath === ''
-              ? contentRel
-              : `${contentRel}/${sharePath}`;
-        const freshness = await computeShareFreshness(projectDir, branch, freshnessPath, body.kind);
+        // Derive depth through the same canonical build + parse contract the
+        // reader uses. For valid contentRel values this count equals a raw
+        // slash split; the round-trip also validates the encoded URL before
+        // minting the token.
+        let shareUrl: string;
+        try {
+          const contentRootDepth =
+            contentRel === ''
+              ? 0
+              : parseCanonicalGitHubShareUrl(
+                  buildGitHubTreeUrl(origin.host, origin.owner, origin.repo, branch, contentRel),
+                ).targetSegments.length;
+          shareUrl = `${SHARE_BASE_URL}${encodeShareUrl(sharedUrl, contentRootDepth)}`;
+        } catch (err) {
+          if (!(err instanceof InvalidShareUrlError)) throw err;
+          emitShareConstructUrlLog('unsupported-share-url', { kind: body.kind });
+          successResponse(
+            res,
+            200,
+            ShareConstructUrlResponseSchema,
+            { ok: false, error: 'unsupported-share-url' },
+            { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
+          );
+          return;
+        }
+        const freshness = await computeShareFreshness(
+          projectDir,
+          branch,
+          repositorySharePath,
+          body.kind,
+        );
         emitShareConstructUrlLog('ok', { branchExists: true, kind: body.kind, freshness });
         successResponse(
           res,
@@ -20052,9 +20064,8 @@ export function createApiExtension(
           { handler: SHARE_CONSTRUCT_URL_HANDLER_TAG },
         );
       } catch (err) {
-        // Defensive: every dependency (fs reads, regex, encode) is bounded,
-        // but a future change might add a throwing branch and the structured
-        // 200 contract above would otherwise leak the throw as an
+        // Defensive: a future dependency change might add a throwing branch,
+        // and the structured 200 contract above would otherwise leak the throw as an
         // unhandled-rejection 500. Generic title — raw `err.message` could
         // include FS paths.
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {

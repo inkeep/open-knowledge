@@ -102,6 +102,8 @@ export function mapShareErrorToToast(error: ShareConstructUrlErrorCode, branch?:
       return t`Sharing supports GitHub remotes only.`;
     case 'invalid-path':
       return t`Can't share this path.`;
+    case 'unsupported-share-url':
+      return t`This GitHub URL can't be shared.`;
     case 'no-remote':
       return t`This project has no GitHub remote.`;
   }

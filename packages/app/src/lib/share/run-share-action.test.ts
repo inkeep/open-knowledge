@@ -106,6 +106,10 @@ describe('mapShareErrorToToast', () => {
     expect(mapShareErrorToToast('invalid-path')).toBe("Can't share this path.");
   });
 
+  test('unsupported-share-url returns codec-neutral copy', () => {
+    expect(mapShareErrorToToast('unsupported-share-url')).toBe("This GitHub URL can't be shared.");
+  });
+
   test('no-remote returns the no-remote copy (kept for callers that map directly; runShareAction routes to the wizard)', () => {
     // `runShareAction` routes both client-side `hasRemote: false` AND
     // server-side `{ok:false, error:'no-remote'}` to the Publish wizard.
@@ -122,6 +126,7 @@ describe('mapShareErrorToToast', () => {
       'branch-not-on-origin',
       'non-github-remote',
       'invalid-path',
+      'unsupported-share-url',
     ];
     for (const code of codes) {
       expect(mapShareErrorToToast(code).length).toBeGreaterThan(0);

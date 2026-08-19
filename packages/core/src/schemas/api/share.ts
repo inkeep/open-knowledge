@@ -9,9 +9,10 @@
  * only (no `git ls-remote`) to keep the click-to-clipboard path under the
  * 100ms p95 budget.
  *
- * Wire contract returns HTTP 200 for BOTH the happy path and the five
+ * Wire contract returns HTTP 200 for BOTH the happy path and the six
  * business-logic failures (no-remote / detached-head / branch-not-on-origin /
- * non-github-remote / invalid-path) — discriminated on `ok`. This is a
+ * non-github-remote / invalid-path / unsupported-share-url) — discriminated
+ * on `ok`. This is a
  * deliberate departure from the RFC 9457 problem+json convention used
  * elsewhere in the API: the share UI maps each failure code to a per-toast
  * string, and routing those branches through 4xx would conflate them with
@@ -74,6 +75,8 @@ export type ShareConstructUrlRequest = z.infer<typeof ShareConstructUrlRequestSc
  *   directory path) traverses outside the project root or names the `.git/`
  *   subtree. An empty path is NOT invalid: it is a legitimate content-root
  *   folder share. The user-facing toast is generic.
+ * - `unsupported-share-url` — the otherwise accepted GitHub/GHES origin and
+ *   target cannot be represented by the bounded, canonical v2 share codec.
  */
 export const ShareConstructUrlErrorCodeSchema = z.enum([
   'no-remote',
@@ -81,6 +84,7 @@ export const ShareConstructUrlErrorCodeSchema = z.enum([
   'branch-not-on-origin',
   'non-github-remote',
   'invalid-path',
+  'unsupported-share-url',
 ]) satisfies StandardSchemaV1;
 export type ShareConstructUrlErrorCode = z.infer<typeof ShareConstructUrlErrorCodeSchema>;
 

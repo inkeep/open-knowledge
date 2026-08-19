@@ -13085,6 +13085,10 @@ msgstr "Esta carpeta no es un clon de {expectedOwner}/{expectedRepo}. ¿Eliges o
 msgid "This folder isn't on GitHub yet. The link won't work until it's pushed."
 msgstr "Esta carpeta todavía no está en GitHub. El enlace no funcionará hasta que se suba."
 
+#: src/lib/share/run-share-action.ts
+msgid "This GitHub URL can't be shared."
+msgstr "No se puede compartir esta URL de GitHub."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "Esto es una vista previa de {boldName}, una habilidad integrada que viene con Open Knowledge. Es de solo lectura."
