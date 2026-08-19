@@ -620,7 +620,7 @@ export interface AppSupportOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-function pathApiForPlatform(platformName: NodeJS.Platform) {
+export function pathApiForPlatform(platformName: NodeJS.Platform) {
   return platformName === 'win32' ? win32 : posix;
 }
 
@@ -635,10 +635,10 @@ export function resolveAppSupportPath(options: AppSupportOptions = {}): string {
   }
 
   if (platformName === 'win32') {
-    return env.APPDATA ?? pathApi.join(home, 'AppData', 'Roaming');
+    return env.APPDATA || pathApi.join(home, 'AppData', 'Roaming');
   }
 
-  return env.XDG_CONFIG_HOME ?? pathApi.join(home, '.config');
+  return env.XDG_CONFIG_HOME || pathApi.join(home, '.config');
 }
 
 export function resolveClaudeCodeConfigPath(options: AppSupportOptions = {}): string {

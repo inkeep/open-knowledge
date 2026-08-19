@@ -13,15 +13,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MCP_SERVER_NAME } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
+import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { buildManagedServerEntry } from './editors.ts';
 import {
+  applicationDataOps,
   buildUninstallPlan,
   deinitOps,
   type RunRemovalDeps,
   runRemoval,
   type UninstallPlanInput,
 } from './removal-plan.ts';
+import { formatRemovalPlan, removalPlanToJson } from './removal-render.ts';
 
 const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 
@@ -58,7 +61,7 @@ function seedHome(home: string): void {
     join(home, 'Library', 'Application Support', 'Open Knowledge', 'state.json'),
     JSON.stringify({ theirData: true }),
   );
-  write(join(home, 'Library', 'Caches', 'OpenKnowledge-updater', 'pending.zip'), 'x');
+  write(join(home, 'Library', 'Caches', DESKTOP_UPDATER_CACHE_DIR_NAME, 'pending.zip'), 'x');
   // Skill bundles (central + one host).
   write(join(home, '.agents', 'skills', 'open-knowledge-discovery', 'SKILL.md'), '# d\n');
   write(join(home, '.claude', 'skills', 'open-knowledge-discovery', 'SKILL.md'), '# d\n');
@@ -143,7 +146,73 @@ describe('buildUninstallPlan ordering', () => {
     }
   });
 
-  test('on non-macOS the desktop-only surfaces (app data + PATH shim) are absent', () => {
+  test.each([
+    {
+      platform: 'darwin' as const,
+      home: '/Users/x',
+      env: {},
+      expected: [
+        '/Users/x/Library/Application Support/OpenKnowledge',
+        '/Users/x/Library/Application Support/Open Knowledge',
+        `/Users/x/Library/Caches/${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+      ],
+    },
+    {
+      platform: 'win32' as const,
+      home: 'C:\\Users\\x',
+      env: {
+        APPDATA: 'C:\\Users\\x\\AppData\\Roaming',
+        LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local',
+      },
+      expected: [
+        'C:\\Users\\x\\AppData\\Roaming\\OpenKnowledge',
+        `C:\\Users\\x\\AppData\\Local\\${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+      ],
+    },
+    {
+      platform: 'linux' as const,
+      home: '/home/x',
+      env: { XDG_CONFIG_HOME: '/xdg/config', XDG_CACHE_HOME: '/xdg/cache' },
+      expected: ['/xdg/config/OpenKnowledge', `/xdg/cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`],
+    },
+  ])('plans only owned desktop data on $platform', ({ platform, home, env, expected }) => {
+    const applicationData = applicationDataOps(home, platform, env);
+    const paths = applicationData.map((op) => (op.kind === 'remove-path' ? op.path : null));
+
+    expect(paths).toEqual(expected);
+    expect(
+      applicationData.filter((op) => op.kind === 'remove-path' && op.requireOurState),
+    ).toHaveLength(platform === 'darwin' ? 1 : 0);
+  });
+
+  test('renders Linux desktop cleanup paths in human and JSON plans', () => {
+    const plan = buildUninstallPlan({
+      home: '/home/x',
+      platform: 'linux',
+      env: { XDG_CONFIG_HOME: '/home/x/.config', XDG_CACHE_HOME: '/home/x/.cache' },
+      host: 'github.com',
+      lockDirs: [],
+      marker: null,
+      recentDeinitProjectRoots: [],
+      purgeContent: false,
+    });
+
+    const human = formatRemovalPlan(plan);
+    expect(human).toContain('Application data:');
+    expect(human).toContain('Remove ~/.config/OpenKnowledge');
+    expect(human).toContain(`Remove ~/.cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`);
+
+    const json = removalPlanToJson(plan);
+    expect(json.mode).toBe('dry-run');
+    expect(json.planned.map((item) => item.label)).toEqual(
+      expect.arrayContaining([
+        'Remove ~/.config/OpenKnowledge',
+        `Remove ~/.cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+      ]),
+    );
+  });
+
+  test('keeps non-macOS PATH-shim behavior independent of desktop cleanup', () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-'));
     try {
       const plan = buildUninstallPlan({
@@ -152,16 +221,12 @@ describe('buildUninstallPlan ordering', () => {
         env: { XDG_CONFIG_HOME: join(home, '.config') },
         host: 'github.com',
         lockDirs: [],
-        marker: null, // no PATH shim on non-mac
+        marker: null,
         recentDeinitProjectRoots: [],
         purgeContent: false,
       });
-      // Desktop-only surfaces driven by the `platform` param are absent: no
-      // application-data group (desktop is macOS-only) and no PATH-shim ops.
-      expect(plan.ops.some((o) => o.group === 'Application data')).toBe(false);
+      expect(plan.ops.some((o) => o.group === 'Application data')).toBe(true);
       expect(plan.ops.some((o) => o.kind === 'shell-block')).toBe(false);
-      // The cross-platform surfaces (credentials, editor configs, skills, ~/.ok)
-      // remain, with ~/.ok last.
       expect(plan.ops.some((o) => o.kind === 'keychain-token')).toBe(true);
       expect(plan.ops.some((o) => o.group === 'Editor MCP configs')).toBe(true);
       expect(plan.ops.some((o) => o.group === 'Skill bundles')).toBe(true);
@@ -361,7 +426,9 @@ describe('runRemoval — uninstall end to end', () => {
       // updater cache gone.
       expect(existsSync(join(home, 'Library', 'Application Support', 'OpenKnowledge'))).toBe(false);
       expect(existsSync(join(home, 'Library', 'Application Support', 'Open Knowledge'))).toBe(true);
-      expect(existsSync(join(home, 'Library', 'Caches', 'OpenKnowledge-updater'))).toBe(false);
+      expect(existsSync(join(home, 'Library', 'Caches', DESKTOP_UPDATER_CACHE_DIR_NAME))).toBe(
+        false,
+      );
 
       // Skill bundles gone; a foreign skill in the shared store survives.
       expect(existsSync(join(home, '.agents', 'skills', 'open-knowledge-discovery'))).toBe(false);

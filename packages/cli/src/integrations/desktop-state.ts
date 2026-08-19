@@ -25,11 +25,22 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { type AppSupportOptions, resolveAppSupportPath } from '../commands/editors.ts';
+import {
+  type AppSupportOptions,
+  pathApiForPlatform,
+  resolveAppSupportPath,
+} from '../commands/editors.ts';
 
 /** Post-rename Electron `productName` — the userData basename on every platform. */
 export const DESKTOP_PRODUCT_NAME = 'OpenKnowledge';
+/**
+ * electron-builder derives this from the desktop package name
+ * (`@inkeep/open-knowledge-desktop`). Keep this in lockstep with that package
+ * name and electron-builder's `AppInfo.updaterCacheDirName` generation rule.
+ */
+export const DESKTOP_UPDATER_CACHE_DIR_NAME = '@inkeepopen-knowledge-desktop-updater';
 /** Pre-rename `productName` (macOS legacy `Open Knowledge`, with a space). A
  *  generic name we don't own by name alone — always identity-gate before
  *  deleting its dir. */
@@ -46,8 +57,34 @@ interface DesktopUserDataOptions extends AppSupportOptions {
  * Windows %APPDATA%, Linux XDG config), matching Electron's own layout.
  */
 export function desktopUserDataDir(options: DesktopUserDataOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
   const productName = options.productName ?? DESKTOP_PRODUCT_NAME;
-  return join(resolveAppSupportPath(options), productName);
+  return pathApiForPlatform(platformName).join(
+    resolveAppSupportPath({ ...options, platformName }),
+    productName,
+  );
+}
+
+/**
+ * Resolve electron-updater's cache directory using the same platform bases as
+ * `AppAdapter.getAppCacheDir()` in the desktop runtime.
+ */
+export function desktopUpdaterCacheDir(options: AppSupportOptions = {}): string {
+  const platformName = options.platformName ?? process.platform;
+  const home = options.home ?? homedir();
+  const env = options.env ?? process.env;
+  const pathApi = pathApiForPlatform(platformName);
+
+  let base: string;
+  if (platformName === 'win32') {
+    base = env.LOCALAPPDATA || pathApi.join(home, 'AppData', 'Local');
+  } else if (platformName === 'darwin') {
+    base = pathApi.join(home, 'Library', 'Caches');
+  } else {
+    base = env.XDG_CACHE_HOME || pathApi.join(home, '.cache');
+  }
+
+  return pathApi.join(base, DESKTOP_UPDATER_CACHE_DIR_NAME);
 }
 
 /** A recent project as the CLI needs it: the on-disk path + display name. */

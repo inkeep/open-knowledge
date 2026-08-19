@@ -34,7 +34,7 @@ How the app lands depends on your platform:
 - **Windows** — a per-user installer: the app lands under `%LOCALAPPDATA%\Programs\`, with no admin prompt. The installer itself adds the bundled `ok` CLI to your **user** `PATH` (a registry value under `HKCU\Environment`) and registers the `openknowledge://` URL scheme under `HKCU\Software\Classes` — both removed by its uninstaller. Your shell startup files are never touched.
 - **Linux** — a deb or rpm package: the app installs to `/opt/OpenKnowledge/`, and the package's post-install script symlinks `/usr/bin/ok`, `/usr/bin/open-knowledge`, and `/usr/bin/openknowledge` (plus a desktop entry that registers the `openknowledge://` scheme, and an AppArmor profile on Ubuntu 24.04+ so the Chromium sandbox keeps working). Your shell startup files are never touched.
 
-On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; on Windows the same app-state files live under `%APPDATA%\OpenKnowledge\` and on Linux under `~/.config/OpenKnowledge/` (staged updates go to the matching per-user cache directory), while the `~/.ok/` paths are the same everywhere.
+On every platform the app writes app-level state and logs on launch. The table below shows the macOS locations; on Windows the same app-state files live under `%APPDATA%\OpenKnowledge\` and staged updates under `%LOCALAPPDATA%\@inkeepopen-knowledge-desktop-updater\`. On Linux, app state defaults to `~/.config/OpenKnowledge/` and staged updates to `~/.cache/@inkeepopen-knowledge-desktop-updater/` (or the corresponding XDG config and cache directories). The `~/.ok/` paths are the same everywhere.
 
 | Path | What it is | Scope |
 | --- | --- | --- |
@@ -42,7 +42,7 @@ On every platform the app writes app-level state and logs on launch. The table b
 | `~/Library/Application Support/OpenKnowledge/path-install.json` | Records the `PATH`/shell changes it made and your `PATH`-consent choice, so they can be reverted | Outside-project (home dir) |
 | `~/.ok/logs/desktop.<date>.log` | Desktop app + renderer log | Outside-project (home dir) |
 | `~/.ok/mcp-status.json` | Records your first-launch MCP-setup consent choice | Outside-project (home dir) |
-| `~/Library/Caches/OpenKnowledge-updater/` | Staged auto-update downloads (electron-updater) | Outside-project (home dir) |
+| `~/Library/Caches/@inkeepopen-knowledge-desktop-updater/` | Staged auto-update downloads (electron-updater) | Outside-project (home dir) |
 | `~/Library/Caches/com.inkeep.open-knowledge.ShipIt/` | Install log of the macOS update helper (Squirrel's ShipIt), which swaps the app bundle after the app has quit. The only record of why an update failed to install, so a bug report you send collects it — only this app's, never those of other applications that use the same update mechanism | Outside-project (home dir) |
 | `~/Library/Application Support/OpenKnowledge/Crashpad/` | Native crash minidumps, written by the OS crash handler (Electron's Crashpad) if the app ever crashes. Local-only: the crash reporter runs with `uploadToServer: false`, so no dump is ever uploaded automatically | Outside-project (home dir) |
 | `~/Library/Application Support/OpenKnowledge/bug-report-dirty-shutdown.json` | Dirty-shutdown sentinel — written on **every** launch, refreshed as it runs, and removed on a clean quit. The next launch reads it to tell an app crash (prompts you) from the machine ending the session — a reboot, an OS shutdown, or dying asleep (suppressed and logged instead) | Outside-project (home dir) |

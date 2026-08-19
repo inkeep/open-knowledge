@@ -31,6 +31,7 @@ import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
 import { clearTokenFromAllBackends } from '../auth/token-store.ts';
 import {
   DESKTOP_LEGACY_PRODUCT_NAME,
+  desktopUpdaterCacheDir,
   desktopUserDataDir,
   stateDirIsOurs,
 } from '../integrations/desktop-state.ts';
@@ -328,8 +329,8 @@ export function buildUninstallPlan(input: UninstallPlanInput): RemovalPlan {
     });
   }
 
-  // 6. Application data (macOS desktop) — the current + identity-gated legacy
-  //    userData dirs and the updater cache.
+  // 6. Desktop application data — current userData + updater cache on every
+  //    supported platform, plus the identity-gated legacy userData on macOS.
   ops.push(...applicationDataOps(home, platform, input.env));
 
   // 7. Recent projects — each selected project runs the deinit ring.
@@ -405,46 +406,46 @@ function pathRevertOps(marker: PathInstallMarker | null, home: string): RemovalO
   return ops;
 }
 
-/**
- * macOS desktop application-data dirs (current + identity-gated legacy userData,
- * updater cache). Empty on non-macOS: OK Desktop is macOS-only, so the app-data
- * surface is simply absent elsewhere (OK Desktop is macOS-only).
- */
-function applicationDataOps(
+/** Desktop application-data dirs owned by OpenKnowledge. */
+export function applicationDataOps(
   home: string,
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv | undefined,
 ): RemovalOp[] {
-  if (platform !== 'darwin') return [];
   const options = { home, platformName: platform, env };
 
   const current = desktopUserDataDir(options);
-  // The legacy dir name is generic ("Open Knowledge") — another vendor could own
-  // it — so it is ONLY removed when its state.json proves it is ours.
-  const legacy = desktopUserDataDir({ ...options, productName: DESKTOP_LEGACY_PRODUCT_NAME });
-  const updaterCache = join(home, 'Library', 'Caches', 'OpenKnowledge-updater');
-
-  return [
+  const updaterCache = desktopUpdaterCacheDir(options);
+  const ops: RemovalOp[] = [
     {
       kind: 'remove-path',
       group: 'Application data',
       label: `Remove ${tildify(current, home)}`,
       path: current,
     },
-    {
+  ];
+
+  if (platform === 'darwin') {
+    // The legacy dir name is generic ("Open Knowledge") — another vendor could
+    // own it — so it is only removed when its state.json proves it is ours.
+    const legacy = desktopUserDataDir({ ...options, productName: DESKTOP_LEGACY_PRODUCT_NAME });
+    ops.push({
       kind: 'remove-path',
       group: 'Application data',
       label: `Remove ${tildify(legacy, home)} (only if it is OpenKnowledge's)`,
       path: legacy,
       requireOurState: true,
-    },
-    {
-      kind: 'remove-path',
-      group: 'Application data',
-      label: `Remove ${tildify(updaterCache, home)}`,
-      path: updaterCache,
-    },
-  ];
+    });
+  }
+
+  ops.push({
+    kind: 'remove-path',
+    group: 'Application data',
+    label: `Remove ${tildify(updaterCache, home)}`,
+    path: updaterCache,
+  });
+
+  return ops;
 }
 
 // ---------------------------------------------------------------------------

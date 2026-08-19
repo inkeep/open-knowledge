@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   DESKTOP_LEGACY_PRODUCT_NAME,
   DESKTOP_PRODUCT_NAME,
+  DESKTOP_UPDATER_CACHE_DIR_NAME,
+  desktopUpdaterCacheDir,
   desktopUserDataDir,
   readDesktopRecentProjects,
   stateDirIsOurs,
@@ -15,20 +17,32 @@ describe('desktopUserDataDir', () => {
     expect(desktopUserDataDir({ home: '/Users/x', platformName: 'darwin' })).toBe(
       '/Users/x/Library/Application Support/OpenKnowledge',
     );
+    expect(desktopUserDataDir({ home: '/home/x', platformName: 'linux', env: {} })).toBe(
+      '/home/x/.config/OpenKnowledge',
+    );
+    expect(
+      desktopUserDataDir({ home: '/home/x', platformName: 'linux', env: { XDG_CONFIG_HOME: '' } }),
+    ).toBe('/home/x/.config/OpenKnowledge');
     expect(
       desktopUserDataDir({
         home: '/home/x',
         platformName: 'linux',
-        env: { XDG_CONFIG_HOME: '/home/x/.config' },
+        env: { XDG_CONFIG_HOME: '/cfg' },
       }),
-    ).toBe('/home/x/.config/OpenKnowledge');
+    ).toBe('/cfg/OpenKnowledge');
     expect(
       desktopUserDataDir({
         home: 'C:\\Users\\x',
         platformName: 'win32',
         env: { APPDATA: 'C:\\Users\\x\\AppData\\Roaming' },
       }),
-    ).toContain('OpenKnowledge');
+    ).toBe('C:\\Users\\x\\AppData\\Roaming\\OpenKnowledge');
+    expect(desktopUserDataDir({ home: 'C:\\Users\\x', platformName: 'win32', env: {} })).toBe(
+      'C:\\Users\\x\\AppData\\Roaming\\OpenKnowledge',
+    );
+    expect(
+      desktopUserDataDir({ home: 'C:\\Users\\x', platformName: 'win32', env: { APPDATA: '' } }),
+    ).toBe('C:\\Users\\x\\AppData\\Roaming\\OpenKnowledge');
   });
 
   test('the legacy product name resolves the space-named macOS dir', () => {
@@ -41,6 +55,57 @@ describe('desktopUserDataDir', () => {
     ).toBe('/Users/x/Library/Application Support/Open Knowledge');
     // Sanity: the two product names differ.
     expect(DESKTOP_PRODUCT_NAME).not.toBe(DESKTOP_LEGACY_PRODUCT_NAME);
+  });
+});
+
+describe('desktopUpdaterCacheDir', () => {
+  test('keeps the cache basename derived from the desktop package name', () => {
+    const desktopPackage = JSON.parse(
+      readFileSync(new URL('../../../desktop/package.json', import.meta.url), 'utf8'),
+    ) as { name: string };
+    const generatedName = `${desktopPackage.name.replace(/[/?<>\\:*|"]/g, '').toLowerCase()}-updater`;
+
+    expect(DESKTOP_UPDATER_CACHE_DIR_NAME).toBe(generatedName);
+  });
+
+  test('matches electron-updater cache paths per platform', () => {
+    expect(desktopUpdaterCacheDir({ home: '/Users/x', platformName: 'darwin', env: {} })).toBe(
+      `/Users/x/Library/Caches/${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+    );
+    expect(desktopUpdaterCacheDir({ home: '/home/x', platformName: 'linux', env: {} })).toBe(
+      `/home/x/.cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+    );
+    expect(
+      desktopUpdaterCacheDir({
+        home: '/home/x',
+        platformName: 'linux',
+        env: { XDG_CACHE_HOME: '' },
+      }),
+    ).toBe(`/home/x/.cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`);
+    expect(
+      desktopUpdaterCacheDir({
+        home: '/home/x',
+        platformName: 'linux',
+        env: { XDG_CACHE_HOME: '/cache' },
+      }),
+    ).toBe(`/cache/${DESKTOP_UPDATER_CACHE_DIR_NAME}`);
+    expect(
+      desktopUpdaterCacheDir({
+        home: 'C:\\Users\\x',
+        platformName: 'win32',
+        env: { LOCALAPPDATA: 'D:\\Local' },
+      }),
+    ).toBe(`D:\\Local\\${DESKTOP_UPDATER_CACHE_DIR_NAME}`);
+    expect(desktopUpdaterCacheDir({ home: 'C:\\Users\\x', platformName: 'win32', env: {} })).toBe(
+      `C:\\Users\\x\\AppData\\Local\\${DESKTOP_UPDATER_CACHE_DIR_NAME}`,
+    );
+    expect(
+      desktopUpdaterCacheDir({
+        home: 'C:\\Users\\x',
+        platformName: 'win32',
+        env: { LOCALAPPDATA: '' },
+      }),
+    ).toBe(`C:\\Users\\x\\AppData\\Local\\${DESKTOP_UPDATER_CACHE_DIR_NAME}`);
   });
 });
 
