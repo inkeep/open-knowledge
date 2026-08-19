@@ -846,6 +846,9 @@
     "BGtzlf": [["uploadFolderName"], " — 1 file"],
     "BH56dn": ["Custom display text"],
     "BKI4hX": ["Find in file"],
+    "BOsvJ8": [
+      "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+    ],
     "BQKHuL": ["Restart terminal"],
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Couldn't restart the server. Try `ok start` in this folder."],
@@ -2401,6 +2404,9 @@
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
     "XDzAnp": ["Opens in a new tab"],
+    "XEfNPL": [
+      "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+    ],
     "XFpEgc": [
       "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
     ],
@@ -2587,6 +2593,7 @@
     "ZNK2Tq": ["root"],
     "ZQJ1IV": ["Activate the last editor tab."],
     "ZQLDTl": ["created folder"],
+    "ZQc7C8": ["Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."],
     "ZSoojc": ["Clone failed — check the URL and try again (", ["status"], ")"],
     "ZU8VV_": ["Remove failed: ", ["error"]],
     "ZVOhXM": ["Failed to update sync — ", ["detail"]],
@@ -3731,6 +3738,7 @@
     "n2lRue": ["Commit or stash changes to switch:"],
     "n3T3EE": ["Installed in ", ["label"], " — click to remove"],
     "n3wx1q": ["Restore to this version?"],
+    "n4vt3Q": ["Download app"],
     "n5Vy3l": ["Opened on branch ", ["branch"]],
     "n5n_vi": ["Private repository"],
     "n6hXUm": [
@@ -4343,7 +4351,6 @@
     "vPLUCm": ["Missing image ", ["identity"], ". Go to reference."],
     "vPXOUw": ["Toggle source view"],
     "vQIVHc": ["Folder properties"],
-    "vWc9a0": ["Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."],
     "vXIe7J": ["Language"],
     "vYOUOk": ["Add a comment"],
     "vYPvPB": ["Switch project…"],

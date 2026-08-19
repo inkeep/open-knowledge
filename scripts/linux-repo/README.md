@@ -14,10 +14,11 @@ served as **static files** from an R2 bucket behind
 all the work client-side; our job is generating correctly-signed metadata and
 uploading it.
 
-Decision context (2026-07-31): the AppImage was cut (its runtime needs FUSE 2,
-which current distros no longer ship), which removed the only in-app
-auto-update path on Linux. This repo IS the Linux update story: users install
-once, then updates arrive through their system package manager.
+Historical context: this repository was designed after AppImage was removed
+because its FUSE 2 dependency is absent from current distributions. It is
+parked now that deb and rpm builds update in-app from the GitHub release feed;
+the repository machinery remains available if system-package-manager delivery
+is revisited.
 
 - Generator: [`publish-linux-repo.sh`](./publish-linux-repo.sh) — stateless,
   emits metadata for exactly the packages it is given (latest-only per
@@ -70,10 +71,9 @@ once, then updates arrive through their system package manager.
 
 ## Publishing
 
-Prerequisite: the release tag must carry the `.deb` (and, once built, `.rpm`)
-assets. Today the Win/Linux installers are QA-gated workflow artifacts, not
-release assets — attaching them at release-cut time is the remaining
-release-flow integration (tracked below).
+Prerequisite: the release tag must carry the `.deb` and `.rpm` assets. The
+standard desktop release flow attaches the Windows and Linux installers at
+release-cut time; this repository publisher consumes those release assets.
 
 ```bash
 gh workflow run publish-linux-repo.yml --repo inkeep/open-knowledge \
@@ -83,7 +83,7 @@ gh workflow run publish-linux-repo.yml --repo inkeep/open-knowledge \
 Re-running for the same tag is idempotent. Publishing `beta` and `stable`
 never touch each other's prefixes.
 
-## Client install (goes into the docs site when Linux launches)
+## Client install
 
 Debian/Ubuntu:
 
@@ -134,8 +134,6 @@ Beta channel: replace `stable` with `beta` in either snippet.
 
 ## Remaining integration (not this change)
 
-- Attach the Linux (and Windows) installers to GitHub Releases at cut time —
-  today they only exist as `desktop-build-win-linux.yml` dispatch artifacts.
 - Chain `publish-linux-repo` into the release cadence (beta on every cut,
   stable on promote) instead of manual dispatch.
 - Docs-site install page + `openknowledge.ai/download/linux` pointing at the

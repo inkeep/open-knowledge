@@ -72,8 +72,8 @@ export function computeTitleBarOverlay(
  * native menu bar (still installed for its accelerators — the renderer-menubar contract keeps
  * shortcuts on the hidden main-process Menu) from rendering a second menu
  * row above the custom titlebar chrome; Alt-taps on Windows can still
- * transiently summon it, which is acceptable (it holds the same items the
- * renderer menubar draws).
+ * transiently summon it, which is acceptable. It retains the main-process
+ * accelerator menu, including disabled platform-specific items the renderer omits.
  */
 export function buildNonDarwinChromeOpts(isDark: boolean): BrowserWindowConstructorOptions {
   return {

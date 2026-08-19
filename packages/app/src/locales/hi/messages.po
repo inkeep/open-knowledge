@@ -1003,10 +1003,15 @@ msgstr "<0>मिरर एंकर नहीं मिला।</0> <2>{src}</
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>मिरर स्रोत हटा दिया गया।</0> दस्तावेज़ <1>{src}</1> अब उपलब्ध नहीं है।"
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> बाहरी टर्मिनलों में तब तक नहीं चलेगा जब तक आप इसे बाद में File मेन्यू से न जोड़ें। OpenKnowledge का अंतर्निहित टर्मिनल और AI टूल काम करते रहेंगे।"
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> तब तक बाहरी टर्मिनल में नहीं चलेगा, जब तक आप इसे बाद में फ़ाइल मेनू से नहीं जोड़ते। आपके AI टूल काम करते रहेंगे।"
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4627,6 +4632,10 @@ msgstr "संपादित करने के लिए डबल-क्ल�
 msgid "Download {0}"
 msgstr "{0} डाउनलोड करें"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "ऐप डाउनलोड करें"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "फ़ाइल डाउनलोड करें"
@@ -6843,6 +6852,10 @@ msgstr "इंस्टॉल है"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "इंस्टॉल है — ok बाहरी टर्मिनलों में उपलब्ध है। चुनाव हटाने पर यह हट जाता है; OpenKnowledge का अंतर्निहित टर्मिनल और AI टूल काम करते रहते हैं।"
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "इंस्टॉल है — ok बाहरी टर्मिनल में उपलब्ध है। इसे अनचेक करने पर हटा दिया जाएगा; आपके AI टूल काम करते रहेंगे।"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13557,8 +13570,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "कोई क्वेरी लिखें, फिर अपने पेज अर्थ के आधार पर खोजने के लिए <0>↵</0> दबाएँ।"
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "संपादित करने के लिए लिखें; <0>⌘ Enter</0> सहेजता है, <1>Esc</1> रद्द करता है।"
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "संपादित करने के लिए लिखें; <0>Cmd/Ctrl+Enter</0> सहेजता है, <1>Esc</1> रद्द करता है।"
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

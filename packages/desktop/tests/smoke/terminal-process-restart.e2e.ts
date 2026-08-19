@@ -159,16 +159,6 @@ async function growRightTerminal(page: Page, deltaPx: number): Promise<number> {
   return column.evaluate((element) => element.getBoundingClientRect().width);
 }
 
-async function dragTabOnto(page: Page, fromName: string, toName: string): Promise<void> {
-  const from = await page.getByRole('tab', { name: fromName }).boundingBox();
-  const to = await page.getByRole('tab', { name: toName }).boundingBox();
-  if (!from || !to) throw new Error('tab bounding box unavailable');
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
-  await page.mouse.up();
-}
-
 async function quitAndWait(app: ElectronApplication, child: ChildProcess): Promise<void> {
   const exited = new Promise<void>((resolveExit, reject) => {
     const timer = setTimeout(
@@ -203,16 +193,19 @@ test.describe('terminal process restart', () => {
     await setWindowSize(firstApp, firstPage, 1900, 900);
     await openTerminal(firstApp, firstPage);
     await openBareTab(firstPage);
-    await clickMenuItem(firstApp, 'Terminal', ['Move Terminal to right']);
-    await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
-    const retainedWidth = await growRightTerminal(firstPage, 120);
-    await dragTabOnto(firstPage, 'Terminal 1', 'Terminal 2');
+    // This test owns process-restart persistence; the dedicated terminal-tabs
+    // smoke owns pointer-drag behavior. Reordering in the bottom dock keeps
+    // this setup independent of right-column overlay geometry.
+    await firstPage.locator('section[aria-label="Terminal"]:visible .xterm').click();
+    await firstPage.keyboard.press('Meta+Shift+ArrowLeft');
     await expect(terminalTabs(firstPage)).toHaveText(['Terminal 2', 'Terminal 1']);
-    await firstPage.getByRole('tab', { name: 'Terminal 1' }).click();
-    await expect(firstPage.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute(
+    await expect(firstPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
+    await clickMenuItem(firstApp, 'Terminal', ['Move Terminal to right']);
+    await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
+    const retainedWidth = await growRightTerminal(firstPage, 120);
     await quitAndWait(firstApp, firstProcess);
 
     const secondApp = await launchRestartProfile(seed);
@@ -224,7 +217,7 @@ test.describe('terminal process restart', () => {
     await expect(terminalTabs(secondPage)).toHaveText(['Terminal 2', 'Terminal 1'], {
       timeout: 25_000,
     });
-    await expect(secondPage.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute(
+    await expect(secondPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
       'true',
     );

@@ -1007,10 +1007,15 @@ msgstr "<0>미러 앵커를 찾을 수 없습니다.</0> <1>{mirrorSourceTag}</1
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>미러 소스가 삭제되었습니다.</0> 문서 <1>{src}</1>는 더 이상 사용할 수 없습니다."
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> 외부 터미널 실행 불가. File 메뉴에서 나중에 추가하면 실행할 수 있습니다. OpenKnowledge 내장 터미널과 AI 도구도 계속 작동합니다."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0>는 나중에 파일 메뉴에서 추가할 때까지 외부 터미널에서 실행되지 않습니다. AI 도구는 계속 작동합니다."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4631,6 +4636,10 @@ msgstr "편집하려면 두 번 클릭"
 msgid "Download {0}"
 msgstr "{0} 다운로드"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "앱 다운로드"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "파일 다운로드"
@@ -6847,6 +6856,10 @@ msgstr "설치됨"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "설치됨, 외부 터미널에서 ok를 사용할 수 있습니다. 선택을 해제하면 제거되며, OpenKnowledge 기본 제공 터미널과 AI 도구는 계속 작동합니다."
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "설치됨 — 외부 터미널에서 ok를 사용할 수 있습니다. 선택을 해제하면 제거되며, AI 도구는 계속 작동합니다."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13561,8 +13574,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "쿼리를 입력한 다음 <0>↵</0> 키를 눌러 페이지를 의미로 검색합니다."
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "입력하여 편집하세요. <0>⌘ Enter</0>로 저장하고 <1>Esc</1>로 취소합니다."
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "입력하여 편집하세요. <0>Cmd/Ctrl+Enter</0>로 저장하고 <1>Esc</1>로 취소합니다."
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

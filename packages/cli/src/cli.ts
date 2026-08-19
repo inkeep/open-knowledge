@@ -27,7 +27,7 @@ import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open
  * CLI entry point for @inkeep/open-knowledge.
  *
  * Commander.js v14. `ok` (no positional args) auto-detects whether the
- * desktop Electron app is available + interactive on macOS — when both
+ * desktop Electron app is available + interactive on this platform — when both
  * hold, hands off to the desktop and exits; otherwise invokes the
  * `start` command (server + browser).
  *

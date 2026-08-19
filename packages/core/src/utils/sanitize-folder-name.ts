@@ -5,9 +5,8 @@
  * leading / trailing dashes / dots / whitespace. Empty after sanitization
  * → empty string; callers validate non-empty separately.
  *
- * The set covers both macOS-forbidden (`/`) and Windows-forbidden chars
- * even though the desktop is macOS-only today — sanitizing now means a
- * future Windows port doesn't have to revisit every project name on disk.
+ * The set covers both macOS-forbidden (`/`) and Windows-forbidden chars so a
+ * project name remains portable across supported desktop platforms.
  *
  * Null bytes are stripped for parity with `validateSpawnPath` in
  * `packages/desktop/src/main/ipc-handlers.ts`: Node 18+ throws

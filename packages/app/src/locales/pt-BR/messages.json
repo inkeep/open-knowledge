@@ -979,6 +979,9 @@
     "BGtzlf": [["uploadFolderName"], " — 1 arquivo"],
     "BH56dn": ["Texto personalizado"],
     "BKI4hX": ["Buscar no arquivo"],
+    "BOsvJ8": [
+      "<0>ok</0> não funcionará em terminais externos até que você o adicione depois pelo menu Arquivo. Suas ferramentas de IA continuarão funcionando."
+    ],
     "BQKHuL": ["Reiniciar o terminal"],
     "BQu9Pg": ["Link simbólico"],
     "BUyQnq": ["Não deu para reiniciar o servidor. Tente `ok start` nesta pasta."],
@@ -2740,6 +2743,9 @@
     "XBBZnv": ["O destino do link \"", ["shown"], "\" não corresponde a um documento existente."],
     "XBgr2S": ["Copiar para cá"],
     "XDzAnp": ["Abre em uma nova aba"],
+    "XEfNPL": [
+      "Instalado — o ok está disponível em terminais externos. Desmarcar remove-o; suas ferramentas de IA continuarão funcionando."
+    ],
     "XFpEgc": [
       "Escolha quais agentes aparecem nos menus de agentes do aplicativo, como Ask AI, Open with AI e o botão ＋ de novo chat. Desative um agente para ocultá-lo de todos eles."
     ],
@@ -2949,6 +2955,7 @@
     "ZNK2Tq": ["raiz"],
     "ZQJ1IV": ["Ativa a última aba do editor."],
     "ZQLDTl": ["pasta criada"],
+    "ZQc7C8": ["Digite para editar; <0>Cmd/Ctrl+Enter</0> salva, <1>Esc</1> cancela."],
     "ZSoojc": ["Falha ao clonar — verifique a URL e tente novamente (", ["status"], ")"],
     "ZU8VV_": ["Falha ao remover: ", ["error"]],
     "ZVOhXM": ["Falha ao atualizar a sincronização — ", ["detail"]],
@@ -4240,6 +4247,7 @@
     "n2lRue": ["Faça commit ou stash das alterações para trocar:"],
     "n3T3EE": ["Instalado em ", ["label"], " — clique para remover"],
     "n3wx1q": ["Restaurar até esta versão?"],
+    "n4vt3Q": ["Baixar aplicativo"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
     "n6hXUm": [
@@ -4910,7 +4918,6 @@
     "vPLUCm": ["A imagem ", ["identity"], " está ausente. Ir para a referência."],
     "vPXOUw": ["Mostrar ou ocultar a visualização de código"],
     "vQIVHc": ["Propriedades da pasta"],
-    "vWc9a0": ["Digite para editar; <0>⌘ Enter</0> salva, <1>Esc</1> cancela."],
     "vXIe7J": ["Idioma"],
     "vYOUOk": ["Adicionar um comentário"],
     "vYPvPB": ["Trocar de projeto…"],

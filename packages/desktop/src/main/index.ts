@@ -1734,8 +1734,7 @@ function ensureWindowManager() {
     // separates window focus from app activation — a BrowserWindow.focus() on a
     // backgrounded app reorders within the app but doesn't pull it to the front
     // (electron/electron#19920). `app.focus({ steal: true })` is the macOS
-    // primitive that does. Desktop is macOS-only, but the platform guard keeps
-    // it inert anywhere else.
+    // primitive that does; the platform guard keeps it inert elsewhere.
     activateApp: () => {
       if (process.platform === 'darwin') app.focus({ steal: true });
     },

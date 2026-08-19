@@ -19,20 +19,11 @@ function targetById(id: TargetData['id']): TargetData {
 }
 
 describe('OpenInAgentMenuItem module surface', () => {
-  test('exports the component, helpers, and the OK desktop install URL', async () => {
+  test('exports the component and pure row-state helpers', async () => {
     const mod = await import('./OpenInAgentMenuItem');
     expect(typeof mod.OpenInAgentMenuItem).toBe('function');
     expect(typeof mod.computeRowState).toBe('function');
     expect(typeof mod.computeRowHint).toBe('function');
-    expect(typeof mod.OK_DESKTOP_INSTALL_URL).toBe('string');
-    expect(mod.OK_DESKTOP_INSTALL_URL.startsWith('https://')).toBe(true);
-  });
-
-  test('OK_DESKTOP_INSTALL_URL points at the releases page, not the source README', async () => {
-    const { OK_DESKTOP_INSTALL_URL } = await import('./OpenInAgentMenuItem');
-    // The URL must land on installers directly. A repo-root URL drops users on
-    // the README which is actively misleading as an "install" destination.
-    expect(OK_DESKTOP_INSTALL_URL).toContain('/releases');
   });
 });
 

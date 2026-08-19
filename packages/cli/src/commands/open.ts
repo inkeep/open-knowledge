@@ -23,7 +23,7 @@
  *     is needed — the renderer resolves it via `docNameFromHash`.)
  *
  * Desktop presence comes from `detectDesktop().bundlePath`, populated whenever a
- * desktop executable is installed and `OK_FORCE_BROWSER` is unset — including
+ * supported-platform desktop executable is installed and `OK_FORCE_BROWSER` is unset — including
  * non-TTY/headless invocations (an agent shelling out). The verb spawns its own
  * platform-native URL handler rather than `launchDesktop`.
  */
@@ -117,7 +117,7 @@ function isUnsafeName(name: string): boolean {
 function noTargetError(deps: OpenDeps): number {
   deps.error(
     'No OpenKnowledge desktop app found and no UI is running. ' +
-      'Install OK Desktop, or run `ok start` to serve the editor, then retry.',
+      'Install it from https://openknowledge.ai/download, or run `ok start` to serve the editor, then retry.',
   );
   return 1;
 }

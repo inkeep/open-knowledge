@@ -9,16 +9,7 @@ interface SplashCliBlockProps {
   installCommand: string;
   /** Omitted on the fallback screen, which has no resolved repo to clone. */
   cloneCommand?: string;
-  /**
-   * Wrapper spacing. Defaults to the `mt-12` that aligns the Linux CLI-primary
-   * block with the macOS cluster; the dropdown-panel embed passes `''` to drop
-   * the top margin.
-   */
-  wrapperClassName?: string;
-  /**
-   * Render the "Open with CLI" header above the code surface. Shared by the
-   * macOS dropdown panel and the Linux inline path so the two stay identical.
-   */
+  /** Render the "Open with CLI" header above the code surface. */
   showHeading?: boolean;
 }
 
@@ -27,12 +18,7 @@ const FAILED_RESET_MS = 5000;
 
 type CopyStatus = 'idle' | 'copied' | 'failed';
 
-export function SplashCliBlock({
-  installCommand,
-  cloneCommand,
-  wrapperClassName,
-  showHeading,
-}: SplashCliBlockProps) {
+export function SplashCliBlock({ installCommand, cloneCommand, showHeading }: SplashCliBlockProps) {
   const [status, setStatus] = useState<CopyStatus>('idle');
   // Whether the failure fallback actually selected the command text. Drives the
   // aria-live label so it never announces "text is selected" when selection was
@@ -41,9 +27,8 @@ export function SplashCliBlock({
   const codeRef = useRef<HTMLPreElement>(null);
   const resetTimerRef = useRef<number | null>(null);
 
-  // Clear the status auto-reset timer on unmount — the parent can swap this
-  // block out (macOS popover ↔ Linux inline) on the post-hydration OS
-  // reclassification, unmounting it mid-timer.
+  // Clear the status auto-reset timer on unmount — the popover can close and
+  // unmount this block while a copy-status reset is still pending.
   useEffect(
     () => () => {
       if (resetTimerRef.current !== null) window.clearTimeout(resetTimerRef.current);
@@ -103,7 +88,7 @@ export function SplashCliBlock({
         : 'Copy';
 
   return (
-    <div className={cn(wrapperClassName ?? 'mt-12')}>
+    <div>
       {/* "Open with CLI" only when there is something to open — the clone step
           is what opens the share. Without it these commands just install the
           CLI, and the old fixed heading promised an outcome the block did not

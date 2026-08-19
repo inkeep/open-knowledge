@@ -1007,10 +1007,15 @@ msgstr "<0>مرر اینکر نہیں ملا۔</0> <2>{src}</2> میں کوئی 
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>مرر کا ماخذ ہٹا دیا گیا۔</0> دستاویز <1>{src}</1> اب دستیاب نہیں۔"
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> بیرونی ٹرمینلز میں اس وقت تک نہیں چلے گا جب تک آپ اسے بعد میں فائل مینو سے شامل نہ کریں۔ OpenKnowledge کا بلٹ اِن ٹرمینل اور AI ٹولز کام کرتے رہتے ہیں۔"
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> بیرونی ٹرمینلز میں اس وقت تک نہیں چلے گا جب تک آپ اسے بعد میں فائل مینو سے شامل نہ کریں۔ آپ کے AI ٹولز کام کرتے رہیں گے۔"
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4631,6 +4636,10 @@ msgstr "ترمیم کے لیے ڈبل کلک کریں"
 msgid "Download {0}"
 msgstr "{0} ڈاؤن لوڈ کریں"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "ایپ ڈاؤن لوڈ کریں"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "فائل ڈاؤن لوڈ کریں"
@@ -6847,6 +6856,10 @@ msgstr "نصب شدہ"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "نصب شدہ — ok بیرونی ٹرمینلز میں دستیاب ہے۔ نشان ہٹانے سے یہ ہٹ جاتا ہے؛ OpenKnowledge کا بلٹ اِن ٹرمینل اور AI ٹولز کام کرتے رہتے ہیں۔"
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "نصب شدہ — ok بیرونی ٹرمینلز میں دستیاب ہے۔ نشان ہٹانے سے یہ ہٹ جائے گا؛ آپ کے AI ٹولز کام کرتے رہیں گے۔"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13561,8 +13574,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "کوئی استفسار لکھیں، پھر اپنے صفحات کو معنی کے لحاظ سے تلاش کرنے کے لیے <0>↵</0> دبائیں۔"
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "ترمیم کے لیے لکھیں؛ <0>⌘ Enter</0> محفوظ کرتا ہے، <1>Esc</1> منسوخ کرتا ہے۔"
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "ترمیم کے لیے لکھیں؛ <0>Cmd/Ctrl+Enter</0> محفوظ کرتا ہے، <1>Esc</1> منسوخ کرتا ہے۔"
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

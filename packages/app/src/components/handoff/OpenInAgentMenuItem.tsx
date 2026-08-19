@@ -126,13 +126,6 @@ export function TargetIcon({
   return null;
 }
 
-/**
- * Stable URL for the "Install the OpenKnowledge desktop app →" affordance
- * shown only in the web-host Cursor submenu. Points at the releases page so
- * users land directly on installers rather than a source-code README.
- */
-export const OK_DESKTOP_INSTALL_URL = 'https://github.com/inkeep/open-knowledge/releases';
-
 /** A clickable affordance shown inside the disabled-row submenu. */
 interface RowAffordance {
   readonly label: string;

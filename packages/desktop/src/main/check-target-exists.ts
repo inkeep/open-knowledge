@@ -74,8 +74,8 @@ function isSafeProjectPath(projectPath: string): boolean {
  * - non-empty string (content-root's empty path is short-circuited at the
  *   call site, so this probe never sees it)
  * - NOT absolute (the share encodes a repo-relative path)
- * - no backslash (macOS-only; `\` is never a separator and could not have
- *   been minted by the sender) and no control chars (NUL through US + DEL)
+ * - no backslash (Git tree paths and share-URL segments use forward slashes
+ *   on every platform) and no control chars (NUL through US + DEL)
  * - no `..` or `.git` segments (rejected pre-resolve so `a/../b` style escapes
  *   fail-loud — the containment check below catches absolute `..` sequences
  *   too, but pre-checking yields clearer telemetry, and `.git` keeps the gate
@@ -86,10 +86,9 @@ function isSafeTargetPath(path: string): boolean {
   if (path.length === 0) return false;
   if (isAbsolute(path)) return false;
   // Reject ANY backslash, matching the sender-side `isValidSharePath` and
-  // `isValidBranchInfoPath` (precedent #55, predicate symmetry). OK is
-  // macOS-only, so a backslash is never a path separator; a backslash-bearing
-  // target path could never have been minted by the sender, so reject it here
-  // too rather than treating `\` as a separator.
+  // `isValidBranchInfoPath` (precedent #55, predicate symmetry). Git tree paths
+  // and share-URL segments use forward slashes on every platform, so a
+  // backslash-bearing target could never have been minted by the sender.
   if (path.includes('\\')) return false;
   // Reject all control chars (NUL through US, plus DEL), not just NUL — a
   // control char would survive `path.join` into the `cat-file -e <ref>:<path>`

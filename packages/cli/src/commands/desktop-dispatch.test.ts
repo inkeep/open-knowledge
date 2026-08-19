@@ -409,6 +409,7 @@ describe('UX message helpers — FR5 contextual notFoundMessage(reason)', () => 
   test('default (no-bundle) explains the miss + omit-mode hint', () => {
     const msg = notFoundMessage();
     expect(msg).toContain('not found');
+    expect(msg).toContain('https://openknowledge.ai/download');
     expect(msg).toContain('--mode');
   });
 

@@ -1419,20 +1419,30 @@ describe('ContentFilter', () => {
       expect(filter.isPathIgnored('.git/config', BYPASS)).toBe(true);
       expect(filter.isPathIgnored('node_modules/pkg/index.js', BYPASS)).toBe(true);
 
-      // Junk-file floor — macOS Finder metadata (`.DS_Store`, `.localized`)
-      // stays excluded under bypass at any depth, so Show All Files never
-      // surfaces it as a sidebar asset row. Exact-basename match: a real file
-      // whose name merely ends with `.DS_Store` is NOT junk and still surfaces.
+      // Junk-file floor — metadata from Finder, Windows Explorer, and common
+      // Linux desktops stays excluded under bypass at any depth, so Show All
+      // Files never surfaces it as a sidebar asset row. Exact basenames only,
+      // matched case-insensitively because watcher casing is not canonical.
       expect(filter.isExcluded('.DS_Store', BYPASS)).toBe(true);
       expect(filter.isExcluded('notes/.DS_Store', BYPASS)).toBe(true);
       expect(filter.isExcluded('a/b/c/.DS_Store', BYPASS)).toBe(true);
       expect(filter.isExcluded('.localized', BYPASS)).toBe(true);
       expect(filter.isExcluded('notes/.localized', BYPASS)).toBe(true);
+      expect(filter.isExcluded('Thumbs.db', BYPASS)).toBe(true);
+      expect(filter.isExcluded('notes/Thumbs.db', BYPASS)).toBe(true);
+      expect(filter.isExcluded('desktop.ini', BYPASS)).toBe(true);
+      expect(filter.isExcluded('notes/Desktop.ini', BYPASS)).toBe(true);
+      expect(filter.isExcluded('notes/dEsKtOp.InI', BYPASS)).toBe(true);
+      expect(filter.isExcluded('notes/THUMBS.DB', BYPASS)).toBe(true);
+      expect(filter.isExcluded('.directory', BYPASS)).toBe(true);
+      expect(filter.isExcluded('notes/.directory', BYPASS)).toBe(true);
       expect(filter.isPathIgnored('.DS_Store', BYPASS)).toBe(true);
       expect(filter.isPathIgnored('notes/.DS_Store', BYPASS)).toBe(true);
       // Precision: substring/suffix lookalikes are real files, not junk.
       expect(filter.isExcluded('archive.DS_Store', BYPASS)).toBe(false);
       expect(filter.isExcluded('notes/my.DS_Store.md', BYPASS)).toBe(false);
+      expect(filter.isExcluded('Thumbs.db.md', BYPASS)).toBe(false);
+      expect(filter.isExcluded('project.directory', BYPASS)).toBe(false);
 
       // Secret-bearing floor — `.env` / private-key files / `.ssh` /
       // `.aws` / `.gnupg` stay excluded even under bypass. Independent of

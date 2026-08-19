@@ -993,6 +993,9 @@
     "BGtzlf": [["uploadFolderName"], " — 1 archivo"],
     "BH56dn": ["Texto personalizado"],
     "BKI4hX": ["Buscar en el archivo"],
+    "BOsvJ8": [
+      "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más tarde desde el menú Archivo. Tus herramientas de IA seguirán funcionando."
+    ],
     "BQKHuL": ["Reiniciar la terminal"],
     "BQu9Pg": ["Enlace simbólico"],
     "BUyQnq": ["No se pudo reiniciar el servidor. Prueba `ok start` en esta carpeta."],
@@ -2780,6 +2783,9 @@
     "XBBZnv": ["El destino del enlace «", ["shown"], "» no corresponde a un documento existente."],
     "XBgr2S": ["Copiar aquí"],
     "XDzAnp": ["Se abre en una pestaña nueva"],
+    "XEfNPL": [
+      "Instalado — ok está disponible en terminales externas. Al desmarcarlo, se elimina; tus herramientas de IA seguirán funcionando."
+    ],
     "XFpEgc": [
       "Elige qué agentes aparecen en los menús de agentes de la aplicación, como Ask AI, Open with AI y el botón ＋ de nuevo chat. Desactiva un agente para ocultarlo de todos ellos."
     ],
@@ -3004,6 +3010,7 @@
     "ZNK2Tq": ["raíz"],
     "ZQJ1IV": ["Activa la última pestaña del editor."],
     "ZQLDTl": ["carpeta creada"],
+    "ZQc7C8": ["Escribe para editar; <0>Cmd/Ctrl+Enter</0> guarda, <1>Esc</1> cancela."],
     "ZSoojc": ["No se pudo clonar: revisa la URL e inténtalo de nuevo (", ["status"], ")"],
     "ZU8VV_": ["Falló al quitarlo: ", ["error"]],
     "ZVOhXM": ["No se pudo actualizar la sincronización — ", ["detail"]],
@@ -4326,6 +4333,7 @@
     "n2lRue": ["Haz commit o stash de tus cambios para cambiar:"],
     "n3T3EE": ["Instalado en ", ["label"], ": haz clic para quitarlo"],
     "n3wx1q": ["¿Restaurar hasta esta versión?"],
+    "n4vt3Q": ["Descargar la aplicación"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
     "n6hXUm": [
@@ -5003,7 +5011,6 @@
     "vPLUCm": ["Falta la imagen ", ["identity"], ". Ir a la referencia."],
     "vPXOUw": ["Mostrar u ocultar la vista de código"],
     "vQIVHc": ["Propiedades de la carpeta"],
-    "vWc9a0": ["Escribe para editar; <0>⌘ Intro</0> guarda, <1>Esc</1> cancela."],
     "vXIe7J": ["Idioma"],
     "vYOUOk": ["Añadir un comentario"],
     "vYPvPB": ["Cambiar de proyecto…"],

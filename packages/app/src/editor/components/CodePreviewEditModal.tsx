@@ -284,7 +284,7 @@ export function CodePreviewEditModal({
         //     because defaultKeymap binds `Mod-Enter` to `insertBlankLine`.
         //     Behind the spread, insertBlankLine would win and Cmd/Ctrl+Enter
         //     would insert a newline instead of committing — contradicting
-        //     the footer's "⌘ Enter saves" promise. Our binding returns true,
+        //     the footer's "Cmd/Ctrl+Enter saves" promise. Our binding returns true,
         //     so first position makes it authoritative.
         //   - `indentWithTab` binds `Tab` (a different key), so its order
         //     relative to the others is immaterial; it stays near the front
@@ -377,7 +377,7 @@ export function CodePreviewEditModal({
           ) : (
             <DialogDescription>
               <Trans>
-                Type to edit; <Kbd>⌘ Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels.
+                Type to edit; <Kbd>Cmd/Ctrl+Enter</Kbd> saves, <Kbd>Esc</Kbd> cancels.
               </Trans>
             </DialogDescription>
           )}

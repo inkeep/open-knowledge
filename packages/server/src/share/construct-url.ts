@@ -37,8 +37,8 @@ export function isValidSharePath(path: string, kind: 'doc' | 'folder'): boolean 
   if (path === '') return kind === 'folder';
   if (path.startsWith('/')) return false;
   // Reject ANY backslash (not just a leading one), matching the sibling
-  // `isValidBranchInfoPath` in `git-branch-info.ts`. OK is macOS-only, so `\`
-  // is never a path separator here; a backslash in a share path is anomalous
+  // `isValidBranchInfoPath` in `git-branch-info.ts`. Git tree paths and URL
+  // segments use forward slashes on every platform; a backslash is anomalous
   // and must not reach the GitHub URL builder or `cat-file -e <ref>:<path>`.
   if (path.includes('\\')) return false;
   // Reject control chars (NUL through US, plus DEL) for defense-in-depth +

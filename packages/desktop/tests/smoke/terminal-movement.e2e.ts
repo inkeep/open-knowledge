@@ -263,17 +263,6 @@ async function readShellPid(page: Page, marker: string): Promise<number> {
   return processId;
 }
 
-async function dragTabOnto(page: Page, fromName: string, toName: string): Promise<void> {
-  const from = await page.getByRole('tab', { name: fromName }).boundingBox();
-  const to = await page.getByRole('tab', { name: toName }).boundingBox();
-  if (!from || !to) throw new Error(`tab bounding box missing (${fromName} -> ${toName})`);
-  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2 + 14, from.y + from.height / 2, { steps: 4 });
-  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 12 });
-  await page.mouse.up();
-}
-
 async function growRightTerminal(page: Page, deltaPx: number): Promise<number> {
   const column = page.locator('#terminal-column');
   const before = await column.evaluate((element) => element.getBoundingClientRect().width);
@@ -413,17 +402,6 @@ test.describe('Terminal placement continuity — live Electron', () => {
 
     await openTerminal(app, page);
     await openBareTab(page);
-    await moveTerminal(app, page, 'right');
-    const restoredWidth = await growRightTerminal(page, 120);
-
-    await dragTabOnto(page, 'Terminal 1', 'Terminal 2');
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
-    await page.getByRole('tab', { name: 'Terminal 1' }).click();
-    await expect(page.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-
     const token = randomUUID().replaceAll('-', '');
     const processMarker = `RESTART_PROCESS_${token}`;
     const processId = await readShellPid(page, processMarker);
@@ -431,22 +409,38 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await typeInActiveTerminal(page, `printf '${beforeRestart}\\n'\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(beforeRestart);
 
+    // This test owns restart persistence; the dedicated terminal-tabs smoke
+    // owns pointer-drag behavior. Reordering in the bottom dock keeps this
+    // setup independent of right-column overlay geometry.
+    await visibleTerminal(page).locator('.xterm').click();
+    await page.keyboard.press('Meta+Shift+ArrowLeft');
+    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
+    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await moveTerminal(app, page, 'right');
+    const restoredWidth = await growRightTerminal(page, 120);
+
     await expect
       .poll(async () => {
         return page.evaluate(() => localStorage.getItem('ok-terminal-placement-v1'));
       })
       .toBe('right');
-    const retainedWidth = await page.evaluate(() =>
-      Number(localStorage.getItem('ok-terminal-right-width-v1')),
-    );
-    expect(retainedWidth).toBeGreaterThan(restoredWidth - 20);
-    expect(retainedWidth).toBeLessThan(restoredWidth + 20);
+    await expect
+      .poll(async () => {
+        const retainedWidth = await page.evaluate(() =>
+          Number(localStorage.getItem('ok-terminal-right-width-v1')),
+        );
+        return Math.abs(retainedWidth - restoredWidth);
+      })
+      .toBeLessThan(20);
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#terminal-dock-panel')).toHaveCount(0);
     await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1'], { timeout: 25_000 });
-    await expect(page.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute(
+    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
       'true',
     );

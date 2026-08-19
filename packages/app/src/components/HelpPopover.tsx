@@ -4,7 +4,16 @@ import { getGitHubStars } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { BookOpen, Bug, CircleHelp, Mail, Megaphone, MessageSquare, Star } from 'lucide-react';
+import {
+  BookOpen,
+  Bug,
+  CircleHelp,
+  Download,
+  Mail,
+  Megaphone,
+  MessageSquare,
+  Star,
+} from 'lucide-react';
 import type { ComponentProps, FC, ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { ReportBugDialog } from '@/components/ReportBugDialog';
@@ -41,7 +50,10 @@ const sections: ResourceSection[] = [
   {
     key: 'resources',
     heading: msg`Resources`,
-    links: [{ label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen }],
+    links: [
+      { label: msg`Docs`, href: 'https://openknowledge.ai/docs', icon: BookOpen },
+      { label: msg`Download app`, href: 'https://openknowledge.ai/download', icon: Download },
+    ],
   },
   {
     key: 'community',

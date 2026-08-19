@@ -182,7 +182,7 @@ sudo systemctl enable --now openknowledge
 ```
 
 <Callout>
-**On macOS**, there's no systemd. Run `ok start` in a terminal, and set the machine not to sleep (System Settings → Energy) for always-on use.
+**On macOS and Windows**, systemd isn't available. For a simple always-on setup, run `ok start` in a terminal and configure the machine not to sleep. For unattended restarts, use the platform's service manager: launchd on macOS or Task Scheduler / a Windows service on Windows.
 </Callout>
 
 Now [try it out](/docs/self-hosting/overview#try-it-out), then [restrict who can reach it](/docs/self-hosting/authentication).

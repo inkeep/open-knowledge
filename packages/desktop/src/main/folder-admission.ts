@@ -70,8 +70,8 @@ export function validateFolderPick(
 
   // Windows drive root: `C:`, `C:\`, `C:/`. Match against the raw input —
   // POSIX `path.resolve` treats `C:\` as a relative path and prepends cwd,
-  // which would mask the Windows shape on the macOS-only desktop. Enumerated
-  // for shape stability when a future Windows port lands.
+  // which would mask the Windows shape. Enumerate it before resolution so
+  // admission stays consistent across hosts.
   if (/^[A-Za-z]:[\\/]?$/.test(absPath)) {
     warnings.push({ kind: 'drive-root' });
   }

@@ -84,9 +84,8 @@ async function waitForLock(lockDir: string): Promise<ServerLockMetadata> {
 }
 
 function getPgid(pid: number): number | null {
-  // `process.getpgid` is available on POSIX; the desktop is macOS-only at
-  // V0 so it's guaranteed in the supported test environment. Linux dev
-  // hosts also satisfy this.
+  // `process.getpgid` is available on POSIX, including the macOS and Linux
+  // environments where this lifecycle helper is exercised.
   const getpgid = (process as unknown as { getpgid?: (pid: number) => number }).getpgid;
   if (typeof getpgid !== 'function') return null;
   try {

@@ -104,7 +104,7 @@ describe('CodePreviewEditModal', () => {
     const shortcutKeys = Array.from(document.querySelectorAll('[data-slot="kbd"]')).map(
       (node) => node.textContent,
     );
-    expect(shortcutKeys).toEqual(['⌘ Enter', 'Esc']);
+    expect(shortcutKeys).toEqual(['Cmd/Ctrl+Enter', 'Esc']);
   });
 
   test('Save commits the current draft via onSave', async () => {

@@ -39,7 +39,7 @@ The recipient clicks the URL and lands on a splash page showing the target (file
 
 The splash offers two ways to receive:
 
-- **Desktop app.** Click **Open in desktop app** to fire the deep link into the OpenKnowledge desktop app — on the shared doc, folder overview, or project root depending on what was shared. **Download the app** serves recipients who don't yet have the app: the macOS DMG, the Windows x64 installer, or — on Linux, where the right package isn't detectable from a browser — the releases page with the deb/rpm packages. The download remembers the share (a first-party cookie, valid for seven days), and the app opens the shared target on its first launch.
+- **Desktop app.** Click **Open in desktop app** to fire the deep link into the OpenKnowledge desktop app — on the shared doc, folder overview, or project root depending on what was shared. **Download the app** routes recipients to the matching macOS, Windows, or Linux download flow, with a download page listing all available builds when the browser cannot identify the platform. The download remembers the share (a first-party cookie, valid for seven days), and the app opens the shared target on its first launch.
 - **CLI (any platform).** Copy the pre-filled `npm install -g @inkeep/open-knowledge` then `ok clone <owner/repo> -b <branch>` from the splash to clone the repo locally and open the editor. The clone command is always branch-pinned, but if the feature branch has been deleted, it will fall back to the default branch. See the [CLI reference](/docs/reference/cli#clone-from-github) for `ok clone` and related commands.
 
 ## What the desktop app does when it receives the link

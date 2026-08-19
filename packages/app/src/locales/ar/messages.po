@@ -1007,10 +1007,15 @@ msgstr "<0>لم يُعثر على مرساة المرآة.</0> لا يوجد <1>
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>تمت إزالة مصدر المرآة.</0> لم يعد المستند <1>{src}</1> متاحًا."
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "لن يعمل <0>ok</0> في الطرفيات الخارجية حتى تضيفه لاحقًا من قائمة «ملف». تظل طرفية OpenKnowledge المدمجة وأدوات الذكاء الاصطناعي تعمل."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> لن يعمل في الوحدات الطرفية الخارجية حتى تضيفه لاحقًا من قائمة «ملف». ستستمر أدوات الذكاء الاصطناعي لديك في العمل."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4631,6 +4636,10 @@ msgstr "انقر نقرًا مزدوجًا للتحرير"
 msgid "Download {0}"
 msgstr "تنزيل {0}"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "تنزيل التطبيق"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "تنزيل الملف"
@@ -6847,6 +6856,10 @@ msgstr "مثبَّت"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "مثبَّت — الأمر ok متاح في الطرفيات الخارجية. إلغاء التحديد يزيله؛ وتظل طرفية OpenKnowledge المدمجة وأدوات الذكاء الاصطناعي تعمل."
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "تم التثبيت — يتوفر ok في الوحدات الطرفية الخارجية. تؤدي إزالة التحديد إلى إزالته؛ وستستمر أدوات الذكاء الاصطناعي لديك في العمل."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13561,8 +13574,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "اكتب استعلامًا، ثم اضغط <0>↵</0> للبحث في صفحاتك حسب المعنى."
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "اكتب للتحرير؛ <0>⌘ Enter</0> يحفظ، و<1>Esc</1> يلغي."
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "اكتب للتحرير؛ <0>Cmd/Ctrl+Enter</0> يحفظ، و<1>Esc</1> يلغي."
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

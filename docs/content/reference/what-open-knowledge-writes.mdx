@@ -64,7 +64,7 @@ The first two rows below live in OpenKnowledge's own `~/.ok/` directory and are 
 | `~/.ok/env.sh` | A managed shim that prepends `~/.ok/bin` to your `PATH` | Outside-project (home dir) |
 | `~/.zshrc`, `~/.bash_profile`, `~/.config/fish/conf.d/open-knowledge.fish` | A **fenced managed block** that sources `~/.ok/env.sh` — written **only if you consent** in the first-launch dialog | Outside-project (shell config) |
 
-If you decline, only `ok` typed in an *external* terminal (Terminal, iTerm) is affected — the app's built-in terminal, the MCP server, and the "Open with AI" launches all work without it. You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
+If you decline, only `ok` typed in an *external* terminal is affected. The MCP server and "Open with AI" launches still work without it, as does the app's built-in terminal on macOS (the built-in terminal is not yet available in the Windows and Linux apps). You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
 
 The managed block is clearly fenced so you can see and remove it:
 

@@ -1007,10 +1007,15 @@ msgstr "<0>找不到镜像锚点。</0><2>{src}</2> 中不存在 <1>{mirrorSourc
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>镜像来源已被移除。</0>文档 <1>{src}</1> 已不可用。"
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "在你之后从「文件」菜单里添加之前，<0>ok</0> 不会在外部终端中运行。OpenKnowledge 的内置终端和 AI 工具照常可用。"
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> 在你稍后从“文件”菜单添加之前，无法在外部终端中运行。你的 AI 工具仍可正常使用。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4631,6 +4636,10 @@ msgstr "双击进行编辑"
 msgid "Download {0}"
 msgstr "下载 {0}"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "下载应用"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "下载文件"
@@ -6847,6 +6856,10 @@ msgstr "已安装"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "已安装——ok 可在外部终端中使用。取消勾选会将其移除；OpenKnowledge 的内置终端和 AI 工具照常可用。"
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "已安装 — 可在外部终端中使用 ok。取消勾选会将其移除；你的 AI 工具仍可正常使用。"
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13561,8 +13574,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "输入查询内容，然后按 <0>↵</0> 按语义搜索你的页面。"
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "输入即可编辑；<0>⌘ Enter</0> 保存，<1>Esc</1> 取消。"
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "输入即可编辑；<0>Cmd/Ctrl+Enter</0> 保存，<1>Esc</1> 取消。"
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

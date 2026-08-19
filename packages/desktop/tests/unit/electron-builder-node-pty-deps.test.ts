@@ -17,7 +17,7 @@ import { parse } from 'yaml';
  *      optionalDependencies placement is itself load-bearing in the other
  *      direction: node-pty's node-gyp build needs a C toolchain, and a failed
  *      optional install is dropped by bun instead of failing the whole repo's
- *      `bun install` (Linux contributors never run this macOS-only app).
+ *      install (the built-in terminal is macOS-only).
  *      electron-builder packs installed optional production deps the same as
  *      regular ones, so the packaged app is unaffected on the macOS build
  *      host, where the native build always runs.

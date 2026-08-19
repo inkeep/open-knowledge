@@ -285,12 +285,10 @@ export const OK_OKIGNORE_TEMPLATE = `# .okignore — paths to exclude from the O
 /**
  * Single source of truth for the seeded project-root `.gitignore`.
  *
- * OpenKnowledge is macOS-only today, so every project will accumulate
- * `.DS_Store` Finder-metadata files. Without an ignore entry the user's
- * first `git status` lists them as untracked — confusing for users new to
- * git, noisy for everyone else. The leading comment is attribution so a
- * reader who finds this file in their first commit understands where it
- * came from.
+ * Desktop file managers on supported platforms create metadata files in
+ * browsed folders. Without ignore entries, the user's first `git status`
+ * can list that OS noise as untracked. The leading comment is attribution so
+ * a reader who finds this file in their first commit knows where it came from.
  *
  * Kept intentionally minimal: this is a seed, not a curated list. The file
  * becomes user-owned the moment it lands (writeIfMissing semantics), so
@@ -298,6 +296,12 @@ export const OK_OKIGNORE_TEMPLATE = `# .okignore — paths to exclude from the O
  */
 export const ROOT_GITIGNORE_TEMPLATE = `# Seeded by OpenKnowledge when this project was created. Edit freely.
 .DS_Store
+.localized
+Thumbs.db
+thumbs.db
+desktop.ini
+Desktop.ini
+.directory
 `;
 
 export interface InitContentOptions {

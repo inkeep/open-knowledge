@@ -835,6 +835,9 @@
     "BGtzlf": [["uploadFolderName"], " — 1 berkas"],
     "BH56dn": ["Teks tampilan khusus"],
     "BKI4hX": ["Cari di berkas"],
+    "BOsvJ8": [
+      "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
+    ],
     "BQKHuL": ["Mulai ulang terminal"],
     "BQu9Pg": ["Symlink"],
     "BUyQnq": ["Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."],
@@ -2428,6 +2431,9 @@
     "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
     "XBgr2S": ["Salin ke sini"],
     "XDzAnp": ["Terbuka di tab baru"],
+    "XEfNPL": [
+      "Terpasang — ok tersedia di terminal eksternal. Menghapus centang akan menghapusnya; alat AI Anda tetap berfungsi."
+    ],
     "XFpEgc": [
       "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
     ],
@@ -2611,6 +2617,7 @@
     "ZNK2Tq": ["akar"],
     "ZQJ1IV": ["Mengaktifkan tab penyunting terakhir."],
     "ZQLDTl": ["folder dibuat"],
+    "ZQc7C8": ["Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> membatalkan."],
     "ZSoojc": ["Kloning gagal — periksa URL lalu coba lagi (", ["status"], ")"],
     "ZU8VV_": ["Gagal menghapus: ", ["error"]],
     "ZVOhXM": ["Gagal memperbarui sinkronisasi — ", ["detail"]],
@@ -3775,6 +3782,7 @@
     "n2lRue": ["Lakukan commit atau stash pada perubahan untuk berpindah:"],
     "n3T3EE": ["Terpasang di ", ["label"], " — klik untuk menghapus"],
     "n3wx1q": ["Pulihkan hingga versi ini?"],
+    "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
     "n6hXUm": [
@@ -4358,7 +4366,6 @@
     "vPLUCm": ["Gambar ", ["identity"], " tidak ditemukan. Buka referensi."],
     "vPXOUw": ["Tampilkan atau sembunyikan tampilan sumber"],
     "vQIVHc": ["Properti folder"],
-    "vWc9a0": ["Ketik untuk menyunting; <0>⌘ Enter</0> menyimpan, <1>Esc</1> membatalkan."],
     "vXIe7J": ["Bahasa"],
     "vYOUOk": ["Tambahkan komentar"],
     "vYPvPB": ["Ganti proyek…"],

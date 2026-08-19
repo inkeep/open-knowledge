@@ -89,12 +89,19 @@ describe('HelpPopover runtime behavior', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Resources' });
     const links = within(nav).getAllByRole('link');
-    // Resources holds a single external link (Docs); the issue-reporting and
-    // feedback entries render as in-app action buttons, not links.
+    // Download points at the OS-aware picker rather than a platform-specific
+    // asset. Issue-reporting and feedback render as in-app actions, not links.
     expect(links.map(linkShape)).toEqual([
       {
         label: 'Docs',
         href: 'https://openknowledge.ai/docs',
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        hasIcon: true,
+      },
+      {
+        label: 'Download app',
+        href: 'https://openknowledge.ai/download',
         target: '_blank',
         rel: 'noopener noreferrer',
         hasIcon: true,
@@ -193,5 +200,13 @@ describe('HelpPopover with the desktop bridge present', () => {
     // report-bug is desktop-only, so it only appears with the bridge present.
     expect(docs.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(docs.compareDocumentPosition(sendFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  test('keeps the download route available for reinstalling or sharing from desktop', async () => {
+    await renderOpenHelpPopover();
+
+    expect(screen.getByRole('link', { name: 'Download app' }).getAttribute('href')).toBe(
+      'https://openknowledge.ai/download',
+    );
   });
 });

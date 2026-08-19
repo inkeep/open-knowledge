@@ -342,7 +342,7 @@ export function launchDesktop(deps: LaunchDeps, detection?: DetectResult): void 
 export function notFoundMessage(reason: DetectReason = 'no-bundle'): string {
   switch (reason) {
     case 'no-bundle':
-      return 'Desktop app not found (checked the standard install locations for this OS). Install it, or omit --mode for browser mode.';
+      return 'Desktop app not found (checked the standard install locations for this OS). Install it from https://openknowledge.ai/download, or omit --mode for browser mode.';
     case 'darwin-only':
     case 'unsupported-platform':
       return 'Desktop app is not available on this platform. Use --mode=browser, or omit --mode for the server fallback.';

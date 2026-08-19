@@ -108,11 +108,13 @@ const baseStatus: OkIntegrationsStatus = {
 interface HarnessOpts {
   status?: OkIntegrationsStatus;
   setResult?: (request: OkIntegrationsSetRequest) => OkIntegrationsSetResult;
+  ptyAvailable?: boolean;
 }
 
-function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
+function installBridge({ status = baseStatus, setResult, ptyAvailable = true }: HarnessOpts = {}) {
   const setCalls: OkIntegrationsSetRequest[] = [];
   const bridge = {
+    config: { ptyAvailable },
     integrations: {
       status: async () => status,
       setComponent: async (request: OkIntegrationsSetRequest) => {
@@ -189,6 +191,29 @@ describe('AiToolsSection', () => {
     expect(screen.queryByTestId('ai-tools-skill-uninstall-discovery')).toBeNull();
     expect(screen.queryByTestId('skills-studio-skill-install-write-skill')).toBeNull();
     expect(screen.getByTestId('ai-tools-skills-moved').textContent).toContain('Skills Studio');
+  });
+
+  test('does not promise the built-in terminal when PTY support is unavailable', async () => {
+    installBridge({
+      ptyAvailable: false,
+      status: { ...baseStatus, path: { ...baseStatus.path, installed: true } },
+    });
+    renderSection();
+
+    const status = await screen.findByTestId('ai-tools-path-status');
+    expect(status.textContent).toContain('your AI tools keep working');
+    expect(status.textContent).not.toContain('built-in terminal');
+  });
+
+  test('promises the built-in terminal when PTY support is available', async () => {
+    installBridge({
+      status: { ...baseStatus, path: { ...baseStatus.path, installed: true } },
+    });
+    renderSection();
+
+    const status = await screen.findByTestId('ai-tools-path-status');
+    expect(status.textContent).toContain('built-in terminal');
+    expect(status.textContent).not.toContain('your AI tools keep working');
   });
 
   test('detection orders a row but never claims presence on it', async () => {

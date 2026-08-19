@@ -110,12 +110,7 @@ export function SplashCliPopover({
           </div>
         ) : null}
 
-        <SplashCliBlock
-          installCommand={installCommand}
-          cloneCommand={cloneCommand}
-          wrapperClassName=""
-          showHeading
-        />
+        <SplashCliBlock installCommand={installCommand} cloneCommand={cloneCommand} showHeading />
 
         {githubUrl ? (
           <a

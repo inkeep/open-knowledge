@@ -15,9 +15,8 @@
  * that the rule accepts #2514's `withHiddenWindowsConsole(...)` wrapping.
  *
  * The plugin is registered via `overrides[].plugins` in `biome.jsonc`, scoped
- * to `packages/{server,cli}/src/**` (the packages that spawn processes on
- * Windows; `packages/desktop` is macOS-only and out of scope) with tests
- * excluded.
+ * to `packages/{server,cli}/src/**`; desktop process launches have separate
+ * platform-specific wrappers and coverage. Tests are excluded.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -65,8 +64,8 @@ describe('require-windowshide-on-spawn GritQL plugin', () => {
     expect(matchingOverride).toBeDefined();
 
     const includes = matchingOverride?.includes ?? [];
-    // Scoped to the runtime-spawning packages (server + cli), tests excluded.
-    // desktop is macOS-only, deliberately absent.
+    // Scoped to server + cli runtime spawns; desktop has separate launch
+    // wrappers and coverage. Tests are excluded.
     expect(includes).toContain('packages/server/src/**/*.ts');
     expect(includes).toContain('packages/cli/src/**/*.ts');
     expect(includes).not.toContain('packages/desktop/src/**/*.ts');

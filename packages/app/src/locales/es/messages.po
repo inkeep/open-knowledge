@@ -1007,10 +1007,15 @@ msgstr "<0>No se encontró el ancla del espejo.</0> No existe ningún <1>{mirror
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Se eliminó la fuente del espejo.</0> El documento <1>{src}</1> ya no está disponible."
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más adelante desde el menú Archivo. La terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> no funcionará en terminales externas hasta que lo añadas más tarde desde el menú Archivo. Tus herramientas de IA seguirán funcionando."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4631,6 +4636,10 @@ msgstr "Haz doble clic para editar"
 msgid "Download {0}"
 msgstr "Descargar {0}"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "Descargar la aplicación"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "Descargar archivo"
@@ -6847,6 +6856,10 @@ msgstr "Instalado"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "Instalado: ok está disponible en terminales externas. Al desmarcarlo se quita; la terminal integrada y las herramientas de IA de OpenKnowledge siguen funcionando."
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "Instalado — ok está disponible en terminales externas. Al desmarcarlo, se elimina; tus herramientas de IA seguirán funcionando."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13561,8 +13574,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "Escribe una consulta y pulsa <0>↵</0> para buscar en tus páginas por significado."
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "Escribe para editar; <0>⌘ Intro</0> guarda, <1>Esc</1> cancela."
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "Escribe para editar; <0>Cmd/Ctrl+Enter</0> guarda, <1>Esc</1> cancela."
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

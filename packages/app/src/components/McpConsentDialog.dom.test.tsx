@@ -355,7 +355,10 @@ describe('McpConsentDialog AI-tools decision', () => {
 });
 
 describe('McpConsentDialog PATH consent row', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+  });
 
   test('renders pre-checked with the rc-file disclosure; warning appears only when unchecked', async () => {
     await renderDialog();
@@ -384,6 +387,21 @@ describe('McpConsentDialog PATH consent row', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(screen.getByTestId('mcp-consent-path-warning').textContent).toContain(
       'external terminals',
+    );
+    expect(screen.getByTestId('mcp-consent-path-warning').textContent).not.toContain(
+      'built-in terminal',
+    );
+  });
+
+  test('mentions the built-in terminal only when the desktop bridge reports PTY support', async () => {
+    (window as unknown as { okDesktop?: unknown }).okDesktop = {
+      config: { ptyAvailable: true },
+    };
+    await renderDialog();
+
+    await userEvent.click(screen.getByTestId('mcp-consent-path-checkbox'));
+    expect(screen.getByTestId('mcp-consent-path-warning').textContent).toContain(
+      'built-in terminal',
     );
   });
 

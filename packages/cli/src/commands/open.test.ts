@@ -69,6 +69,7 @@ describe('runOpen', () => {
     expect(code).toBe(1);
     expect(opened).toEqual([]);
     expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain('https://openknowledge.ai/download');
   });
 
   test('folder with a desktop bundle → folder= deep link, exit 0', async () => {

@@ -507,7 +507,7 @@ const INSTALL_DEFER_MAX_BOOTS = 3;
 /**
  * "Download manually" target for the stuck-hint and boot-detected install-failed
  * notices. Points at the GitHub Releases index, the canonical home of the signed
- * DMGs (same host as `releaseUrlFor` and the app's `OK_DESKTOP_INSTALL_URL`). The
+ * installers and the same host used by `releaseUrlFor`. The
  * index page, unlike a version-specific tag URL, is guaranteed to exist and lists
  * the latest download at the top, so the manual-download escape hatch can never
  * itself 404.

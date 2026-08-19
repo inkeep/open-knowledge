@@ -141,6 +141,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   const globalSkills = payload.globalSkills;
   const skillsOffered = globalSkills.length > 0;
   const pathActionable = isPathRowActionable(pathInstall);
+  const ptyAvailable = window.okDesktop?.config.ptyAvailable === true;
   const editors = connectableEditors(payload.detectedEditors);
   const hasEditors = editors.length > 0;
   const replacing = editors.filter((e) => e.willReplace);
@@ -314,11 +315,18 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                       className="ps-6.5 text-xs text-amber-700 dark:text-amber-400"
                       data-testid="mcp-consent-path-warning"
                     >
-                      <Trans comment="Warning shown when the user unchecks the PATH toggle — only external terminals degrade">
-                        <code className="inline-code">ok</code> won't run in external terminals
-                        until you add it later from the File menu. OpenKnowledge's built-in terminal
-                        and AI tools keep working.
-                      </Trans>
+                      {ptyAvailable ? (
+                        <Trans comment="Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal">
+                          <code className="inline-code">ok</code> won't run in external terminals
+                          until you add it later from the File menu. OpenKnowledge's built-in
+                          terminal and AI tools keep working.
+                        </Trans>
+                      ) : (
+                        <Trans comment="Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal">
+                          <code className="inline-code">ok</code> won't run in external terminals
+                          until you add it later from the File menu. Your AI tools keep working.
+                        </Trans>
+                      )}
                     </span>
                   )}
                 </Label>

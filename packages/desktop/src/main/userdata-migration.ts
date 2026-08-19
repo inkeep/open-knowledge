@@ -104,9 +104,9 @@ export async function migrateLegacyUserDataDir(
   const { userDataDir, platform } = opts;
   const logger = opts.logger ?? DEFAULT_LOGGER;
 
-  // Desktop is macOS-only today; the legacy/target dir names are the macOS
-  // Application Support basenames. Guard so a future Windows port wires its own
-  // %APPDATA% migration rather than this one mis-firing on a foreign layout.
+  // These legacy/target dir names are macOS Application Support basenames.
+  // Guard so Windows and Linux layouts are not interpreted as macOS migration
+  // inputs.
   if (platform !== 'darwin') {
     return { status: 'skipped-non-darwin' };
   }

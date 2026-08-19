@@ -289,9 +289,8 @@ describe('runCreateNew — happy paths', () => {
     expect(existsSync(join(result.projectDir, '.ok/config.yml'))).toBe(true);
   });
 
-  test('seeds project-root .gitignore with .DS_Store on fresh git init', async () => {
-    // OpenKnowledge is macOS-only today, so a fresh project gets a one-line
-    // .gitignore that hides Finder's per-folder metadata. The seed only runs
+  test('seeds project-root .gitignore with cross-platform desktop metadata', async () => {
+    // A fresh project ignores platform-generated desktop metadata. The seed only runs
     // when ensureProjectGit actually ran `git init` — confirmed in this case
     // by the absence of `.git/` before the call. See also the git-root-
     // promotion case below, which exercises the skip path.
@@ -302,7 +301,18 @@ describe('runCreateNew — happy paths', () => {
     });
     const gitignorePath = join(result.projectDir, '.gitignore');
     expect(existsSync(gitignorePath)).toBe(true);
-    expect(readFileSync(gitignorePath, 'utf8')).toContain('.DS_Store');
+    const gitignore = readFileSync(gitignorePath, 'utf8');
+    for (const basename of [
+      '.DS_Store',
+      '.localized',
+      'Thumbs.db',
+      'thumbs.db',
+      'desktop.ini',
+      'Desktop.ini',
+      '.directory',
+    ]) {
+      expect(gitignore).toContain(`${basename}\n`);
+    }
   });
 });
 

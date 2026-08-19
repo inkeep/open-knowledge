@@ -352,7 +352,13 @@ describe('writeRootGitignoreForNewRepo', () => {
     expect(action).toBe('created');
     const written = readFileSync(join(testDir, '.gitignore'), 'utf-8');
     expect(written).toBe(ROOT_GITIGNORE_TEMPLATE);
-    expect(written).toContain('.DS_Store');
+    expect(written).toContain('.DS_Store\n');
+    expect(written).toContain('.localized\n');
+    expect(written).toContain('Thumbs.db\n');
+    expect(written).toContain('thumbs.db\n');
+    expect(written).toContain('desktop.ini\n');
+    expect(written).toContain('Desktop.ini\n');
+    expect(written).toContain('.directory\n');
   });
 
   it('skips when a project-root .gitignore already exists (writeIfMissing — user wins)', () => {

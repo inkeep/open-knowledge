@@ -615,10 +615,17 @@ function isInPlaceSkillAncestorDir(relativePath: string, dirs: ReadonlySet<strin
  * already keeps these out of the normal index-backed sidebar, but the Show All
  * Files walk bypasses `.gitignore` and built-in content rules so gitignored
  * content (`dist/`, `build/`, …) surfaces. Without this floor it would also
- * re-surface `.DS_Store` as a sidebar `asset` row. macOS is the only supported
- * platform, so this is macOS Finder metadata.
+ * re-surface OS-generated metadata as sidebar `asset` rows. The case-insensitive
+ * exact-basename floor covers Finder, Windows Explorer, and common Linux desktop
+ * metadata, including non-canonical casing reported by filesystem watchers.
  */
-const BUILTIN_SKIP_FILES = new Set<string>(['.DS_Store', '.localized']);
+const BUILTIN_SKIP_FILES = new Set<string>([
+  '.ds_store',
+  '.localized',
+  'thumbs.db',
+  'desktop.ini',
+  '.directory',
+]);
 
 /**
  * True when the basename of `relativePath` is an always-skip junk file. Checked
@@ -628,7 +635,9 @@ const BUILTIN_SKIP_FILES = new Set<string>(['.DS_Store', '.localized']);
  * never occurs in practice — is left to the directory predicates.
  */
 function isAlwaysSkipFile(relativePath: string): boolean {
-  return BUILTIN_SKIP_FILES.has(relativePath.slice(relativePath.lastIndexOf('/') + 1));
+  return BUILTIN_SKIP_FILES.has(
+    relativePath.slice(relativePath.lastIndexOf('/') + 1).toLowerCase(),
+  );
 }
 
 /**
@@ -1453,8 +1462,8 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // tree-listing reveal.
       if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
 
-      // (0c') Junk-file floor — `.DS_Store` / `.localized` stay excluded even
-      // under bypass, so Show All Files never surfaces OS Finder metadata.
+      // (0c') OS metadata floor stays excluded even under bypass, so Show All
+      // Files never surfaces platform-generated desktop metadata.
       if (isAlwaysSkipFile(relativePath)) return true;
 
       // (0d) Single-file scope — admit ONLY the one target doc, everything else
@@ -2183,7 +2192,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // Always-skip floor — survives bypass; `showOk` re-admits `.ok` minus
       // `worktrees`/`local` (see sync variant for rationale).
       if (pathHasAlwaysSkipSegment(relativePath, opts?.showOk)) return true;
-      // Junk-file floor — `.DS_Store` / `.localized` survive bypass too.
+      // Platform-generated desktop metadata survives bypass too.
       if (isAlwaysSkipFile(relativePath)) return true;
       // Single-file scope — admit ONLY the one target doc (see sync variant).
       if (singleDocRelPath !== undefined) return relativePath !== singleDocRelPath;

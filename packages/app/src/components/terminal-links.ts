@@ -7,8 +7,9 @@
  *
  * URLs are NOT handled here — `WebLinksAddon` owns implicit `http(s)` detection
  * (its `strictUrlRegex` + `new URL()` round-trip gate are battle-tested). This
- * module only finds POSIX file paths (desktop is macOS-only, so no Windows
- * drive/UNC clauses) and turns them into project-relative targets.
+ * module only finds POSIX file paths (the built-in terminal is macOS-only,
+ * so no Windows drive/UNC clauses are needed) and turns them into
+ * project-relative targets.
  *
  * Philosophy (matching VSCode / iTerm2): parse generously, then gate on
  * existence at the call site. A generous regex plus a `checkTargetExists` probe

@@ -2,9 +2,8 @@
  * Containment-primitive tests. The module is platform-parameterized (explicit
  * `path/posix` / `path/win32`) precisely so the Windows semantics — drive
  * roots, UNC shares, `\\?\` / `\\.\` device namespaces — can be exercised on
- * the POSIX runners that build and test the desktop app today. Nothing in
- * production executes the win32 branches yet (desktop is macOS-only), so this
- * suite is their only coverage.
+ * the POSIX runners that build and test the desktop app today. Explicit
+ * platform injection keeps both branches covered regardless of the test host.
  */
 
 import { isPathWithinDir } from '@inkeep/open-knowledge-server';

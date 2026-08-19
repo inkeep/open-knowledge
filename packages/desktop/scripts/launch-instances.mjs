@@ -37,9 +37,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 
 if (process.platform !== 'darwin') {
-  console.error(
-    'launch-instances: macOS only (uses `open`). The OpenKnowledge desktop is macOS-only.',
-  );
+  console.error('launch-instances: this development helper is macOS-only because it uses `open`.');
   process.exit(1);
 }
 

@@ -1003,10 +1003,15 @@ msgstr "<0>Jangkar cermin tidak ditemukan.</0> Tidak ada <1>{mirrorSourceTag}</1
 msgid "<0>Mirror source removed.</0> The doc <1>{src}</1> is no longer available."
 msgstr "<0>Sumber cermin dihapus.</0> Dokumen <1>{src}</1> sudah tidak tersedia."
 
-#. Warning shown when the user unchecks the PATH toggle — only external terminals degrade
+#. Warning shown when the user unchecks the PATH toggle on a desktop build with the built-in terminal
 #: src/components/McpConsentDialogBody.tsx
 msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu Berkas. Terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
+
+#. Warning shown when the user unchecks the PATH toggle on a desktop build without the built-in terminal
+#: src/components/McpConsentDialogBody.tsx
+msgid "<0>ok</0> won't run in external terminals until you add it later from the File menu. Your AI tools keep working."
+msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambahkannya nanti dari menu File. Alat AI Anda tetap berfungsi."
 
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
@@ -4627,6 +4632,10 @@ msgstr "Klik dua kali untuk menyunting"
 msgid "Download {0}"
 msgstr "Unduh {0}"
 
+#: src/components/HelpPopover.tsx
+msgid "Download app"
+msgstr "Unduh aplikasi"
+
 #: src/editor/bubble-menu/FileBubbleButtons.tsx
 msgid "Download file"
 msgstr "Unduh berkas"
@@ -6843,6 +6852,10 @@ msgstr "Terpasang"
 #: src/components/settings/AiToolsSection.tsx
 msgid "Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working."
 msgstr "Terpasang — ok tersedia di terminal eksternal. Melepas centang menghapusnya; terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
+
+#: src/components/settings/AiToolsSection.tsx
+msgid "Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working."
+msgstr "Terpasang — ok tersedia di terminal eksternal. Menghapus centang akan menghapusnya; alat AI Anda tetap berfungsi."
 
 #. placeholder {0}: skill.name
 #. placeholder {1}: label(added)
@@ -13557,8 +13570,8 @@ msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "Ketik sebuah kueri, lalu tekan <0>↵</0> untuk mencari di halaman Anda berdasarkan makna."
 
 #: src/editor/components/CodePreviewEditModal.tsx
-msgid "Type to edit; <0>⌘ Enter</0> saves, <1>Esc</1> cancels."
-msgstr "Ketik untuk menyunting; <0>⌘ Enter</0> menyimpan, <1>Esc</1> membatalkan."
+msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
+msgstr "Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> membatalkan."
 
 #: src/editor/composer-mention/ComposerMentionMenu.tsx
 msgid "Type to find a doc"

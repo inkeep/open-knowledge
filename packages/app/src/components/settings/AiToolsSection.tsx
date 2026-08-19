@@ -221,7 +221,9 @@ export function AiToolsSection() {
                 </span>
                 <span className="text-xs text-muted-foreground" data-testid="ai-tools-path-status">
                   {status.path.installed
-                    ? t`Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working.`
+                    ? bridge.config.ptyAvailable === true
+                      ? t`Installed — ok is available in external terminals. Unchecking removes it; OpenKnowledge's built-in terminal and AI tools keep working.`
+                      : t`Installed — ok is available in external terminals. Unchecking removes it; your AI tools keep working.`
                     : t`Adds a managed block to ${status.path.rcFilesToTouch.join(', ')}`}
                 </span>
               </span>

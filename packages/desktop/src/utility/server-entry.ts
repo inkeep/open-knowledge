@@ -12,8 +12,8 @@
  *
  * Parent-death detection: macOS has no PR_SET_PDEATHSIG, so we poll
  * `process.kill(parentPid, 0)` every 5s. If the parent dies (`EPERM` /
- * `ESRCH`), self-exit cleanly so the server.lock is released. Linux +
- * Windows variants are stubbed today (macOS-only) — see code comments.
+ * `ESRCH`), self-exit cleanly so the server.lock is released. The portable
+ * polling fallback runs on Linux and Windows too.
  *
  * Guard: this module MUST NOT import `attachIdleShutdown` from anywhere.
  * A Biome GritQL rule will eventually enforce this; the comment is the
@@ -254,10 +254,10 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     rejectReady = reject;
   });
 
-  // Parent-death polling (macOS path).
+  // Parent-death polling (all platforms — poll-based).
   // Linux: should use `prctl(PR_SET_PDEATHSIG, SIGTERM)` at process startup,
-  // but that requires a native addon — for now (macOS-only) we use the poll
-  // path on all platforms. A future Windows port would use Job Objects.
+  // but that requires a native addon, so the poll path is the cross-platform
+  // fallback. Windows could use Job Objects with a native binding instead.
   function startParentPoll() {
     const pollMs = deps.parentPollMs ?? 5000;
     parentPollHandle = deps.setInterval(() => {
