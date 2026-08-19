@@ -1223,6 +1223,42 @@
   @apply text-gray-800 dark:text-white/80;
 }
 
+/* Phone-width rails. The 4rem side rails are a desktop reading measure; on a
+   ~390px screen they eat 128px, leaving a ~246px text column and starving the
+   floating composer — whose card is a content-column child — down to a
+   single-digit-pixel input that cannot be typed into.
+
+   The two declarations move together on purpose: .ProseMirror escapes its
+   content column into the rail (negative margin, compensating padding) to win
+   drag-handle hit area on the left and border slack on the right. Shrink the
+   rail without shrinking the escape and the border-box overhangs the editor and
+   overflows the viewport, so the negative margin must never exceed
+   --margin-width. Must also stay AFTER the .ProseMirror base rule — a media
+   query adds no specificity, so an earlier block would lose to it.
+   .ProseMirror.composer-prosemirror zeroes both below at higher specificity and
+   is deliberately unaffected.
+
+   Gated on a coarse pointer, not width alone. The block drag handle renders at
+   content-start minus 52px, which a 1rem rail cannot hold — it lands at -28px
+   and is clipped. A touch device never reveals that handle (it is hover-only),
+   so nothing is lost there, while a narrow desktop window with a mouse keeps
+   both the wide rail and a working handle. Consequence worth knowing when
+   testing: resizing a desktop browser narrow does NOT reproduce this layout;
+   emulate a touch device. */
+@media (width < 40rem) and (pointer: coarse) {
+  .tiptap-editor,
+  .editor-content-aligned {
+    --margin-width: 1rem;
+  }
+
+  .ProseMirror {
+    margin-left: -1rem;
+    padding-left: 1rem;
+    margin-right: -1rem;
+    padding-right: 1rem;
+  }
+}
+
 .ProseMirror p {
   margin-bottom: 0.5em;
 }
