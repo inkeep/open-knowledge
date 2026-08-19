@@ -162,6 +162,7 @@ import {
   pageListFollowOptions,
   saveFollowFilePref,
 } from './follow-file';
+import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
 import { transcriptItemId } from './transcript-item-id';
@@ -1876,48 +1877,6 @@ function ThreadEmptyState({
         className="size-12 animate-pulse opacity-25 grayscale motion-reduce:animate-none"
       />
       <p className="shimmer text-sm">{loadingMessage}</p>
-    </div>
-  );
-}
-
-function PlanChecklist({ plan }: { plan: { content: string; status?: string }[] }): ReactNode {
-  const { t } = useLingui();
-  const [open, setOpen] = useState(true);
-  const done = plan.filter((p) => p.status === 'completed').length;
-  return (
-    <div className="border-border/60 border-b bg-muted/30 px-3 py-1.5">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-auto w-full justify-start gap-1.5 p-0 font-medium text-muted-foreground text-xs hover:bg-transparent"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-      >
-        {open ? (
-          <ChevronDown className="size-3.5" aria-hidden="true" />
-        ) : (
-          <ChevronRight className="size-3.5" aria-hidden="true" />
-        )}
-        <span>{t`Plan (${done}/${plan.length})`}</span>
-      </Button>
-      {open ? (
-        <ul className="mt-1 flex flex-col gap-0.5">
-          {plan.map((entry, index) => (
-            <li
-              // biome-ignore lint/suspicious/noArrayIndexKey: plan is a positional list
-              key={index}
-              className={cn(
-                'flex items-start gap-1.5 text-xs',
-                entry.status === 'completed' && 'text-muted-foreground line-through',
-              )}
-            >
-              <span aria-hidden="true">{entry.status === 'completed' ? '☑' : '☐'}</span>
-              <span>{entry.content}</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
     </div>
   );
 }

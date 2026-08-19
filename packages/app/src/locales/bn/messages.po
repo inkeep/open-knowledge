@@ -9696,7 +9696,7 @@ msgid "Plain text"
 msgstr "সাধারণ টেক্সট"
 
 #. placeholder {0}: plan.length
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/PlanChecklist.tsx
 msgid "Plan ({done}/{0})"
 msgstr "পরিকল্পনা ({done}/{0})"
 

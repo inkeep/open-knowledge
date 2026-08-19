@@ -156,7 +156,7 @@ export type RenderedItem =
   | RenderedNotice
   | RenderedRuntimeConsent;
 
-interface PlanEntry {
+export interface PlanEntry {
   content: string;
   priority?: string;
   status?: string;

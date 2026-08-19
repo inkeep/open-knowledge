@@ -9700,7 +9700,7 @@ msgid "Plain text"
 msgstr "纯文本"
 
 #. placeholder {0}: plan.length
-#: src/components/acp/ThreadView.tsx
+#: src/components/acp/PlanChecklist.tsx
 msgid "Plan ({done}/{0})"
 msgstr "计划（{done}/{0}）"
 
