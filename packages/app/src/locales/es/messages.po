@@ -1432,13 +1432,12 @@ msgstr "Añade tus comentarios a este mensaje"
 msgid "Added"
 msgstr "Añadido"
 
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to"
 msgstr "Añade un bloque gestionado a"
 
-#. placeholder {0}: pathInstall.rcFilesToTouch.join(', ')
 #. placeholder {0}: status.path.rcFilesToTouch.join(', ')
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 msgid "Adds a managed block to {0}"
 msgstr "Añade un bloque gestionado a {0}"
@@ -1447,16 +1446,6 @@ msgstr "Añade un bloque gestionado a {0}"
 #: src/components/CreateProjectDialog.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
 msgstr "Añade una entrada MCP de OpenKnowledge y la habilidad del proyecto, para que cada herramienta pueda leer y actualizar estos documentos."
-
-#. Subtext under the single AI-tools checkbox when a skill is also installed
-#: src/components/McpConsentDialogBody.tsx
-msgid "Adds OpenKnowledge's MCP connection to each, plus the open-knowledge-discovery skill so your agents recognize OpenKnowledge projects."
-msgstr "Añade la conexión MCP de OpenKnowledge a cada una, más la habilidad open-knowledge-discovery para que tus agentes reconozcan los proyectos de OpenKnowledge."
-
-#. Subtext under the single AI-tools checkbox when only MCP is wired
-#: src/components/McpConsentDialogBody.tsx
-msgid "Adds OpenKnowledge's MCP connection to each."
-msgstr "Añade la conexión MCP de OpenKnowledge a cada una."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1470,6 +1459,10 @@ msgstr "Añade la habilidad de OpenKnowledge a la <0>aplicación Claude Desktop<
 #: src/components/SkillInstallMenu.tsx
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "Añade la habilidad a {rootRel}, que también lee {0}"
+
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds these folders"
+msgstr "Añade estas carpetas"
 
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
@@ -1513,11 +1506,6 @@ msgstr "Se cerró el panel de agentes para mantener Terminal legible."
 msgid "Agent settings"
 msgstr "Ajustes del agente"
 
-#. Heading above the skill install destinations in the disclosure
-#: src/components/McpConsentDialogBody.tsx
-msgid "Agent Skill"
-msgstr "Habilidad de agente"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "Transcripción del agente"
@@ -1530,8 +1518,6 @@ msgstr "Agentes"
 msgid "AI tool management is only available in the OpenKnowledge desktop app."
 msgstr "La gestión de herramientas de IA solo está disponible en la aplicación de escritorio de OpenKnowledge."
 
-#. Section label above the AI-tools checkbox in the first-launch dialog
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "AI tools"
@@ -2492,6 +2478,11 @@ msgstr "Elige si la configuración de OpenKnowledge de este proyecto, incluidas 
 msgid "Choose which agents appear in agent menus across the app, such as Ask AI, Open with AI, and the ＋ new chat button. Turn an agent off to hide it from all of them."
 msgstr "Elige qué agentes aparecen en los menús de agentes de la aplicación, como Ask AI, Open with AI y el botón ＋ de nuevo chat. Desactiva un agente para ocultarlo de todos ellos."
 
+#. Section label above the light/dark/system cards in the first-launch dialog
+#: src/components/McpConsentDialogBody.tsx
+msgid "Choose your theme"
+msgstr "Elige tu tema"
+
 #: src/components/handoff/AgentSplitButton.tsx
 msgid "Claude"
 msgstr "Claude"
@@ -3037,9 +3028,10 @@ msgstr "Conectar con GitHub Enterprise Server"
 msgid "Connect tools"
 msgstr "Conectar herramientas"
 
+#. Section label above the AI-tools checkboxes in the first-launch dialog
 #: src/components/McpConsentDialogBody.tsx
-msgid "Connect your AI tools to OpenKnowledge"
-msgstr "Conecta tus herramientas de IA con OpenKnowledge"
+msgid "Connect your AI tools"
+msgstr "Conecta tus herramientas de IA"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -3131,11 +3123,6 @@ msgstr "Ventana de contexto:"
 #: src/components/acp/ThreadView.tsx
 msgid "Context window: {percent}% used, {usedLabel} of {sizeLabel} tokens"
 msgstr "Ventana de contexto: {percent}% usado, {usedLabel} de {sizeLabel} tokens"
-
-#. Primary button that applies the first-launch setup choices
-#: src/components/McpConsentDialogBody.tsx
-msgid "Continue"
-msgstr "Continuar"
 
 #: src/components/AuthModal.tsx
 msgid "Continue in browser"
@@ -3872,6 +3859,10 @@ msgstr "No se pudo guardar la clave; inténtalo de nuevo."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "No se pudo guardar la resolución de {filePath}."
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "Couldn't save your theme preference."
+msgstr "No se pudo guardar tu preferencia de tema."
+
 #: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
 msgstr "No se pudo enviar el informe"
@@ -4184,12 +4175,17 @@ msgstr "Tema personalizado"
 msgid "Customize how the editor looks and behaves."
 msgstr "Personaliza el aspecto y el comportamiento del editor."
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "Customize your OpenKnowledge experience."
+msgstr "Personaliza tu experiencia en OpenKnowledge."
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Cut"
 msgstr "Cortar"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "Oscuro"
 
@@ -5746,6 +5742,11 @@ msgstr "Buscar la coincidencia siguiente"
 msgid "Find previous match"
 msgstr "Buscar la coincidencia anterior"
 
+#. Primary button that applies the first-launch setup choices
+#: src/components/McpConsentDialogBody.tsx
+msgid "Finish setup"
+msgstr "Finalizar configuración"
+
 #: src/components/NewItemDialog.tsx
 msgid "First file name"
 msgstr "Nombre del primer archivo"
@@ -6083,10 +6084,6 @@ msgstr "Ponle un nombre antes de editar sus colores."
 msgid "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
 msgstr "Da a las herramientas de IA que usas acceso para leer y actualizar tus proyectos. Al marcar una casilla se configura al momento; al desmarcarla se quita."
 
-#: src/components/McpConsentDialogBody.tsx
-msgid "Give the AI tools you use access to read and update your projects. You can change any of this later in Settings > AI tools & CLI."
-msgstr "Da a las herramientas de IA que usas acceso para leer y actualizar tus proyectos. Puedes cambiar todo esto más tarde en Ajustes > Herramientas de IA y CLI."
-
 #: src/components/settings/LintingSection.tsx
 msgid "Glob patterns this schema applies to"
 msgstr "Patrones glob a los que se aplica este esquema"
@@ -6099,6 +6096,11 @@ msgstr "Global"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Global outside text fields"
 msgstr "Global fuera de los campos de texto"
+
+#. Description under the AI-tools section label in the first-launch dialog
+#: src/components/McpConsentDialogBody.tsx
+msgid "Globally install the OpenKnowledge skills and MCP to let the agents you already use read and update your projects."
+msgstr "Instala globalmente las habilidades y el MCP de OpenKnowledge para que los agentes que ya usas puedan leer y actualizar tus proyectos."
 
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/LargeFileEditorState.tsx
@@ -6224,6 +6226,11 @@ msgstr "¡Hola, mundo!"
 msgid "Help"
 msgstr "Ayuda"
 
+#. Subtext under the discovery-skill checkbox
+#: src/components/McpConsentDialogBody.tsx
+msgid "Help your agents discover and use OpenKnowledge in any project."
+msgstr "Ayuda a tus agentes a descubrir y usar OpenKnowledge en cualquier proyecto."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Ayuda a los agentes de programación a elegir tipos de documento OKF, preservar la procedencia y evitar inventar metadatos no compatibles."
@@ -6272,11 +6279,9 @@ msgstr "Ocultar opciones avanzadas"
 msgid "Hide Agents"
 msgstr "Ocultar Agentes"
 
-#. Collapses the list of files the setup writes to
 #. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
 #: src/components/CreateProjectDialog.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "Hide details"
 msgstr "Ocultar detalles"
 
@@ -6844,6 +6849,11 @@ msgstr "Instalar en"
 msgid "Install on all agents"
 msgstr "Instalar en todos los agentes"
 
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool
+#: src/components/McpConsentDialogBody.tsx
+msgid "Install OpenKnowledge in your AI tools"
+msgstr "Instalar OpenKnowledge en tus herramientas de IA"
+
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Install selected"
 msgstr "Instalar lo seleccionado"
@@ -6855,6 +6865,11 @@ msgstr "Instalar habilidad"
 #: src/components/SkillPluginBundleBanner.tsx
 msgid "Install skills"
 msgstr "Instalar habilidades"
+
+#. Checkbox that installs the user-global discovery skill bundle
+#: src/components/McpConsentDialogBody.tsx
+msgid "Install the <0>open-knowledge-discovery</0> skill"
+msgstr "Instalar la habilidad <0>open-knowledge-discovery</0>"
 
 #: src/components/AuthModal.tsx
 msgid "Install the gh CLI"
@@ -6927,6 +6942,12 @@ msgstr "Instalando"
 #: src/components/acp/ThreadView.tsx
 msgid "Installing {agentName}…"
 msgstr "Instalando {agentName}…"
+
+#. Subtext under the AI-tools MCP checkbox
+#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
+#: src/components/McpConsentDialogBody.tsx
+msgid "Installs the OpenKnowledge MCP into {0} so your agents can read and edit your files."
+msgstr "Instala el MCP de OpenKnowledge en {0} para que tus agentes puedan leer y editar tus archivos."
 
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
@@ -7125,6 +7146,11 @@ msgstr "Idioma"
 msgid "Latest edit"
 msgstr "Última edición"
 
+#. Subtext under the terminal toggle explaining what the ok command gives you
+#: src/components/McpConsentDialogBody.tsx
+msgid "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
+msgstr "Inicia OpenKnowledge desde cualquier terminal: <0>ok</0> abre un proyecto y <1>ok init</1> conecta tus agentes."
+
 #: src/editor/components/Pdf.tsx
 msgid "Layout"
 msgstr "Diseño"
@@ -7157,6 +7183,10 @@ msgstr "Permitir que el tabulador salga del editor de código en lugar de sangra
 msgid "Let us follow up by email"
 msgstr "Permítenos escribirte por correo"
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "Let's get set up."
+msgstr "Vamos a configurarlo."
+
 #: src/components/SkillLevelSelect.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
@@ -7165,6 +7195,7 @@ msgid "Level"
 msgstr "Nivel"
 
 #: src/components/settings/field-controls.tsx
+#: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "Claro"
 
@@ -7590,8 +7621,6 @@ msgstr "Falló la reparación automática de MCP"
 
 #. Group label above the per-editor MCP list in Settings → AI tools & CLI — each row wires OpenKnowledge's MCP server into that tool
 #. Group label above the per-editor project MCP list in Settings → This project → AI tools
-#. Heading above the per-tool MCP config paths in the disclosure
-#: src/components/McpConsentDialogBody.tsx
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "MCP connections"
@@ -10504,6 +10533,10 @@ msgstr "¿Reemplazar estos enlaces simbólicos por copias independientes?"
 msgid "Replaces the existing OpenKnowledge entry in {0}"
 msgstr "Reemplaza la entrada de OpenKnowledge existente en {0}"
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "Replaces the OpenKnowledge entry each of them already has."
+msgstr "Reemplaza la entrada de OpenKnowledge que cada uno ya tiene."
+
 #: src/components/BugReportHistory.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
@@ -11375,11 +11408,6 @@ msgstr "Configúralo en su propia página, bajo Complementos."
 msgid "Set the sync default for users opening this project for the first time. This setting is committed to your repository."
 msgstr "Define la sincronización por defecto para quienes abran este proyecto por primera vez. Este ajuste se guarda en tu repositorio."
 
-#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
-#: src/components/McpConsentDialogBody.tsx
-msgid "Set up {0}"
-msgstr "Configurar {0}"
-
 #: src/components/command-palette-commands.ts
 msgid "Set up OpenKnowledge integrations"
 msgstr "Configurar las integraciones de OpenKnowledge"
@@ -11842,6 +11870,11 @@ msgstr "skills.sh no está disponible; se muestran resultados de GitHub (sin cla
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Skip"
 msgstr "Omitir"
+
+#. Secondary footer action that dismisses first-launch setup without writing any config
+#: src/components/McpConsentDialogBody.tsx
+msgid "Skip for now"
+msgstr "Omitir por ahora"
 
 #. placeholder {0}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -12388,6 +12421,7 @@ msgstr "Sincronizando tus cambios"
 
 #: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
+#: src/components/ThemePicker.tsx
 msgid "System"
 msgstr "Sistema"
 
@@ -14138,6 +14172,15 @@ msgstr "Crearemos un ID de tema seguro a partir de este nombre."
 msgid "We've filed it with the team and attached your logs."
 msgstr "Lo hemos pasado al equipo y hemos adjuntado tus registros."
 
+#: src/components/McpConsentDialogBody.tsx
+msgid "Welcome to OpenKnowledge"
+msgstr "Te damos la bienvenida a OpenKnowledge"
+
+#. Button on each setup row that opens the list of files that row writes to
+#: src/components/McpConsentDialogBody.tsx
+msgid "What changes?"
+msgstr "¿Qué cambia?"
+
 #: src/components/ConfigSharingInfoTooltip.tsx
 msgid "What config sharing covers"
 msgstr "Qué abarca compartir la configuración"
@@ -14178,10 +14221,8 @@ msgstr "¿Qué debería hacer la IA? (opcional)"
 msgid "What the agent may read, write, and surface."
 msgstr "Lo que el agente puede leer, escribir y mostrar."
 
-#. Expands the list of files the setup writes to
 #. Expands the list of project files the AI-tool setup writes
 #: src/components/CreateProjectDialog.tsx
-#: src/components/McpConsentDialogBody.tsx
 msgid "What this changes"
 msgstr "Qué cambia esto"
 
@@ -14333,6 +14374,10 @@ msgstr "Ajusta las líneas largas en el editor de código markdown."
 #: src/components/ConsentDialogBody.tsx
 msgid "Writes a project-MCP config for each selected tool."
 msgstr "Escribe una configuración MCP de proyecto para cada herramienta seleccionada."
+
+#: src/components/McpConsentDialogBody.tsx
+msgid "Writes an entry to"
+msgstr "Escribe una entrada en"
 
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"

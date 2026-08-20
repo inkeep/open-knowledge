@@ -339,8 +339,8 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
       const app = await launchApp({ tmpHome });
       captureStderrFor(app);
       const window = await waitForConsentDialog(app);
-      // Escape is the skip path now that the dialog has a single Continue
-      // button: unchecking says "don't set up", while dismissing says "I made
+      // Escape is one of two skip paths (the footer's "Skip for now" is the
+      // other): unchecking says "don't set up", while dismissing says "I made
       // no decision". Both must leave editor configs untouched, and only this
       // one writes the skipped marker.
       await window.keyboard.press('Escape');

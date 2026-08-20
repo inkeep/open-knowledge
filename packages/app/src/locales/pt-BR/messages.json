@@ -75,6 +75,7 @@
     "0-31GV": ["Removendo"],
     "02P3hL": ["Falha no envio: ", ["message"]],
     "03wKPg": ["Um relatório nos ajuda a achar a causa. Nada é enviado até você revisar."],
+    "04JR6L": ["Conecte suas ferramentas de IA"],
     "04RA0-": ["Falha ao ativar a sincronização — ", ["detail"]],
     "04XyCH": ["Adiciona um bloco gerenciado a ", ["0"]],
     "05F1GY": [
@@ -89,6 +90,7 @@
     "0BB9ID": ["Ainda não há títulos."],
     "0BfhAj": ["Redefinir a visualização"],
     "0CvV_9": ["Instala em"],
+    "0DVpoY": ["Personalize sua experiência no OpenKnowledge."],
     "0E9DR6": ["Digite para encontrar um documento"],
     "0Er6-M": ["Reiniciando"],
     "0ExRWt": [
@@ -274,6 +276,7 @@
     "36WXSC": ["Não deu para excluir o modelo: ", ["error"]],
     "36aWJD": ["Entre no nosso Discord"],
     "37P2BJ": ["Buscar esquemas"],
+    "37Vsg6": ["Escolha seu tema"],
     "38foVZ": ["Carregando as diferenças"],
     "3BLniE": ["Problemas de configuração"],
     "3BnyYc": [
@@ -401,6 +404,11 @@
     "4g19V6": ["Falha ao atualizar a propriedade"],
     "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
+    "4inh-4": [
+      "Instala o MCP do OpenKnowledge em ",
+      ["0"],
+      " para que seus agentes possam ler e editar seus arquivos."
+    ],
     "4ivBhl": [
       "Mostra ou oculta o painel direito de agentes, onde ficam as conversas com agentes."
     ],
@@ -627,6 +635,7 @@
         }
       ]
     ],
+    "6ur2Mk": ["Ajude seus agentes a descobrir e usar o OpenKnowledge em qualquer projeto."],
     "6vEr3W": ["Destino do link"],
     "6xeZX9": [
       "As alterações são aplicadas imediatamente. O tema define se o modo é claro ou escuro."
@@ -1774,6 +1783,11 @@
     "LCUy_N": ["A sessão terminou"],
     "LDuM35": ["Substituir a ocorrência atual pelo campo"],
     "LE7t79": ["Clonar em uma nova pasta"],
+    "LHH461": ["Concluir configuração"],
+    "LJXDjm": ["Não foi possível salvar sua preferência de tema."],
+    "LJeFU6": [
+      "Inicie o OpenKnowledge de qualquer terminal: <0>ok</0> abre um projeto e <1>ok init</1> conecta seus agentes."
+    ],
     "LKIPzv": [
       [
         "laterEdits",
@@ -2046,9 +2060,6 @@
     "OEEQKT": ["Bom"],
     "OETysD": [
       "Ainda não há páginas de índice. Os índices aparecem quando as páginas acumulam links de entrada no grafo."
-    ],
-    "OFIL46": [
-      "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Você pode mudar tudo isso depois em Configurações > Ferramentas de IA e CLI."
     ],
     "OJ4VDl": [
       "Este agente roda pelo ",
@@ -2480,6 +2491,7 @@
     "U3RIJu": ["Arquivos locais"],
     "U4nTfu": ["Ativar Acompanhar"],
     "U5Spo9": ["O diretório de conteúdo precisa ficar dentro do projeto"],
+    "U6Mdhd": ["Vamos configurar."],
     "U6wmNc": ["Sincronização pausada"],
     "U88xbi": ["Falha ao criar o arquivo de esquema"],
     "U8CD-l": ["Copiar caminho completo, sem espaço de trabalho"],
@@ -2839,7 +2851,6 @@
     "XuQzrk": [
       "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
     ],
-    "XuVQrE": ["Configurar ", ["0"]],
     "Xv_ijG": ["https://github.com/dono/repo ou dono/repo"],
     "Xwump4": ["não há repositório git aqui"],
     "XyOUTJ": ["Sair da mesclagem"],
@@ -3122,6 +3133,7 @@
       ". Instale qualquer uma delas pelo plugin."
     ],
     "aRI3Om": ["Fechar janela"],
+    "aS77on": ["O que muda?"],
     "aSVmqV": [
       "Nenhuma ferramenta de IA detectada ainda. Depois de instalar uma, conecte-a em Configurações > Este projeto."
     ],
@@ -3283,6 +3295,7 @@
     "cV7LOw": ["Wiki da equipe"],
     "cVKnqL": ["Não deu para ler os comentários que aguardam envio: ", ["0"]],
     "cVp1YI": ["Lixeira"],
+    "cYvRiE": ["Boas-vindas ao OpenKnowledge"],
     "cZGNlb": ["Adicionar outro padrão"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge restaurou uma versão anterior"],
@@ -3443,7 +3456,6 @@
     "ePK91l": ["Editar"],
     "eQkgKV": ["Instalado"],
     "eQn7nI": ["Carregando compartilhamento da configuração"],
-    "eQsWFc": ["Habilidade de agente"],
     "eQxm13": ["Falha ao atualizar o local dos anexos — ", ["detail"]],
     "eRSPr9": ["Abrir o terminal"],
     "eTL5y9": ["Mostrar a pré-visualização da seleção"],
@@ -3549,7 +3561,6 @@
       "As configurações de sincronização ainda não carregaram — tente de novo em instantes"
     ],
     "fj5YiP": ["Baixa uma cópia nova do GitHub."],
-    "fmwwju": ["Adiciona a conexão MCP do OpenKnowledge a cada uma."],
     "fnlBN4": [
       "As configurações de aprovação automática ainda não carregaram — tente de novo em instantes"
     ],
@@ -3645,6 +3656,7 @@
     "gZiT5e": ["Substituir estes links simbólicos por cópias independentes?"],
     "gayL_Q": ["Plano de lançamento"],
     "gbHcbI": ["Falha ao excluir a propriedade"],
+    "gcrh1R": ["Adiciona estas pastas"],
     "ge05IJ": ["Como os achados de validação aparecem no projeto."],
     "gfYI3o": ["Desativar ", ["id"]],
     "gfb-CM": ["Não foi possível obter o ramo — entre no GitHub e tente de novo."],
@@ -3736,6 +3748,7 @@
     "hmYd9H": [
       "Acompanhe as pessoas e empresas com quem você trabalha e as reuniões que tem com elas. Bom para lembrar quem é alguém, de onde você a conhece e sobre o que vocês falaram da última vez."
     ],
+    "hnlGzG": ["Ignorar por enquanto"],
     "hnq8fP": ["Remover ", ["label"], " do contexto"],
     "hp8OtS": ["Adicionado"],
     "hpDtUm": ["Link wiki externo"],
@@ -4153,6 +4166,7 @@
     ],
     "m16xKo": ["Adicionar"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
+    "m3ocfn": ["Grava uma entrada em"],
     "m6YGpY": ["O conteúdo do painel ativo da aba selecionada aparece aqui."],
     "mAzs2H": ["Desativar ", ["file"]],
     "mBK8zm": [
@@ -4224,6 +4238,9 @@
       "Todo documento conceitual carrega um tipo não vazio. Este é todo o piso de conformidade de OKF - um documento com apenas um tipo é totalmente compatível."
     ],
     "mk2poV": ["ex.: server.ts"],
+    "mlA3HX": [
+      "Instale globalmente as habilidades e o MCP do OpenKnowledge para que os agentes que você já usa possam ler e atualizar seus projetos."
+    ],
     "mlvM8g": ["Não deu para reposicionar esse comentário."],
     "mmpzAq": ["Quebra as linhas longas no editor de código markdown."],
     "mnpsVn": [
@@ -4273,6 +4290,7 @@
     "nBgzKO": ["Tornar esta a fonte — a pasta real da habilidade se muda para cá"],
     "nCzR-G": ["Copiar o código ", ["userCode"]],
     "nDT8qt": [["0"], " inicializado, mas não foi possível abri-lo."],
+    "nJaz5Q": ["Substitui a entrada do OpenKnowledge que cada um já tem."],
     "nMSYz5": [
       "Este caminho está em um volume externo (/Volumes/...). O OpenKnowledge vai perder os arquivos de vista quando a unidade for ejetada."
     ],
@@ -4489,6 +4507,7 @@
       ]
     ],
     "qAx7xG": ["Pasta fixa na raiz do conteúdo"],
+    "qBi_YG": ["Instalar o OpenKnowledge nas suas ferramentas de IA"],
     "qC7PwZ": ["Falha ao remover o campo"],
     "qEEfPk": ["Relatório de erro ", ["0"]],
     "qEIFZu": ["Chave terminada em ", ["keyHint"]],
@@ -4784,7 +4803,6 @@
     "toyw51": ["Controles do diagrama do Mermaid"],
     "tqQBwN": ["Os scripts são exibidos para revisão, nunca executados."],
     "tsiTqO": ["Cole sua chave de API"],
-    "tsyExA": ["Conecte suas ferramentas de IA ao OpenKnowledge"],
     "tvMvze": [
       "Não foi possível mover \\\"",
       ["targetName"],
@@ -4969,6 +4987,7 @@
       ]
     ],
     "vppAju": ["Onde os anexos recém-adicionados são colocados."],
+    "vqJXNe": ["Instalar a habilidade <0>open-knowledge-discovery</0>"],
     "vv7kpg": ["Cancelado"],
     "vvWZnu": ["Diferenças indisponíveis"],
     "vwV-kH": ["A correção de arquivos parou inesperadamente."],
@@ -5073,7 +5092,6 @@
     "xEb24l": ["Deixe a gente responder por e-mail"],
     "xFQRu4": ["Já tenho isso localmente"],
     "xG4tb6": ["A conexão com \"", ["docName"], "\" foi perdida."],
-    "xGVfLh": ["Continuar"],
     "xHGM4U": ["Ocultar a pré-visualização do HTML"],
     "xK291b": ["Duas páginas (ímpares)"],
     "xKDsGS": ["Ir para a linha ", ["0"], " em ", ["1"]],
@@ -5168,9 +5186,6 @@
     "ycIX5i": ["Você saiu da conta — entre para retomar a sincronização."],
     "yckias": ["Renomear o arquivo"],
     "ydzS9x": ["Sair"],
-    "yeMZk8": [
-      "Adiciona a conexão MCP do OpenKnowledge a cada uma, mais a habilidade open-knowledge-discovery para que seus agentes reconheçam projetos do OpenKnowledge."
-    ],
     "yf5auF": ["Busque regras por id, apelido ou nome"],
     "yf5r22": [
       "Tipo de ",

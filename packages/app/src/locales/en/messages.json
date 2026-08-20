@@ -63,6 +63,7 @@
     "0-31GV": ["Removing"],
     "02P3hL": ["Upload failed: ", ["message"]],
     "03wKPg": ["A report helps us find the cause. Nothing is sent until you review it."],
+    "04JR6L": ["Connect your AI tools"],
     "04RA0-": ["Failed to enable sync — ", ["detail"]],
     "04XyCH": ["Adds a managed block to ", ["0"]],
     "05F1GY": ["The original text was deleted. You can re-place this comment on selected text."],
@@ -75,6 +76,7 @@
     "0BB9ID": ["No headings yet."],
     "0BfhAj": ["Reset view"],
     "0CvV_9": ["Installs to"],
+    "0DVpoY": ["Customize your OpenKnowledge experience."],
     "0E9DR6": ["Type to find a doc"],
     "0Er6-M": ["Restarting"],
     "0ExRWt": ["Skills that come with this project, and the folders its AI tools read them from."],
@@ -250,6 +252,7 @@
     "36WXSC": ["Couldn't delete template: ", ["error"]],
     "36aWJD": ["Join us on Discord"],
     "37P2BJ": ["Search schemas"],
+    "37Vsg6": ["Choose your theme"],
     "38foVZ": ["Loading diff"],
     "3BLniE": ["Configuration problems"],
     "3BnyYc": ["This doc isn't on GitHub yet. The link won't work until it's pushed."],
@@ -350,6 +353,11 @@
     "4g19V6": ["Failed to update property"],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
+    "4inh-4": [
+      "Installs the OpenKnowledge MCP into ",
+      ["0"],
+      " so your agents can read and edit your files."
+    ],
     "4ivBhl": ["Toggle the right agents panel, where agent conversations live."],
     "4jDd0j": ["Anyone can see"],
     "4m-xuX": ["Auto-fix — nothing to fix"],
@@ -531,6 +539,7 @@
     ],
     "6s7LXO": ["Heads up"],
     "6u9LvN": [["days", "plural", { "one": ["#", " day ago"], "other": ["#", " days ago"] }]],
+    "6ur2Mk": ["Help your agents discover and use OpenKnowledge in any project."],
     "6vEr3W": ["Link target"],
     "6xeZX9": ["Edits apply live. Light or dark comes from the theme."],
     "6zzhQL": ["Send your report by email"],
@@ -1539,6 +1548,11 @@
     "LCUy_N": ["Session ended"],
     "LDuM35": ["Replace current match from field"],
     "LE7t79": ["Clone to a new folder"],
+    "LHH461": ["Finish setup"],
+    "LJXDjm": ["Couldn't save your theme preference."],
+    "LJeFU6": [
+      "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
+    ],
     "LKIPzv": [
       [
         "laterEdits",
@@ -1785,9 +1799,6 @@
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OEEQKT": ["Good"],
     "OETysD": ["No hub pages yet. Hubs appear once pages accumulate inbound graph links."],
-    "OFIL46": [
-      "Give the AI tools you use access to read and update your projects. You can change any of this later in Settings > AI tools & CLI."
-    ],
     "OJ4VDl": [
       "This agent runs through ",
       ["0"],
@@ -2177,6 +2188,7 @@
     "U3RIJu": ["Local files"],
     "U4nTfu": ["Enable Follow"],
     "U5Spo9": ["Content directory must be inside the project"],
+    "U6Mdhd": ["Let's get set up."],
     "U6wmNc": ["Sync paused"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
@@ -2479,7 +2491,6 @@
     "XuQzrk": [
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
-    "XuVQrE": ["Set up ", ["0"]],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
     "Xwump4": ["no git repository here"],
     "XyOUTJ": ["Exit merge"],
@@ -2743,6 +2754,7 @@
       ". Install any of them from the plugin."
     ],
     "aRI3Om": ["Close Window"],
+    "aS77on": ["What changes?"],
     "aSVmqV": [
       "No AI tools detected yet. Once you install one, connect it from Settings > This project."
     ],
@@ -2879,6 +2891,7 @@
     "cV7LOw": ["Team Wiki"],
     "cVKnqL": ["Couldn't read the comments waiting to send: ", ["0"]],
     "cVp1YI": ["Recycle Bin"],
+    "cYvRiE": ["Welcome to OpenKnowledge"],
     "cZGNlb": ["Add another pattern"],
     "cZI5AL": ["OK Desktop"],
     "caiyaU": ["OpenKnowledge restored an earlier version"],
@@ -3015,7 +3028,6 @@
     "ePK91l": ["Edit"],
     "eQkgKV": ["Installed"],
     "eQn7nI": ["Loading config sharing"],
-    "eQsWFc": ["Agent Skill"],
     "eQxm13": ["Failed to update attachment location — ", ["detail"]],
     "eRSPr9": ["Open terminal"],
     "eTL5y9": ["Show selection preview"],
@@ -3099,7 +3111,6 @@
     "fhaxJL": ["Clone failed — empty response body"],
     "fiMNLl": ["Sync settings not yet loaded — try again in a moment"],
     "fj5YiP": ["Downloads a fresh copy from GitHub."],
-    "fmwwju": ["Adds OpenKnowledge's MCP connection to each."],
     "fnlBN4": ["Auto-approve settings not yet loaded — try again in a moment"],
     "fo0VXg": ["Uninstall"],
     "fo6CCk": ["pane ", ["0"]],
@@ -3186,6 +3197,7 @@
     "gZiT5e": ["Replace these symlinks with independent copies?"],
     "gayL_Q": ["Release plan"],
     "gbHcbI": ["Failed to delete property"],
+    "gcrh1R": ["Adds these folders"],
     "ge05IJ": ["How validation findings surface across the project."],
     "gfYI3o": ["Disable ", ["id"]],
     "gfb-CM": ["Could not fetch branch — sign in to GitHub and try again."],
@@ -3273,6 +3285,7 @@
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
     ],
+    "hnlGzG": ["Skip for now"],
     "hnq8fP": ["Remove ", ["label"], " from context"],
     "hp8OtS": ["Added"],
     "hpDtUm": ["External wiki link"],
@@ -3653,6 +3666,7 @@
     ],
     "m16xKo": ["Add"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
+    "m3ocfn": ["Writes an entry to"],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
     "mAzs2H": ["Disable ", ["file"]],
     "mBK8zm": ["/", ["0"], " isn't a command this agent offers — it will be sent as plain text"],
@@ -3707,6 +3721,9 @@
       "Every concept document carries a non-empty type. This is the whole of OKF's conformance floor — a document with only a type is fully conformant."
     ],
     "mk2poV": ["e.g. server.ts"],
+    "mlA3HX": [
+      "Globally install the OpenKnowledge skills and MCP to let the agents you already use read and update your projects."
+    ],
     "mlvM8g": ["Couldn't re-place that comment."],
     "mmpzAq": ["Wrap long lines in the markdown source editor."],
     "mnpsVn": [
@@ -3754,6 +3771,7 @@
     "nBgzKO": ["Make this the source — the skill's real folder moves here"],
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
+    "nJaz5Q": ["Replaces the OpenKnowledge entry each of them already has."],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
     ],
@@ -3957,6 +3975,7 @@
       ["tabCount", "plural", { "one": ["#", " tab"], "other": ["#", " tabs"] }]
     ],
     "qAx7xG": ["Fixed folder in content root"],
+    "qBi_YG": ["Install OpenKnowledge in your AI tools"],
     "qC7PwZ": ["Failed to remove the field"],
     "qEEfPk": ["Bug report ", ["0"]],
     "qEIFZu": ["Key ending in ", ["keyHint"]],
@@ -4226,7 +4245,6 @@
     "toyw51": ["Mermaid diagram controls"],
     "tqQBwN": ["Any scripts are shown for review, never run."],
     "tsiTqO": ["Paste your API key"],
-    "tsyExA": ["Connect your AI tools to OpenKnowledge"],
     "tvMvze": [
       "Could not move \"",
       ["targetName"],
@@ -4389,6 +4407,7 @@
       ]
     ],
     "vppAju": ["Where newly added attachments are placed."],
+    "vqJXNe": ["Install the <0>open-knowledge-discovery</0> skill"],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
     "vwV-kH": ["Fixing files stopped unexpectedly."],
@@ -4489,7 +4508,6 @@
     "xEb24l": ["Let us follow up by email"],
     "xFQRu4": ["I already have it locally"],
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
-    "xGVfLh": ["Continue"],
     "xHGM4U": ["Hide HTML preview"],
     "xK291b": ["Two-page (odd)"],
     "xKDsGS": ["Go to line ", ["0"], " in ", ["1"]],
@@ -4581,9 +4599,6 @@
     "ycIX5i": ["You're signed out — sign in to resume syncing."],
     "yckias": ["Rename file"],
     "ydzS9x": ["Exit"],
-    "yeMZk8": [
-      "Adds OpenKnowledge's MCP connection to each, plus the open-knowledge-discovery skill so your agents recognize OpenKnowledge projects."
-    ],
     "yf5auF": ["Search rules by id, alias, or name"],
     "yf5r22": [
       ["keyName"],

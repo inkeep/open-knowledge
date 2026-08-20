@@ -1,6 +1,6 @@
 /**
  * Settings → User → AI tools & CLI — the persistent, stateful sibling of the
- * first-launch "Connect your AI tools to OpenKnowledge" consent dialog
+ * first-launch "Let's get set up" consent dialog
  * (`McpConsentDialogBody.tsx`). Two component groups (shell-PATH shim,
  * per-editor MCP entries): checkboxes that reflect LIVE installed state and
  * apply on click (check = install, uncheck = uninstall), each with an info
