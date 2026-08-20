@@ -19,6 +19,7 @@ import {
   isExcalidrawDocFile,
   isManagedArtifactDocName,
   isMermaidDocFile,
+  isProjectSkillBundlePath,
   SYSTEM_DOC_NAME,
 } from '@inkeep/open-knowledge-core';
 import { isRegisteredMarkdownDocName } from './doc-extensions.ts';
@@ -151,6 +152,62 @@ export function isReservedForUserTree(documentName: string): boolean {
  */
 export function isLinkIndexExcludedDoc(documentName: string): boolean {
   return isSystemDoc(documentName) || isConfigDoc(documentName);
+}
+
+/**
+ * True when a doc name is excluded AS A DIAGNOSTIC SOURCE from the validation
+ * problems plane (`GET /api/audit` behind the Problems panel, MCP `audit`, and
+ * the doc-scoped requests that feed the open doc's Problems tab and the
+ * source-mode link diagnostics).
+ *
+ * Skill bundles only. A skill's links routinely name runtime artifacts it
+ * creates when it runs, so they read as broken by construction and projecting
+ * them is noise. Both shapes qualify: a bundle under a skills ROOT
+ * (`.claude/skills/<name>/…`, `.github/skills/…`, `.ok/skills/…`, `scripts/**`
+ * included) and the managed live-doc names (`__skill__/…`, `__extskill__/…`).
+ * `__template__/…` matches too, through the shared managed-artifact predicate.
+ * That branch is inert rather than a third class: the prefix is a tombstone no
+ * doc is ever seeded or stored under, so it never reaches the index as a
+ * source.
+ *
+ * Scoped to the skills root, never the host dotdir — the discipline
+ * `content-filter.ts` states for the sibling axis and pins with a test:
+ * segment-matching `.github` would bury `.github/CI_RUNBOOK.md`, ordinary prose
+ * that is admitted content, body-link-indexed, and whose broken links are real
+ * defects a reader can open and fix. The same holds for `.changeset/…`,
+ * `.vscode/…`, `.obsidian/…`, and folder-local templates
+ * (`<folder>/.ok/templates/<name>`), all of which keep their findings. A dot in
+ * the path is not the question; being a skill bundle is.
+ *
+ * The lint and OKF validators reach a similar scope by a different route (their
+ * walk skips hidden segments outright), so the two planes do not agree
+ * name-for-name: `.github/CI_RUNBOOK` gets link findings but no markdownlint
+ * rows. That asymmetry is inherited, not introduced here.
+ *
+ * A skills root at a VISIBLE path (a custom root such as `team/skills/…`) keeps
+ * its findings, since nothing marks it as OK-managed. A GLOBAL skill installed
+ * at such a root is still excluded, through the managed branch.
+ *
+ * On write/edit responses, `brokenLinks` is a byte scan
+ * (`write-advisory-links.ts`) that never consults this gate. The channel that
+ * does is `warnings[kind='lint-violation']` (`computeLintViolations`), pre-gated
+ * only on `isLinkIndexExcludedDoc`: a dot-segment name cannot reach it (the
+ * write schema applies `validateDocName`), but the managed prefixes pass that
+ * schema and ARE suppressed there.
+ *
+ * Excluded docs stay link-indexed — backlinks, the graph, and rename
+ * propagation keep their edges. The gate keys on the SOURCE doc only: an
+ * ordinary doc's dead link whose TARGET names a skill still reports. The raw
+ * graph view (`GET /api/dead-links`, MCP `links({ kind: "dead" })`)
+ * deliberately stays un-gated — each derived view owns its own scope, and it is
+ * where unresolved links from these sources remain visible.
+ *
+ * The call sites are the links validator's projection loops in
+ * `lint/validation-audit.ts`; a future validator projecting index-derived
+ * findings needs the same gate.
+ */
+export function isProblemsPlaneExcludedDoc(documentName: string): boolean {
+  return isProjectSkillBundlePath(documentName) || isManagedArtifactDocName(documentName);
 }
 
 /**

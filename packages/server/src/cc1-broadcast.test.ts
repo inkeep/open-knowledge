@@ -24,6 +24,7 @@ import {
   isConfigDoc,
   isEditableTextDoc,
   isLinkIndexExcludedDoc,
+  isProblemsPlaneExcludedDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
 import { registerDocExtension } from './doc-extensions.ts';
@@ -610,6 +611,66 @@ describe('isLinkIndexExcludedDoc', () => {
   test('admits ordinary documents', () => {
     expect(isLinkIndexExcludedDoc('docs/getting-started')).toBe(false);
     expect(isLinkIndexExcludedDoc('readme')).toBe(false);
+  });
+});
+
+describe('isProblemsPlaneExcludedDoc', () => {
+  // Closed table, matching the convention its siblings follow: a doc class
+  // added to the validation plane must get a row here and in the predicate.
+
+  test('excludes skill bundles under any skills root', () => {
+    expect(isProblemsPlaneExcludedDoc('.claude/skills/record-a-decision/SKILL')).toBe(true);
+    expect(isProblemsPlaneExcludedDoc('.agents/skills/write-a-spec/references/patterns')).toBe(
+      true,
+    );
+    expect(isProblemsPlaneExcludedDoc('.github/skills/record-a-decision/SKILL')).toBe(true);
+    expect(isProblemsPlaneExcludedDoc('.ok/skills/record-a-decision/SKILL')).toBe(true);
+    // `scripts/**` members are not graph nodes, so a predicate keyed on the
+    // SKILL/references doc shapes would miss them.
+    expect(isProblemsPlaneExcludedDoc('.claude/skills/record-a-decision/scripts/notes')).toBe(true);
+  });
+
+  test('keeps admitted content that merely sits under a dot dir', () => {
+    // Scoped to the skills ROOT, never the host dotdir. Segment-matching
+    // `.github` would bury ordinary prose that is admitted content whose broken
+    // links are real defects — the discipline content-filter.ts states and pins
+    // for the sibling admission axis.
+    expect(isProblemsPlaneExcludedDoc('.github/CI_RUNBOOK')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('.changeset/wide-bug-report-dialog')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('.vscode/notes')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('.obsidian/scratch')).toBe(false);
+  });
+
+  test('excludes managed artifact names, which carry no dot segment', () => {
+    expect(isProblemsPlaneExcludedDoc('__skill__/global/record-a-decision')).toBe(true);
+    expect(
+      isProblemsPlaneExcludedDoc('__skill__/global/record-a-decision/references/patterns'),
+    ).toBe(true);
+    expect(isProblemsPlaneExcludedDoc('__extskill__/record-a-decision')).toBe(true);
+    // Inert rather than a third class: the shared managed-artifact predicate
+    // matches this tombstone prefix, but no doc is ever stored under it, so the
+    // branch never fires on a real source.
+    expect(isProblemsPlaneExcludedDoc('__template__/docs/my-template')).toBe(true);
+  });
+
+  test('keeps folder-local templates, which are authored content under a dot dir', () => {
+    // A broken link in a template is copied into every doc created from it,
+    // where it does report. Silencing the source would send the reader chasing
+    // the copies. The sibling suite above pins these as link-index sources.
+    expect(isProblemsPlaneExcludedDoc('.ok/templates/daily')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('docs/.ok/templates/meeting')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('a/b/c/.ok/templates/note')).toBe(false);
+  });
+
+  test('keeps ordinary documents, including a visible-path skills root', () => {
+    expect(isProblemsPlaneExcludedDoc('docs/getting-started')).toBe(false);
+    expect(isProblemsPlaneExcludedDoc('readme')).toBe(false);
+    // A dot INSIDE a segment is not a hidden segment.
+    expect(isProblemsPlaneExcludedDoc('notes/v1.2/release')).toBe(false);
+    // A custom root the user typed at a visible path is ordinary content. Note
+    // a GLOBAL skill installed at such a root still resolves through the
+    // managed branch above and is excluded.
+    expect(isProblemsPlaneExcludedDoc('team/skills/record-a-decision/SKILL')).toBe(false);
   });
 });
 

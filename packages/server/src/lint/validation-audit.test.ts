@@ -837,3 +837,217 @@ describe('toValidationCountsPlane', () => {
     });
   });
 });
+
+describe('skill-bundle doc scoping', () => {
+  // The gate's contract — what it covers and its recorded boundaries — is
+  // `isProblemsPlaneExcludedDoc`'s JSDoc (`cc1-broadcast.ts`), with the closed
+  // name table in `cc1-broadcast.test.ts`. These tests pin the shapes end to
+  // end through the validator: bundles under a skills root (`scripts/**`
+  // included) and the managed aliases, plus the boundaries — source-keyed only,
+  // doc scope included, raw graph view un-gated, and both a visible-path skills
+  // root and a dot-dir doc outside any skills root still reported.
+
+  const LIVE_SKILL_MD =
+    '# Live skill\n\nSee [[live-skill-ghost]] and [artifact](artifacts/output.md).\n';
+
+  /**
+   * Index a live skill doc (`__skill__/global/...` managed artifact or
+   * `__extskill__/...` editable-unmanaged external): live-indexed, never on
+   * disk at a content-root path.
+   *
+   * The markdown link in the seeded body is load-bearing, not redundant with
+   * the wiki link: `BacklinkIndex` registers these docs node-only and never
+   * ingests their body links, so the graph plane carries nothing for them and
+   * the local-target plane is the only one that can produce a finding.
+   */
+  function seedLiveSkillDoc(docName: string): void {
+    index.updateDocumentFromMarkdown(docName, LIVE_SKILL_MD);
+    localTargets.setSource(docName, LIVE_SKILL_MD);
+    admitted.add(docName);
+  }
+
+  test('project skill bundle docs project no findings into the plane', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    // Both link forms the validator projects: a wiki dead link (graph plane)
+    // and a relative markdown link to an absent file (local-target plane).
+    seedDoc(
+      '.claude/skills/record-a-decision/SKILL',
+      '# Record a decision\n\nSee [[skill-ghost]] and [artifact](decisions/0007-use-rest-api.md).\n',
+    );
+    seedDoc(
+      '.claude/skills/record-a-decision/references/patterns',
+      '# Patterns\n\nSee [[skill-ref-ghost]].\n',
+    );
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    // Control: the ordinary doc's dead link survives the gate. The exact file
+    // set additionally catches an over-broad predicate reaching other docs.
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+
+    expect(result.files.map((f) => f.file)).toEqual(['control.md']);
+  });
+
+  test('global skill bundle docs project no findings into the plane', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedLiveSkillDoc('__skill__/global/record-a-decision');
+    seedLiveSkillDoc('__skill__/global/record-a-decision/references/patterns');
+
+    // Positive control. The graph plane cannot carry these: `BacklinkIndex`
+    // registers global skill bundle docs node-only and never ingests their body
+    // links, so the wiki link contributes no edge and only the local-target
+    // plane can produce a finding here. Prove it holds one, or the emptiness
+    // assertion below would pass against a source that never had anything.
+    const assessed = await localTargets.getAssessmentsForSources([
+      '__skill__/global/record-a-decision',
+    ]);
+    expect(
+      assessed.some(({ assessments }) => assessments.some((a) => a.status === 'missing')),
+    ).toBe(true);
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+
+    expect(result.files.map((f) => f.file)).toEqual(['control.md']);
+  });
+
+  test('project skill bundle scripts docs project no findings into the plane', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    // `scripts/**` members are not graph nodes, so a predicate keyed on the
+    // SKILL/references doc shapes would miss them. The gate matches the whole
+    // bundle dir under the skills root, so they are covered.
+    seedDoc(
+      '.claude/skills/record-a-decision/scripts/notes',
+      '# Notes\n\nSee [[skill-script-ghost]] and [artifact](fixtures/sample-output.md).\n',
+    );
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+
+    expect(result.files.map((f) => f.file)).toEqual(['control.md']);
+  });
+
+  test('external skill live docs project no findings into the plane', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedLiveSkillDoc('__extskill__/record-a-decision');
+    seedLiveSkillDoc('__extskill__/record-a-decision/references/patterns');
+
+    // Positive control, as in the global-skill case above: prove the plane that
+    // can carry a finding for this shape actually holds one.
+    const assessed = await localTargets.getAssessmentsForSources([
+      '__extskill__/record-a-decision',
+    ]);
+    expect(
+      assessed.some(({ assessments }) => assessments.some((a) => a.status === 'missing')),
+    ).toBe(true);
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+
+    expect(result.files.map((f) => f.file)).toEqual(['control.md']);
+  });
+
+  test('doc-scoped audit of a skill bundle file also answers empty', async () => {
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedDoc(
+      '.claude/skills/record-a-decision/SKILL',
+      '# Record a decision\n\nSee [[skill-ghost]] and [artifact](decisions/0007-use-rest-api.md).\n',
+    );
+
+    // The exclusion is total across scopes: the open doc's Problems tab and
+    // the source-mode link diagnostics ride this same doc-scoped request, so
+    // scoping to the file itself must not reintroduce what the project scope
+    // withholds.
+    const result = await runValidationAudit(createProjectValidators(deps()), {
+      targetPath: '.claude/skills/record-a-decision/SKILL.md',
+    });
+
+    expect(result.files).toEqual([]);
+  });
+
+  test('folder templates keep their link findings', async () => {
+    // Templates sit under `.ok/` but are not a skill bundle, so the gate never
+    // reaches them. Pinned through the projection loops, not just the
+    // predicate: an inverted `continue` guard would suppress them while the
+    // name-level unit test stayed green. A broken link here is copied into
+    // every doc created from the template.
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedDoc('.ok/templates/daily', '# Daily\n\nSee [[template-ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const template = result.files.find((f) => f.file === '.ok/templates/daily.md');
+    expect(template?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+  });
+
+  test('a dot-dir doc outside any skills root keeps its link findings', async () => {
+    // The gate is scoped to the skills root, not the host dotdir. Prose like
+    // `.github/CI_RUNBOOK` is admitted content whose broken links are real
+    // defects, so it stays in the plane. Note the lint walk skips it on its own
+    // axis, so this doc gets link findings but no markdownlint rows.
+    seedDoc('control', '# Control\n\nSee [[ghost]].\n');
+    seedDoc('.github/CI_RUNBOOK', '# Runbook\n\nSee [[runbook-ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const runbook = result.files.find((f) => f.file === '.github/CI_RUNBOOK.md');
+    expect(runbook?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+  });
+
+  test('a skill bundle at a visible custom root stays in the plane', async () => {
+    // A custom skill root need not be dot-rooted. Such bundles are addressable
+    // and read as ordinary content on every sibling axis (file-tree rows,
+    // hidden-doc classification), so the plane keeps their findings — the rule
+    // holding at its boundary, not an uncovered case.
+    seedDoc('team/skills/record-a-decision/SKILL', '# Custom root\n\nSee [[custom-root-ghost]].\n');
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const skill = result.files.find((f) => f.file === 'team/skills/record-a-decision/SKILL.md');
+    expect(skill?.diagnostics.some((d) => d.code === 'dead-link')).toBe(true);
+  });
+
+  test('dead links from an ordinary doc INTO a skill bundle are still reported', async () => {
+    // The gate keys on the SOURCE doc. A user-authored doc whose broken link
+    // NAMES a skill path is an ordinary finding and must survive — common
+    // right after a skill is renamed or uninstalled.
+    seedDoc(
+      'control',
+      '# Control\n\nWiki: [[.claude/skills/absent/SKILL]]\n\nMd: [skill](.claude/skills/absent/SKILL.md)\n',
+    );
+
+    const result = await runValidationAudit(createProjectValidators(deps()));
+
+    const control = result.files.find((f) => f.file === 'control.md');
+    expect(control?.diagnostics.filter((d) => d.code === 'dead-link').length).toBeGreaterThan(0);
+  });
+
+  test('the raw graph dead-links view keeps skill-bundle sources the plane suppresses', async () => {
+    seedDoc(
+      '.claude/skills/record-a-decision/SKILL',
+      '# Record a decision\n\nSee [[skill-ghost]].\n',
+    );
+
+    // The gate lives at the validator's projection point, not in the index:
+    // `GET /api/dead-links` / MCP `links({ kind: "dead" })` stay the raw graph
+    // view over every indexed edge, hidden sources included.
+    const raw = await index.getDeadLinks([...admitted]);
+    expect(
+      raw.some(({ sources }) =>
+        sources.some((o) => o.source === '.claude/skills/record-a-decision/SKILL'),
+      ),
+    ).toBe(true);
+
+    const plane = await runValidationAudit(createProjectValidators(deps()));
+    expect(plane.files).toEqual([]);
+  });
+});

@@ -18,6 +18,10 @@ This page covers what's the same whatever linter runs; each linter's page covers
   - **This doc** — live diagnostics for the open document, in both WYSIWYG and source mode. Click a problem to jump to it: source mode lands on the exact line and column, WYSIWYG scrolls to the block it falls in.
   - **Project** — an on-demand audit of every in-scope document. It runs when you first open the scope and on the refresh button — never in the background. Results group per file with error/warning totals; configuration problems (a malformed config file, a broken `extends`) surface at the top. Clicking a problem opens the offending doc at that position.
 
+Skill documents are excluded from link checking: files in a skills folder (`.claude/skills`, `.agents/skills`, `.github/skills`, and the like) and the skill documents you open from the Skills panel. A skill's links routinely name files it creates only when it runs, so they report as broken by construction. What goes quiet is the Problems panel in both scopes, and with it the squiggles and gutter marks the panel drives. What stays is the link styling the editor resolves on its own as you type, so a wiki link to a file the skill has not created yet still renders as unresolved, and the Links panel still lists it under Missing. In short: the skill's Problems tab reads clean while the link itself may still look broken in the text. `links({ kind: "dead" })` and `GET /api/dead-links` list them too.
+
+The exclusion is scoped to the skills folder itself, not to the dot-directory containing it, so ordinary documents that happen to live under a dot directory (`.github/CI_RUNBOOK.md`, a `.changeset` entry) keep their link findings. So do folder templates under `.ok/templates`, which you author like any document. A skills folder you added yourself at a visible path, such as `team/skills`, is ordinary content and is still checked. Links from your other documents to a skill still validate normally.
+
 In both scopes, each row tags the validator that produced it in uppercase — for example `MARKDOWNLINT`, `FRONTMATTER`, or `LINKS` — next to the rule code, and a finding that repeats collapses into one row with an instance count you can expand to reach the individual lines.
 
 The panel is also available in [single-file sessions](/docs/features/editor#open-a-single-file) (`ok <file>`).
@@ -154,7 +158,7 @@ Unlike `ok lint`, `ok audit` needs the project's server running (`ok start` or O
 }
 ```
 
-Broken links are warnings by default. The project's `validation.links` setting — **Settings ▸ This project ▸ Content rules** — decides both whether they appear and at what severity: `warning` (the default), `error` to gate CI on them with `--errors-only`, or `off` to drop them from the plane entirely. Content-rule findings keep their own severities, so `--errors-only` covers both planes at once.
+Broken links are warnings by default. The project's `validation.links` setting — **Settings ▸ This project ▸ Content rules** — decides both whether they appear and at what severity: `warning` (the default), `error` to gate CI on them with `--errors-only`, or `off` to drop them from the plane entirely. Content-rule findings keep their own severities, so `--errors-only` covers both planes at once. Skill documents are the one exception: their link findings are always excluded, whatever this setting says, because a skill's links name files it creates only at runtime.
 
 ## AI agents
 

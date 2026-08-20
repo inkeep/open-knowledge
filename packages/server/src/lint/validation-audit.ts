@@ -19,6 +19,7 @@ import {
   type ValidationDiagnostic,
   type ValidationDocCounts,
 } from '@inkeep/open-knowledge-core';
+import { isProblemsPlaneExcludedDoc } from '../cc1-broadcast.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import {
   buildLocalTargetEvidence,
@@ -294,6 +295,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
         const assessed =
           await deps.derivedDocumentIndex.getLocalTargetAssessmentsForSources(sourceFilter);
         for (const { source, assessments } of assessed) {
+          if (isProblemsPlaneExcludedDoc(source)) continue;
           const file = deps.docFilePathFor(source) ?? `${source}.md`;
           for (const assessment of assessments) {
             const diagnostic = toLocalTargetDiagnostic(assessment, severity);
@@ -326,6 +328,7 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
 
       for (const { target, sources } of deadLinks) {
         for (const occurrence of sources) {
+          if (isProblemsPlaneExcludedDoc(occurrence.source)) continue;
           const key = `${occurrence.source}\0${target}`;
           // Already reported with richer evidence by the canonical classifier,
           // or proven by it to exist and therefore not a dead link at all.
