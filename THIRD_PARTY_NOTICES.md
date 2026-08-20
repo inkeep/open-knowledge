@@ -660,12 +660,7 @@ Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `@opentelemetry/core@2.9.0`
-Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-core
-
-_(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
-
-### `@opentelemetry/core@2.1.0`
+### `@opentelemetry/core@2.8.0`
 Homepage: https://github.com/open-telemetry/opentelemetry-js/tree/main/packages/opentelemetry-core
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -854,7 +849,7 @@ Homepage: https://github.com/JackuB/diff-match-patch
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
 
-### `dompurify@3.4.12`
+### `dompurify@3.4.13`
 Homepage: https://github.com/cure53/DOMPurify
 
 _(LICENSE template present but no copyright line filled in; refer to the package source for canonical attribution.)_
@@ -1056,7 +1051,7 @@ Homepage: https://github.com/babel/babel
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
-### `@babel/core@7.29.0`
+### `@babel/core@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-core
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
@@ -1379,7 +1374,7 @@ Homepage: https://github.com/honojs/node-server
 
 Copyright (c) 2022 - present, Yusuke Wada and Hono contributors
 
-### `@hono/node-server@1.19.14`
+### `@hono/node-server@1.19.17`
 Homepage: https://github.com/honojs/node-server
 
 Copyright (c) 2022 - present, Yusuke Wada and Hono contributors
@@ -1629,7 +1624,7 @@ Homepage: https://github.com/Brooooooklyn/keyring-node
 
 Copyright (c) 2020 N-API for Rust
 
-### `@nodable/entities@2.2.0`
+### `@nodable/entities@3.0.0`
 Homepage: https://github.com/nodable/val-parsers
 
 _(No LICENSE file in package; SPDX identifier in `package.json` is the sole declared grant.)_
@@ -2818,7 +2813,7 @@ Homepage: https://github.com/evidentpoint/buffer-image-size
 
 _(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
-### `builder-util-runtime@9.6.0`
+### `builder-util-runtime@9.7.0`
 Homepage: https://github.com/electron-userland/electron-builder
 
 Copyright (c) 2015 Loopline Systems
@@ -3425,7 +3420,7 @@ Homepage: https://github.com/NaturalIntelligence/fast-xml-builder
 
 Copyright (c) 2026 Natural Intelligence
 
-### `fast-xml-parser@5.10.0`
+### `fast-xml-parser@5.10.1`
 Homepage: https://github.com/NaturalIntelligence/fast-xml-parser
 
 Copyright (c) 2017 Amit Kumar Gupta
@@ -3710,7 +3705,7 @@ Homepage: https://github.com/mcollina/help-me
 
 Copyright (c) 2014-2022 Matteo Collina
 
-### `hono@4.12.29`
+### `hono@4.12.34`
 Homepage: https://hono.dev
 
 Copyright (c) 2021 - present, Yusuke Wada and Hono contributors
@@ -3777,7 +3772,7 @@ Homepage: https://github.com/remarkablemark/inline-style-parser
 
 Copyright (c) 2012 TJ Holowaychuk <tj@vision-media.ca>
 
-### `ip-address@10.2.0`
+### `ip-address@10.3.1`
 Homepage: https://github.com/beaugunderson/ip-address
 
 Copyright (C) 2011 by Beau Gunderson
@@ -3982,7 +3977,7 @@ Homepage: https://github.com/lydell/js-tokens
 
 Copyright (c) 2014, 2015, 2016, 2017, 2018 Simon Lydell
 
-### `js-yaml@4.3.0`
+### `js-yaml@4.3.1`
 Homepage: https://github.com/nodeca/js-yaml
 
 Copyright (C) 2011-2015 by Vitaly Puzrin
@@ -4103,11 +4098,6 @@ Homepage: https://lodash.com/
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
 ### `lodash-es@4.18.1`
-Homepage: https://lodash.com/custom-builds
-
-Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
-
-### `lodash-es@4.17.21`
 Homepage: https://lodash.com/custom-builds
 
 Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
@@ -4287,7 +4277,7 @@ Homepage: https://github.com/teambition/merge2
 
 Copyright (c) 2014-2020 Teambition
 
-### `mermaid@11.16.0`
+### `mermaid@11.16.1`
 Homepage: https://github.com/mermaid-js/mermaid
 
 Copyright (c) 2014 - 2022 Knut Sveidqvist
@@ -4547,20 +4537,15 @@ Homepage: https://github.com/nodeca/multimath
 
 Copyright (C) 2017 by Vitaly Puzrin
 
-### `nanoid@3.3.3`
+### `nanoid@3.3.18`
 Homepage: https://github.com/ai/nanoid
 
 Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
 
-### `nanoid@4.0.2`
+### `nanoid@5.1.16`
 Homepage: https://github.com/ai/nanoid
 
-Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
-
-### `nanoid@3.3.16`
-Homepage: https://github.com/ai/nanoid
-
-Copyright 2017 Andrey Sitnik <andrey@sitnik.ru>
+Copyright 2017 Andrey Sitnik <andrey@sitnik.es>
 
 ### `napi-build-utils@2.0.0`
 Homepage: https://github.com/inspiredware/napi-build-utils#readme
@@ -4889,7 +4874,7 @@ Homepage: https://github.com/pshihn/points-on-path#readme
 
 Copyright (c) 2020 Preet
 
-### `postcss@8.5.17`
+### `postcss@8.5.26`
 Homepage: https://postcss.org/
 
 Copyright 2013 Andrey Sitnik <andrey@sitnik.es>
@@ -5540,7 +5525,7 @@ Homepage: https://github.com/sindresorhus/strip-json-comments
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 
-### `strnum@2.4.1`
+### `strnum@2.4.2`
 Homepage: https://github.com/NaturalIntelligence/strnum
 
 Copyright (c) 2021 Natural Intelligence
@@ -5705,7 +5690,7 @@ Homepage: https://github.com/sindresorhus/uint8array-extras
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `undici@7.28.0`
+### `undici@7.29.0`
 Homepage: https://undici.nodejs.org
 
 Copyright (c) Matteo Collina and Undici contributors
@@ -6441,7 +6426,7 @@ Homepage: https://github.com/kpdecker/jsdiff
 
 Copyright (c) 2009-2015, Kevin Decker <kpdecker@gmail.com>
 
-### `fast-uri@3.1.3`
+### `fast-uri@3.1.5`
 Homepage: https://github.com/fastify/fast-uri
 
 Copyright (c) 2011-2021, Gary Court until https://github.com/garycourt/uri-js/commit/a1acf730b4bba3f1097c9f52e7d9d3aba8cdcaae Copyright (c) 2021-present The Fastify team <https://github.com/fastify/fastify#team>

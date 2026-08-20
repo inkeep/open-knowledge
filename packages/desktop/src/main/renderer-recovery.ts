@@ -333,11 +333,11 @@ export function createRendererRecovery(deps: RendererRecoveryDeps): RendererReco
       // `reload()` has returned normally. Deferring by one task lets the
       // notification unwind first. Upstream fixed the re-entrancy in
       // electron/electron#51900 (backported to 41-x-y as #51917, shipped in
-      // the 41.9.1 this app pins). The deferral deliberately outlives that
-      // fix: staying off the observer stack is cheap insurance against an
-      // upstream regression, and the deferral window is observable contract
-      // (the reload-abandoned branch below) — removing it is its own
-      // decision, not a version-bump side effect.
+      // 41.9.1, at or below the version this app pins). The deferral
+      // deliberately outlives that fix: staying off the observer stack is
+      // cheap insurance against an upstream regression, and the deferral
+      // window is observable contract (the reload-abandoned branch below) —
+      // removing it is its own decision, not a version-bump side effect.
       deps.defer(() => {
         // The whole body is guarded, not just the reload. This runs on a later
         // task, so nothing above is on the stack to catch it and an escaping

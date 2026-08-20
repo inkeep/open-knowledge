@@ -29,6 +29,62 @@ onlyBuiltDependencies:
   - node-pty
 
 overrides:
+  # --- Security advisories (Dependabot). Each floor is a `~` range, so a later
+  # patch advisory on the same line self-heals without another override edit,
+  # and nothing floats to a new minor as a side effect of a security fix.
+  #
+  # THREE entries deliberately cross a breaking boundary, because the vulnerable
+  # version is the last release on its line and there is no in-line fix at all:
+  #   nanoid@4  -> 5.x   (4.0.2 is the final 4.x; consumer
+  #                       @excalidraw/mermaid-to-excalidraw pins it exactly at
+  #                       4.0.2, and calls `nanoid()` with no arguments, so the
+  #                       bad-`size` advisories were never reachable there)
+  #   sharp@0.34 -> 0.35 (0.34.5 is the final 0.34.x; consumer next declares
+  #                       ^0.34.5 as an optionalDependency. 0.35.0 is breaking:
+  #                       retuned lossy AVIF defaults, new limitInputChannels
+  #                       default, removed install script. It is next/image's
+  #                       optimizer on the docs site, so emitted image bytes can
+  #                       change even though no API does)
+  #   esbuild@0.27 -> 0.28 (0.27.7 is the final 0.27.x; consumer fumadocs-mdx
+  #                       declares ^0.27.0. Gates the docs build, so a real
+  #                       incompatibility fails loudly)
+  # On 0.x packages the minor is the breaking axis, so those two are majors in
+  # effect. pnpm applies an out-of-range override silently; these are the ones
+  # that would not surface on their own.
+  #
+  # `next` is floored at the advisory patch line rather than its declared `^16`
+  # caret, to keep this a security-only change (a bare caret takes it to 16.3.x).
+  #
+  # `vite` is deliberately absent. 8.0.16 pulls rolldown 1.0.0-rc.15 -> 1.0.3,
+  # which re-partitions chunks and moves ~253 kB gzipped into the app's main
+  # entry (423.8 kB -> 676.8 kB, over the 487 kB size-limit). Its two advisories
+  # are dev-server-only on Windows and never reach a shipped artifact. Tracked
+  # for unpinning in PRD-8169. ---
+  '@babel/core@7': ~7.29.6
+  '@hono/node-server@1': ~1.19.15
+  '@opentelemetry/core@2': ~2.8.0
+  'brace-expansion@1': ~1.1.18
+  'brace-expansion@2': ~2.1.4
+  'builder-util-runtime@9': ~9.7.0
+  'dompurify@3': ~3.4.13
+  'esbuild@0.27': ~0.28.1
+  'fast-uri@3': ~3.1.5
+  'fast-xml-parser@5': ~5.10.1
+  'hono@4': ~4.12.34
+  'ip-address@10': ~10.3.1
+  'js-yaml@3': ~3.15.1
+  'js-yaml@4': ~4.3.1
+  'lodash-es@4': ~4.18.0
+  'mermaid@11': ~11.16.1
+  'nanoid@3': ~3.3.18
+  'nanoid@4': ~5.1.16
+  'nanoid@5': ~5.1.16
+  'next@16': ~16.2.11
+  'postcss@8': ~8.5.23
+  'sharp@0.34': ~0.35.0
+  'tar@7': ~7.5.21
+  'undici@6': ~6.28.0
+  'undici@7': ~7.29.0
   # CodeMirror is the source-mode editor core, held at the same bun baseline as
   # the `@tiptap/*` + `prosemirror-*` pins further down this block; a fresh pnpm
   # resolution otherwise floats it within the app's `^6.6.0`/`^6.43.3` carets
