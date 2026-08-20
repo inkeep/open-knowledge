@@ -121,7 +121,7 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
         // The code-block-body overrides tighten Streamdown's p-4 a notch and
         // cap tall blocks at max-h-80 with internal scroll, targeting the
         // stable `data-streamdown` hooks rather than its Tailwind classes.
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto"
+        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_li+li]:mt-2 [&_li>p]:block! [&_li>*+*]:mt-2 [&_li_[data-streamdown=code-block]]:my-2! [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto"
         // A lone newline ends the line, as it does in every chat client. The
         // transcript renders sent messages too now, and those are typed by a
         // person pressing Enter — not prose where only a blank line means a new
