@@ -352,27 +352,40 @@ jobs:
             exit 0
           }
 
-          # Scope to runs on `main` triggered by `push` only. The prebuild also
-          # runs on `pull_request` (including from the public mirror's external
-          # PRs), so without this filter the latest-green run could be an
-          # unmerged branch whose Rust source is not what shipped to main — a
-          # supply-chain gap for native code executed on every CLI invocation.
-          run_id=$(gh run list --workflow=native-config-prebuild.yml --branch main --event push \
-            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
-          if [ -z "$run_id" ]; then
-            degrade_or_fail "no successful native-config-prebuild run on main found" "0/8"
+          # Which prebuild run may be staged is release policy shared with the
+          # other publish path and predicted by point-release-plan.mjs, so the
+          # selection lives in one tested script instead of three copies of this
+          # shell. It walks the green prebuild runs on `main` newest -> oldest
+          # and returns the first whose commit is contained in this release AND
+          # whose packages/native-config source matches it — the newest ANCESTOR,
+          # not the newest run. Taking the newest run refused every stable tag
+          # cut before the most recent native-config change, because that run is
+          # then a descendant of the release commit rather than an ancestor.
+          #
+          # The workflow file comes from the DEFAULT branch, but the checkout is
+          # the RELEASE ref — so for any tag cut before this selector landed, the
+          # script is simply absent from the workspace. Materialize it from the
+          # same commit the workflow itself came from, falling back to the
+          # checked-out copy. Pairing the two is what lets a re-fire on a stale
+          # tag run CURRENT release machinery rather than whatever was frozen in
+          # that tag, which is the only way re-firing a blocked release can ever
+          # clear it. fetch-depth:0 in checkout has $GITHUB_SHA.
+          selector="${RUNNER_TEMP:-/tmp}/select-native-config-prebuild.mjs"
+          if ! git show "$GITHUB_SHA:.github/scripts/select-native-config-prebuild.mjs" > "$selector" 2>/dev/null; then
+            cp .github/scripts/select-native-config-prebuild.mjs "$selector" 2>/dev/null || true
           fi
-
-          # Provenance: the prebuild run's head commit must be an ancestor of
-          # the release commit, so the binaries staged were built from source
-          # that is actually in this release. fetch-depth:0 in checkout has
-          # full history.
-          head_sha=$(gh run view "$run_id" --json headSha -q .headSha 2>/dev/null || true)
-          if [ -z "$head_sha" ]; then
-            degrade_or_fail "could not resolve head commit of native-config-prebuild run $run_id" "0/8"
+          if [ ! -s "$selector" ]; then
+            degrade_or_fail "native-config prebuild selector is missing at $GITHUB_SHA and in the release checkout" "0/8"
           fi
-          if ! git merge-base --is-ancestor "$head_sha" HEAD 2>/dev/null; then
-            degrade_or_fail "native-config-prebuild run $run_id (commit $head_sha) is not an ancestor of the release commit" "0/8"
+          nc_err="${RUNNER_TEMP:-/tmp}/native-config-select.err"
+          if ! selection=$(node "$selector" 2>"$nc_err"); then
+            reason=$(tr '\n' ' ' < "$nc_err" | sed 's/  *$//')
+            degrade_or_fail "${reason:-could not select a native-config prebuild run}" "0/8"
+          fi
+          run_id="${selection%%$'\t'*}"
+          head_sha="${selection##*$'\t'}"
+          if [ -z "$run_id" ] || [ -z "$head_sha" ]; then
+            degrade_or_fail "native-config prebuild selector returned an unusable answer" "0/8"
           fi
 
           if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then

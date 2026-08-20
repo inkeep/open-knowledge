@@ -66,6 +66,18 @@ describe('alert content', () => {
     expect(recoveryCommand('v9.9.9')).toContain('client_payload[release_tag]=v9.9.9');
     expect(recoveryCommand('v9.9.9', 'acme/fork')).toContain('repos/acme/fork/dispatches');
   });
+
+  test('recovery points at the cause instead of promising a repair-free retry', () => {
+    // v0.58.10 and v0.58.11 were both refused by a deterministic preparation
+    // guard, and the page told the responder to re-fire a command that reads the
+    // same immutable tag and the same repo state — so it could only ever fail
+    // again. The command stays (transient blocks do clear on a re-fire); the
+    // promise around it must not say the re-fire is the whole recovery.
+    const body = buildSlackPayload(base).blocks[1].text.text;
+    expect(body).toContain('*Recovery');
+    expect(body).toContain('fix the cause');
+    expect(body).not.toContain('no manual repair needed');
+  });
 });
 
 describe('a passing smoke is never rendered as a smoke failure', () => {

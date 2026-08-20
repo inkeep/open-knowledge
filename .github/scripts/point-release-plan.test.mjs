@@ -171,48 +171,35 @@ describe('guardPatchOnly', () => {
 });
 
 describe('guardNativeConfigProvenance', () => {
-  test('passes when the prebuild head is contained in the synthetic commit', () => {
+  test('passes when the selector found a qualifying prebuild run', () => {
     const r = guardNativeConfigProvenance({
-      prebuildHeadSha: 'prebuild',
-      syntheticSha: 'synthetic',
-      isAncestor: membership('prebuild'),
+      selection: { headSha: 'prebuild', reason: '' },
     });
     expect(r).toMatchObject({ ok: true, code: null });
+    expect(r.message).toContain('prebuild');
   });
 
-  test('refuses when the prebuild head is not contained in the synthetic commit', () => {
+  test('refuses with the selector\'s own account of why nothing qualified', () => {
+    // The reason is passed through rather than restated so the preflight and the
+    // publish describe the same repo state in the same words.
     const r = guardNativeConfigProvenance({
-      prebuildHeadSha: 'prebuild',
-      syntheticSha: 'synthetic',
-      isAncestor: membership(),
+      selection: { headSha: '', reason: 'newest green run 42 @ abc123 does not' },
     });
     expect(r.ok).toBe(false);
     expect(r.code).toBe('native-config-drift');
-    expect(r.message).toContain('native-config');
+    expect(r.message).toContain('newest green run 42 @ abc123 does not');
+    expect(r.message).toContain('after tagging');
   });
 
-  test('refuses when no successful prebuild run exists to stage from', () => {
-    // An absent head sha must be diagnosed as "no run to stage from", not run
-    // through the ancestry check, where the real git boundary would raise an
-    // infra error on an empty rev rather than answer cleanly.
-    const r = guardNativeConfigProvenance({
-      prebuildHeadSha: '',
-      syntheticSha: 'synthetic',
-      isAncestor: membership('prebuild'),
-    });
+  test('still refuses readably when the selector supplied no reason', () => {
+    const r = guardNativeConfigProvenance({ selection: { headSha: '' } });
     expect(r.ok).toBe(false);
     expect(r.code).toBe('native-config-drift');
-    expect(r.message).toMatch(/No successful native-config-prebuild run/i);
+    expect(r.message).toMatch(/native-config-prebuild run/i);
   });
 
-  test('propagates an ancestry infra error instead of reading it as drift', () => {
-    expect(() =>
-      guardNativeConfigProvenance({
-        prebuildHeadSha: 'THROW',
-        syntheticSha: 'synthetic',
-        isAncestor: membership(),
-      }),
-    ).toThrow(/infra error/);
+  test('treats a missing selection as "nothing qualified", not as a pass', () => {
+    expect(guardNativeConfigProvenance({}).ok).toBe(false);
   });
 });
 
@@ -519,7 +506,7 @@ describe('guard codes', () => {
       guardTagFree({ tag: 'v0.32.1', tagExists: membership('v0.32.1') }),
       guardDeltaMatchesFix({ mode: 'revert', addedIds: ['x'], fixChangesetIds: [] }),
       guardPatchOnly({ bump: 'major' }),
-      guardNativeConfigProvenance({ prebuildHeadSha: 'p', syntheticSha: 's', isAncestor: membership() }),
+      guardNativeConfigProvenance({ selection: { headSha: '', reason: 'nothing qualified' } }),
       guardMainResetDeltaIds({ deltaIds: [] }),
     ];
     expect(refusals.every((r) => r.ok === false)).toBe(true);
@@ -542,7 +529,7 @@ function makeIo(overrides = {}) {
     changesets = { 'stable-sha': ['keep-a'], 'synthetic-sha': ['keep-a'] },
     bumpTypes = {},
     changesetContents = {},
-    prebuildHeadSha = 'prebuild-sha',
+    nativeConfigSelection = { headSha: 'prebuild-sha', reason: '' },
     ancestries = [['prebuild-sha', 'synthetic-sha']],
     cherryPick,
     revert,
@@ -628,7 +615,8 @@ function makeIo(overrides = {}) {
       pushTag: () => calls.pushTag++,
     },
     gh: {
-      newestNativeConfigPrebuildHeadSha: () => prebuildHeadSha,
+      selectNativeConfigPrebuild: () =>
+        typeof nativeConfigSelection === 'function' ? nativeConfigSelection() : nativeConfigSelection,
       createRelease: (r) => {
         calls.createRelease++;
         releases.push(r);
@@ -942,7 +930,11 @@ describe('runPointRelease refusals', () => {
       },
       { mode: 'cherry-pick', fixRefs: ['fix1'] },
     ],
-    ['native-config-drift', { ancestries: [] }, { mode: 'revert', fixRefs: ['bad1'] }],
+    [
+      'native-config-drift',
+      { nativeConfigSelection: { headSha: '', reason: 'newest green run 42 @ abc123 does not' } },
+      { mode: 'revert', fixRefs: ['bad1'] },
+    ],
   ];
 
   test.each(cases)('refuses with %s and mutates nothing, even in a real run', (code, ioOpts, runOpts) => {
@@ -963,6 +955,26 @@ describe('runPointRelease refusals', () => {
     expect(() => runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io)).toThrow();
     expect(io.checkedOut).toEqual([]);
     expect(io.applied).toEqual([]);
+  });
+
+  test('an unreadable prebuild listing surfaces as an infra error, not as drift', () => {
+    // Refusing with native-config-drift on an auth or rate-limit failure would
+    // send the operator to investigate a repo state that is fine, so the
+    // selector's throw has to reach the caller intact.
+    const io = makeIo({
+      nativeConfigSelection: () => {
+        throw new Error('gh run list for native-config-prebuild failed: rate limited');
+      },
+    });
+    let thrown;
+    try {
+      runPointRelease({ mode: 'revert', fixRefs: ['bad1'], dryRun: false }, io);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown?.message).toMatch(/rate limited/);
+    expect(thrown?.code).toBeUndefined();
+    expect(io.calls).toEqual({ tag: 0, pushTag: 0, createRelease: 0, dispatch: 0 });
   });
 
   test.each([

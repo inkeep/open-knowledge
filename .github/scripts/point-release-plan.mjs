@@ -27,6 +27,13 @@ import {
   realGit,
   runGit,
 } from '../../scripts/compute-stable-version.mjs';
+import {
+  describeNoSelection,
+  listPrebuildRuns,
+  makeIsAncestor,
+  makeTreeAt,
+  selectPrebuildRun,
+} from './select-native-config-prebuild.mjs';
 import { parseChangeset } from './write-back.mjs';
 
 function refuse(code, message) {
@@ -590,12 +597,14 @@ export function guardPatchOnly({ bump }) {
 /**
  * Would the npm publish survive its native-config provenance check?
  *
- * The publish workflow stages prebuilt native binaries from the newest
- * successful prebuild run on `main` and, on the stable path only, HARD-FAILS
- * when that run's head commit is not an ancestor of the commit being released.
- * The synthetic commit is built on the last stable, so it does not contain any
- * main commit that landed after it, and a native-config change on `main` since
- * the last stable puts the newest prebuild out of reach.
+ * The publish workflow stages prebuilt native binaries from the newest prebuild
+ * run on `main` that is BOTH contained in the commit being released and built
+ * from that commit's `packages/native-config` source, and on the stable path
+ * only it HARD-FAILS when there is no such run. The synthetic commit is built on
+ * the last stable, so a native-config change that landed on `main` since then
+ * puts the newest prebuild out of reach — but an older prebuild built from the
+ * source the synthetic commit actually carries is still a valid bundle, and the
+ * publish will find it.
  *
  * The reason to check it here is ordering, not novelty: that failure happens
  * after the tag and the GitHub Release already exist, leaving a version users
@@ -603,29 +612,27 @@ export function guardPatchOnly({ bump }) {
  * supposed to be repairing. Checking the same condition before anything is
  * created turns it into a clean refusal.
  *
- * An absent head sha refuses for the same reason. No successful prebuild run
- * means the publish has nothing to stage and hard-fails one branch earlier in
- * the same step.
+ * `selection` comes from the same selector the publish path runs, so the
+ * prediction and the publish cannot drift apart: an empty `headSha` is exactly
+ * the state that would refuse the cut, and its `reason` is the selector's own
+ * account of why nothing qualified.
  */
-export function guardNativeConfigProvenance({ prebuildHeadSha, syntheticSha, isAncestor }) {
-  const head = String(prebuildHeadSha ?? '').trim();
+export function guardNativeConfigProvenance({ selection }) {
+  const head = String(selection?.headSha ?? '').trim();
   if (head === '') {
+    const reason =
+      String(selection?.reason ?? '').trim() ||
+      'No qualifying native-config-prebuild run found on main';
     return refuse(
       'native-config-drift',
-      'No successful native-config-prebuild run found on main. The stable publish stages its native ' +
-        'binaries from that run and refuses without them, so this release would fail after tagging.',
-    );
-  }
-  if (!isAncestor(head, syntheticSha)) {
-    return refuse(
-      'native-config-drift',
-      `The newest native-config-prebuild commit (${head}) is not contained in the synthetic commit, so ` +
-        'packages/native-config changed on main after the last stable. The stable publish would refuse ' +
-        'to stage those binaries and fail after the tag exists. Promote through the normal stable path ' +
+      `${reason}. The stable publish stages its native binaries from that run and refuses without ` +
+        'them, so this release would fail after tagging. Promote through the normal stable path ' +
         'instead, so the release contains the native-config change its binaries were built from.',
     );
   }
-  return pass(`native-config prebuild ${head} is contained in the synthetic commit.`);
+  return pass(
+    `native-config prebuild ${head} carries the synthetic commit's packages/native-config source.`,
+  );
 }
 
 /**
@@ -695,7 +702,7 @@ function checkGuard(trail, verdict) {
  *          continueApply / headSha                               (local only)
  *   io.fs.readWorktreeFile / writeWorktreeFile                    (local only)
  *   io.git.tag / pushTag                                         (REMOTE)
- *   io.gh.newestNativeConfigPrebuildHeadSha                      (read-only)
+ *   io.gh.selectNativeConfigPrebuild                             (read-only)
  *   io.gh.createRelease / dispatch                               (REMOTE)
  *
  * The four REMOTE members are the ones a dry run must never reach. Building the
@@ -785,9 +792,7 @@ export function runPointRelease(opts, io) {
   checkGuard(
     guards,
     guardNativeConfigProvenance({
-      prebuildHeadSha: io.gh.newestNativeConfigPrebuildHeadSha(),
-      syntheticSha,
-      isAncestor: io.git.isAncestor,
+      selection: io.gh.selectNativeConfigPrebuild(syntheticSha),
     }),
   );
 
@@ -1168,39 +1173,24 @@ function realIo() {
       pushTag: (tag) => void runGit(['push', 'origin', tag]),
     },
     gh: {
-      newestNativeConfigPrebuildHeadSha: () => {
-        // Same filters the publish path uses to pick the run it stages
-        // binaries from. `--event push` is load-bearing: the prebuild workflow
-        // also runs on pull_request, including external PRs against the public
-        // mirror, so without it the newest green run can be unmerged source.
-        const res = spawnSync(
-          'gh',
-          [
-            'run',
-            'list',
-            '--workflow=native-config-prebuild.yml',
-            '--branch',
-            'main',
-            '--event',
-            'push',
-            '--status',
-            'success',
-            '--limit',
-            '1',
-            '--json',
-            'headSha',
-            '--jq',
-            '.[0].headSha // empty',
-          ],
-          { encoding: 'utf8' },
-        );
-        // An unreadable answer is not an empty answer. Returning '' on an auth
-        // or rate-limit failure would refuse the release naming native-config
-        // drift, sending the operator to investigate a repo state that is fine.
-        if (res.status !== 0) {
-          throw new Error(`gh run list for native-config-prebuild failed: ${String(res.stderr || '').trim()}`);
-        }
-        return String(res.stdout || '').trim();
+      // The publish path's own selector, run against the synthetic commit.
+      // Sharing it is the point: this preflight exists only to predict what the
+      // publish will decide, so re-deriving the rule here is how the two drift
+      // apart and the refusal starts describing a repo state that is fine.
+      selectNativeConfigPrebuild: (syntheticSha) => {
+        // listPrebuildRuns throws on a non-zero `gh`: an unreadable answer is
+        // not an empty answer, and returning '' on an auth or rate-limit
+        // failure would refuse the release naming native-config drift.
+        const candidates = listPrebuildRuns();
+        const selection = selectPrebuildRun({
+          candidates,
+          isAncestor: makeIsAncestor(),
+          treeAt: makeTreeAt(),
+          releaseRef: syntheticSha,
+        });
+        return selection
+          ? { headSha: selection.headSha, reason: '' }
+          : { headSha: '', reason: describeNoSelection(candidates) };
       },
       createRelease: ({ tag, targetSha, title, draft, notes }) => {
         const args = ['release', 'create', tag, '--target', targetSha, '--title', title, '--notes', notes];

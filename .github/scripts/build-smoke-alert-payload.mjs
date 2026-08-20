@@ -107,7 +107,16 @@ export function describeBlock({ verdict, blockedBy = '' } = {}) {
   return { subject: `DMG smoke ${short}`, detail, smokePassed: false };
 }
 
-/** Re-firing the two dispatch events is the whole recovery; nothing needs repair by hand. */
+/**
+ * The command that re-fires the cascade once the cause is fixed.
+ *
+ * It is NOT a repair. The re-run reads the same immutable tag and the same repo
+ * state, so a DETERMINISTIC block fails again, identically: v0.58.10 and
+ * v0.58.11 were both refused by the native-config staging guard, and the page
+ * told the responder to re-fire a command that could never have succeeded.
+ * Transient blocks do clear on a re-fire, so the command stays — what changed is
+ * the promise around it, which now points at the cause first.
+ */
 export function recoveryCommand(tag, repo = DEFAULT_REPO) {
   return [
     `gh api -X POST repos/${repo}/dispatches -f event_type=desktop-release`,
@@ -137,7 +146,7 @@ function bodyLines({ tag, verdict, reason, runUrl, repo, blockedBy }) {
         : `*Why:* ${other} failed (${reason}).`
       : `*Why:* ${reason}`,
     '*State:* the GitHub Release is still a DRAFT and npm `latest` has NOT moved.',
-    `*Recovery (re-fire the cascade; no manual repair needed):*\n\`${recoveryCommand(tag, repo)}\``,
+    `*Recovery (fix the cause above first — re-firing alone repairs nothing):*\n\`${recoveryCommand(tag, repo)}\``,
     `*Run:* ${runUrl}`,
   ];
 }
