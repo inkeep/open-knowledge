@@ -1,0 +1,7 @@
+---
+'@inkeep/open-knowledge': patch
+---
+
+OKF frontmatter problems now appear on the WYSIWYG affordances. The Add-properties badge counts them and stages a pre-named row for a missing required property (`type` included), the add-property field picker offers the OKF profile's declared fields with their required hints and descriptions, and the property panel's invalid count includes OKF shape violations, all respecting per-rule toggles and the profile's doc scoping, and working with OKF enabled on its own. On a document with no frontmatter region, an OKF frontmatter violation no longer paints a squiggle on the first body block, and clicking its Problems-panel row no longer scrolls to that block. The property panel owns the error, exactly as it already did for the built-in frontmatter plugin. OKF body rules are untouched: they keep their block decorations and row navigation.
+
+The add-property field picker also stops offering fields no widget can author conformantly. This applies to every governing schema, user-authored ones included, not just the OKF profile: a field whose only constraint is `anyOf` / `oneOf` / `allOf` / `not`, or an array whose items are objects, is withdrawn, because committing the row the picker suggested would immediately be faulted by the schema that suggested it. A field a schema REQUIRES stays offered whatever its shape, since the missing-property diagnostic stages a row for it either way, and it keeps its schema description.

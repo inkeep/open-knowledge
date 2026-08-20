@@ -124,10 +124,14 @@ export {
 } from './okf-rule-meta.ts';
 export {
   DEFAULT_LINTER_CONFIG,
+  type GoverningFrontmatterSchema,
   LINT_PLUGINS,
   type LinterConfig,
   type LintPlugin,
   type LintPluginId,
+  selectAdvertisedFrontmatterMappings,
+  selectFrontmatterOnlyConfig,
+  selectGoverningFrontmatterSchemas,
 } from './plugins.ts';
 export { canonicalRuleId, findRuleConfigEntry } from './rule-aliases.ts';
 export { MARKDOWNLINT_RULE_CATALOG } from './rule-catalog.generated.ts';
@@ -139,6 +143,7 @@ export {
 export { applyTextEdits } from './text-edits.ts';
 export type {
   FrontmatterSchemaMapping,
+  FrontmatterScope,
   FrontmatterSlice,
   LinksValidationSetting,
   LintDiagnostic,
@@ -163,7 +168,11 @@ export type {
   ValidationDiagnostic,
   ValidationSource,
 } from './types.ts';
-export { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from './types.ts';
+export {
+  DEFAULT_LINKS_VALIDATION,
+  isFrontmatterScoped,
+  LINKS_VALIDATION_SETTINGS,
+} from './types.ts';
 export {
   countDiagnosticsBySource,
   type ValidationCountsBySource,

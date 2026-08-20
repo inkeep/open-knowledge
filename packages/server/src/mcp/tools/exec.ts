@@ -21,7 +21,11 @@
  */
 import { stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
-import { okfAdvertisedSchemaMappings } from '@inkeep/open-knowledge-core';
+import {
+  type PersistedLinterConfig,
+  selectAdvertisedFrontmatterMappings,
+  toEffectiveBase,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import { argsOf, extractReferencedPaths, nonFlagArgs } from '../../bash/extract-paths.ts';
 import { createBashInstance, execBash, StdoutOverflowError } from '../../bash/index.ts';
@@ -578,17 +582,16 @@ export async function buildExecResult(
   // Read-time schema advertisement: enrichment resolves which schemas govern each
   // listed doc/folder server-side (the agent never evaluates an appliesTo glob).
   //
-  // Two sources, one list. The frontmatter plugin contributes the project's authored
-  // mappings; the OKF plugin contributes its built-in profile, advertised by the
-  // `.ok/okf/` path each schema is materialized to so an agent can open the contract.
-  // They are concatenated rather than resolved separately so there is a single
-  // selection path — a doc governed by both sees both, in plugin-registry order.
-  const frontmatterSlice = config.contentRules.frontmatter;
-  const okfSlice = config.contentRules.okf;
-  const advertisedSchemas = [
-    ...(frontmatterSlice.enabled ? frontmatterSlice.schemas : []),
-    ...(okfSlice.enabled ? okfAdvertisedSchemaMappings(okfSlice.rules) : []),
-  ];
+  // Every enabled frontmatter-producing plugin contributes, in registry order, so a
+  // doc governed by two sees both through one selection path. Which plugins those
+  // are is the registry's answer, not a list here — the frontmatter plugin's
+  // authored mappings and the OKF profile's `.ok/okf/` paths arrive the same way.
+  //
+  // Persisted shape lifted to the effective one the registry reads; `enabled` is
+  // not persisted yet, so the master switch it seeds is on.
+  const advertisedSchemas = selectAdvertisedFrontmatterMappings(
+    toEffectiveBase(config.contentRules as PersistedLinterConfig),
+  );
   const enrichSchemaDeps =
     advertisedSchemas.length > 0
       ? {

@@ -5,6 +5,7 @@ import { DEFAULT_MARKDOWNLINT_CONFIG } from './default-config.ts';
 import type { OkfRuleId } from './okf-rule-meta.ts';
 import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { FrontmatterSchemaMapping, MarkdownlintRuleSetting } from './types.ts';
+import { FRONTMATTER_SCOPES } from './types.ts';
 
 interface PersistedMarkdownlintSlice {
   enabled: boolean;
@@ -158,7 +159,7 @@ const LintDiagnosticSchema = z.object({
   code: z.string(),
   message: z.string(),
   fixes: z.array(z.object({ range: LintRangeSchema, newText: z.string() })).optional(),
-  frontmatterScope: z.enum(['missing', 'invalid']).optional(),
+  frontmatterScope: z.enum(FRONTMATTER_SCOPES).optional(),
   frontmatterProperty: z.string().optional(),
 });
 

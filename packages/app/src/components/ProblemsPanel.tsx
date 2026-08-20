@@ -1,6 +1,10 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: matches sibling OutlinePanel — positional list of <button> rows awaiting a shared shadcn list primitive; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
-import type { ValidationAuditResponse, ValidationDocResult } from '@inkeep/open-knowledge-core';
+import type {
+  FrontmatterScope,
+  ValidationAuditResponse,
+  ValidationDocResult,
+} from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertCircle,
@@ -66,13 +70,21 @@ export interface LintNavDetail {
   /** 1-based column. */
   column: number;
   /**
-   * Producing plugin id. WYSIWYG needs it to decline navigation for
-   * diagnostics that have no body anchor: a `frontmatter` violation reports on
-   * the region's opening fence, which on a doc with no frontmatter is line 1 —
-   * following it would select the first body block, which is not the problem.
-   * Source mode anchors by line and consumes every source alike.
+   * Producing plugin id — the diagnostic's identity, carried for consumers
+   * that group or label by producer. Source mode anchors by line and consumes
+   * every source alike.
    */
   source?: string;
+  /**
+   * The diagnostic's frontmatter scope, when it has one. WYSIWYG declines
+   * navigation on it: a frontmatter violation has no body anchor — it reports
+   * on the region's opening fence, which on a doc with no frontmatter is
+   * line 1, so following it would select the first body block, which is not
+   * the problem. Scope, not `source`, is the discriminator: a plugin that
+   * validates frontmatter also emits body findings, which carry no scope and
+   * must still navigate.
+   */
+  frontmatterScope?: FrontmatterScope;
 }
 
 export const LINT_NAV_EVENT = 'open-knowledge:lint-nav';
@@ -99,6 +111,9 @@ function lintNavDetailOf(docName: string, diagnostic: DiagnosticLike): LintNavDe
     line: diagnostic.range.start.line + 1,
     column: diagnostic.range.start.character + 1,
     source: diagnostic.source,
+    ...(diagnostic.frontmatterScope === undefined
+      ? {}
+      : { frontmatterScope: diagnostic.frontmatterScope }),
   };
 }
 

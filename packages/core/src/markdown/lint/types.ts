@@ -21,6 +21,9 @@ export interface LintTextEdit {
   newText: string;
 }
 
+export const FRONTMATTER_SCOPES = ['missing', 'invalid'] as const;
+export type FrontmatterScope = (typeof FRONTMATTER_SCOPES)[number];
+
 export interface LintDiagnostic {
   range: LintRange;
   severity: LintSeverity;
@@ -28,8 +31,12 @@ export interface LintDiagnostic {
   code: string;
   message: string;
   fixes?: LintTextEdit[];
-  frontmatterScope?: 'missing' | 'invalid';
+  frontmatterScope?: FrontmatterScope;
   frontmatterProperty?: string;
+}
+
+export function isFrontmatterScoped(diagnostic: Pick<LintDiagnostic, 'frontmatterScope'>): boolean {
+  return diagnostic.frontmatterScope !== undefined;
 }
 
 const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;

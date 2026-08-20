@@ -127,11 +127,14 @@ describe('mapDiagnosticsToBlocks', () => {
     expect(byBlock.size).toBe(0);
   });
 
+  // Mirrors the validator's real output shape: it stamps `frontmatterScope` on
+  // every diagnostic it emits, and that scope is what marks one anchorless.
   const fmDiag = (line: number, over: Partial<LintDiagnostic> = {}): LintDiagnostic =>
     diag(line, {
       source: 'frontmatter',
       code: 'required',
       message: 'Frontmatter property "status" is required',
+      frontmatterScope: 'missing',
       ...over,
     });
 
@@ -146,22 +149,26 @@ describe('mapDiagnosticsToBlocks', () => {
   });
 
   test('skips a frontmatter violation anchored to a key line inside the region', () => {
-    const byBlock = mapDiagnosticsToBlocks(fmSource, [fmDiag(2, { code: 'enum' })], md);
+    const byBlock = mapDiagnosticsToBlocks(
+      fmSource,
+      [fmDiag(2, { code: 'enum', frontmatterScope: 'invalid' })],
+      md,
+    );
     expect(byBlock.size).toBe(0);
   });
 
   test('skips a frontmatter violation anchored PAST the frontmatter region', () => {
     // The one case that separates the two guards: `fmSource` has a 3-line
     // region, so line 4 is body. The line-range guard would let this through;
-    // only the producing-plugin check catches it. Without this, narrowing
+    // only the scope-metadata check catches it. Without this, narrowing
     // `isFrontmatterAnchorless` back to a line check passes the whole suite.
     const byBlock = mapDiagnosticsToBlocks(fmSource, [fmDiag(4)], md);
     expect(byBlock.size).toBe(0);
   });
 
   test('still marks a markdownlint violation on body line 1 of a doc with no frontmatter', () => {
-    // The frontmatter skip is by producing plugin, not by position — a
-    // body-anchored rule on the same line must keep its decoration.
+    // The frontmatter skip is by scope metadata, not by position — a
+    // scope-less body rule on the same line must keep its decoration.
     const byBlock = mapDiagnosticsToBlocks(body, [diag(1)], md);
     expect(byBlock.has(0)).toBe(true);
   });
@@ -311,8 +318,11 @@ describe('Problems-row navigation — scroll suppression', () => {
     return mounted;
   }
 
-  function clickProblemsRow(line: number, source?: string): void {
-    const detail: LintNavDetail = { docName: DOC, line, column: 1, source };
+  function clickProblemsRow(
+    line: number,
+    over: Pick<LintNavDetail, 'source' | 'frontmatterScope'> = {},
+  ): void {
+    const detail: LintNavDetail = { docName: DOC, line, column: 1, ...over };
     window.dispatchEvent(new CustomEvent<LintNavDetail>(LINT_NAV_EVENT, { detail }));
   }
 
@@ -363,7 +373,22 @@ describe('Problems-row navigation — scroll suppression', () => {
     // block that has nothing wrong with it; the property panel owns that error.
     const before = editor?.state.selection.from;
 
-    clickProblemsRow(1, 'frontmatter');
+    // The detail the panel derives from a real frontmatter violation carries
+    // the scope the validator stamped.
+    clickProblemsRow(1, { source: 'frontmatter', frontmatterScope: 'missing' });
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(editor?.state.selection.from).toBe(before);
+  });
+
+  test('declines an invalid-frontmatter row on the same scope-not-producer basis', () => {
+    // 'invalid' is the other scope the validator stamps. The decline keys on
+    // the scope being present at all, not on which scope it is — narrowing it
+    // to 'missing' would send this row to whatever body block line 1 resolves
+    // to on a doc that has no frontmatter region.
+    const before = editor?.state.selection.from;
+
+    clickProblemsRow(1, { source: 'frontmatter', frontmatterScope: 'invalid' });
 
     expect(scrollIntoView).not.toHaveBeenCalled();
     expect(editor?.state.selection.from).toBe(before);

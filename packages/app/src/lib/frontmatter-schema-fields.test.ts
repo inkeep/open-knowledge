@@ -105,6 +105,87 @@ describe('schemaFieldsForDoc', () => {
     expect(fields.get('odd')?.type).toBe('text');
   });
 
+  test('an array of non-scalars is not offered at all', () => {
+    // The list widget writes a flat array of scalars, so a row committed for
+    // this field is faulted by the same schema that suggested it.
+    const fields = fieldsFor({
+      type: 'object',
+      properties: {
+        entries: { type: 'array', items: { type: 'object', required: ['resource'] } },
+        nested: { type: 'array', items: { type: 'array' } },
+      },
+    });
+    expect(fields.has('entries')).toBe(false);
+    expect(fields.has('nested')).toBe(false);
+  });
+
+  test('an array that leaves its items open is still offered', () => {
+    // Nothing was stated about the items, so a scalar list violates nothing.
+    expect(
+      fieldsFor({ type: 'object', properties: { any: { type: 'array' } } }).get('any')?.type,
+    ).toBe('list');
+  });
+
+  test('a property constrained only by a composition keyword is not offered', () => {
+    // No top-level type, so it would fall to the free-text widget, which cannot
+    // express either accepted shape.
+    const fields = fieldsFor({
+      type: 'object',
+      properties: {
+        either: { anyOf: [{ type: 'object' }, { type: 'array' }] },
+        exactly: { oneOf: [{ type: 'object' }] },
+        both: { allOf: [{ type: 'object' }] },
+        neither: { not: { type: 'string' } },
+      },
+    });
+    for (const name of ['either', 'exactly', 'both', 'neither']) {
+      expect(fields.has(name)).toBe(false);
+    }
+  });
+
+  test('an enum with no declared type is still offered', () => {
+    // The vocabulary layer offers its values and free text accepts them, so
+    // there is nothing here a committed row can violate.
+    const fields = fieldsFor({
+      type: 'object',
+      properties: { state: { enum: ['draft', 'stable'] } },
+    });
+    expect(fields.get('state')?.type).toBe('text');
+  });
+
+  test('a required field with no authorable widget stays offered', () => {
+    // The missing-property diagnostic stages a row for it regardless, so
+    // withdrawing it from the picker would hide the name and change nothing.
+    const fields = fieldsFor({
+      type: 'object',
+      required: ['entries'],
+      properties: { entries: { type: 'array', items: { type: 'object' } } },
+    });
+    expect(fields.get('entries')).toEqual({ type: 'text', required: true });
+  });
+
+  test('a required field with no authorable widget keeps its description', () => {
+    // It is offered either way, and it is the field the user has least choice
+    // about, so the schema's own hint is the one thing that must survive the
+    // widget being withheld.
+    const fields = fieldsFor({
+      type: 'object',
+      required: ['entries'],
+      properties: {
+        entries: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'One record per upstream source',
+        },
+      },
+    });
+    expect(fields.get('entries')).toEqual({
+      type: 'text',
+      required: true,
+      description: 'One record per upstream source',
+    });
+  });
+
   test('required and description ride along', () => {
     const fields = fieldsFor(DOC_SCHEMA);
     expect(fields.get('status')).toEqual({

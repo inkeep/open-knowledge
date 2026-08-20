@@ -33,6 +33,7 @@
 import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
 import {
   sharedExtensions as coreExtensions,
+  isFrontmatterScoped,
   type LintDiagnostic,
   type LinterConfig,
   type LintTextEdit,
@@ -73,17 +74,20 @@ const RECOMPUTE_DEBOUNCE_MS = 400;
  * no body anchor are skipped — they stay visible in the Problems panel.
  *
  * Two kinds have no anchor. Anything reported INSIDE the frontmatter region
- * belongs to the property panel, not the body. And every `frontmatter`-source
- * diagnostic is anchorless regardless of where its line lands: the validator
- * anchors a missing-`required` violation to the region's opening fence, which
- * on a doc with NO frontmatter at all is line 1 — the first line of body text.
- * Line-based skipping alone therefore paints a squiggle on the one construct
- * that is definitionally not the problem (there is nothing there to be wrong),
- * on the docs where the error matters most. `isFrontmatterAnchorless` keys off
- * the producing plugin instead, which holds for both cases.
+ * belongs to the property panel, not the body. And every diagnostic produced
+ * by the frontmatter validator is anchorless regardless of where its line
+ * lands: the validator anchors a missing-`required` violation to the region's
+ * opening fence, which on a doc with NO frontmatter at all is line 1 — the
+ * first line of body text. Line-based skipping alone therefore paints a
+ * squiggle on the one construct that is definitionally not the problem (there
+ * is nothing there to be wrong), on the docs where the error matters most.
+ * `isFrontmatterAnchorless` keys off the scope metadata the validator stamps
+ * instead — which identifies its diagnostics plugin-agnostically (more than
+ * one plugin validates frontmatter, and those plugins' body rules must keep
+ * their anchors) — and holds for both cases.
  */
 function isFrontmatterAnchorless(diagnostic: LintDiagnostic): boolean {
-  return diagnostic.source === 'frontmatter';
+  return isFrontmatterScoped(diagnostic);
 }
 
 export function mapDiagnosticsToBlocks(
@@ -587,10 +591,11 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             if (!view.dom.isConnected || view.dom.offsetParent === null) return false;
             // Frontmatter diagnostics have no WYSIWYG anchor (property panel
             // owns that region) — leave the banked source-mode intent alive.
-            // Checked by producing plugin, not by line, for the same reason the
+            // Checked by scope metadata, not by line, for the same reason the
             // decoration mapping does: on a doc with no frontmatter the
-            // violation's line points into the body.
-            if (detail.source === 'frontmatter') return false;
+            // violation's line points into the body. And not by producing
+            // plugin: the same plugins emit body findings that must navigate.
+            if (isFrontmatterScoped(detail)) return false;
             const source = getSource?.() ?? md.serialize(view.state.doc.toJSON());
             const { spans, fmLineCount } = computeSourceBlockSpans(source, md);
             if (spans.length !== comparableChildCount(view.state.doc)) return false;

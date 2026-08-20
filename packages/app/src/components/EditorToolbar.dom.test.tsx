@@ -217,4 +217,25 @@ describe('EditorToolbar runtime layout', () => {
 
     expect((await screen.findByTestId('add-properties-problem-badge')).textContent).toBe('2');
   });
+
+  test('two schemas requiring one property badge once and list it once', async () => {
+    // Composed the way EditorArea feeds this prop, because that is where the
+    // per-property collapse happens — two producers each requiring `type` (an
+    // OKF profile beside a project's own schema) is one row to add, and the
+    // tooltip promises exactly what the click will stage.
+    const { partitionFrontmatterProblems } = await import('@/editor/useFrontmatterDiagnostics');
+    const user = userEvent.setup();
+    const bothRequireType = [
+      { ...missing('type'), source: 'okf' as const, code: 'frontmatter-required' },
+      missing('type'),
+    ];
+    await renderToolbar('docs/Page.md', partitionFrontmatterProblems(bothRequireType).missing);
+
+    expect((await screen.findByTestId('add-properties-problem-badge')).textContent).toBe('1');
+
+    await user.hover(screen.getByTestId('add-properties-button'));
+    const tooltip = await screen.findByRole('tooltip');
+    const rows = tooltip.textContent?.split('Frontmatter property "type" is required').length;
+    expect(rows).toBe(2);
+  });
 });

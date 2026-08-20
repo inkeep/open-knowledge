@@ -353,22 +353,21 @@ export function PropertyPanel({ provider, reservedKeys, identitySlot }: Property
    * reaches the file once the user supplies a value and commits it, so an
    * empty placeholder can never land in the doc and quietly satisfy the
    * `required` check that produced the row.
+   *
+   * One row per property comes from `partitionFrontmatterProblems`, which is
+   * also what the toolbar counts — a second dedupe here would let the two
+   * drift.
    */
   function stageMissingDrafts(): StagedDraft[] {
     const staged: StagedDraft[] = [];
-    const seen = new Set<string>();
     for (const diagnostic of missingProperties) {
       const name = diagnostic.frontmatterProperty;
       if (name === undefined || name === '') continue;
-      // Two schemas can each require the same property, and the diagnostics
-      // are per schema.
-      if (seen.has(name)) continue;
       // The doc may have gained the property since the count was rendered.
       if (Object.hasOwn(map, name)) continue;
       // A reserved key is not this panel's to add — a skill's `name` is its
       // folder identity, renamed by moving the folder, not patched.
       if (reserved.has(name)) continue;
-      seen.add(name);
       const id = `staged-${name}`;
       // Re-requesting an add while a row for this property is already open
       // keeps that row — rebuilding it would throw away a value the user had

@@ -1,6 +1,11 @@
 import { compileAppliesTo } from '../applies-to.ts';
 import { validateFrontmatterSource } from '../frontmatter-validate.ts';
-import { isOkfRuleEnabled, type OkfRuleId, type OkfRuleToggles } from '../okf-rule-meta.ts';
+import {
+  isOkfRuleEnabled,
+  OKF_RULE_IDS,
+  type OkfRuleId,
+  type OkfRuleToggles,
+} from '../okf-rule-meta.ts';
 import type { FrontmatterSchemaMapping, LintDiagnostic } from '../types.ts';
 import { okfSchemaPathFor } from './paths.ts';
 import {
@@ -56,6 +61,12 @@ export const OKF_FRONTMATTER_REGISTRY: readonly OkfFrontmatterEntry[] = [
     schema: OKF_ROOT_INDEX_SCHEMA,
   },
 ];
+
+export const OKF_FRONTMATTER_ONLY_TOGGLES: Partial<Record<OkfRuleId, boolean>> = Object.fromEntries(
+  OKF_RULE_IDS.filter((id) => !OKF_FRONTMATTER_REGISTRY.some((entry) => entry.id === id)).map(
+    (id) => [id, false] as const,
+  ),
+);
 
 export function selectOkfFrontmatterSchemas(
   rules: OkfRuleToggles,

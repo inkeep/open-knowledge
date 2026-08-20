@@ -5,10 +5,16 @@ import {
   validateFrontmatterSource,
 } from './frontmatter-validate.ts';
 import { fixMarkdownText, runMarkdownlint } from './markdownlint-runner.ts';
-import { runOkfFrontmatterRules } from './okf-frontmatter/registry.ts';
+import {
+  OKF_FRONTMATTER_ONLY_TOGGLES,
+  okfAdvertisedSchemaMappings,
+  runOkfFrontmatterRules,
+  selectOkfFrontmatterSchemas,
+} from './okf-frontmatter/registry.ts';
 import { selectEnabledOkfRules } from './okf-rules.ts';
 import { runOkfRules } from './okf-runner.ts';
 import {
+  type FrontmatterSchemaMapping,
   type FrontmatterSlice,
   type LintDiagnostic,
   type LintPluginId,
@@ -23,12 +29,21 @@ const MarkdownlintRuleSettingSchema = z.union([
   z.record(z.string(), z.unknown()),
 ]);
 
-export interface LintPlugin<Id extends LintPluginId, Slice> {
+export interface GoverningFrontmatterSchema {
+  schema: Record<string, unknown>;
+}
+
+export interface LintPlugin<Id extends LintPluginId, Slice extends { enabled: boolean }> {
   id: Id;
   sliceSchema: z.ZodType<Slice>;
   defaultSlice: Slice;
   lint(text: string, slice: Slice, ctx: { docName?: string }): Promise<LintDiagnostic[]>;
   fix?(text: string, slice: Slice): string;
+  frontmatter?: {
+    schemasForDoc(slice: Slice, docName: string): readonly GoverningFrontmatterSchema[];
+    narrowSliceToFrontmatter(slice: Slice): Slice;
+    advertisedMappings(slice: Slice): readonly FrontmatterSchemaMapping[];
+  };
 }
 
 const markdownlintPlugin: LintPlugin<'markdownlint', MarkdownlintSlice> = {
@@ -67,6 +82,11 @@ const frontmatterPlugin: LintPlugin<'frontmatter', FrontmatterSlice> = {
       selectApplicableFrontmatterSchemas(slice.schemas, ctx.docName),
     );
   },
+  frontmatter: {
+    schemasForDoc: (slice, docName) => selectApplicableFrontmatterSchemas(slice.schemas, docName),
+    narrowSliceToFrontmatter: (slice) => slice,
+    advertisedMappings: (slice) => slice.schemas,
+  },
 };
 
 const okfPlugin: LintPlugin<'okf', OkfSlice> = {
@@ -82,6 +102,14 @@ const okfPlugin: LintPlugin<'okf', OkfSlice> = {
       ...runOkfRules(text, selectEnabledOkfRules(slice.rules), ctx.docName),
       ...runOkfFrontmatterRules(text, slice.rules, ctx.docName),
     ];
+  },
+  frontmatter: {
+    schemasForDoc: (slice, docName) => selectOkfFrontmatterSchemas(slice.rules, docName),
+    narrowSliceToFrontmatter: (slice) => ({
+      ...slice,
+      rules: { ...slice.rules, ...OKF_FRONTMATTER_ONLY_TOGGLES },
+    }),
+    advertisedMappings: (slice) => okfAdvertisedSchemaMappings(slice.rules),
   },
 };
 
@@ -106,3 +134,43 @@ export const DEFAULT_LINTER_CONFIG: LinterConfig = {
     LINT_PLUGINS.map((plugin) => [plugin.id, plugin.defaultSlice]),
   ) as LinterConfig['plugins'],
 };
+
+export function selectGoverningFrontmatterSchemas(
+  config: LinterConfig | null,
+  docName: string | undefined,
+): GoverningFrontmatterSchema[] {
+  if (!config?.enabled || docName === undefined || docName === '') return [];
+  const governing: GoverningFrontmatterSchema[] = [];
+  for (const plugin of LINT_PLUGINS) {
+    if (plugin.frontmatter === undefined) continue;
+    const slice = config.plugins[plugin.id];
+    if (slice?.enabled !== true) continue;
+    governing.push(...plugin.frontmatter.schemasForDoc(slice as never, docName));
+  }
+  return governing;
+}
+
+export function selectAdvertisedFrontmatterMappings(
+  config: LinterConfig | null,
+): FrontmatterSchemaMapping[] {
+  if (!config?.enabled) return [];
+  const advertised: FrontmatterSchemaMapping[] = [];
+  for (const plugin of LINT_PLUGINS) {
+    if (plugin.frontmatter === undefined) continue;
+    const slice = config.plugins[plugin.id];
+    if (slice?.enabled !== true) continue;
+    advertised.push(...plugin.frontmatter.advertisedMappings(slice as never));
+  }
+  return advertised;
+}
+
+export function selectFrontmatterOnlyConfig(config: LinterConfig): LinterConfig {
+  const plugins = Object.fromEntries(
+    LINT_PLUGINS.map((plugin) => {
+      const slice = config.plugins[plugin.id] ?? plugin.defaultSlice;
+      if (plugin.frontmatter === undefined) return [plugin.id, { ...slice, enabled: false }];
+      return [plugin.id, plugin.frontmatter.narrowSliceToFrontmatter(slice as never)];
+    }),
+  ) as LinterConfig['plugins'];
+  return { ...config, plugins };
+}

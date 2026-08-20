@@ -10,7 +10,12 @@ import {
   unwrapFrontmatterFences,
 } from '../../extensions/frontmatter.ts';
 import { compileAppliesTo } from './applies-to.ts';
-import type { LintDiagnostic, LintPluginId, ResolvedFrontmatterSchemaEntry } from './types.ts';
+import type {
+  FrontmatterScope,
+  LintDiagnostic,
+  LintPluginId,
+  ResolvedFrontmatterSchemaEntry,
+} from './types.ts';
 
 export interface LoadedFrontmatterSchema {
   file: string;
@@ -243,7 +248,7 @@ export function validateFrontmatterSource(
       if (keyword === 'if') continue;
       let line = 0;
       let message: string;
-      let frontmatterScope: 'missing' | 'invalid' = 'invalid';
+      let frontmatterScope: FrontmatterScope = 'invalid';
       let frontmatterProperty: string | undefined;
       if (keyword === 'maxProperties' && error.instancePath === '') {
         message = 'This document must not have frontmatter';

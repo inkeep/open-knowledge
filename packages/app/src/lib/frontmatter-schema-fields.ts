@@ -2,8 +2,9 @@
  * Derive the catalogue of fields the schemas governing a doc DECLARE — the
  * layer above `frontmatter-enum-constraints`, which derives the allowed VALUES
  * of a field already known. Both read the RESOLVED lint config through
- * `selectApplicableFrontmatterSchemas`, so neither can disagree with the linter
- * about which schemas govern a doc.
+ * `selectGoverningFrontmatterSchemas`, so neither can disagree with the linter
+ * about which schemas govern a doc — every frontmatter-capable plugin's
+ * schemas participate, per-plugin enablement and per-rule toggles applied.
  *
  * Two consumers, both on the add-property path: the field picker offers these
  * names so a user does not have to open the schema to learn them, and a row
@@ -26,7 +27,7 @@
 import {
   type FrontmatterType,
   type LinterConfig,
-  selectApplicableFrontmatterSchemas,
+  selectGoverningFrontmatterSchemas,
 } from '@inkeep/open-knowledge-core';
 
 export interface SchemaField {
@@ -90,17 +91,46 @@ function widgetTypeFor(property: Record<string, unknown>): FrontmatterType | nul
   }
 }
 
+/** Item types the `list` widget can write — it produces a flat array of scalars. */
+const AUTHORABLE_LIST_ITEM_TYPES = new Set(['string', 'number', 'integer', 'boolean']);
+
+/** Keywords that constrain a value without naming a type the panel can key a widget off. */
+const TYPELESS_CONSTRAINT_KEYWORDS = ['anyOf', 'oneOf', 'allOf', 'not'];
+
+/**
+ * Whether some widget can author a value this property's schema will accept.
+ *
+ * Offering a field the panel cannot author is worse than not offering it: the
+ * picker names the field, the row commits, and the schema that suggested it
+ * immediately warns on what was just written. Two shapes fail that way — an
+ * array of non-scalars (the list widget writes a flat array of scalars, so an
+ * array of objects can never be satisfied) and a property whose only constraint
+ * is a composition keyword (no top-level type, so it falls to free text, which
+ * cannot express any branch).
+ *
+ * A property that constrains NOTHING is not one of them, and neither is an array
+ * that leaves its items open: free text and a scalar list respectively cannot
+ * violate a constraint that was never stated. An enum is likewise fine — the
+ * picker's sibling vocabulary layer offers its values.
+ */
+function hasAuthorableWidget(property: Record<string, unknown>): boolean {
+  if (property.type === 'array') {
+    const itemType = isRecord(property.items) ? property.items.type : undefined;
+    return typeof itemType !== 'string' || AUTHORABLE_LIST_ITEM_TYPES.has(itemType);
+  }
+  if (typeof property.type === 'string') return true;
+  return !TYPELESS_CONSTRAINT_KEYWORDS.some((keyword) => keyword in property);
+}
+
 /** The fields declared for `docName` by every schema that governs it. */
 export function schemaFieldsForDoc(
   config: LinterConfig | null,
   docName: string | undefined,
 ): Map<string, SchemaField> {
-  const slice = config?.plugins.frontmatter;
-  if (!config?.enabled || !slice?.enabled || docName === undefined || docName === '') {
-    return new Map();
-  }
   const declared = new Map<string, DeclaredField>();
-  const schemas = selectApplicableFrontmatterSchemas(slice.schemas, docName);
+  // Enablement (linting on, producer slices on, per-rule toggles) and doc
+  // scoping all live in the shared selector.
+  const schemas = selectGoverningFrontmatterSchemas(config, docName);
 
   // Unioned up front, not per schema: one schema may declare `status` under
   // `properties` while a sibling requires it, and the field is required either
@@ -148,13 +178,25 @@ export function schemaFieldsForDoc(
         typeof rawProperty.description === 'string' && rawProperty.description !== ''
           ? rawProperty.description
           : undefined;
+      if (!hasAuthorableWidget(rawProperty)) {
+        // A REQUIRED field is offered whatever its shape (see the loop below),
+        // so skipping it outright costs only the schema's own description —
+        // the one hint the user has for a field they cannot be talked out of.
+        // Its widget stays withheld: `null` resolves to the panel's `text`,
+        // never the widget its declared type names and cannot satisfy.
+        if (required.has(name)) declare(name, null, description);
+        continue;
+      }
       declare(name, widgetTypeFor(rawProperty), description);
     }
   }
 
   // A schema may require a field it never declares under `properties`. The
   // picker still has to offer it and a staged row still needs a type, so it
-  // lands unconstrained and resolves to text.
+  // lands unconstrained and resolves to text. This runs over the required set
+  // unconditionally, so a REQUIRED field with no authorable widget stays
+  // offered: the missing-property diagnostic will stage a row for it either
+  // way, and withdrawing it from the picker alone would only hide the name.
   for (const name of required) declare(name, null);
 
   return new Map(
