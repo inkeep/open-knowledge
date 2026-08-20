@@ -23,24 +23,50 @@ import { expect, test } from './_helpers';
 async function openProjectPluginsPage(page: Page): Promise<void> {
   // Land on the app FIRST, then push the settings hash, so the dialog's
   // `history.back()` close returns to the doc view instead of leaving the SPA
-  // (which a `goto('/#settings')` deep link would do — there is no prior
-  // in-session entry to go back to).
+  // (which a `goto('/#settings/...')` deep link would do — there is no prior
+  // in-session entry to go back to). Assigning the hash while Settings is
+  // closed pushes exactly one entry, so that single `back()` still closes.
   await page.goto('/');
   await page.evaluate(() => {
-    window.location.hash = '#settings';
+    window.location.hash = '#settings/plugins-manage';
   });
-  await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId('settings-sidebar-item-plugins-manage').click();
-  await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 5_000 });
+
+  // `#settings/<section>` is the app's own deep link, resolved on the dialog's
+  // open edge, so the panel is selected before the body ever renders and no
+  // sidebar interaction is involved. That also sidesteps the THIS PROJECT
+  // group being `disabled` until `collabUrl` resolves, since the body dispatches
+  // on the section id alone.
+  //
+  // The single wait below is deliberately generous: the whole settings body is
+  // one `React.lazy` chunk, and a worker's first open pays a cold dev-server
+  // transform of the entire schema-form graph, an order of magnitude slower
+  // than the warm reopen and well past the config's default expect budget.
+  // Putting the long budget here — on the outcome the test actually needs —
+  // keeps every later assertion short and failing by name.
+  await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 30_000 });
 }
 
 /** Drive the real toggle to `on`, tolerating whatever state a sibling test left. */
 async function setMarkdownlintEnabled(page: Page, on: boolean): Promise<void> {
   const toggle = page.getByTestId('settings-plugin-toggle-markdownlint');
   await expect(toggle).toBeVisible({ timeout: 5_000 });
+  // The switch renders disabled and unchecked until the project config binding
+  // syncs. Reading `aria-checked` before then reports `false` even for a plugin
+  // a sibling test left ON, and the branch below would skip its click and then
+  // wait out an assertion on a value that is about to move the other way.
+  await expect(toggle).toBeEnabled({ timeout: 15_000 });
   if ((await toggle.getAttribute('aria-checked')) !== String(on)) await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', String(on), { timeout: 5_000 });
 }
+
+// The waits in the helpers above are diagnostic budgets: each is sized so a
+// stall fails by name instead of as a bare test timeout. Both helpers run again
+// in `afterEach`, and Playwright charges hook time to the same per-test slot, so
+// their worst case (~120s of body budget plus ~55s of cleanup) does not fit the
+// config's 120s. A larger slot keeps those named assertions reachable. It cannot
+// mask a regression: the assertion that stalls still exhausts its own budget and
+// fails first.
+test.setTimeout(180_000);
 
 test.describe('plugin enable → settings notice', () => {
   // The toggle writes the shared per-worker project config; leave it off so a
@@ -98,7 +124,13 @@ test.describe('plugin enable → settings notice', () => {
     await openProjectPluginsPage(page);
     await setMarkdownlintEnabled(page, true);
 
-    await page.getByTestId('settings-sidebar-item-plugin:markdownlint').click();
+    // The plugin's own sidebar row only renders once the config binding
+    // reflects the enable, so it can lag the assertion above. Without a bounded
+    // precondition a row that never attaches burns the whole test slot and
+    // reports a bare test timeout instead of naming the missing element.
+    const pluginItem = page.getByTestId('settings-sidebar-item-plugin:markdownlint');
+    await expect(pluginItem).toBeVisible({ timeout: 15_000 });
+    await pluginItem.click();
     const docs = page.getByTestId('settings-plugin-markdownlint-title-docs-link');
     await expect(docs).toBeVisible({ timeout: 5_000 });
     await expect(docs).toHaveAttribute(
