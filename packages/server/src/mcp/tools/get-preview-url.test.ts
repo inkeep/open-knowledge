@@ -3,11 +3,11 @@
  *
  * `preview_url` is the one tool that hands an agent the browser-reachable
  * preview URL — per-response `previewUrl` fields are route-only. Branches:
- *   - UI running (`ui.lock` bound) → composed full URL.
+ *   - UI running (ui-capable `server.lock` bound) → composed full URL.
  *   - No UI + registration has server authority → backend demand-ensure
- *     (auto-spawn via the `serverUrl` resolver), bounded `ui.lock` wait.
+ *     (auto-spawn via the `serverUrl` resolver), bounded UI-bind wait.
  *   - Still no UI → `{ url: null, running: false }` + a state-accurate
- *     recovery hint (`ok start` vs `ok ui` by `server.lock` liveness).
+ *     recovery hint keyed on `server.lock` liveness + ui capability.
  */
 
 import { mkdtempSync } from 'node:fs';
@@ -15,10 +15,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { AutoStartDisabledError } from '../../autostart.ts';
+import { resolveLockDir } from '../../config/paths.ts';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { OffCwdResolverDeps } from '../../off-cwd-resolver.ts';
+import { markServerLockDraining } from '../../server-lock.ts';
 import { register } from './get-preview-url.ts';
-import { bindTestServerLock, bindTestUiLock } from './preview-url-test-helpers.ts';
+import { bindTestServerLock, bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
@@ -75,7 +77,7 @@ function captureRegistration(
 describe('preview_url tool — UI running', () => {
   test('with document: composes baseUrl + the doc route', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.isError).toBeUndefined();
@@ -88,7 +90,7 @@ describe('preview_url tool — UI running', () => {
 
   test('with folder: composes the folder route with a trailing slash', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ folder: 'specs/foo' });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/specs/foo/`);
@@ -96,7 +98,7 @@ describe('preview_url tool — UI running', () => {
 
   test('folder route tolerates surrounding slashes and per-segment encodes', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ folder: '/My Notes/sub/' });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/My%20Notes/sub/`);
@@ -105,7 +107,7 @@ describe('preview_url tool — UI running', () => {
   describe('isHostedAgent steer (desktop terminal or in-app agent panel)', () => {
     test('document: response leads with `ok open <doc>` and tells the agent not to navigate the URL', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       const text = result.content[0]?.text ?? '';
@@ -122,7 +124,7 @@ describe('preview_url tool — UI running', () => {
     // close it explicitly.
     test('document: steer tells the agent not to paste the URL into its reply', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.content[0]?.text ?? '').toContain('paste the URL into your reply');
@@ -130,7 +132,7 @@ describe('preview_url tool — UI running', () => {
 
     test('folder: steers to `ok open <folder>`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.content[0]?.text ?? '').toContain('ok open specs/foo');
@@ -139,7 +141,7 @@ describe('preview_url tool — UI running', () => {
 
     test('skill default scope (project): steers to `ok open <name> --skill` (no --scope)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log' } });
       expect(result.content[0]?.text ?? '').toContain('ok open trip-log --skill');
@@ -149,7 +151,7 @@ describe('preview_url tool — UI running', () => {
 
     test('skill --scope global: steers to `ok open <name> --skill --scope global`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ skill: { name: 'trip-log', scope: 'global' } });
       expect(result.content[0]?.text ?? '').toContain('ok open trip-log --skill --scope global');
@@ -160,7 +162,7 @@ describe('preview_url tool — UI running', () => {
 
     test('no target (root): no steer — nothing to `ok open`', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({});
       expect(result.content[0]?.text ?? '').not.toContain('ok open');
@@ -168,7 +170,7 @@ describe('preview_url tool — UI running', () => {
 
     test('NOT a hosted agent (default): no steer — plain Preview URL', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd);
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.content[0]?.text ?? '').not.toContain('ok open');
@@ -178,7 +180,7 @@ describe('preview_url tool — UI running', () => {
 
     test('hosted agent + no UI running: steer + okOpenCommand still fire (ok open does not need the UI)', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      // No bindTestUiLock / bindTestServerLock — nothing is running.
+      // No bindTestUiServerLock / bindTestServerLock — nothing is running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'specs/foo/SPEC' });
       expect(result.structuredContent?.running).toBe(false);
@@ -191,7 +193,7 @@ describe('preview_url tool — UI running', () => {
 
     test('document with a space: okOpenCommand shell-quotes the path', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: 'notes/My Doc' });
       expect(result.structuredContent?.okOpenCommand).toBe("ok open 'notes/My Doc'");
@@ -199,7 +201,7 @@ describe('preview_url tool — UI running', () => {
 
     test('document with an embedded single quote: okOpenCommand POSIX-escapes it', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      bindTestUiLock(cwd);
+      bindTestUiServerLock(cwd);
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ document: "Q&A/what's new" });
       // POSIX single-quote escape: close-quote, escaped-quote, reopen → '\''
@@ -208,7 +210,7 @@ describe('preview_url tool — UI running', () => {
 
     test('hosted agent + no UI + folder: okOpenCommand still fires', async () => {
       const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-      // No bindTestUiLock — nothing running.
+      // No bindTestUiServerLock — nothing running.
       const handler = captureRegistration(cwd, BASE_CONFIG, { isHostedAgent: true });
       const result = await handler({ folder: 'specs/foo' });
       expect(result.structuredContent?.running).toBe(false);
@@ -218,7 +220,7 @@ describe('preview_url tool — UI running', () => {
 
   test('docName + folder together is rejected (mutually exclusive)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
+    bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC', folder: 'specs/foo' });
     expect(result.isError).toBe(true);
@@ -227,7 +229,7 @@ describe('preview_url tool — UI running', () => {
 
   test('without docName: returns the UI root URL', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({});
     expect(result.isError).toBeUndefined();
@@ -239,7 +241,7 @@ describe('preview_url tool — UI running', () => {
 
   test('per-segment encodes docName when composing the URL', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'notes/My Doc' });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/notes/My%20Doc`);
@@ -249,7 +251,7 @@ describe('preview_url tool — UI running', () => {
 describe('preview_url tool — skill target', () => {
   test('with skill: composes the __skill__ route (default project scope)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'trip-log' } });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/__skill__/project/trip-log`);
@@ -257,7 +259,7 @@ describe('preview_url tool — skill target', () => {
 
   test('with skill + explicit global scope and a spaced name', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'run tests', scope: 'global' } });
     expect(result.structuredContent?.url).toBe(`${uiBase}/#/__skill__/global/run%20tests`);
@@ -265,7 +267,7 @@ describe('preview_url tool — skill target', () => {
 
   test('skill + document together is rejected (mutually exclusive)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
+    bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd);
     const result = await handler({ skill: { name: 'trip-log' }, document: 'specs/foo/SPEC' });
     expect(result.isError).toBe(true);
@@ -298,9 +300,16 @@ describe('preview_url tool — no UI running', () => {
     expect(result.structuredContent?.autoOpen).toBe(true);
   });
 
-  test('server alive but no UI: transient retry hint, no spawn advice', async () => {
+  test('draining ui-capable server: transient retry hint, no spawn advice', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestServerLock(cwd);
+    // Single-listener teardown: the pid is still alive and the port still bound
+    // (isServerLive), but the lock is draining so no UI is reachable. The right
+    // hint is the transient "retry" — a fresh holder may bind shortly — not the
+    // permanent no-ui-mounted or no-server advice. This is the only remaining
+    // way to reach the transient hint now that a live ui-capable lock always
+    // resolves to a URL (server-liveness and UI-availability are one signal).
+    bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
+    markServerLockDraining(resolveLockDir(cwd));
     const handler = captureRegistration(cwd);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.structuredContent?.running).toBe(false);
@@ -341,19 +350,17 @@ describe('preview_url tool — no UI running', () => {
 });
 
 describe('preview_url tool — backend demand-ensure', () => {
-  test('cold project: ensure spawns the backend and the call returns a live URL once ui.lock binds', async () => {
+  test('cold project: ensure spawns the backend and the call returns a live URL', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     let resolverCalls = 0;
     let uiBase = '';
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
         resolverCalls += 1;
-        bindTestServerLock(cwd);
-        // The real spawn's `ok ui` sibling binds asynchronously — model the
-        // lag so the test exercises the bounded wait, not a lucky fast path.
-        setTimeout(() => {
-          uiBase = bindTestUiLock(cwd);
-        }, 30);
+        // Single-listener spawn: `ok start` brings up one ui-capable server that
+        // serves the shell at its own origin — no separate ui.lock to wait on,
+        // so the ui-capable server.lock resolves directly.
+        uiBase = bindTestUiServerLock(cwd, 4321);
         return 'http://localhost:4321';
       },
       uiBindWait: { timeoutMs: 1500, pollIntervalMs: 10 },
@@ -367,7 +374,7 @@ describe('preview_url tool — backend demand-ensure', () => {
 
   test('resolver runs on every call, even with a live UI (orphan-heal contract)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    const uiBase = bindTestUiLock(cwd);
+    const uiBase = bindTestUiServerLock(cwd);
     let resolverCalls = 0;
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
@@ -413,11 +420,15 @@ describe('preview_url tool — backend demand-ensure', () => {
     expect(result.content[0]?.text).toContain('did not start within');
   });
 
-  test('fresh spawn whose UI never binds: server-running hint after the bounded wait', async () => {
+  test('fresh spawn that comes up draining: server-running retry hint after the bounded wait', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
     const handler = captureRegistration(cwd, BASE_CONFIG, {
       serverUrl: async () => {
-        bindTestServerLock(cwd);
+        // The spawned server is already tearing down (draining): live pid + bound
+        // port, but no reachable UI. The bounded wait polls, never resolves, and
+        // falls through to the transient "retry" hint (a fresh holder may bind).
+        bindTestServerLock(cwd, 4321, ['http', 'ws', 'ui']);
+        markServerLockDraining(resolveLockDir(cwd));
         return 'http://localhost:4321';
       },
       uiBindWait: { timeoutMs: 60, pollIntervalMs: 10 },
@@ -447,7 +458,7 @@ describe('preview_url tool — backend demand-ensure', () => {
 describe('preview_url tool — autoOpen field', () => {
   test('echoes resolved autoOpen=false when the user has disabled it', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
+    bindTestUiServerLock(cwd);
     const handler = captureRegistration(cwd, CONFIG_AUTOOPEN_OFF);
     const result = await handler({ document: 'specs/foo/SPEC' });
     expect(result.isError).toBeUndefined();
@@ -465,7 +476,7 @@ describe('preview_url tool — autoOpen field', () => {
 
   test('reads config fresh per call (resolver invoked on every invocation)', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'ok-get-preview-url-'));
-    bindTestUiLock(cwd);
+    bindTestUiServerLock(cwd);
     let currentAutoOpen = true;
     const configResolver = async (): Promise<Config> =>
       ConfigSchema.parse({ appearance: { preview: { autoOpen: currentAutoOpen } } });

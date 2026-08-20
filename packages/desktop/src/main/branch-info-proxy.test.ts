@@ -202,7 +202,7 @@ describe('proxyFetchBranchInfo', () => {
       { projectPath: '/tmp/p', branch: 'main', kind: 'doc', path: 'a.md' },
       buildDeps({ fetch: fetchMock }),
     );
-    expect(headerOf(seen, 'x-ok-client-protocol')).toBe('1');
+    expect(headerOf(seen, 'x-ok-client-protocol')).toBe('2');
     expect(headerOf(seen, 'x-ok-client-kind')).toBe('desktop-main');
     expect(headerOf(seen, 'x-ok-client-runtime')).toBe(RUNTIME_VERSION);
   });

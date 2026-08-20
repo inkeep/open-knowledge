@@ -7,7 +7,7 @@ import {
   expect,
   test,
 } from 'vitest';
-import { bindTestUiLock } from './preview-url-test-helpers.ts';
+import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 
 // Skip-on-CI gate (oven-sh/bun#11892): simple-git fixture pattern in MCP
 // test setup spawns git children that Bun fails to reap on ubuntu-latest
@@ -112,7 +112,7 @@ describe('history — previewUrl emission', () => {
   test('emits route-only previewUrl + source alongside entries when resolver resolves', async () => {
     // Bind the UI lock so the route resolves; `previewUrl` is route-only
     // and carries no host:port.
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps());
 

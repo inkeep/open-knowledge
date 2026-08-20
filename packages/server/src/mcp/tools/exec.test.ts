@@ -16,7 +16,7 @@ import {
   RESULT_BODY_BUDGET_BYTES,
   WIRE_BODY_COPIES,
 } from './exec.ts';
-import { bindTestUiLock } from './preview-url-test-helpers.ts';
+import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 
 describe('exec DESCRIPTION — STOP-rule anchoring (SPEC 2026-04-22 FR4 / US-007 / QA-009)', () => {
   test('total length fits Claude per-tool 2 KB cap', () => {
@@ -676,7 +676,7 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     const project = await bootstrap();
     // Bind the UI lock so the resolver treats the route as reachable; the
     // resolved previewUrl is route-only and carries no host:port.
-    bindTestUiLock(project);
+    bindTestUiServerLock(project);
     const contentDir = resolve(project, 'articles');
     mkdirSync(contentDir, { recursive: true });
     writeFileSync(resolve(contentDir, 'auth.md'), '---\ntitle: Auth\n---\nBody');

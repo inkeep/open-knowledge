@@ -12,7 +12,7 @@
  * (containers): discovery fields ride on the mutex, not the reverse.
  * Acquisition happens before listen; nothing here may weaken that ordering.
  *
- * Used by both `server-lock.ts` (server.lock) and `ui-lock.ts` (ui.lock).
+ * Used by `server-lock.ts` (server.lock).
  */
 
 import {
@@ -35,7 +35,10 @@ import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants.ts';
 
 const log = getLogger('process-lock');
 
-export type LockName = 'server' | 'ui';
+// The `ui` member retired with `ui.lock` (single-listener topology); the UI is
+// advertised via the `ui` capability on `server.lock`. Kept as a named type
+// (rather than the bare literal) for call-site clarity and future expansion.
+export type LockName = 'server';
 
 /**
  * Who started this server. `interactive` means a user-facing CLI/Electron
@@ -58,11 +61,9 @@ export interface ProcessLockMetadata {
   /**
    * HTTP/WebSocket port. 0 means "starting — port not yet bound".
    *
-   * DEPRECATED as a dial target in favor of `url` — kept written through the
-   * ui.lock-retirement compatibility window so binaries predating `url` keep
-   * discovering. New readers go through `lockBaseUrl` (prefer `url`, fall
-   * back to `port`). Retirement rides the `protocolVersion` 1→2 bump at the
-   * ui.lock-removal wave, NOT before.
+   * Legacy dial fallback in favor of `url` — still written so binaries
+   * predating `url` keep discovering. New readers go through `lockBaseUrl`
+   * (prefer `url`, fall back to `port`).
    */
   port: number;
   /**
@@ -111,16 +112,15 @@ export interface ProcessLockMetadata {
    */
   parentPid?: number;
   /**
-   * Protocol/feature surfaces this server exposes. On server.lock, writers
-   * that also emit `url` MUST list mounted surfaces accurately — in
-   * particular `"ui"` is present iff the process itself serves the React
-   * shell, so `preview_url` can distinguish "no UI mounted" from "UI served
-   * elsewhere". Baseline for any `bootServer` boot is `["http", "ws"]`. On
-   * server.locks without `url` (older writers) the array is best-effort
-   * hints only: absence of `"ui"` is indeterminate and readers keep the
-   * ui.lock fallback. On ui.lock the accuracy requirement does not apply —
-   * that file's very existence is the UI signal, no reader consults its
-   * `capabilities`, and the sibling retires with the ui.lock-removal wave.
+   * Protocol/feature surfaces this server exposes. Writers that also emit
+   * `url` MUST list mounted surfaces accurately — in particular `"ui"` is
+   * present iff the process itself serves the React shell, so `preview_url`
+   * and the clone→open redirect can distinguish a UI-serving server from an
+   * API-only (`--only server`) one. Baseline for any `bootServer` boot is
+   * `["http", "ws"]`. On locks without `url` (older writers) the array is
+   * best-effort hints only: absence of `"ui"` is indeterminate, so the shared
+   * `lockAdvertisesUi` predicate treats a missing `capabilities` field
+   * optimistically (see `server-lock.ts`).
    */
   capabilities?: string[];
   /**

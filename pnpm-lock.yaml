@@ -829,9 +829,6 @@ importers:
       simple-git:
         specifier: ^3.36.0
         version: 3.36.0
-      sirv:
-        specifier: ^3.0.1
-        version: 3.0.2
       smol-toml:
         specifier: ^1.6.1
         version: 1.7.0

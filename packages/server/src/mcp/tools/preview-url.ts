@@ -2,7 +2,7 @@
  * Resolve the per-doc preview ROUTE for a given wiki docName.
  *
  * `resolvePreviewUrl` returns a route only (`/#/{docName}`) — no scheme,
- * host, or port. It still reads `ui.lock` for reachability: a non-null
+ * host, or port. It still reads `server.lock` for reachability: a non-null
  * result means a UI is running for the project (the route is navigable);
  * `null` means no UI is running anywhere. The route rides on every read +
  * write tool response so the attach-preview-once warning flow keys off it.
@@ -18,8 +18,9 @@
  * Route shape: `/#/{docName}` with per-segment encodeURIComponent. Matches
  * the hash-route parser in `packages/app/src/lib/doc-hash.ts`.
  *
- * Both CLI (`ok ui`) and OK Electron write `ui.lock`, so the lock branch
- * fires universally whenever any UI is running for the project. The
+ * A single-listener server (`ok start`, the desktop utility process) writes
+ * one `server.lock` advertising the `ui` capability, so the lock branch fires
+ * universally whenever any UI is running for the project. The
  * `openknowledge://` URL scheme stays load-bearing for OS-level deep-linking
  * (URL-scheme handler, dock drag, sidebar pills) — but is no longer emitted
  * as an MCP `previewUrl`, because external agent in-app browsers (Claude
@@ -33,8 +34,7 @@
  */
 import { resolveLockDir } from '../../config/paths.ts';
 import { lockBaseUrl } from '../../process-lock.ts';
-import { readServerLock } from '../../server-lock.ts';
-import { readUiLock } from '../../ui-lock.ts';
+import { lockAdvertisesUi, readServerLock } from '../../server-lock.ts';
 import type { ConfigOrResolver } from './shared.ts';
 
 export const PREVIEW_URL_SOURCES = ['lock'] as const;
@@ -195,8 +195,8 @@ export async function resolvePreviewUrlForTool(
 /**
  * Browser-reachable UI info — resolved on demand by the `preview_url`
  * tool, NOT emitted on per-response payloads. `baseUrl` is the
- * browser-reachable origin of the `ok ui` process; null when the UI lock is
- * absent / stale / unbound.
+ * browser-reachable origin of the running server; null when the server.lock
+ * is absent / stale / unbound / not ui-capable.
  */
 export interface UiInfo {
   baseUrl: string | null;
@@ -211,15 +211,15 @@ export interface UiInfo {
  * emit a `ui` block, so the base does not ride per-response payloads.
  */
 export function resolveUiInfo(ctx: PreviewUrlContext): UiInfo {
-  // Single-listener topology first: a server.lock advertising the `ui`
-  // surface means THIS process serves the React shell at its own origin —
-  // no ui.lock involved. A server.lock without `ui` is not "no UI": in the
-  // sibling topology (`ok start` + `ok ui`) the UI advertises via ui.lock,
-  // so fall through to it. Only when neither lock yields a base is the
-  // answer a definitive "no UI running".
+  // Single-listener topology: a live, non-draining server.lock that advertises
+  // the `ui` surface serves the React shell at its own origin. `lockAdvertisesUi`
+  // is the shared predicate that keeps this decision in lockstep with
+  // `resolveUiRedirectPort` and `serverExplicitlyLacksUi` — a missing
+  // `capabilities` field is indeterminate and treated as ui-capable. No
+  // server.lock, a draining one, or one that explicitly omits `ui` → no UI.
   try {
     const serverLock = readServerLock(ctx.lockDir);
-    if (serverLock && serverLock.draining !== true && serverLock.capabilities?.includes('ui')) {
+    if (serverLock && serverLock.draining !== true && lockAdvertisesUi(serverLock)) {
       const baseUrl = lockBaseUrl(serverLock);
       if (baseUrl !== null) return { baseUrl };
     }
@@ -228,29 +228,14 @@ export function resolveUiInfo(ctx: PreviewUrlContext): UiInfo {
       `[preview-url] readServerLock failed at ${ctx.lockDir} while resolving ui info: ${err instanceof Error ? err.message : String(err)}\n`,
     );
   }
-  try {
-    const lock = readUiLock(ctx.lockDir);
-    // Draining check on THIS branch too, not just server.lock above:
-    // single-listener teardown marks BOTH locks draining on the same
-    // process, so without it the server.lock guard is defeated by falling
-    // through to the same dying process's ui.lock.
-    if (lock && lock.draining !== true) {
-      const baseUrl = lockBaseUrl(lock);
-      if (baseUrl !== null) return { baseUrl };
-    }
-  } catch (err) {
-    process.stderr.write(
-      `[preview-url] readUiLock failed at ${ctx.lockDir} while resolving ui info: ${err instanceof Error ? err.message : String(err)}\n`,
-    );
-  }
   return { baseUrl: null };
 }
 
 /**
  * Poll `resolveUiInfo` until a UI origin binds or the deadline passes. Used
- * by `preview_url` right after a fresh backend spawn: the locks exist at
- * port 0 from acquire (pre-listen) until the server binds and stamps the
- * real port, so the ui-capable origin lags the locks' appearance by up to a
+ * by `preview_url` right after a fresh backend spawn: the server.lock exists
+ * at port 0 from acquire (pre-listen) until the server binds and stamps the
+ * real port, so the ui-capable origin lags the lock's appearance by up to a
  * few seconds on a cold start.
  */
 export async function awaitUiBaseUrl(
@@ -303,7 +288,7 @@ export function docNameFromPath(path: string): string {
 
 /**
  * Resolve the route-only preview URL (`/#/{docName}`) for a docName. Returns
- * `null` when no UI is running for the project (`ui.lock` absent / unbound).
+ * `null` when no UI is running for the project (no ui-capable `server.lock`).
  *
  * The returned `url` is a ROUTE — no scheme, host, or port. The lock is read
  * only for reachability (a non-null result means the route is navigable in a
@@ -335,10 +320,9 @@ export function resolveSkillPreviewUrl(
  * Shared reachability gate for the route resolvers: returns the route verbatim
  * (no scheme/host/port) when a running UI is reachable, else `null`.
  *
- * Same two-source chain as `resolveUiInfo`: a server.lock advertising the
- * `ui` surface (single-listener topology), else ui.lock (CLI `ok ui` + OK
- * Electron sibling topology) — the universal signal that a navigable React
- * app exists.
+ * Same signal as `resolveUiInfo`: a live, non-draining server.lock advertising
+ * the `ui` surface (single-listener topology) — the universal marker that a
+ * navigable React app exists for the project.
  */
 function previewForRoute(hash: string, ctx: PreviewUrlContext): PreviewUrlResult | null {
   const { baseUrl } = resolveUiInfo(ctx);

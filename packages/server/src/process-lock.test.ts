@@ -21,7 +21,7 @@ import {
 } from './process-lock';
 import { PROTOCOL_VERSION, RUNTIME_VERSION } from './version-constants';
 
-const LOCK_NAME: LockName = 'ui';
+const LOCK_NAME: LockName = 'server';
 
 /**
  * Pick a PID that is alive on this host AND passes `isValidLockPid` (≥ 2,
@@ -70,7 +70,7 @@ describe('acquireProcessLock', () => {
 
     expect(handle.lockPath).toBe(lockPath);
     expect(existsSync(lockPath)).toBe(true);
-    expect(lockPath.endsWith('ui.lock')).toBe(true);
+    expect(lockPath.endsWith('server.lock')).toBe(true);
 
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.pid).toBe(process.pid);
@@ -98,23 +98,6 @@ describe('acquireProcessLock', () => {
     });
     const md: ProcessLockMetadata = JSON.parse(readFileSync(lockPath, 'utf-8'));
     expect(md.port).toBe(0);
-  });
-
-  test('writes distinct files for different lockNames in the same lockDir', () => {
-    acquireProcessLock({
-      lockName: 'server',
-      lockDir,
-      metadata: { port: 1111, worktreeRoot: '/wt' },
-    });
-    acquireProcessLock({ lockName: 'ui', lockDir, metadata: { port: 2222, worktreeRoot: '/wt' } });
-
-    expect(existsSync(lockFilePath(lockDir, 'server'))).toBe(true);
-    expect(existsSync(lockFilePath(lockDir, 'ui'))).toBe(true);
-
-    const serverMd = JSON.parse(readFileSync(lockFilePath(lockDir, 'server'), 'utf-8'));
-    const uiMd = JSON.parse(readFileSync(lockFilePath(lockDir, 'ui'), 'utf-8'));
-    expect(serverMd.port).toBe(1111);
-    expect(uiMd.port).toBe(2222);
   });
 
   test('replaces stale lock from dead process', () => {
@@ -568,14 +551,15 @@ describe('readProcessLock', () => {
     expect(readProcessLock({ lockName: LOCK_NAME, lockDir })).toBeNull();
   });
 
-  test('reads only the named lock (does not cross-contaminate)', () => {
+  test('reads are scoped to (lockName, lockDir) — a sibling lockDir reads null', () => {
     acquireProcessLock({
       lockName: 'server',
       lockDir,
       metadata: { port: 1111, worktreeRoot: '/wt' },
     });
     expect(readProcessLock({ lockName: 'server', lockDir })?.port).toBe(1111);
-    expect(readProcessLock({ lockName: 'ui', lockDir })).toBeNull();
+    // A different lockDir with no lock reads null — the read never leaks across dirs.
+    expect(readProcessLock({ lockName: 'server', lockDir: `${lockDir}/other` })).toBeNull();
   });
 });
 

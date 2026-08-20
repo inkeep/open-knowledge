@@ -8,10 +8,9 @@ import {
   releaseServerLock,
   updateServerLockPort,
 } from './server-lock.ts';
-import { acquireUiLock, markUiLockDraining, releaseUiLock, updateUiLockPort } from './ui-lock.ts';
 import { resolveUiRedirectPort } from './ui-redirect-port.ts';
 
-describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
+describe('resolveUiRedirectPort — clone-redirect server.lock chain', () => {
   const dirs: string[] = [];
 
   function makeLockDir(): string {
@@ -26,7 +25,7 @@ describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
     }
   });
 
-  test('ui-capable server.lock resolves to the server port (single-listener default)', () => {
+  test('ui-capable server.lock resolves to the server port (single-listener)', () => {
     const lockDir = makeLockDir();
     acquireServerLock(lockDir, {
       port: 0,
@@ -41,25 +40,7 @@ describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
     }
   });
 
-  test('explicit no-ui server.lock + live ui.lock resolves to the sibling port (split-mode pair)', () => {
-    const lockDir = makeLockDir();
-    acquireServerLock(lockDir, {
-      port: 0,
-      worktreeRoot: lockDir,
-      capabilities: ['http', 'ws'],
-    });
-    updateServerLockPort(lockDir, 45002, 'http://127.0.0.1:45002');
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: lockDir });
-    updateUiLockPort(lockDir, 45003, 'http://localhost:45003');
-    try {
-      expect(resolveUiRedirectPort(lockDir)).toBe(45003);
-    } finally {
-      releaseUiLock(lockDir);
-      releaseServerLock(lockDir);
-    }
-  });
-
-  test('explicit no-ui server.lock with no sibling is a definitive no-ui', () => {
+  test('explicit no-ui server.lock is a definitive no-ui', () => {
     const lockDir = makeLockDir();
     acquireServerLock(lockDir, {
       port: 0,
@@ -71,17 +52,6 @@ describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
       expect(resolveUiRedirectPort(lockDir)).toBe('no-ui');
     } finally {
       releaseServerLock(lockDir);
-    }
-  });
-
-  test('lone ui.lock (split UI against a remote upstream) resolves to the UI port', () => {
-    const lockDir = makeLockDir();
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: lockDir });
-    updateUiLockPort(lockDir, 45005, 'http://localhost:45005');
-    try {
-      expect(resolveUiRedirectPort(lockDir)).toBe(45005);
-    } finally {
-      releaseUiLock(lockDir);
     }
   });
 
@@ -110,7 +80,7 @@ describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
     }
   });
 
-  test('no locks at all resolves to null', () => {
+  test('no lock at all resolves to null', () => {
     expect(resolveUiRedirectPort(makeLockDir())).toBeNull();
   });
 
@@ -127,18 +97,6 @@ describe('resolveUiRedirectPort — clone-redirect two-source chain', () => {
       expect(resolveUiRedirectPort(lockDir)).toBeNull();
     } finally {
       releaseServerLock(lockDir);
-    }
-  });
-
-  test('a DRAINING ui.lock is not a redirect target — falls through to null', () => {
-    const lockDir = makeLockDir();
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: lockDir });
-    updateUiLockPort(lockDir, 45008, 'http://localhost:45008');
-    markUiLockDraining(lockDir);
-    try {
-      expect(resolveUiRedirectPort(lockDir)).toBeNull();
-    } finally {
-      releaseUiLock(lockDir);
     }
   });
 });

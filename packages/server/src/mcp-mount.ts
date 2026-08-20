@@ -187,7 +187,7 @@ export interface MountMcpAndApiHandle {
    * runtimes (notably the packaged Electron/Node build), so without this drain
    * a single live `/collab` or `/collab/keepalive` client stalls both close
    * steps for the full destroy-step timeout each. Mirrors the upgrade-socket
-   * drain in `cli/src/commands/ui.ts` / `ui-proxy.ts`.
+   * drain in the server's own `bootServer` destroy sequence.
    */
   shutdown: () => Promise<void>;
 }
@@ -410,8 +410,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     // `<contentDir>/assets/` — `js`/`css` aren't asset extensions so they
     // already fall through, which is why only fonts/images regressed. Try the
     // shell first for this prefix; fall through to the content middleware on a
-    // miss so user uploads at `<contentDir>/assets/*` still serve. Mirrors
-    // the split-mode UI proxy's `/assets/`-first branch in `commands/ui.ts`.
+    // miss so user uploads at `<contentDir>/assets/*` still serve.
     //
     // `/excalidraw-assets/` carries the vendored Excalidraw font tree from
     // `packages/app/scripts/copy-excalidraw-assets.mjs`, which the editor

@@ -473,7 +473,7 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
       // Preview hint is route-only and symmetric across kinds: a doc previews
       // at `/#/<doc>`, a folder at `/#/<folderPath>/` (`/#/` for the
       // content-root sentinel — mirrors the app's `hashFromFolderPath` in
-      // `packages/app/src/lib/doc-hash.ts`). Both share the SAME `ui.lock`
+      // `packages/app/src/lib/doc-hash.ts`). Both share the SAME `server.lock`
       // reachability gate (a UI must be running for the route to be navigable),
       // so `resolvePreviewUrlForTool` resolves the gate + `'lock'` source for
       // both; the folder branch then rewrites the route shape to the

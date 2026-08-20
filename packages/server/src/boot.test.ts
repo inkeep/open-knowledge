@@ -17,7 +17,7 @@ const describeEvenOnCI = _bunDescribe;
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { hostname, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { emitToleranceFire, OK_DIR, resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
@@ -358,16 +358,12 @@ describe('bootServer — idle-shutdown runs full destroy', () => {
   });
 });
 
-describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
-  // `ui.lock` is treated as advertisement, NOT mutex. When --react-shell-dist-dir
-  // is set, bootServer TRIES to write `ui.lock` so external agent-harness
-  // preview-URL consumers can discover the bound port. If a live holder
-  // already owns the lock (a co-existing `ok ui` sibling, a prior-session
-  // detached server), we YIELD: their port is already a valid preview URL.
-  // Stale locks (dead pid) are pruned automatically by acquireProcessLock.
-  // Only the writer releases on destroy.
+describe('bootServer — reactShellDistDir + server.lock ui advertisement', () => {
+  // Single-listener topology: a server serving the React shell advertises it by
+  // stamping the `ui` capability into its own `server.lock` — there is no
+  // separate `ui.lock`. preview-URL consumers key off that capability.
 
-  test('writes ui.lock with the bound port when --react-shell-dist-dir is set and no live holder exists', async () => {
+  test('server.lock advertises the ui capability when --react-shell-dist-dir is set', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     seedOkScaffold(projectDir);
@@ -388,19 +384,20 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
     });
     try {
       await booted.ready;
-      const uiLockPath = resolve(projectDir, '.ok', 'local', 'ui.lock');
-      expect(existsSync(uiLockPath)).toBe(true);
-      const raw = await import('node:fs/promises').then((m) => m.readFile(uiLockPath, 'utf-8'));
-      const parsed = JSON.parse(raw) as { port: number; pid: number };
-      expect(parsed.port).toBeGreaterThan(0);
+      const serverLockPath = resolve(projectDir, '.ok', 'local', 'server.lock');
+      const raw = await import('node:fs/promises').then((m) => m.readFile(serverLockPath, 'utf-8'));
+      const parsed = JSON.parse(raw) as { port: number; pid: number; capabilities?: string[] };
+      expect(parsed.capabilities).toContain('ui');
       expect(parsed.port).toBe(booted.port);
       expect(parsed.pid).toBe(process.pid);
+      // No separate ui.lock is written in single-listener topology.
+      expect(existsSync(resolve(projectDir, '.ok', 'local', 'ui.lock'))).toBe(false);
     } finally {
       await booted.destroy();
     }
   });
 
-  test('does NOT write ui.lock when reactShellDistDir is omitted (CLI default)', async () => {
+  test('server.lock omits the ui capability when reactShellDistDir is absent (CLI default)', async () => {
     const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-no-shell-'));
     await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
     seedOkScaffold(projectDir);
@@ -408,6 +405,7 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
     const booted = await bootServer({
       host: '127.0.0.1',
       config: TEST_CONFIG,
+      projectDir,
       contentDir: projectDir,
       port: 0,
       quiet: true,
@@ -416,195 +414,12 @@ describe('bootServer — reactShellDistDir + ui.lock advertisement', () => {
     });
     try {
       await booted.ready;
-      const uiLockPath = resolve(projectDir, '.ok', 'local', 'ui.lock');
-      expect(existsSync(uiLockPath)).toBe(false);
+      const serverLockPath = resolve(projectDir, '.ok', 'local', 'server.lock');
+      const raw = await import('node:fs/promises').then((m) => m.readFile(serverLockPath, 'utf-8'));
+      const parsed = JSON.parse(raw) as { capabilities?: string[] };
+      expect(parsed.capabilities ?? []).not.toContain('ui');
     } finally {
       await booted.destroy();
-    }
-  });
-
-  test('yields to a live holder of ui.lock — no UiLockCollisionError, lock unchanged, boot succeeds', async () => {
-    const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-yield-'));
-    await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
-    seedOkScaffold(projectDir);
-
-    const shellDistDir = mkdtempSync(resolve(tmpDir, 'fake-shell-dist-yield-'));
-    writeFileSync(resolve(shellDistDir, 'index.html'), '<html>shell</html>', 'utf-8');
-
-    // Seed a ui.lock pointing at our parent shell's pid — a different live
-    // process — to simulate a co-existing `ok ui` peer. process.ppid is
-    // guaranteed alive while this test runs, and is NOT process.pid (which
-    // would otherwise trigger acquireProcessLock's same-pid idempotent
-    // rewrite path instead of the live-collision path).
-    const lockDir = resolve(projectDir, '.ok', 'local');
-    mkdirSync(lockDir, { recursive: true });
-    const peerSnapshot = {
-      pid: process.ppid,
-      hostname: hostname(),
-      port: 65432,
-      startedAt: new Date().toISOString(),
-      worktreeRoot: projectDir,
-      protocolVersion: 1,
-      runtimeVersion: '0.0.0-test-peer',
-    };
-    writeFileSync(resolve(lockDir, 'ui.lock'), JSON.stringify(peerSnapshot), 'utf-8');
-
-    const booted = await bootServer({
-      host: '127.0.0.1',
-      config: TEST_CONFIG,
-      projectDir,
-      contentDir: projectDir,
-      port: 0,
-      quiet: true,
-      gitEnabled: false,
-      idleShutdownMs: null,
-      reactShellDistDir: shellDistDir,
-    });
-    try {
-      await booted.ready;
-      expect(booted.port).toBeGreaterThan(0);
-      // ui.lock was NOT overwritten — peer's advertisement survives.
-      // (process-lock's same-pid idempotent rewrite would normally overwrite,
-      // but the peer's startedAt and runtimeVersion are distinct sentinels
-      // we can verify.)
-      const stillRaw = await import('node:fs/promises').then((m) =>
-        m.readFile(resolve(lockDir, 'ui.lock'), 'utf-8'),
-      );
-      const still = JSON.parse(stillRaw) as typeof peerSnapshot;
-      expect(still.port).toBe(65432);
-      expect(still.runtimeVersion).toBe('0.0.0-test-peer');
-    } finally {
-      await booted.destroy();
-      // Yield-on-collision means bootServer must NOT release the peer's
-      // ui.lock on destroy — the advertisement must survive past our quit.
-      const lockStillExists = existsSync(resolve(lockDir, 'ui.lock'));
-      expect(lockStillExists).toBe(true);
-    }
-  });
-
-  test('prunes a stale ui.lock (dead pid) and writes its own', async () => {
-    const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-prune-'));
-    await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
-    seedOkScaffold(projectDir);
-
-    const shellDistDir = mkdtempSync(resolve(tmpDir, 'fake-shell-dist-prune-'));
-    writeFileSync(resolve(shellDistDir, 'index.html'), '<html>shell</html>', 'utf-8');
-
-    // Stale lock — spawn a throwaway child, await its exit, then reuse
-    // its pid. Guarantees a structurally-dead pid by the time the test
-    // reads it (Linux `pid_max` defaults to 4M so picking a literal like
-    // 999999 isn't guaranteed dead, especially on long-running CI runners
-    // with pid recycling). The kernel doesn't immediately recycle this
-    // pid; isProcessAlive() returns false → acquireProcessLock prunes.
-    const stalePid = await new Promise<number>((res, rej) => {
-      const cp = execFile('true', (err) => {
-        if (err) rej(err);
-        else res(cp.pid ?? 0);
-      });
-    });
-    expect(stalePid).toBeGreaterThan(0);
-    const lockDir = resolve(projectDir, '.ok', 'local');
-    mkdirSync(lockDir, { recursive: true });
-    writeFileSync(
-      resolve(lockDir, 'ui.lock'),
-      JSON.stringify({
-        pid: stalePid,
-        hostname: hostname(),
-        port: 11111,
-        startedAt: new Date().toISOString(),
-        worktreeRoot: projectDir,
-        protocolVersion: 1,
-        runtimeVersion: '0.0.0-stale',
-      }),
-      'utf-8',
-    );
-
-    const booted = await bootServer({
-      host: '127.0.0.1',
-      config: TEST_CONFIG,
-      projectDir,
-      contentDir: projectDir,
-      port: 0,
-      quiet: true,
-      gitEnabled: false,
-      idleShutdownMs: null,
-      reactShellDistDir: shellDistDir,
-    });
-    try {
-      await booted.ready;
-      const raw = await import('node:fs/promises').then((m) =>
-        m.readFile(resolve(lockDir, 'ui.lock'), 'utf-8'),
-      );
-      const parsed = JSON.parse(raw) as { pid: number; port: number };
-      // Our pid replaced the stale entry.
-      expect(parsed.pid).toBe(process.pid);
-      expect(parsed.port).toBe(booted.port);
-    } finally {
-      await booted.destroy();
-      // We owned the lock (acquired by replacing the stale entry), so destroy
-      // releases our claim — but the file survives marked draining until the
-      // process actually exits (unlink is deferred to the exit handler).
-      const postDestroy = JSON.parse(
-        await import('node:fs/promises').then((m) =>
-          m.readFile(resolve(lockDir, 'ui.lock'), 'utf-8'),
-        ),
-      ) as { pid: number; draining?: boolean };
-      expect(postDestroy.pid).toBe(process.pid);
-      expect(postDestroy.draining).toBe(true);
-    }
-  });
-
-  test('destroy() releases ui.lock so a later boot can advertise', async () => {
-    const projectDir = mkdtempSync(resolve(tmpDir, 'fake-repo-release-'));
-    await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
-    seedOkScaffold(projectDir);
-
-    const shellDistDir = mkdtempSync(resolve(tmpDir, 'fake-shell-dist-release-'));
-    writeFileSync(resolve(shellDistDir, 'index.html'), '<html>shell</html>', 'utf-8');
-
-    const booted1 = await bootServer({
-      host: '127.0.0.1',
-      config: TEST_CONFIG,
-      projectDir,
-      contentDir: projectDir,
-      port: 0,
-      quiet: true,
-      gitEnabled: false,
-      idleShutdownMs: null,
-      reactShellDistDir: shellDistDir,
-    });
-    await booted1.ready;
-    const uiLockPath = resolve(projectDir, '.ok', 'local', 'ui.lock');
-    expect(existsSync(uiLockPath)).toBe(true);
-    await booted1.destroy();
-    // Draining until process exit — not unlinked at destroy time.
-    const drained = JSON.parse(readFileSync(uiLockPath, 'utf-8')) as { draining?: boolean };
-    expect(drained.draining).toBe(true);
-
-    // A second boot for the same project acquires cleanly (same-pid
-    // idempotent rewrite clears the draining flag).
-    const booted2 = await bootServer({
-      host: '127.0.0.1',
-      config: TEST_CONFIG,
-      projectDir,
-      contentDir: projectDir,
-      port: 0,
-      quiet: true,
-      gitEnabled: false,
-      idleShutdownMs: null,
-      reactShellDistDir: shellDistDir,
-    });
-    try {
-      await booted2.ready;
-      expect(existsSync(uiLockPath)).toBe(true);
-      const reacquired = JSON.parse(readFileSync(uiLockPath, 'utf-8')) as {
-        pid: number;
-        draining?: boolean;
-      };
-      expect(reacquired.pid).toBe(process.pid);
-      expect(reacquired.draining).toBeUndefined();
-    } finally {
-      await booted2.destroy();
     }
   });
 });
@@ -718,18 +533,20 @@ describe('bootServer — reactShellDistDir end-to-end HTTP shape', () => {
       expect(apiRes.status).toBe(404);
       expect(apiRes.headers.get('content-type')).toBe('application/problem+json');
 
-      // 6. ui.lock advertises the bound port — agent-harness preview-browser
-      // flows read this file to find a clickable URL. Lock-write happens
-      // AFTER listen() resolves, so the port stored is the actual port the
-      // server is reachable on (no port=0 sentinel leaking to consumers).
-      // Yield-to-live-holder semantics mean this assertion only holds when
-      // no live peer was holding the lock — for a clean test environment
-      // this is always true.
-      const uiLockPath = resolve(projectDir, '.ok', 'local', 'ui.lock');
-      expect(existsSync(uiLockPath)).toBe(true);
-      const lockRaw = await import('node:fs/promises').then((m) => m.readFile(uiLockPath, 'utf-8'));
-      const parsed = JSON.parse(lockRaw) as { port: number };
+      // 6. server.lock advertises the bound port + the `ui` capability —
+      // agent-harness preview-browser flows read this file to find a clickable
+      // URL. Lock-write happens AFTER listen() resolves, so the port stored is
+      // the actual port the server is reachable on (no port=0 sentinel leaking
+      // to consumers). Single-listener: the shell is served by this process, so
+      // its own server.lock is the advertisement — no separate ui.lock.
+      const serverLockPath = resolve(projectDir, '.ok', 'local', 'server.lock');
+      expect(existsSync(serverLockPath)).toBe(true);
+      const lockRaw = await import('node:fs/promises').then((m) =>
+        m.readFile(serverLockPath, 'utf-8'),
+      );
+      const parsed = JSON.parse(lockRaw) as { port: number; capabilities?: string[] };
       expect(parsed.port).toBe(booted.port);
+      expect(parsed.capabilities).toContain('ui');
     } finally {
       await booted.destroy();
     }

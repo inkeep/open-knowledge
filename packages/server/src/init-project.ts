@@ -256,7 +256,6 @@ worktrees/
 principal.json
 state.json
 server.lock
-ui.lock
 sync-state.json
 last-spawn-error.log
 `;

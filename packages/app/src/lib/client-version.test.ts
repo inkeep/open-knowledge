@@ -13,7 +13,7 @@ import {
 describe('browser client-version reader', () => {
   test('headers carry kind=web and the resolved runtime', () => {
     expect(browserClientVersionHeaders()).toEqual({
-      'x-ok-client-protocol': '1',
+      'x-ok-client-protocol': '2',
       'x-ok-client-runtime': BROWSER_RUNTIME_VERSION,
       'x-ok-client-kind': 'web',
     });
@@ -22,7 +22,7 @@ describe('browser client-version reader', () => {
   test('token fields carry kind=web with a numeric protocol', () => {
     const fields = browserClientVersionTokenFields();
     expect(fields).toEqual({
-      clientProtocolVersion: 1,
+      clientProtocolVersion: 2,
       clientRuntimeVersion: BROWSER_RUNTIME_VERSION,
       clientKind: 'web',
     });

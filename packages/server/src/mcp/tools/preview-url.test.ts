@@ -16,7 +16,6 @@ import {
   markServerLockDraining,
   updateServerLockPort,
 } from '../../server-lock.ts';
-import { acquireUiLock, markUiLockDraining, updateUiLockPort } from '../../ui-lock.ts';
 import {
   encodeSkillRoute,
   resolvePreviewUrl,
@@ -36,13 +35,26 @@ afterEach(async () => {
   await rm(tmpDir, { recursive: true, force: true });
 });
 
+/**
+ * Seed a live, ui-capable `server.lock` bound to `port` — the reachability
+ * signal the preview resolver keys off in the single-listener topology (the
+ * retired `ui.lock` no longer participates).
+ */
+function seedUiServer(port = 5173, url?: string): void {
+  acquireServerLock(lockDir, {
+    port: 0,
+    worktreeRoot: tmpDir,
+    capabilities: ['http', 'ws', 'ui'],
+  });
+  updateServerLockPort(lockDir, port, url);
+}
+
 describe('resolvePreviewUrl — lock edges', () => {
-  test('lock returns route-only url when ui.lock is bound', () => {
+  test('lock returns route-only url when a ui-capable server.lock is bound', () => {
     // `previewUrl` is route-only — no scheme/host/port. The lock
     // is read only for reachability; a bound lock means the route is
     // navigable in a running UI.
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
+    seedUiServer(5173);
     const result = resolvePreviewUrl('docs/a', { lockDir });
     expect(result).toEqual({ url: '/#/docs/a', source: 'lock' });
   });
@@ -51,7 +63,11 @@ describe('resolvePreviewUrl — lock edges', () => {
     // The deployed-wiki `config` fallback was removed alongside the
     // `preview.baseUrl` schema field, so an unbound lock leaves nothing
     // for the resolver to return.
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
     const result = resolvePreviewUrl('docs/a', { lockDir });
     expect(result).toBeNull();
   });
@@ -59,8 +75,7 @@ describe('resolvePreviewUrl — lock edges', () => {
   test('route is identical regardless of the lock port', () => {
     // Route-only: the port no longer rides the resolved url. Any bound
     // port produces the same `/#/<doc>` route.
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 4242);
+    seedUiServer(4242);
     const result = resolvePreviewUrl('docs/a', { lockDir });
     expect(result?.url).toBe('/#/docs/a');
   });
@@ -78,8 +93,7 @@ describe('resolvePreviewUrl — lock edges', () => {
     const prior = process.env.OK_ELECTRON_PROTOCOL_HOST;
     try {
       process.env.OK_ELECTRON_PROTOCOL_HOST = '1';
-      acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-      updateUiLockPort(lockDir, 5173);
+      seedUiServer(5173);
       const result = resolvePreviewUrl('docs/a', { lockDir });
       expect(result?.source).toBe('lock');
       expect(result?.url.startsWith('/#/')).toBe(true);
@@ -92,9 +106,8 @@ describe('resolvePreviewUrl — lock edges', () => {
 });
 
 describe('resolveSkillPreviewUrl', () => {
-  test('returns the route-only __skill__ url when ui.lock is bound', () => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
+  test('returns the route-only __skill__ url when a ui-capable server.lock is bound', () => {
+    seedUiServer(5173);
     expect(resolveSkillPreviewUrl('global', 'trip-log', { lockDir })).toEqual({
       url: '/#/__skill__/global/trip-log',
       source: 'lock',
@@ -102,8 +115,7 @@ describe('resolveSkillPreviewUrl', () => {
   });
 
   test('encodes the skill name per-segment and defaults nothing (scope passed in)', () => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
+    seedUiServer(5173);
     expect(resolveSkillPreviewUrl('project', 'run tests', { lockDir })?.url).toBe(
       '/#/__skill__/project/run%20tests',
     );
@@ -120,8 +132,7 @@ describe('resolveSkillPreviewUrl', () => {
 
 describe('resolvePreviewUrl — docName encoding (via lock branch)', () => {
   beforeEach(() => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
+    seedUiServer(5173);
   });
 
   test('simple nested path', () => {
@@ -161,8 +172,7 @@ describe('resolvePreviewUrl — round-trip via docNameFromHash', () => {
   }
 
   beforeEach(() => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
+    seedUiServer(5173);
   });
 
   test.each([
@@ -194,8 +204,8 @@ describe('resolvePreviewUrl — round-trip via docNameFromHash', () => {
   });
 });
 
-describe('resolveUiInfo — surface-aware source chain', () => {
-  test('prefers a server.lock advertising the ui surface (single-listener topology)', () => {
+describe('resolveUiInfo — server.lock source', () => {
+  test('a server.lock advertising the ui surface yields its dialable origin', () => {
     acquireServerLock(lockDir, {
       port: 0,
       worktreeRoot: tmpDir,
@@ -205,59 +215,41 @@ describe('resolveUiInfo — surface-aware source chain', () => {
     expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://127.0.0.1:6060' });
   });
 
-  test('server.lock without the ui surface falls through to ui.lock (sibling topology)', () => {
-    acquireServerLock(lockDir, { port: 0, worktreeRoot: tmpDir, capabilities: ['http', 'ws'] });
-    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
-    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
+  test('a server.lock with no capabilities field is treated as ui-capable (optimistic)', () => {
+    // Mirrors resolveUiRedirectPort: a missing `capabilities` field is
+    // indeterminate, and both twins treat it optimistically via lockAdvertisesUi.
+    acquireServerLock(lockDir, { port: 0, worktreeRoot: tmpDir });
+    updateServerLockPort(lockDir, 6061, 'http://127.0.0.1:6061');
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://127.0.0.1:6061' });
   });
 
-  test('pre-url ui.lock falls back to a port-derived localhost origin', () => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173);
-    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
+  test('a server.lock that explicitly omits the ui surface yields a null base', () => {
+    acquireServerLock(lockDir, { port: 0, worktreeRoot: tmpDir, capabilities: ['http', 'ws'] });
+    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
+  });
+
+  test('a ui-capable server.lock with no dialable origin (pre-bind, port 0) yields a null base', () => {
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
+  });
+
+  test('a draining ui-capable server.lock is never returned', () => {
+    acquireServerLock(lockDir, {
+      port: 0,
+      worktreeRoot: tmpDir,
+      capabilities: ['http', 'ws', 'ui'],
+    });
+    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
+    markServerLockDraining(lockDir);
+    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
   });
 
   test('no lock at all yields a null base', () => {
-    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
-  });
-
-  test('a draining holder is never returned from either branch (single-listener teardown)', () => {
-    // Single-listener teardown marks BOTH locks draining on the same
-    // process. The server.lock draining guard must not be defeated by
-    // falling through to that same dying process's ui.lock.
-    acquireServerLock(lockDir, {
-      port: 0,
-      worktreeRoot: tmpDir,
-      capabilities: ['http', 'ws', 'ui'],
-    });
-    updateServerLockPort(lockDir, 6060, 'http://127.0.0.1:6060');
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 6060, 'http://localhost:6060');
-    markServerLockDraining(lockDir);
-    markUiLockDraining(lockDir);
-    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
-  });
-
-  test('server.lock with ui capability but no dialable origin (pre-bind) falls through to ui.lock', () => {
-    // The window between acquireServerLock and updateServerLockPort: port 0,
-    // no url, but the ui capability already declared. The null-origin case
-    // must fall through to the ui.lock branch, not answer "no UI".
-    acquireServerLock(lockDir, {
-      port: 0,
-      worktreeRoot: tmpDir,
-      capabilities: ['http', 'ws', 'ui'],
-    });
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
-    expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: 'http://localhost:5173' });
-  });
-
-  test('a draining ui.lock alone is not returned either', () => {
-    acquireUiLock(lockDir, { port: 0, worktreeRoot: tmpDir });
-    updateUiLockPort(lockDir, 5173, 'http://localhost:5173');
-    markUiLockDraining(lockDir);
     expect(resolveUiInfo({ lockDir })).toEqual({ baseUrl: null });
   });
 });

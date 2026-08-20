@@ -10,9 +10,9 @@
  * The legacy two-process model (an `ok ui` sibling serving the shell and
  * proxying `/api` + `/collab`, advertised via `ui.lock`) is gone: the `ok ui`
  * command and the sibling auto-spawn were removed once the Desktop attach
- * re-point shipped stable. `--only server` suppresses the UI module entirely;
- * `--only ui` (with `--server-url`) runs just the shell-serving proxy — a
- * deprecated split-mode that retires together with ui.lock.
+ * re-point shipped stable, and the deprecated `--only ui` / `--server-url`
+ * split-mode proxy retired with `ui.lock`. `--only server` (headless API + MCP,
+ * no UI module) is the one `--only` value that remains.
  *
  * The Commander action is a thin wrapper around `bootStartServer` — that
  * boot function returns a `BootedStartServer` handle (`{httpServer, destroy,
@@ -42,6 +42,7 @@ import {
   type BootedServer,
   type Config,
   isProjectRoot,
+  lockAdvertisesUi,
   type PinoLogger,
   prepareSingleFileOpen,
 } from '@inkeep/open-knowledge-server';
@@ -77,16 +78,17 @@ export function resolveHost(
 }
 
 /** Modules selectable via `--only` — explicit operator module selection. */
-export type OnlyModule = 'ui' | 'server';
+export type OnlyModule = 'server';
 
 /**
  * Validator for Commander's `--only` parser. Throws `InvalidArgumentError`
  * for anything outside the documented enum, which Commander converts into a
- * non-zero exit + usage.
+ * non-zero exit + usage. `'ui'` (the split-mode proxy) was retired with
+ * `ui.lock`; only `'server'` (headless API + MCP) remains.
  */
 export function parseOnlyModule(value: string): OnlyModule {
-  if (value === 'ui' || value === 'server') return value;
-  throw new InvalidArgumentError("--only must be 'ui' or 'server'");
+  if (value === 'server') return value;
+  throw new InvalidArgumentError("--only must be 'server'");
 }
 
 /**
@@ -941,14 +943,10 @@ interface StartCommandOptions {
    */
   openBrowser?: boolean;
   /**
-   * From `--only <ui|server>`: explicit module selection. `'server'` boots the
-   * project server with no UI module (no shell, no sibling); `'ui'` is handled
-   * in the action (delegates to the UI proxy with `--server-url`) and never
-   * reaches `runStartCommand`.
+   * From `--only server`: boot the project server with no UI module (no shell,
+   * no browser) — the headless / container profile.
    */
   only?: OnlyModule;
-  /** From `--server-url <url>`: where the `--only ui` split-mode UI finds its project server. */
-  serverUrl?: string;
   /**
    * From `--idle-shutdown <dur|off>`, validated by `parseIdleShutdownFlag`: the
    * duration string (`'off'` | `'90s'` | `'30m'` | …), or absent when the flag
@@ -1395,7 +1393,6 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       try {
         reuse = await resolveServerReuse({
           readServerLock: () => serverModule.readServerLock(lockDir),
-          readUiLock: () => serverModule.readUiLock(lockDir),
           now: Date.now,
           sleep: (ms) => wait(ms),
           timeoutMs: 3000,
@@ -1555,7 +1552,6 @@ interface ResolveServerReuseDeps {
     draining?: boolean;
     capabilities?: string[];
   } | null;
-  readUiLock: () => { pid: number; port: number; url?: string } | null;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   timeoutMs: number;
@@ -1574,9 +1570,8 @@ interface ResolveServerReuseDeps {
  *
  * 1. lock v2 `url` when the holder advertises the `ui` capability — the
  *    canonical one-URL contract (the same record Desktop attaches through);
- * 2. a live `ui.lock` advertisement — the sibling topology (an older server
- *    or `--only server`), where the browser-facing origin is the UI process;
- * 3. the server's own `url`/port — API+MCP only, but still the right address.
+ * 2. the server's own `url`/port — API+MCP only (a `--only server` boot), but
+ *    still the right address.
  *
  * All time + IO deps injected (precedent #13b) so tests drive every branch
  * with a virtual clock and no filesystem.
@@ -1591,20 +1586,8 @@ export async function resolveServerReuse(
     lock = deps.readServerLock();
   }
   if (lock === null || lock.draining === true || lock.port <= 0) return null;
-  if (lock.capabilities?.includes('ui') === true && lock.url !== undefined) {
+  if (lockAdvertisesUi(lock) && lock.url !== undefined) {
     return { url: lock.url, kind: lock.kind, pid: lock.pid, servesUi: true };
-  }
-  const uiLock = deps.readUiLock();
-  if (uiLock !== null && uiLock.port > 0) {
-    // Prefer the ui.lock's own advertised url (symmetric with the server.lock
-    // branch above) — a UI bound to `::1` on a host where `localhost` resolves
-    // to `127.0.0.1` would otherwise be reported at the wrong address.
-    return {
-      url: uiLock.url ?? `http://localhost:${uiLock.port}`,
-      kind: lock.kind,
-      pid: lock.pid,
-      servesUi: false,
-    };
   }
   return {
     url: lock.url ?? `http://${DEFAULT_SERVER_HOST}:${lock.port}`,
@@ -1707,12 +1690,8 @@ export function startCommand(getConfig: () => Config): Command {
     .addOption(new Option('--open', 'Deprecated: force-open the browser after start').hideHelp())
     .option(
       '--only <module>',
-      "Serve one module: 'server' (API + MCP only, no shell or browser) or 'ui' (shell + proxy only; requires --server-url)",
+      "Serve one module: 'server' (API + MCP only, no shell or browser)",
       parseOnlyModule,
-    )
-    .option(
-      '--server-url <url>',
-      'Project-server URL the --only ui process proxies to (e.g. http://127.0.0.1:24550)',
     )
     .option(
       '--idle-shutdown <duration>',
@@ -1749,12 +1728,6 @@ export function startCommand(getConfig: () => Config): Command {
     )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
-
-      // `--server-url` only means something to the --only ui proxy.
-      if (opts.serverUrl !== undefined && opts.only !== 'ui') {
-        process.stderr.write("error: option '--server-url' requires '--only ui'\n");
-        process.exit(2);
-      }
 
       // `--external-url` and its deprecated `--public-url` spelling are the
       // same flag under two names — combining them would make one silently
@@ -1801,53 +1774,6 @@ export function startCommand(getConfig: () => Config): Command {
         process.exit(2);
       }
 
-      // `--only ui`: run just the shell-serving proxy against an explicit
-      // upstream — the operator split-mode replacement for the removed
-      // `ok ui` (which discovered its upstream via server.lock instead).
-      if (opts.only === 'ui') {
-        // Deprecation notice FIRST, before any refusal below — the operator
-        // should learn the successor spelling from the same run that errors
-        // (mirrors the --remote notice ordering). Stderr so stdout stays
-        // parseable for callers that scrape the "listening on" line. The
-        // split-mode proxy retires together with ui.lock in a later release.
-        {
-          const { warning } = await import('../ui/colors.ts');
-          console.error(
-            warning(
-              '[start] `--only ui` is deprecated — plain `ok start` serves the editor UI, API, and MCP on one port. The split-mode proxy will be removed in a future release.',
-            ),
-          );
-        }
-        if (opts.serverUrl === undefined) {
-          process.stderr.write(
-            "error: '--only ui' requires '--server-url <url>' (where the project server runs)\n",
-          );
-          process.exit(2);
-        }
-        // `--only ui` runs the proxy in-process and returns below, before the
-        // --mode app handoff and before runStartCommand reads --remote — so
-        // either combination would silently drop a flag. Reject loudly.
-        if (opts.mode === 'app') {
-          process.stderr.write("error: option '--only ui' cannot be combined with '--mode app'\n");
-          process.exit(2);
-        }
-        if (opts.remote !== undefined && opts.remote !== false) {
-          process.stderr.write("error: option '--only ui' cannot be combined with '--remote'\n");
-          process.exit(2);
-        }
-        const { runUiCommand } = await import('./ui.ts');
-        await runUiCommand(config, {
-          ...(opts.port !== undefined ? { port: String(opts.port) } : {}),
-          ...(opts.bind?.[0] !== undefined
-            ? { host: opts.bind[0] }
-            : opts.host !== undefined
-              ? { host: opts.host }
-              : {}),
-          upstreamUrl: opts.serverUrl,
-        });
-        return;
-      }
-
       // `--mode=app` shortcuts the server boot and hands off to the
       // desktop app. Mutually exclusive with --open (which opens a
       // browser tab against the local server, which app mode does not
@@ -1873,7 +1799,6 @@ export function startCommand(getConfig: () => Config): Command {
         if (opts.bind !== undefined) ignored.push('--bind');
         if (opts.host !== undefined) ignored.push('--host');
         if (opts.only !== undefined) ignored.push('--only');
-        if (opts.serverUrl !== undefined) ignored.push('--server-url');
         if (opts.idleShutdown !== undefined) ignored.push('--idle-shutdown');
         if (opts.openBrowser === false) ignored.push('--no-open-browser');
         if (opts.externalUrl !== undefined) ignored.push('--external-url');

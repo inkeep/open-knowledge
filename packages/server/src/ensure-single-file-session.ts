@@ -3,8 +3,8 @@
  *
  * When the MCP `preview_url` file branch finds no running session serving a
  * loose file, it calls `ensureSingleFileSession` to start one and wait until it
- * registers (writes a discoverable `ui.lock`), so the caller can then resolve
- * its URL via off-cwd discovery.
+ * registers (writes a discoverable `server.lock`), so the caller can then
+ * resolve its URL via off-cwd discovery.
  *
  * Lifecycle: the session runs in a DETACHED `ok <file>` subprocess (headless,
  * `OK_SINGLE_FILE_NO_OPEN=1`) — NOT inside this MCP process — so it survives the

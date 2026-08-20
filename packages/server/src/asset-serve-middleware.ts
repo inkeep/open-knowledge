@@ -5,7 +5,7 @@
  * Both surfaces consume this single implementation:
  *   - `bun run dev` Vite plugin (combines Vite + collab + asset serving
  *     on one port) — `packages/app/src/server/hocuspocus-plugin.ts`.
- *   - `ok ui` production server — `packages/cli/src/commands/ui.ts`.
+ *   - the single-listener `ok start` server — `packages/server/src/boot.ts`.
  *
  * Extracted as a pure factory so it can be unit-tested without spinning
  * up an HTTP server. The consumer supplies the real `contentFilter` +

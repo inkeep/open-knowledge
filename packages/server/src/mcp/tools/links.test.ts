@@ -13,7 +13,7 @@ import {
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { DESCRIPTION, type LinksDeps, register } from './links.ts';
-import { bindTestUiLock } from './preview-url-test-helpers.ts';
+import { bindTestUiServerLock } from './preview-url-test-helpers.ts';
 import type { ServerInstance } from './shared.ts';
 import { HOCUSPOCUS_NOT_RUNNING_ERROR } from './shared.ts';
 
@@ -209,7 +209,7 @@ describe('links — kind=backlinks', () => {
   test('hits /api/backlinks with normalized docName and enriches rows with route-only previewUrl', async () => {
     // Bind the UI lock so the resolver treats routes as reachable; the
     // resolved previewUrl is route-only and carries no host:port.
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'backlinks', document: 'target.md' });
@@ -249,7 +249,7 @@ describe('links — kind=backlinks', () => {
 
 describe('links — kind=forward', () => {
   test('doc entries get previewUrl; external entries get null previewUrl', async () => {
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'forward', document: 'source' });
@@ -299,7 +299,7 @@ describe('links — kind=dead', () => {
   });
 
   test('target + source rows get previewUrl + previewUrlSource when resolver resolves', async () => {
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'dead' });
@@ -335,7 +335,7 @@ describe('links — kind=orphans', () => {
   });
 
   test('enriches orphan rows with previewUrl', async () => {
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'orphans' });
@@ -361,7 +361,7 @@ describe('links — kind=hubs', () => {
   });
 
   test('enriches hub rows with previewUrl', async () => {
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'hubs' });
@@ -396,7 +396,7 @@ describe('links — kind=suggest', () => {
   });
 
   test('emits previewUrl + previewUrlSource when resolver resolves', async () => {
-    bindTestUiLock(tmpDir);
+    bindTestUiServerLock(tmpDir);
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl, tmpDir));
     const result = await getTool().handler({ kind: 'suggest', document: 'project-alpha' });

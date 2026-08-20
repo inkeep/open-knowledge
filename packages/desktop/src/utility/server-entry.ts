@@ -441,11 +441,9 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       };
       // Compare on `name` (not instanceof) because `bootServer` is
       // dynamically imported and the class identity may differ across
-      // module-realm boundaries. Includes `UiLockCollisionError` so a
-      // standalone `ok ui` already serving the same project surfaces
-      // the same lock-collision UX as `ServerLockCollisionError`.
+      // module-realm boundaries.
       const errName = err && typeof err === 'object' ? (err as Error).name : '';
-      if (errName === 'ServerLockCollisionError' || errName === 'UiLockCollisionError') {
+      if (errName === 'ServerLockCollisionError') {
         const existing = (err as { existing?: UtilityErrorMessage['existingLock'] }).existing;
         if (existing) {
           errMsg.kind = 'lock-collision';

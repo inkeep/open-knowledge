@@ -1452,12 +1452,12 @@ describe('resolveHost — --bind precedence', () => {
 });
 
 describe('parseOnlyModule', () => {
-  test('accepts ui and server', () => {
-    expect(parseOnlyModule('ui')).toBe('ui');
+  test('accepts server', () => {
     expect(parseOnlyModule('server')).toBe('server');
   });
 
-  test('rejects anything else', () => {
+  test('rejects ui (retired with ui.lock) and anything else', () => {
+    expect(() => parseOnlyModule('ui')).toThrow(/--only must be/);
     expect(() => parseOnlyModule('api')).toThrow(/--only must be/);
   });
 });
@@ -1623,7 +1623,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
         kind: 'interactive',
         capabilities: ['http', 'ws', 'ui'],
       }),
-      readUiLock: () => null,
     });
     expect(info).toEqual({
       url: 'http://127.0.0.1:24550',
@@ -1633,7 +1632,10 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
     });
   });
 
-  test('sibling topology (no ui capability): reports the live ui.lock advertisement', async () => {
+  test('explicit no-ui holder (--only server): reports the server address, servesUi false', async () => {
+    // With ui.lock retired, a live server that explicitly omits the `ui`
+    // capability has no separate UI advertisement to prefer — the reuse notice
+    // reports the server's own address and marks servesUi false.
     const info = await resolveServerReuse({
       ...immediate,
       readServerLock: () => ({
@@ -1642,19 +1644,8 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
         url: 'http://127.0.0.1:24550',
         capabilities: ['http', 'ws'],
       }),
-      readUiLock: () => ({ pid: 43, port: 39_847 }),
     });
-    expect(info?.url).toBe('http://localhost:39847');
-    expect(info?.servesUi).toBe(false);
-  });
-
-  test('sibling topology: prefers the ui.lock url when present (IPv6 bind, not localhost)', async () => {
-    const info = await resolveServerReuse({
-      ...immediate,
-      readServerLock: () => ({ pid: 42, port: 24_550, capabilities: ['http', 'ws'] }),
-      readUiLock: () => ({ pid: 43, port: 39_847, url: 'http://[::1]:39847' }),
-    });
-    expect(info?.url).toBe('http://[::1]:39847');
+    expect(info?.url).toBe('http://127.0.0.1:24550');
     expect(info?.servesUi).toBe(false);
   });
 
@@ -1662,7 +1653,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
     const info = await resolveServerReuse({
       ...immediate,
       readServerLock: () => ({ pid: 42, port: 24_550 }),
-      readUiLock: () => null,
     });
     expect(info?.url).toBe('http://127.0.0.1:24550');
   });
@@ -1682,7 +1672,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
               capabilities: ['http', 'ws', 'ui'],
             };
       },
-      readUiLock: () => null,
       now: () => clock,
       sleep: async (ms) => {
         clock += ms;
@@ -1697,7 +1686,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
     const info = await resolveServerReuse({
       ...immediate,
       readServerLock: () => ({ pid: 42, port: 24_550, draining: true }),
-      readUiLock: () => null,
     });
     expect(info).toBeNull();
   });
@@ -1706,7 +1694,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
     let clock = 0;
     const info = await resolveServerReuse({
       readServerLock: () => ({ pid: 42, port: 0 }),
-      readUiLock: () => null,
       now: () => clock,
       sleep: async (ms) => {
         clock += ms;
@@ -1721,7 +1708,6 @@ describe('resolveServerReuse (spawn-or-reuse)', () => {
     const info = await resolveServerReuse({
       ...immediate,
       readServerLock: () => null,
-      readUiLock: () => null,
     });
     expect(info).toBeNull();
   });
@@ -1875,18 +1861,6 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
   // multi-address bind is now real (guard dropped in start.ts; behavior
   // covered by the multi-bind boot tests in boot.test.ts).
 
-  test('--server-url without --only ui exits 2', async () => {
-    const { code, stderr } = await captureGuard(['--server-url', 'http://127.0.0.1:24550']);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--server-url');
-  });
-
-  test('--only ui without --server-url exits 2', async () => {
-    const { code, stderr } = await captureGuard(['--only', 'ui']);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--server-url');
-  });
-
   test('--only server + --react-shell-dist-dir exits 2', async () => {
     const { code, stderr } = await captureGuard([
       '--only',
@@ -1896,32 +1870,6 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     ]);
     expect(code).toBe(2);
     expect(stderr).toContain('--react-shell-dist-dir');
-  });
-
-  test('--only ui + --mode app exits 2 (would silently drop --mode app)', async () => {
-    const { code, stderr } = await captureGuard([
-      '--only',
-      'ui',
-      '--server-url',
-      'http://127.0.0.1:24550',
-      '--mode',
-      'app',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--mode app');
-  });
-
-  test('--only ui + --remote exits 2 (would silently drop --remote)', async () => {
-    const { code, stderr } = await captureGuard([
-      '--only',
-      'ui',
-      '--server-url',
-      'http://127.0.0.1:24550',
-      '--remote',
-      'https://tunnel.example.com',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--remote');
   });
 
   test('--single-file + --remote exits 2 (no consented root to expose)', async () => {
@@ -2013,17 +1961,6 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     const { code, output } = await captureRemoteRefusal(['--remote', 'http://tunnel.example.com']);
     expect(code).toBe(78);
     expect(output).toContain('must be https');
-  });
-
-  test('--only ui prints the deprecation notice even on the missing --server-url refusal', async () => {
-    // Same contract as the --remote notice: the operator learns the
-    // successor spelling (`ok start`) from the same run that errors, exactly
-    // once, on stderr.
-    const { code, output } = await captureRemoteRefusal(['--only', 'ui']);
-    expect(code).toBe(2);
-    expect(output).toContain("'--only ui' requires '--server-url");
-    expect(output.split('`--only ui` is deprecated').length - 1).toBe(1);
-    expect(output).toContain('ok start');
   });
 
   // The rename notices share the --remote ordering contract: they print

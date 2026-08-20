@@ -27,7 +27,7 @@ import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core
 import { isProcessAlive } from './process-alive.ts';
 import { lockBaseUrl } from './process-lock.ts';
 import { discoverLockDirs } from './process-scan.ts';
-import { readUiLock } from './ui-lock.ts';
+import { lockAdvertisesUi, readServerLock } from './server-lock.ts';
 
 /** A running server discovered off-cwd, with the fields the rule needs. */
 export interface OffCwdCandidate {
@@ -106,9 +106,10 @@ export function projectDirOfLockDir(lockDir: string): string {
 /**
  * Production deps: discover via `discoverLockDirs`; inspect each lock dir by
  * re-deriving its contentDir from `.ok/config.yml` (the lock records projectDir,
- * not contentDir), reading `ui.lock` for the port, and liveness-gating on the
- * pid. contentDir is realpath'd so the prefix match lines up with a realpath'd
- * target (both sides canonical — the symlink discipline used everywhere).
+ * not contentDir), reading `server.lock` for the port, and liveness-gating on
+ * the pid. contentDir is realpath'd so the prefix match lines up with a
+ * realpath'd target (both sides canonical — the symlink discipline used
+ * everywhere).
  */
 export function createOffCwdResolverDeps(): OffCwdResolverDeps {
   return {
@@ -135,13 +136,15 @@ export function createOffCwdResolverDeps(): OffCwdResolverDeps {
         );
         return null;
       }
-      const lock = readUiLock(lockDir);
-      // Liveness and URL derivation share one source of truth: a candidate
-      // is alive only when it has a non-draining, dialable origin — the same
-      // coupling as the shim's liveBaseUrlFromLock. The draining check
-      // matters because single-listener teardown marks BOTH locks draining
-      // while the pid is still alive.
-      const resolvedBase = lock ? lockBaseUrl(lock) : null;
+      const lock = readServerLock(lockDir);
+      // Liveness and URL derivation share one source of truth: a candidate is
+      // alive only when its server.lock is non-draining, ui-capable, and has a
+      // dialable origin. `lockAdvertisesUi` keeps an `--only server` holder
+      // (no navigable UI) out of redirect/off-cwd resolution — the same "no UI"
+      // boundary resolveUiInfo enforces. The draining check matters because
+      // single-listener teardown marks the lock draining while the pid is
+      // still alive.
+      const resolvedBase = lock != null && lockAdvertisesUi(lock) ? lockBaseUrl(lock) : null;
       const baseUrl = resolvedBase ?? `http://localhost:${lock?.port ?? 0}`;
       const alive =
         lock != null && lock.draining !== true && resolvedBase !== null && isProcessAlive(lock.pid);

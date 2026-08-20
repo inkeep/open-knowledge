@@ -6,7 +6,7 @@
  * command. Prints formatted text by default, JSON with `--json`.
  */
 
-import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
+import { type Config, lockAdvertisesUi, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
 
@@ -31,30 +31,27 @@ interface StatusReport {
   ui: StatusEntry;
 }
 
-export function buildStatusReport(server: LockState, ui: LockState): StatusReport {
+export function buildStatusReport(server: LockState): StatusReport {
   const serverEntry = summarize('server', server);
-  let uiEntry = summarize('ui', ui);
-  // Single-listener default (Wave 3 flip): plain `ok start` serves the UI from
-  // the project server and writes NO ui.lock. Without this, the ui row would
-  // read "not running" while the editor is fully up at the server's port — a
-  // false negative for anyone scripting against `ok status`. Synthesize the ui
-  // state from server.lock's `ui` capability instead.
-  if (
-    uiEntry.state === 'missing' &&
-    server.status === 'alive' &&
-    server.lock.capabilities?.includes('ui') === true
-  ) {
-    uiEntry = {
-      name: 'ui',
-      state: 'alive',
-      pid: server.lock.pid,
-      port: server.lock.port,
-      startedAt: server.lock.startedAt,
-      host: server.lock.hostname,
-      alive: true,
-      servedByServer: true,
-    };
-  }
+  // Single-listener topology: plain `ok start` serves the UI from the project
+  // server and writes NO ui.lock, so the ui row is derived entirely from
+  // server.lock's `ui` capability via the shared `lockAdvertisesUi` predicate
+  // (a missing `capabilities` field on a pre-v2 server is treated as ui-capable,
+  // matching preview_url / the redirect). A bare `--only server` boot advertises
+  // no `ui`, so its ui row is correctly empty.
+  const uiEntry: StatusEntry =
+    server.status === 'alive' && lockAdvertisesUi(server.lock)
+      ? {
+          name: 'ui',
+          state: 'alive',
+          pid: server.lock.pid,
+          port: server.lock.port,
+          startedAt: server.lock.startedAt,
+          host: server.lock.hostname,
+          alive: true,
+          servedByServer: true,
+        }
+      : { name: 'ui', state: 'missing', alive: false };
   return { server: serverEntry, ui: uiEntry };
 }
 
@@ -125,14 +122,14 @@ function renderEntry(entry: StatusEntry): string {
 interface RunStatusDeps {
   lockDir: string;
   json?: boolean;
-  inspect?: (name: 'server' | 'ui') => LockState;
+  inspect?: () => LockState;
   log?: (msg: string) => void;
 }
 
 export function runStatus(deps: RunStatusDeps): StatusReport {
-  const inspect = deps.inspect ?? ((name) => inspectLock(deps.lockDir, name));
+  const inspect = deps.inspect ?? (() => inspectLock(deps.lockDir, 'server'));
   const log = deps.log ?? ((msg) => console.log(msg));
-  const report = buildStatusReport(inspect('server'), inspect('ui'));
+  const report = buildStatusReport(inspect());
   if (deps.json) {
     log(JSON.stringify(report, null, 2));
   } else {

@@ -16,11 +16,12 @@
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { hostname, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { z } from 'zod';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { acquireServerLock, updateServerLockPort } from '../../server-lock.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import { register, type ShareLinkDeps } from './share-link.ts';
 import type { ServerInstance } from './shared.ts';
@@ -142,28 +143,22 @@ function makeDeps(serverUrl: string | undefined, config: Config = BASE_CONFIG): 
 }
 
 /**
- * Write a live `ui.lock` under `<tmpDir>/.ok/local/` so the preview-url
- * resolver's reachability gate fires (a non-null `previewUrl` means "a UI is
- * running"). Uses THIS process's pid + hostname so `readUiLock`'s
- * `isProcessAlive` + same-host checks both pass. Without this, every success
+ * Seed a live, ui-capable `server.lock` under `<tmpDir>/.ok/local/` so the
+ * preview-url resolver's reachability gate fires (a non-null `previewUrl`
+ * means "a UI is running"). `acquireServerLock` stamps THIS process's pid +
+ * machine identity so the liveness checks pass. Without this, every success
  * case resolves `previewUrl: null` (no UI), so the lock is what lets us assert
  * the concrete doc/folder route shapes.
  */
-async function writeUiLock(): Promise<void> {
+async function seedUiServer(): Promise<void> {
   const lockDir = resolve(tmpDir, '.ok', 'local');
   await mkdir(lockDir, { recursive: true });
-  await writeFile(
-    resolve(lockDir, 'ui.lock'),
-    JSON.stringify({
-      pid: process.pid,
-      hostname: hostname(),
-      port: 5173,
-      startedAt: new Date().toISOString(),
-      worktreeRoot: tmpDir,
-      protocolVersion: 1,
-      runtimeVersion: '0.0.0-test',
-    }),
-  );
+  acquireServerLock(lockDir, {
+    port: 0,
+    worktreeRoot: tmpDir,
+    capabilities: ['http', 'ws', 'ui'],
+  });
+  updateServerLockPort(lockDir, 5173, 'http://localhost:5173');
 }
 
 describe('share_link — registration + preconditions', () => {
@@ -432,7 +427,7 @@ describe('share_link — happy path', () => {
 
   test('doc success previewUrl is the doc route `/#/<doc>` when a UI is running', async () => {
     await writeFile(resolve(tmpDir, 'meeting.md'), '# meeting');
-    await writeUiLock();
+    await seedUiServer();
     mockResponse = { status: 200, body: successBody() };
     const { server, getTool } = createFakeServer();
     register(server, makeDeps(baseUrl));
@@ -447,7 +442,7 @@ describe('share_link — happy path', () => {
 
   test('folder success previewUrl is the trailing-slash folder route when a UI is running', async () => {
     await mkdir(resolve(tmpDir, 'guides'), { recursive: true });
-    await writeUiLock();
+    await seedUiServer();
     mockResponse = {
       status: 200,
       body: {
@@ -469,7 +464,7 @@ describe('share_link — happy path', () => {
   });
 
   test('content-root folder success previewUrl is the root route `/#/`', async () => {
-    await writeUiLock();
+    await seedUiServer();
     mockResponse = {
       status: 200,
       body: {
@@ -492,7 +487,7 @@ describe('share_link — happy path', () => {
 
   test('nested folder previewUrl encodes per segment with trailing slash', async () => {
     await mkdir(resolve(tmpDir, 'docs', 'api guide'), { recursive: true });
-    await writeUiLock();
+    await seedUiServer();
     mockResponse = {
       status: 200,
       body: {

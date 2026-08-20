@@ -84,24 +84,6 @@ import {
   initToleranceTelemetryWriter,
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
-// `ui.lock` is advertisement, NOT mutex. When a process serves the React shell
-// for a contentDir, it tries to write `ui.lock` so external consumers (agent
-// harnesses opening a preview browser via `preview-url.ts`, MCP tools
-// surfacing a clickable URL) can discover the bound port. If a live holder
-// already owns the lock — a co-existing `ok ui` sibling, a prior-session
-// detached `ok start --react-shell-dist-dir` that survived a desktop quit —
-// we YIELD: their port is already reachable and serves the same React shell
-// against the same data backend, so the advertisement is already fulfilled.
-// Stale locks (dead pid) are pruned automatically by `acquireProcessLock`.
-// Only the writer releases on destroy — a desktop quit must not take down a
-// peer's advertisement. Ownership is tracked locally via `ownsUiLock` below.
-import {
-  acquireUiLock,
-  markUiLockDraining,
-  releaseUiLock,
-  UiLockCollisionError,
-  updateUiLockPort,
-} from './ui-lock.ts';
 
 /**
  * Names of per-machine runtime files that pre-date the `.ok/local/` move.
@@ -803,9 +785,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     authStreamHeartbeatMs: opts.authStreamHeartbeatMs,
     onAgentWrite: opts.onAgentWrite,
     lockKind,
-    // `"ui"` iff THIS process serves the React shell — the accuracy contract
-    // that lets `preview_url` distinguish "no UI mounted" (an API-only
-    // profile) from "UI served by a sibling" (which advertises via ui.lock).
+    // `"ui"` iff THIS process serves the React shell — the single-listener
+    // advertisement `preview_url` and the clone→open redirect read to
+    // distinguish a UI-serving server from an API-only (`--only server`) one.
     capabilities: opts.reactShellDistDir ? ['http', 'ws', 'ui'] : ['http', 'ws'],
     skipStateManifestCheck: opts.skipStateManifestCheck,
     detectGh: opts.detectGh,
@@ -849,7 +831,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // This is NOT where user-facing "issued" links come from, so keeping it
   // loopback does not regress preview/share URLs: `preview_url` and the
   // per-response `previewUrl` route resolve their browser base from
-  // `server.lock` / `ui.lock` (this same listener origin by the one-URL
+  // `server.lock` (this same listener origin by the one-URL
   // contract below, never from this value), and `share_link` builds its public
   // `https://openknowledge.ai/d/...` URL from the git remote. `externalUrl`
   // still governs ingress admission (CORS/Host) via `ingressPolicy`; it just
@@ -903,55 +885,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
           ingressPolicy,
         })
       : undefined;
-
-  // When serving the React shell, try to advertise via `ui.lock` so external
-  // preview-URL consumers find our port. If a live holder already owns the
-  // lock (a co-existing `ok ui` sibling, a prior-session orphan), we yield
-  // and proceed without owning the lock — their port already satisfies the
-  // discovery contract. Stale-lock pruning is automatic inside
-  // `acquireProcessLock`; we only catch the live-collision case here.
-  let ownsUiLock = false;
-  if (opts.reactShellDistDir) {
-    try {
-      acquireUiLock(lockDir, {
-        port: 0,
-        worktreeRoot: opts.projectDir ?? opts.contentDir,
-      });
-      ownsUiLock = true;
-    } catch (err) {
-      if (err instanceof UiLockCollisionError) {
-        // Co-exist with the live holder. Their advertisement is sufficient
-        // for agent harness preview-browser flows. Logged at info so
-        // operators can grep for the yield in the wild without confusion.
-        // `pid` is THIS server's pid (the yielder); `existingPid` is the
-        // peer holding the lock — operators need both for incident
-        // correlation when one of them later misbehaves.
-        log.info(
-          {
-            event: 'ui-lock-yielded-to-live-holder',
-            pid: process.pid,
-            existingPid: err.existing.pid,
-            existingPort: err.existing.port,
-            lockDir,
-          },
-          'ui.lock already held by a live process — yielding (advertisement is fulfilled)',
-        );
-      } else {
-        // Any other failure (filesystem, permissions, corrupt-and-unrecoverable
-        // lock) — surface it; the React shell would still serve, but losing
-        // the discovery channel silently is the worse failure mode.
-        await destroyHocuspocus().catch(() => {
-          /* best-effort — surface the original error */
-        });
-        // Boot failed but this process may keep living (Electron utility
-        // surfaces the error over IPC). destroyHocuspocus defers its unlink
-        // to process exit, which would strand a live-pid draining lock that
-        // blocks every future start — release it for real here.
-        releaseServerLock(lockDir);
-        throw err;
-      }
-    }
-  }
 
   // React-shell serving — the default for plain `ok start`, and the Electron
   // utility path.
@@ -1139,20 +1072,13 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   const listenAddresses = [...new Set(effectiveBindAddresses)];
   const primaryAddress = listenAddresses[0];
   const cleanupAfterListenFailure = async (): Promise<void> => {
-    // Listen failed after locks were acquired. Release ui.lock only if we
-    // own it (we yielded to a live holder, that holder keeps advertising);
-    // destroyHocuspocus releases server.lock either way.
-    if (ownsUiLock) {
-      try {
-        releaseUiLock(lockDir);
-      } catch (releaseErr) {
-        log.warn({ err: releaseErr }, 'releaseUiLock failed during listen-error cleanup');
-      }
-    }
+    // Listen failed after the server.lock was acquired; destroyHocuspocus
+    // releases it (immediately, below, since the process may keep living
+    // after a failed boot).
     await destroyHocuspocus().catch((teardownErr) => {
       // Best-effort — the original listen error is what we ultimately throw,
       // but a teardown failure here can strand resources, so record it rather
-      // than swallow it silently (mirrors the releaseUiLock warn above).
+      // than swallow it silently.
       log.warn({ err: teardownErr }, 'destroyHocuspocus failed during listen-error cleanup');
     });
     // The process may keep living after a failed boot, so the
@@ -1239,12 +1165,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // the self-call base structurally identical rather than two literals in sync.
   const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
-  if (ownsUiLock) {
-    // Flip the sentinel port=0 to the bound port so preview-URL consumers see
-    // a reachable URL. Only writes if we still own the lock (paranoia in
-    // case an out-of-band release happened between acquire and listen).
-    updateUiLockPort(lockDir, realPort, boundBaseUrl);
-  }
 
   let destroyed = false;
   const withDestroyTimeout = async (name: string, work: () => Promise<void>): Promise<void> => {
@@ -1286,9 +1206,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     // draining mark. Idempotent with the mark inside `destroyHocuspocus`.
     try {
       markServerLockDraining(lockDir);
-      if (ownsUiLock) markUiLockDraining(lockDir);
     } catch (err) {
-      log.warn({ err, step: 'markLocksDraining' }, 'bootServer destroy step failed');
+      log.warn({ err, step: 'markServerLockDraining' }, 'bootServer destroy step failed');
     }
 
     try {
@@ -1351,16 +1270,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         }),
     );
     await runStep('destroyHocuspocus', () => destroyHocuspocus());
-    if (ownsUiLock) {
-      // Release ONLY if we own it. If we yielded at boot to a live holder,
-      // that holder's advertisement must survive our destroy — taking down
-      // ui.lock on quit-without-ownership would silently break their
-      // preview-URL discovery. Unlink deferred to process exit for the same
-      // reason as server.lock: lock-gone must mean process-gone.
-      await runStep('releaseUiLock', async () =>
-        releaseUiLock(lockDir, { deferUnlinkToExit: true }),
-      );
-    }
     // Flush pending spans/metrics so the teardown sequence itself is
     // observable. shutdownTelemetry is idempotent and has its own timeout.
     await runStep('shutdownTelemetry', () => shutdownTelemetry());

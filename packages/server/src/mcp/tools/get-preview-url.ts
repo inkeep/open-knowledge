@@ -44,7 +44,7 @@ import {
   resolveOffCwdTarget,
 } from '../../off-cwd-resolver.ts';
 import { isProcessAlive } from '../../process-alive.ts';
-import { readServerLock } from '../../server-lock.ts';
+import { lockAdvertisesUi, readServerLock } from '../../server-lock.ts';
 import {
   awaitUiBaseUrl,
   encodeDocName,
@@ -101,12 +101,12 @@ interface GetPreviewUrlDeps {
   /**
    * Hocuspocus URL (or per-call resolver). When present, a preview request
    * is treated as demand for a backend: the resolver's auto-spawn path
-   * brings up `ok start` before `ui.lock` is read. Absent in registration
-   * contexts without server authority — the tool then answers from disk
-   * alone.
+   * brings up `ok start` before the UI advertisement is read. Absent in
+   * registration contexts without server authority — the tool then answers
+   * from disk alone.
    */
   serverUrl?: ServerUrlOrResolver;
-  /** Cold-spawn `ui.lock` wait overrides — tests only. */
+  /** Cold-spawn UI-bind wait overrides — tests only. */
   uiBindWait?: { timeoutMs?: number; pollIntervalMs?: number };
   /**
    * Off-cwd resolver deps for the `file` branch (find the running session that
@@ -129,8 +129,7 @@ interface GetPreviewUrlDeps {
 /**
  * How long to wait for a freshly spawned backend's UI advertisement to bind
  * before reporting no-UI — the window between `server.lock` appearing and the
- * listener binding its real port (+ the legacy sibling window on locks from
- * older binaries).
+ * listener binding its real port.
  */
 const UI_BIND_WAIT_TIMEOUT_MS = 3000;
 const UI_BIND_WAIT_POLL_MS = 100;
@@ -259,17 +258,18 @@ function noSingleFileSessionMessage(file: string): string {
 /**
  * True only when a live lock EXPLICITLY advertises capabilities that omit
  * `ui` — the `--only server` (and degraded API-only) state, where no UI will
- * ever bind on its own. A ui-capable lock whose `ui.lock` is still binding, and
- * a pre-v2 lock with no `capabilities` field at all, both return false so they
- * keep the transient "retry" hint (an extra poll is harmless; wrongly sending a
- * user to `ok ui` seconds before the UI binds is not). Mirrors `isServerLive`'s
- * fail-observable error handling.
+ * ever bind on its own. A ui-capable lock whose listener is still binding, and
+ * a pre-v2 lock with no `capabilities` field at all, both return false (via the
+ * shared `lockAdvertisesUi` predicate) so they keep the transient "retry" hint
+ * (an extra poll is harmless; wrongly telling a user no UI will mount seconds
+ * before it binds is not). Mirrors `isServerLive`'s fail-observable error
+ * handling.
  */
 function serverExplicitlyLacksUi(lockDir: string): boolean {
   try {
     const lock = readServerLock(lockDir);
     if (lock === null || lock.port <= 0 || !isProcessAlive(lock.pid)) return false;
-    return Array.isArray(lock.capabilities) && !lock.capabilities.includes('ui');
+    return !lockAdvertisesUi(lock);
   } catch (err) {
     process.stderr.write(
       `[preview-url] readServerLock failed at ${lockDir} while checking ui capability: ${err instanceof Error ? err.message : String(err)}\n`,

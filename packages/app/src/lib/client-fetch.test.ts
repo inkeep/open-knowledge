@@ -82,7 +82,7 @@ describe('installClientFetchWrapper', () => {
     installClientFetchWrapper();
     await window.fetch('/api/documents');
     expect(calls[0]?.input).toBe('/api/documents');
-    expect(header(calls[0], PROTOCOL)).toBe('1');
+    expect(header(calls[0], PROTOCOL)).toBe('2');
     expect(header(calls[0], KIND)).toBe('web');
     expect(typeof header(calls[0], RUNTIME)).toBe('string');
   });
@@ -92,7 +92,7 @@ describe('installClientFetchWrapper', () => {
     installClientFetchWrapper({ apiOrigin: 'http://localhost:59534' });
     await window.fetch('/api/document?docName=foo&cache=bust');
     expect(calls[0]?.input).toBe('http://localhost:59534/api/document?docName=foo&cache=bust');
-    expect(header(calls[0], PROTOCOL)).toBe('1');
+    expect(header(calls[0], PROTOCOL)).toBe('2');
     expect(header(calls[0], KIND)).toBe('web');
   });
 
@@ -103,7 +103,7 @@ describe('installClientFetchWrapper', () => {
     installClientFetchWrapper({ apiOrigin: 'http://localhost:59534' });
     await window.fetch('http://localhost:59534/api/install-skill', { method: 'POST' });
     expect(calls[0]?.input).toBe('http://localhost:59534/api/install-skill');
-    expect(header(calls[0], PROTOCOL)).toBe('1');
+    expect(header(calls[0], PROTOCOL)).toBe('2');
     expect(header(calls[0], KIND)).toBe('web');
   });
 
@@ -183,6 +183,6 @@ describe('installClientFetchWrapper', () => {
     expect(window.fetch).toBe(firstWrapper);
     await window.fetch('/api/documents');
     expect(calls[0]?.input).toBe('http://localhost:59534/api/documents');
-    expect(header(calls[0], PROTOCOL)).toBe('1');
+    expect(header(calls[0], PROTOCOL)).toBe('2');
   });
 });

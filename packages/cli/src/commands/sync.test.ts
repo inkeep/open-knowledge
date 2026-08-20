@@ -51,7 +51,7 @@ describe('runSync — client version headers (AC-5)', () => {
 
     await runSync({ json: true, op: 'sync' }, {} as Config, dir);
 
-    expect(headerOf(seen, 'x-ok-client-protocol')).toBe('1');
+    expect(headerOf(seen, 'x-ok-client-protocol')).toBe('2');
     expect(headerOf(seen, 'x-ok-client-kind')).toBe('cli');
     expect(headerOf(seen, 'x-ok-client-runtime')).toBe(RUNTIME_VERSION);
     // The original content-type is preserved alongside the version headers.

@@ -14,7 +14,7 @@ import { inspectLock, type LockState } from '../lock-state.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
 interface ServerLockCheckDeps {
-  inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
+  inspect?: (lockDir: string, name: 'server') => LockState;
 }
 
 export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefinition {

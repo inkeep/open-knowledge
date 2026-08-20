@@ -271,7 +271,7 @@ export function registerAllTools(server: ServerInstance, opts: RegisterAllToolsO
   // preview base/port reaches an agent. Per-response `previewUrl` fields are
   // route-only; hosts that open the URL themselves call this tool. Takes
   // `serverUrl` for its backend-ensure (a preview request is demand for a
-  // backend), though it never makes HTTP calls itself — `ui.lock` stays the
+  // backend), though it never makes HTTP calls itself — `server.lock` stays the
   // URL source.
   registerPreviewUrl(registrationServer, {
     config: opts.config,

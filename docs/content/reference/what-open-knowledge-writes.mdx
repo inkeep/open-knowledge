@@ -107,10 +107,10 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` (and `.ok/local/ui.lock`, a compatibility advertisement) | Advertise the running server's URL; `ui.lock` is kept for older readers and the deprecated `--only ui` split mode, and retires in a future release | In-project, gitignored |
+| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
-| `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the UI sibling's error log | In-project, gitignored |
+| `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
@@ -222,10 +222,10 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 
 | Path | What it is | Scope |
 | --- | --- | --- |
-| `.ok/local/server.lock` (and `.ok/local/ui.lock`, a compatibility advertisement) | Advertise the running server's URL; `ui.lock` is kept for older readers and the deprecated `--only ui` split mode, and retires in a future release | In-project, gitignored |
+| `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
-| `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the UI sibling's error log | In-project, gitignored |
+| `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |

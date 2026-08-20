@@ -137,3 +137,34 @@ describe('tsdown alwaysBundle covers the file-type transitive closure', () => {
     });
   }
 });
+
+/**
+ * Server/core-inlined transitive deps that are NOT cli `package.json` deps but
+ * enter the bundle through the inlined `@inkeep/open-knowledge-server` / `-core`
+ * source. The declared-deps loop above cannot see them, so a
+ * reconcile-against-`package.json` pass could silently drop their `alwaysBundle`
+ * entry and crash a packaged DMG with ERR_MODULE_NOT_FOUND. Provenance:
+ *   - `sirv`        — server `boot.ts` react-shell mount (dropped from
+ *     cli/package.json with the `--only ui` proxy; the others were always
+ *     transitive)
+ *   - `just-bash`   — server `bash/index.ts`
+ *   - `shell-quote` — server `bash/parse-command.ts`
+ *   - `picomatch`   — core `markdown/lint/applies-to.ts`
+ */
+describe('tsdown alwaysBundle covers server/core-inlined transitive deps', () => {
+  const serverInlinedClosure = ['sirv', 'just-bash', 'shell-quote', 'picomatch'];
+
+  for (const dep of serverInlinedClosure) {
+    test(`alwaysBundle covers transitive dep '${dep}'`, () => {
+      const escaped = dep.replace(/[\\^$*+?.()|[\]{}-]/g, '\\$&').replace(/\//g, '\\\\?/');
+      const pattern = new RegExp(`\\^${escaped}\\(`);
+      expect(
+        pattern.test(alwaysBundleBlock),
+        `Add /^${dep}(\\/|$)/ to packages/cli/tsdown.config.ts \`alwaysBundle\`. ` +
+          `It is a pure-JS transitive dep inlined via @inkeep/open-knowledge-server ` +
+          `/ -core (NOT a cli package.json dep); externalized, it leaves a bare ` +
+          `\`import '${dep}'\` that crashes the packaged app with ERR_MODULE_NOT_FOUND.`,
+      ).toBe(true);
+    });
+  }
+});

@@ -134,8 +134,7 @@ describe('loopback bind discipline (cli test sources)', () => {
 
   test('there are test files to scan (sanity)', () => {
     expect(files.length).toBeGreaterThan(0);
-    expect(files.some((f) => f.path.endsWith('commands/ui.test.ts'))).toBe(true);
-    expect(files.some((f) => f.path.endsWith('commands/ui-proxy.test.ts'))).toBe(true);
+    expect(files.some((f) => f.path.endsWith('commands/start.test.ts'))).toBe(true);
   });
 
   test('every .listen( call binds an explicit loopback host literal', () => {

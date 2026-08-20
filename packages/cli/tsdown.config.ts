@@ -71,6 +71,11 @@ const alwaysBundlePureJsDeps = [
   /^pino(\/|$)/,
   /^shell-quote(\/|$)/,
   /^simple-git(\/|$)/,
+  // sirv is inlined TRANSITIVELY via @inkeep/open-knowledge-server (boot.ts's
+  // react-shell mount) — it is NOT a cli package.json dep (dropped with the
+  // `--only ui` proxy). Do not remove this entry when reconciling `alwaysBundle`
+  // against cli deps; the server-inlined-closure guard in
+  // tsdown-bundle-coverage.test.ts pins it.
   /^sirv(\/|$)/,
   /^smol-toml(\/|$)/,
   /^strtok3(\/|$)/,

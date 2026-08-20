@@ -27,12 +27,12 @@ export function resolveContentDir(config: Config, cwd: string): string {
  * writes `<projectDir>/.ok/local/server.lock` regardless of whether
  * `content.dir` is `.` or a sub-folder (the git-root-promotion case where
  * one repo presents one `.ok/`). CLI commands that read the lock
- * (`ok stop`, `ok status`, `ok mcp`, `ok ui`, `ok clean`, `ok sync`) and
- * MCP tool handlers must call `getLocalDir(projectDir)` — anchoring on
- * contentDir would look in the wrong tree when `content.dir != '.'`.
+ * (`ok stop`, `ok status`, `ok mcp`, `ok clean`, `ok sync`) and MCP tool
+ * handlers must call `getLocalDir(projectDir)` — anchoring on contentDir
+ * would look in the wrong tree when `content.dir != '.'`.
  *
  * Single resolution helper for every server-side site that builds
- * `resolve(projectDir, '.ok')` inline. Routes for `server.lock`, `ui.lock`,
+ * `resolve(projectDir, '.ok')` inline. Routes for `server.lock`,
  * `state.json`, `principal.json`, `sync-state.json`, `conflicts.json`,
  * `last-spawn-error.log`, `cache/<branch>/...`, and `tmp/upload-<uuid>` all
  * resolve under here.

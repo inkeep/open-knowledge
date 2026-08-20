@@ -8,10 +8,9 @@
  *
  * `lockDir` is `<contentDir>/.ok/local` by convention.
  *
- * Sibling of `shadow-lock.ts` (guards a shadow repo) and `ui-lock.ts`
- * (guards the UI process). All three share `process-lock.ts` for the lock
- * acquisition/release/port-update plumbing and `process-alive.ts` for
- * liveness checks.
+ * Sibling of `shadow-lock.ts` (guards a shadow repo). Both share
+ * `process-lock.ts` for the lock acquisition/release/port-update plumbing and
+ * `process-alive.ts` for liveness checks.
  */
 
 import {
@@ -64,6 +63,29 @@ export function updateServerLockPort(lockDir: string, port: number, url?: string
 
 export function readServerLock(lockDir: string): ServerLockMetadata | null {
   return readProcessLock({ lockName: 'server', lockDir });
+}
+
+/**
+ * Does a server.lock advertise a navigable UI surface? The single source of
+ * truth for the UI-capability decision, shared by every resolution + display
+ * surface so none can disagree on the "no UI" boundary now that `ui.lock` no
+ * longer backstops the sibling topology:
+ *   - server package: `resolveUiInfo` (preview-url.ts), `resolveUiRedirectPort`
+ *     (ui-redirect-port.ts), `serverExplicitlyLacksUi` (get-preview-url.ts),
+ *     and `createOffCwdResolverDeps.inspect` (off-cwd-resolver.ts);
+ *   - CLI (imported via the package export): `ok status`, `ok ps`, and
+ *     `resolveServerReuse` (start.ts).
+ *
+ * A missing `capabilities` field (older writer) is indeterminate and treated
+ * as ui-capable: wrongly refusing a healthy server is worse than an optimistic
+ * navigate. An explicit array WITHOUT `ui` (`--only server`, or a degraded
+ * API-only boot) is a definitive no.
+ *
+ * Capability only — liveness / draining / port are the caller's concern, since
+ * each surface needs a different shape (a base URL, a port, a hint selector).
+ */
+export function lockAdvertisesUi(lock: Pick<ServerLockMetadata, 'capabilities'>): boolean {
+  return !Array.isArray(lock.capabilities) || lock.capabilities.includes('ui');
 }
 
 export function releaseServerLock(lockDir: string, opts?: { deferUnlinkToExit?: boolean }): void {

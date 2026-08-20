@@ -23,6 +23,7 @@ function makeAliveServer(overrides?: {
   pid?: number;
   startedAt?: string;
   hostname?: string;
+  capabilities?: string[];
 }): LockState {
   return {
     status: 'alive',
@@ -33,6 +34,7 @@ function makeAliveServer(overrides?: {
       port: overrides?.port ?? 5173,
       startedAt: overrides?.startedAt ?? '2026-05-05T08:00:00.000Z',
       worktreeRoot: overrides?.worktreeRoot ?? '/tmp/notes',
+      ...(overrides?.capabilities !== undefined ? { capabilities: overrides.capabilities } : {}),
     },
   };
 }
@@ -126,14 +128,14 @@ describe('runPs default (alive + foreign-host)', () => {
 
     const lockDirs = ['/tmp/notes/.ok', '/tmp/old-project/.ok'];
     const lockMap: Record<string, Record<string, LockState>> = {
-      '/tmp/notes/.ok': { server: aliveServerState, ui: missingLock },
-      '/tmp/old-project/.ok': { server: deadServerState, ui: missingLock },
+      '/tmp/notes/.ok': { server: aliveServerState },
+      '/tmp/old-project/.ok': { server: deadServerState },
     };
 
     const lines: string[] = [];
     await runPs({
       discover: async () => lockDirs,
-      inspect: (lockDir, name) => lockMap[lockDir]?.[name] ?? missingLock,
+      inspect: (lockDir) => lockMap[lockDir]?.server ?? missingLock,
       log: (msg) => lines.push(msg),
     });
 
@@ -148,7 +150,7 @@ describe('runPs default (alive + foreign-host)', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/shared/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? foreignServerState : missingLock),
+      inspect: () => foreignServerState,
       log: (msg) => lines.push(msg),
     });
 
@@ -163,7 +165,7 @@ describe('runPs default (alive + foreign-host)', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/old-project/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServerState : missingLock),
+      inspect: () => deadServerState,
       log: (msg) => lines.push(msg),
     });
 
@@ -195,14 +197,14 @@ describe('runPs --all', () => {
 
     const lockDirs = ['/tmp/notes/.ok', '/tmp/old-project/.ok'];
     const lockMap: Record<string, Record<string, LockState>> = {
-      '/tmp/notes/.ok': { server: aliveServerState, ui: missingLock },
-      '/tmp/old-project/.ok': { server: deadServerState, ui: missingLock },
+      '/tmp/notes/.ok': { server: aliveServerState },
+      '/tmp/old-project/.ok': { server: deadServerState },
     };
 
     const lines: string[] = [];
     await runPs({
       discover: async () => lockDirs,
-      inspect: (lockDir, name) => lockMap[lockDir]?.[name] ?? missingLock,
+      inspect: (lockDir) => lockMap[lockDir]?.server ?? missingLock,
       all: true,
       log: (msg) => lines.push(msg),
     });
@@ -220,7 +222,7 @@ describe('runPs --all', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/shared/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? foreignServerState : missingLock),
+      inspect: () => foreignServerState,
       all: true,
       log: (msg) => lines.push(msg),
     });
@@ -274,7 +276,7 @@ describe('runPs desktop labeling', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : missingLock),
+      inspect: () => aliveServerState,
       resolveCommand: () => ELECTRON_UTILITY_COMMAND,
       log: (msg) => lines.push(msg),
     });
@@ -293,7 +295,7 @@ describe('runPs desktop labeling', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/vault/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? foreignServerState : missingLock),
+      inspect: () => foreignServerState,
       resolveCommand: () => ELECTRON_UTILITY_COMMAND,
       log: (msg) => lines.push(msg),
     });
@@ -310,7 +312,7 @@ describe('runPs desktop labeling', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : missingLock),
+      inspect: () => aliveServerState,
       resolveCommand: () =>
         '/usr/local/bin/node /opt/open-knowledge/packages/cli/dist/cli.mjs start',
       log: (msg) => lines.push(msg),
@@ -327,7 +329,7 @@ describe('runPs desktop labeling', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : missingLock),
+      inspect: () => aliveServerState,
       resolveCommand: () => ELECTRON_UTILITY_COMMAND,
       json: true,
       log: (msg) => lines.push(msg),
@@ -348,7 +350,7 @@ describe('runPs desktop labeling', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServerState : missingLock),
+      inspect: () => deadServerState,
       resolveCommand: () => ELECTRON_UTILITY_COMMAND,
       all: true, // dead-pid hidden by default
       log: (msg) => lines.push(msg),
@@ -371,14 +373,14 @@ describe('runPs --json', () => {
 
     const lockDirs = ['/tmp/notes/.ok', '/tmp/old-project/.ok'];
     const lockMap: Record<string, Record<string, LockState>> = {
-      '/tmp/notes/.ok': { server: aliveServerState, ui: missingLock },
-      '/tmp/old-project/.ok': { server: deadServerState, ui: missingLock },
+      '/tmp/notes/.ok': { server: aliveServerState },
+      '/tmp/old-project/.ok': { server: deadServerState },
     };
 
     const lines: string[] = [];
     await runPs({
       discover: async () => lockDirs,
-      inspect: (lockDir, name) => lockMap[lockDir]?.[name] ?? missingLock,
+      inspect: (lockDir) => lockMap[lockDir]?.server ?? missingLock,
       json: true,
       log: (msg) => lines.push(msg),
     });
@@ -394,23 +396,18 @@ describe('runPs --json', () => {
   });
 
   test('json output shape has required fields', async () => {
-    const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
-    const aliveUiState: LockState = {
-      status: 'alive',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: 23456,
-        hostname: 'test-host',
-        port: 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
+    // Single-listener: the server advertises `ui`, so the ui row is derived from
+    // server.lock and mirrors the server's own pid/port/usage.
+    const aliveServerState = makeAliveServer({
+      worktreeRoot: '/tmp/notes',
+      port: 5173,
+      capabilities: ['http', 'ws', 'ui'],
+    });
 
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : aliveUiState),
+      inspect: () => aliveServerState,
       resolveCommand: () => '/usr/local/bin/node /tmp/open-knowledge/packages/cli/src/cli.ts start',
       resolveUsage: (pid) =>
         pid === 12345 ? { cpuPercent: 1.2, memPercent: 3.4 } : { cpuPercent: 5.6, memPercent: 7.8 },
@@ -451,11 +448,13 @@ describe('runPs --json', () => {
     expect(entry.server.status).toBe('alive');
     expect(entry.server.pid).toBe(12345);
     expect(typeof entry.server.startedAt).toBe('string');
+    // ui mirrors the server (single-listener) — same port/pid/usage.
     expect(entry.ui).not.toBeNull();
-    expect(entry.ui?.port).toBe(3001);
+    expect(entry.ui?.port).toBe(5173);
+    expect(entry.ui?.pid).toBe(12345);
     expect(entry.server.usage).toEqual({ cpuPercent: 1.2, memPercent: 3.4 });
     expect(entry.ui?.status).toBe('alive');
-    expect(entry.ui?.usage).toEqual({ cpuPercent: 5.6, memPercent: 7.8 });
+    expect(entry.ui?.usage).toEqual({ cpuPercent: 1.2, memPercent: 3.4 });
     expect(entry.hostname).toBe('test-host');
     expect(typeof entry.lockPath).toBe('string');
     expect(entry.binary).toBe('/tmp/open-knowledge/packages/cli/src/cli.ts');
@@ -466,13 +465,16 @@ describe('runPs --json', () => {
     expect(entry.displayStatus).toBe('running');
   });
 
-  test('ui is null when ui lock is missing', async () => {
-    const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes' });
+  test('ui is null when server.lock explicitly omits the ui capability (--only server)', async () => {
+    const aliveServerState = makeAliveServer({
+      worktreeRoot: '/tmp/notes',
+      capabilities: ['http', 'ws'],
+    });
 
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : missingLock),
+      inspect: () => aliveServerState,
       json: true,
       log: (msg) => lines.push(msg),
     });
@@ -482,20 +484,24 @@ describe('runPs --json', () => {
     expect(parsed[0]?.ui).toBeNull();
   });
 
-  test('ui is null when ui lock is corrupt', async () => {
-    const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes' });
+  test('ui reflects the server optimistically when server.lock omits `capabilities` (pre-v2)', async () => {
+    // A pre-capabilities server.lock is indeterminate; `lockAdvertisesUi` treats
+    // it as ui-capable (matching preview_url / status), so the ui row is present
+    // — never a divergence where ps hides a UI that preview_url would navigate to.
+    const aliveServerState = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
 
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServerState : corruptLock),
+      inspect: () => aliveServerState,
       json: true,
       log: (msg) => lines.push(msg),
     });
 
     const output = lines.join('\n');
-    const parsed = JSON.parse(output) as Array<{ ui: null | object }>;
-    expect(parsed[0]?.ui).toBeNull();
+    const parsed = JSON.parse(output) as Array<{ ui: { port: number } | null }>;
+    expect(parsed[0]?.ui).not.toBeNull();
+    expect(parsed[0]?.ui?.port).toBe(5173);
   });
 });
 
@@ -510,7 +516,7 @@ describe('PORTS column', () => {
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/starting/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? startingServer : missingLock),
+      inspect: () => startingServer,
       log: (msg) => lines.push(msg),
     });
 
@@ -518,13 +524,17 @@ describe('PORTS column', () => {
     expect(output).toContain('(starting)');
   });
 
-  test('missing ui shows — in PORTS', async () => {
-    const aliveServer = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
+  test('server without the ui capability shows — in PORTS', async () => {
+    const aliveServer = makeAliveServer({
+      worktreeRoot: '/tmp/notes',
+      port: 5173,
+      capabilities: ['http', 'ws'],
+    });
 
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServer : missingLock),
+      inspect: () => aliveServer,
       log: (msg) => lines.push(msg),
     });
 
@@ -532,180 +542,24 @@ describe('PORTS column', () => {
     expect(output).toContain('5173 / —');
   });
 
-  test('alive ui shows port in PORTS', async () => {
-    const aliveServer = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
-    const aliveUi: LockState = {
-      status: 'alive',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: 23456,
-        hostname: 'test-host',
-        port: 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
+  test('ui-capable server shows the shared port in PORTS (single-listener)', async () => {
+    // The UI is served by the server itself, so the ui column mirrors the
+    // server port rather than a separate sibling port.
+    const aliveServer = makeAliveServer({
+      worktreeRoot: '/tmp/notes',
+      port: 5173,
+      capabilities: ['http', 'ws', 'ui'],
+    });
 
     const lines: string[] = [];
     await runPs({
       discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServer : aliveUi),
+      inspect: () => aliveServer,
       log: (msg) => lines.push(msg),
     });
 
     const output = lines.join('\n');
-    expect(output).toContain('5173 / 3001');
-  });
-
-  test('foreign-host ui shows port in PORTS (post inspectLock-reorder)', async () => {
-    // After the inspectLock liveness-first reorder, foreign-host means the PID
-    // is alive locally — hostname drift, not a remote server. Hiding the port
-    // (the previous behavior) made orphan UIs invisible.
-    const aliveServer = makeAliveServer({ worktreeRoot: '/tmp/notes', port: 5173 });
-    const foreignUi: LockState = {
-      status: 'foreign-host',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: 23456,
-        hostname: 'old-bonjour-name',
-        port: 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServer : foreignUi),
-      log: (msg) => lines.push(msg),
-    });
-
-    const output = lines.join('\n');
-    expect(output).toContain('5173 / 3001');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ui-orphan label
-// ---------------------------------------------------------------------------
-
-describe('ui-orphan label', () => {
-  function makeAliveUi(overrides?: { pid?: number; port?: number }): LockState {
-    return {
-      status: 'alive',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: overrides?.pid ?? 23456,
-        hostname: 'test-host',
-        port: overrides?.port ?? 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
-  }
-  function makeForeignUi(overrides?: { pid?: number; port?: number }): LockState {
-    return {
-      status: 'foreign-host',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: overrides?.pid ?? 23456,
-        hostname: 'old-bonjour-name',
-        port: overrides?.port ?? 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
-  }
-
-  test('dead server + alive ui → "ui-orphan", visible by default', async () => {
-    const deadServer = makeDeadServer({ worktreeRoot: '/tmp/notes' });
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServer : makeAliveUi()),
-      log: (msg) => lines.push(msg),
-    });
-
-    const output = lines.join('\n');
-    expect(output).toContain('/tmp/notes');
-    expect(output).toContain('ui-orphan');
-    expect(output).not.toMatch(/\bstale\b/);
-  });
-
-  test('dead server + foreign-host ui (live PID) also → "ui-orphan"', async () => {
-    const deadServer = makeDeadServer({ worktreeRoot: '/tmp/notes' });
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServer : makeForeignUi()),
-      log: (msg) => lines.push(msg),
-    });
-
-    expect(lines.join('\n')).toContain('ui-orphan');
-  });
-
-  test('dead server + dead ui → "stale" (not orphan)', async () => {
-    const deadServer = makeDeadServer({ worktreeRoot: '/tmp/notes' });
-    const deadUi: LockState = {
-      status: 'dead-pid',
-      lockPath: '/tmp/notes/.ok/ui.lock',
-      lock: {
-        pid: 999,
-        hostname: 'test-host',
-        port: 3001,
-        startedAt: '2026-05-05T08:01:00.000Z',
-        worktreeRoot: '/tmp/notes',
-      },
-    };
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServer : deadUi),
-      all: true, // stale needs --all to show at all
-      log: (msg) => lines.push(msg),
-    });
-
-    const output = lines.join('\n');
-    expect(output).toContain('stale');
-    expect(output).not.toContain('ui-orphan');
-  });
-
-  test('alive server + alive ui → "running" (orphan only when server dead)', async () => {
-    const aliveServer = makeAliveServer({ worktreeRoot: '/tmp/notes' });
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? aliveServer : makeAliveUi()),
-      log: (msg) => lines.push(msg),
-    });
-
-    const output = lines.join('\n');
-    expect(output).toContain('running');
-    expect(output).not.toContain('ui-orphan');
-  });
-
-  test('ui-orphan row shows live UI PID, not dead server PID', async () => {
-    // Footer hint says `ok stop <pid>`; pointing at the dead server PID
-    // would be a dead end. Show the UI PID so copy-paste works.
-    const deadServer = makeDeadServer({ worktreeRoot: '/tmp/notes', pid: 44444 });
-    const aliveUi = makeAliveUi({ pid: 23456 });
-
-    const lines: string[] = [];
-    await runPs({
-      discover: async () => ['/tmp/notes/.ok'],
-      inspect: (_lockDir, name) => (name === 'server' ? deadServer : aliveUi),
-      log: (msg) => lines.push(msg),
-    });
-
-    const output = lines.join('\n');
-    expect(output).toContain('ui-orphan');
-    expect(output).toContain('23456'); // UI PID
-    expect(output).not.toContain('44444'); // dead server PID
+    expect(output).toContain('5173 / 5173');
   });
 });
 

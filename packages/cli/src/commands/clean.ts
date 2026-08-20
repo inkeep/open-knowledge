@@ -12,7 +12,7 @@
 import { unlinkSync } from 'node:fs';
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { inspectLock, type LockState } from './lock-state.ts';
+import { inspectLegacyUiLock, inspectLock, type LockState } from './lock-state.ts';
 
 interface PruneTarget {
   name: 'server' | 'ui';
@@ -52,7 +52,13 @@ interface CleanOutcome {
 }
 
 export function runClean(deps: RunCleanDeps): CleanOutcome {
-  const inspect = deps.inspect ?? ((name) => inspectLock(deps.lockDir, name));
+  // The `ui` slot is the one-release legacy reap: prune a leftover pre-migration
+  // `ui.lock` (dead-pid / corrupt) for upgrade goodwill. The current binary
+  // writes no `ui.lock`, so `server` is the only slot it can create.
+  const inspect =
+    deps.inspect ??
+    ((name) =>
+      name === 'ui' ? inspectLegacyUiLock(deps.lockDir) : inspectLock(deps.lockDir, name));
   const unlink = deps.unlink ?? ((path) => unlinkSync(path));
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));

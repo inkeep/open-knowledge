@@ -472,6 +472,7 @@ export { serializeError } from './serialize-error.ts';
 export { createServer, type ServerInstance, type ServerOptions } from './server-factory.ts';
 export {
   acquireServerLock,
+  lockAdvertisesUi,
   markServerLockDraining,
   readServerLock,
   releaseServerLock,
@@ -626,12 +627,4 @@ export {
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
 export { trustSystemCertificates } from './trust-system-ca.ts';
-export {
-  acquireUiLock,
-  readUiLock,
-  releaseUiLock,
-  UiLockCollisionError,
-  type UiLockMetadata,
-  updateUiLockPort,
-} from './ui-lock.ts';
 export { PROTOCOL_VERSION, RUNTIME_VERSION, STATE_SCHEMA_VERSION } from './version-constants.ts';

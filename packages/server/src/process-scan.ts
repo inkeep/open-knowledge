@@ -308,6 +308,9 @@ function parseListeningPids(output: string): number[] {
  * i.e. `<contentDir>/.ok/local`).
  */
 function hasLockFile(lockDir: string): boolean {
+  // The `ui.lock` disjunct is the one-release legacy-reap carve-out: a lingering
+  // pre-migration `ok ui` holder with no companion `server.lock` must stay
+  // discoverable so `ok stop all` / `ok clean` can reach it. Drops with the reap.
   return existsSync(join(lockDir, 'server.lock')) || existsSync(join(lockDir, 'ui.lock'));
 }
 

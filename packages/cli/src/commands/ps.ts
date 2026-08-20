@@ -7,6 +7,7 @@
  * is ignored.
  */
 
+import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import {
@@ -96,35 +97,42 @@ export function timeAgo(isoString: string, now = Date.now()): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Build a PsEntry from two inspected lock states.
+ * Build a PsEntry from the inspected server lock state.
  * Returns null when the server lock is `missing` or `corrupt` (discard entry).
  */
 function buildEntry(
   _lockDir: string,
   serverState: LockState,
-  uiState: LockState,
   command: string | null,
   serverUsage: ProcessUsage | null,
-  uiUsage: ProcessUsage | null,
 ): PsEntry | null {
-  // Discard entries where server lock is missing or corrupt
+  // Discard entries where server lock is missing or corrupt. This intentionally
+  // hides a lone pre-migration `ui.lock` holder (a lockDir with no `server.lock`):
+  // `ok ps` shows current-topology processes only. Such an orphan stays reap-able
+  // — `process-scan`'s discovery keeps the `ui.lock` disjunct so `ok stop <pid>`,
+  // `ok stop all`, and `ok clean` still reach it (all deleted together in the
+  // reap-removal follow-up).
   if (serverState.status === 'missing' || serverState.status === 'corrupt') {
     return null;
   }
 
   const serverLock = serverState.lock;
 
-  let ui: PsEntry['ui'] = null;
-  if (uiState.status !== 'missing' && uiState.status !== 'corrupt') {
-    const uiLock = uiState.lock;
-    ui = {
-      port: uiLock.port,
-      status: uiState.status,
-      pid: uiLock.pid,
-      startedAt: uiLock.startedAt,
-      usage: uiUsage,
-    };
-  }
+  // Single-listener topology: the UI is the server process itself. The ui row
+  // exists only when server.lock advertises the `ui` capability (via the shared
+  // `lockAdvertisesUi` predicate — a pre-v2 server missing `capabilities` counts
+  // as ui-capable, matching preview_url), and then it mirrors the server's own
+  // pid/port/usage. A `--only server` boot has none.
+  const ui: PsEntry['ui'] =
+    serverState.status === 'alive' && lockAdvertisesUi(serverLock)
+      ? {
+          port: serverLock.port,
+          status: serverState.status,
+          pid: serverLock.pid,
+          startedAt: serverLock.startedAt,
+          usage: serverUsage,
+        }
+      : null;
 
   return {
     directory: serverLock.worktreeRoot,
@@ -148,27 +156,15 @@ function buildEntry(
 // Text rendering
 // ---------------------------------------------------------------------------
 
-type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale' | 'ui-orphan';
+type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale';
 
 /**
- * True when the UI lock points at a process that's actually live. After the
- * `inspectLock` reorder, `foreign-host` means specifically "different
- * hostname AND PID exists locally" — so it counts as live alongside `alive`.
- */
-function isUiLive(entry: PsEntry): boolean {
-  if (entry.ui == null) return false;
-  return entry.ui.status === 'alive' || entry.ui.status === 'foreign-host';
-}
-
-/**
- * Collapse server/UI lock states into the single label rendered in STATUS.
+ * Collapse the server lock state into the single label rendered in STATUS.
  *
  * - `desktop` overrides `running` / `foreign` when the process command
  *   identifies an Electron utility (see `isDesktopCommand`).
- * - `ui-orphan` triggers when the server is `dead-pid` but the UI sidekick
- *   is alive (or `foreign-host`-with-live-PID). Surfaces the lifecycle hole
- *   where `ok ui` survives an ungraceful server crash without shutting down.
- * - `stale` covers the fully-dead case (`dead-pid` server, no live UI).
+ * - `stale` covers the dead case (`dead-pid` server). Single-listener topology
+ *   has no independent UI process, so there is no `ui-orphan` state to surface.
  */
 function displayStatus(entry: PsEntry): DisplayStatus {
   const serverStatus = entry.server.status;
@@ -176,17 +172,11 @@ function displayStatus(entry: PsEntry): DisplayStatus {
     if (entry.isDesktop) return 'desktop';
     return serverStatus === 'alive' ? 'running' : 'foreign';
   }
-  if (serverStatus === 'dead-pid' && isUiLive(entry)) return 'ui-orphan';
   return 'stale';
 }
 
 /** Statuses shown in default (non-`--all`) text output. */
-const DEFAULT_VISIBLE: ReadonlySet<DisplayStatus> = new Set([
-  'running',
-  'desktop',
-  'foreign',
-  'ui-orphan',
-]);
+const DEFAULT_VISIBLE: ReadonlySet<DisplayStatus> = new Set(['running', 'desktop', 'foreign']);
 
 function colorStatus(label: DisplayStatus): string {
   switch (label) {
@@ -196,8 +186,6 @@ function colorStatus(label: DisplayStatus): string {
       return pc.blue(label);
     case 'foreign':
       return pc.cyan(label);
-    case 'ui-orphan':
-      return pc.magenta(label);
     case 'stale':
       return pc.yellow(label);
   }
@@ -213,15 +201,13 @@ function formatCombinedUsage(entry: PsEntry): string {
 }
 
 /**
- * Format the PORTS column: `server / ui`. UI port shows `—` only when the UI
- * lock is missing/corrupt (entry.ui null) or the UI process is dead. After the
- * `inspectLock` reorder, `foreign-host` UIs have a live local PID listening
- * on that port — show it. Hiding it (the prior behavior) made orphan UIs
- * invisible because hostname drift forces them into `foreign-host`.
+ * Format the PORTS column: `server / ui`. The UI port shows `—` when no UI is
+ * mounted (entry.ui null — a `--only server` boot, or a non-live server);
+ * otherwise it mirrors the server port (single-listener topology).
  */
 function formatPorts(entry: PsEntry): string {
   const serverPort = entry.server.port === 0 ? '(starting)' : String(entry.server.port);
-  const uiPort = entry.ui == null || entry.ui.status === 'dead-pid' ? '—' : String(entry.ui.port);
+  const uiPort = entry.ui == null ? '—' : String(entry.ui.port);
   return `${serverPort} / ${uiPort}`;
 }
 
@@ -245,18 +231,12 @@ export function renderTable(entries: PsEntry[]): string {
     'BINARY',
   ];
   const rows = entries.map((e) => {
-    const status = displayStatus(e);
-    // For ui-orphan, the prominent PID column points at the live UI (which
-    // `ok stop <pid>` can act on) instead of the dead server PID. The footer
-    // hint reads "ok stop <pid|...>"; pointing it at a dead PID would be a
-    // dead end. Server PID is still in JSON output for tooling.
-    const pid = status === 'ui-orphan' && e.ui != null ? e.ui.pid : e.server.pid;
     return [
       e.directory,
       formatPorts(e),
       formatCombinedUsage(e),
-      status,
-      String(pid),
+      displayStatus(e),
+      String(e.server.pid),
       timeAgo(e.server.startedAt),
       e.binary ?? '—',
     ];
@@ -305,7 +285,7 @@ export function renderTable(entries: PsEntry[]): string {
 
 interface RunPsDeps {
   discover?: () => Promise<string[]>;
-  inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
+  inspect?: (lockDir: string, name: 'server') => LockState;
   resolveCommand?: (pid: number) => string | null;
   resolveUsage?: (pid: number) => ProcessUsage | null;
   json?: boolean;
@@ -325,7 +305,6 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   const entries: PsEntry[] = [];
   for (const lockDir of lockDirs) {
     const serverState = inspect(lockDir, 'server');
-    const uiState = inspect(lockDir, 'ui');
     const command =
       serverState.status === 'missing' || serverState.status === 'corrupt'
         ? null
@@ -334,11 +313,7 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
       serverState.status === 'missing' || serverState.status === 'corrupt'
         ? null
         : resolveUsage(serverState.lock.pid);
-    const uiUsage =
-      uiState.status === 'missing' || uiState.status === 'corrupt'
-        ? null
-        : resolveUsage(uiState.lock.pid);
-    const entry = buildEntry(lockDir, serverState, uiState, command, serverUsage, uiUsage);
+    const entry = buildEntry(lockDir, serverState, command, serverUsage);
     if (entry != null) {
       entries.push(entry);
     }

@@ -281,7 +281,7 @@ function summarizeProfile(profileJson: string): string {
 
 interface DiagnoseProcessDeps {
   discover?: () => Promise<string[]>;
-  inspect?: (lockDir: string, name: 'server' | 'ui') => LockState;
+  inspect?: (lockDir: string, name: 'server') => LockState;
   resolveCommand?: (pid: number) => string | null;
   resolveUsage?: (pid: number) => ProcessUsage | null;
   collectLsofFn?: (pid: number) => string | null;

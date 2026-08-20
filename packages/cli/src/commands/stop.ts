@@ -1,6 +1,7 @@
 /**
- * `open-knowledge stop` — SIGTERM live server + ui processes; leave stale
- * locks untouched (they belong to `ok clean`).
+ * `open-knowledge stop` — SIGTERM the live server (plus a lingering legacy
+ * `ok ui` holder, a one-release reap); leave stale locks untouched (they belong
+ * to `ok clean`).
  *
  * Single-responsibility split from lock pruning. Exits 0 when there's
  * nothing live; exits 1 only when a SIGTERM fails (EPERM, etc).
@@ -11,7 +12,7 @@ import { type Config, isProcessAlive, resolveLockDir } from '@inkeep/open-knowle
 import { Command } from 'commander';
 import { getInvocationCwd } from '../project-anchor.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
-import { inspectLock, type LockState } from './lock-state.ts';
+import { inspectLegacyUiLock, inspectLock, type LockState } from './lock-state.ts';
 import { runPs } from './ps.ts';
 
 interface StopTargetPlan {
@@ -80,7 +81,13 @@ interface StopOutcome {
  * `failed.length > 0` into `process.exitCode = 1`.
  */
 export function runStop(deps: RunStopDeps): StopOutcome {
-  const inspect = deps.inspect ?? ((name) => inspectLock(deps.lockDir, name));
+  // The `ui` slot is the one-release legacy reap: `inspectLegacyUiLock` peeks a
+  // leftover pre-migration `ok ui` holder so a live one still gets SIGTERM'd.
+  // The current binary writes no `ui.lock`, so `server` is the only live slot.
+  const inspect =
+    deps.inspect ??
+    ((name) =>
+      name === 'ui' ? inspectLegacyUiLock(deps.lockDir) : inspectLock(deps.lockDir, name));
   const kill = deps.kill ?? ((pid, signal) => process.kill(pid, signal));
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));
@@ -147,7 +154,7 @@ async function findLockDirByNumber(
   let pidMatch: string | null = null;
   for (const lockDir of lockDirs) {
     const server = inspectLock(lockDir, 'server');
-    const ui = inspectLock(lockDir, 'ui');
+    const ui = inspectLegacyUiLock(lockDir);
     if (isStoppableState(server, isAlive) && server.lock.port === n) return lockDir;
     if (isStoppableState(ui, isAlive) && ui.lock.port === n) return lockDir;
     if (pidMatch === null) {
@@ -212,7 +219,7 @@ export function stopCommand(getConfig: () => Config): Command {
           // Skip lockDirs with nothing stoppable to avoid noisy "no processes" messages.
           // `foreign-host` with a locally-live PID counts (hostname drift).
           const server = inspectLock(lockDir, 'server');
-          const ui = inspectLock(lockDir, 'ui');
+          const ui = inspectLegacyUiLock(lockDir);
           if (!isStoppableState(server, isProcessAlive) && !isStoppableState(ui, isProcessAlive))
             continue;
           executeStop(lockDir);

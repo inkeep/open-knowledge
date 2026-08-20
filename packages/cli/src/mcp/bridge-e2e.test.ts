@@ -245,7 +245,7 @@ test('stdio shim forwards connectionId via x-ok-connection-id header through rea
     // the same real-transport path carries client version metadata on
     // every /mcp request, alongside the connection-id header.
     expect(capturedVersionHeaders[0]).toEqual({
-      protocol: '1',
+      protocol: '2',
       runtime: RUNTIME_VERSION,
       kind: 'mcp',
     });

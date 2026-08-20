@@ -8,9 +8,8 @@
  *      these are real properties of the primitive even though same-pid
  *      acquires never trip the collision branch.
  *   2. **Cross-process (real):** spawn N independent worker processes
- *      (each with its OWN pid) holding their own server.lock + ui.lock.
- *      configuration that exercises the live-foreign-pid collision path:
- *      5 concurrent spawns across 5 content dirs.
+ *      (each with its OWN pid) holding their own server.lock. Exercises the
+ *      live-foreign-pid collision path: concurrent spawns across content dirs.
  */
 
 import { type ChildProcess, spawn as nativeSpawn } from 'node:child_process';
@@ -29,23 +28,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 interface ProjectHandles {
   lockDir: string;
   server: ProcessLockHandle;
-  ui: ProcessLockHandle;
 }
 
 function makeProject(root: string, slug: string): ProjectHandles {
   const lockDir = join(root, slug, '.ok', LOCAL_DIR);
   mkdirSync(lockDir, { recursive: true });
-  const metadata = { worktreeRoot: join(root, slug), startedAt: new Date().toISOString() };
+  const metadata = { port: 0, worktreeRoot: join(root, slug), startedAt: new Date().toISOString() };
   const server = acquireProcessLock({ lockName: 'server', lockDir, metadata });
-  const ui = acquireProcessLock({ lockName: 'ui', lockDir, metadata });
-  // Simulate the real `listen()` port advertisement — ok start gets a kernel
-  // port, ok ui default 3000 + offset so ports across projects don't collide
-  // by coincidence.
+  // Simulate the real `listen()` port advertisement — a distinct port per
+  // project so ports across projects don't collide by coincidence.
   const suffix = slug.slice(-1);
   const num = Number.parseInt(suffix, 10);
   server.updatePort(52000 + num);
-  ui.updatePort(3000 + num);
-  return { lockDir, server, ui };
+  return { lockDir, server };
 }
 
 describe('multi-project lock isolation (A1)', () => {
@@ -63,39 +58,34 @@ describe('multi-project lock isolation (A1)', () => {
     rmSync(testRoot, { recursive: true, force: true });
   });
 
-  it('three concurrent projects produce six distinct live locks with unique ports', () => {
+  it('three concurrent projects produce three distinct live locks with unique ports', () => {
     const p1 = makeProject(testRoot, 'project-1');
     const p2 = makeProject(testRoot, 'project-2');
     const p3 = makeProject(testRoot, 'project-3');
 
     try {
-      // All six lock files exist on disk
+      // All three lock files exist on disk
       for (const p of [p1, p2, p3]) {
         expect(existsSync(join(p.lockDir, 'server.lock'))).toBe(true);
-        expect(existsSync(join(p.lockDir, 'ui.lock'))).toBe(true);
       }
 
       // Reads return the right project's metadata
       const s1 = readProcessLock({ lockDir: p1.lockDir, lockName: 'server' });
       const s2 = readProcessLock({ lockDir: p2.lockDir, lockName: 'server' });
       const s3 = readProcessLock({ lockDir: p3.lockDir, lockName: 'server' });
-      const u1 = readProcessLock({ lockDir: p1.lockDir, lockName: 'ui' });
-      const u2 = readProcessLock({ lockDir: p2.lockDir, lockName: 'ui' });
-      const u3 = readProcessLock({ lockDir: p3.lockDir, lockName: 'ui' });
 
-      for (const lock of [s1, s2, s3, u1, u2, u3]) {
+      for (const lock of [s1, s2, s3]) {
         expect(lock).not.toBeNull();
         expect(lock?.pid).toBe(process.pid);
       }
 
-      // Ports are all distinct across the six locks
-      const ports = [s1, s2, s3, u1, u2, u3].map((l) => l?.port ?? 0);
+      // Ports are all distinct across the three locks
+      const ports = [s1, s2, s3].map((l) => l?.port ?? 0);
       const uniquePorts = new Set(ports);
-      expect(uniquePorts.size).toBe(6);
+      expect(uniquePorts.size).toBe(3);
     } finally {
       for (const p of [p1, p2, p3]) {
         p.server.release();
-        p.ui.release();
       }
     }
   });
@@ -106,21 +96,17 @@ describe('multi-project lock isolation (A1)', () => {
 
     try {
       p1.server.release();
-      p1.ui.release();
 
       expect(existsSync(join(p1.lockDir, 'server.lock'))).toBe(false);
-      expect(existsSync(join(p1.lockDir, 'ui.lock'))).toBe(false);
 
       // Project 2 unaffected
       expect(existsSync(join(p2.lockDir, 'server.lock'))).toBe(true);
-      expect(existsSync(join(p2.lockDir, 'ui.lock'))).toBe(true);
 
       const s2 = readProcessLock({ lockDir: p2.lockDir, lockName: 'server' });
       expect(s2?.pid).toBe(process.pid);
       expect(s2?.port).toBeGreaterThan(0);
     } finally {
       p2.server.release();
-      p2.ui.release();
     }
   });
 
@@ -133,21 +119,17 @@ describe('multi-project lock isolation (A1)', () => {
       for (let round = 0; round < 3; round++) {
         for (let i = 0; i < projects.length; i++) {
           projects[i].server.updatePort(60000 + i * 10 + round);
-          projects[i].ui.updatePort(40000 + i * 10 + round);
         }
       }
 
       // Final port for each project should be its last write, not another's.
       for (let i = 0; i < projects.length; i++) {
         const s = readProcessLock({ lockDir: projects[i].lockDir, lockName: 'server' });
-        const u = readProcessLock({ lockDir: projects[i].lockDir, lockName: 'ui' });
         expect(s?.port).toBe(60000 + i * 10 + 2);
-        expect(u?.port).toBe(40000 + i * 10 + 2);
       }
     } finally {
       for (const p of projects) {
         p.server.release();
-        p.ui.release();
       }
     }
   });
@@ -159,8 +141,8 @@ describe('multi-project lock isolation (A1)', () => {
 
 const LOCK_WORKER_PATH = resolve(__dirname, '_helpers', 'lock-worker.ts');
 // `node --import tsx` startup competes with the repository's fully parallel
-// package matrix. The isolated path is ~2s, but five seconds is below the
-// observed scheduler budget under that supported topology.
+// package matrix. The isolated path is ~2s, but the timeout below is generous
+// against the observed scheduler budget under that supported topology.
 const WORKER_READY_TIMEOUT_MS = 20_000;
 const WORKER_EXIT_TIMEOUT_MS = 3_000;
 
@@ -169,30 +151,24 @@ interface WorkerHandle {
   pid: number;
   lockDir: string;
   serverPort: number;
-  uiPort: number;
 }
 
 interface WorkerReadyPayload {
   pid: number;
   serverPort: number;
-  uiPort: number;
 }
 
 /**
- * Spawn the lock-worker as a real node child process. The worker acquires both
- * locks for `lockDir`, prints a `READY {...}` line on stdout, then idles
+ * Spawn the lock-worker as a real node child process. The worker acquires the
+ * server.lock for `lockDir`, prints a `READY {...}` line on stdout, then idles
  * waiting for SIGTERM. We resolve when the READY line lands, so the parent
  * test sees a fully-acquired lock state before it asserts.
  */
-function spawnLockWorker(
-  lockDir: string,
-  serverPort: number,
-  uiPort: number,
-): Promise<WorkerHandle> {
+function spawnLockWorker(lockDir: string, serverPort: number): Promise<WorkerHandle> {
   return new Promise((resolveSpawn, reject) => {
     const proc = nativeSpawn(
       'node',
-      ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, String(serverPort), String(uiPort)],
+      ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, String(serverPort)],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     if (proc.pid === undefined || !proc.stdout || !proc.stderr) {
@@ -224,7 +200,6 @@ function spawnLockWorker(
           pid: payload.pid,
           lockDir,
           serverPort: payload.serverPort,
-          uiPort: payload.uiPort,
         });
       } catch (err) {
         clearTimeout(timeoutHandle);
@@ -289,8 +264,9 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
   });
 }
 
-// Skip-on-CI gate (oven-sh/bun#11892): cross-process lock workers spawn `bun` children;
-// incomplete teardown on Linux GHA can keep the runner alive past `bun test` summary.
+// Skip-on-CI gate (oven-sh/bun#11892): cross-process lock workers spawn child
+// processes; incomplete teardown on Linux GHA can keep the runner alive past
+// the test summary.
 (process.env.CI ? describe.skip : describe)(
   'multi-project lock isolation — cross-process (A1)',
   () => {
@@ -312,17 +288,15 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
       rmSync(testRoot, { recursive: true, force: true });
     });
 
-    it('three concurrent worker processes each hold their own server+ui locks (no cross-contamination)', async () => {
+    it('three concurrent worker processes each hold their own server lock (no cross-contamination)', async () => {
       const lockDirs = [1, 2, 3].map((i) => {
         const lockDir = join(testRoot, `project-${i}`, '.ok', LOCAL_DIR);
         mkdirSync(lockDir, { recursive: true });
-        return { i, lockDir, serverPort: 52100 + i, uiPort: 3100 + i };
+        return { i, lockDir, serverPort: 52100 + i };
       });
 
       const spawnResults = await Promise.allSettled(
-        lockDirs.map(({ lockDir, serverPort, uiPort }) =>
-          spawnLockWorker(lockDir, serverPort, uiPort),
-        ),
+        lockDirs.map(({ lockDir, serverPort }) => spawnLockWorker(lockDir, serverPort)),
       );
       workers = spawnResults.flatMap((result) =>
         result.status === 'fulfilled' ? [result.value] : [],
@@ -352,28 +326,23 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
       // lock during concurrent acquisition.
       for (const w of workers) {
         const serverLockPath = join(w.lockDir, 'server.lock');
-        const uiLockPath = join(w.lockDir, 'ui.lock');
         expect(existsSync(serverLockPath)).toBe(true);
-        expect(existsSync(uiLockPath)).toBe(true);
 
         const serverLock = JSON.parse(readFileSync(serverLockPath, 'utf-8'));
-        const uiLock = JSON.parse(readFileSync(uiLockPath, 'utf-8'));
         expect(serverLock.pid).toBe(w.pid);
         expect(serverLock.port).toBe(w.serverPort);
-        expect(uiLock.pid).toBe(w.pid);
-        expect(uiLock.port).toBe(w.uiPort);
       }
 
-      // 6 distinct ports (3 server + 3 ui) — no collision across the fleet.
-      const allPorts = workers.flatMap((w) => [w.serverPort, w.uiPort]);
-      expect(new Set(allPorts).size).toBe(6);
+      // 3 distinct ports — no collision across the fleet.
+      const allPorts = workers.map((w) => w.serverPort);
+      expect(new Set(allPorts).size).toBe(3);
     });
 
     it('a fourth worker against an already-held lockDir collides on the live foreign pid (US-001 collision branch)', async () => {
       const lockDir = join(testRoot, 'shared-project', '.ok', LOCAL_DIR);
       mkdirSync(lockDir, { recursive: true });
 
-      const holder = await spawnLockWorker(lockDir, 52200, 3200);
+      const holder = await spawnLockWorker(lockDir, 52200);
       workers.push(holder);
 
       // A second worker against the SAME lockDir must fail to acquire — the
@@ -381,7 +350,7 @@ function stopLockWorker(handle: WorkerHandle): Promise<void> {
       // ProcessLockCollisionError. The worker exits non-zero; we await that.
       const colliderProc = nativeSpawn(
         'node',
-        ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, '52201', '3201'],
+        ['--import', 'tsx', LOCK_WORKER_PATH, lockDir, '52201'],
         {
           stdio: ['ignore', 'pipe', 'pipe'],
         },

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { inspectLock } from './lock-state.ts';
+import { inspectLegacyUiLock, inspectLock } from './lock-state.ts';
 
 function freshLockDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ok-lock-state-'));
@@ -21,8 +21,13 @@ describe('inspectLock', () => {
   test('corrupt JSON', () => {
     const dir = freshLockDir();
     writeFileSync(join(dir, 'ui.lock'), 'not-json{{{', 'utf-8');
-    const result = inspectLock(dir, 'ui');
+    // `inspectLegacyUiLock` is the one-release reap's only `ui.lock` reader.
+    // Reading it here proves LEGACY_UI_LOCK_FILENAME + the path join resolve to
+    // `ui.lock` (a wrong filename would classify it 'missing', silently
+    // skipping the reap in `ok stop` / `ok clean`).
+    const result = inspectLegacyUiLock(dir);
     expect(result.status).toBe('corrupt');
+    expect(result.lockPath.endsWith('/ui.lock')).toBe(true);
   });
 
   test('valid JSON but missing pid is treated as corrupt', () => {
@@ -80,6 +85,56 @@ describe('inspectLock', () => {
     }
   });
 
+  test('matching machineId classifies alive even when hostname has drifted', () => {
+    // machineId is the identity signal (the production path — every current
+    // binary stamps it): a lock carrying THIS machine's stable id is `alive`
+    // even when the recorded hostname has since drifted.
+    const dir = freshLockDir();
+    writeFileSync(
+      join(dir, 'server.lock'),
+      JSON.stringify({
+        pid: 4242,
+        hostname: 'drifted-bonjour-name',
+        machineId: 'machine-A',
+        port: 3000,
+        startedAt: '2026-04-16T00:00:00Z',
+        worktreeRoot: '/x',
+      }),
+      'utf-8',
+    );
+    const result = inspectLock(dir, 'server', {
+      machineId: 'machine-A',
+      host: 'current-hostname',
+      isAlive: () => true,
+    });
+    expect(result.status).toBe('alive');
+  });
+
+  test('foreign machineId with a live PID classifies foreign-host (machineId beats a matching hostname)', () => {
+    // A live lock stamped with a DIFFERENT machine's id is genuine cross-machine
+    // drift → foreign-host, even though the hostname matches — machineId takes
+    // precedence over the pre-machineId hostname fallback.
+    const dir = freshLockDir();
+    writeFileSync(
+      join(dir, 'server.lock'),
+      JSON.stringify({
+        pid: 4243,
+        hostname: 'current-hostname',
+        machineId: 'machine-B',
+        port: 3000,
+        startedAt: '2026-04-16T00:00:00Z',
+        worktreeRoot: '/x',
+      }),
+      'utf-8',
+    );
+    const result = inspectLock(dir, 'server', {
+      machineId: 'machine-A',
+      host: 'current-hostname',
+      isAlive: () => true,
+    });
+    expect(result.status).toBe('foreign-host');
+  });
+
   test('dead pid on same host', () => {
     const dir = freshLockDir();
     writeFileSync(
@@ -93,7 +148,7 @@ describe('inspectLock', () => {
       }),
       'utf-8',
     );
-    const result = inspectLock(dir, 'ui', { isAlive: () => false });
+    const result = inspectLegacyUiLock(dir, { isAlive: () => false });
     expect(result.status).toBe('dead-pid');
     if (result.status === 'dead-pid') {
       expect(result.lock.pid).toBe(999999);
