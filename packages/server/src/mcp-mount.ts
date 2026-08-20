@@ -447,7 +447,7 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
         { url: req.url, host: req.headers.host },
-        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL, or start with `ok start --remote <url>`',
+        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
       );
     }
     socket.destroy();

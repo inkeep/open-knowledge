@@ -11,9 +11,9 @@ If the agent runs on the same machine as your OpenKnowledge project, follow the 
 
 ## Before you start
 
-Set up a running server with [remote control](/docs/self-hosting/overview). Every remote agent connects to the same address, `https://<your-external-url>/mcp`, whether the server runs on your laptop, a VPS, or in a container.
+Set up a running server with [remote control](/docs/remote-control/overview). Every remote agent connects to the same address, `https://<your-external-url>/mcp`, whether the server runs on your laptop, a VPS, or in a container.
 
-OpenKnowledge does not authenticate callers. The tunnel, private network, or proxy in front of the server controls access. Configure it first. Then give the agent any required network access or credentials. See [Authentication](/docs/self-hosting/authentication).
+OpenKnowledge does not authenticate callers. The tunnel, private network, or proxy in front of the server controls access. Configure it first. Then give the agent any required network access or credentials. See [Authentication](/docs/remote-control/authentication).
 
 ## Connect agents on another machine
 
@@ -23,7 +23,7 @@ Run this on the machine where the agents are installed. [`add-mcp`](https://gith
 npx add-mcp https://<your-external-url>/mcp --name ok-remote
 ```
 
-If your `/mcp` endpoint is behind a token at the edge (a **bearer token** or **Basic Auth** from your [Authentication](/docs/self-hosting/authentication) setup), pass it as a header so the agent connects with no browser step:
+If your `/mcp` endpoint is behind a token at the edge (a **bearer token** or **Basic Auth** from your [Authentication](/docs/remote-control/authentication) setup), pass it as a header so the agent connects with no browser step:
 
 ```bash
 npx add-mcp https://<your-external-url>/mcp --name ok-remote \
@@ -32,11 +32,11 @@ npx add-mcp https://<your-external-url>/mcp --name ok-remote \
 
 For Basic Auth, the header is `Authorization: Basic $(printf 'user:pass' | base64)` instead.
 
-A headless agent cannot complete a standard browser login. Protect `/mcp` with a token, a [path-specific access policy](/docs/self-hosting/authentication#tunnels-and-private-networks), or Tailscale.
+A headless agent cannot complete a standard browser login. Protect `/mcp` with a token, a [path-specific access policy](/docs/remote-control/authentication#tunnels-and-private-networks), or Tailscale.
 
-The exception is an [MCP-native edge](/docs/self-hosting/authentication#mcp-native-edges), such as Pomerium. It lets the agent sign in through its own browser popup with no token to set. Pomerium serves CIMD by default for Claude. Enable `mcp_dynamic_client_registration` to add DCR support for Cursor and `mcp-remote`. The [Pomerium recipe](/docs/self-hosting/authentication#example-pomerium) turns both on.
+The exception is an [MCP-native edge](/docs/remote-control/authentication#mcp-native-edges), such as Pomerium. It lets the agent sign in through its own browser popup with no token to set. Pomerium serves CIMD by default for Claude. Enable `mcp_dynamic_client_registration` to add DCR support for Cursor and `mcp-remote`. The [Pomerium recipe](/docs/remote-control/authentication#example-pomerium) turns both on.
 
-The per-client setups below use a plain `/mcp` URL. If yours is behind a token, add the same `Authorization` header shown above (details in [Authentication](/docs/self-hosting/authentication)).
+The per-client setups below use a plain `/mcp` URL. If yours is behind a token, add the same `Authorization` header shown above (details in [Authentication](/docs/remote-control/authentication)).
 
 ## Claude Code
 
@@ -88,7 +88,7 @@ Add the `/mcp` URL to your harness's MCP server config, the same way as above. I
 
 ## Cloud-hosted agents and connectors (Claude.ai, ChatGPT, etc.)
 
-Cloud-hosted agents and connectors reach the MCP endpoint from the provider's cloud. The URL must be publicly reachable over HTTPS. The Claude and ChatGPT connectors require an MCP-aware OAuth service in front of `/mcp`. The [Pomerium recipe](/docs/self-hosting/authentication#example-pomerium) has been verified with the Claude connector on iOS and Desktop and with Cursor's cloud agents. Support varies by provider.
+Cloud-hosted agents and connectors reach the MCP endpoint from the provider's cloud. The URL must be publicly reachable over HTTPS. The Claude and ChatGPT connectors require an MCP-aware OAuth service in front of `/mcp`. The [Pomerium recipe](/docs/remote-control/authentication#example-pomerium) has been verified with the Claude connector on iOS and Desktop and with Cursor's cloud agents. Support varies by provider.
 
 Connectors that accept a bearer token or API key can use a token enforced at the edge. This includes Microsoft Copilot Studio and Perplexity. Protect `/mcp` with a static bearer token, then add that token to the connector's settings.
 

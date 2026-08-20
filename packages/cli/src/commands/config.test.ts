@@ -168,9 +168,42 @@ describe('runValidate', () => {
       expect(outcome.ok).toBe(true);
       const joined = out.join('\n');
       expect(joined).toContain('✓ Configuration valid');
-      // Names the dead key and surfaces its replacement guidance.
+      // Names the dead key and surfaces its replacement guidance — both the
+      // successor config key and the flag the redirect text now points at.
       expect(joined).toContain('server.host');
-      expect(joined).toContain('--host');
+      expect(joined).toContain('server.bind');
+      expect(joined).toContain('--bind');
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  test('removed remote-access keys → valid with each finding + successor reported', () => {
+    // Parallels the server.host coverage above for the remote-access key
+    // removal: remote.url / remote.port / server.publicUrl are removed keys, so
+    // a committed config carrying them still validates (removed keys never
+    // block) and each is reported with the server.* key that replaced it.
+    const project = makeTempProject();
+    try {
+      writeConfigYaml(
+        projectConfigPath(project.cwd),
+        'content:\n  dir: docs\nremote:\n  url: https://kb.example.com\n  port: 24550\nserver:\n  publicUrl: https://kb.example.com\n',
+      );
+      const out: string[] = [];
+      const outcome = runValidate({
+        cwd: project.cwd,
+        log: (msg) => out.push(msg),
+        error: (msg) => out.push(msg),
+      });
+      expect(outcome.ok).toBe(true);
+      const joined = out.join('\n');
+      expect(joined).toContain('✓ Configuration valid');
+      // Each dead key is named and points at its server.* successor.
+      expect(joined).toContain('remote.url');
+      expect(joined).toContain('remote.port');
+      expect(joined).toContain('server.publicUrl');
+      expect(joined).toContain('server.externalUrl');
+      expect(joined).toContain('server.port');
     } finally {
       project.cleanup();
     }
@@ -368,6 +401,38 @@ describe('runMigrate', () => {
     const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
     expect(wsOutcome?.removed.sort()).toEqual(
       ['persistence.debounceMs', 'persistence.maxDebounceMs'].sort(),
+    );
+  });
+
+  test('removes remote.* and server.publicUrl while preserving live server.* keys (project)', async () => {
+    const wsPath = projectConfigPath(project.cwd);
+    // The removed remote-access keys (remote.url, remote.port — an entire
+    // top-level `remote:` section — plus server.publicUrl) are stripped; the
+    // live successors (server.externalUrl, server.port) must survive. A codemod
+    // that touched them would destroy config on the exact command the removed-key
+    // redirects tell users to run.
+    const original = `content:\n  dir: docs\nremote:\n  url: https://old-remote.example.com\n  port: 24550\nserver:\n  port: 8080\n  externalUrl: https://kb.example.com\n  publicUrl: https://old-public.example.com\n`;
+    writeConfigYaml(wsPath, original);
+    const outcome = await runMigrate({
+      cwd: project.cwd,
+      scope: 'project',
+      homedirOverride: project.userHome,
+      log: () => {},
+    });
+    expect(outcome.ok).toBe(true);
+    const migrated = readFileSync(wsPath, 'utf-8');
+    // Deprecated keys and their values are gone.
+    expect(migrated).not.toContain('publicUrl');
+    expect(migrated).not.toContain('old-remote.example.com');
+    expect(migrated).not.toContain('old-public.example.com');
+    expect(migrated).not.toContain('24550');
+    // Live successors survive untouched.
+    expect(migrated).toContain('port: 8080');
+    expect(migrated).toContain('externalUrl: https://kb.example.com');
+    expect(migrated).toContain('dir: docs');
+    const wsOutcome = outcome.outcomes.find((o) => o.scope === 'project');
+    expect(wsOutcome?.removed.sort()).toEqual(
+      ['remote.port', 'remote.url', 'server.publicUrl'].sort(),
     );
   });
 

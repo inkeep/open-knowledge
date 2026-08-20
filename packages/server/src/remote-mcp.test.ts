@@ -8,11 +8,10 @@
  * server sees behind a real ngrok / cloudflared / tailscale tunnel — the
  * transport itself is the only untested hop.
  *
- * The ingress policy is built from the SAME `server.*` runtime shape the
- * `ok start --remote <url>` alias expands to (`server.externalUrl` + consent
- * on a loopback bind); these tests are the behavior-preservation pins for
- * the legacy tunnel contract now that the dedicated remote topology is
- * gone. With the tunnel shape armed there is ONE gate: Host on the
+ * The ingress policy is built from the `server.*` runtime shape a tunneled
+ * deployment declares (`server.externalUrl` + consent on a loopback bind);
+ * these tests are the behavior pins for the tunnel contract. With the tunnel
+ * shape armed there is ONE gate: Host on the
  * allowlist (loopback names or the tunnel's public host). Admitted callers
  * get the full surface; there is no per-origin tiering and no server-side
  * auth — restricting WHO can reach the tunnel is the tunnel's job (edge
@@ -91,9 +90,8 @@ async function bootRemoteRig(externalUrl: string | null, extras: RigExtras = {})
   const contentDir = mkdtempSync(join(tmpdir(), 'ok-remote-mcp-'));
   const localDir = join(contentDir, '.ok', 'local');
   mkdirSync(localDir, { recursive: true });
-  // Exactly the keys `ok start --remote <url>` expands to: declared public
-  // origin + consent; the rig's listener stays loopback like the coerced
-  // remote bind.
+  // A tunneled deployment's keys: declared public origin + consent; the rig's
+  // listener stays loopback (the tunnel is the only ingress).
   const config = ConfigSchema.parse(
     externalUrl === null ? {} : { server: { externalUrl, allowExternal: true } },
   );
@@ -404,14 +402,14 @@ describe('remote enabled — trust-the-tunnel admission', () => {
 });
 
 describe('remote disabled — the forwarding-header tripwire', () => {
-  test('proxied requests are refused with the --remote hint', async () => {
+  test('proxied requests are refused with the exposure-consent hint', async () => {
     const rig = await bootRemoteRig(null);
     const res = await raw(rig.port, {
       path: '/api/pages',
       headers: { host: `127.0.0.1:${rig.port}`, 'x-forwarded-for': '203.0.113.7' },
     });
     expect(res.status).toBe(403);
-    expect(res.body).toContain('ok start --remote');
+    expect(res.body).toContain('OK_ALLOW_EXTERNAL');
   });
 
   test('vendor proxy headers (X-Real-IP, CF-Connecting-IP, True-Client-IP) also trip the wire', async () => {
@@ -422,7 +420,7 @@ describe('remote disabled — the forwarding-header tripwire', () => {
         headers: { host: `127.0.0.1:${rig.port}`, [header]: '203.0.113.7' },
       });
       expect(res.status, `${header} should trip the wire`).toBe(403);
-      expect(res.body).toContain('ok start --remote');
+      expect(res.body).toContain('OK_ALLOW_EXTERNAL');
     }
   });
 

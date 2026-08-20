@@ -5,21 +5,13 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import {
-  applyConfigOverlay,
-  idleShutdownToMs,
-  requiresExternalConsent,
-  resolveEnvConfigLayer,
-  resolveServerRuntimeConfig,
-} from '@inkeep/open-knowledge-core';
+import { idleShutdownToMs } from '@inkeep/open-knowledge-core';
 import { type Config, ConfigSchema } from '@inkeep/open-knowledge-server';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   type BootedStartServer,
   bootStartServer,
-  coerceRemoteBindHost,
   deriveServerProcessTitle,
-  expandRemoteAlias,
   formatServerReuseNotice,
   formatShutdownNotice,
   isLoopbackHost,
@@ -28,15 +20,11 @@ import {
   parseExternalUrlFlag,
   parseIdleShutdownFlag,
   parseOnlyModule,
-  parsePublicUrlFlag,
   resolveBundledReactShellDir,
-  resolveCollabPort,
-  resolveFlagExternalUrl,
   resolveHost,
   resolveServerReuse,
   resolveStartConsoleLevel,
   resolveStartShellDir,
-  scopeRemoteAliasConsentToBind,
   shouldOpenBrowser,
   shouldWarnHostOverridesMultiBind,
   startCommand,
@@ -46,11 +34,7 @@ import {
 } from './start.ts';
 
 describe('resolveHost', () => {
-  test('returns --host flag when --bind is absent (second priority, after --bind)', () => {
-    expect(resolveHost({ host: '0.0.0.0' }, { HOST: '127.0.0.2' })).toBe('0.0.0.0');
-  });
-
-  test('falls back to HOST env when --host is absent', () => {
+  test('falls back to HOST env when --bind is absent', () => {
     expect(resolveHost({}, { HOST: '0.0.0.0' })).toBe('0.0.0.0');
   });
 
@@ -60,153 +44,6 @@ describe('resolveHost', () => {
     // so the MCP-autostarted server was unreachable. A numeric default
     // skips DNS and binds the same family on every platform.
     expect(resolveHost({}, {})).toBe('127.0.0.1');
-  });
-
-  test('explicit undefined --host falls through to env (precedence: flag > env > default)', () => {
-    expect(resolveHost({ host: undefined }, { HOST: '0.0.0.0' })).toBe('0.0.0.0');
-  });
-});
-
-describe('coerceRemoteBindHost', () => {
-  test('no-op when remote access is disabled', () => {
-    expect(coerceRemoteBindHost('::1', false)).toEqual({ host: '::1', coerced: false });
-    expect(coerceRemoteBindHost('localhost', false)).toEqual({
-      host: 'localhost',
-      coerced: false,
-    });
-  });
-
-  test('coerces IPv6/hostname binds to 127.0.0.1 in remote mode (tunnel proxy target)', () => {
-    for (const host of ['::', '::1', '[::1]', 'localhost']) {
-      expect(coerceRemoteBindHost(host, true)).toEqual({ host: '127.0.0.1', coerced: true });
-    }
-  });
-
-  test('leaves loopback binds alone in remote mode', () => {
-    expect(coerceRemoteBindHost('127.0.0.1', true)).toEqual({
-      host: '127.0.0.1',
-      coerced: false,
-    });
-  });
-
-  test('coerces all-interfaces binds to loopback in remote mode', () => {
-    expect(coerceRemoteBindHost('0.0.0.0', true)).toEqual({ host: '127.0.0.1', coerced: true });
-  });
-});
-
-describe('expandRemoteAlias — --remote is a thin alias over the server.* keys', () => {
-  const TUNNEL_URL = 'https://myproject.ngrok.app';
-
-  /** Narrow to the ok:true arm or fail the test with a useful message. */
-  function expectExpanded(alias: ReturnType<typeof expandRemoteAlias>) {
-    if (alias === null || !alias.ok) {
-      throw new Error(`expected a successful expansion, got ${JSON.stringify(alias)}`);
-    }
-    return alias;
-  }
-
-  test('expands to exactly the ratified keys — externalUrl + allowExternal + idleShutdown off', () => {
-    expect(expandRemoteAlias(TUNNEL_URL, undefined)).toEqual({
-      ok: true,
-      url: TUNNEL_URL,
-      serverOverlay: { externalUrl: TUNNEL_URL, allowExternal: true, idleShutdown: 'off' },
-    });
-  });
-
-  test('resolves an identical server runtime to the equivalent --external-url invocation', () => {
-    const config = makeTestConfig();
-    const alias = expectExpanded(expandRemoteAlias(TUNNEL_URL, undefined));
-    // What runStartCommand overlays for `ok start --remote <url>` …
-    const aliasRuntime = resolveServerRuntimeConfig(
-      applyConfigOverlay(config, {
-        server: { bind: ['127.0.0.1'], ...alias.serverOverlay },
-      }) as Config,
-    );
-    // … versus the ratified spelling of the same deployment:
-    // `OK_ALLOW_EXTERNAL=1 OK_IDLE_SHUTDOWN=off ok start --external-url <url> --bind 127.0.0.1`.
-    const env = resolveEnvConfigLayer({ OK_ALLOW_EXTERNAL: '1', OK_IDLE_SHUTDOWN: 'off' });
-    const explicitRuntime = resolveServerRuntimeConfig(
-      applyConfigOverlay(applyConfigOverlay(config, env.layer), {
-        server: { bind: ['127.0.0.1'], externalUrl: TUNNEL_URL },
-      }) as Config,
-    );
-    expect(aliasRuntime).toEqual(explicitRuntime);
-    // The load-bearing shape: successor-key externalUrl (drives the ingress
-    // policy + issued URLs), consent armed, loopback-only bind.
-    expect(aliasRuntime.externalUrlSource).toBe('server');
-    expect(aliasRuntime.allowExternal).toBe(true);
-    expect(aliasRuntime.loopbackOnly).toBe(true);
-    expect(aliasRuntime.idleShutdown).toBe('off');
-  });
-
-  test('a dormant remote.url in config does NOT arm anything without the flag', () => {
-    expect(expandRemoteAlias(undefined, TUNNEL_URL)).toBeNull();
-    expect(expandRemoteAlias(false, TUNNEL_URL)).toBeNull();
-  });
-
-  test('bare --remote pulls the url from config; an inline url wins over config', () => {
-    expect(expectExpanded(expandRemoteAlias(true, TUNNEL_URL)).url).toBe(TUNNEL_URL);
-    expect(expectExpanded(expandRemoteAlias('https://inline.example.com', TUNNEL_URL)).url).toBe(
-      'https://inline.example.com',
-    );
-  });
-
-  test('trailing slashes are stripped, matching the legacy resolver', () => {
-    const alias = expectExpanded(expandRemoteAlias(`${TUNNEL_URL}/`, undefined));
-    expect(alias.url).toBe(TUNNEL_URL);
-    expect(alias.serverOverlay.externalUrl).toBe(TUNNEL_URL);
-  });
-
-  test('missing url anywhere refuses with the fix instruction', () => {
-    const alias = expandRemoteAlias(true, undefined);
-    expect(alias?.ok).toBe(false);
-    if (alias === null || alias.ok) throw new Error('expected refusal');
-    expect(alias.errorMessage).toContain('--remote requires a public tunnel URL');
-  });
-
-  test('non-URL and plain-http urls refuse — the legacy https-only rule is preserved', () => {
-    const garbage = expandRemoteAlias('not a url', undefined);
-    if (garbage === null || garbage.ok) throw new Error('expected refusal');
-    expect(garbage.errorMessage).toContain('not a valid URL');
-    const http = expandRemoteAlias('http://myproject.ngrok.app', undefined);
-    if (http === null || http.ok) throw new Error('expected refusal');
-    expect(http.errorMessage).toContain('must be https');
-  });
-});
-
-describe('scopeRemoteAliasConsentToBind — self-consent is loopback-scoped', () => {
-  const overlay = {
-    externalUrl: 'https://myproject.ngrok.app',
-    allowExternal: true,
-    idleShutdown: 'off',
-  } as const;
-
-  test('a loopback bind keeps the alias self-consent', () => {
-    expect(scopeRemoteAliasConsentToBind(overlay, ['127.0.0.1'])).toEqual(overlay);
-    expect(scopeRemoteAliasConsentToBind(overlay, ['::1'])).toEqual(overlay);
-  });
-
-  test('a non-loopback bind drops allowExternal so the interlock refuses as it did pre-alias', () => {
-    // `ok start --remote <url>` on a project with `server.bind: [<lan-ip>]`
-    // exited 78 before the alias (the flag never consented to a bind that is
-    // reachable AROUND the tunnel). The scoped overlay must not smuggle that
-    // consent in.
-    const scoped = scopeRemoteAliasConsentToBind(overlay, ['192.168.1.5']);
-    expect('allowExternal' in scoped).toBe(false);
-    expect(scoped.externalUrl).toBe(overlay.externalUrl);
-    const runtime = resolveServerRuntimeConfig(
-      applyConfigOverlay(makeTestConfig(), {
-        server: { bind: ['192.168.1.5'], ...scoped },
-      }) as Config,
-    );
-    expect(runtime.allowExternal).toBe(false);
-    expect(requiresExternalConsent(runtime)).toBe(true);
-  });
-
-  test('a mixed loopback + non-loopback bind list also drops allowExternal (every, not some)', () => {
-    expect(
-      'allowExternal' in scopeRemoteAliasConsentToBind(overlay, ['127.0.0.1', '192.168.1.5']),
-    ).toBe(false);
   });
 });
 
@@ -223,55 +60,6 @@ describe('parseExternalUrlFlag', () => {
 
   test('flag errors name the flag the user typed', () => {
     expect(() => parseExternalUrlFlag('not a url')).toThrow(/--external-url/);
-    expect(() => parsePublicUrlFlag('not a url')).toThrow(/--public-url/);
-  });
-});
-
-describe('parsePublicUrlFlag (deprecated --public-url alias)', () => {
-  test('validates with the same http(s)-origin shape as --external-url', () => {
-    expect(parsePublicUrlFlag('https://kb.example.com')).toBe('https://kb.example.com');
-    expect(parsePublicUrlFlag('http://laptop.tail:55222')).toBe('http://laptop.tail:55222');
-    expect(() => parsePublicUrlFlag('ftp://kb.example.com')).toThrow(/http\(s\) origin/);
-  });
-});
-
-describe('resolveFlagExternalUrl (the flag-layer fold)', () => {
-  test('the deprecated --public-url spelling still sets the value when it is the only flag given', () => {
-    // The regression this pins: dropping the publicUrl fallback would leave a
-    // --public-url-only start with externalUrl undefined — no CORS/Host
-    // admission for the declared host and no issued URLs, with no parse error
-    // to signal it during the deprecation window.
-    expect(resolveFlagExternalUrl({ publicUrl: 'https://kb.example.com' })).toBe(
-      'https://kb.example.com',
-    );
-    expect(resolveFlagExternalUrl({ externalUrl: 'https://kb.example.com' })).toBe(
-      'https://kb.example.com',
-    );
-    expect(resolveFlagExternalUrl({})).toBeUndefined();
-  });
-
-  test('a --public-url-only invocation resolves the identical runtime to --external-url', () => {
-    // Mirrors the expandRemoteAlias parity test above: apply exactly what
-    // runStartCommand overlays for each spelling and compare the resolved
-    // runtimes end to end.
-    const url = 'https://kb.example.com';
-    const config = makeTestConfig();
-    const viaDeprecated = resolveServerRuntimeConfig(
-      applyConfigOverlay(config, {
-        server: { bind: ['127.0.0.1'], externalUrl: resolveFlagExternalUrl({ publicUrl: url }) },
-      }) as Config,
-    );
-    const viaCanonical = resolveServerRuntimeConfig(
-      applyConfigOverlay(config, {
-        server: { bind: ['127.0.0.1'], externalUrl: resolveFlagExternalUrl({ externalUrl: url }) },
-      }) as Config,
-    );
-    expect(viaDeprecated).toEqual(viaCanonical);
-    expect(viaDeprecated.externalUrl).toBe(url);
-    // Both spellings write the successor key, so the runtime reads as the
-    // canonical server-section origin with no deprecated-config-key signal.
-    expect(viaDeprecated.externalUrlSource).toBe('server');
-    expect(viaDeprecated.externalUrlFromDeprecatedKey).toBe(false);
   });
 });
 
@@ -400,21 +188,6 @@ function fetchText(
     req.end();
   });
 }
-
-describe('resolveCollabPort (env PORT suppression)', () => {
-  test('explicit --port always wins', () => {
-    expect(resolveCollabPort(4111, 5555, true)).toBe(4111);
-    expect(resolveCollabPort(4111, 5555, false)).toBe(4111);
-  });
-
-  test('env PORT flows through for a plain local start', () => {
-    expect(resolveCollabPort(undefined, 5555, false)).toBe(5555);
-  });
-
-  test('remote mode drops env PORT (PaaS edge-proxy injection)', () => {
-    expect(resolveCollabPort(undefined, 5555, true)).toBeUndefined();
-  });
-});
 
 describe('withIdleShutdownProcessExit (idle-path zombie prevention)', () => {
   test('exits 0 after the handler completes, logging an open-handle summary', async () => {
@@ -1193,8 +966,7 @@ describe('bootStartServer — rejects with init-required when .ok/config.yml is 
 
 // startCommand --mode flag.
 // These exercise the Commander wiring at the public CLI surface — the
-// validator (parseStartMode), the --mode=app + --open mutual-exclusion
-// guard (→ exit 2), and the --mode=app + no-bundle error path
+// validator (parseStartMode) and the --mode=app + no-bundle error path
 // (→ exit 1). The launch-when-detected path is covered by
 // desktop-dispatch.test.ts (detectDesktop matrix + launchDesktop spawn
 // shape); replicating it here would require monkey-patching the
@@ -1236,36 +1008,6 @@ describe('startCommand — --mode flag wiring', () => {
       helpDisplayed = (err as { code?: string }).code === 'commander.helpDisplayed';
     }
     expect(helpDisplayed).toBe(true);
-  });
-
-  test('--mode=app + --open exits with code 2 (FR6 mutual exclusion)', async () => {
-    const cmd = quietCommand();
-
-    let capturedExitCode: number | undefined;
-    let capturedStderr = '';
-    const originalExit = process.exit;
-    const originalStderrWrite = process.stderr.write.bind(process.stderr);
-    process.exit = ((code?: number) => {
-      capturedExitCode = code;
-      throw new Error('exit-stub');
-    }) as never;
-    process.stderr.write = ((chunk: unknown) => {
-      capturedStderr += String(chunk);
-      return true;
-    }) as never;
-
-    try {
-      await cmd.parseAsync(['--mode', 'app', '--open'], { from: 'user' });
-    } catch (err) {
-      if ((err as Error).message !== 'exit-stub') throw err;
-    } finally {
-      process.exit = originalExit;
-      process.stderr.write = originalStderrWrite;
-    }
-
-    expect(capturedExitCode).toBe(2);
-    expect(capturedStderr).toContain('--mode=app');
-    expect(capturedStderr).toContain('--open');
   });
 
   test('--mode=app with detection unavailable exits 1 + emits a contextual notFoundMessage (FR5)', async () => {
@@ -1440,14 +1182,12 @@ describe('withEphemeralTempDirReap', () => {
 });
 
 describe('resolveHost — --bind precedence', () => {
-  test('--bind wins over the deprecated --host alias and env', () => {
-    expect(resolveHost({ bind: ['0.0.0.0'], host: '127.0.0.2' }, { HOST: '127.0.0.3' })).toBe(
-      '0.0.0.0',
-    );
+  test('--bind wins over env', () => {
+    expect(resolveHost({ bind: ['0.0.0.0'] }, { HOST: '127.0.0.3' })).toBe('0.0.0.0');
   });
 
-  test('empty bind list falls through to --host', () => {
-    expect(resolveHost({ bind: [], host: '127.0.0.2' }, {})).toBe('127.0.0.2');
+  test('empty bind list falls through to env', () => {
+    expect(resolveHost({ bind: [] }, { HOST: '127.0.0.2' })).toBe('127.0.0.2');
   });
 });
 
@@ -1541,7 +1281,6 @@ describe('shouldOpenBrowser (interactive-loopback default open)', () => {
   const base = {
     openBrowser: true,
     explicitOn: false,
-    legacyOpen: false,
     host: '127.0.0.1',
     isTTY: true,
     ephemeral: false,
@@ -1565,20 +1304,12 @@ describe('shouldOpenBrowser (interactive-loopback default open)', () => {
     expect(shouldOpenBrowser({ ...base, openBrowser: false })).toBe(false);
   });
 
-  test('deprecated --open force-opens even without a TTY (pre-flip contract)', () => {
-    expect(shouldOpenBrowser({ ...base, legacyOpen: true, isTTY: false })).toBe(true);
-  });
-
   test('no TTY (spawned/CI) stays quiet', () => {
     expect(shouldOpenBrowser({ ...base, isTTY: false })).toBe(false);
   });
 
   test('non-loopback bind stays quiet', () => {
     expect(shouldOpenBrowser({ ...base, host: '0.0.0.0' })).toBe(false);
-  });
-
-  test('remote mode stays quiet', () => {
-    expect(shouldOpenBrowser({ ...base, remoteEnabled: true })).toBe(false);
   });
 
   test('ephemeral single-file stays quiet (owns its own open flow)', () => {
@@ -1591,22 +1322,6 @@ describe('shouldOpenBrowser (interactive-loopback default open)', () => {
 
   test('a start that ended up serving no shell stays quiet', () => {
     expect(shouldOpenBrowser({ ...base, servesUi: false })).toBe(false);
-  });
-
-  // Guard-ordering regressions: --open must not override the "nothing to open"
-  // or "explicit no" suppressions (only the TTY / loopback gates).
-  test('--open does NOT open a dead tab at a shell-less --only server', () => {
-    expect(shouldOpenBrowser({ ...base, legacyOpen: true, only: 'server', servesUi: false })).toBe(
-      false,
-    );
-  });
-
-  test('--open does NOT open when no shell was served', () => {
-    expect(shouldOpenBrowser({ ...base, legacyOpen: true, servesUi: false })).toBe(false);
-  });
-
-  test('--no-open-browser wins over --open (explicit no)', () => {
-    expect(shouldOpenBrowser({ ...base, legacyOpen: true, openBrowser: false })).toBe(false);
   });
 });
 
@@ -1870,190 +1585,5 @@ describe('startCommand — flag-conflict guards (exit 2)', () => {
     ]);
     expect(code).toBe(2);
     expect(stderr).toContain('--react-shell-dist-dir');
-  });
-
-  test('--single-file + --remote exits 2 (no consented root to expose)', async () => {
-    const { code, stderr } = await captureGuard([
-      '--single-file',
-      '/tmp/note.md',
-      '--remote',
-      'https://tunnel.example.com',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--single-file');
-  });
-
-  test('--remote + --external-url exits 2 (the alias IS an external-url; one must win)', async () => {
-    const { code, stderr } = await captureGuard([
-      '--remote',
-      'https://tunnel.example.com',
-      '--external-url',
-      'https://kb.example.com',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--external-url');
-  });
-
-  test('--remote + deprecated --public-url exits 2 with the alias named', async () => {
-    const { code, stderr } = await captureGuard([
-      '--remote',
-      'https://tunnel.example.com',
-      '--public-url',
-      'https://kb.example.com',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('--public-url');
-  });
-
-  test('--external-url + deprecated --public-url exits 2 (same flag under two names)', async () => {
-    const { code, stderr } = await captureGuard([
-      '--external-url',
-      'https://new.example.com',
-      '--public-url',
-      'https://old.example.com',
-    ]);
-    expect(code).toBe(2);
-    expect(stderr).toContain('deprecated alias');
-  });
-
-  /**
-   * The pre-boot `--remote` refusals print via console.warn/console.error
-   * (vitest intercepts the console, so `captureGuard`'s stderr stub never
-   * sees them) — collect both streams via spies alongside the exit code.
-   */
-  async function captureRemoteRefusal(
-    argv: string[],
-    config?: Config,
-  ): Promise<{ code: number | undefined; output: string }> {
-    const lines: string[] = [];
-    const record = (...args: unknown[]) => {
-      lines.push(args.map(String).join(' '));
-    };
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(record);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(record);
-    try {
-      const { code, stderr } = await captureGuard(argv, config);
-      return { code, output: `${stderr}\n${lines.join('\n')}` };
-    } finally {
-      warnSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  }
-
-  test('--remote without a url anywhere exits 78 and names the successor keys in the deprecation notice', async () => {
-    const { code, output } = await captureRemoteRefusal(['--remote']);
-    expect(code).toBe(78);
-    expect(output).toContain('--remote requires a public tunnel URL');
-    // The deprecation notice fires even on the refusal path — EXACTLY once —
-    // and names every key the alias pins (--external-url / --bind /
-    // OK_ALLOW_EXTERNAL / OK_IDLE_SHUTDOWN=off), so an operator learns the
-    // full ratified spelling from the same run that errors. Omitting the
-    // idle-shutdown key would hand migrators a server that tears itself down
-    // after 30 idle minutes under a live remote MCP client.
-    expect(output.split('--remote is deprecated').length - 1).toBe(1);
-    expect(output).toContain('--external-url');
-    expect(output).toContain('--bind');
-    expect(output).toContain('OK_ALLOW_EXTERNAL');
-    expect(output).toContain('OK_IDLE_SHUTDOWN=off');
-  });
-
-  test('--remote with a plain-http url exits 78 (legacy https-only rule preserved)', async () => {
-    const { code, output } = await captureRemoteRefusal(['--remote', 'http://tunnel.example.com']);
-    expect(code).toBe(78);
-    expect(output).toContain('must be https');
-  });
-
-  // The rename notices share the --remote ordering contract: they print
-  // BEFORE the env layer parses, so pairing the deprecated spelling with a
-  // malformed env var proves the notice survives a refusal path without
-  // booting a server (env refusal = exit 78).
-  test('deprecated --public-url still parses and prints the rename notice (refusal path)', async () => {
-    const prior = process.env.OK_OPEN_BROWSER;
-    process.env.OK_OPEN_BROWSER = 'not-a-boolean';
-    try {
-      const { code, output } = await captureRemoteRefusal([
-        '--public-url',
-        'https://kb.example.com',
-      ]);
-      expect(code).toBe(78);
-      expect(output.split('--public-url is deprecated').length - 1).toBe(1);
-      expect(output).toContain('--external-url');
-    } finally {
-      if (prior === undefined) delete process.env.OK_OPEN_BROWSER;
-      else process.env.OK_OPEN_BROWSER = prior;
-    }
-  });
-
-  test('a config-file server.publicUrl prints the rename notice (refusal path)', async () => {
-    const prior = process.env.OK_OPEN_BROWSER;
-    process.env.OK_OPEN_BROWSER = 'not-a-boolean';
-    try {
-      const config = ConfigSchema.parse({
-        server: { publicUrl: 'https://kb.example.com' },
-      });
-      const { code, output } = await captureRemoteRefusal([], config);
-      expect(code).toBe(78);
-      expect(output.split('server.publicUrl is deprecated').length - 1).toBe(1);
-      expect(output).toContain('server.externalUrl');
-    } finally {
-      if (prior === undefined) delete process.env.OK_OPEN_BROWSER;
-      else process.env.OK_OPEN_BROWSER = prior;
-    }
-  });
-
-  test('the config-file notice still fires when a flag or env override masks the value', async () => {
-    // The notice is keyed off the FILE layers before the env/flag overlay: a
-    // masking override changes which value wins for this run, but the stale
-    // committed key still needs renaming, so suppressing the notice would
-    // hide exactly the config the operator has to fix.
-    const prior = process.env.OK_OPEN_BROWSER;
-    process.env.OK_OPEN_BROWSER = 'not-a-boolean';
-    try {
-      const config = ConfigSchema.parse({
-        server: { publicUrl: 'https://committed.example.com' },
-      });
-      const flagMasked = await captureRemoteRefusal(
-        ['--external-url', 'https://flag.example.com'],
-        config,
-      );
-      expect(flagMasked.code).toBe(78);
-      expect(flagMasked.output.split('server.publicUrl is deprecated').length - 1).toBe(1);
-    } finally {
-      if (prior === undefined) delete process.env.OK_OPEN_BROWSER;
-      else process.env.OK_OPEN_BROWSER = prior;
-    }
-
-    const priorEnv = process.env.OK_EXTERNAL_URL;
-    const priorOpen = process.env.OK_OPEN_BROWSER;
-    process.env.OK_EXTERNAL_URL = 'https://env.example.com';
-    process.env.OK_OPEN_BROWSER = 'not-a-boolean';
-    try {
-      const config = ConfigSchema.parse({
-        server: { publicUrl: 'https://committed.example.com' },
-      });
-      const envMasked = await captureRemoteRefusal([], config);
-      expect(envMasked.code).toBe(78);
-      expect(envMasked.output.split('server.publicUrl is deprecated').length - 1).toBe(1);
-    } finally {
-      if (priorEnv === undefined) delete process.env.OK_EXTERNAL_URL;
-      else process.env.OK_EXTERNAL_URL = priorEnv;
-      if (priorOpen === undefined) delete process.env.OK_OPEN_BROWSER;
-      else process.env.OK_OPEN_BROWSER = priorOpen;
-    }
-  });
-
-  test('a config-file server.externalUrl (successor) prints no rename notice', async () => {
-    const prior = process.env.OK_OPEN_BROWSER;
-    process.env.OK_OPEN_BROWSER = 'not-a-boolean';
-    try {
-      const config = ConfigSchema.parse({
-        server: { externalUrl: 'https://kb.example.com' },
-      });
-      const { output } = await captureRemoteRefusal([], config);
-      expect(output).not.toContain('server.publicUrl is deprecated');
-    } finally {
-      if (prior === undefined) delete process.env.OK_OPEN_BROWSER;
-      else process.env.OK_OPEN_BROWSER = prior;
-    }
   });
 });

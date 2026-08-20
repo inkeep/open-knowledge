@@ -117,14 +117,13 @@ Each project runs its own local server. These commands let you see and stop them
 | `ok stop` | Stop the server for the current directory — or pass a port, path, or PID to stop a specific server, or `all` to stop every server |
 | `ok clean` | Remove stale lock files left behind by a crash (never touches live servers) |
 
-## Remote control
+## Remote Control
 
-Serve this project's web UI and `/mcp` endpoint to your other devices through any HTTPS tunnel, both on one URL. See the [self-hosting overview](/docs/self-hosting/overview) for the full setup and access-control model. Use [Connect remote agents](/docs/self-hosting/connecting-agents) to point agents at the URL.
+Serve this project's web UI and `/mcp` endpoint to your other devices through any HTTPS tunnel, both on one URL. See the [Remote Control overview](/docs/remote-control/overview) for the full setup and access-control model. Use [Connect remote agents](/docs/remote-control/connecting-agents) to point agents at the URL.
 
 | Command | What it does |
 | --- | --- |
-| `ok start --external-url <url>` | Declare the canonical external origin clients dial (sets `server.externalUrl` for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (`OK_ALLOW_EXTERNAL=1` or `server.allowExternal`). For remote MCP use also set `OK_IDLE_SHUTDOWN=off` — the idle timer only counts editor (WS) connections and would stop the server under a live remote agent. `--public-url` (the flag's former name) remains a deprecated alias |
-| `ok start --remote [url]` | Deprecated alias for `--external-url <url>` plus `OK_ALLOW_EXTERNAL` consent on a loopback bind. Starts the server admitting requests from the tunnel URL (no server-side auth; restrict reach at the tunnel). Bare `--remote` uses `remote.url` from `.ok/config.yml` |
+| `ok start --external-url <url>` | Declare the canonical external origin clients dial (sets `server.externalUrl` for this run) — its host joins the Host/Origin allowlists and issued URLs. External exposure additionally requires consent (`OK_ALLOW_EXTERNAL=1` or `server.allowExternal`). For remote MCP use also set `OK_IDLE_SHUTDOWN=off` — the idle timer only counts editor (WS) connections and would stop the server under a live remote agent. Add `--bind <address>` to serve a non-loopback listen address. |
 
 ## More commands
 

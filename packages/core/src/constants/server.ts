@@ -1,6 +1,6 @@
 /**
  * Default bind host for `ok start`. Overridable at runtime via the
- * `--host` CLI flag or the `HOST` environment variable; resolved at
+ * `--bind` CLI flag or the `HOST` environment variable; resolved at
  * the start command, not via config.
  *
  * Numeric IPv4 loopback — NOT the `localhost` hostname — on purpose. On

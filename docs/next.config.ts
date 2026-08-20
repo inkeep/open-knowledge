@@ -113,32 +113,99 @@ const nextConfig: NextConfig = {
       },
       {
         source: '/docs/deploy/remote-access',
-        destination: '/docs/self-hosting/overview',
+        destination: '/docs/remote-control/overview',
         permanent: true,
       },
       {
         source: '/docs/deploy/remote-access/',
-        destination: '/docs/self-hosting/overview',
+        destination: '/docs/remote-control/overview',
         permanent: true,
       },
       {
         source: '/docs/self-hosting/methods/npm',
-        destination: '/docs/self-hosting/methods/cli',
+        destination: '/docs/remote-control/methods/cli',
         permanent: true,
       },
       {
         source: '/docs/self-hosting/methods/npm/',
-        destination: '/docs/self-hosting/methods/cli',
+        destination: '/docs/remote-control/methods/cli',
         permanent: true,
       },
       {
         source: '/docs/deploy/connecting-agents',
-        destination: '/docs/self-hosting/connecting-agents',
+        destination: '/docs/remote-control/connecting-agents',
         permanent: true,
       },
       {
         source: '/docs/deploy/connecting-agents/',
-        destination: '/docs/self-hosting/connecting-agents',
+        destination: '/docs/remote-control/connecting-agents',
+        permanent: true,
+      },
+      // The Self-hosting section was renamed to Remote Control (folder + URL),
+      // so every prior /docs/self-hosting/* link forwards to its
+      // /docs/remote-control/* counterpart. Both slash variants are listed
+      // because skipTrailingSlashRedirect (above) disables Next's automatic
+      // `/path/` → `/path` normalization. The bare section root forwards to the
+      // overview page (the section has no index route of its own); the former
+      // `methods/npm` path is covered by the npm→cli redirect above.
+      {
+        source: '/docs/self-hosting',
+        destination: '/docs/remote-control/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/',
+        destination: '/docs/remote-control/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/overview',
+        destination: '/docs/remote-control/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/overview/',
+        destination: '/docs/remote-control/overview',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/authentication',
+        destination: '/docs/remote-control/authentication',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/authentication/',
+        destination: '/docs/remote-control/authentication',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/connecting-agents',
+        destination: '/docs/remote-control/connecting-agents',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/connecting-agents/',
+        destination: '/docs/remote-control/connecting-agents',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/methods/cli',
+        destination: '/docs/remote-control/methods/cli',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/methods/cli/',
+        destination: '/docs/remote-control/methods/cli',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/methods/docker',
+        destination: '/docs/remote-control/methods/docker',
+        permanent: true,
+      },
+      {
+        source: '/docs/self-hosting/methods/docker/',
+        destination: '/docs/remote-control/methods/docker',
         permanent: true,
       },
       {

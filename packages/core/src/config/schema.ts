@@ -102,13 +102,13 @@ export const IDLE_SHUTDOWN_DURATION_RE = /^[1-9]\d*(s|m|h)$/;
 const HTTP_URL_SCHEME_RE = /^https?:\/\//;
 
 /**
- * Fallback listen port when remote access is enabled but `remote.port` is
- * unset. Lives in the READER (the CLI's remote-mode port resolution), not as
- * a zod `.default()` — the successor `server.port` is
- * alias-read from `remote.port` only when unset, and a schema-baked default
- * would make "unset" undetectable in a parsed config.
+ * The conventional fixed port for a tunneled/exposed deployment, offered as the
+ * placeholder default in the Network Access settings pane when `server.port` is
+ * unset. Not a zod `.default()` on `server.port` — a schema-baked default would
+ * make "unset" (dynamic free-port selection for a local start) undetectable in a
+ * parsed config.
  */
-export const DEFAULT_REMOTE_PORT = 24550;
+export const DEFAULT_TUNNEL_PORT = 24550;
 
 /** Why an embeddings base URL is rejected: unparseable, or a plaintext scheme. */
 export type EmbeddingsBaseUrlProblem = 'invalid-url' | 'insecure-scheme';
@@ -1259,52 +1259,6 @@ export const ConfigSchema = z.looseObject({
         .default(true),
     })
     .default({ enabled: true }),
-  // Remote access through any HTTPS tunnel. Config alone never enables it —
-  // the `ok start --remote` flag does. Trust-the-tunnel: no server-side auth
-  // and no access-level knob; restricting reach is the tunnel's job.
-  // `agentSettable: false` everywhere so an agent can't self-expose the box.
-  //
-  // SUPERSEDED by the `server.*` section below: `remote.url` by
-  // `server.externalUrl`, `remote.port` by `server.port`. Each is alias-read
-  // only while its successor is absent (`resolveServerRuntimeConfig` — the
-  // same shape as the `autoSync.enabled` → `autoSync.mode` alias). The keys
-  // stay readable so existing configs keep working; removal (REMOVED_KEYS +
-  // `ok config migrate`) comes only after the successors have shipped and
-  // soaked. `remote.port` deliberately has no zod `.default()` — see
-  // `DEFAULT_REMOTE_PORT`.
-  //
-  // Reload class `'boot'`, matching their `server.*` successors: both are
-  // listener/exposure config consumed at server start (via the alias-read in
-  // `resolveServerRuntimeConfig`), so a change takes effect only on restart.
-  remote: z
-    .looseObject({
-      url: z
-        .string()
-        .register(fieldRegistry, {
-          scope: 'project',
-          agentSettable: false,
-          reload: 'boot',
-          defaultScope: 'project',
-          description:
-            'Superseded by server.externalUrl — read only while server.externalUrl (and its deprecated server.publicUrl spelling) is absent. Public URL your tunnel gives you, e.g. https://myproject.ngrok.app. Used only with `ok start --remote` (config alone never enables remote access); its host is admitted through the Host-header allowlist. There is no server-side auth, so restrict access at the tunnel (ngrok OAuth, Cloudflare Access, Tailscale ACLs).',
-        })
-        .optional(),
-      port: z
-        .number()
-        .int()
-        .min(1)
-        .max(65535)
-        .register(fieldRegistry, {
-          scope: 'project',
-          agentSettable: false,
-          reload: 'boot',
-          defaultScope: 'project',
-          description:
-            "Superseded by server.port — read only while server.port is absent. TCP port the server binds when remote access is enabled (default 24550). Fixed so the tunnel's port mapping survives restarts. Set it only on a conflict. An explicit --port still wins; the PORT env var is ignored in remote mode.",
-        })
-        .optional(),
-    })
-    .default({}),
   // The canonical server surface: one listener whose local vs hosted posture
   // is EMERGENT from the values set here — there is deliberately no
   // `server.mode` / profile discriminator key. A mode key becomes a branch
@@ -1328,15 +1282,14 @@ export const ConfigSchema = z.looseObject({
   // / `idleShutdown` are PROJECT-LOCAL personal workflow, like the sidebar
   // toggles.
   //
-  // `agentSettable: false` on every leaf, same reasoning as `remote.*`: an
-  // agent must never widen its own network exposure.
+  // `agentSettable: false` on every leaf: an agent must never widen its own
+  // network exposure.
   //
   // `openBrowser` and `idleShutdown` have DERIVED defaults (they depend on
   // whether the resolved `bind` is loopback-only), so those leaves stay
   // optional here — a schema-time `.default()` cannot see `bind`. The
   // derivation lives in `resolveServerRuntimeConfig`
-  // (`resolve-server-config.ts`), which is also the single alias-read point
-  // for the superseded `remote.*` keys.
+  // (`resolve-server-config.ts`).
   server: z
     .looseObject({
       port: z
@@ -1350,7 +1303,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project',
           description:
-            'TCP port the server listens on. Unset by default: a local start picks a free port dynamically, and deployment platforms inject the PORT environment variable instead. Supersedes remote.port (still read while this key is absent). Read at server start; changing it requires a restart.',
+            'TCP port the server listens on. Unset by default: a local start picks a free port dynamically, and deployment platforms inject the PORT environment variable instead. Read at server start; changing it requires a restart.',
         })
         .optional(),
       bind: z
@@ -1377,22 +1330,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'boot',
           defaultScope: 'project',
           description:
-            'Canonical external origin the server is reached at, e.g. https://kb.example.com — its host joins the Host/Origin allowlists (external-Host + CORS admission). Unset by default: the server admits only loopback Hosts. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Supersedes server.publicUrl (its former name) and remote.url — both still read while this key is absent. Read at server start; changing it requires a restart.',
-        })
-        .optional(),
-      // The former name of `server.externalUrl`, shipped in stable 0.51.x —
-      // kept as a deprecated alias (alias-read in `resolveServerRuntimeConfig`,
-      // same shape as `remote.url`), removed only after a deprecation window.
-      publicUrl: z
-        .url({ protocol: /^https?$/ })
-        .regex(HTTP_URL_SCHEME_RE)
-        .register(fieldRegistry, {
-          scope: 'project',
-          agentSettable: false,
-          reload: 'boot',
-          defaultScope: 'project',
-          description:
-            'Deprecated alias of server.externalUrl (the former name of that key) — read only while server.externalUrl is absent, with identical semantics. Use server.externalUrl instead; if this config is committed and shared, keep both keys until every collaborator has upgraded (older versions read only server.publicUrl).',
+            'Canonical external origin the server is reached at, e.g. https://kb.example.com — its host joins the Host/Origin allowlists (external-Host + CORS admission). Unset by default: the server admits only loopback Hosts. Setting it declares external exposure, which additionally requires the server.allowExternal consent interlock. Read at server start; changing it requires a restart.',
         })
         .optional(),
       allowExternal: z

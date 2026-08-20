@@ -9,11 +9,11 @@ Install OpenKnowledge from npm, then run the server yourself:
 npm install -g @inkeep/open-knowledge
 ```
 
-Run OpenKnowledge on a laptop or an always-on server. Use a private network, tunnel, or reverse proxy to make it reachable. See the [self-hosting overview](/docs/self-hosting/overview) to choose an access method.
+Run OpenKnowledge on a laptop or an always-on server. Use a private network, tunnel, or reverse proxy to make it reachable. See the [Remote Control overview](/docs/remote-control/overview) to choose an access method.
 
 ## Your laptop, behind a tunnel
 
-A tunnel gives the OpenKnowledge server on your laptop an HTTPS URL. The server is available only while the laptop is awake. For continuous access, use [an always-on server](#a-server-you-manage) or the [Docker method](/docs/self-hosting/methods/docker).
+A tunnel gives the OpenKnowledge server on your laptop an HTTPS URL. The server is available only while the laptop is awake. For continuous access, use [an always-on server](#a-server-you-manage) or the [Docker method](/docs/remote-control/methods/docker).
 
 ### 1. Pin a port and open a tunnel
 
@@ -31,7 +31,7 @@ Install the tunnel client on the machine before continuing.
 </Callout>
 
 <Callout type="warn">
-Tailscale Serve stays inside your tailnet. Before starting ngrok or Cloudflare Tunnel, [set up authentication](/docs/self-hosting/authentication) at that edge. Do not open an unprotected public URL.
+Tailscale Serve stays inside your tailnet. Before starting ngrok or Cloudflare Tunnel, [set up authentication](/docs/remote-control/authentication) at that edge. Do not open an unprotected public URL.
 </Callout>
 
 <Tabs groupId="ok-tunnel" persist items={['Tailscale', 'ngrok', 'Cloudflare Tunnel']}>
@@ -51,7 +51,7 @@ If `serve` says Tailscale is stopped, run `tailscale up` first (on a Linux serve
 
 <Tab>
 
-Public URL. Add access control at the edge. See [Authentication](/docs/self-hosting/authentication).
+Public URL. Add access control at the edge. See [Authentication](/docs/remote-control/authentication).
 
 ```bash
 ngrok http 8080
@@ -62,7 +62,7 @@ ngrok http 8080
 
 <Tab>
 
-A quick public URL on a `*.trycloudflare.com` address, fresh each run. For a stable URL on your own domain, and to pair with [Cloudflare Access](/docs/self-hosting/authentication), set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) instead.
+A quick public URL on a `*.trycloudflare.com` address, fresh each run. For a stable URL on your own domain, and to pair with [Cloudflare Access](/docs/remote-control/authentication), set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) instead.
 
 ```bash
 cloudflared tunnel --url http://localhost:8080
@@ -110,7 +110,7 @@ The server prints a warning banner naming the public origin on every exposed sta
 OK_ALLOW_EXTERNAL=1 OK_IDLE_SHUTDOWN=off ok start --external-url https://<your-tunnel-url> --port 8080
 ```
 
-If the URL is public, [add access control](/docs/self-hosting/authentication) before opening it. Tailscale Serve already limits access to your tailnet. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out).
+If the URL is public, [add access control](/docs/remote-control/authentication) before opening it. Tailscale Serve already limits access to your tailnet. Once the route is protected, [try it out](/docs/remote-control/overview#try-it-out).
 
 ## A server you manage
 
@@ -154,7 +154,7 @@ Choose one of these access methods:
     externalUrl: https://notes.example.com
   ```
 
-  Caddy automatically handles the [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server), including Host preservation, `X-Forwarded-Proto`, and no buffering on `/mcp`. Do not add an `encode` directive on `/mcp`. Configure these rules yourself when using another proxy such as nginx. Without them, requests may return `403` and the editor's WebSocket may fail.
+  Caddy automatically handles the [proxy rules](/docs/remote-control/methods/docker#rules-for-anything-in-front-of-the-server), including Host preservation, `X-Forwarded-Proto`, and no buffering on `/mcp`. Do not add an `encode` directive on `/mcp`. Configure these rules yourself when using another proxy such as nginx. Without them, requests may return `403` and the editor's WebSocket may fail.
 
 For either option, allow external access in `.ok/local/config.yml` by setting `allowExternal: true` and `idleShutdown: "off"`. Use the same [configuration and start steps](#2-configure-and-start) as the laptop setup.
 
@@ -189,7 +189,7 @@ sudo systemctl enable --now openknowledge
 **macOS and Windows do not use systemd.** Run `ok start` in a terminal and disable sleep. For automatic restarts, use launchd on macOS, or Task Scheduler or a Windows service on Windows.
 </Callout>
 
-If the URL is public, [add access control](/docs/self-hosting/authentication) before opening it. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out).
+If the URL is public, [add access control](/docs/remote-control/authentication) before opening it. Once the route is protected, [try it out](/docs/remote-control/overview#try-it-out).
 
 ## Back up to a git remote
 

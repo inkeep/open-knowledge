@@ -94,81 +94,17 @@ describe('resolveServerRuntimeConfig — defaults', () => {
   });
 });
 
-describe('resolveServerRuntimeConfig — remote.* alias-reads', () => {
-  test('remote.port fills server.port only while it is absent', () => {
-    expect(resolveServerRuntimeConfig(parse({ remote: { port: 24550 } })).port).toBe(24550);
-    expect(
-      resolveServerRuntimeConfig(parse({ server: { port: 8080 }, remote: { port: 24550 } })).port,
-    ).toBe(8080);
-  });
-
-  test('remote.url fills server.externalUrl only while it is absent', () => {
-    const legacyOnly = resolveServerRuntimeConfig(
-      parse({ remote: { url: 'https://kb.example.com' } }),
-    );
-    expect(legacyOnly.externalUrl).toBe('https://kb.example.com');
-
-    const both = resolveServerRuntimeConfig(
-      parse({
-        server: { externalUrl: 'https://new.example.com' },
-        remote: { url: 'https://old.example.com' },
-      }),
-    );
-    expect(both.externalUrl).toBe('https://new.example.com');
-  });
-
-  test('an empty-string remote.url reads as unset', () => {
-    const resolved = resolveServerRuntimeConfig(parse({ remote: { url: '' } }));
-    expect(resolved.externalUrl).toBeUndefined();
-    expect(requiresExternalConsent(resolved)).toBe(false);
-  });
-});
-
-describe('resolveServerRuntimeConfig — deprecated server.publicUrl spelling', () => {
-  test('server.publicUrl fills externalUrl with full successor semantics (source stays server)', () => {
-    // The old spelling is the SAME key, not the remote.* legacy flow: consumers
-    // keying exposure decisions off `externalUrlSource === 'server'` (interlock,
-    // issued URLs, Host/Origin admission) must see a 0.51.x config behave
-    // exactly as it did before the rename.
+describe('resolveServerRuntimeConfig — externalUrl', () => {
+  test('server.externalUrl sets externalUrl', () => {
     const resolved = resolveServerRuntimeConfig(
-      parse({ server: { publicUrl: 'https://kb.example.com' } }),
+      parse({ server: { externalUrl: 'https://kb.example.com' } }),
     );
     expect(resolved.externalUrl).toBe('https://kb.example.com');
-    expect(resolved.externalUrlSource).toBe('server');
-    expect(resolved.externalUrlFromDeprecatedKey).toBe(true);
   });
 
-  test('server.externalUrl wins over the deprecated spelling when both are set', () => {
-    const resolved = resolveServerRuntimeConfig(
-      parse({
-        server: {
-          externalUrl: 'https://new.example.com',
-          publicUrl: 'https://old.example.com',
-        },
-      }),
-    );
-    expect(resolved.externalUrl).toBe('https://new.example.com');
-    expect(resolved.externalUrlSource).toBe('server');
-    expect(resolved.externalUrlFromDeprecatedKey).toBe(false);
-  });
-
-  test('the deprecated spelling still wins over the remote.url legacy alias', () => {
-    const resolved = resolveServerRuntimeConfig(
-      parse({
-        server: { publicUrl: 'https://renamed.example.com' },
-        remote: { url: 'https://legacy.example.com' },
-      }),
-    );
-    expect(resolved.externalUrl).toBe('https://renamed.example.com');
-    expect(resolved.externalUrlSource).toBe('server');
-  });
-
-  test('externalUrlFromDeprecatedKey is false for unset and for the remote.url alias', () => {
-    expect(resolveServerRuntimeConfig(parse({})).externalUrlFromDeprecatedKey).toBe(false);
-    const aliased = resolveServerRuntimeConfig(
-      parse({ remote: { url: 'https://kb.example.com' } }),
-    );
-    expect(aliased.externalUrlFromDeprecatedKey).toBe(false);
+  test('an unset externalUrl stays undefined', () => {
+    const resolved = resolveServerRuntimeConfig(parse({}));
+    expect(resolved.externalUrl).toBeUndefined();
   });
 });
 
@@ -193,7 +129,6 @@ describe('requiresExternalConsent', () => {
     const explicit = resolveServerRuntimeConfig(
       parse({ server: { externalUrl: 'https://kb.example.com' } }),
     );
-    expect(explicit.externalUrlSource).toBe('server');
     expect(explicit.loopbackOnly).toBe(true);
     expect(requiresExternalConsent(explicit)).toBe(false);
 
@@ -202,13 +137,6 @@ describe('requiresExternalConsent', () => {
       parse({ server: { bind: ['0.0.0.0'], externalUrl: 'https://kb.example.com' } }),
     );
     expect(requiresExternalConsent(exposedWithUrl)).toBe(true);
-
-    // A remote.url alias-read likewise never trips it (loopback bind).
-    const aliased = resolveServerRuntimeConfig(
-      parse({ remote: { url: 'https://kb.example.com' } }),
-    );
-    expect(aliased.externalUrlSource).toBe('remote-alias');
-    expect(requiresExternalConsent(aliased)).toBe(false);
   });
 
   test('consent state itself does not change whether consent is required', () => {

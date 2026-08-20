@@ -1,5 +1,6 @@
 /**
- * Cross-platform browser launcher used by `open-knowledge start --open`.
+ * Cross-platform browser launcher used by `open-knowledge start` to open the
+ * editor after boot.
  *
  * Picks the platform-native launcher (`open` on macOS, `xdg-open` on Linux,
  * `cmd /c start` on Windows) and shells out via `execFile`. Failure is
@@ -9,7 +10,7 @@
  * **URL validation is mandatory** before passing the value to any launcher.
  * On Windows the launcher path goes through `cmd.exe`, which interprets
  * `&`, `|`, `<`, `>`, `^`, `(`, `)`, and quote characters as control
- * tokens — a host or port string smuggled in via `--host`, `HOST`, or
+ * tokens — a host or port string smuggled in via `--bind`, `HOST`, or
  * `.ok/config.yml` could otherwise be parsed as additional commands. The
  * URL parser alone does not reject these (e.g. `http://localhost&calc:3000`
  * parses cleanly with host `localhost&calc`), so we apply an explicit

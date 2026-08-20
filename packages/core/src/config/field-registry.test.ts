@@ -245,11 +245,6 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .filter((l) => getFieldMeta(l.schema)?.scope === 'project')
       .map((l) => l.path.join('.'))
       .sort();
-    // `remote.*` is the project's remote-access posture — the tunnel URL the
-    // Host allowlist admits (armed only by `ok start --remote`) and the stable
-    // port the tunnel targets. Project scope (committed) and never
-    // agent-settable: an agent setting these would be widening its own
-    // network exposure.
     expect(projectStrict).toEqual([
       'autoSync.default',
       'bridge.backgroundThrottle.enabled',
@@ -268,15 +263,13 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'contentRules.okf.rules',
       'lossCapture.enabled',
       'lossCapture.maxBytes',
-      'remote.port',
-      'remote.url',
       // `server.{port,externalUrl}` are the committed, reviewed shape of this
-      // knowledge base's server — project scope, like the `remote.*` keys they
-      // supersede. `server.bind` and the rest of the listener's consent/workflow
-      // siblings are project-local (below).
+      // knowledge base's server — project scope. `server.bind` and the rest of
+      // the listener's consent/workflow siblings are project-local (below).
+      // Both are never agent-settable: an agent setting these would be widening
+      // its own network exposure.
       'server.externalUrl',
       'server.port',
-      'server.publicUrl',
       'telemetry.localSink.attributeDenylist',
       'telemetry.localSink.enabled',
       'telemetry.localSink.logs.maxBytes',
@@ -368,11 +361,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
 
   test("boot-only leaves are exactly content.dir + the listener/exposure keys — everything else is 'live'", () => {
     // `content.dir` re-roots the whole index (watcher, Y.Doc registry, link
-    // graph); the `server.*` keys and the superseded `remote.*` aliases shape
-    // the listener and its exposure — none can change under a running server.
-    // `remote.*` are consumed at start via the alias-read in
-    // `resolveServerRuntimeConfig`, so they carry the same 'boot' class as the
-    // `server.*` successors they map onto. `server.idleShutdown` is the one
+    // graph); the `server.*` keys shape the listener and its exposure — none
+    // can change under a running server. `server.idleShutdown` is the one
     // listener leaf that CAN re-arm live.
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
@@ -382,14 +372,11 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(bootOnly).toEqual([
       'content.dir',
-      'remote.port',
-      'remote.url',
       'server.allowExternal',
       'server.bind',
       'server.externalUrl',
       'server.openBrowser',
       'server.port',
-      'server.publicUrl',
     ]);
   });
 });

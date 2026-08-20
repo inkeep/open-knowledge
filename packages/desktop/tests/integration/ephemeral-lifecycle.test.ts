@@ -119,7 +119,7 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
         // Pin IPv4 so the `/api/config` probe below isn't subject to the
         // macOS `localhost` IPv6-first resolution (the production desktop uses
         // the `localhost` default; the host is irrelevant to G4 / teardown).
-        '--host',
+        '--bind',
         '127.0.0.1',
         // No `--serve-content-assets` — mirrors the production spawn shape;
         // content-asset serving is the CLI default on every boot path.

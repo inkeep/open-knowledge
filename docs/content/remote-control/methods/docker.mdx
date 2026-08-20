@@ -3,7 +3,7 @@ title: Docker
 icon: custom/Docker
 description: Build the OpenKnowledge container image and run it on Railway, Fly.io, or any Docker host.
 ---
-For an always-on knowledge base without managing a box, run the server as a container on a hosting platform (Railway, Fly.io, or your own Docker host). The platform provides the domain and TLS. A volume holds the project. The `OK_*` environment variables carry the same declarations as every other path. Start with the [self-hosting overview](/docs/self-hosting/overview) if you have not chosen an access path yet.
+For an always-on knowledge base without managing a box, run the server as a container on a hosting platform (Railway, Fly.io, or your own Docker host). The platform provides the domain and TLS. A volume holds the project. The `OK_*` environment variables carry the same declarations as every other path. Start with the [Remote Control overview](/docs/remote-control/overview) if you have not chosen an access path yet.
 
 ## What any host must provide
 
@@ -126,7 +126,7 @@ The same image runs anywhere Docker is available. On Fly.io, mount a volume at `
 
 With Docker Compose, you can add a `cloudflared` sidecar as the only ingress. This works on a hosting platform or your own VPS. You do not need a separate public domain. Set `OK_EXTERNAL_URL` to the tunnel hostname.
 
-AWS, Google Cloud, and Azure can run the image on a virtual machine with Docker. You can also use the [CLI method](/docs/self-hosting/methods/cli#a-server-you-manage) on a virtual machine. Serverless container services must provide persistent storage and support one always-on replica. Vercel and Netlify cannot host OpenKnowledge because they run request-based functions instead of one long-lived stateful process.
+AWS, Google Cloud, and Azure can run the image on a virtual machine with Docker. You can also use the [CLI method](/docs/remote-control/methods/cli#a-server-you-manage) on a virtual machine. Serverless container services must provide persistent storage and support one always-on replica. Vercel and Netlify cannot host OpenKnowledge because they run request-based functions instead of one long-lived stateful process.
 
 ## Upgrading
 
@@ -147,4 +147,4 @@ Three rules apply to any proxy you place between clients and the container (an a
 
 ## Next steps
 
-The platform domain has no login of its own, so anyone who finds the URL has full read and write access. [Add authentication](/docs/self-hosting/authentication) before opening the public domain. Once the route is protected, [try it out](/docs/self-hosting/overview#try-it-out), then [Connect remote agents](/docs/self-hosting/connecting-agents).
+The platform domain has no login of its own, so anyone who finds the URL has full read and write access. [Add authentication](/docs/remote-control/authentication) before opening the public domain. Once the route is protected, [try it out](/docs/remote-control/overview#try-it-out), then [Connect remote agents](/docs/remote-control/connecting-agents).

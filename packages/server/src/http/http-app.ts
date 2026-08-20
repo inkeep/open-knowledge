@@ -66,10 +66,10 @@ export interface NativeApiHandle {
  * public tunnel with full local trust, decided by whether the tunnel
  * rewrites Host.
  *
- * Gate 2 — with the surface EXPOSED (`server.allowExternal` consent, which
- * `ok start --remote` also expands into), ONE admit decision covers every
- * surface: an admitted peer + Host on the allowlist. Refusals are wrong-Host
- * callers (DNS-rebound pages), not auth failures.
+ * Gate 2 — with the surface EXPOSED (`server.allowExternal` consent), ONE
+ * admit decision covers every surface: an admitted peer + Host on the
+ * allowlist. Refusals are wrong-Host callers (DNS-rebound pages), not auth
+ * failures.
  *
  * `handler` is the caller's tag on the `ok.api.error.count` counter for
  * rejections ('mcp-mount' for the legacy dispatch, 'native-api-surface' for
@@ -87,7 +87,7 @@ export function admitRequestSurface(
       res,
       403,
       'urn:ok:error:host-not-allowed',
-      'Proxied request refused: this server has not consented to external exposure. Set OK_EXTERNAL_URL to the public origin and OK_ALLOW_EXTERNAL=1 (or server.externalUrl + server.allowExternal in config), or restart with `ok start --remote <url>`.',
+      'Proxied request refused: this server has not consented to external exposure. Set OK_EXTERNAL_URL to the public origin and OK_ALLOW_EXTERNAL=1 (or server.externalUrl + server.allowExternal in config), then restart the server.',
       { handler },
     );
     return false;

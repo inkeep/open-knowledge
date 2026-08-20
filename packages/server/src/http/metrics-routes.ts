@@ -1,10 +1,8 @@
 /**
  * The metrics read family — `metrics-reconciliation`, `metrics-parse-health`,
  * `metrics-agent-presence`, `metrics-agent-effects`, `metrics-watcher-recent`
- * — lifted out of `api-extension.ts` as the second natively-routed Wave 2
- * group. Same lift shape as `link-graph-routes.ts`: what the handlers closed
- * over in the extension arrives as {@link MetricsRouteDeps}, and the handler
- * bodies are unchanged.
+ * — the second natively-routed group. What the handlers close over arrives as
+ * {@link MetricsRouteDeps}.
  *
  * Being the SECOND group is the point: the extension aggregates every group
  * into one `nativeApi` handle (paths concatenated, per-group pipeline
@@ -17,8 +15,9 @@
  * from the pipeline's `isMutating` mechanism, which gates before dispatch but
  * ALSO before the per-route 404/405 machinery for mutating writes — so these
  * gates deliberately stay in the handler bodies and `isMutating` stays false.
- * The Host predicate arrives as a dep because the extension widens it in
- * remote mode (the tunnel's public Host is as legitimate as loopback).
+ * The Host predicate arrives as a dep because the extension widens it when
+ * the server is exposed (server.allowExternal + server.externalUrl) — the
+ * tunnel's public Host is as legitimate as loopback.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -51,8 +50,9 @@ export interface MetricsRouteDeps {
   hocuspocus: Hocuspocus;
   agentPresenceBroadcaster: AgentPresenceBroadcaster | undefined;
   /**
-   * The extension's remote-widened workspace-Host predicate — in remote mode
-   * the tunnel's public Host passes alongside the loopback names.
+   * The extension's exposure-widened workspace-Host predicate — when the
+   * server is exposed, the tunnel's public Host passes alongside the loopback
+   * names.
    */
   isAllowedWorkspaceHostHeader: (host: string | undefined) => boolean;
   log: PinoLogger;

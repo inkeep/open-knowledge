@@ -1111,11 +1111,10 @@ describeEvenOnCI('bootServer — exposure consent interlock', () => {
     expect((err as Error | null)?.constructor.name).not.toBe('ExposureConsentError');
   });
 
-  test('the --remote alias shape (externalUrl + consent on a loopback bind) boots outright', async () => {
-    // `ok start --remote <url>` expands to exactly this runtime with NO
-    // OK_ALLOW_EXTERNAL in the environment — the alias carries its own
-    // consent. Historically the flag WAS the consent; if this shape ever
-    // trips the interlock, every existing --remote user breaks at boot.
+  test('an externalUrl + consent on a loopback bind boots outright', async () => {
+    // A tunneled deployment sets server.externalUrl + server.allowExternal on a
+    // loopback bind (the tunnel is the only ingress). This shape must boot
+    // without tripping the exposure interlock — the consent is explicit.
     const err = await tryBoot(
       { externalUrl: 'https://myproject.ngrok.app', allowExternal: true },
       true,

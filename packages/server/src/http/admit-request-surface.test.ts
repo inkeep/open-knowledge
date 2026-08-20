@@ -6,10 +6,10 @@ import { admitRequestSurface } from './http-app.ts';
 
 // admitRequestSurface is the surface-wide admission prelude the mount runs
 // BEFORE dispatch for EVERY request — /mcp, /api, the static SPA shell, and
-// project content assets. These pin the #6 fix: under `allowExternal` consent
-// (no legacy --remote), it validates Host with the consolidated predicate
-// (loopback + bind literals + externalUrl), so a rebound / foreign Host cannot
-// read the static shell or content while the peer is admitted.
+// project content assets. Under `allowExternal` consent it validates Host with
+// the consolidated predicate (loopback + bind literals + externalUrl), so a
+// rebound / foreign Host cannot read the static shell or content while the
+// peer is admitted.
 
 function req(
   host: string | undefined,
@@ -45,8 +45,6 @@ const consentPolicy = buildIngressPolicy({
     port: undefined,
     bind: ['127.0.0.1', '100.64.0.7'],
     externalUrl: 'http://laptop.tail:55222',
-    externalUrlSource: 'server',
-    externalUrlFromDeprecatedKey: false,
     allowExternal: true,
     openBrowser: false,
     idleShutdown: 'off',

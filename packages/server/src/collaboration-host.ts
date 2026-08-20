@@ -287,7 +287,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
       log.warn(
         { url: req.url, host: req.headers.host },
-        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL, or start with `ok start --remote <url>`',
+        '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
       );
       socket.destroy();
       return true;
@@ -330,7 +330,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
     //     admitted — those are not CSWSH vectors and legitimately carry none.
     //
     // (2) Peer + Host admission (`admitted()`) — only when EXPOSED
-    //     (`allowExternal` consent, which `ok start --remote` expands into).
+    //     (`allowExternal` consent).
     //     Pure-local keeps its historical ungated posture on this axis — a
     //     deliberate carve-out from the read-posture hardening that
     //     Host-gates `/api` reads and content-asset serving in every mode: WS

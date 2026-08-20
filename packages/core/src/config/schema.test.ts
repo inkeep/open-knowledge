@@ -395,7 +395,7 @@ describe('server.* (canonical listener/exposure surface)', () => {
     expect(config.server.bind).toEqual(['127.0.0.1']);
     expect(config.server.allowExternal).toBe(false);
     // No schema default: unset means dynamic locally / platform PORT env in
-    // images, and keeps the remote.port alias-read detectable.
+    // images.
     expect(config.server.port).toBeUndefined();
     expect(config.server.externalUrl).toBeUndefined();
     // Derived defaults resolve in resolveServerRuntimeConfig, not here.
@@ -430,16 +430,6 @@ describe('server.* (canonical listener/exposure surface)', () => {
     expect(meta?.defaultScope).toBe('project-local');
   });
 
-  test('the deprecated publicUrl spelling still validates with the same URL shape', () => {
-    expect(
-      ConfigSchema.parse({ server: { publicUrl: 'https://kb.example.com' } }).server.publicUrl,
-    ).toBe('https://kb.example.com');
-    expect(ConfigSchema.safeParse({ server: { publicUrl: 'not a url' } }).success).toBe(false);
-    expect(ConfigSchema.safeParse({ server: { publicUrl: 'ftp://kb.example.com' } }).success).toBe(
-      false,
-    );
-  });
-
   test('externalUrl accepts http(s) URLs and rejects other schemes or non-URLs', () => {
     expect(
       ConfigSchema.parse({ server: { externalUrl: 'https://kb.example.com' } }).server.externalUrl,
@@ -460,10 +450,5 @@ describe('server.* (canonical listener/exposure surface)', () => {
     for (const bad of ['30', '0m', '1d', 'never', '']) {
       expect(ConfigSchema.safeParse({ server: { idleShutdown: bad } }).success).toBe(false);
     }
-  });
-
-  test('remote.port no longer bakes a schema default (alias-read needs absence to be detectable)', () => {
-    expect(ConfigSchema.parse({}).remote.port).toBeUndefined();
-    expect(ConfigSchema.parse({ remote: { port: 24550 } }).remote.port).toBe(24550);
   });
 });

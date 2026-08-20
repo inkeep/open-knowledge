@@ -1,21 +1,11 @@
 /**
  * Resolve the effective `server.*` runtime settings from a merged `Config`.
  *
- * Two jobs no zod `.default()` can do:
- *
- *  1. **Alias-read of the superseded keys.** `server.publicUrl` (the former
- *     name of `server.externalUrl`) is read only while `server.externalUrl`
- *     is absent; `remote.url` only while both are absent; `remote.port` only
- *     while `server.port` is absent — the same shape as the
- *     `autoSync.enabled` → `autoSync.mode` alias. This resolver is the single
- *     alias-read point; no other reader should consult `remote.*` or
- *     `server.publicUrl` for these values.
- *
- *  2. **Derived defaults.** `openBrowser` and `idleShutdown` default off the
- *     resolved bind: a loopback-only server pops the UI and idles out after
- *     {@link DEFAULT_LOOPBACK_IDLE_SHUTDOWN}; an exposed or containerized
- *     server is headless and stays up. The local/hosted split is emergent
- *     from these values — there is deliberately no mode key to branch on.
+ * The one job no zod `.default()` can do: **derived defaults.** `openBrowser`
+ * and `idleShutdown` default off the resolved bind: a loopback-only server pops
+ * the UI and idles out after {@link DEFAULT_LOOPBACK_IDLE_SHUTDOWN}; an exposed
+ * or containerized server is headless and stays up. The local/hosted split is
+ * emergent from these values — there is deliberately no mode key to branch on.
  *
  * Enforcing the exposure interlock (refusing to boot when
  * {@link requiresExternalConsent} is true and `allowExternal` is not) is the
@@ -42,25 +32,6 @@ export interface ServerRuntimeConfig {
    * `http://localhost:<port>` for a loopback server.
    */
   externalUrl: string | undefined;
-  /**
-   * Where `externalUrl` came from: the `server.*` section (`'server'` — the
-   * canonical `server.externalUrl` key or its deprecated `server.publicUrl`
-   * spelling, which are the same key under two names) or the superseded
-   * `remote.url` alias (`'remote-alias'`); `undefined` when unset.
-   * Load-bearing distinction: a `remote.url` left in config does NOT arm
-   * anything by itself (`ok start --remote` is the explicit opt-in), so
-   * consumers that treat a declared external origin as an exposure signal —
-   * the consent interlock, Host/Origin admission — must key off `'server'`
-   * only and leave the alias to the legacy remote flow.
-   */
-  externalUrlSource: 'server' | 'remote-alias' | undefined;
-  /**
-   * True when `externalUrl` was read from the deprecated `server.publicUrl`
-   * spelling (i.e. `server.externalUrl` itself was absent) — the CLI's signal
-   * to print the rename notice. Never true for the `remote.url` alias, which
-   * carries its own deprecation flow (`--remote`).
-   */
-  externalUrlFromDeprecatedKey: boolean;
   /** Exposure consent interlock (see `requiresExternalConsent`). */
   allowExternal: boolean;
   /** Open the UI in a browser at start. Derived when not set explicitly. */
@@ -147,32 +118,18 @@ export function idleShutdownToMs(value: string): number | null {
 
 export function resolveServerRuntimeConfig(config: Config | undefined): ServerRuntimeConfig {
   const server = config?.server;
-  const remote = config?.remote;
 
   const bind =
     server?.bind === undefined || server.bind.length === 0 ? DEFAULT_SERVER_BIND : server.bind;
   const loopbackOnly = isLoopbackOnlyBind(bind);
 
-  // Alias-reads: the successor key wins whenever present; an empty-string
-  // `remote.url` reads as unset (matching the CLI's `expandRemoteAlias`).
-  const port = server?.port ?? remote?.port;
-  const legacyUrl = remote?.url === '' ? undefined : remote?.url;
-  const externalUrl = server?.externalUrl ?? server?.publicUrl ?? legacyUrl;
-  const externalUrlSource =
-    server?.externalUrl !== undefined || server?.publicUrl !== undefined
-      ? ('server' as const)
-      : legacyUrl !== undefined
-        ? ('remote-alias' as const)
-        : undefined;
-  const externalUrlFromDeprecatedKey =
-    server?.externalUrl === undefined && server?.publicUrl !== undefined;
+  const port = server?.port;
+  const externalUrl = server?.externalUrl;
 
   return {
     port,
     bind,
     externalUrl,
-    externalUrlSource,
-    externalUrlFromDeprecatedKey,
     allowExternal: server?.allowExternal ?? false,
     openBrowser: server?.openBrowser ?? loopbackOnly,
     idleShutdown: server?.idleShutdown ?? (loopbackOnly ? DEFAULT_LOOPBACK_IDLE_SHUTDOWN : 'off'),

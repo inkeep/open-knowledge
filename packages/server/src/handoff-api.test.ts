@@ -485,8 +485,6 @@ describe('GET /api/installed-agents (integration — real HTTP + real createApiE
           port: undefined,
           bind: ['127.0.0.1', '192.168.1.100'],
           externalUrl: 'http://example.com:5173',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',

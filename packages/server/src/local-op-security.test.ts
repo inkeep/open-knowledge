@@ -719,16 +719,14 @@ describe('hasValidLocalOpOrigin with a remote public host', () => {
   const reqWithOrigin = (origin: string) =>
     ({ headers: { origin }, socket: { remoteAddress: '127.0.0.1' } }) as never;
 
-  // The `ok start --remote` alias shape: declared public origin + consent on
-  // a loopback bind.
+  // A tunneled exposure shape: declared public origin + consent on a loopback
+  // bind.
   const tunnelPolicy = () =>
     buildIngressPolicy({
       serverRuntime: {
         port: undefined,
         bind: ['127.0.0.1'],
         externalUrl: 'https://myproject.ngrok.app',
-        externalUrlSource: 'server',
-        externalUrlFromDeprecatedKey: false,
         allowExternal: true,
         openBrowser: false,
         idleShutdown: 'off',
@@ -761,8 +759,6 @@ describe('hasValidLocalOpOrigin with a remote public host', () => {
         port: undefined,
         bind: ['100.64.0.7'],
         externalUrl: undefined,
-        externalUrlSource: undefined,
-        externalUrlFromDeprecatedKey: false,
         allowExternal: true,
         openBrowser: false,
         idleShutdown: 'off',

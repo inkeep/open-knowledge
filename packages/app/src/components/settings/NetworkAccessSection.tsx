@@ -25,7 +25,7 @@
  * project-local, origin + port are committed project scope (inert without the
  * local consent).
  */
-import { DEFAULT_REMOTE_PORT, humanFormat } from '@inkeep/open-knowledge-core';
+import { DEFAULT_TUNNEL_PORT, humanFormat } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -73,7 +73,7 @@ export function NetworkAccessSection() {
   const [origin, setOrigin] = useState(configuredOrigin);
   const [portMode, setPortMode] = useState<PortMode>(configuredPort != null ? 'fixed' : 'auto');
   const [portDraft, setPortDraft] = useState(
-    configuredPort != null ? String(configuredPort) : String(DEFAULT_REMOTE_PORT),
+    configuredPort != null ? String(configuredPort) : String(DEFAULT_TUNNEL_PORT),
   );
   const [originError, setOriginError] = useState<string | null>(null);
   const [portError, setPortError] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function NetworkAccessSection() {
     setExpose(configuredAllow);
     setOrigin(configuredOrigin);
     setPortMode(configuredPort != null ? 'fixed' : 'auto');
-    setPortDraft(configuredPort != null ? String(configuredPort) : String(DEFAULT_REMOTE_PORT));
+    setPortDraft(configuredPort != null ? String(configuredPort) : String(DEFAULT_TUNNEL_PORT));
     setOriginError(null);
     setPortError(null);
     // Drop the stale probe verdict too — it was measured against the old draft.

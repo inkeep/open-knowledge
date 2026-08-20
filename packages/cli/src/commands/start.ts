@@ -27,13 +27,11 @@ import { basename, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   applyConfigOverlay,
-  DEFAULT_REMOTE_PORT,
   DEFAULT_SERVER_HOST,
   type EnvConfigLayer,
   EnvVarError,
   IDLE_SHUTDOWN_DURATION_RE,
   idleShutdownToMs,
-  isLoopbackOnlyBind,
   resolveEnvConfigLayer,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
@@ -46,7 +44,7 @@ import {
   type PinoLogger,
   prepareSingleFileOpen,
 } from '@inkeep/open-knowledge-server';
-import { Command, InvalidArgumentError, Option } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
@@ -64,17 +62,17 @@ import {
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 
 /**
- * Resolve a single bind host with `--bind` flag > deprecated `--host` alias >
- * `HOST` env > application default precedence. Pure helper — no side effects,
- * no `process.env` access inside (env passed in) so tests can pin all
- * branches. Used by the ephemeral single-file path; `ok start` proper
- * resolves the full bind LIST (config/env layers included) inline.
+ * Resolve a single bind host with `--bind` flag > `HOST` env > application
+ * default precedence. Pure helper — no side effects, no `process.env` access
+ * inside (env passed in) so tests can pin all branches. Used by the ephemeral
+ * single-file path; `ok start` proper resolves the full bind LIST (config/env
+ * layers included) inline.
  */
 export function resolveHost(
-  opts: { host?: string; bind?: string[] },
+  opts: { bind?: string[] },
   env: { HOST?: string | undefined; [key: string]: string | undefined },
 ): string {
-  return opts.bind?.[0] ?? opts.host ?? env.HOST ?? DEFAULT_SERVER_HOST;
+  return opts.bind?.[0] ?? env.HOST ?? DEFAULT_SERVER_HOST;
 }
 
 /** Modules selectable via `--only` — explicit operator module selection. */
@@ -94,8 +92,8 @@ export function parseOnlyModule(value: string): OnlyModule {
 /**
  * Resolve the bundled React shell `dist` directory — published `dist/public`
  * first, then the monorepo `app/dist`. One resolver shared by plain
- * `ok start`, remote mode, and the ephemeral single-file browser fallback so
- * dev and published builds can never disagree on where the shell lives.
+ * `ok start` and the ephemeral single-file browser fallback so dev and
+ * published builds can never disagree on where the shell lives.
  */
 export function resolveBundledReactShellDir(
   existsFn: (path: string) => boolean = fsExistsSync,
@@ -109,8 +107,8 @@ export function resolveBundledReactShellDir(
 }
 
 /**
- * Decide which React-shell directory the composed server serves — the Wave 3
- * default-flip decision, pure so every branch is unit-tested:
+ * Decide which React-shell directory the composed server serves — pure so
+ * every branch is unit-tested:
  *
  * - an explicit `--react-shell-dist-dir` always wins;
  * - `--only server` opts out of the UI module entirely;
@@ -157,7 +155,7 @@ export function isLoopbackHost(host: string): boolean {
 /**
  * Should a `HOST`-driven bind warn that it is silently dropping a multi-element
  * `server.bind`? `HOST` is a single-address platform-injection variable
- * (Heroku/Railway); when it — and neither `--bind`/`--host` nor `OK_BIND` —
+ * (Heroku/Railway); when it — and neither `--bind` nor `OK_BIND` —
  * drives the bind, it REPLACES the whole file-layer list, halving a dual-stack
  * config with no record the way `OK_BIND` overrides carry. Pure so the boundary
  * (`> 1`, not `>= 1`) is unit-tested independent of the boot path.
@@ -174,18 +172,12 @@ export function shouldWarnHostOverridesMultiBind(input: {
 /**
  * Should this start open the browser? Interactive loopback starts open by
  * default (suppress with `--no-open-browser`); everything non-interactive or
- * non-local stays quiet. Pure so the whole decision table is unit-tested:
+ * non-local stays quiet. Pure so the whole decision table is unit-tested. The
+ * suppression conditions, in order:
  *
- * Guard order matters. The "nothing to open" and "explicit no" checks run
- * BEFORE the deprecated `--open` force-open, so `--open` can override the TTY
- * and loopback gates (its pre-flip contract) but can never pop a dead tab at
- * a shell-less server or fight an explicit `--no-open-browser`:
- *
- * - `--no-open-browser` always suppresses, even against `--open`;
- * - remote mode, ephemeral single-file (owns its own open flow), `--only
- *   server`, and a start that ended up serving no shell never open;
- * - `--open` (deprecated) then forces open, preserving its pre-flip contract
- *   for scripts that relied on it in non-TTY contexts;
+ * - `--no-open-browser` always suppresses;
+ * - ephemeral single-file (owns its own open flow), `--only server`, and a
+ *   start that ended up serving no shell never open;
  * - otherwise: open iff the bind is loopback AND stdout is a TTY (a spawned
  *   or CI invocation must not pop a browser). An EXPLICIT
  *   `server.openBrowser: true` / `OK_OPEN_BROWSER=1` (`explicitOn`) lifts
@@ -195,137 +187,22 @@ export function shouldWarnHostOverridesMultiBind(input: {
 export function shouldOpenBrowser(input: {
   openBrowser: boolean;
   explicitOn: boolean;
-  legacyOpen: boolean;
   host: string;
   isTTY: boolean;
-  remoteEnabled: boolean;
   ephemeral: boolean;
   only: OnlyModule | undefined;
   servesUi: boolean;
 }): boolean {
   if (!input.openBrowser) return false;
-  if (input.remoteEnabled || input.ephemeral || input.only === 'server') return false;
+  if (input.ephemeral || input.only === 'server') return false;
   if (!input.servesUi) return false;
-  if (input.legacyOpen) return true;
   return (input.explicitOn || isLoopbackHost(input.host)) && input.isTTY;
 }
 
 /**
- * Bind-family guard for remote mode. Tunnel agents (ngrok, cloudflared,
- * tailscaled, …) proxy to an IPv4 loopback target (`127.0.0.1:<port>`), so an
- * IPv6-only bind (`::`, `::1`, or `localhost` resolving to `::1` first)
- * leaves the tunnel dialing a port nobody answers on — hit in practice during
- * the MVP. When remote access is enabled and the resolved host is one of
- * those shapes, coerce to `127.0.0.1` and tell the operator. Pure — returns
- * the corrected host and whether a coercion happened; caller logs.
- */
-export function coerceRemoteBindHost(
-  host: string,
-  remoteEnabled: boolean,
-): { host: string; coerced: boolean } {
-  if (!remoteEnabled) return { host, coerced: false };
-  if (
-    host === '::' ||
-    host === '::1' ||
-    host === '[::1]' ||
-    host === 'localhost' ||
-    // 0.0.0.0 binds every interface; in remote mode the tunnel agent only
-    // needs loopback, and an all-interfaces bind would let a LAN peer reach
-    // the admitted surface directly, bypassing the tunnel's edge auth.
-    host === '0.0.0.0'
-  ) {
-    return { host: '127.0.0.1', coerced: true };
-  }
-  return { host, coerced: false };
-}
-
-/** The `server.*` keys `--remote` expands into — nothing beyond the ratified surface. */
-interface RemoteAliasServerOverlay {
-  externalUrl: string;
-  allowExternal: true;
-  idleShutdown: 'off';
-}
-
-export type RemoteAliasExpansion =
-  | { ok: true; url: string; serverOverlay: RemoteAliasServerOverlay }
-  | { ok: false; errorMessage: string };
-
-/**
- * Scope the alias's self-consent to the topology it promises: a loopback
- * bind where the tunnel's edge auth is the only ingress. A non-loopback bind
- * (a tailnet/LAN address from `server.bind`, `OK_BIND`, `HOST`, or a `--bind`
- * shape `coerceRemoteBindHost` does not recognize) is reachable AROUND the
- * tunnel, so `--remote` must not consent to it on the operator's behalf —
- * without this, the exposure interlock that refused `--remote` + a
- * non-loopback bind before the alias would be silently satisfied. Dropping
- * `allowExternal` here lets the interlock refuse exactly as before;
- * `OK_ALLOW_EXTERNAL=1` remains the sanctioned override.
- */
-export function scopeRemoteAliasConsentToBind(
-  serverOverlay: RemoteAliasServerOverlay,
-  bindList: readonly string[],
-): { externalUrl: string; idleShutdown: 'off'; allowExternal?: true } {
-  if (isLoopbackOnlyBind(bindList)) return serverOverlay;
-  return { externalUrl: serverOverlay.externalUrl, idleShutdown: serverOverlay.idleShutdown };
-}
-
-/**
- * `--remote [url]` is a deprecated thin alias over the ratified `server.*`
- * networking keys: it expands to `server.externalUrl` = the tunnel url (its
- * host joins the Host/Origin allowlists), a loopback bind (tunnels proxy to
- * `127.0.0.1` — the deployer's tunnel agent covers ingress, see
- * `coerceRemoteBindHost`), and `server.allowExternal` consent, which
- * satisfies the exposure interlock and the forwarded-header tripwire. Plus
- * `server.idleShutdown: 'off'`: remote MCP sessions arrive as plain HTTP,
- * and the idle timer counts /collab WS clients only — it would tear the
- * server down under a live remote client. Networking-only — the alias
- * carries no auth semantics; restricting who reaches the URL stays the
- * tunnel's job (edge auth).
- *
- * Returns `null` when the flag is absent. `ok: false` carries the exit-78
- * message: a missing url is unusable, and the legacy https-only rule is kept
- * through the deprecation window (a tunnel URL over plain http would be
- * credentials-in-the-clear).
- */
-export function expandRemoteAlias(
-  remoteFlag: string | boolean | undefined,
-  configRemoteUrl: string | undefined,
-): RemoteAliasExpansion | null {
-  if (remoteFlag === undefined || remoteFlag === false) return null;
-  const url = typeof remoteFlag === 'string' ? remoteFlag : configRemoteUrl;
-  if (url === undefined || url === '') {
-    return {
-      ok: false,
-      errorMessage:
-        '--remote requires a public tunnel URL — pass it (`ok start --remote https://<your-tunnel-host>`) or set remote.url in .ok/config.yml.',
-    };
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return { ok: false, errorMessage: `remote.url is not a valid URL: ${url}` };
-  }
-  if (parsed.protocol !== 'https:') {
-    return {
-      ok: false,
-      errorMessage: `remote.url must be https — it is the public tunnel URL remote clients connect to (got: ${url})`,
-    };
-  }
-  const normalizedUrl = url.replace(/\/+$/, '');
-  return {
-    ok: true,
-    url: normalizedUrl,
-    serverOverlay: { externalUrl: normalizedUrl, allowExternal: true, idleShutdown: 'off' },
-  };
-}
-
-/**
- * Validator shared by the `--external-url` parser and its deprecated
- * `--public-url` spelling — the flag-layer setter for `server.externalUrl`,
- * matching the schema leaf's http(s)-origin shape so a flag value can never
- * smuggle in what the config file would reject. `flagName` keeps the error
- * text naming the flag the user actually typed.
+ * Validator for the `--external-url` flag — the flag-layer setter for
+ * `server.externalUrl`, matching the schema leaf's http(s)-origin shape so a
+ * flag value can never smuggle in what the config file would reject.
  */
 function parseHttpOriginFlag(flagName: string, value: string): string {
   let parsed: URL;
@@ -342,27 +219,6 @@ function parseHttpOriginFlag(flagName: string, value: string): string {
 
 export function parseExternalUrlFlag(value: string): string {
   return parseHttpOriginFlag('--external-url', value);
-}
-
-/**
- * The flag-layer external-URL fold: `--external-url` wins, the deprecated
- * `--public-url` spelling fills in when it is the only one given (the two
- * flags cannot legally co-occur — the action guard exits 2 — so the `??` is
- * precedence bookkeeping, not conflict resolution). Extracted so a test pins
- * that the deprecated flag keeps setting `server.externalUrl` through its
- * removal window: dropping the fallback would silently strand `--public-url`
- * operators on `externalUrl: undefined` (no CORS/Host admission) with no parse
- * error to signal it.
- */
-export function resolveFlagExternalUrl(
-  opts: Pick<StartCommandOptions, 'externalUrl' | 'publicUrl'>,
-): string | undefined {
-  return opts.externalUrl ?? opts.publicUrl;
-}
-
-/** Parser for the deprecated `--public-url` alias of `--external-url`. */
-export function parsePublicUrlFlag(value: string): string {
-  return parseHttpOriginFlag('--public-url', value);
 }
 
 /** Hard cap on the project-name suffix in `process.title` to keep `ps`/Activity Monitor lines readable. */
@@ -409,23 +265,6 @@ export class OkDirMissingError extends Error {
     this.name = 'OkDirMissingError';
     this.cwd = cwd;
   }
-}
-
-/**
- * Resolve the collab server's port from the three sources, for `runStartCommand`.
- * An explicit `--port` always wins. Otherwise env `PORT` is dropped when
- * remote access is enabled, because PaaS platforms (Railway, Fly, Render)
- * inject `PORT` for their own edge proxy — honoring it would silently move
- * the server off the stable `remote.port` the tunnel's port mapping targets,
- * leaving the tunnel dialing a dead port. Pure so the suppression rule is
- * tested directly.
- */
-export function resolveCollabPort(
-  portFromCli: number | undefined,
-  portFromEnv: number | undefined,
-  remoteEnabled = false,
-): number | undefined {
-  return portFromCli ?? (remoteEnabled ? undefined : portFromEnv);
 }
 
 /**
@@ -543,7 +382,7 @@ interface BootStartServerOptions {
   config: Config;
   cwd: string;
   /**
-   * Server bind host. Source ordering at the call site is `--host` flag →
+   * Server bind host. Source ordering at the call site is `--bind` flag →
    * `HOST` env → `DEFAULT_SERVER_HOST`. Resolved at the start command,
    * not via config — `server.host` is no longer a schema field.
    */
@@ -932,10 +771,6 @@ interface StartCommandOptions {
   port?: string | number;
   /** From repeatable `--bind <address>`. First value wins today; >1 rejected at the action layer. */
   bind?: string[];
-  /** From the deprecated `-H, --host` alias of `--bind`. */
-  host?: string;
-  /** From deprecated `--open`: force-open the browser (pre-flip contract, honored even non-TTY). */
-  open?: boolean;
   /**
    * From `--no-open-browser` (Commander negation: absent → `true`). Interactive
    * loopback starts open the browser by default; this is the suppression
@@ -970,18 +805,8 @@ interface StartCommandOptions {
   /** From `--project-dir <dir>`. See `BootStartServerOptions.projectDir` — the
    *  throwaway temp project root for the ephemeral single-file shape. */
   projectDir?: string;
-  /**
-   * From `--remote [url]`: deprecated alias over the `server.*` keys — see
-   * `expandRemoteAlias`. `true` when the flag is bare (url comes from
-   * `remote.url` in config); a string when the url is supplied inline (used
-   * for this run, not persisted). Absent → loopback-only, regardless of any
-   * `remote.url` in config.
-   */
-  remote?: string | boolean;
   /** From `--external-url <url>`: flag-layer `server.externalUrl` for this run. */
   externalUrl?: string;
-  /** From the deprecated `--public-url` alias of `--external-url`. */
-  publicUrl?: string;
 }
 
 /**
@@ -1055,12 +880,6 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const { accent, dim, error, warning } = await import('../ui/colors.ts');
 
   const cwd = process.cwd();
-  // Remote access is an explicit `--remote [url]` opt-in. A `remote.url` left
-  // in `.ok/config.yml` does NOT arm it by itself — the flag decides; the
-  // config url fills in when the flag is bare, and a flag-supplied url wins
-  // for this run without persisting. The flag is a deprecated thin alias over
-  // the ratified `server.*` keys — `expandRemoteAlias` holds the expansion.
-  const remoteFlagSet = opts.remote !== undefined && opts.remote !== false;
 
   // Set the process title as early as possible so Activity Monitor and
   // `ps -ax | grep open-knowledge-server` show each running server by
@@ -1068,73 +887,6 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   // management — there's no in-app "Stop server"
   // action; the OS process list is the discovery path.
   process.title = deriveServerProcessTitle(cwd);
-
-  // Deprecation notice first, even when the expansion below refuses — the
-  // operator should learn the successor spelling from the same run that
-  // errors. Networking-only alias; removal ships separately after a soak.
-  if (remoteFlagSet) {
-    console.warn(
-      warning(
-        '--remote is deprecated — use `OK_IDLE_SHUTDOWN=off OK_ALLOW_EXTERNAL=1 ok start --external-url <url>` instead (add --bind to serve a non-loopback address; keep OK_IDLE_SHUTDOWN=off — the idle timer only counts WS clients and would tear the server down under a live remote MCP client). The flag now just expands to those server.* keys and will be removed in a later release.',
-      ),
-    );
-  }
-
-  // Same ordering contract as the --remote notice above: the rename notices
-  // print even when a later step refuses, so the operator learns the
-  // successor spelling from the same run.
-  if (opts.publicUrl !== undefined) {
-    console.warn(
-      warning(
-        '--public-url is deprecated — use --external-url <url> (same value and semantics; the key was renamed to server.externalUrl). The old spelling will be removed in a later release.',
-      ),
-    );
-  }
-
-  // Config-file rename notice, keyed off the FILE layers (before the env/flag
-  // overlay — those spellings write the successor key and warn on their own,
-  // and a masking override doesn't make the stale file key any less stale).
-  if (resolveServerRuntimeConfig(config).externalUrlFromDeprecatedKey) {
-    // "Use X instead", not "rename it": in a committed shared config, keeping
-    // BOTH keys is the sanctioned mixed-version state — older app versions
-    // read only server.publicUrl and silently ignore server.externalUrl, so
-    // a literal rename would 403 collaborators who have not upgraded.
-    console.warn(
-      warning(
-        '[config] server.publicUrl is deprecated — use server.externalUrl instead (same value and semantics). If this config is committed and shared, keep both keys until every collaborator has upgraded — older versions read only server.publicUrl; see https://openknowledge.ai/docs/reference/configuration. The old key will be removed in a later release.',
-      ),
-    );
-  }
-
-  // Fail loud BEFORE booting: --remote with no url anywhere (or a non-https
-  // url) is unusable, and the error message is the fix instruction.
-  const aliasResult = expandRemoteAlias(opts.remote, config.remote?.url);
-  if (aliasResult !== null && !aliasResult.ok) {
-    console.error(error(aliasResult.errorMessage));
-    process.exit(78);
-  }
-  const remoteAlias = aliasResult?.ok ? aliasResult : null;
-  const remoteEnabled = remoteAlias !== null;
-
-  // The trust-the-tunnel warning. Deliberately unmissable: with --remote there
-  // is NO server-side authentication — access control is entirely the
-  // tunnel's job (edge auth), and every admitted caller has the full owner
-  // surface. Printed on every remote start so the trade is never implicit.
-  if (remoteAlias !== null) {
-    console.warn(
-      warning(
-        [
-          '',
-          '⚠  REMOTE ACCESS ENABLED — no server-side authentication.',
-          `   Anyone who can reach ${remoteAlias.url} has FULL control of this`,
-          '   knowledge base, including sync, publishing, credentials, and local operations.',
-          '   Restrict who can reach it at the tunnel: ngrok OAuth, Cloudflare Access,',
-          '   Tailscale ACLs, or equivalent edge auth.',
-          '',
-        ].join('\n'),
-      ),
-    );
-  }
 
   // The env config layer (the mechanical OK_* surface + platform PORT):
   // parsed once, leaf-validated, fail-loud on a malformed value with the
@@ -1154,18 +906,13 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   }
   const envConfig = applyConfigOverlay(config, envLayer.layer) as Config;
 
-  // Bind precedence: --bind / deprecated --host flags > ratified OK_BIND >
-  // legacy HOST env > server.bind file layer > loopback default. The resolved
-  // LIST is what the derived defaults key off (openBrowser/idleShutdown
-  // derive from loopback-only-ness); the listener binds every entry in the
-  // list (multi-address bind), each on the same port.
+  // Bind precedence: --bind flag > ratified OK_BIND > legacy HOST env >
+  // server.bind file layer > loopback default. The resolved LIST is what the
+  // derived defaults key off (openBrowser/idleShutdown derive from
+  // loopback-only-ness); the listener binds every entry in the list
+  // (multi-address bind), each on the same port.
   const okBindSet = envLayer.overrides.some((o) => o.envVar === 'OK_BIND');
-  const flagBind =
-    opts.bind !== undefined && opts.bind.length > 0
-      ? opts.bind
-      : opts.host !== undefined
-        ? [opts.host]
-        : undefined;
+  const flagBind = opts.bind !== undefined && opts.bind.length > 0 ? opts.bind : undefined;
   // Empty/whitespace `HOST` reads as unset, matching the env layer's
   // `PORT=''` handling — a platform that exports an empty `HOST` must not
   // produce a `['']` bind list (`''` is non-loopback, so it would trip the
@@ -1193,59 +940,29 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
     );
   }
 
-  const resolvedHost = requestedBind[0] ?? DEFAULT_SERVER_HOST;
-  const hostCoercion = coerceRemoteBindHost(resolvedHost, remoteEnabled);
-  if (hostCoercion.coerced) {
-    console.warn(
-      `remote access is enabled and ${resolvedHost} is not an IPv4 loopback bind — tunnels proxy to 127.0.0.1, so binding ${resolvedHost} would leave the tunnel dialing a dead port. Using 127.0.0.1.`,
-    );
-  }
-  const host = hostCoercion.host;
-  // The EFFECTIVE bind list — remote mode collapses to the coerced loopback
-  // host (the tunnel is the only ingress there), so the interlock and the
-  // ingress policy see what the server actually binds, not the pre-coercion
-  // request. Without this, `HOST=0.0.0.0 ok start --remote` coerces to
-  // loopback yet still trips ExposureConsentError off the uncoerced list.
-  const bindList = remoteEnabled ? [host] : requestedBind;
+  const host = requestedBind[0] ?? DEFAULT_SERVER_HOST;
+  const bindList = requestedBind;
   // The flag-layer overlay, applied ABOVE the env layer: the resolved bind
-  // list, the `--remote` alias expansion (externalUrl + allowExternal +
-  // idleShutdown 'off' — the SAME server.* resolution path any other exposure
-  // route uses), and `--external-url` (or its deprecated `--public-url`
-  // spelling — both write the successor key so the flag layer keeps its
-  // precedence over env and file layers). Nothing here is remote-specific
-  // machinery; the alias is only these keys. Self-consent is loopback-scoped
-  // (see scopeRemoteAliasConsentToBind) — a non-loopback bind under --remote
-  // still needs explicit consent, so the interlock refusal below matches the
-  // pre-alias behavior.
-  const aliasOverlay =
-    remoteAlias !== null ? scopeRemoteAliasConsentToBind(remoteAlias.serverOverlay, bindList) : {};
-  if (remoteAlias !== null && !('allowExternal' in aliasOverlay)) {
-    console.warn(
-      warning(
-        `--remote does not consent to exposing a non-loopback bind (${bindList.join(', ')}) — the tunnel is the only ingress the alias vouches for. Consent explicitly with OK_ALLOW_EXTERNAL=1 (or server.allowExternal in .ok/local/config.yml), or drop the non-loopback bind.`,
-      ),
-    );
-  }
-  const flagExternalUrl = resolveFlagExternalUrl(opts);
+  // list plus `--external-url` (which writes server.externalUrl so the flag
+  // layer keeps its precedence over env and file layers).
+  const flagExternalUrl = opts.externalUrl;
   const runtime: ServerRuntimeConfig = resolveServerRuntimeConfig(
     applyConfigOverlay(envConfig, {
       server: {
         bind: bindList,
-        ...aliasOverlay,
         ...(flagExternalUrl !== undefined ? { externalUrl: flagExternalUrl } : {}),
       },
     }) as Config,
   );
 
-  // The consent warning, sibling to the --remote banner above. `allowExternal`
-  // is the sanctioned relaxation, but its blast radius is easy to under-read:
-  // it exposes not just the editor/collab/API surface but the local-op owner
-  // surface (clone, GitHub sign-in, PAT storage, repo spawn) to every external
-  // peer, with NO server-side auth. Fire whenever consent is armed AND there is
-  // a real exposure vector — a non-loopback bind (direct) or a declared
-  // externalUrl (a same-host reverse proxy forwards to a loopback bind). The
-  // --remote flow prints its own warning, so skip the duplicate there.
-  if (!remoteEnabled && runtime.allowExternal && (!runtime.loopbackOnly || runtime.externalUrl)) {
+  // The exposure consent warning. `allowExternal` is the sanctioned
+  // relaxation, but its blast radius is easy to under-read: it exposes not
+  // just the editor/collab/API surface but the local-op owner surface (clone,
+  // GitHub sign-in, PAT storage, repo spawn) to every external peer, with NO
+  // server-side auth. Fire whenever consent is armed AND there is a real
+  // exposure vector — a non-loopback bind (direct) or a declared externalUrl
+  // (a same-host reverse proxy forwards to a loopback bind).
+  if (runtime.allowExternal && (!runtime.loopbackOnly || runtime.externalUrl)) {
     const reach = runtime.externalUrl ?? runtime.bind.join(', ');
     console.warn(
       warning(
@@ -1267,35 +984,16 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const portFromEnv = envLayer.overrides.find((o) => o.envVar === 'PORT')?.value as
     | number
     | undefined;
-  // An explicit --port wins everywhere; in remote mode the config port fills
-  // the default slot and env PORT is suppressed (see resolveCollabPort).
-  // A stable port matters in remote mode because the tailscale serve/funnel
-  // mapping names a fixed target port — a kernel-assigned ephemeral port would
-  // break the tunnel on every restart.
-  // File-layer ports, split by consumer:
-  //  - `remotePort` follows the resolver's `server.port ?? remote.port` alias
-  //    — remote mode wants the stable tunnel-target port from either key.
-  //  - `localPort` is the SUCCESSOR key ONLY. A plain local start must not
-  //    inherit a dormant `remote.port` (set long ago for tunnel use); doing so
-  //    pins every local boot to that fixed port instead of a free dynamic one,
-  //    and two projects both carrying `remote.port` could never run at once.
-  const remotePort = resolveServerRuntimeConfig(config).port;
-  const localPort = config.server?.port;
-  if (remoteEnabled && portFromCli === undefined && portFromEnv !== undefined) {
-    console.warn(
-      `remote access is enabled — ignoring env PORT=${process.env.PORT}; the tunnel's port mapping targets the stable remote port (${remotePort ?? DEFAULT_REMOTE_PORT}). Pass --port to override deliberately.`,
-    );
-  }
-  const port =
-    resolveCollabPort(portFromCli, portFromEnv, remoteEnabled) ??
-    (remoteEnabled ? (remotePort ?? DEFAULT_REMOTE_PORT) : localPort);
+  // An explicit --port wins; otherwise the platform-injected PORT env, then a
+  // configured server.port. Unset → the caller picks a free dynamic port.
+  const port = portFromCli ?? portFromEnv ?? config.server?.port;
 
   // The default composition serves the SPA from the server's own port (`/` =
   // UI, `/api`, `/mcp`, `/collab` — one listener, one origin).
   // `resolveStartShellDir` holds the decision table (explicit dir wins;
-  // `--only server` opts out; everything else — remote included — serves the
-  // shell by default). A missing bundle degrades to API/MCP-only with a
-  // warning rather than failing the start.
+  // `--only server` opts out; everything else serves the shell by default).
+  // A missing bundle degrades to API/MCP-only with a warning rather than
+  // failing the start.
   const shell = resolveStartShellDir({
     explicitDir: opts.reactShellDistDir,
     only: opts.only,
@@ -1304,9 +1002,7 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
   const reactShellDistDir = shell.dir;
   if (shell.missingBundle) {
     console.warn(
-      remoteEnabled
-        ? 'remote access: bundled web UI not found — serving /mcp and /api only over the tunnel.'
-        : 'bundled web UI not found — serving /api and /mcp only. Reinstall @inkeep/open-knowledge, or build packages/app in a source checkout.',
+      'bundled web UI not found — serving /api and /mcp only. Reinstall @inkeep/open-knowledge, or build packages/app in a source checkout.',
     );
   }
 
@@ -1317,8 +1013,7 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       cwd,
       host,
       port,
-      // Full bind list for the multi-listener bind — already collapsed to the
-      // coerced loopback host in remote mode (see `bindList` above).
+      // Full bind list for the multi-listener bind (see `bindList` above).
       bind: bindList,
       ...(opts.serveContentAssets !== undefined
         ? { serveContentAssets: opts.serveContentAssets }
@@ -1329,13 +1024,8 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       // the resolver's covers OK_IDLE_SHUTDOWN, the config leaf, and the
       // bind-derived default ('30m' loopback-only, 'off' exposed). Converted to
       // ms (null for 'off') at this single boundary. The flag stays a string
-      // through Commander on purpose — see parseIdleShutdownFlag. Under
-      // --remote the alias overlay pins 'off' and the flag is ignored — the
-      // legacy remote flow always disabled the idle timer, and a remote MCP
-      // client is plain HTTP the /collab-counting timer can't see.
-      idleThresholdMs: idleShutdownToMs(
-        (remoteEnabled ? undefined : opts.idleShutdown) ?? runtime.idleShutdown,
-      ),
+      // through Commander on purpose — see parseIdleShutdownFlag.
+      idleThresholdMs: idleShutdownToMs(opts.idleShutdown ?? runtime.idleShutdown),
       serverRuntime: runtime,
       ...(opts.singleFile ? { singleFile: opts.singleFile } : {}),
       ...(opts.projectDir ? { projectDir: opts.projectDir } : {}),
@@ -1505,17 +1195,15 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       }
 
       // Interactive loopback starts open the browser by default now that the
-      // banner URL is the full editor (suppress with --no-open-browser; the
-      // deprecated --open force-opens). Decision table: `shouldOpenBrowser`.
+      // banner URL is the full editor (suppress with --no-open-browser).
+      // Decision table: `shouldOpenBrowser`.
       const openDecision = shouldOpenBrowser({
         // Flag suppression wins; otherwise the resolver's openBrowser covers
         // OK_OPEN_BROWSER, the config leaf, and the bind-derived default.
         openBrowser: opts.openBrowser !== false && runtime.openBrowser,
         explicitOn: opts.openBrowser !== false && envConfig.server?.openBrowser === true,
-        legacyOpen: opts.open === true,
         host,
         isTTY: process.stdout.isTTY === true,
-        remoteEnabled,
         ephemeral: opts.singleFile !== undefined,
         only: opts.only,
         servesUi: reactShellDistDir !== undefined,
@@ -1677,17 +1365,10 @@ export function startCommand(getConfig: () => Config): Command {
       'Bind address (repeatable; default 127.0.0.1 — loopback only)',
       (value: string, prev: string[] | undefined) => [...(prev ?? []), value],
     )
-    // Deprecated alias of --bind — kept working for the skew window, hidden
-    // from --help so new scripts reach for the locked name.
-    .addOption(new Option('-H, --host <host>', 'Deprecated alias of --bind').hideHelp())
     .option(
       '--no-open-browser',
       'Do not open the browser after start (interactive loopback starts open it by default)',
     )
-    // Deprecated: pre-flip opt-in, now the default for interactive loopback
-    // starts. Kept as a force-open for scripts that relied on it (it opens
-    // even without a TTY). Hidden from --help.
-    .addOption(new Option('--open', 'Deprecated: force-open the browser after start').hideHelp())
     .option(
       '--only <module>',
       "Serve one module: 'server' (API + MCP only, no shell or browser)",
@@ -1717,53 +1398,8 @@ export function startCommand(getConfig: () => Config): Command {
       'Canonical external origin clients dial (sets server.externalUrl for this run) — its host joins the Host/Origin allowlists (CORS + external-Host admission). External exposure additionally requires consent (OK_ALLOW_EXTERNAL=1 or server.allowExternal).',
       parseExternalUrlFlag,
     )
-    .option(
-      '--public-url <url>',
-      'Deprecated alias of --external-url (the former name of that flag) — same value and semantics.',
-      parsePublicUrlFlag,
-    )
-    .option(
-      '--remote [url]',
-      'Deprecated alias: expands to --external-url <url> + OK_ALLOW_EXTERNAL consent on a loopback bind. Serves through a tunnel with NO server-side auth (anyone who can reach the URL has full control — restrict access at the tunnel with edge auth). Bare --remote uses remote.url from .ok/config.yml; --remote <url> supplies it for this run.',
-    )
     .action(async (opts: StartCommandOptions) => {
       const config = getConfig();
-
-      // `--external-url` and its deprecated `--public-url` spelling are the
-      // same flag under two names — combining them would make one silently
-      // win. Fail loud; pass one.
-      if (opts.externalUrl !== undefined && opts.publicUrl !== undefined) {
-        process.stderr.write(
-          "error: option '--public-url' cannot be combined with '--external-url' (--public-url is a deprecated alias of --external-url)\n",
-        );
-        process.exit(2);
-      }
-
-      // `--remote` IS an `--external-url` (plus consent) — combining them
-      // would make one silently win. Fail loud; pass one.
-      if (
-        (opts.externalUrl !== undefined || opts.publicUrl !== undefined) &&
-        opts.remote !== undefined &&
-        opts.remote !== false
-      ) {
-        const conflicting = opts.externalUrl !== undefined ? '--external-url' : '--public-url';
-        process.stderr.write(
-          `error: option '--remote' cannot be combined with '${conflicting}' (--remote is a deprecated alias that sets server.externalUrl)\n`,
-        );
-        process.exit(2);
-      }
-
-      // Ephemeral single-file mode has no project and no consented root — the
-      // legacy remote flow refused to arm there (while still printing an
-      // "enabled" banner). Now that --remote expands into real exposure
-      // consent, refuse the combination loudly instead of exposing a
-      // throwaway root.
-      if (opts.singleFile !== undefined && opts.remote !== undefined && opts.remote !== false) {
-        process.stderr.write(
-          "error: option '--single-file' cannot be combined with '--remote' — ephemeral single-file mode has no project and no consented root to serve remotely\n",
-        );
-        process.exit(2);
-      }
 
       // `--only server` promises "no UI module" — an explicit shell dir
       // contradicts it. Fail loud rather than pick a winner silently.
@@ -1775,35 +1411,18 @@ export function startCommand(getConfig: () => Config): Command {
       }
 
       // `--mode=app` shortcuts the server boot and hands off to the
-      // desktop app. Mutually exclusive with --open (which opens a
-      // browser tab against the local server, which app mode does not
-      // boot).
+      // desktop app.
       if (opts.mode === 'app') {
-        if (opts.open) {
-          // Don't throw InvalidArgumentError from an async action — Commander
-          // catches it on synchronous validators (parser fns) but a thrown
-          // error inside the action surfaces as an unhandled rejection with
-          // a stack trace. Exit cleanly via process.exit(2) instead, matching
-          // Commander's own conventional exit code for argument errors.
-          process.stderr.write(
-            "error: option '--mode=app' cannot be combined with '--open' (--open opens a browser tab against the local server, which app mode does not boot)\n",
-          );
-          process.exit(2);
-        }
-
         // Non-mode start flags are silently ignored under --mode=app,
         // with a debug-level diagnostic so a confused user / CI script
         // can grep for it without crashing.
         const ignored: string[] = [];
         if (opts.port !== undefined) ignored.push('--port');
         if (opts.bind !== undefined) ignored.push('--bind');
-        if (opts.host !== undefined) ignored.push('--host');
         if (opts.only !== undefined) ignored.push('--only');
         if (opts.idleShutdown !== undefined) ignored.push('--idle-shutdown');
         if (opts.openBrowser === false) ignored.push('--no-open-browser');
         if (opts.externalUrl !== undefined) ignored.push('--external-url');
-        if (opts.publicUrl !== undefined) ignored.push('--public-url');
-        if (opts.remote !== undefined && opts.remote !== false) ignored.push('--remote');
         if (ignored.length > 0) {
           // Debug-level surface; reuse the existing program log-level
           // gate (--log-level=debug). Inline check to avoid a logger dep.

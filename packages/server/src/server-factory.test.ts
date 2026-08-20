@@ -2758,15 +2758,13 @@ describe('createServer() — config-doc admission guard', () => {
       contentDir: tmpDir,
       projectDir: tmpDir,
       quiet: true,
-      // The `ok start --remote` alias shape: declared public origin + consent
-      // on a loopback bind.
+      // A tunneled exposure shape: declared public origin + consent on a
+      // loopback bind.
       ingressPolicy: buildIngressPolicy({
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1'],
           externalUrl: 'https://myproject.ngrok.app',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',

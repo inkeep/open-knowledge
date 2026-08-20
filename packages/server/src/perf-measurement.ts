@@ -151,7 +151,7 @@ export function installPerfMeasurementHttpRoute(server: Hocuspocus): void {
       // gate api-extension.ts applies to /api/principal + /api/workspace
       // keeps the route's posture consistent with the rest of the package
       // — engineers don't have to remember which DEV-only routes are
-      // safe under `--host 0.0.0.0`.
+      // safe under `--bind 0.0.0.0`.
       if (!isLoopbackAddress(request.socket?.remoteAddress)) {
         writeJsonResponse(response, 403, JSON.stringify({ error: 'loopback required' }));
         return;

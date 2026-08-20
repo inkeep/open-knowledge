@@ -12,7 +12,7 @@ Add access control in front of the server. The browser and MCP clients use diffe
 
 For a public deployment, protect the editor with a browser login. Protect `/mcp` with a token or MCP-compatible OAuth.
 
-Add access control to the tunnel, private network, or proxy in front of the server. Use a tunnel or private network with the [CLI method](/docs/self-hosting/methods/cli). Use a proxy with the [Docker method](/docs/self-hosting/methods/docker). A container can also run behind a protected tunnel.
+Add access control to the tunnel, private network, or proxy in front of the server. Use a tunnel or private network with the [CLI method](/docs/remote-control/methods/cli). Use a proxy with the [Docker method](/docs/remote-control/methods/docker). A container can also run behind a protected tunnel.
 
 ## Tunnels and private networks
 
@@ -40,7 +40,7 @@ on_http_request:
         config: { provider: google }
 ```
 
-Run the tunnel with `--traffic-policy-file policy.yaml`. Browsers get the Google login. An agent connects by sending the Basic credential as a header. See [Connect remote agents](/docs/self-hosting/connecting-agents). Replace `CHANGE_ME` with a strong secret from `openssl rand -hex 24`. For SSO, ngrok's `--oidc` supports Okta, Azure AD, and Google Workspace.
+Run the tunnel with `--traffic-policy-file policy.yaml`. Browsers get the Google login. An agent connects by sending the Basic credential as a header. See [Connect remote agents](/docs/remote-control/connecting-agents). Replace `CHANGE_ME` with a strong secret from `openssl rand -hex 24`. For SSO, ngrok's `--oidc` supports Okta, Azure AD, and Google Workspace.
 
 ### Cloudflare Tunnel
 
@@ -127,7 +127,7 @@ Four settings decide whether this boots the first time:
 
 - **`OAUTH2_PROXY_WHITELIST_DOMAINS` must list your public domain.** Behind Caddy, oauth2-proxy builds its post-login redirect from the forwarded host and refuses any host not on this list, so without it the login silently loops back to itself.
 - **`OAUTH2_PROXY_COOKIE_SECRET` must decode to 16, 24, or 32 bytes.** Use `openssl rand -hex 16` to create a valid 32-character value. Do not use `openssl rand -base64 32` because it creates 44 characters and oauth2-proxy will not start.
-- **Caddy must send `X-Forwarded-Proto: https`** using the two `header_up` lines above. TLS ends at the platform edge, so Caddy uses plain HTTP between the edge and the server. Without this header, the server gives the editor a `ws://` connection. The browser blocks it as mixed content on an `https` page and the editor does not load. oauth2-proxy forwards the header automatically. Set `OAUTH2_PROXY_REVERSE_PROXY=true` so oauth2-proxy trusts forwarded headers for client IP addresses and post-login redirects. Set `FLUSH_INTERVAL=100ms` to follow the [never-buffer rule](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server).
+- **Caddy must send `X-Forwarded-Proto: https`** using the two `header_up` lines above. TLS ends at the platform edge, so Caddy uses plain HTTP between the edge and the server. Without this header, the server gives the editor a `ws://` connection. The browser blocks it as mixed content on an `https` page and the editor does not load. oauth2-proxy forwards the header automatically. Set `OAUTH2_PROXY_REVERSE_PROXY=true` so oauth2-proxy trusts forwarded headers for client IP addresses and post-login redirects. Set `FLUSH_INTERVAL=100ms` to follow the [never-buffer rule](/docs/remote-control/methods/docker#rules-for-anything-in-front-of-the-server).
 - **Bind to IPv6 where the platform's private network requires it.** Railway's is IPv6-only, so `OK_BIND=::` and `HTTP_ADDRESS=[::]:4180`, and Caddy dials the `*.railway.internal` names.
 
 ### Example: Pomerium
@@ -241,7 +241,7 @@ tailscale funnel --bg --https=443  https+insecure://127.0.0.1:8085
 tailscale funnel --bg --https=8443 https+insecure://127.0.0.1:8085
 ```
 
-Then point a custom MCP connector in Claude (iOS or Desktop) or Cursor at `https://<host>/mcp` and complete the Google login. [Connect remote agents](/docs/self-hosting/connecting-agents) has the per-client steps.
+Then point a custom MCP connector in Claude (iOS or Desktop) or Cursor at `https://<host>/mcp` and complete the Google login. [Connect remote agents](/docs/remote-control/connecting-agents) has the per-client steps.
 
 The settings that are easy to miss:
 
@@ -262,9 +262,9 @@ Alternatives to the Pomerium recipe above, as pointers rather than full recipes:
 Common symptoms and their fixes:
 
 - **The editor loads but never syncs, and the browser console shows a `ws://` "Mixed Content" error.** The proxy terminates TLS but reports the request to the server as plain HTTP, so the server hands the editor an insecure `ws://` socket. Make the proxy forward `X-Forwarded-Proto: https` (Caddy: `header_up X-Forwarded-Proto https`).
-- **Every request returns `403`.** The request `Host` does not match `OK_EXTERNAL_URL`. Configure the proxy to preserve the client's `Host`. For Caddy, use `header_up Host {host}`. Set `OK_EXTERNAL_URL` to the public origin. See the full [proxy rules](/docs/self-hosting/methods/docker#rules-for-anything-in-front-of-the-server).
+- **Every request returns `403`.** The request `Host` does not match `OK_EXTERNAL_URL`. Configure the proxy to preserve the client's `Host`. For Caddy, use `header_up Host {host}`. Set `OK_EXTERNAL_URL` to the public origin. See the full [proxy rules](/docs/remote-control/methods/docker#rules-for-anything-in-front-of-the-server).
 - **The browser login returns to the login page.** oauth2-proxy is rejecting the post-login redirect because the domain is not allowed. Add the public domain to `OAUTH2_PROXY_WHITELIST_DOMAINS`.
-- **An agent gets an HTML login page back from `/mcp`.** The `/mcp` path is behind the browser login instead of a token. Route `/mcp` around the login proxy and gate it with a token, or if you use an MCP-OAuth edge, confirm the client supports it (see [Connect remote agents](/docs/self-hosting/connecting-agents)).
+- **An agent gets an HTML login page back from `/mcp`.** The `/mcp` path is behind the browser login instead of a token. Route `/mcp` around the login proxy and gate it with a token, or if you use an MCP-OAuth edge, confirm the client supports it (see [Connect remote agents](/docs/remote-control/connecting-agents)).
 - **`/mcp` hangs or times out.** A proxy is buffering the streamed response. Turn off buffering for `/mcp`. In nginx, set `proxy_buffering` to `off`. For oauth2-proxy, set `FLUSH_INTERVAL=100ms`. Caddy streams by default.
 
-Once auth is in place, [Connect remote agents](/docs/self-hosting/connecting-agents) covers how each client presents its credential.
+Once auth is in place, [Connect remote agents](/docs/remote-control/connecting-agents) covers how each client presents its credential.

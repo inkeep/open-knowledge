@@ -7,9 +7,9 @@
  * local-op security checks. One policy, one set of predicates — the HTTP and
  * WS halves of the server can never disagree about who is admitted.
  *
- * The `ok start --remote <url>` flag is CLI sugar over the same keys (it
- * expands to `server.externalUrl` + loopback `server.bind` +
- * `server.allowExternal`) — there is no separate tunnel policy shape.
+ * Exposing the server is just these keys — `server.externalUrl` + a
+ * `server.bind` + `server.allowExternal` consent — there is no separate
+ * tunnel policy shape.
  *
  * The three predicates and what governs each:
  *
@@ -101,10 +101,10 @@ export interface IngressPolicy {
    */
   bindLiterals: readonly string[];
   /**
-   * The declared canonical origin — the EXPLICIT `server.externalUrl` only
-   * (`externalUrlSource === 'server'`). `host` is `host[:port]` with default
-   * ports stripped; `protocol` is `http:`/`https:`, matched exactly for
-   * Origin checks since the key admits http for tailnet/LAN deployments.
+   * The declared canonical origin — the EXPLICIT `server.externalUrl`;
+   * `host` is `host[:port]` with default ports stripped, `protocol` is
+   * `http:`/`https:`, matched exactly for Origin checks since the key
+   * admits http for tailnet/LAN deployments.
    */
   externalOrigin: { host: string; protocol: string } | undefined;
   /**
@@ -151,7 +151,7 @@ export function buildIngressPolicy(input: BuildIngressPolicyInput): IngressPolic
           .filter((addr) => !NON_NAMEABLE_BINDS.has(addr) && !addr.startsWith('127.'));
 
   let externalOrigin: IngressPolicy['externalOrigin'];
-  if (runtime?.externalUrlSource === 'server' && runtime.externalUrl !== undefined) {
+  if (runtime?.externalUrl !== undefined) {
     // The schema guarantees a parseable http(s) URL; a throw here would be a
     // schema/resolver drift bug, so let it propagate loudly at boot.
     const parsed = new URL(runtime.externalUrl);

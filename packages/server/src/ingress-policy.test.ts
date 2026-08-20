@@ -18,8 +18,6 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
     port: undefined,
     bind: ['127.0.0.1'],
     externalUrl: undefined,
-    externalUrlSource: undefined,
-    externalUrlFromDeprecatedKey: false,
     allowExternal: false,
     openBrowser: true,
     idleShutdown: '30m',
@@ -29,12 +27,11 @@ function runtime(overrides: Partial<ServerRuntimeConfig> = {}): ServerRuntimeCon
 }
 
 /**
- * The runtime shape `ok start --remote <url>` expands to: declared public
- * origin + consent on a loopback bind — no dedicated tunnel shape.
+ * A tunneled deployment's runtime shape: declared public origin + consent on a
+ * loopback bind — there is no dedicated tunnel policy shape.
  */
-const REMOTE_ALIAS_RUNTIME: Partial<ServerRuntimeConfig> = {
+const TUNNEL_EXPOSURE_RUNTIME: Partial<ServerRuntimeConfig> = {
   externalUrl: 'https://myproject.ngrok.app',
-  externalUrlSource: 'server',
   allowExternal: true,
   idleShutdown: 'off',
   openBrowser: false,
@@ -59,35 +56,29 @@ describe('buildIngressPolicy', () => {
     expect(policy.bindLiterals).toEqual(['100.64.0.7', '2001:db8::1']);
   });
 
-  test('externalOrigin comes from the successor key only, never the remote alias', () => {
+  test('externalOrigin comes from a server-sourced externalUrl', () => {
     const explicit = buildIngressPolicy({
       serverRuntime: runtime({
         externalUrl: 'http://laptop.tail:55222',
-        externalUrlSource: 'server',
       }),
     });
     expect(explicit.externalOrigin).toEqual({ host: 'laptop.tail:55222', protocol: 'http:' });
-    const aliased = buildIngressPolicy({
-      serverRuntime: runtime({
-        externalUrl: 'https://kb.example.com',
-        externalUrlSource: 'remote-alias',
-      }),
-    });
-    expect(aliased.externalOrigin).toBeUndefined();
+    // No externalUrl → no external origin.
+    const none = buildIngressPolicy({ serverRuntime: runtime({}) });
+    expect(none.externalOrigin).toBeUndefined();
   });
 
   test('forwarded headers are tolerated only under consent + declared externalUrl', () => {
-    // The --remote alias lands exactly here: its expansion carries both keys.
+    // A tunneled deployment lands exactly here: its config carries both keys.
     expect(
-      buildIngressPolicy({ serverRuntime: runtime(REMOTE_ALIAS_RUNTIME) }).tolerateForwardedHeaders,
+      buildIngressPolicy({ serverRuntime: runtime(TUNNEL_EXPOSURE_RUNTIME) })
+        .tolerateForwardedHeaders,
     ).toBe(true);
     expect(
       buildIngressPolicy({
         serverRuntime: runtime({
           allowExternal: true,
           externalUrl: 'https://kb.example.com',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
         }),
       }).tolerateForwardedHeaders,
     ).toBe(true);
@@ -104,7 +95,6 @@ describe('buildIngressPolicy', () => {
       buildIngressPolicy({
         serverRuntime: runtime({
           externalUrl: 'https://kb.example.com',
-          externalUrlSource: 'server',
         }),
       }).tolerateForwardedHeaders,
     ).toBe(false);
@@ -140,7 +130,6 @@ describe('isHostAdmitted — names validate in every mode, never widened by cons
       loopbackOnly: false,
       allowExternal: true,
       externalUrl: 'http://laptop.tail:55222',
-      externalUrlSource: 'server',
     }),
   });
 
@@ -188,7 +177,6 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
     serverRuntime: runtime({
       allowExternal: true,
       externalUrl: 'https://notes.example.com',
-      externalUrlSource: 'server',
     }),
   });
 
@@ -203,7 +191,6 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
       serverRuntime: runtime({
         allowExternal: true,
         externalUrl: 'http://laptop.tail:55222',
-        externalUrlSource: 'server',
       }),
     });
     expect(isOriginAdmitted('http://laptop.tail:55222', httpPublic)).toBe(true);
@@ -242,11 +229,11 @@ describe('isOriginAdmitted — if present, must match; scheme-matched for extern
   });
 });
 
-describe('the --remote alias shape — tunnel admission via the ratified keys', () => {
-  // Behavior-preservation pins for the legacy `--remote` contract, expressed
-  // through the ONE policy: the tunnel's public Host is admitted, its https
-  // origin is admitted, foreign names stay refused.
-  const tunnel = buildIngressPolicy({ serverRuntime: runtime(REMOTE_ALIAS_RUNTIME) });
+describe('tunnel admission via the ratified keys', () => {
+  // Behavior pins for a tunneled deployment, expressed through the ONE policy:
+  // the tunnel's public Host is admitted, its https origin is admitted,
+  // foreign names stay refused.
+  const tunnel = buildIngressPolicy({ serverRuntime: runtime(TUNNEL_EXPOSURE_RUNTIME) });
 
   test('the tunnel public Host is admitted, with or without default-port suffix', () => {
     expect(isHostAdmitted('myproject.ngrok.app', tunnel)).toBe(true);
@@ -303,7 +290,6 @@ describe('tripsForwardedHeaderTripwire', () => {
       serverRuntime: runtime({
         allowExternal: true,
         externalUrl: 'https://notes.example.com',
-        externalUrlSource: 'server',
       }),
     });
     expect(tripsForwardedHeaderTripwire(req, consented)).toBe(false);

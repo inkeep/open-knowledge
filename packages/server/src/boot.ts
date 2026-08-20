@@ -597,8 +597,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // ONE ingress policy for the whole listener — HTTP gates, WS upgrade
   // admission, config-doc admission, and the local-op checks all consult this
   // object. Built from the resolved server.* runtime (consent, declared bind
-  // literals, externalUrl); `ok start --remote` reaches here through the same
-  // runtime, expanded by the CLI into these keys.
+  // literals, externalUrl).
   //
   // The policy's admitted Host names come from `serverRuntime.bind` — the
   // DECLARED bind (which Host headers to accept) — NOT the physical
@@ -615,7 +614,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   if (
     serverRuntime.allowExternal &&
     !serverRuntime.loopbackOnly &&
-    serverRuntime.externalUrlSource !== 'server'
+    serverRuntime.externalUrl === undefined
   ) {
     if (ingressPolicy.bindLiterals.length === 0) {
       // Wildcard bind (0.0.0.0 / ::) contributes NO admissible Host name, and

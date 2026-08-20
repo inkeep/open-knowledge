@@ -87,19 +87,6 @@ export const RECOGNIZED_ENV_VARS: ReadonlyMap<string, readonly string[]> = new M
   ['OK_IDLE_SHUTDOWN', ['server', 'idleShutdown']],
 ]);
 
-/**
- * Deprecated env spellings kept through their removal window. Each maps to
- * the SUCCESSOR config path — not the deprecated config leaf — so the env
- * layer keeps its precedence over the file layers (an old `OK_PUBLIC_URL`
- * must still beat a config-file `server.externalUrl`, exactly as it beat
- * `server.publicUrl` before the rename). The successor env var wins when both
- * are set. Every use emits a deprecation diagnostic naming the new spelling.
- */
-export const DEPRECATED_ENV_ALIASES: ReadonlyMap<
-  string,
-  { successor: string; path: readonly string[] }
-> = new Map([['OK_PUBLIC_URL', { successor: 'OK_EXTERNAL_URL', path: ['server', 'externalUrl'] }]]);
-
 function camelToScreamingSnake(segment: string): string {
   return segment.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase();
 }
@@ -218,16 +205,10 @@ function diagnoseUnknownOkVar(
       message: `${envVar} maps to config key ${mapped.join('.')}, which is not env-configurable — set it in the config file instead.`,
     };
   }
-  // Deprecated aliases stay in the near-miss pool: a typo of OK_PUBLIC_URL is
-  // nowhere near OK_EXTERNAL_URL by edit distance, so dropping the old names
-  // here would turn a once-hinted typo into silence. The hint steers the user
-  // to the successor spelling rather than the deprecated one it matched.
-  for (const known of [...RECOGNIZED_ENV_VARS.keys(), ...DEPRECATED_ENV_ALIASES.keys()]) {
+  // Did-you-mean for a near-miss typo of a recognized env var.
+  for (const known of RECOGNIZED_ENV_VARS.keys()) {
     if (known !== 'PORT' && levenshtein(envVar, known) <= 2) {
-      const alias = DEPRECATED_ENV_ALIASES.get(known);
-      const hint =
-        alias === undefined ? known : `${known} (deprecated — use ${alias.successor} instead)`;
-      return { envVar, message: `Unknown variable ${envVar} — did you mean ${hint}?` };
+      return { envVar, message: `Unknown variable ${envVar} — did you mean ${known}?` };
     }
   }
   return null;
@@ -288,40 +269,8 @@ export function resolveEnvConfigLayer(env: Record<string, string | undefined>): 
     overrides.push({ path, envVar, value: checked.data });
   }
 
-  // Deprecated spellings: parsed with the same fail-loud validation as the
-  // recognized set, but only while the successor is unset — the successor
-  // always wins, and every use (honored or shadowed) warns with the rename.
-  for (const [envVar, { successor, path }] of DEPRECATED_ENV_ALIASES) {
-    const raw = env[envVar];
-    if (raw === undefined || raw.trim() === '') continue;
-    const successorRaw = env[successor];
-    if (successorRaw !== undefined && successorRaw.trim() !== '') {
-      diagnostics.push({
-        envVar,
-        message: `${envVar} is deprecated and ignored because ${successor} is also set — remove ${envVar}.`,
-      });
-      continue;
-    }
-    diagnostics.push({
-      envVar,
-      message: `${envVar} is deprecated — use ${successor} instead.`,
-    });
-    const leaf = resolveLeafSchema(ConfigSchema, path);
-    if (leaf === undefined) {
-      throw new EnvVarError(envVar, `internal: config path ${path.join('.')} does not resolve`);
-    }
-    const parsed = parseByLeafType(envVar, raw.trim(), leaf);
-    const checked = leaf.safeParse(parsed);
-    if (!checked.success) {
-      const detail = checked.error.issues.map((i) => i.message).join('; ') || 'invalid value';
-      throw new EnvVarError(envVar, `${detail} (got ${JSON.stringify(raw)})`);
-    }
-    overrides.push({ path, envVar, value: checked.data });
-  }
-
   for (const envVar of Object.keys(env)) {
     if (!envVar.startsWith('OK_') || RECOGNIZED_ENV_VARS.has(envVar)) continue;
-    if (DEPRECATED_ENV_ALIASES.has(envVar)) continue;
     if (env[envVar] === undefined) continue;
     const diagnostic = diagnoseUnknownOkVar(envVar, mechanicalTable);
     if (diagnostic !== null) diagnostics.push(diagnostic);

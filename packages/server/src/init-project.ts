@@ -158,10 +158,10 @@ export function buildConfigYmlContent(_version: string, options?: BuildConfigYml
 
 
 # --- Server ----------------------------------------------------------------
-# Host: set via \`--host\` flag or \`HOST\` env var (default: localhost; use
-# \`0.0.0.0\` to bind LAN-visible). Port: set via \`--port\` flag or \`PORT\`
-# env var (auto-allocated if unset). Both are per-process runtime knobs —
-# no \`server:\` schema field exists.
+# Bind host: \`--bind\` flag, \`HOST\` env var, or the \`server.bind\` config key
+# (default: 127.0.0.1; \`0.0.0.0\` binds LAN-visible and also needs
+# \`server.allowExternal\`). Port: \`--port\` flag, \`PORT\` env var, or
+# \`server.port\` (auto-allocated if unset). See the Configuration reference.
 
 
 # --- Appearance ------------------------------------------------------------

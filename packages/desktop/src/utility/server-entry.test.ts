@@ -78,7 +78,6 @@ describe('resolveDesktopServerRuntime — scope-correct three-layer load', () =>
     writeProjectConfig('server:\n  externalUrl: https://box.tailnet.ts.net\n  port: 24550\n');
     const { serverRuntime } = resolveDesktopServerRuntime(testDir);
     expect(serverRuntime.externalUrl).toBe('https://box.tailnet.ts.net');
-    expect(serverRuntime.externalUrlSource).toBe('server');
     expect(serverRuntime.port).toBe(24550);
   });
 
@@ -118,8 +117,6 @@ function makeServerRuntime(port: number | undefined): ServerRuntimeConfig {
     port,
     bind: ['127.0.0.1'],
     externalUrl: undefined,
-    externalUrlSource: undefined,
-    externalUrlFromDeprecatedKey: false,
     allowExternal: false,
     openBrowser: false,
     idleShutdown: '30m',

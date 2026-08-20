@@ -104,10 +104,39 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     path: ['server', 'host'],
     // Rewritten when `server.bind` returned as a live config key — the old
     // "use --host / HOST" text pointed away from the file at the exact moment
-    // a file key existed again.
+    // a file key existed again. The `--host` CLI flag no longer exists; the
+    // HOST environment variable is still honored.
     redirect: [
       'Use server.bind in .ok/config.yml instead — a list of bind addresses, e.g. [127.0.0.1]; a non-loopback bind additionally requires server.allowExternal.',
-      'The --host CLI flag and HOST environment variable also remain available.',
+      'The --bind CLI flag and HOST environment variable also remain available.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    // `remote.url` was the former way to declare the public tunnel origin,
+    // superseded by `server.externalUrl`; it was alias-read while the
+    // successor was absent through a deprecation window, now closed.
+    path: ['remote', 'url'],
+    redirect: [
+      'remote.url has been removed. Use server.externalUrl in .ok/config.yml instead (the public origin your tunnel serves).',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    // `remote.port` was the former fixed listen port for a tunneled
+    // deployment, superseded by `server.port`.
+    path: ['remote', 'port'],
+    redirect: [
+      'remote.port has been removed. Use server.port in .ok/config.yml instead.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    // `server.publicUrl` was the former name of `server.externalUrl`, kept as
+    // a deprecated alias through a deprecation window, now closed.
+    path: ['server', 'publicUrl'],
+    redirect: [
+      'server.publicUrl has been removed. Use server.externalUrl in .ok/config.yml instead (the same key under its current name).',
       MIGRATE_HINT,
     ].join(' '),
   },

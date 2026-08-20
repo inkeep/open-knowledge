@@ -12,8 +12,8 @@ The setup has four parts: run the server, make it reachable, add access control,
 There are three ways to run an OpenKnowledge server:
 
 - [**Desktop**](/docs/get-started/quickstart#install-the-desktop-app-macos-windows-linux)
-- [**CLI**](/docs/self-hosting/methods/cli)
-- [**Docker**](/docs/self-hosting/methods/docker)
+- [**CLI**](/docs/remote-control/methods/cli)
+- [**Docker**](/docs/remote-control/methods/docker)
 
 ## Make the server reachable
 
@@ -21,9 +21,9 @@ Choose the instructions that match where your server runs:
 
 | Your setup | What to follow |
 | --- | --- |
-| Desktop or CLI on your computer | [Connect the computer through a private network or tunnel](/docs/self-hosting/methods/cli#your-laptop-behind-a-tunnel). If Desktop already runs the project, skip the CLI installation step. The networking settings are the same. |
-| CLI on an always-on machine | [Set up a server you manage](/docs/self-hosting/methods/cli#a-server-you-manage). |
-| Docker | [Deploy the container](/docs/self-hosting/methods/docker). |
+| Desktop or CLI on your computer | [Connect the computer through a private network or tunnel](/docs/remote-control/methods/cli#your-laptop-behind-a-tunnel). If Desktop already runs the project, skip the CLI installation step. The networking settings are the same. |
+| CLI on an always-on machine | [Set up a server you manage](/docs/remote-control/methods/cli#a-server-you-manage). |
+| Docker | [Deploy the container](/docs/remote-control/methods/docker). |
 
 Each method provides an HTTPS URL and the required configuration. See the [configuration reference](/docs/reference/configuration) for all available settings.
 
@@ -35,7 +35,7 @@ Each method provides an HTTPS URL and the required configuration. See the [confi
 
 OpenKnowledge does not have built-in user accounts yet. Everyone who can reach the server has full read and write access as the same owner.
 
-A private network such as Tailscale can be the access-control layer. A public URL needs an authentication edge or proxy in front of it. Follow [Authentication](/docs/self-hosting/authentication) before continuing.
+A private network such as Tailscale can be the access-control layer. A public URL needs an authentication edge or proxy in front of it. Follow [Authentication](/docs/remote-control/authentication) before continuing.
 
 ## Try it out
 
@@ -53,7 +53,7 @@ Connect agents to the MCP endpoint:
 https://<your-external-url>/mcp
 ```
 
-Open the browser URL first to confirm the editor loads. Then follow [Connect remote agents](/docs/self-hosting/connecting-agents) for Claude, Cursor, Codex, and other MCP clients. Give teammates the browser URL plus any network access or credential required by your access-control setup.
+Open the browser URL first to confirm the editor loads. Then follow [Connect remote agents](/docs/remote-control/connecting-agents) for Claude, Cursor, Codex, and other MCP clients. Give teammates the browser URL plus any network access or credential required by your access-control setup.
 
 ## Turn off remote access
 

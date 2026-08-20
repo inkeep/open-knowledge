@@ -159,7 +159,7 @@ describe('loadConfig', () => {
     }
     // Each redirect names the replacement knob.
     const joined = removed.map((r) => r.redirect).join('\n');
-    expect(joined).toContain('--host');
+    expect(joined).toContain('--bind');
     expect(joined).toContain('HOST');
     expect(joined).toContain('OPEN_KNOWLEDGE_GITHUB_CLIENT_ID');
     expect(joined).toContain('OK_MCP_AUTOSTART');

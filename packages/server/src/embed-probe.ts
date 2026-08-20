@@ -17,7 +17,7 @@
  * (`handlePrincipal`, `handleMetricsAgentPresence`). The buffer is
  * populated unconditionally from `onRequest`, so the gate has to live
  * on the read side — readers see only loopback traffic in practice,
- * but a misconfigured `--host 0.0.0.0` deployment would route LAN
+ * but a misconfigured `--bind 0.0.0.0` deployment would route LAN
  * peers through here too.
  */
 

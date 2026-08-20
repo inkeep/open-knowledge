@@ -6,6 +6,7 @@ export const DEFAULT_MARKDOWNLINT_CONFIG: Record<string, MarkdownlintRuleSetting
   MD013: false,
 };
 
+
 export function resolveMarkdownlintConfig(
   rules: Record<string, MarkdownlintRuleSetting> | undefined,
 ): Configuration {

@@ -168,12 +168,11 @@ describe('createCollaborationHost', () => {
     expect(host.handleUpgrade(forwardedRequest as never, raw as never, Buffer.alloc(0))).toBe(true);
     expect(raw.destroy).toHaveBeenCalledOnce();
     expect(hocuspocus.handleConnection).not.toHaveBeenCalled();
-    // Posture flip: the tripwire hint names the consent surface
-    // (OK_ALLOW_EXTERNAL + OK_EXTERNAL_URL) now that it exists, with the
-    // legacy --remote flow as the alternative.
+    // The tripwire hint names the consent surface (OK_ALLOW_EXTERNAL +
+    // OK_EXTERNAL_URL, or the server.* config equivalents).
     expect(log.warn).toHaveBeenCalledWith(
       { url: '/collab', host: 'localhost' },
-      '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL, or start with `ok start --remote <url>`',
+      '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
     );
   });
 
@@ -183,15 +182,13 @@ describe('createCollaborationHost', () => {
     const host = createCollaborationHost({
       hocuspocus,
       log,
-      // The `ok start --remote` alias shape: declared public origin + consent
-      // on a loopback bind.
+      // A tunneled exposure shape: declared public origin + consent on a
+      // loopback bind.
       ingressPolicy: buildIngressPolicy({
         serverRuntime: {
           port: undefined,
           bind: ['127.0.0.1'],
           externalUrl: 'https://myproject.ngrok.app',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -220,10 +217,10 @@ describe('createCollaborationHost', () => {
   });
 
   test('under allowExternal consent, plain /collab validates Host (foreign refused, admitted names pass)', () => {
-    // The #5 gap: before, plain /collab was gated only under legacy --remote,
-    // so consented exposure (allowExternal, no --remote) left it ungated and
-    // any Host reached full CRDT read/write. It now runs the consolidated
-    // admit gate — loopback + bind literals + externalUrl — under consent too.
+    // Before, plain /collab was gated only under the old remote-access flow, so
+    // consented exposure (allowExternal) left it ungated and any Host reached
+    // full CRDT read/write. It now runs the consolidated admit gate — loopback
+    // + bind literals + externalUrl — under consent too.
     const log = createLog();
     const hocuspocus = createHocuspocus();
     const host = createCollaborationHost({
@@ -234,8 +231,6 @@ describe('createCollaborationHost', () => {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
           externalUrl: undefined,
-          externalUrlSource: undefined,
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -293,8 +288,6 @@ describe('createCollaborationHost', () => {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
           externalUrl: 'https://kb.example.com',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -405,8 +398,6 @@ describe('createCollaborationHost', () => {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
           externalUrl: 'https://kb.example.com',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
@@ -457,8 +448,6 @@ describe('createCollaborationHost', () => {
           port: undefined,
           bind: ['127.0.0.1', '100.64.0.7'],
           externalUrl: 'https://kb.example.com',
-          externalUrlSource: 'server',
-          externalUrlFromDeprecatedKey: false,
           allowExternal: true,
           openBrowser: false,
           idleShutdown: 'off',
