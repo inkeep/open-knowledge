@@ -24,6 +24,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
 import { shaForFile } from './archive.ts';
+import { MINIMUM_NPX_NODE_MAJOR } from './launch.ts';
 import {
   describeRuntime,
   ensureManagedRuntime,
@@ -34,6 +35,7 @@ import {
 } from './managed-runtime.ts';
 
 const log = getLogger('managed-runtime-test');
+const MANAGED_NODE_VERSION = describeRuntime('node').version;
 
 let dirs: string[] = [];
 function tmp(): string {
@@ -81,7 +83,7 @@ function makeFetch(bytes: Buffer, sha: string): typeof fetch {
   return (async (url: string | URL | Request) => {
     const u = String(url);
     if (u.endsWith('SHASUMS256.txt')) {
-      const body = `${NODE_NAMES.map((n) => `${sha}  node-v24.18.0-${n}`).join('\n')}\n`;
+      const body = `${NODE_NAMES.map((n) => `${sha}  node-${MANAGED_NODE_VERSION}-${n}`).join('\n')}\n`;
       return new Response(body, { status: 200 });
     }
     if (u.endsWith('.sha256')) {
@@ -130,6 +132,11 @@ describe('descriptors', () => {
     expect(node.sourceHost).toBe('nodejs.org');
     expect(node.approxSizeMB).toBeGreaterThan(0);
     expect(describeRuntime('uv').provides).toBe('uvx');
+  });
+
+  test('the pinned managed Node satisfies the npx compatibility floor', () => {
+    const major = Number.parseInt(describeRuntime('node').version.replace(/^v/, ''), 10);
+    expect(major).toBeGreaterThanOrEqual(MINIMUM_NPX_NODE_MAJOR);
   });
 });
 
@@ -182,7 +189,7 @@ describe('ensureManagedRuntime', () => {
   test('removes crash-orphaned staging directories on the next install', async () => {
     const stage = tmp();
     const root = tmp();
-    const staleDir = join(root, 'node', '.install-v24.18.0-orphaned');
+    const staleDir = join(root, 'node', `.install-${MANAGED_NODE_VERSION}-orphaned`);
     mkdirSync(staleDir, { recursive: true });
     writeFileSync(join(staleDir, 'partial-archive'), 'partial');
     const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);

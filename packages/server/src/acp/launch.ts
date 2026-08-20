@@ -23,7 +23,7 @@ import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open
 import { tracedMkdir, tracedRm, tracedWriteFile } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
-import { mergeLoginShellPath } from './login-shell-path.ts';
+import { mergeLoginShellPath, preferLoginShellPath } from './login-shell-path.ts';
 import type { ManagedRuntime } from './managed-runtime.ts';
 import type { CustomAgentEntry, RegistryAgent, RegistryBinaryTarget } from './registry.ts';
 import { STALE_INSTALL_ARTIFACT_AGE_MS, stagedInstall } from './staged-install.ts';
@@ -41,6 +41,9 @@ export interface ResolvedLaunch {
    */
   pathFromOverlay: boolean;
 }
+
+/** Strictest declared Node floor among the registry-backed npx ACP adapters. */
+export const MINIMUM_NPX_NODE_MAJOR = 22;
 
 export class AgentLaunchError extends Error {
   readonly code:
@@ -238,6 +241,21 @@ export function rewriteLaunchToManagedRuntime(
  */
 export function withLoginShellPath(launch: ResolvedLaunch, loginShellPath: string): ResolvedLaunch {
   return { ...launch, env: withLoginShellPathEnv(launch.env, loginShellPath) };
+}
+
+/**
+ * Retry an incompatible interpreter under the environment the user's terminal
+ * sees. Unlike the normal append-only merge, this intentionally lets the shell
+ * runtime win; callers must first establish that the inherited runtime cannot
+ * satisfy the launch contract.
+ */
+export function withPreferredLoginShellPath(
+  launch: ResolvedLaunch,
+  loginShellPath: string,
+): ResolvedLaunch {
+  const env = { ...launch.env };
+  env[pathKey(env)] = preferLoginShellPath(envPath(env), loginShellPath, delimiter);
+  return { ...launch, env };
 }
 
 /**
@@ -521,6 +539,11 @@ export function unrepairableManagedRuntimeHint(launch: ResolvedLaunch, detail: s
   return `OK downloaded a fresh copy of ${runtime} and it still can't run (${detail}). Something on this machine is stopping it — antivirus, a security policy, or an unsupported CPU are the usual causes.`;
 }
 
+/** Actionable dead end when this OK build carries an obsolete managed Node. */
+export function incompatibleManagedRuntimeHint(detail: string): string {
+  return `OK's private Node.js runtime is incompatible (${detail}). Update Open Knowledge and try again.`;
+}
+
 /**
  * The launch-error detail for a damaged copy of OK's own runtime that could
  * not be replaced: the rename that clears the way for a fresh download failed,
@@ -545,9 +568,9 @@ export function declinedRepairHint(launch: ResolvedLaunch): string {
   return `OK's own copy of ${runtime} is damaged and can't run this agent. Start the agent again to let OK download a fresh copy.`;
 }
 
-/** Cap on probe stderr retained while waiting for the verdict. */
-const PROBE_STDERR_MAX = 2_000;
-/** Cap on the stderr excerpt carried in a probe verdict (it reaches the user). */
+/** Cap on probe output retained while waiting for the verdict. */
+const PROBE_OUTPUT_MAX = 2_000;
+/** Cap on the output excerpt carried in a probe verdict (it reaches the user). */
 const PROBE_DETAIL_MAX = 300;
 
 /**
@@ -605,7 +628,7 @@ export function probeInterpreterHealth(
     let stderr = '';
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', (chunk: string) => {
-      if (stderr.length < PROBE_STDERR_MAX) stderr += chunk;
+      if (stderr.length < PROBE_OUTPUT_MAX) stderr += chunk;
     });
     let settled = false;
     const settle = (detail: string | null): void => {
@@ -649,6 +672,110 @@ export function probeInterpreterHealth(
       );
     });
   });
+}
+
+/**
+ * Verify that an npx launch resolves a supported Node runtime from the same
+ * environment the adapter will inherit. npm's POSIX launcher uses
+ * `#!/usr/bin/env node`; its Windows launcher prefers the sibling `node.exe`
+ * beside the resolved `npx.cmd` shim, then falls back to PATH.
+ *
+ * Compatibility is fail-closed for a missing runtime, failed process, empty
+ * output, or unparsable version. A timeout is only an unknown/slow verdict, so
+ * it proceeds with the launch after best-effort process-tree termination and
+ * a debug log, matching the interpreter-health probe's latency policy.
+ */
+export function probeNpxNodeCompatibility(
+  launch: ResolvedLaunch,
+  timeoutMs = 5_000,
+  log?: PinoLogger,
+): Promise<string | null> {
+  const win = process.platform === 'win32';
+  const resolved = resolveNpxNodeCommand(launch);
+  return new Promise((settleProbe) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(resolved, ['--version'], {
+        env: launch.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+        detached: !win,
+        windowsHide: true,
+      });
+    } catch (err) {
+      settleProbe(
+        `Node.js version probe could not start: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.setEncoding('utf8');
+    child.stdout?.on('data', (chunk: string) => {
+      if (stdout.length < PROBE_OUTPUT_MAX) stdout += chunk;
+    });
+    child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', (chunk: string) => {
+      if (stderr.length < PROBE_OUTPUT_MAX) stderr += chunk;
+    });
+    let settled = false;
+    const settle = (detail: string | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      settleProbe(detail);
+    };
+    const timer = setTimeout(() => {
+      terminateAgentTree(child, { graceMs: 0, forceWaitMs: 0 }).catch(() => {
+        // Best-effort: the unknown verdict stands either way.
+      });
+      log?.debug(
+        { cmd: launch.cmd, kind: launch.kind, timeoutMs },
+        '[acp-launch] Node.js compatibility probe timed out — proceeding with the launch',
+      );
+      settle(null);
+    }, timeoutMs);
+    timer.unref?.();
+    child.on('error', (err) => settle(`Node.js version probe failed: ${err.message}`));
+    // `close`, not `exit`: stdout can remain readable briefly after the process
+    // exits, and the version bytes are the compatibility verdict.
+    child.on('close', (code, signal) => {
+      if (signal !== null || (code !== null && code !== 0)) {
+        const firstStderrLine = stderr
+          .split('\n')
+          .map((line) => line.trim())
+          .find((line) => line !== '');
+        const reason = signal ?? `exit code ${code}`;
+        settle(
+          firstStderrLine === undefined
+            ? `Node.js version probe failed with ${reason}`
+            : `Node.js version probe failed with ${reason}: ${firstStderrLine.slice(0, PROBE_DETAIL_MAX)}`,
+        );
+        return;
+      }
+      const version = stdout.trim();
+      const match = /^v?(\d+)(?:\.|$)/.exec(version);
+      if (match === null) {
+        settle(
+          version === ''
+            ? 'Node.js version probe returned no version'
+            : `Node.js reported an unrecognized version: ${version.slice(0, PROBE_DETAIL_MAX)}`,
+        );
+        return;
+      }
+      const major = Number.parseInt(match[1] ?? '', 10);
+      settle(
+        major >= MINIMUM_NPX_NODE_MAJOR
+          ? null
+          : `Node.js ${version} is incompatible; Node.js ${MINIMUM_NPX_NODE_MAJOR} or newer is required`,
+      );
+    });
+  });
+}
+
+/** Actionable dead-end message when no compatible system Node can be selected. */
+export function incompatibleNodeHint(launch: ResolvedLaunch, detail: string): string {
+  return `\`${launch.cmd}\` cannot run this agent with the selected Node.js runtime (${detail}). Upgrade Node.js or let Open Knowledge download a private compatible copy.`;
 }
 
 /** Case-insensitive `PATH` lookup (Windows spells it `Path`), falling back to the process env. */
@@ -735,6 +862,30 @@ export function resolveWindowsCommand(cmd: string, pathEnv: string | undefined):
     }
   }
   return cmd;
+}
+
+/** Resolve the Node executable that npm's npx launcher will actually use. */
+export function resolveNpxNodeCommand(
+  launch: ResolvedLaunch,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform !== 'win32') return 'node';
+  const pathEnv = envPath(launch.env);
+  const resolvedNpx = resolveWindowsCommand(launch.cmd, pathEnv);
+  const npxWasResolved =
+    resolvedNpx !== launch.cmd ||
+    isAbsolute(resolvedNpx) ||
+    resolvedNpx.includes('/') ||
+    resolvedNpx.includes('\\');
+  if (npxWasResolved) {
+    const siblingNode = join(dirname(resolvedNpx), 'node.exe');
+    try {
+      if (statSync(siblingNode).isFile()) return siblingNode;
+    } catch {
+      // npm falls back to PATH when its sibling Node is absent.
+    }
+  }
+  return resolveWindowsCommand('node', pathEnv);
 }
 
 /** Double-quote a token if cmd.exe would otherwise split or interpret it. */

@@ -15,6 +15,7 @@ import {
   loginShellProbeArgs,
   mergeLoginShellPath,
   parseLoginShellPath,
+  preferLoginShellPath,
 } from './login-shell-path.ts';
 
 const log = getLogger('login-shell-path-test');
@@ -86,6 +87,18 @@ describe('mergeLoginShellPath', () => {
 
   test('drops empty segments rather than emitting a cwd-searching entry', () => {
     expect(mergeLoginShellPath('/a:', '/b::/c', ':')).toBe('/a:/b:/c');
+  });
+});
+
+describe('preferLoginShellPath', () => {
+  test('moves shell entries first and retains inherited-only entries', () => {
+    expect(preferLoginShellPath('/old/bin:/usr/bin', '/new/bin:/usr/bin', ':')).toBe(
+      '/new/bin:/usr/bin:/old/bin',
+    );
+  });
+
+  test('drops empty and duplicate entries', () => {
+    expect(preferLoginShellPath('/old/bin::/new/bin', '/new/bin:', ':')).toBe('/new/bin:/old/bin');
   });
 });
 

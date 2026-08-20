@@ -30,12 +30,16 @@ import {
   brokenInterpreterHint,
   declinedRepairHint,
   ensureBinaryInstalled,
+  incompatibleNodeHint,
   isPathQualified,
+  MINIMUM_NPX_NODE_MAJOR,
   mergedEnv,
   overlaySetsPath,
   preflightLaunch,
   probeInterpreterHealth,
+  probeNpxNodeCompatibility,
   type ResolvedLaunch,
+  resolveNpxNodeCommand,
   resolveWindowsCommand,
   spawnAcpAgent,
   terminateAgentTree,
@@ -44,6 +48,7 @@ import {
   windowsCmdWrap,
   withHostedAgentMarker,
   withLoginShellPath,
+  withPreferredLoginShellPath,
 } from './launch.ts';
 import type { RegistryBinaryTarget } from './registry.ts';
 
@@ -154,6 +159,25 @@ describe('withLoginShellPath', () => {
     );
     expect(out.env.TOKEN).toBe('keep');
     expect(out.args).toEqual(['-y', 'pkg']);
+  });
+});
+
+describe('withPreferredLoginShellPath', () => {
+  const key = 'PATH' in process.env ? 'PATH' : 'Path';
+
+  test('promotes the login-shell PATH ahead of an incompatible inherited runtime', () => {
+    const out = withPreferredLoginShellPath(
+      {
+        cmd: 'npx',
+        args: ['-y', 'pkg'],
+        env: { [key]: `/old-node/bin${delimiter}/usr/bin`, TOKEN: 'keep' },
+        kind: 'npx',
+        pathFromOverlay: false,
+      },
+      `/new-node/bin${delimiter}/usr/bin`,
+    );
+    expect(out.env[key]).toBe(`/new-node/bin${delimiter}/usr/bin${delimiter}/old-node/bin`);
+    expect(out.env.TOKEN).toBe('keep');
   });
 });
 
@@ -891,6 +915,71 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
   }, 20_000);
 });
 
+describe.skipIf(process.platform === 'win32')('probeNpxNodeCompatibility', () => {
+  const launchWithNodeVersion = (body: string): ResolvedLaunch => {
+    const dir = tmp();
+    writeFileSync(join(dir, 'node'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    return {
+      cmd: 'npx',
+      args: ['-y', '@fake/agent'],
+      env: { PATH: dir },
+      kind: 'npx',
+      pathFromOverlay: true,
+    };
+  };
+
+  test(`accepts Node ${MINIMUM_NPX_NODE_MAJOR}`, async () => {
+    await expect(
+      probeNpxNodeCompatibility(launchWithNodeVersion(`echo v${MINIMUM_NPX_NODE_MAJOR}.0.0`)),
+    ).resolves.toBeNull();
+  });
+
+  test('rejects a runnable Node 16 with the found and required versions', async () => {
+    const detail = await probeNpxNodeCompatibility(launchWithNodeVersion('echo v16.14.2'));
+    expect(detail).toContain('Node.js v16.14.2 is incompatible');
+    expect(detail).toContain(`Node.js ${MINIMUM_NPX_NODE_MAJOR} or newer is required`);
+  });
+
+  test('fails closed when the runtime does not report a recognizable version', async () => {
+    await expect(
+      probeNpxNodeCompatibility(launchWithNodeVersion('echo unknown')),
+    ).resolves.toContain('unrecognized version');
+  });
+
+  test('a hung version probe times out as unknown instead of incompatible', async () => {
+    await expect(
+      probeNpxNodeCompatibility(launchWithNodeVersion('while :; do /bin/sleep 1; done'), 100),
+    ).resolves.toBeNull();
+  });
+
+  test('fails closed when Node is missing from the selected PATH', async () => {
+    const launch: ResolvedLaunch = {
+      cmd: 'npx',
+      args: ['-y', '@fake/agent'],
+      env: { PATH: tmp() },
+      kind: 'npx',
+      pathFromOverlay: true,
+    };
+    await expect(probeNpxNodeCompatibility(launch)).resolves.toContain(
+      'Node.js version probe failed',
+    );
+  });
+
+  test('fails closed when Node exits successfully without a version', async () => {
+    await expect(probeNpxNodeCompatibility(launchWithNodeVersion('exit 0'))).resolves.toContain(
+      'returned no version',
+    );
+  });
+
+  test('the dead-end hint explains compatibility rather than claiming Node is missing', () => {
+    const launch = launchWithNodeVersion('echo v16.14.2');
+    const hint = incompatibleNodeHint(launch, 'Node.js v16.14.2 is incompatible');
+    expect(hint).toContain('selected Node.js runtime');
+    expect(hint).toContain('private compatible copy');
+    expect(hint).not.toContain('was not found');
+  });
+});
+
 describe('brokenInterpreterHint', () => {
   test('names Node.js for npx and points at the Homebrew icu4c cause', () => {
     const hint = brokenInterpreterHint(
@@ -1007,6 +1096,30 @@ describe('windows cmd wrapping (spawn on Windows)', () => {
     // case-sensitive FS with no PATHEXT it returns the input unchanged.
     expect(resolved).not.toBe(join(dir, 'npx'));
     if (resolved !== 'npx') expect(/\.cmd$/i.test(resolved)).toBe(true);
+  });
+
+  test('the npx compatibility probe selects the node.exe beside the resolved shim', () => {
+    const priorPathExt = process.env.PATHEXT;
+    try {
+      process.env.PATHEXT = '.cmd;.exe';
+      const earlier = tmp();
+      const npmBin = tmp();
+      writeFileSync(join(earlier, 'node.exe'), 'unrelated node');
+      writeFileSync(join(npmBin, 'npx.cmd'), '@echo off\n');
+      writeFileSync(join(npmBin, 'node.exe'), 'npm shim node');
+      const launch: ResolvedLaunch = {
+        cmd: 'npx',
+        args: ['-y', '@fake/agent'],
+        env: { PATH: [earlier, npmBin].join(delimiter) },
+        kind: 'npx',
+        pathFromOverlay: true,
+      };
+
+      expect(resolveNpxNodeCommand(launch, 'win32')).toBe(join(npmBin, 'node.exe'));
+    } finally {
+      if (priorPathExt === undefined) delete process.env.PATHEXT;
+      else process.env.PATHEXT = priorPathExt;
+    }
   });
 
   test('outer-quotes the whole command so a spaced launcher path survives /s', () => {

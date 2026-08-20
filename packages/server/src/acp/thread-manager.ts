@@ -80,9 +80,12 @@ import {
   brokenInterpreterHint,
   declinedRepairHint,
   envPath,
+  incompatibleManagedRuntimeHint,
+  incompatibleNodeHint,
   isPathQualified,
   preflightLaunch,
   probeInterpreterHealth,
+  probeNpxNodeCompatibility,
   type ResolvedLaunch,
   resolveCustomLaunch,
   resolveRegistryLaunch,
@@ -92,6 +95,7 @@ import {
   undeletableManagedRuntimeHint,
   unrepairableManagedRuntimeHint,
   withLoginShellPath,
+  withPreferredLoginShellPath,
 } from './launch.ts';
 import {
   getSharedLoginShellPathProvider,
@@ -481,6 +485,11 @@ export function buildOkMcpStdioCommand(
   return { command, args: [...rest, 'mcp', '--port', String(port)] };
 }
 
+interface InterpreterProbeFailure {
+  kind: 'unhealthy' | 'incompatible';
+  detail: string;
+}
+
 export class AcpThreadManager {
   private readonly opts: AcpThreadManagerOptions;
   private readonly threads = new Map<string, ThreadRecord>();
@@ -494,8 +503,9 @@ export class AcpThreadManager {
   private readonly persistence: ThreadPersistenceStore;
   private readonly resolveLoginShellPath: () => Promise<string | null>;
   /**
-   * Interpreters that answered `--version` cleanly, keyed by command + the PATH
-   * they were probed under — see {@link AcpThreadManager.ensureInterpreterRuns}.
+   * Interpreters that answered their liveness and compatibility probes cleanly,
+   * keyed by command + PATH — see
+   * {@link AcpThreadManager.ensureInterpreterRuns}.
    * Healthy verdicts only, so a repaired Node is picked up without a restart;
    * `retryThread` clears it alongside the login-shell memo so the user's retry
    * re-checks an interpreter that broke after it was cached.
@@ -1059,33 +1069,75 @@ export class AcpThreadManager {
    * here — a login-shell-resolved interpreter can be just as broken as an
    * inherited-PATH one.
    *
-   * A broken interpreter goes STRAIGHT to the managed runtime, never back
-   * through the login-shell retry: that merge is append-only, so a shell PATH
-   * cannot shadow an interpreter that already resolves. Non-interpreter kinds
-   * pass through untouched — a binary/custom command has no managed fallback,
-   * so probing it could only add latency and a failure mode with no remedy.
+   * A broken interpreter goes straight to the managed runtime. An incompatible
+   * npx runtime gets one narrower retry with the login-shell PATH promoted,
+   * because a terminal-visible compatible Node is preferable to a download.
+   * Non-interpreter kinds pass through untouched — a binary/custom command has
+   * no managed fallback, so probing it could only add latency and a failure
+   * mode with no remedy.
    */
   private async ensureInterpreterRuns(
     record: ThreadRecord,
     launch: ResolvedLaunch,
   ): Promise<ResolvedLaunch | null> {
     if (launch.kind !== 'npx' && launch.kind !== 'uvx') return launch;
-    const brokenDetail = await this.probeInterpreterOnce(launch);
+    const failure = await this.probeInterpreterOnce(launch);
     if (record.closed) return null;
-    if (brokenDetail === null) return launch;
+    if (failure === null) return launch;
+
+    // A compatible Node in the user's terminal should win over a stale Node
+    // inherited by the GUI process. This is deliberately narrower than the
+    // normal PATH merge: only a proven incompatibility authorizes redirecting
+    // an already-resolved interpreter.
+    if (failure.kind === 'incompatible') {
+      const preferred = await this.withPreferredLoginShellPathIfEligible(launch);
+      if (record.closed) return null;
+      if (envPath(preferred.env) !== envPath(launch.env)) {
+        try {
+          await preflightLaunch(preferred);
+          const preferredFailure = await this.probeInterpreterOnce(preferred);
+          if (record.closed) return null;
+          if (preferredFailure === null) {
+            this.opts.log.info(
+              { threadId: record.info.threadId, agentId: record.info.agent.id },
+              '[acp-threads] compatible Node resolved via the preferred login-shell PATH',
+            );
+            return preferred;
+          }
+          this.opts.log.debug(
+            {
+              threadId: record.info.threadId,
+              agentId: record.info.agent.id,
+              cmd: preferred.cmd,
+              kind: preferred.kind,
+              failureKind: preferredFailure.kind,
+              detail: preferredFailure.detail,
+            },
+            '[acp-threads] preferred login-shell PATH did not provide a compatible Node',
+          );
+        } catch (err) {
+          if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') throw err;
+          // The managed runtime below is the remaining compatible candidate.
+        }
+      }
+    }
+
     this.opts.log.warn(
       {
         threadId: record.info.threadId,
         agentId: record.info.agent.id,
         cmd: launch.cmd,
         kind: launch.kind,
-        detail: brokenDetail,
+        failureKind: failure.kind,
+        detail: failure.detail,
       },
-      '[acp-threads] interpreter is installed but failed to run — offering the managed runtime',
+      '[acp-threads] interpreter cannot run this agent — offering the managed runtime',
     );
     const cause = new AgentLaunchError(
       'command-not-found',
-      brokenInterpreterHint(launch, brokenDetail),
+      failure.kind === 'incompatible'
+        ? incompatibleNodeHint(launch, failure.detail)
+        : brokenInterpreterHint(launch, failure.detail),
     );
     // Also the message a decline lands on: the stock decline hint says the
     // interpreter "isn't installed", which is the one thing we just proved
@@ -1094,7 +1146,7 @@ export class AcpThreadManager {
   }
 
   /**
-   * Route an npx/uvx interpreter that is missing or broken to the managed
+   * Route an npx/uvx interpreter that is missing, broken, or incompatible to the managed
    * runtime, returning the rewritten launch. Returns null only when the thread
    * closed mid-flight; rethrows `cause` when this launch kind or platform has
    * no managed fallback, so the actionable hint reaches the user instead of a
@@ -1138,7 +1190,13 @@ export class AcpThreadManager {
     // opaque "connection closed" with nothing left to try.
     const brokenManaged = await this.probeInterpreterOnce(rewritten);
     if (brokenManaged === null) return rewritten;
-    return this.repairManagedRuntime(record, launch, runtimeKind, brokenManaged);
+    if (brokenManaged.kind === 'incompatible') {
+      throw new AgentLaunchError(
+        'install-failed',
+        incompatibleManagedRuntimeHint(brokenManaged.detail),
+      );
+    }
+    return this.repairManagedRuntime(record, launch, runtimeKind, brokenManaged.detail);
   }
 
   /**
@@ -1193,29 +1251,40 @@ export class AcpThreadManager {
     const stillBroken = await this.probeInterpreterOnce(rewritten);
     if (stillBroken === null) return rewritten;
     this.opts.log.error(
-      { ...logContext, detail: stillBroken },
+      { ...logContext, detail: stillBroken.detail },
       '[acp-threads] a freshly downloaded managed runtime failed to run',
     );
     throw new AgentLaunchError(
       'install-failed',
-      unrepairableManagedRuntimeHint(rewritten, stillBroken),
+      stillBroken.kind === 'incompatible'
+        ? incompatibleManagedRuntimeHint(stillBroken.detail)
+        : unrepairableManagedRuntimeHint(rewritten, stillBroken.detail),
     );
   }
 
   /**
-   * {@link probeInterpreterHealth}, memoized per command + PATH. Healthy
-   * verdicts only: a failing probe is the slow path anyway, and re-running it
-   * lets a user who repairs their Node mid-session out of the managed runtime
-   * without restarting the server.
+   * Interpreter liveness plus npx Node compatibility, memoized per command
+   * and PATH. Healthy verdicts only: a failing probe
+   * is the slow path anyway, and re-running it lets a user who repairs their
+   * Node mid-session out of the managed runtime without restarting the server.
    */
-  private async probeInterpreterOnce(launch: ResolvedLaunch): Promise<string | null> {
-    // Both fields, JSON-encoded rather than concatenated: a command or PATH
-    // holding the delimiter would otherwise let two launches share a verdict.
+  private async probeInterpreterOnce(
+    launch: ResolvedLaunch,
+  ): Promise<InterpreterProbeFailure | null> {
+    // JSON-encoded rather than concatenated: a command or PATH holding the
+    // delimiter would otherwise let two launches share a verdict.
     const healthKey = JSON.stringify([launch.cmd, envPath(launch.env) ?? '']);
     if (this.healthyInterpreters.has(healthKey)) return null;
-    const detail = await probeInterpreterHealth(launch, undefined, this.opts.log);
-    if (detail === null) this.healthyInterpreters.add(healthKey);
-    return detail;
+    const unhealthyDetail = await probeInterpreterHealth(launch, undefined, this.opts.log);
+    if (unhealthyDetail !== null) return { kind: 'unhealthy', detail: unhealthyDetail };
+    if (launch.kind === 'npx') {
+      const incompatibleDetail = await probeNpxNodeCompatibility(launch, undefined, this.opts.log);
+      if (incompatibleDetail !== null) {
+        return { kind: 'incompatible', detail: incompatibleDetail };
+      }
+    }
+    this.healthyInterpreters.add(healthKey);
+    return null;
   }
 
   /**
@@ -1262,6 +1331,20 @@ export class AcpThreadManager {
     const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
     if (loginShellPath === null) return launch;
     return withLoginShellPath(launch, loginShellPath);
+  }
+
+  /**
+   * Promote the login-shell PATH only after the inherited Node was proven
+   * incompatible. Manifest PATH overlays and path-qualified launchers remain
+   * authoritative and are never reordered.
+   */
+  private async withPreferredLoginShellPathIfEligible(
+    launch: ResolvedLaunch,
+  ): Promise<ResolvedLaunch> {
+    if (launch.pathFromOverlay || isPathQualified(launch.cmd)) return launch;
+    const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
+    if (loginShellPath === null) return launch;
+    return withPreferredLoginShellPath(launch, loginShellPath);
   }
 
   /**

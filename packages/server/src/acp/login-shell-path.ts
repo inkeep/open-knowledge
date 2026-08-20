@@ -128,6 +128,20 @@ export function mergeLoginShellPath(
   return entries.join(delim);
 }
 
+/**
+ * Put the login shell's PATH first, retaining inherited-only entries behind it.
+ * This is deliberately separate from the append-only normal merge: callers use
+ * it only after proving the inherited interpreter is incompatible, when keeping
+ * that interpreter first would guarantee the launch fails.
+ */
+export function preferLoginShellPath(
+  current: string | undefined,
+  loginShellPath: string,
+  delim: string,
+): string {
+  return mergeLoginShellPath(loginShellPath, current ?? '', delim);
+}
+
 /** Shells that exist to refuse a session — probing them is pure latency. */
 const NON_INTERACTIVE_SHELLS = new Set(['false', 'nologin', 'sync']);
 

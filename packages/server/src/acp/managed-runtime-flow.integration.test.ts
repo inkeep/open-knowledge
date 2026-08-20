@@ -31,12 +31,14 @@ import type {
 import { afterEach, describe, expect, test } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
-import { ensureManagedRuntime, findManagedRuntime } from './managed-runtime.ts';
+import { MINIMUM_NPX_NODE_MAJOR } from './launch.ts';
+import { describeRuntime, ensureManagedRuntime, findManagedRuntime } from './managed-runtime.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import { AcpThreadManager } from './thread-manager.ts';
 
 const log = getLogger('managed-runtime-flow-test');
+const MANAGED_NODE_VERSION = describeRuntime('node').version;
 
 const fakeSessionManager = {
   getSession: async () => {
@@ -77,11 +79,12 @@ const NPX_AGENT = {
 function fakeNodeTarball(
   dir: string,
   npxBody = '#!/bin/sh\nexit 0\n',
+  nodeVersion = MANAGED_NODE_VERSION,
 ): { bytes: Buffer; sha: string } {
   const treeRoot = join(dir, 'tree');
   const binDir = join(treeRoot, 'node-vTEST', 'bin');
   mkdirSync(binDir, { recursive: true });
-  writeFileSync(join(binDir, 'node'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  writeFileSync(join(binDir, 'node'), `#!/bin/sh\necho ${nodeVersion}\n`, { mode: 0o755 });
   writeFileSync(join(binDir, 'npx'), npxBody, { mode: 0o755 });
   const tarPath = join(dir, 'node.tar.gz');
   execFileSync('tar', ['-czf', tarPath, '-C', treeRoot, 'node-vTEST']);
@@ -97,7 +100,7 @@ function fakeNodeFetch(bytes: Buffer, sha: string, agent: unknown = NPX_AGENT): 
     }
     if (u.endsWith('SHASUMS256.txt')) {
       const names = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'].map(
-        (n) => `${sha}  node-v24.18.0-${n}.tar.gz`,
+        (n) => `${sha}  node-${MANAGED_NODE_VERSION}-${n}.tar.gz`,
       );
       return new Response(`${names.join('\n')}\n`, { status: 200 });
     }
@@ -106,6 +109,10 @@ function fakeNodeFetch(bytes: Buffer, sha: string, agent: unknown = NPX_AGENT): 
       headers: { 'content-length': String(bytes.length) },
     });
   }) as unknown as typeof fetch;
+}
+
+function writeNodeVersion(binDir: string, version: string): void {
+  writeFileSync(join(binDir, 'node'), `#!/bin/sh\necho ${version}\n`, { mode: 0o755 });
 }
 
 function makeManager(opts: {
@@ -180,7 +187,7 @@ describe('managed-runtime consent + download flow', () => {
     const fetchImpl = fakeNodeFetch(bytes, sha);
     await ensureManagedRuntime('node', log, { root: runtimeRoot, fetchImpl });
 
-    const staleDir = join(runtimeRoot, 'node', '.install-v24.18.0-orphaned');
+    const staleDir = join(runtimeRoot, 'node', `.install-${MANAGED_NODE_VERSION}-orphaned`);
     mkdirSync(staleDir, { recursive: true });
     const staleTime = new Date(Date.now() - 25 * 60 * 60 * 1_000);
     utimesSync(staleDir, staleTime, staleTime);
@@ -340,6 +347,100 @@ describe('managed-runtime consent + download flow', () => {
     expect(installed).not.toBeNull();
   }, 20_000);
 
+  test('a runnable Node 16 routes to the managed runtime despite a healthy npx', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const oldBin = tmp();
+    writeFileSync(join(oldBin, 'npx'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeNodeVersion(oldBin, 'v16.14.2');
+    const manager = makeManager({
+      contentDir,
+      localDir,
+      runtimeRoot,
+      fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64), {
+        ...NPX_AGENT,
+        distribution: { npx: { package: '@fake/agent', env: { PATH: oldBin } } },
+      }),
+    });
+
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    await collect(manager, info.threadId, events);
+    await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'consent request');
+
+    const req = findConsentRequest(events);
+    if (req === undefined) throw new Error('unreachable');
+    expect(req.reason).toBe('broken');
+    manager.respondRuntimeConsent(info.threadId, req.requestId, { kind: 'declined' });
+    await waitFor(
+      () => events.some((e) => e.kind === 'status' && e.status === 'error'),
+      10_000,
+      'incompatible runtime error',
+    );
+    const errEvent = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+        e.kind === 'status' && e.status === 'error',
+    );
+    expect(errEvent?.detail).toContain('Node.js v16.14.2 is incompatible');
+    expect(errEvent?.detail).toContain(`Node.js ${MINIMUM_NPX_NODE_MAJOR} or newer is required`);
+  }, 20_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'a compatible login-shell Node replaces a stale GUI-inherited Node',
+    async () => {
+      const contentDir = tmp();
+      const localDir = tmp();
+      const runtimeRoot = tmp();
+      const oldBin = tmp();
+      const newBin = tmp();
+      const calls = join(tmp(), 'calls.log');
+      writeFileSync(join(oldBin, 'npx'), `#!/bin/sh\necho "old:$*" >> ${calls}\nexit 0\n`, {
+        mode: 0o755,
+      });
+      writeNodeVersion(oldBin, 'v16.14.2');
+      writeFileSync(join(newBin, 'npx'), `#!/bin/sh\necho "new:$*" >> ${calls}\nexit 0\n`, {
+        mode: 0o755,
+      });
+      writeNodeVersion(newBin, 'v24.13.0');
+
+      const priorPath = process.env.PATH;
+      process.env.PATH = oldBin;
+      try {
+        const manager = makeManager({
+          contentDir,
+          localDir,
+          runtimeRoot,
+          fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64), {
+            ...NPX_AGENT,
+            distribution: { npx: { package: '@fake/agent' } },
+          }),
+          resolveLoginShellPath: async () => newBin,
+        });
+
+        const events: ThreadEvent[] = [];
+        const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+        await collect(manager, info.threadId, events);
+        await waitFor(
+          () => manager.getInfo(info.threadId)?.status === 'error',
+          10_000,
+          'the fake adapter to exit',
+        );
+
+        expect(findConsentRequest(events)).toBeUndefined();
+        const invocations = readFileSync(calls, 'utf8').trim().split('\n');
+        expect(invocations).toContain('old:--version');
+        expect(invocations).not.toContain('old:-y @fake/agent');
+        expect(invocations).toContain('new:--version');
+        expect(invocations).toContain('new:-y @fake/agent');
+      } finally {
+        if (priorPath === undefined) delete process.env.PATH;
+        else process.env.PATH = priorPath;
+      }
+    },
+    20_000,
+  );
+
   // Declining the download must not leave the user with the stock hint, which
   // says the interpreter "isn't installed" — the one thing this case disproves.
   test('declining after a crash reports the broken interpreter, not a missing one', async () => {
@@ -432,6 +533,41 @@ describe('managed-runtime consent + download flow', () => {
 });
 
 describe('interpreter health probe', () => {
+  test('an incompatible managed Node asks the user to update OK instead of blaming the machine', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const stage = tmp();
+    const { bytes, sha } = fakeNodeTarball(stage, undefined, 'v16.14.2');
+    const fetchImpl = fakeNodeFetch(bytes, sha);
+    const manager = makeManager({ contentDir, localDir, runtimeRoot, fetchImpl });
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    await collect(manager, info.threadId, events);
+
+    await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'download offer');
+    const req = findConsentRequest(events);
+    if (req === undefined) throw new Error('unreachable');
+    manager.respondRuntimeConsent(info.threadId, req.requestId, { kind: 'granted' });
+
+    await waitFor(
+      () =>
+        events.some((e) => e.kind === 'status' && e.status === 'error') ||
+        events.filter((e) => e.kind === 'runtime_consent_request').length > 1,
+      15_000,
+      'managed runtime incompatibility verdict',
+    );
+    const errEvent = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+        e.kind === 'status' && e.status === 'error',
+    );
+    expect(errEvent?.detail).toContain('Update Open Knowledge');
+    expect(errEvent?.detail).not.toContain('antivirus');
+    expect(errEvent?.detail).not.toContain('security policy');
+    expect(errEvent?.detail).not.toContain('unsupported CPU');
+    expect(events.filter((e) => e.kind === 'runtime_consent_request')).toHaveLength(1);
+  }, 30_000);
+
   // The fallback's own fallback. `findManagedRuntime`'s already-installed fast
   // path admits a runtime on an exists-plus-execute-bit check — the evidence
   // `probeInterpreterHealth` supersedes — so one damaged by an interrupted
@@ -573,6 +709,7 @@ describe('interpreter health probe', () => {
     // Healthy for `--version`, useless afterwards: the thread fails at the
     // handshake, which is all this needs — the probe verdict is now cached.
     writeFileSync(npxPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeNodeVersion(binDir, 'v24.0.0');
     const manager = makeManager({
       contentDir,
       localDir,
@@ -624,6 +761,7 @@ describe('interpreter health probe', () => {
     writeFileSync(join(binDir, 'npx'), `#!/bin/sh\necho "$@" >> ${calls}\nexit 0\n`, {
       mode: 0o755,
     });
+    writeNodeVersion(binDir, 'v24.0.0');
     const manager = makeManager({
       contentDir,
       localDir,
@@ -641,8 +779,13 @@ describe('interpreter health probe', () => {
             .filter((l) => l.trim() === '--version').length
         : 0;
 
-    await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
-    await waitFor(() => versionProbes() === 1, 10_000, 'the first probe');
+    const first = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    await waitFor(
+      () => manager.getInfo(first.threadId)?.status === 'error',
+      10_000,
+      'the first thread to finish its launch attempt',
+    );
+    expect(versionProbes()).toBe(1);
     const second = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
     // The second thread must reach its own (failed) launch — otherwise this
     // would pass on a thread that never got as far as needing an interpreter.
