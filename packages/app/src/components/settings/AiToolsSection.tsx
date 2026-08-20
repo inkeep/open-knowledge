@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { OkIntegrationsSetRequest, OkIntegrationsStatus } from '@/lib/desktop-bridge-types';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { foldEditorsByPrimary, ShowMoreRow } from './editor-list-fold';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type ComponentRef = OkIntegrationsSetRequest['component'];
@@ -112,34 +113,9 @@ export function AiToolsSection() {
     setPending(null);
   }
 
-  // Yours first, the rest folded. A row is primary when OK has WIRED it
-  // (`installed`, `foreign`, or `unmanageable` — its config file exists, which is
-  // what makes the tool real), or when the editor is detected.
-  //
-  // Detection ORDERS but never CLAIMS. That is one rule across every agent list:
-  // the external-apps group lets its probe pick a row's default, this one lets
-  // the probe pick a row's position, and neither prints an assertion of presence
-  // on the row. No surface prints `Detected on this machine`, precisely so the
-  // signal can stay useful for ranking without being read as a fact.
-  //
-  // The signal is a probe of the machine — a CLI on the login-shell PATH, or the
-  // app the OS says owns the URL scheme — and it answers "is this tool here",
-  // not "did the user set it up with us". Those are different questions, so
-  // ranking is the most it earns. A row it lifts still shows `How to set up`,
-  // never a presence claim.
-  const editors = status?.editors ?? [];
-  const isPrimaryEditor = (e: (typeof editors)[number]): boolean =>
-    e.state !== 'not-installed' || e.detected;
-  const primaryEditors = editors.filter(isPrimaryEditor);
-  // Nothing configured and nothing detected would otherwise fold the entire list
-  // away and leave an empty box under the heading. A fold that hides everything
-  // is not a fold.
-  const foldable = primaryEditors.length > 0 && primaryEditors.length < editors.length;
-  const shownEditors =
-    !foldable || showAllEditors
-      ? [...editors].sort((a, b) => Number(isPrimaryEditor(b)) - Number(isPrimaryEditor(a)))
-      : primaryEditors;
-  const hiddenCount = foldable ? editors.length - primaryEditors.length : 0;
+  // Yours first, the rest folded — the ranking contract lives in
+  // `foldEditorsByPrimary`, shared with the project-scope section.
+  const { shownEditors, hiddenCount } = foldEditorsByPrimary(status?.editors ?? [], showAllEditors);
 
   const header = (
     <SettingsSectionHeader
@@ -350,26 +326,12 @@ export function AiToolsSection() {
               </li>
             );
           })}
-          {hiddenCount > 0 ? (
-            <li>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowAllEditors((v) => !v)}
-                className="w-full justify-center rounded-none font-normal text-muted-foreground text-xs"
-                data-testid="ai-tools-editors-show-more"
-              >
-                {/* Never names what the probe thinks of the hidden rows: an
-                    "N not found" label would reassert the same unbacked detection
-                    claim this surface removed, one line lower. The noun is left off
-                    to reuse the
-                    Configure agents msgid verbatim — a counted noun would need
-                    plural forms in every locale to buy a word the "MCP
-                    connections" heading above already supplies. */}
-                {showAllEditors ? t`Show less` : t`Show ${hiddenCount} more`}
-              </Button>
-            </li>
-          ) : null}
+          <ShowMoreRow
+            hiddenCount={hiddenCount}
+            expanded={showAllEditors}
+            onToggle={() => setShowAllEditors((v) => !v)}
+            testId="ai-tools-editors-show-more"
+          />
         </ul>
       </div>
 

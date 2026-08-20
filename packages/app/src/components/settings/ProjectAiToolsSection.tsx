@@ -41,6 +41,7 @@ import type {
   OkProjectIntegrationsSetRequest,
   OkProjectIntegrationsStatus,
 } from '@/lib/desktop-bridge-types';
+import { foldEditorsByPrimary, ShowMoreRow } from './editor-list-fold';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type EditorRow = OkProjectIntegrationsStatus['editors'][number];
@@ -119,6 +120,7 @@ export function ProjectAiToolsSection() {
   const [status, setStatus] = useState<OkProjectIntegrationsStatus | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
+  const [showAllEditors, setShowAllEditors] = useState(false);
 
   useEffect(() => {
     if (!bridge) return;
@@ -152,6 +154,10 @@ export function ProjectAiToolsSection() {
     }
     setPending(null);
   }
+
+  // Same ranking contract as the user-global list, by construction — both
+  // sections consume `foldEditorsByPrimary`.
+  const { shownEditors, hiddenCount } = foldEditorsByPrimary(status?.editors ?? [], showAllEditors);
 
   const header = (
     <SettingsSectionHeader
@@ -224,7 +230,7 @@ export function ProjectAiToolsSection() {
           </Trans>
         </span>
         <ul className="rounded-md border border-border bg-card/50 divide-y divide-border overflow-hidden">
-          {status.editors.map((editor) => (
+          {shownEditors.map((editor) => (
             <EditorRowItem
               key={editor.id}
               editor={editor}
@@ -232,6 +238,12 @@ export function ProjectAiToolsSection() {
               onToggle={(enabled) => void applyToggle({ kind: 'editor', id: editor.id }, enabled)}
             />
           ))}
+          <ShowMoreRow
+            hiddenCount={hiddenCount}
+            expanded={showAllEditors}
+            onToggle={() => setShowAllEditors((value) => !value)}
+            testId="project-ai-tools-editors-show-more"
+          />
         </ul>
       </div>
 

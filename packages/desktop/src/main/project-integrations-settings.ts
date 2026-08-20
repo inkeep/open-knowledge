@@ -48,7 +48,11 @@ import type {
   SkillCostTiers,
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
-import { classifyEditorState } from './integrations-settings.ts';
+import {
+  classifyEditorState,
+  type EditorPresenceProbes,
+  safeDetectedEditors,
+} from './integrations-settings.ts';
 import { logIpcError } from './ipc-log.ts';
 
 /**
@@ -153,6 +157,8 @@ export interface RegisterProjectIntegrationsSettingsOpts {
   available: boolean;
   ipcMain: IpcMainLike;
   cli: ProjectIntegrationsCliSurface;
+  /** Same machine-level probes as the user-global integrations surface. */
+  probeEditorPresence: () => Promise<EditorPresenceProbes>;
   /** Resolve the sender window's project dir (main maps webContents →
    *  ProjectContext). Null when the sender isn't bound to a project. */
   resolveProjectDir(event: IpcMainInvokeEvent): string | null;
@@ -172,6 +178,7 @@ export function registerProjectIntegrationsSettings(
     available,
     ipcMain,
     cli,
+    probeEditorPresence,
     resolveProjectDir,
     tildify = (p) => p,
     logger = DEFAULT_LOGGER,
@@ -182,7 +189,10 @@ export function registerProjectIntegrationsSettings(
     return cli.allEditorIds.filter((id) => cli.projectSkillPath(id, projectDir) !== null);
   }
 
-  function computeEditorStatuses(projectDir: string): ProjectIntegrationsEditorStatus[] {
+  function computeEditorStatuses(
+    projectDir: string,
+    detected: ReadonlySet<McpWiringEditorId>,
+  ): ProjectIntegrationsEditorStatus[] {
     const statuses: ProjectIntegrationsEditorStatus[] = [];
     for (const id of cli.allEditorIds) {
       const projectPath = cli.projectConfigPath(id, projectDir);
@@ -206,6 +216,7 @@ export function registerProjectIntegrationsSettings(
       statuses.push({
         id,
         label: cli.editorLabel(id),
+        detected: detected.has(id),
         state,
         configPath: relative(projectDir, projectPath),
         entryLocator: cli.entryLocator(id),
@@ -215,13 +226,13 @@ export function registerProjectIntegrationsSettings(
     return statuses;
   }
 
-  function computeStatus(projectDir: string | null): ProjectIntegrationsStatus {
+  async function computeStatus(projectDir: string | null): Promise<ProjectIntegrationsStatus> {
     if (projectDir === null) {
       return { available, hasProject: false, projectDir: null, editors: [], skill: null };
     }
     let editors: ProjectIntegrationsEditorStatus[];
     try {
-      editors = computeEditorStatuses(projectDir);
+      editors = computeEditorStatuses(projectDir, await safeDetectedEditors(probeEditorPresence));
     } catch (err) {
       logger.warn('project editor statuses failed', {
         projectDir,
@@ -420,9 +431,9 @@ export function registerProjectIntegrationsSettings(
           handler: 'projectIntegrationsDispatch',
           cause: { component: request?.component?.kind ?? 'unknown', error: result.error },
         });
-        return { ok: false, error: result.error, status: computeStatus(projectDir) };
+        return { ok: false, error: result.error, status: await computeStatus(projectDir) };
       }
-      return { ok: true, status: computeStatus(projectDir) };
+      return { ok: true, status: await computeStatus(projectDir) };
     });
     mutationChain = run.catch(() => {});
     return run;

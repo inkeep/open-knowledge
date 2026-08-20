@@ -687,6 +687,8 @@ export interface OkProjectIntegrationsStatus {
   readonly editors: readonly {
     readonly id: OkMcpWiringEditorId;
     readonly label: string;
+    /** Machine-level presence from CLI / URL-scheme probes. Ranking only. */
+    readonly detected: boolean;
     readonly state: OkIntegrationsEditorState;
     readonly configPath: string;
     readonly entryLocator: string;

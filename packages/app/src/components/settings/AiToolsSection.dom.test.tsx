@@ -241,6 +241,23 @@ describe('AiToolsSection', () => {
     expect(status.textContent).toContain('How to set up');
   });
 
+  test('the editor disclosure exposes its expand and collapse state', async () => {
+    installBridge();
+    renderSection();
+
+    const disclosure = await screen.findByTestId('ai-tools-editors-show-more');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+
+    const user = userEvent.setup();
+    await user.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByTestId('ai-tools-editor-checkbox-cursor')).toBeTruthy();
+
+    await user.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('ai-tools-editor-checkbox-cursor')).toBeNull();
+  });
+
   test('clicking a checkbox sends the matching install/uninstall and re-renders from the result', async () => {
     const flipped: OkIntegrationsStatus = {
       ...baseStatus,

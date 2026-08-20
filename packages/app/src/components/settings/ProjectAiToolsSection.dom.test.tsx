@@ -40,6 +40,7 @@ const baseStatus: OkProjectIntegrationsStatus = {
     {
       id: 'claude',
       label: 'Claude Code',
+      detected: true,
       state: 'installed',
       configPath: '.mcp.json',
       entryLocator: 'mcpServers.open-knowledge',
@@ -48,6 +49,7 @@ const baseStatus: OkProjectIntegrationsStatus = {
     {
       id: 'cursor',
       label: 'Cursor',
+      detected: false,
       state: 'not-installed',
       configPath: '.cursor/mcp.json',
       entryLocator: 'mcpServers.open-knowledge',
@@ -56,6 +58,7 @@ const baseStatus: OkProjectIntegrationsStatus = {
     {
       id: 'codex',
       label: 'Codex',
+      detected: true,
       state: 'foreign',
       configPath: '.codex/config.toml',
       entryLocator: '[mcp_servers.open-knowledge]',
@@ -92,6 +95,10 @@ function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
   };
   Object.defineProperty(window, 'okDesktop', { value: bridge, configurable: true, writable: true });
   return { setCalls };
+}
+
+async function expandEditors(): Promise<void> {
+  await userEvent.click(await screen.findByTestId('project-ai-tools-editors-show-more'));
 }
 
 afterEach(() => {
@@ -136,8 +143,10 @@ describe('ProjectAiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('project-ai-tools-editor-checkbox-claude')).toBeTruthy();
     });
-    expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
+    expect(screen.queryByTestId('project-ai-tools-editor-checkbox-cursor')).toBeNull();
     expect(screen.getByTestId('project-ai-tools-editor-checkbox-codex')).toBeTruthy();
+    await expandEditors();
+    expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
     // The project skill moved to Skills Studio; this page names where.
     expect(screen.queryByTestId('project-ai-tools-skill-uninstall')).toBeNull();
     expect(screen.getByTestId('project-ai-tools-skills-moved').textContent).toContain(
@@ -155,6 +164,7 @@ describe('ProjectAiToolsSection', () => {
     expect(
       screen.getByTestId('project-ai-tools-editor-checkbox-claude').getAttribute('aria-checked'),
     ).toBe('true');
+    await expandEditors();
     expect(
       screen.getByTestId('project-ai-tools-editor-checkbox-cursor').getAttribute('aria-checked'),
     ).toBe('false');
@@ -172,6 +182,7 @@ describe('ProjectAiToolsSection', () => {
     // Foreign row (checked) also carries its follow-up.
     expect(screen.getByTestId('project-ai-tools-editor-followup-codex')).toBeTruthy();
     // not-installed cursor row has no follow-up yet.
+    await expandEditors();
     expect(screen.queryByTestId('project-ai-tools-editor-followup-cursor')).toBeNull();
   });
 
@@ -179,9 +190,7 @@ describe('ProjectAiToolsSection', () => {
     const { setCalls } = installBridge();
     renderSection();
     const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
-    });
+    await expandEditors();
     await user.click(screen.getByTestId('project-ai-tools-editor-checkbox-cursor'));
     await waitFor(() => expect(setCalls.length).toBe(1));
     expect(setCalls[0]).toEqual({ component: { kind: 'editor', id: 'cursor' }, enabled: true });
@@ -197,9 +206,7 @@ describe('ProjectAiToolsSection', () => {
     });
     renderSection();
     const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
-    });
+    await expandEditors();
     await user.click(screen.getByTestId('project-ai-tools-editor-checkbox-cursor'));
     await waitFor(() => expect(toastError).toHaveBeenCalledWith('guest config — left unchanged'));
   });
@@ -221,5 +228,58 @@ describe('ProjectAiToolsSection', () => {
     await waitFor(() => {
       expect(screen.getByTestId('project-ai-tools-read-only')).toBeTruthy();
     });
+  });
+
+  test('detection keeps an unwired editor above the fold without claiming presence', async () => {
+    installBridge({
+      status: {
+        ...baseStatus,
+        editors: baseStatus.editors.map((editor) =>
+          editor.id === 'cursor' ? { ...editor, detected: true } : editor,
+        ),
+      },
+    });
+    renderSection();
+
+    await screen.findByTestId('project-ai-tools-editor-checkbox-cursor');
+    expect(screen.queryByTestId('project-ai-tools-editors-show-more')).toBeNull();
+    expect(document.body.textContent).not.toContain('Detected on this machine');
+  });
+
+  test('the editor disclosure expands and collapses the hidden rows', async () => {
+    installBridge();
+    renderSection();
+
+    const disclosure = await screen.findByTestId('project-ai-tools-editors-show-more');
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('project-ai-tools-editor-checkbox-cursor')).toBeNull();
+
+    const user = userEvent.setup();
+    await user.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByTestId('project-ai-tools-editor-checkbox-cursor')).toBeTruthy();
+
+    await user.click(disclosure);
+    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByTestId('project-ai-tools-editor-checkbox-cursor')).toBeNull();
+  });
+
+  test('shows the full list when nothing is configured or detected', async () => {
+    installBridge({
+      status: {
+        ...baseStatus,
+        editors: baseStatus.editors.map((editor) => ({
+          ...editor,
+          detected: false,
+          state: 'not-installed' as const,
+        })),
+      },
+    });
+    renderSection();
+
+    await screen.findByTestId('project-ai-tools-editor-checkbox-cursor');
+    expect(screen.getByTestId('project-ai-tools-editor-checkbox-claude')).toBeTruthy();
+    expect(screen.getByTestId('project-ai-tools-editor-checkbox-codex')).toBeTruthy();
+    expect(screen.queryByTestId('project-ai-tools-editors-show-more')).toBeNull();
   });
 });

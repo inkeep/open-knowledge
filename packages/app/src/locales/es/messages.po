@@ -11562,8 +11562,8 @@ msgstr "Mostrar {0} más"
 msgid "Show {hidden} more"
 msgstr "Mostrar {hidden} más"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/editor-list-fold.tsx
 msgid "Show {hiddenCount} more"
 msgstr "Mostrar {hiddenCount} más"
 
@@ -11629,8 +11629,8 @@ msgid "Show in Explorer"
 msgstr "Mostrar en el Explorador"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/editor-list-fold.tsx
 msgid "Show less"
 msgstr "Mostrar menos"
 

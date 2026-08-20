@@ -215,6 +215,24 @@ export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<Mcp
   return detected;
 }
 
+/**
+ * `detectedEditorsFromProbes` with the shared failure policy: a failed probe is
+ * unknown, not empty-and-not-installed — but unknown must not claim, and an
+ * empty set under-claims, which is the safe direction on every surface that
+ * reads this (detection is ranking-only). One function so the user-global and
+ * project Settings scopes can never rank the same machine differently on
+ * failure.
+ */
+export async function safeDetectedEditors(
+  probeEditorPresence: () => Promise<EditorPresenceProbes>,
+): Promise<Set<McpWiringEditorId>> {
+  try {
+    return detectedEditorsFromProbes(await probeEditorPresence());
+  } catch {
+    return new Set();
+  }
+}
+
 export function registerIntegrationsSettings(
   opts: RegisterIntegrationsSettingsOpts,
 ): IntegrationsSettingsHandle {
@@ -240,23 +258,15 @@ export function registerIntegrationsSettings(
    * filtered to user-global targets, while this set must stay honest about
    * project-scope-only ones (Pi) too.
    */
-  async function computeDetectedEditors(): Promise<Set<McpWiringEditorId>> {
-    try {
-      return detectedEditorsFromProbes(await probeEditorPresence());
-    } catch {
-      // A failed probe is unknown, not empty-and-not-installed — but unknown
-      // must not claim, and an empty set under-claims, which is the safe
-      // direction on every surface that reads this.
-      return new Set();
-    }
-  }
+  const computeDetectedEditors = (): Promise<Set<McpWiringEditorId>> =>
+    safeDetectedEditors(probeEditorPresence);
 
   /**
    * `detected` is optional so a caller that has already probed can pass its set
-   * in rather than paying a second pass. `probeEditorPresence` is not cached —
-   * each call re-runs the login-shell lookups and the OS scheme-handler
-   * queries — and two passes can straddle an install or removal, which is
-   * exactly the drift the status snapshot must not show.
+   * in rather than paying a second pass. Whether `probeEditorPresence` caches
+   * is the injector's business (main's does, ~60s), so two passes here could
+   * still straddle an install or removal — exactly the drift the status
+   * snapshot must not show.
    */
   async function computeEditorStatuses(
     detected?: Set<McpWiringEditorId>,

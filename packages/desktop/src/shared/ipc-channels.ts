@@ -663,6 +663,9 @@ export type ProjectIntegrationsFollowUp =
 export interface ProjectIntegrationsEditorStatus {
   readonly id: McpWiringEditorId;
   readonly label: string;
+  /** Machine-level presence from CLI / URL-scheme probes. Used only to order
+   *  and fold rows; the renderer never presents it as a setup claim. */
+  readonly detected: boolean;
   readonly state: IntegrationsEditorState;
   readonly configPath: string;
   readonly entryLocator: string;

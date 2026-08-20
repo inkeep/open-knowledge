@@ -11562,8 +11562,8 @@ msgstr "再显示 {0} 个"
 msgid "Show {hidden} more"
 msgstr "再显示 {hidden} 个"
 
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/editor-list-fold.tsx
 msgid "Show {hiddenCount} more"
 msgstr "再显示 {hiddenCount} 个"
 
@@ -11629,8 +11629,8 @@ msgid "Show in Explorer"
 msgstr "在资源管理器中显示"
 
 #: src/components/PackCardGrid.tsx
-#: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ConfigureAgentsSection.tsx
+#: src/components/settings/editor-list-fold.tsx
 msgid "Show less"
 msgstr "收起"
 

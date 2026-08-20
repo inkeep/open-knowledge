@@ -119,13 +119,21 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
 
 function register(
   cli: ProjectIntegrationsCliSurface,
-  opts: { available?: boolean; projectDir?: string | null } = {},
+  opts: {
+    available?: boolean;
+    projectDir?: string | null;
+    probeEditorPresence?: Parameters<
+      typeof registerProjectIntegrationsSettings
+    >[0]['probeEditorPresence'];
+  } = {},
 ) {
   const ipcMain = fakeIpcMain();
   const handle = registerProjectIntegrationsSettings({
     available: opts.available ?? true,
     ipcMain,
     cli,
+    probeEditorPresence:
+      opts.probeEditorPresence ?? (async () => ({ cliOnPath: {}, schemeHandler: {} })),
     resolveProjectDir: () => (opts.projectDir === undefined ? PROJECT : opts.projectDir),
     tildify: (p) => p,
   });
@@ -150,8 +158,34 @@ describe('registerProjectIntegrationsSettings — status', () => {
     expect(s.editors.map((e) => e.id)).toEqual(['claude', 'codex']);
     const claude = s.editors.find((e) => e.id === 'claude');
     expect(claude?.configPath).toBe('.mcp.json');
+    expect(claude?.detected).toBe(false);
     expect(claude?.followUp).toBe('approve-once');
     expect(s.editors.find((e) => e.id === 'codex')?.followUp).toBe('auto-connect');
+  });
+
+  test('marks project rows detected from the shared machine-level probes', async () => {
+    const { status } = register(makeCli(), {
+      probeEditorPresence: async () => ({
+        cliOnPath: { codex: true },
+        schemeHandler: { 'claude-code': true },
+      }),
+    });
+    const s = await status();
+    expect(s.editors.map(({ id, detected }) => [id, detected])).toEqual([
+      ['claude', true],
+      ['codex', true],
+    ]);
+  });
+
+  test('probe failure safely leaves project rows undetected', async () => {
+    const { status } = register(makeCli(), {
+      probeEditorPresence: async () => {
+        throw new Error('probe unavailable');
+      },
+    });
+    const s = await status();
+    expect(s.editors.length).toBeGreaterThan(0);
+    expect(s.editors.every((editor) => !editor.detected)).toBe(true);
   });
 
   test('classifies own entry as installed, foreign as foreign, decline as unmanageable', async () => {

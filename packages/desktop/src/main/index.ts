@@ -271,7 +271,10 @@ import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
 import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
-import { registerIntegrationsSettings } from './integrations-settings.ts';
+import {
+  type EditorPresenceProbes,
+  registerIntegrationsSettings,
+} from './integrations-settings.ts';
 import {
   type BugReportScreenshotEntry,
   handleBugReportCaptureScreenshot,
@@ -6730,6 +6733,62 @@ function registerIpcHandlers() {
 }
 
 /**
+ * Machine-level editor presence shared by both Settings integration scopes,
+ * cached ~60s as one in-flight Promise. Both scopes await a fresh pass on
+ * every status fetch AND inside every toggle acknowledgment (behind the
+ * mutation mutex), and the scheme-handler probes are subprocess-backed on
+ * Linux (`xdg-mime` per scheme, 2s timeout each) — uncached, a checkbox click
+ * would block its own acknowledgment on OS queries whose answer the mutation
+ * cannot change (detection is ranking-only). Same TTL rationale and
+ * promise-sharing shape as `resolveTerminalCliInstalledMap`, which caches the
+ * CLI half independently.
+ */
+const EDITOR_PRESENCE_TTL_MS = 60_000;
+let editorPresenceCache: { at: number; value: Promise<EditorPresenceProbes> } | null = null;
+
+function probeEditorPresence(): Promise<EditorPresenceProbes> {
+  const now = Date.now();
+  if (editorPresenceCache && now - editorPresenceCache.at < EDITOR_PRESENCE_TTL_MS) {
+    return editorPresenceCache.value;
+  }
+  const value = probeEditorPresenceUncached().catch((err) => {
+    // Every sub-probe already degrades in place, so this shouldn't fire — but a
+    // rejection must not stay cached for the full TTL; the next call retries.
+    editorPresenceCache = null;
+    throw err;
+  });
+  editorPresenceCache = { at: now, value };
+  return value;
+}
+
+async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
+  const [cliOnPath, ...schemes] = await Promise.all([
+    resolveTerminalCliInstalledMap().catch(() => ({}) as Record<TerminalCli, boolean>),
+    ...(['claude', 'codex', 'cursor'] as const).map((scheme) =>
+      detectProtocolImpl(
+        {
+          platform: process.platform,
+          getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
+        },
+        scheme,
+      )
+        .then((r) => r.installed)
+        .catch(() => false),
+    ),
+  ]);
+  return {
+    cliOnPath,
+    // `claude-code` is the handoff-target id for the Claude desktop app; the
+    // other two share their scheme name with their target id.
+    schemeHandler: {
+      'claude-code': schemes[0] ?? false,
+      codex: schemes[1] ?? false,
+      cursor: schemes[2] ?? false,
+    },
+  };
+}
+
+/**
  * Settings → AI tools: persistent status/toggle IPC over the same install
  * actors as the first-launch consent dialog (`createMcpWiringOpts`) and the
  * startup reclaim — `writeUserMcpConfigs` + surgical removal for editors,
@@ -6774,35 +6833,10 @@ function registerIntegrationsSettingsIpc(): void {
       removeUserMcpEntry: (editorId) =>
         removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),
     },
-    // Reuses the probes the launcher surfaces already run and cache (~60s), so
-    // opening Settings costs no extra shell spawns and every surface answers the
-    // same question the same way.
-    probeEditorPresence: async () => {
-      const [cliOnPath, ...schemes] = await Promise.all([
-        resolveTerminalCliInstalledMap().catch(() => ({}) as Record<TerminalCli, boolean>),
-        ...(['claude', 'codex', 'cursor'] as const).map((scheme) =>
-          detectProtocolImpl(
-            {
-              platform: process.platform,
-              getApplicationInfoForProtocol: (url) => app.getApplicationInfoForProtocol(url),
-            },
-            scheme,
-          )
-            .then((r) => r.installed)
-            .catch(() => false),
-        ),
-      ]);
-      return {
-        cliOnPath,
-        // `claude-code` is the handoff-target id for the Claude desktop app; the
-        // other two share their scheme name with their target id.
-        schemeHandler: {
-          'claude-code': schemes[0] ?? false,
-          codex: schemes[1] ?? false,
-          cursor: schemes[2] ?? false,
-        },
-      };
-    },
+    // Cached ~60s (see probeEditorPresence), so opening Settings or toggling a
+    // row costs no extra shell spawns and every surface answers the same
+    // question the same way.
+    probeEditorPresence,
     path: {
       computeStatus: () => {
         const descriptor = computePathInstallDescriptor({
@@ -7045,6 +7079,7 @@ function registerProjectIntegrationsSettingsIpc(): void {
     available,
     ipcMain,
     cli,
+    probeEditorPresence,
     resolveProjectDir: (event) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win) return null;
