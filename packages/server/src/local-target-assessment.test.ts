@@ -418,3 +418,48 @@ describe('toForwardLinkLocalTargets — Links panel Local files projection', () 
     expect(rows).toEqual([]);
   });
 });
+
+// The reported symptom was a false `dead-link` on a link the generated index
+// emitted itself. Pinning it here, at the tier that produces the verdict the
+// user sees, keeps the contract honest if the resolver is ever refactored.
+describe('percent-encoded targets are assessed against the decoded document', () => {
+  test('an encoded link to an existing document is exact, not missing', () => {
+    const a = assessOne(
+      '[Agent Memory](./Agent%20Memory.md)',
+      inventory({ docs: ['notes/Agent Memory'] }),
+    );
+    expect(a).toMatchObject({
+      targetKind: 'document',
+      resolvedTarget: 'notes/Agent Memory',
+      status: 'exact',
+      reason: null,
+    });
+  });
+
+  test('an encoded link to a genuinely absent document still reports missing', () => {
+    const a = assessOne('[Gone](./Not%20Here.md)', inventory({ docs: ['notes/Agent Memory'] }));
+    expect(a).toMatchObject({ targetKind: 'document', status: 'missing' });
+  });
+
+  test('an encoded asset link resolves to the decoded file', () => {
+    const a = assessOne(
+      '[Spec](./design%20spec.pdf)',
+      inventory({ files: ['notes/design spec.pdf'] }),
+    );
+    expect(a).toMatchObject({ status: 'exact' });
+  });
+
+  // The two planes reach the same asset resolver with the same shape, so the
+  // decode has to be gated on the authored form. A wiki target names the file
+  // literally; decoding it would hunt for a different file and report the same
+  // false dead-link this work exists to remove.
+  test('a wiki asset embed keeps percent sequences literal', () => {
+    const a = assessOne('![[100%20done.png]]', inventory({ files: ['notes/100%20done.png'] }));
+    expect(a).toMatchObject({ status: 'exact' });
+  });
+
+  test('a wiki asset embed does not resolve to the decoded neighbour', () => {
+    const a = assessOne('![[100%20done.png]]', inventory({ files: ['notes/100 done.png'] }));
+    expect(a).toMatchObject({ status: 'missing' });
+  });
+});

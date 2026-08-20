@@ -392,8 +392,11 @@ export function InternalLinkPropPanel({
   // inventory membership. Without the same check the card offers Create page
   // over a file that is right there on disk — and the chip beside it, which
   // does consult the tracked-file sets, renders resolved at the same moment.
+  // `href` is the link mark's markdown destination — a URI whose escapes
+  // decode, the same reading `classifyMarkdownHref` just applied to it.
   const namesTrackedFile =
-    target?.kind === 'doc' && isResolvedAssetHref(href, sourceDocName, assetPaths, filePaths);
+    target?.kind === 'doc' &&
+    isResolvedAssetHref(href, sourceDocName, assetPaths, filePaths, { literal: false });
   const docIntent =
     target?.kind === 'doc' && !namesTrackedFile
       ? resolveLinkTargetIntent(target.docName, {

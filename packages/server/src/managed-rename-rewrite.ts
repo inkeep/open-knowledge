@@ -1,5 +1,10 @@
 import { posix } from 'node:path';
-import { resolveAssetProjectPath, resolveInternalHref } from '@inkeep/open-knowledge-core';
+import {
+  encodeHrefPath,
+  encodeHrefPathSegment,
+  resolveAssetProjectPath,
+  resolveInternalHref,
+} from '@inkeep/open-knowledge-core';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 
 interface FenceState {
@@ -247,14 +252,6 @@ function recomputeRelativeImageHref(
   return `${newRef}${querySuffix}${hashSuffix}`;
 }
 
-function decodeHrefForAssetResolution(href: string): string {
-  try {
-    return decodeURI(href);
-  } catch {
-    return href;
-  }
-}
-
 function splitHrefPathAndSuffix(href: string): {
   pathPart: string;
   suffix: string;
@@ -275,7 +272,10 @@ function buildAssetHrefFromSource(
   options: { encodePath?: boolean } = {},
 ): string {
   const encodePath = options.encodePath ?? true;
-  const formatPath = (path: string) => (encodePath ? encodeURI(path) : path);
+  // Per-segment, not `encodeURI`: the latter leaves `#` and `?` raw, so an
+  // asset whose filename contains one is re-read as path + fragment/query and
+  // the rewritten link silently points somewhere else.
+  const formatPath = (path: string) => (encodePath ? encodeHrefPath(path) : path);
   const { pathPart, suffix } = splitHrefPathAndSuffix(originalHref);
   if (pathPart.startsWith('/')) return `/${formatPath(newAssetPath)}${suffix}`;
 
@@ -290,15 +290,22 @@ function buildAssetHrefFromSource(
   return `${formatPath(nextHref)}${suffix}`;
 }
 
+/**
+ * `options.literal` is the authored form's plane, threaded from the caller: a
+ * wiki target is a literal filename, a markdown/HTML destination is a URI whose
+ * escapes decode. It has to match `encodePath` on the way back out, or the
+ * rewrite reads one plane and writes the other.
+ */
 function rewriteAssetHrefForRename(
   originalHref: string,
   sourceDocName: string,
   oldAssetPath: string,
   newAssetPath: string,
-  options: { encodePath?: boolean } = {},
+  options: { literal: boolean; encodePath?: boolean },
 ): string | null {
-  const decodedHref = decodeHrefForAssetResolution(originalHref);
-  const resolved = resolveAssetProjectPath(decodedHref, sourceDocName);
+  const resolved = resolveAssetProjectPath(originalHref, sourceDocName, {
+    literal: options.literal,
+  });
   if (resolved !== oldAssetPath) return null;
   return buildAssetHrefFromSource(originalHref, sourceDocName, newAssetPath, options);
 }
@@ -317,10 +324,13 @@ function recomputeRelativeMarkdownHref(
 
   const keepsRootPrefix = pathPart.startsWith('/');
   const sourceDir = posix.dirname(sourceDocName);
+  // docNames are decoded, hrefs are not: a name carrying a space, `#`, `?`, or
+  // a paren must be re-encoded on the way back out or the emitted destination
+  // stops parsing as a link.
   let relativePath = keepsRootPrefix
-    ? `/${newDocName}`
-    : posix.relative(sourceDir === '.' ? '' : sourceDir, newDocName);
-  relativePath ||= posix.basename(newDocName);
+    ? `/${encodeHrefPath(newDocName)}`
+    : encodeHrefPath(posix.relative(sourceDir === '.' ? '' : sourceDir, newDocName));
+  relativePath ||= encodeHrefPathSegment(posix.basename(newDocName));
 
   // Preserve whatever supported doc extension the authored link carried.
   // The canonical list lives at `packages/server/src/doc-extensions.ts`; this
@@ -459,7 +469,9 @@ function rewriteHtmlAssetAttrsInTag(
   const markdown = tag.replace(HTML_ASSET_ATTR_RE, (whole, prefix, double, single, curly, bare) => {
     const value = double ?? single ?? curly ?? bare;
     if (typeof value !== 'string') return whole;
-    const nextHref = rewriteAssetHrefForRename(value, sourceDocName, oldAssetPath, newAssetPath);
+    const nextHref = rewriteAssetHrefForRename(value, sourceDocName, oldAssetPath, newAssetPath, {
+      literal: false,
+    });
     if (nextHref === null) return whole;
     rewrites++;
     if (double !== undefined) return `${prefix}"${nextHref}"`;
@@ -509,7 +521,7 @@ function rewriteAssetReferencesInLine(
         sourceDocName,
         oldAssetPath,
         newAssetPath,
-        { encodePath: false },
+        { literal: true, encodePath: false },
       );
       if (nextTarget !== null) {
         rewritten += renderWikiLinkOrEmbed(wikiLink, nextTarget);
@@ -559,6 +571,7 @@ function rewriteAssetReferencesInLine(
           sourceDocName,
           oldAssetPath,
           newAssetPath,
+          { literal: false },
         );
         if (nextHref !== null) {
           const hrefRaw =
@@ -583,6 +596,7 @@ function rewriteAssetReferencesInLine(
           sourceDocName,
           oldAssetPath,
           newAssetPath,
+          { literal: false },
         );
         if (nextHref !== null) {
           const hrefRaw =

@@ -240,8 +240,9 @@ function assessFile(
   href: string,
   sourceDocName: string,
   inventory: LocalTargetInventory,
+  literal: boolean,
 ): SharedAssessment {
-  const filePath = resolveAssetProjectPath(assetUrl, sourceDocName);
+  const filePath = resolveAssetProjectPath(assetUrl, sourceDocName, { literal });
   if (filePath === null) {
     // `../` overshoot past the content root — no project-local path.
     return { ...UNRESOLVABLE, targetKind: 'file' };
@@ -330,7 +331,7 @@ function assessHref(
       // extension-bearing embed still classifies as a file through the `asset`
       // branch below, because `classifyMarkdownHref` never routes it here.
       if (role === 'image' && !isWikiForm(sourceForm)) {
-        return assessFile(href, href, sourceDocName, inventory);
+        return assessFile(href, href, sourceDocName, inventory, false);
       }
       const documentExists = inventory.hasDocument(classified.docName);
       // The file fallback is markdown-only, and deliberately so. It resolves
@@ -340,13 +341,20 @@ function assessHref(
       // document by contract anyway: `[[Note]]` names a note, and an
       // extension-bearing one never reaches this branch.
       if (!documentExists && !isWikiForm(sourceForm)) {
-        const file = assessFile(href, href, sourceDocName, inventory);
+        const file = assessFile(href, href, sourceDocName, inventory, false);
         if (file.status === 'exact') return file;
       }
       return assessDocument(classified.docName, href, sourceDocName, inventory, documentExists);
     }
     case 'asset':
-      return assessFile(classified.url, href, sourceDocName, inventory);
+      // Both classifiers emit the same `{kind: 'asset', url}` shape, so the
+      // plane rides on the target's own `literal` tag rather than being
+      // re-derived from `sourceForm` here. A wiki target names a file
+      // literally: `![[100%20done.png]]` means a file whose name contains
+      // `%20`, and decoding it would look for a different file and report a
+      // false dead-link — the very symptom this resolver's decoding half fixes
+      // on the markdown plane.
+      return assessFile(classified.url, href, sourceDocName, inventory, classified.literal);
     case 'external':
     case 'anchor':
       return null;

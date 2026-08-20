@@ -1,8 +1,10 @@
+import { resolveAssetProjectPath, resolveInternalHref } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   rewriteAssetReferencesForRename,
   rewriteMarkdownLinksForDocumentRename,
   rewriteMirrorSrcForDocumentRename,
+  rewriteOutboundMarkdownLinksForSourceMove,
   rewriteWikiLinksForDocumentRename,
 } from './managed-rename-rewrite.ts';
 
@@ -521,8 +523,28 @@ describe('rewriteAssetReferencesForRename', () => {
       'docs/final/asset with spaces (2).png',
     );
 
+    // Parens are escaped, not passed through: the canonical segment encoder
+    // neutralizes `!'()*` so an unbalanced paren can never terminate a bare
+    // CommonMark destination. Both spellings resolve back to the same asset.
     expect(result).toEqual({
-      markdown: '![Spaced](./final/asset%20with%20spaces%20(2).png?dl=1#hero)\n',
+      markdown: '![Spaced](./final/asset%20with%20spaces%20%282%29.png?dl=1#hero)\n',
+      rewrites: 1,
+    });
+  });
+
+  test('matches a %2520 href to a literal %20-bearing asset filename without double decoding', () => {
+    // RFC 3986 §2.4: an escaped octet is decoded exactly once — `%2520`
+    // denotes the literal bytes `%20` in the target filename. A second
+    // decode would turn it into a space and silently miss the asset.
+    const result = rewriteAssetReferencesForRename(
+      '![Literal](./media/name%2520with%2520percents.png)\n',
+      'docs/guide',
+      'docs/media/name%20with%20percents.png',
+      'docs/final/name%20with%20percents.png',
+    );
+
+    expect(result).toEqual({
+      markdown: '![Literal](./final/name%2520with%2520percents.png)\n',
       rewrites: 1,
     });
   });
@@ -537,6 +559,57 @@ describe('rewriteAssetReferencesForRename', () => {
 
     expect(result).toEqual({
       markdown: '![[final/asset with spaces (2).png|Spaced]]\n',
+      rewrites: 1,
+    });
+  });
+
+  test('a wiki asset target matches on its literal percent sequences', () => {
+    // `![[100%20done.png]]` names a file whose name really contains those three
+    // characters. Reading the target as a URI resolves it to `100 done.png`,
+    // which is not the asset being renamed, so the embed is left behind
+    // pointing at a path that no longer exists.
+    const result = rewriteAssetReferencesForRename(
+      '![[media/100%20done.png|Progress]]\n',
+      'docs/guide',
+      'docs/media/100%20done.png',
+      'docs/final/100%20done.png',
+    );
+
+    expect(result).toEqual({
+      markdown: '![[final/100%20done.png|Progress]]\n',
+      rewrites: 1,
+    });
+  });
+
+  test('a wiki asset target does not match the decoded neighbour asset', () => {
+    // Companion to the assertion above. Renaming `docs/media/100 done.png` —
+    // the file the decoded reading names — must leave the literal-named embed
+    // untouched, or the rewrite repoints a working link at someone else's move.
+    const result = rewriteAssetReferencesForRename(
+      '![[media/100%20done.png|Progress]]\n',
+      'docs/guide',
+      'docs/media/100 done.png',
+      'docs/final/100 done.png',
+    );
+
+    expect(result).toEqual({
+      markdown: '![[media/100%20done.png|Progress]]\n',
+      rewrites: 0,
+    });
+  });
+
+  test('a markdown asset href still matches the decoded asset path', () => {
+    // The other half of the plane split: identical authored bytes, markdown
+    // syntax, must resolve to the space-named file and rewrite.
+    const result = rewriteAssetReferencesForRename(
+      '![Progress](./media/100%20done.png)\n',
+      'docs/guide',
+      'docs/media/100 done.png',
+      'docs/final/100 done.png',
+    );
+
+    expect(result).toEqual({
+      markdown: '![Progress](./final/100%20done.png)\n',
       rewrites: 1,
     });
   });
@@ -583,5 +656,79 @@ describe('rewriteAssetReferencesForRename', () => {
         'docs/assets/hero.png',
       ),
     ).toEqual({ markdown, rewrites: 0 });
+  });
+});
+
+// Resolvers decode, so a rewriter that rebuilds an href from a decoded docName
+// must re-encode it. Without that the rewrite emits a literal space, `#`, or
+// `?` into the destination and the link stops parsing — corrupting the user's
+// markdown on disk on an ordinary rename.
+describe('rewritten hrefs round-trip back through the canonical resolvers', () => {
+  const awkward = [
+    'Agent Memory',
+    'team plan (draft) #1',
+    'R&D notes',
+    "don't panic!",
+    'café résumé',
+  ];
+
+  for (const name of awkward) {
+    test(`document rename to ${JSON.stringify(name)} emits a resolvable href`, () => {
+      const { markdown, rewrites } = rewriteMarkdownLinksForDocumentRename(
+        '[Link](./Old%20Name.md)\n',
+        'blogs/drafts/index',
+        'blogs/drafts/Old Name',
+        `blogs/drafts/${name}`,
+      );
+
+      expect(rewrites).toBe(1);
+      const href = markdown.match(/\]\((.*)\)/)?.[1] ?? '';
+      expect(href).not.toMatch(/[ ()#?]/);
+      expect(resolveInternalHref(href, 'blogs/drafts/index')?.docName).toBe(`blogs/drafts/${name}`);
+    });
+
+    test(`asset rename to ${JSON.stringify(name)} emits a resolvable href`, () => {
+      const { markdown, rewrites } = rewriteAssetReferencesForRename(
+        '![Img](./media/old%20name.png)\n',
+        'docs/guide',
+        'docs/media/old name.png',
+        `docs/final/${name}.png`,
+      );
+
+      expect(rewrites).toBe(1);
+      const href = markdown.match(/\]\((.*)\)/)?.[1] ?? '';
+      expect(href).not.toMatch(/[ ()#?]/);
+      expect(resolveAssetProjectPath(href, 'docs/guide', { literal: false })).toBe(
+        `docs/final/${name}.png`,
+      );
+    });
+  }
+
+  test('a source move re-encodes outbound links to space-bearing targets', () => {
+    const { markdown, rewrites } = rewriteOutboundMarkdownLinksForSourceMove(
+      '[Agent Memory](./Agent%20Memory.md)\n',
+      'blogs/drafts/index',
+      'blogs/index',
+    );
+
+    expect(rewrites).toBe(1);
+    expect(markdown).toBe('[Agent Memory](./drafts/Agent%20Memory.md)\n');
+    expect(resolveInternalHref('./drafts/Agent%20Memory.md', 'blogs/index')?.docName).toBe(
+      'blogs/drafts/Agent Memory',
+    );
+  });
+
+  test('an asset name containing # is escaped, not left to truncate the href', () => {
+    const { markdown } = rewriteAssetReferencesForRename(
+      '![Hash](./media/my%23file.png)\n',
+      'docs/guide',
+      'docs/media/my#file.png',
+      'docs/final/my#file.png',
+    );
+
+    expect(markdown).toBe('![Hash](./final/my%23file.png)\n');
+    expect(resolveAssetProjectPath('./final/my%23file.png', 'docs/guide', { literal: false })).toBe(
+      'docs/final/my#file.png',
+    );
   });
 });

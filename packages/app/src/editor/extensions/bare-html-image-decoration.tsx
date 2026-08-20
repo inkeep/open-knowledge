@@ -62,7 +62,11 @@ export function findBareHtmlImageTags(text: string): BareTagMatch[] {
 
 function imagePropsFromElement(image: HTMLImageElement, sourceDocName: string): ImageProps | null {
   const src = image.getAttribute('src');
-  if (src === null || resolveAssetProjectPath(src, sourceDocName) === null) return null;
+  // An HTML `src` is a URL, so its escapes decode — the same reading the asset
+  // serve path applies when the browser actually fetches it.
+  if (src === null || resolveAssetProjectPath(src, sourceDocName, { literal: false }) === null) {
+    return null;
+  }
 
   const loading = image.getAttribute('loading');
   const decoding = image.getAttribute('decoding');

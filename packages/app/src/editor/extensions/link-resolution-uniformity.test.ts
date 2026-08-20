@@ -164,7 +164,9 @@ describe('editor resolution state agrees with the canonical server classificatio
     // the doc-intent resolver ever runs.
     const cache = fixtureCache();
     expect(
-      isResolvedAssetHref('assets/NOTICE', SOURCE_DOC, cache.assetPaths, cache.filePaths),
+      isResolvedAssetHref('assets/NOTICE', SOURCE_DOC, cache.assetPaths, cache.filePaths, {
+        literal: false,
+      }),
     ).toBe(true);
     setLinkValidationVisible(true);
     expect(RESOLVED_STATES).toContain(
@@ -177,7 +179,9 @@ describe('editor resolution state agrees with the canonical server classificatio
     // missing document — that is the row the matrix expects Create page on.
     const cache = fixtureCache();
     expect(
-      isResolvedAssetHref('targets/missing-wiki', SOURCE_DOC, cache.assetPaths, cache.filePaths),
+      isResolvedAssetHref('targets/missing-wiki', SOURCE_DOC, cache.assetPaths, cache.filePaths, {
+        literal: false,
+      }),
     ).toBe(false);
   });
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { skillFileLiveDocName } from '../constants/cc1.ts';
 import {
   buildAbsoluteMarkdownHref,
   buildRelativeMarkdownHref,
@@ -6,6 +7,7 @@ import {
   classifyWikiLinkTarget,
   resolveAssetProjectPath,
 } from './link-targets.ts';
+import { resolveInternalHref } from './resolve-internal-href.ts';
 
 describe('classifyMarkdownHref', () => {
   test('returns null for empty hrefs', () => {
@@ -58,7 +60,25 @@ describe('classifyMarkdownHref', () => {
       kind: 'asset',
       url: './meeting.pdf',
       ext: 'pdf',
+      literal: false,
     });
+  });
+
+  test('an escaped extension dot still classifies as an asset', () => {
+    // The extension is read off the decoded path. Reading it raw sees no
+    // extension at all, and the href falls out of the classifier entirely —
+    // neither doc nor asset — so nothing downstream can route the click.
+    expect(classifyMarkdownHref('./meeting%2Epdf', 'docs/notes')).toEqual({
+      kind: 'asset',
+      url: './meeting%2Epdf',
+      ext: 'pdf',
+      literal: false,
+    });
+    // `url` stays the authored bytes: the asset resolver decodes it under
+    // `literal: false`, so pre-decoding here would double-decode.
+    expect(resolveAssetProjectPath('./meeting%2Epdf', 'docs/notes', { literal: false })).toBe(
+      'docs/meeting.pdf',
+    );
   });
 
   test('strips .mdx extension when resolving doc-link', () => {
@@ -81,6 +101,7 @@ describe('classifyMarkdownHref', () => {
       kind: 'asset',
       url: '/docs/file.pdf',
       ext: 'pdf',
+      literal: false,
     });
   });
 
@@ -100,6 +121,24 @@ describe('classifyMarkdownHref', () => {
     expect(classifyMarkdownHref('scripts/run', '.ok/skills/demo/SKILL')).toEqual({
       kind: 'doc',
       docName: '.ok/skills/demo/scripts/run',
+      anchor: null,
+    });
+  });
+
+  test('decodes percent-escapes in doc hrefs', () => {
+    // Inherits the canonical resolver's RFC 3986 decoding — the doc kind must
+    // carry the decoded docName, not the escaped bytes.
+    expect(classifyMarkdownHref('./Agent%20Memory.md', 'blogs/drafts/index')).toEqual({
+      kind: 'doc',
+      docName: 'blogs/drafts/Agent Memory',
+      anchor: null,
+    });
+  });
+
+  test('malformed escapes classify as a doc with the raw bytes, without throwing', () => {
+    expect(classifyMarkdownHref('./100%ZZ.md', 'docs/index')).toEqual({
+      kind: 'doc',
+      docName: 'docs/100%ZZ',
       anchor: null,
     });
   });
@@ -137,33 +176,73 @@ describe('classifyWikiLinkTarget', () => {
       kind: 'asset',
       url: '/docs/public/Wide.png',
       ext: 'png',
+      literal: true,
+    });
+  });
+
+  test('wiki asset targets carry literal: true so consumers inherit the plane', () => {
+    // A consumer holding this target must not have to re-derive the plane from
+    // context it may not have — the tag IS the answer it feeds to
+    // `resolveAssetProjectPath`.
+    const wiki = classifyWikiLinkTarget('100%20done.png', null);
+    expect(wiki).toEqual({ kind: 'asset', url: '100%20done.png', ext: 'png', literal: true });
+    const markdown = classifyMarkdownHref('./100%20done.png', 'notes/readme');
+    expect(markdown).toEqual({
+      kind: 'asset',
+      url: './100%20done.png',
+      ext: 'png',
+      literal: false,
+    });
+    // The tags round-trip through the resolver to two different files.
+    if (wiki?.kind !== 'asset' || markdown?.kind !== 'asset') throw new Error('expected assets');
+    expect(resolveAssetProjectPath(wiki.url, 'notes/readme', { literal: wiki.literal })).toBe(
+      'notes/100%20done.png',
+    );
+    expect(
+      resolveAssetProjectPath(markdown.url, 'notes/readme', { literal: markdown.literal }),
+    ).toBe('notes/100 done.png');
+  });
+
+  test('wiki targets are literal doc names — percent-escapes are never decoded', () => {
+    // `[[Agent%20Memory]]` names a doc whose filename literally contains
+    // `%20`; wiki targets are not URIs, so href decoding must not reach here.
+    expect(classifyWikiLinkTarget('Agent%20Memory', null)).toEqual({
+      kind: 'doc',
+      docName: 'Agent%20Memory',
+      anchor: null,
     });
   });
 });
 
 describe('resolveAssetProjectPath', () => {
   test('same-dir asset resolves to sourceDoc-dir/basename', () => {
-    expect(resolveAssetProjectPath('./meeting.pdf', 'notes/readme')).toBe('notes/meeting.pdf');
+    expect(resolveAssetProjectPath('./meeting.pdf', 'notes/readme', { literal: false })).toBe(
+      'notes/meeting.pdf',
+    );
   });
 
   test('parent-relative asset walks up one dir', () => {
-    expect(resolveAssetProjectPath('../shared.pdf', 'notes/sub/readme')).toBe('notes/shared.pdf');
+    expect(resolveAssetProjectPath('../shared.pdf', 'notes/sub/readme', { literal: false })).toBe(
+      'notes/shared.pdf',
+    );
   });
 
   test('subdir-relative asset descends into sub', () => {
-    expect(resolveAssetProjectPath('./assets/photo.png', 'docs/guide')).toBe(
+    expect(resolveAssetProjectPath('./assets/photo.png', 'docs/guide', { literal: false })).toBe(
       'docs/assets/photo.png',
     );
   });
 
   test('path escape above project root returns null', () => {
-    expect(resolveAssetProjectPath('../../etc/passwd', 'notes/readme')).toBeNull();
+    expect(
+      resolveAssetProjectPath('../../etc/passwd', 'notes/readme', { literal: false }),
+    ).toBeNull();
   });
 
   test('strips anchor from returned path', () => {
-    expect(resolveAssetProjectPath('./meeting.pdf#page=3', 'notes/readme')).toBe(
-      'notes/meeting.pdf',
-    );
+    expect(
+      resolveAssetProjectPath('./meeting.pdf#page=3', 'notes/readme', { literal: false }),
+    ).toBe('notes/meeting.pdf');
   });
 
   test('server-absolute path is treated as project-root-relative (2026-04-24b)', () => {
@@ -174,9 +253,15 @@ describe('resolveAssetProjectPath', () => {
     // dispatcher for any asset that round-tripped through the server —
     // the click would fall through to external-URL handling rather than
     // reaching `shell.openAsset` in Electron.
-    expect(resolveAssetProjectPath('/docs/file.pdf', 'notes/readme')).toBe('docs/file.pdf');
-    expect(resolveAssetProjectPath('/vale_15.m4v', 'notes/readme')).toBe('vale_15.m4v');
-    expect(resolveAssetProjectPath('/sub/dir/photo.png', 'docs/guide')).toBe('sub/dir/photo.png');
+    expect(resolveAssetProjectPath('/docs/file.pdf', 'notes/readme', { literal: false })).toBe(
+      'docs/file.pdf',
+    );
+    expect(resolveAssetProjectPath('/vale_15.m4v', 'notes/readme', { literal: false })).toBe(
+      'vale_15.m4v',
+    );
+    expect(resolveAssetProjectPath('/sub/dir/photo.png', 'docs/guide', { literal: false })).toBe(
+      'sub/dir/photo.png',
+    );
   });
 
   test('server-absolute path still refuses escape attempts', () => {
@@ -185,20 +270,74 @@ describe('resolveAssetProjectPath', () => {
     // URL parser. Containment is defense-in-depth — the main-process
     // `openAssetSafely` is the authoritative gate, but the renderer
     // shouldn't feed it escape attempts.
-    expect(resolveAssetProjectPath('/../etc/passwd', 'notes/readme')).toBeNull();
-    expect(resolveAssetProjectPath('/docs/../../../etc/passwd', 'notes/readme')).toBeNull();
+    expect(
+      resolveAssetProjectPath('/../etc/passwd', 'notes/readme', { literal: false }),
+    ).toBeNull();
+    expect(
+      resolveAssetProjectPath('/docs/../../../etc/passwd', 'notes/readme', { literal: false }),
+    ).toBeNull();
   });
 
   test('HTTPS URL returns null', () => {
-    expect(resolveAssetProjectPath('https://example.com/doc.pdf', 'notes/readme')).toBeNull();
+    expect(
+      resolveAssetProjectPath('https://example.com/doc.pdf', 'notes/readme', { literal: false }),
+    ).toBeNull();
   });
 
   test('source doc at root — `..` pop fails', () => {
-    expect(resolveAssetProjectPath('../escape.pdf', 'readme')).toBeNull();
+    expect(resolveAssetProjectPath('../escape.pdf', 'readme', { literal: false })).toBeNull();
   });
 
   test('empty href returns null', () => {
-    expect(resolveAssetProjectPath('', 'notes/readme')).toBeNull();
+    expect(resolveAssetProjectPath('', 'notes/readme', { literal: false })).toBeNull();
+  });
+
+  test('decodes percent-escapes in asset hrefs', () => {
+    // Same RFC 3986 contract as the doc resolver: the returned value is a
+    // filesystem location, so escaped bytes must decode to the real filename.
+    expect(
+      resolveAssetProjectPath('./design%20spec.pdf', 'blogs/drafts/index', { literal: false }),
+    ).toBe('blogs/drafts/design spec.pdf');
+  });
+
+  // Asserted positively: a null return would satisfy any "not traversal" check
+  // while quietly breaking every filename that legitimately carries the bytes.
+  test('%2F in an asset href stays literal data under the source dir', () => {
+    expect(
+      resolveAssetProjectPath('..%2F..%2Fetc%2Fpasswd.pdf', 'notes/readme', { literal: false }),
+    ).toBe('notes/..%2F..%2Fetc%2Fpasswd.pdf');
+  });
+
+  test('%5C in an asset href stays literal data under the source dir', () => {
+    expect(
+      resolveAssetProjectPath('..%5C..%5Cwindows.pdf', 'notes/readme', { literal: false }),
+    ).toBe('notes/..%5C..%5Cwindows.pdf');
+  });
+
+  test('a literal asset target keeps its percent sequences undecoded', () => {
+    expect(resolveAssetProjectPath('100%20done.png', 'notes/readme', { literal: true })).toBe(
+      'notes/100%20done.png',
+    );
+  });
+
+  test('a literal asset target never resolves to its decoded neighbour', () => {
+    // The companion to the assertion above: `notes/100 done.png` is a
+    // DIFFERENT file that may also exist. Decoding a literal target reports a
+    // working link as dead and, worse, points Reveal/Open at the wrong file.
+    expect(resolveAssetProjectPath('100%20done.png', 'notes/readme', { literal: true })).not.toBe(
+      'notes/100 done.png',
+    );
+    // …and the markdown plane, given the same bytes, MUST reach that neighbour —
+    // the two planes disagree by construction, which is why the option exists.
+    expect(resolveAssetProjectPath('100%20done.png', 'notes/readme', { literal: false })).toBe(
+      'notes/100 done.png',
+    );
+  });
+
+  test('malformed escapes fall back to the raw asset path without throwing', () => {
+    expect(resolveAssetProjectPath('./100%ZZ.pdf', 'notes/readme', { literal: false })).toBe(
+      'notes/100%ZZ.pdf',
+    );
   });
 });
 
@@ -218,6 +357,42 @@ describe('buildRelativeMarkdownHref', () => {
   test('honors a non-default extension for the target', () => {
     expect(buildRelativeMarkdownHref('docs/index', 'docs/guide', null, '.mdx')).toBe('./guide.mdx');
   });
+
+  // An emitted destination must survive the resolver that reads it back. A bare
+  // CommonMark destination cannot contain a literal space, so a doc name that
+  // needs escaping has to be encoded here or the link does not parse at all.
+  test('encodes a target name that cannot appear literally in a destination', () => {
+    expect(buildRelativeMarkdownHref('blogs/drafts/index', 'blogs/drafts/Agent Memory')).toBe(
+      './Agent%20Memory.md',
+    );
+  });
+
+  test('keeps traversal markers structural while encoding the name', () => {
+    expect(buildRelativeMarkdownHref('guides/nested/page', 'guides/Install Guide')).toBe(
+      '../Install%20Guide.md',
+    );
+  });
+
+  test('leaves the anchor byte-for-byte, matching the resolver', () => {
+    expect(buildRelativeMarkdownHref('notes/index', 'notes/My Doc', 'a b')).toBe(
+      './My%20Doc.md#a b',
+    );
+  });
+
+  test.each([
+    'Agent Memory',
+    'team plan (draft) #1',
+    'Q&A',
+    'café',
+    "it's here",
+    '100% done',
+  ])('round-trips %j back through the resolver', (name) => {
+    const href = buildRelativeMarkdownHref('blogs/drafts/index', `blogs/drafts/${name}`);
+    expect(resolveInternalHref(href, 'blogs/drafts/index')).toEqual({
+      docName: `blogs/drafts/${name}`,
+      anchor: null,
+    });
+  });
 });
 
 describe('buildAbsoluteMarkdownHref', () => {
@@ -233,6 +408,20 @@ describe('buildAbsoluteMarkdownHref', () => {
 
   test('honors a non-default extension', () => {
     expect(buildAbsoluteMarkdownHref('guides/widget', '.mdx')).toBe('/guides/widget.mdx');
+  });
+
+  test('encodes each segment while keeping `/` as hierarchy', () => {
+    expect(buildAbsoluteMarkdownHref('blogs/my drafts/Agent Memory')).toBe(
+      '/blogs/my%20drafts/Agent%20Memory.md',
+    );
+  });
+
+  test('round-trips a space-bearing name back through the resolver', () => {
+    const href = buildAbsoluteMarkdownHref('blogs/drafts/Agent Memory');
+    expect(resolveInternalHref(href, 'anywhere/else')).toEqual({
+      docName: 'blogs/drafts/Agent Memory',
+      anchor: null,
+    });
   });
 });
 
@@ -258,10 +447,42 @@ describe('/<skill-name> targets', () => {
     expect(target?.kind === 'doc' ? target.docName : null).not.toBe('.agents/skills/a/SKILL');
   });
 
+  test('a percent-encoded skill name still names the sibling skill', () => {
+    expect(classifyMarkdownHref('/my%20skill', '.agents/skills/brand/SKILL')).toEqual({
+      kind: 'doc',
+      docName: '.agents/skills/my skill/SKILL',
+      anchor: null,
+    });
+  });
+
   test('outside a skill it stays an ordinary path', () => {
     const target = classifyMarkdownHref('/graphics', 'notes/index');
     expect(target?.kind === 'doc' ? target.docName : null).not.toBe(
       '.agents/skills/graphics/SKILL',
+    );
+  });
+});
+
+describe('percent-encoded hrefs decode on every classify branch', () => {
+  // `classifyMarkdownHref` dispatches to the skill-bundle resolver before the
+  // generic one. An href is a URI on every branch, so a branch that skipped the
+  // decode would keep resolving to a phantom doc.
+  for (const scope of ['global', 'project'] as const) {
+    test(`an encoded skill-bundle ref from a ${scope} SKILL.md decodes`, () => {
+      const base = skillFileLiveDocName(scope, 'demo', 'SKILL');
+      expect(classifyMarkdownHref('references/my%20ref.md', base)).toEqual({
+        kind: 'doc',
+        docName: skillFileLiveDocName(scope, 'demo', 'references/my ref'),
+        anchor: null,
+      });
+    });
+  }
+
+  test('the anchor is returned verbatim, not decoded', () => {
+    // Anchors feed heading-slug matching, whose byte contract is separate from
+    // the path's. Pinned so a change to it is a deliberate decision, not drift.
+    expect(classifyMarkdownHref('./Agent%20Memory.md#section%20two', 'blogs/drafts/index')).toEqual(
+      { kind: 'doc', docName: 'blogs/drafts/Agent Memory', anchor: 'section%20two' },
     );
   });
 });

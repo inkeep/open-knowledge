@@ -1,6 +1,8 @@
+import { classifyMarkdownHref } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   activateAssetLink,
+  buildCurrentRelativeMarkdownHref,
   handleChipLinkClick,
   navigateToMarkdownTarget,
   toInternalHashHref,
@@ -215,5 +217,38 @@ describe('toInternalHashHref', () => {
 
   it('omits the fragment for null anchors', () => {
     expect(toInternalHashHref({ docName: 'docs/guide', anchor: null })).toBe('#/docs/guide');
+  });
+});
+
+/**
+ * The link-edit popover's URL field writes whatever it holds verbatim as the
+ * href (`setLink({ href: url.trim() })`), and its suggestion picker seeds that
+ * field from `buildCurrentRelativeMarkdownHref`. The field is a URL field —
+ * seeded from the raw href when editing an existing link, and accepting
+ * external URLs unchanged — so the builder's escaped output is the correct
+ * thing to show there. Decoding for display would need a re-encode on apply,
+ * which cannot tell an author's literal `%20` from a display-decoded space.
+ * The user-facing FRIENDLY path is a separate surface: the prop panel shows
+ * `classifyMarkdownHref(...).docName`, which is already decoded.
+ */
+describe('buildCurrentRelativeMarkdownHref — popover field round-trip', () => {
+  it('emits an href that classifies straight back to the picked doc', () => {
+    const href = buildCurrentRelativeMarkdownHref('notes/Agent Memory', null, '#/notes/index');
+    expect(href).toBe('./Agent%20Memory.md');
+    // Applied verbatim by the popover, and read back by every resolution
+    // surface as the doc the user picked — not as a doc literally named
+    // `Agent%20Memory`.
+    expect(classifyMarkdownHref(href, 'notes/index')).toEqual({
+      kind: 'doc',
+      docName: 'notes/Agent Memory',
+      anchor: null,
+    });
+  });
+
+  it('shows the decoded name on the friendly display surface', () => {
+    // The prop panel's `displayHref` is built from the classified docName, so
+    // the escaped bytes never reach the reader there.
+    const classified = classifyMarkdownHref('./Agent%20Memory.md', 'notes/index');
+    expect(classified?.kind === 'doc' && classified.docName).toBe('notes/Agent Memory');
   });
 });

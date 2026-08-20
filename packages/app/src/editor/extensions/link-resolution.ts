@@ -62,11 +62,21 @@ export function isResolvedAssetHref(
    * `/api/documents`). When provided, a markdown-link to an existing
    * non-markdown file that's NOT a renderable asset
    * (e.g. `[csv](./data/example.csv)`) resolves rather than rendering dead.
-   * Absent for legacy callers; the asset-path-only check still applies.
+   * `undefined` keeps the asset-path-only check.
    */
-  filePaths?: ReadonlySet<string> | undefined,
+  filePaths: ReadonlySet<string> | undefined,
+  /**
+   * Which plane `href` lives on. Required, and threaded from the caller for
+   * the same reason `resolveAssetProjectPath` requires it: this predicate is
+   * consulted from both the markdown chip surfaces and the wiki-embed
+   * activation path, and picking a default silently reports one plane's
+   * working links as dead.
+   */
+  options: { literal: boolean },
 ): boolean {
-  const projectRelPath = resolveAssetProjectPath(href, sourceDocName);
+  const projectRelPath = resolveAssetProjectPath(href, sourceDocName, {
+    literal: options.literal,
+  });
   if (projectRelPath === null) return false;
   if (assetPaths && setHasPathCaseInsensitive(assetPaths, projectRelPath)) return true;
   if (filePaths && setHasPathCaseInsensitive(filePaths, projectRelPath)) return true;
@@ -106,7 +116,9 @@ export function computeLinkResolutionState(
     // are missing from the cache (very old snapshot) we stay optimistic — the
     // original invariant.
     if (cache.assetPaths === undefined && cache.filePaths === undefined) return 'asset';
-    return isResolvedAssetHref(target.url, sourceDocName, cache.assetPaths, cache.filePaths)
+    return isResolvedAssetHref(target.url, sourceDocName, cache.assetPaths, cache.filePaths, {
+      literal: target.literal,
+    })
       ? 'asset'
       : 'unresolved';
   }
@@ -123,7 +135,13 @@ export function computeLinkResolutionState(
   // identity first, then an exact file hit. Resolving only against `pages` +
   // `folderPaths` here means the editor paints a redlink, and offers Create
   // page, over a file the server has already proven exists.
-  if (isResolvedAssetHref(href, sourceDocName, cache.assetPaths, cache.filePaths)) return 'asset';
+  // `href` reached this branch through `classifyMarkdownHref`, so it is a
+  // markdown destination — a URI whose escapes decode.
+  if (
+    isResolvedAssetHref(href, sourceDocName, cache.assetPaths, cache.filePaths, { literal: false })
+  ) {
+    return 'asset';
+  }
   return 'unresolved';
 }
 

@@ -81,7 +81,11 @@ function namesExistingFile(
 ): boolean {
   if (!oracle) return false;
   if (isSupportedDocFile(href)) return false;
-  const filePath = resolveAssetProjectPath(href, sourceDocName);
+  // Markdown plane only: both callers hand this a markdown destination (an
+  // inline `[text](href)` and a reference definition's destination), which is a
+  // URI whose escapes decode. Wiki targets never reach here — they resolve by
+  // vault-wide basename, not by a source-relative path.
+  const filePath = resolveAssetProjectPath(href, sourceDocName, { literal: false });
   return filePath !== null && oracle.hasFile(filePath);
 }
 
@@ -1091,7 +1095,9 @@ export function computeBrokenOutboundLinks(
       // `../src/foo.py`). It has no CRDT presence, so validate the resolved
       // path against disk. Skip when no oracle is injected.
       if (!fileExists) return;
-      const filePath = resolveAssetProjectPath(classified.url, sourceDocName);
+      const filePath = resolveAssetProjectPath(classified.url, sourceDocName, {
+        literal: classified.literal,
+      });
       if (filePath === null) {
         // `../`-overshoot past the content root — the off-by-one depth bug.
         record(trimmed, null, 'unresolvable');

@@ -7,7 +7,6 @@ import {
   assetReferencesChanged,
   collectReferencedAssets,
   extractLocalAssetHrefs,
-  isLocalAssetReferenceHref,
   isRemoteOrOpaqueHref,
   resolveReferencedAssetPath,
   stripHrefDecorations,
@@ -85,20 +84,25 @@ describe('asset reference extraction', () => {
     ).toEqual(['./real.png', './real-html.jpeg']);
   });
 
+  // Exercised through the signature rather than a bare predicate: admission is
+  // plane-aware now, and a raw-bytes predicate sitting beside the plane-aware
+  // one is what invites a caller to reintroduce the collapse.
+  const admits = (markdown: string): boolean => assetReferenceSignature(markdown) !== '';
+
   test('classifies only local supported asset hrefs as sidebar asset references', () => {
-    expect(isLocalAssetReferenceHref('#section')).toBe(false);
-    expect(isLocalAssetReferenceHref('//cdn.example.com/photo.png')).toBe(false);
-    expect(isLocalAssetReferenceHref('https://example.com/photo.png')).toBe(false);
-    expect(isLocalAssetReferenceHref('data:image/png;base64,abc')).toBe(false);
-    expect(isLocalAssetReferenceHref('./local/photo.png')).toBe(true);
-    expect(isLocalAssetReferenceHref('<./local/photo.png?size=1#hero>')).toBe(true);
-    expect(isLocalAssetReferenceHref('./doc.md')).toBe(false);
+    expect(admits('[x](#section)')).toBe(false);
+    expect(admits('[x](//cdn.example.com/photo.png)')).toBe(false);
+    expect(admits('[x](https://example.com/photo.png)')).toBe(false);
+    expect(admits('[x](data:image/png;base64,abc)')).toBe(false);
+    expect(admits('[x](./local/photo.png)')).toBe(true);
+    expect(admits('[x](<./local/photo.png?size=1#hero>)')).toBe(true);
+    expect(admits('[x](./doc.md)')).toBe(false);
   });
 
   test('classifies .base and .canvas hrefs as local asset references', () => {
-    expect(isLocalAssetReferenceHref('./Characters.base')).toBe(true);
-    expect(isLocalAssetReferenceHref('Characters.base')).toBe(true);
-    expect(isLocalAssetReferenceHref('./vault/Board.canvas')).toBe(true);
+    expect(admits('[x](./Characters.base)')).toBe(true);
+    expect(admits('[x](Characters.base)')).toBe(true);
+    expect(admits('[x](./vault/Board.canvas)')).toBe(true);
   });
 
   test('resolves .base and .canvas hrefs to disk paths', () =>
@@ -112,6 +116,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'vault/note',
           href: './Characters.base',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'vault/Characters.base')));
 
@@ -120,6 +125,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'vault/note',
           href: './Board.canvas',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'vault/Board.canvas')));
 
@@ -129,6 +135,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'vault/note',
           href: 'Board.canvas',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'vault/Board.canvas')));
     }));
@@ -192,6 +199,19 @@ describe('asset reference extraction', () => {
     ).toBe(true);
   });
 
+  // The signature gates whether the collector re-runs, so it has to agree with
+  // the collector. Both of these edits change which file is referenced while
+  // leaving the href bytes recognizable only to a plane-aware, decoded reading —
+  // a signature that collapsed either would report "unchanged" and serve a stale
+  // cache.
+  test('signature notices a plane switch on identical href bytes', () => {
+    expect(assetReferencesChanged('![[100%20done.png]]', '[x](100%20done.png)')).toBe(true);
+  });
+
+  test('signature notices an asset whose extension is escaped', () => {
+    expect(assetReferencesChanged('no refs here', '[x](./photo%2Ejpg)')).toBe(true);
+  });
+
   test('resolves only existing local assets inside contentDir', () =>
     withFixture((dir) => {
       mkdirSync(join(dir, 'docs'));
@@ -204,6 +224,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: './photo.png',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'docs/photo.png')));
       expect(
@@ -211,6 +232,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: '/docs/photo.png',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'docs/photo.png')));
       expect(
@@ -218,6 +240,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: '<./My%20Photo.png>',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'docs/My Photo.png')));
       expect(
@@ -225,6 +248,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: './paper.pdf',
+          literal: false,
         }),
       ).toBe(realpathSync(resolve(dir, 'docs/paper.pdf')));
 
@@ -233,6 +257,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: 'https://example.com/photo.png',
+          literal: false,
         }),
       ).toBeNull();
       expect(
@@ -240,6 +265,7 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: '../outside.png',
+          literal: false,
         }),
       ).toBeNull();
       expect(
@@ -247,8 +273,122 @@ describe('asset reference extraction', () => {
           contentDir: dir,
           fromDocName: 'docs/guide',
           href: './missing.png',
+          literal: false,
         }),
       ).toBeNull();
+    }));
+
+  test('resolves a %2520 href to a filename containing literal %20 without double decoding', () =>
+    withFixture((dir) => {
+      mkdirSync(join(dir, 'docs'));
+      writeFileSync(join(dir, 'docs', 'My%20Photo.png'), 'png');
+      // RFC 3986 §2.4: escaped octets decode exactly once, so `%2520`
+      // addresses the literal-`%20` filename above. The space-named
+      // sibling exists to catch a double decode, which would land here.
+      writeFileSync(join(dir, 'docs', 'My Photo.png'), 'png');
+
+      expect(
+        resolveReferencedAssetPath({
+          contentDir: dir,
+          fromDocName: 'docs/guide',
+          href: '<./My%2520Photo.png>',
+          literal: false,
+        }),
+      ).toBe(realpathSync(resolve(dir, 'docs', 'My%20Photo.png')));
+    }));
+
+  test('a wiki target names the literal filename, not its decoded neighbour', () =>
+    withFixture((dir) => {
+      mkdirSync(join(dir, 'docs'));
+      // Both files exist, so a wrong plane resolves to a real path rather than
+      // to null — a test that only asserted "not null" would pass either way.
+      writeFileSync(join(dir, 'docs', '100%20done.png'), 'png');
+      writeFileSync(join(dir, 'docs', '100 done.png'), 'png');
+
+      expect(
+        resolveReferencedAssetPath({
+          contentDir: dir,
+          fromDocName: 'docs/guide',
+          href: '100%20done.png',
+          literal: true,
+        }),
+      ).toBe(realpathSync(resolve(dir, 'docs', '100%20done.png')));
+      expect(
+        resolveReferencedAssetPath({
+          contentDir: dir,
+          fromDocName: 'docs/guide',
+          href: '100%20done.png',
+          literal: true,
+        }),
+      ).not.toBe(realpathSync(resolve(dir, 'docs', '100 done.png')));
+      // The markdown plane, given the identical bytes, reaches the other file.
+      expect(
+        resolveReferencedAssetPath({
+          contentDir: dir,
+          fromDocName: 'docs/guide',
+          href: './100%20done.png',
+          literal: false,
+        }),
+      ).toBe(realpathSync(resolve(dir, 'docs', '100 done.png')));
+    }));
+
+  test('the collector carries each reference plane from its authored syntax', () =>
+    withFixture((dir) => {
+      mkdirSync(join(dir, 'docs'));
+      writeFileSync(join(dir, 'docs', '100%20done.png'), 'png');
+      writeFileSync(join(dir, 'docs', '100 done.png'), 'png');
+      writeFileSync(
+        join(dir, 'docs', 'guide.md'),
+        // Same bytes, two syntaxes: the wiki embed must land on the literal
+        // name and the markdown link on the decoded one.
+        '![[100%20done.png]]\n\n![md](./100%20done.png)\n',
+      );
+
+      const assets = collectReferencedAssets({
+        contentDir: dir,
+        fileIndex: new Map<string, FileIndexEntry>([
+          [
+            'docs/guide',
+            { canonicalPath: join(dir, 'docs', 'guide.md') } as unknown as FileIndexEntry,
+          ],
+        ]),
+        readMarkdown: (path) =>
+          path.endsWith('guide.md') ? '![[100%20done.png]]\n\n![md](./100%20done.png)\n' : null,
+      });
+
+      expect(assets.map((a) => a.path).sort()).toEqual([
+        'docs/100 done.png',
+        'docs/100%20done.png',
+      ]);
+    }));
+
+  // The case above authors the two planes with different bytes (`./` prefix), so
+  // it never reaches the collector's dedup. Byte-identical hrefs do, and they
+  // still name two different files — keying dedup on the bytes alone would drop
+  // one of them.
+  test('byte-identical hrefs on both planes are both collected', () =>
+    withFixture((dir) => {
+      mkdirSync(join(dir, 'docs'));
+      writeFileSync(join(dir, 'docs', '100%20done.png'), 'png');
+      writeFileSync(join(dir, 'docs', '100 done.png'), 'png');
+      const md = '![[100%20done.png]]\n\n[md](100%20done.png)\n';
+      writeFileSync(join(dir, 'docs', 'guide.md'), md);
+
+      const assets = collectReferencedAssets({
+        contentDir: dir,
+        fileIndex: new Map<string, FileIndexEntry>([
+          [
+            'docs/guide',
+            { canonicalPath: join(dir, 'docs', 'guide.md') } as unknown as FileIndexEntry,
+          ],
+        ]),
+        readMarkdown: (path) => (path.endsWith('guide.md') ? md : null),
+      });
+
+      expect(assets.map((a) => a.path).sort()).toEqual([
+        'docs/100 done.png',
+        'docs/100%20done.png',
+      ]);
     }));
 
   test('collects referenced assets with referencing docs and ignores unreferenced files', () =>
@@ -415,6 +555,7 @@ describe('asset reference extraction', () => {
           contentDir: join(tmpdir(), 'ok-missing-content-dir'),
           fromDocName: 'docs/guide',
           href: './photo.png',
+          literal: false,
         }),
       ).toBeNull();
       expect(warnSpy).toHaveBeenCalled();

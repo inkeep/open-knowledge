@@ -37,9 +37,16 @@ export function classifyImageTargetExistence(
   assetPaths: ReadonlySet<string> | undefined,
   filePaths: ReadonlySet<string> | undefined,
 ): ImageTargetExistence {
-  const projectRelPath = resolveAssetProjectPath(src, sourceDocName);
+  // URI plane, for every producer of an `<img src>` — markdown images, the
+  // `WikiEmbed*` compats, and bare HTML alike. The src is what the browser
+  // fetches, and the asset serve path percent-decodes that request URL before
+  // touching disk, so an existence check that skipped decoding would answer a
+  // different question than the fetch it is explaining.
+  const projectRelPath = resolveAssetProjectPath(src, sourceDocName, { literal: false });
   if (projectRelPath === null) return 'unknown';
-  return isResolvedAssetHref(src, sourceDocName, assetPaths, filePaths) ? 'exists' : 'missing';
+  return isResolvedAssetHref(src, sourceDocName, assetPaths, filePaths, { literal: false })
+    ? 'exists'
+    : 'missing';
 }
 
 /**

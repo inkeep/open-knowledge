@@ -1,6 +1,12 @@
 import { resolveSkillBundleWikiTarget, resolveSkillSlashTarget } from '../constants/cc1.ts';
 import { DEFAULT_DOC_EXTENSION } from '../constants/doc-extensions.ts';
-import { type ResolvedInternalHref, resolveInternalHref } from './resolve-internal-href.ts';
+import {
+  decodeHrefPath,
+  decodeHrefPathSegment,
+  encodeHrefPath,
+  type ResolvedInternalHref,
+  resolveInternalHref,
+} from './resolve-internal-href.ts';
 
 export interface DocLinkTarget extends ResolvedInternalHref {
   kind: 'doc';
@@ -28,6 +34,15 @@ export interface AssetLinkTarget {
   kind: 'asset';
   url: string;
   ext: string;
+  /**
+   * Whether `url` is literal bytes (a wiki target names a file directly) or a
+   * URI whose percent escapes decode (a markdown destination, per RFC 3986
+   * §2.1). Both classifiers emit this same shape, so without the tag a
+   * consumer holding one cannot tell which plane produced it and has to
+   * re-derive the answer from context it may not have. Feed it straight to
+   * `resolveAssetProjectPath`'s `literal` option.
+   */
+  literal: boolean;
 }
 
 export type ClassifiedLinkTarget =
@@ -95,7 +110,11 @@ export function classifyMarkdownHref(
   // real ref doc. Narrow by design: non-skill sources / non-bundle targets return
   // null and fall through unchanged.
   const hashAt = trimmed.indexOf('#');
-  const bundlePath = hashAt < 0 ? trimmed : trimmed.slice(0, hashAt);
+  // Decode here, not inside the skill resolvers: those are shared with the
+  // `[[wiki]]` path, whose targets are literal doc names and must stay
+  // verbatim. An href is a URI on every branch, so it decodes on every branch —
+  // otherwise a percent-encoded skill ref keeps resolving to a phantom doc.
+  const bundlePath = decodeHrefPath(hashAt < 0 ? trimmed : trimmed.slice(0, hashAt));
   const bundleDoc = resolveSkillBundleWikiTarget(bundlePath, sourceDocName);
   if (bundleDoc) {
     return {
@@ -133,9 +152,14 @@ export function classifyMarkdownHref(
   // viewer or OS delegation. Without this branch, post-reload clicks on
   // `![[meeting.pdf]]` fall back to `null` (unresolved) and end up
   // rendering as a broken doc-link.
-  const ext = extractAssetExtension(trimmed);
+  // Extension off the DECODED path, not the raw href: an escaped extension dot
+  // (`./photo%2Ejpg`) only looks like an extension once the escape is resolved,
+  // and reading it raw classifies the asset as a doc link. Same ordering
+  // `resolveInternalHref`'s non-markdown guard uses, so the two agree on which
+  // hrefs are assets.
+  const ext = extractAssetExtension(bundlePath);
   if (ext && ext !== 'md' && ext !== 'mdx') {
-    return { kind: 'asset', url: trimmed, ext };
+    return { kind: 'asset', url: trimmed, ext, literal: false };
   }
 
   return null;
@@ -157,7 +181,10 @@ export function classifyWikiLinkTarget(
 
   const ext = extractAssetExtension(trimmed);
   if (ext && ext !== 'md' && ext !== 'mdx') {
-    return { kind: 'asset', url: trimmed, ext };
+    // A wiki target names a file literally: `[[100%20done.png]]` means a file
+    // whose name really contains those three characters, so the target must
+    // never be percent-decoded on its way to a filesystem path.
+    return { kind: 'asset', url: trimmed, ext, literal: true };
   }
 
   return {
@@ -205,7 +232,29 @@ export function classifyWikiLinkTarget(
  *   - Server-absolute `/..` pops into negative territory → returns
  *     `null`.
  */
-export function resolveAssetProjectPath(href: string, sourceDocName: string): string | null {
+export interface ResolveAssetProjectPathOptions {
+  /**
+   * Treat the href as literal bytes rather than a URI: skip percent-decoding.
+   * Wiki targets name a file directly, so `[[100%20done.png]]` means a file
+   * whose name really contains `%20`; a markdown destination is a URI whose
+   * escapes decode (RFC 3986 §2.1).
+   *
+   * REQUIRED, with no default, on purpose. Both classifiers emit the same
+   * `{kind: 'asset', url}` shape, so the plane cannot be recovered here — the
+   * caller that knows it must say so, and a caller that serves both planes has
+   * to thread it from ITS caller rather than silently pick one. A default
+   * would let a new call site inherit the wrong plane and report a working
+   * link as dead. A caller holding a `ClassifiedLinkTarget` passes the
+   * target's own `literal` rather than re-deriving it.
+   */
+  literal: boolean;
+}
+
+export function resolveAssetProjectPath(
+  href: string,
+  sourceDocName: string,
+  options: ResolveAssetProjectPathOptions,
+): string | null {
   const trimmed = href.trim();
   if (!trimmed) return null;
 
@@ -241,7 +290,7 @@ export function resolveAssetProjectPath(href: string, sourceDocName: string): st
       if (dirParts.length === 0) return null;
       dirParts.pop();
     } else if (seg !== '.' && seg !== '') {
-      dirParts.push(seg);
+      dirParts.push(options.literal ? seg : decodeHrefPathSegment(seg));
     }
   }
 
@@ -286,7 +335,10 @@ export function buildRelativeMarkdownHref(
     relativePath = `./${relativePath}`;
   }
 
-  return `${relativePath}${ext}${anchor ? `#${anchor}` : ''}`;
+  // The path is escaped but the anchor is not: `resolveInternalHref` decodes the
+  // path portion and returns the fragment verbatim, so encoding the fragment here
+  // would break that symmetry.
+  return `${encodeHrefPath(relativePath)}${ext}${anchor ? `#${anchor}` : ''}`;
 }
 
 /**
@@ -300,5 +352,5 @@ export function buildAbsoluteMarkdownHref(
   ext: string = DEFAULT_DOC_EXTENSION,
   anchor: string | null = null,
 ): string {
-  return `/${docName}${ext}${anchor ? `#${anchor}` : ''}`;
+  return `/${encodeHrefPath(docName)}${ext}${anchor ? `#${anchor}` : ''}`;
 }

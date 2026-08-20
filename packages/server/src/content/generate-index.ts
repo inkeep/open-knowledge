@@ -23,6 +23,8 @@
  * without a server, a disk, or a Y.Doc.
  */
 
+import { encodeHrefPath } from '@inkeep/open-knowledge-core';
+
 /** One document as the index renders it. `path` is content-root-relative. */
 export interface IndexEntry {
   path: string;
@@ -151,14 +153,6 @@ function escapeLinkLabel(value: string): string {
   return toSingleLine(value).replace(/[\\[\]]/g, '\\$&');
 }
 
-/** RFC 3986 segment encoding keeps `/` as hierarchy and neutralizes `()`/spaces. */
-function encodePathSegment(segment: string): string {
-  return encodeURIComponent(segment).replace(
-    /[!'()*]/g,
-    (char) => `%${char.codePointAt(0)?.toString(16).toUpperCase()}`,
-  );
-}
-
 /**
  * Strip the index's own directory prefix so a content-root-relative path renders
  * relative to where the index lives. Entries are always at or below `directory`
@@ -184,7 +178,7 @@ function relativeTo(directory: string, path: string): string {
  */
 function toHref(relativePath: string): string {
   const normalized = relativePath.replaceAll('\\', '/');
-  return `./${normalized.split('/').map(encodePathSegment).join('/')}`;
+  return `./${encodeHrefPath(normalized)}`;
 }
 
 function renderLink(link: RenderableLink, directory: string): string {

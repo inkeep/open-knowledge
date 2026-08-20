@@ -136,11 +136,22 @@ function assessmentTargetDeps(
   // Extension-less links are inventory-disambiguated. Retain both candidate
   // edges even while one wins so a file delete/recreate or document
   // create/delete can move the verdict back in either direction.
+  //
+  // Markdown plane throughout: only `markdown-inline` / `markdown-reference` /
+  // `html-img` occurrences are projected onto this index at all
+  // (`isProjectableToLocalTargetSurfaces` drops the wiki forms), so every href
+  // reaching here is a URI whose escapes decode — the same reading
+  // `classifyMarkdownHref` just applied to it two lines up. Re-check that
+  // projection filter before admitting a wiki form here; a literal target
+  // resolved with this decode would key the candidate under a path nothing
+  // else looks up.
   if (assessment.occurrence.role === 'link') {
     const classified = classifyMarkdownHref(assessment.occurrence.href, sourceDocName);
     if (classified?.kind === 'doc') {
       docs.push(classified.docName);
-      const filePath = resolveAssetProjectPath(assessment.occurrence.href, sourceDocName);
+      const filePath = resolveAssetProjectPath(assessment.occurrence.href, sourceDocName, {
+        literal: false,
+      });
       if (filePath === classified.docName) files.push(filePath);
     }
   }

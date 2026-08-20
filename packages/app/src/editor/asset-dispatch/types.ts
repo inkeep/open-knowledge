@@ -31,7 +31,10 @@ export interface AssetClickContext {
   readonly url: string;
   /**
    * Project-root-relative, canonical path. Computed by the caller using
-   * `resolveAssetProjectPath(url, sourceDocName)` from `link-targets.ts`.
+   * `resolveAssetProjectPath(url, sourceDocName, { literal })` from
+   * `link-targets.ts` — the caller supplies the plane `url` was authored on,
+   * since a wiki target is a literal filename and a markdown destination is a
+   * URI whose escapes decode.
    * This is what the Electron main-process handler expects — `openAssetSafely`
    * resolves it against `ProjectContext.projectPath + realpath +
    * isPathWithinProject` for containment.

@@ -1,3 +1,4 @@
+import { resolveInternalHref } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { buildIndexMarkdown, type IndexEntry } from './generate-index.ts';
 
@@ -318,5 +319,33 @@ describe('buildIndexMarkdown', () => {
     });
 
     expect(reversed).toBe(forward);
+  });
+
+  test('emitted hrefs round-trip through the canonical resolver to the entry they came from', () => {
+    // The generator's percent-encoding is the only CommonMark-valid way to link
+    // these names (a literal space does not parse as an unbracketed link
+    // destination), so the encoded href must resolve back to the original
+    // docName through the same resolver every link surface consumes
+    // (precedent #56). A generated index whose own validator flags its links
+    // as dead is the failure this pins against.
+    const names = [
+      'Agent Memory',
+      'team plan (draft) #1',
+      'R&D notes',
+      "don't panic!",
+      'café résumé',
+    ];
+    const out = buildIndexMarkdown(
+      names.map((name) => entry({ path: `blogs/drafts/${name}.md`, title: name, type: 'note' })),
+      { isRoot: false, directory: 'blogs/drafts' },
+    );
+
+    const hrefs = [...out.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1] ?? '');
+    expect(hrefs).toHaveLength(names.length);
+
+    const resolved = hrefs.map(
+      (href) => resolveInternalHref(href, 'blogs/drafts/index')?.docName ?? `<unresolved ${href}>`,
+    );
+    expect(resolved.toSorted()).toEqual(names.map((name) => `blogs/drafts/${name}`).toSorted());
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { applyWikiLinkEmbedImageDomAttributes } from './wiki-link-embed.ts';
+import {
+  applyWikiLinkEmbedImageDomAttributes,
+  resolveWikiEmbedActivation,
+} from './wiki-link-embed.ts';
 
 interface RecordingElement {
   attrs: Map<string, string>;
@@ -49,5 +52,39 @@ describe('applyWikiLinkEmbedImageDomAttributes', () => {
     });
 
     expect(dom.attrs.get('data-alias')).toBe('');
+  });
+});
+
+describe('resolveWikiEmbedActivation', () => {
+  test('keeps percent sequences in a bare wiki target literal', () => {
+    // `![[100%20done.png]]` names a file whose name really contains `%20`, and
+    // `projectRelPath` is what `shell.openPath` / `showItemInFolder` receive.
+    expect(resolveWikiEmbedActivation({ target: '100%20done.png', resolvedSrc: null })).toEqual({
+      url: '100%20done.png',
+      projectRelPath: '100%20done.png',
+      ext: 'png',
+      title: '100%20done.png',
+    });
+  });
+
+  test('a wiki target never resolves to its decoded neighbour', () => {
+    const activation = resolveWikiEmbedActivation({ target: '100%20done.png', resolvedSrc: null });
+    expect(activation?.projectRelPath).not.toBe('100 done.png');
+    expect(activation?.title).not.toBe('100 done.png');
+  });
+
+  test('keeps percent sequences in a drop-time resolvedSrc literal', () => {
+    // `resolvedSrc` is a filesystem path the drop pipeline produced, not a URI.
+    const activation = resolveWikiEmbedActivation({
+      target: '100%20done.png',
+      resolvedSrc: '/media/100%20done.png',
+    });
+    expect(activation?.projectRelPath).toBe('media/100%20done.png');
+    expect(activation?.projectRelPath).not.toBe('media/100 done.png');
+  });
+
+  test('declines a target with no extension and an empty target', () => {
+    expect(resolveWikiEmbedActivation({ target: 'no-extension', resolvedSrc: null })).toBeNull();
+    expect(resolveWikiEmbedActivation({ target: '', resolvedSrc: null })).toBeNull();
   });
 });

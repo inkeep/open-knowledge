@@ -63,6 +63,51 @@ export interface InternalLinkOptions {
   docName: string;
 }
 
+/**
+ * Whether a link mark's activation is an asset dispatch, and on which plane.
+ *
+ * `refused` is asset-shaped but path-escaping: the caller surfaces the
+ * suspicious href in the PropPanel instead of dispatching to the OS
+ * (`openAssetSafely` in the main process is the defense-in-depth backstop).
+ */
+export type LinkMarkAssetActivation =
+  | { kind: 'not-asset' }
+  | { kind: 'refused' }
+  | { kind: 'asset'; url: string; ext: string; literal: boolean; projectRelPath: string };
+
+/**
+ * Two paths enter the asset branch:
+ *   1. `classifyMarkdownHref` returned `kind: 'asset'`.
+ *   2. `sourceForm === 'wikiembed'` + the href shape looks asset-like —
+ *      post-roundtrip `![[file.ext]]` emits as content-root-relative paths
+ *      (`/file.ext`); `sourceForm` disambiguates those embedded references.
+ *
+ * `sourceForm` also decides the PLANE, and it outranks the classified target: a
+ * `wikiembed` mark carries the resolved file path (or the bare wiki target) as
+ * literal bytes, but `/file.png` is asset-shaped to the markdown classifier
+ * too, so the classifier tags it as a URI it never was. Decoding a literal
+ * target dispatches at a neighbouring file that may not exist.
+ */
+export function resolveLinkMarkAssetActivation(params: {
+  href: string;
+  sourceForm: unknown;
+  docName: string;
+  classified: ReturnType<typeof classifyMarkdownHref>;
+}): LinkMarkAssetActivation {
+  const { href, sourceForm, docName, classified } = params;
+  const hrefExt = extractAssetExtension(href);
+  const isWikiEmbed = sourceForm === 'wikiembed';
+  if (classified?.kind !== 'asset' && !(isWikiEmbed && hrefExt !== null)) {
+    return { kind: 'not-asset' };
+  }
+  const url = classified?.kind === 'asset' ? classified.url : href;
+  const ext = classified?.kind === 'asset' ? classified.ext : (hrefExt ?? '');
+  const literal = isWikiEmbed;
+  const projectRelPath = resolveAssetProjectPath(url, docName, { literal });
+  if (!projectRelPath) return { kind: 'refused' };
+  return { kind: 'asset', url, ext, literal, projectRelPath };
+}
+
 export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
   addOptions() {
     return {
@@ -137,28 +182,16 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
       // Cmd/Ctrl+click — asset hrefs never open the PropPanel. Bare click
       // navigates to the in-app asset preview (sidebar parity); Cmd+click
       // forces OS delegation as an escape hatch (see `activateAssetLink`).
-      //
-      // Two paths enter this branch:
-      //   1. `classifyMarkdownHref` returned `kind: 'asset'`.
-      //   2. `sourceForm === 'wikiembed'` + the href shape looks
-      //      asset-like — post-roundtrip `![[file.ext]]` emits as
-      //      content-root-relative paths (`/file.ext`); `sourceForm`
-      //      disambiguates those embedded asset references.
-      const sourceForm = info?.attrs?.sourceForm;
       const target = classifyMarkdownHref(href, docName);
-      const hrefExt = extractAssetExtension(href);
-      const isAssetShape =
-        target?.kind === 'asset' || (sourceForm === 'wikiembed' && hrefExt !== null);
-      if (isAssetShape) {
-        const url = target?.kind === 'asset' ? target.url : href;
-        const ext = target?.kind === 'asset' ? target.ext : (hrefExt ?? '');
-        const projectRelPath = resolveAssetProjectPath(url, docName);
-        if (!projectRelPath) {
-          // Path-escape — surface the suspicious href in the PropPanel
-          // instead of dispatching to OS. `openAssetSafely` in the main
-          // process is the defense-in-depth backstop.
-          return false;
-        }
+      const activation = resolveLinkMarkAssetActivation({
+        href,
+        sourceForm: info?.attrs?.sourceForm,
+        docName,
+        classified: target,
+      });
+      if (activation.kind === 'refused') return false;
+      if (activation.kind === 'asset') {
+        const { url, ext, literal, projectRelPath } = activation;
         const cache = getPageListCache();
         if (cache === null) return false;
         // BOTH partitions participate in the existence
@@ -168,7 +201,7 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
         // unchanged so we don't refuse to navigate before the first
         // /api/documents lands.
         if (cache.assetPaths !== undefined || cache.filePaths !== undefined) {
-          if (!isResolvedAssetHref(url, docName, cache.assetPaths, cache.filePaths)) {
+          if (!isResolvedAssetHref(url, docName, cache.assetPaths, cache.filePaths, { literal })) {
             return false;
           }
         }
@@ -184,10 +217,12 @@ export const InternalLink = LinkFidelity.extend<InternalLinkOptions>({
 
       if (!target) return false;
 
-      // `target.kind === 'asset'` is excluded by the isAssetShape
-      // early-return above, so TypeScript narrows `target` to doc /
-      // anchor / external here.
       switch (target.kind) {
+        case 'asset':
+          // Unreachable: an asset-classified target always produces an
+          // `asset` or `refused` activation above, both of which return. The
+          // case stays so the DU exhaustiveness guard below keeps compiling.
+          return false;
         case 'doc': {
           // Missing docs fall through so the popover surfaces "Create page" —
           // the only useful action when there's no destination to navigate

@@ -48,6 +48,27 @@ describe('classifyContextMenuTarget', () => {
     });
   });
 
+  test('wiki-embed target keeps its percent sequences literal', () => {
+    // `data-target` is the authored wiki target, so `%20` is three characters
+    // of the filename. Decoding it points Reveal / Open at `100 done.png`.
+    const a = makeEl('a', { 'data-wiki-embed': '', 'data-target': '100%20done.png' });
+    expect(classifyContextMenuTarget(a, 'notes/readme')).toEqual({
+      kind: 'asset',
+      relPath: 'notes/100%20done.png',
+      title: '100%20done.png',
+    });
+  });
+
+  test('wiki-embed target does not resolve to its decoded neighbour', () => {
+    const a = makeEl('a', { 'data-wiki-embed': '', 'data-target': '100%20done.png' });
+    const target = classifyContextMenuTarget(a, 'notes/readme');
+    expect(target?.relPath).not.toBe('notes/100 done.png');
+    // The markdown-href branch of the same walker, given the same bytes, DOES
+    // decode — the two branches are meant to disagree.
+    const anchor = makeEl('a', { href: './100%20done.png' });
+    expect(classifyContextMenuTarget(anchor, 'notes/readme')?.relPath).toBe('notes/100 done.png');
+  });
+
   test('wiki-link chip → wiki-link', () => {
     const span = makeEl('span', { 'data-wiki-link': '', 'data-target': 'guides/install' });
     expect(classifyContextMenuTarget(span, 'docs/readme')).toEqual({

@@ -57,7 +57,10 @@ export function classifyContextMenuTarget(
     if (cur.hasAttribute('data-wiki-embed')) {
       const target = cur.getAttribute('data-target') ?? '';
       if (!target) return null;
-      const relPath = resolveAssetProjectPath(target, sourceDocName);
+      // `data-target` is the authored wiki target — a literal filename, not a
+      // URI. Decoding it sends Reveal/Open at a neighbouring file that may not
+      // exist (`100%20done.png` is not `100 done.png`).
+      const relPath = resolveAssetProjectPath(target, sourceDocName, { literal: true });
       if (!relPath) return null;
       const isImg = cur.tagName === 'IMG';
       return {
@@ -87,7 +90,9 @@ export function classifyContextMenuTarget(
       const href = cur.getAttribute('href') ?? '';
       const classified = classifyMarkdownHref(href, sourceDocName);
       if (classified?.kind === 'asset') {
-        const relPath = resolveAssetProjectPath(classified.url, sourceDocName);
+        const relPath = resolveAssetProjectPath(classified.url, sourceDocName, {
+          literal: classified.literal,
+        });
         if (!relPath) return null;
         return {
           kind: 'asset',
@@ -106,7 +111,9 @@ export function classifyContextMenuTarget(
       if (src) {
         const classified = classifyMarkdownHref(src, sourceDocName);
         if (classified?.kind === 'asset') {
-          const relPath = resolveAssetProjectPath(classified.url, sourceDocName);
+          const relPath = resolveAssetProjectPath(classified.url, sourceDocName, {
+            literal: classified.literal,
+          });
           if (!relPath) return null;
           return {
             kind: 'image',

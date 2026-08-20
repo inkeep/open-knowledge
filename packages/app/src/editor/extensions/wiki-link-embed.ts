@@ -121,6 +121,44 @@ function isImageExtension(target: string): boolean {
   return ext !== null && IMAGE_EXTENSIONS.has(ext);
 }
 
+/**
+ * Resolve a `wikiLinkEmbed` node's attrs into the asset-dispatch payload, or
+ * `null` when the node names nothing openable.
+ *
+ * Drop-time `wikiLinkEmbed` always carries a server-absolute `resolvedSrc`, so
+ * the resolver ignores the source-doc argument. For the `resolvedSrc === null`
+ * edge case (bare target) the empty `sourceDocName` resolves against the
+ * project root — acceptable because drop-time bare targets are root-level
+ * co-located assets. Post-roundtrip asset clicks go through `internal-link.ts`
+ * (link-mark with `sourceForm: 'wikiembed'`), which has the full doc context.
+ *
+ * Wiki plane by construction: both `resolvedSrc` (a drop-time filesystem path)
+ * and the bare `target` are literal filenames, so percent-decoding them would
+ * send `shell.openPath` at a neighbouring file that may not exist.
+ */
+export function resolveWikiEmbedActivation(attrs: {
+  target: string;
+  resolvedSrc: string | null;
+}): { url: string; projectRelPath: string; ext: string; title: string } | null {
+  const target = attrs.target;
+  if (!target) return null;
+  const url = attrs.resolvedSrc && attrs.resolvedSrc.length > 0 ? attrs.resolvedSrc : target;
+  const ext = extractAssetExtension(target);
+  if (ext === null) return null;
+  // A null resolve is the refusal signal — the path escapes the project root, or
+  // the input is malformed. Falling back to the raw target would proceed past a
+  // refusal the sibling link-mark resolver honours, and two activation paths with
+  // opposite failure policies is how an eager-refusal layer goes inert.
+  const projectRelPath = resolveAssetProjectPath(url, '', { literal: true });
+  if (projectRelPath === null) return null;
+  return {
+    url,
+    projectRelPath,
+    ext,
+    title: projectRelPath.split('/').pop() ?? url,
+  };
+}
+
 export const WikiLinkEmbed = BaseWikiLinkEmbed.extend({
   addNodeView() {
     return ({ editor, node, getPos }) => {
@@ -211,32 +249,12 @@ export const WikiLinkEmbed = BaseWikiLinkEmbed.extend({
         controls: {},
         handlePrimary: ({ newTab }) => {
           const live = currentNode.attrs;
-          const liveTarget = typeof live.target === 'string' ? live.target : '';
-          if (!liveTarget) return false;
-          const liveResolvedSrc =
-            typeof live.resolvedSrc === 'string' && live.resolvedSrc.length > 0
-              ? live.resolvedSrc
-              : null;
-          const liveUrl = liveResolvedSrc ?? liveTarget;
-          const ext = extractAssetExtension(liveTarget);
-          if (ext === null) return false;
-          // Drop-time wikiLinkEmbed always carries a server-absolute
-          // `resolvedSrc`, so the resolver
-          // ignores the source-doc argument. For the `resolvedSrc === null`
-          // edge case (bare target), we pass empty `sourceDocName` to
-          // resolve against project root — acceptable because drop-time
-          // bare targets are root-level co-located assets. Post-roundtrip
-          // asset clicks go through `internal-link.ts` (link-mark with
-          // `sourceForm: 'wikiembed'`) which has the full doc context.
-          const projectRelPath = resolveAssetProjectPath(liveUrl, '');
-          const rel = projectRelPath ?? liveTarget;
-          activateAssetLink({
-            url: liveUrl,
-            projectRelPath: rel,
-            ext,
-            title: rel.split('/').pop() ?? liveUrl,
-            newTab,
+          const activation = resolveWikiEmbedActivation({
+            target: typeof live.target === 'string' ? live.target : '',
+            resolvedSrc: typeof live.resolvedSrc === 'string' ? live.resolvedSrc : null,
           });
+          if (activation === null) return false;
+          activateAssetLink({ ...activation, newTab });
           return true;
         },
       });

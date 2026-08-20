@@ -156,6 +156,27 @@ describe('LocalTargetIndex reverse-dependent freshness', () => {
     });
   });
 
+  test('wiki forms are not projected here, which is what fixes this index on the URI plane', () => {
+    // The extension-less disambiguation candidate resolves every href as a URI
+    // (percent escapes decode). That is only sound because no wiki form reaches
+    // this index — a wiki target is a literal filename, and decoding one would
+    // key its dependent under a path nothing else looks up. Admitting wiki
+    // forms without revisiting the plane turns this red rather than silently
+    // registering candidates under decoded names.
+    const index = createIndex();
+    index.setSource('src', 'See [[100%20done]] and ![[100%20done.png]].\n');
+    expect(index.getAssessments('src')).toEqual([]);
+    expect(index.getFileDependents('100 done')).toEqual([]);
+    expect(index.getDocumentDependents('100 done')).toEqual([]);
+
+    // Control: identical bytes authored as a markdown link ARE a URI, so the
+    // decoded candidate is exactly right there.
+    const markdownIndex = createIndex();
+    markdownIndex.setSource('src', 'See [progress](100%20done).\n');
+    expect(markdownIndex.getFileDependents('100 done')).toEqual(['src']);
+    expect(markdownIndex.getFileDependents('100%20done')).toEqual([]);
+  });
+
   test('a content-only file-update event does not flip existence or bump the generation', () => {
     const index = createIndex();
     index.setSource('src', 'Download [pdf](assets/report.pdf).\n');

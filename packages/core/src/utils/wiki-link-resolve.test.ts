@@ -315,6 +315,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'acp.daemon',
       ext: 'daemon',
+      literal: true,
     });
   });
 
@@ -347,6 +348,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'Wide.png',
       ext: 'png',
+      literal: true,
     });
   });
 
@@ -355,6 +357,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'data/example.csv',
       ext: 'csv',
+      literal: true,
     });
   });
 
@@ -363,6 +366,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'missing.pdf',
       ext: 'pdf',
+      literal: true,
     });
   });
 
@@ -382,6 +386,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'meeting.pdf',
       ext: 'pdf',
+      literal: true,
     });
   });
 
@@ -400,6 +405,7 @@ describe('composed wiki-link resolution', () => {
       kind: 'asset',
       url: 'data.csv',
       ext: 'csv',
+      literal: true,
     });
   });
 

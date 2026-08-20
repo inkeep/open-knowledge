@@ -1963,11 +1963,18 @@ export {
   type ExternalLinkTarget,
   extractAssetExtension,
   isExternalHref,
+  type ResolveAssetProjectPathOptions,
   resolveAssetProjectPath,
 } from './utils/link-targets.ts';
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
 export { randomUUID } from './utils/random-uuid.ts';
-export { type ResolvedInternalHref, resolveInternalHref } from './utils/resolve-internal-href.ts';
+export {
+  decodeHrefPath,
+  encodeHrefPath,
+  encodeHrefPathSegment,
+  type ResolvedInternalHref,
+  resolveInternalHref,
+} from './utils/resolve-internal-href.ts';
 export { sanitizeFolderName } from './utils/sanitize-folder-name.ts';
 export { sleep } from './utils/sleep.ts';
 export {
