@@ -422,6 +422,74 @@ describe('EditorWorkspace', () => {
     );
   });
 
+  test('adopts the resolved pane layout on a header canvas that mounts after it', () => {
+    // The real header canvas is portaled into the app header, so it can mount a
+    // commit after the panel group reports its layout. A restored session
+    // reports once, on mount: if that report is lost the tab groups keep the
+    // persisted percentages while the panes render the layout the pane minimum
+    // forced, and nothing ever reconciles them.
+    const view = render(
+      <EditorWorkspace
+        renderHeader={() => <header data-testid="main-editor-header" />}
+        renderPane={({ pane }) => <div data-testid={`pane-body-${pane.id}`} />}
+      />,
+    );
+    expect(view.container.querySelector('[data-editor-pane-tab-group]')).toBeNull();
+
+    // What the panel group resolves once MIN_EDITOR_PANE_WIDTH raises pane-b:
+    // not the 60/40 the panes carry as their persisted size.
+    act(() => layoutChange?.({ 'editor-pane:pane-a': 45, 'editor-pane:pane-b': 55 }));
+
+    view.rerender(
+      <EditorWorkspace
+        renderHeader={(tabs) => <header data-testid="main-editor-header">{tabs}</header>}
+        renderPane={({ pane }) => <div data-testid={`pane-body-${pane.id}`} />}
+      />,
+    );
+
+    const headerGroups = [
+      ...view.container.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]'),
+    ];
+    expect(headerGroups).toHaveLength(2);
+    expect(headerGroups[0]?.style.flexGrow).toBe('45');
+    expect(headerGroups[1]?.style.flexGrow).toBe('55');
+  });
+
+  test('does not replay a resolved layout onto a different pane set', () => {
+    // The replay is keyed on the pane set it was resolved for. A layout the
+    // group resolved for {pane-a, pane-b} describes nothing about a workspace
+    // that now holds {pane-a, pane-c}, and replaying it would hold the
+    // surviving strip at a share the panes no longer render — the mirror image
+    // of the misalignment this fix removes. The mocked group does not report
+    // again on re-render, which is what isolates the guard here.
+    const workspace = () => (
+      <EditorWorkspace
+        renderHeader={(tabs) => <header data-testid="main-editor-header">{tabs}</header>}
+        renderPane={({ pane }) => <div data-testid={`pane-body-${pane.id}`} />}
+      />
+    );
+    const view = render(workspace());
+    act(() => layoutChange?.({ 'editor-pane:pane-a': 45, 'editor-pane:pane-b': 55 }));
+    expect(
+      view.container.querySelector<HTMLElement>('[data-editor-pane-tab-group]')?.style.flexGrow,
+    ).toBe('45');
+
+    // pane-b is gone and pane-a carries a new size, so the stale 45 and the
+    // value this pane set actually renders are distinguishable.
+    panes = [
+      { ...multiPaneFixture[0], size: 70 },
+      { ...multiPaneFixture[1], id: 'pane-c', size: 30 },
+    ];
+    view.rerender(workspace());
+
+    const groups = [
+      ...view.container.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]'),
+    ];
+    expect(groups.map((group) => group.dataset.editorPaneTabGroup)).toEqual(['pane-a', 'pane-c']);
+    expect(groups[0]?.style.flexGrow).toBe('70');
+    expect(groups[1]?.style.flexGrow).toBe('30');
+  });
+
   test('omits the focused tab-strip accent in single-pane mode', () => {
     panes = [
       {

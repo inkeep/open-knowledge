@@ -36,36 +36,155 @@ async function paneWidths(page: Page): Promise<number[]> {
   );
 }
 
-async function expectHeaderGroupsAlignedWithPanes(page: Page): Promise<void> {
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const groups = Array.from(
-          document.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]'),
-        );
-        const groupTops = groups.map((group) => group.getBoundingClientRect().top);
-        const deltas = groups.flatMap((group) => {
-          const paneId = group
-            .querySelector<HTMLElement>('[data-editor-pane-tabs]')
-            ?.getAttribute('data-editor-pane-tabs');
-          const pane = paneId
-            ? document.querySelector<HTMLElement>(`section[data-editor-pane-id="${paneId}"]`)
-            : null;
-          if (!pane) return [Number.POSITIVE_INFINITY];
+/**
+ * Full geometry behind the alignment check. The assertion below reports a
+ * single worst-case number, and a bare "91.71875" on a CI machine nobody can
+ * attach to says nothing about which pane drifted, in which direction, or
+ * whether the two canvases were even the same width. Sampling the whole picture
+ * and printing it on failure is what makes a headless-only misalignment
+ * diagnosable from the log alone.
+ */
+interface HeaderAlignmentSample {
+  worst: number;
+  worstLabel: string;
+  scrollLeft: number;
+  headerCanvas: { left: number; width: number; transform: string; minWidth: string };
+  workspaceCanvas: { left: number; width: number; minWidth: string };
+  headerHost: { left: number; width: number; cssVar: string };
+  groups: Array<{
+    paneId: string;
+    groupLeft: number;
+    groupRight: number;
+    groupWidth: number;
+    groupFlexGrow: string;
+    paneLeft: number;
+    paneRight: number;
+    paneWidth: number;
+    dLeft: number;
+    dRight: number;
+    dWidth: number;
+  }>;
+}
 
-          const groupRect = group.getBoundingClientRect();
-          const paneRect = pane.getBoundingClientRect();
-          return [
-            Math.abs(groupRect.left - paneRect.left),
-            Math.abs(groupRect.right - paneRect.right),
-            Math.abs(groupRect.width - paneRect.width),
-          ];
-        });
-        const topDelta = groupTops.length > 0 ? Math.max(...groupTops) - Math.min(...groupTops) : 0;
-        return Math.max(topDelta, ...deltas);
-      }),
-    )
-    .toBeLessThanOrEqual(1);
+async function sampleHeaderAlignment(page: Page): Promise<HeaderAlignmentSample> {
+  return page.evaluate(() => {
+    const round = (value: number) => Math.round(value * 1000) / 1000;
+    const groups = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]'),
+    );
+    const workspace = document.querySelector<HTMLElement>('[data-editor-workspace]');
+    const headerCanvasEl = document.querySelector<HTMLElement>('[data-editor-header-tab-canvas]');
+    const workspaceCanvasEl = document.querySelector<HTMLElement>('[data-editor-workspace-canvas]');
+    const headerHostEl = document.querySelector<HTMLElement>('[data-editor-header-tabs]');
+
+    const rows = groups.map((group) => {
+      const paneId =
+        group
+          .querySelector<HTMLElement>('[data-editor-pane-tabs]')
+          ?.getAttribute('data-editor-pane-tabs') ?? '';
+      const pane = paneId
+        ? document.querySelector<HTMLElement>(`section[data-editor-pane-id="${paneId}"]`)
+        : null;
+      const groupRect = group.getBoundingClientRect();
+      const paneRect = pane?.getBoundingClientRect();
+      return {
+        paneId,
+        groupLeft: round(groupRect.left),
+        groupRight: round(groupRect.right),
+        groupWidth: round(groupRect.width),
+        groupFlexGrow: getComputedStyle(group).flexGrow,
+        paneLeft: round(paneRect?.left ?? Number.NaN),
+        paneRight: round(paneRect?.right ?? Number.NaN),
+        paneWidth: round(paneRect?.width ?? Number.NaN),
+        dLeft: paneRect
+          ? round(Math.abs(groupRect.left - paneRect.left))
+          : Number.POSITIVE_INFINITY,
+        dRight: paneRect
+          ? round(Math.abs(groupRect.right - paneRect.right))
+          : Number.POSITIVE_INFINITY,
+        dWidth: paneRect
+          ? round(Math.abs(groupRect.width - paneRect.width))
+          : Number.POSITIVE_INFINITY,
+      };
+    });
+
+    const tops = groups.map((group) => group.getBoundingClientRect().top);
+    const topDelta = tops.length > 0 ? Math.max(...tops) - Math.min(...tops) : 0;
+
+    // No groups at all is a regression, not alignment: every delta below is
+    // missing, so `worst` would otherwise bottom out at 0 and report perfect
+    // alignment on a header that stopped rendering or an attribute rename.
+    let worst = groups.length === 0 ? Number.POSITIVE_INFINITY : round(topDelta);
+    let worstLabel = groups.length === 0 ? 'noGroups' : 'topDelta';
+    for (const row of rows) {
+      for (const key of ['dLeft', 'dRight', 'dWidth'] as const) {
+        if (row[key] > worst) {
+          worst = row[key];
+          worstLabel = `${key}@${row.paneId}`;
+        }
+      }
+    }
+
+    const measure = (element: HTMLElement | null) => ({
+      left: round(element?.getBoundingClientRect().left ?? Number.NaN),
+      width: round(element?.getBoundingClientRect().width ?? Number.NaN),
+    });
+
+    return {
+      worst,
+      worstLabel,
+      scrollLeft: workspace?.scrollLeft ?? Number.NaN,
+      headerCanvas: {
+        ...measure(headerCanvasEl),
+        transform: headerCanvasEl ? getComputedStyle(headerCanvasEl).transform : 'none',
+        minWidth: headerCanvasEl ? getComputedStyle(headerCanvasEl).minWidth : '',
+      },
+      workspaceCanvas: {
+        ...measure(workspaceCanvasEl),
+        minWidth: workspaceCanvasEl ? getComputedStyle(workspaceCanvasEl).minWidth : '',
+      },
+      headerHost: {
+        ...measure(headerHostEl),
+        cssVar: headerHostEl
+          ? getComputedStyle(headerHostEl).getPropertyValue('--editor-header-tabs-width')
+          : '',
+      },
+      groups: rows,
+    };
+  });
+}
+
+/**
+ * `JSON.stringify` renders every non-finite number as `null`, which is how the
+ * sample's own sentinels get erased: a group with no pane at all and a
+ * measurement that was simply unavailable print identically, and a header
+ * canvas that never mounted logs as one carrying defaults — the exact failure
+ * this assertion exists to catch, disguised as a healthy one.
+ */
+function jsonSafe(_key: string, value: unknown): unknown {
+  return typeof value === 'number' && !Number.isFinite(value) ? String(value) : value;
+}
+
+async function expectHeaderGroupsAlignedWithPanes(page: Page): Promise<void> {
+  // Collected rather than reassigned: a sample that never completed has to be
+  // distinguishable from one that did, and a `const` array also keeps the reads
+  // below out of the narrowing hole a `let` assigned inside a callback falls in.
+  const seen: HeaderAlignmentSample[] = [];
+  try {
+    await expect
+      .poll(async () => {
+        const next = await sampleHeaderAlignment(page);
+        seen.push(next);
+        return next.worst;
+      })
+      .toBeLessThanOrEqual(1);
+  } catch (error) {
+    const last = seen.at(-1);
+    console.error(
+      `[header-alignment] ${last ? JSON.stringify(last, jsonSafe) : '<no sample completed>'}`,
+    );
+    throw error;
+  }
 }
 
 function tabInPane(page: Page, paneId: string, tabId: string): Locator {
@@ -610,6 +729,87 @@ test.describe('vertical editor splits', () => {
     await expect(remainingTabs).toHaveCount(1);
     await expect(remainingTabs).toHaveAttribute('data-active-tab', 'true');
     await expect(remainingTabs.getByTestId('editor-new-tab-placeholder-button')).toBeVisible();
+  });
+
+  // A restored session can carry pane percentages that the pane minimum
+  // overrides: the panel group raises every undersized pane to
+  // MIN_EDITOR_PANE_WIDTH and reclaims the shortfall from the panes in index
+  // order, so the geometry it renders is not the geometry the percentages
+  // describe. The header tab groups mirror the same workspace and have no
+  // minimum of their own, so they only stay aligned if they are driven by the
+  // layout the panel group resolved rather than by the persisted percentages.
+  test('restored pane sizes below the pane minimum keep header groups aligned', async ({
+    page,
+    api,
+  }) => {
+    const suffix = testId();
+    const docs = ['alpha', 'bravo', 'charlie', 'delta'].map((label) => ({
+      name: `minclamp-${label}-${suffix}`,
+      markdown: `# ${label}-${suffix}\n\n${label} body`,
+    }));
+    await api.seedDocs(docs);
+    await page.setViewportSize(WIDE_VIEWPORT);
+    await page.goto(`/#/${docs[0].name}`);
+    await waitForActiveProviderSynced(page);
+    await expect(editorForDoc(page, docs[0].name)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Share doc' })).toBeVisible();
+
+    for (const doc of docs.slice(1)) {
+      await page
+        .locator('[data-editor-pane-focused] [data-editor-pane-tabs]')
+        .getByTestId('editor-new-tab-button')
+        .click();
+      await openDocFromSidebar(page, doc.name);
+      const ids = await paneIds(page);
+      const focusedPaneId = ids.at(-1);
+      expect(focusedPaneId).toBeTruthy();
+      if (!focusedPaneId) return;
+      await dragTabToPaneEdge(
+        page,
+        tabInPane(page, focusedPaneId, doc.name),
+        focusedPaneId,
+        'right',
+      );
+      await expect(paneTabs(page)).toHaveCount(ids.length + 1);
+    }
+    await expect(paneTabs(page)).toHaveCount(4);
+
+    // Percentages a real drag can persist, and which the pane minimum then
+    // overrides on the next restore: the last two panes resolve well under
+    // MIN_EDITOR_PANE_WIDTH at this viewport.
+    const skewed = [55, 20, 12.5, 12.5];
+    await page.evaluate((sizes) => {
+      const key = `ok-editor-tabs-v1:${window.location.origin}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) throw new Error('no persisted editor session');
+      const session = JSON.parse(raw) as { panes?: Array<{ size?: number }> };
+      if (session.panes?.length !== sizes.length) {
+        throw new Error(`expected ${sizes.length} persisted panes`);
+      }
+      session.panes.forEach((pane, index) => {
+        pane.size = sizes[index];
+      });
+      localStorage.setItem(key, JSON.stringify(session));
+    }, skewed);
+
+    await page.reload();
+    await waitForActiveProviderSynced(page);
+    await expect(paneTabs(page)).toHaveCount(4);
+    await expectHeaderGroupsAlignedWithPanes(page);
+
+    // The clamp really did engage. A lower bound alone cannot show that: it
+    // holds just as well when every pane was already above the minimum and
+    // there was never anything to diverge from. Pinning the smallest pane AT
+    // the minimum is what proves the resolved layout left the persisted one,
+    // so the day a wider viewport or a retuned fixture stops reproducing the
+    // clamp this fails instead of passing vacuously.
+    const widths = await paneWidths(page);
+    const smallest = Math.min(...widths);
+    expect(smallest).toBeGreaterThanOrEqual(MIN_EDITOR_PANE_WIDTH - 1);
+    expect(smallest).toBeLessThanOrEqual(MIN_EDITOR_PANE_WIDTH + 1);
+    // ...and the persisted share it was raised from really was smaller.
+    const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+    expect(smallest).toBeGreaterThan((Math.min(...skewed) / 100) * totalWidth + 1);
   });
 });
 

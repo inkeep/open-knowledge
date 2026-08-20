@@ -105,6 +105,10 @@ function PaneStripDropTarget({
       data-editor-pane-tab-group={paneId}
       data-editor-pane-focused={isFocused || undefined}
       className="relative h-full min-w-0 shrink basis-0"
+      // First-paint value only. `applyHeaderLayout` overwrites this with the
+      // layout the panel group resolved, which is not what `size` describes
+      // once a pane minimum is in play. Keep the prop: without it a group has
+      // no width on any commit before the group has reported.
       style={{ flexGrow: size }}
     >
       {children}
@@ -391,7 +395,15 @@ export function EditorWorkspace({
   );
   const [parkingHost, setParkingHost] = useState<HTMLElement | null>(null);
   const focusFrameRef = useRef<number | null>(null);
-  const headerCanvasRef = useRef<HTMLDivElement>(null);
+  const [headerCanvas, setHeaderCanvas] = useState<HTMLDivElement | null>(null);
+  /**
+   * The last layout the pane group resolved, tagged with the pane set it was
+   * resolved for — see `syncHeaderLayout`.
+   */
+  const resolvedPaneLayoutRef = useRef<{
+    paneKey: string;
+    layout: Record<string, number>;
+  } | null>(null);
   const paneKey = panes.map((pane) => pane.id).join('\u0000');
   const savedLayout = Object.fromEntries(
     panes.map((pane) => [`editor-pane:${pane.id}`, pane.size]),
@@ -415,6 +427,43 @@ export function EditorWorkspace({
   const canvasStyle = {
     '--editor-workspace-min-width': `max(100%, ${panes.length * MIN_EDITOR_PANE_WIDTH}px)`,
   } as CSSProperties;
+
+  function applyHeaderLayout(layout: Record<string, number>) {
+    const groups = headerCanvas?.querySelectorAll<HTMLElement>('[data-editor-pane-tab-group]');
+    groups?.forEach((group) => {
+      const paneId = group.dataset.editorPaneTabGroup;
+      const size = paneId ? layout[`editor-pane:${paneId}`] : undefined;
+      if (size !== undefined) group.style.setProperty('flex-grow', String(size));
+    });
+  }
+
+  // The panel group resolves a layout the persisted percentages do not
+  // describe: any pane whose share falls under MIN_EDITOR_PANE_WIDTH is raised
+  // to it, and the shortfall is reclaimed from the panes in index order, the
+  // first one with room to give absorbing what it can before the next, until
+  // the shortfall is covered. The tab groups carry no minimum of their own, so
+  // rendering them from `pane.size` puts them on different geometry than the
+  // panes they label.
+  //
+  // Re-applying after every commit is what makes them agree. The header canvas
+  // is portaled into the app header and can mount a commit AFTER the panel
+  // group reports its layout, and for a restored session that first report is
+  // the only one — a write aimed at a canvas that does not exist yet is lost
+  // with nothing to trigger a retry, which is how a reloaded four-pane split
+  // came back with its tab strips ~92px off its panes. Holding the canvas as
+  // state rather than a ref is what guarantees the retry: whatever commit
+  // mounts it re-renders this component, so the replay cannot depend on the
+  // caller's `renderHeader` happening to change identity at the same time.
+  //
+  // Splitting or closing a pane re-renders the groups from `pane.size` too, but
+  // the resolved layout for the previous pane set says nothing about the new
+  // one, so it is only replayed while the pane set is unchanged. `key={paneKey}`
+  // on the group means a changed pane set remounts it and it reports again,
+  // which refreshes this before the effect runs.
+  useLayoutEffect(() => {
+    const resolved = resolvedPaneLayoutRef.current;
+    if (resolved?.paneKey === paneKey) applyHeaderLayout(resolved.layout);
+  });
 
   useEffect(() => {
     return () => {
@@ -581,21 +630,15 @@ export function EditorWorkspace({
   }
 
   function syncHeaderScroll(event: UIEvent<HTMLDivElement>) {
-    headerCanvasRef.current?.style.setProperty(
+    headerCanvas?.style.setProperty(
       'transform',
       `translateX(-${event.currentTarget.scrollLeft}px)`,
     );
   }
 
   function syncHeaderLayout(layout: Record<string, number>) {
-    const groups = headerCanvasRef.current?.querySelectorAll<HTMLElement>(
-      '[data-editor-pane-tab-group]',
-    );
-    groups?.forEach((group) => {
-      const paneId = group.dataset.editorPaneTabGroup;
-      const size = paneId ? layout[`editor-pane:${paneId}`] : undefined;
-      if (size !== undefined) group.style.setProperty('flex-grow', String(size));
-    });
+    resolvedPaneLayoutRef.current = { paneKey, layout };
+    applyHeaderLayout(layout);
   }
 
   function paneLabel(paneId: string): string {
@@ -668,7 +711,7 @@ export function EditorWorkspace({
   const headerTabs = (
     <div data-editor-header-tab-groups="" className="h-full min-w-0 flex-1 overflow-hidden">
       <div
-        ref={headerCanvasRef}
+        ref={setHeaderCanvas}
         data-editor-header-tab-canvas=""
         className="flex h-full min-w-(--editor-workspace-min-width)"
         style={canvasStyle}
