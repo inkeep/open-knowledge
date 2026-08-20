@@ -792,6 +792,10 @@ msgstr "{omitted, plural, zero {# تغيير خصائص إضافي غير معر
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, zero {أشجار عمل} one {شجرة عمل} two {شجرتا عمل} few {أشجار عمل} many {شجرة عمل} other {شجرة عمل}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
+msgstr "{outsideWorkspaceCount, plural, zero {تم تخطي # ملف خارج مساحة العمل.} one {تم تخطي ملف خارج مساحة العمل.} two {تم تخطي ملفين خارج مساحة العمل.} few {تم تخطي # ملفات خارج مساحة العمل.} many {تم تخطي # ملفًا خارج مساحة العمل.} other {تم تخطي # ملف خارج مساحة العمل.}}"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
 msgstr "{owner}/{name} موجود بالفعل"
@@ -881,6 +885,10 @@ msgstr "{sizeText} · تم إخفاء الأسرار · {fileCount, plural, zero
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, zero {مهارات} one {مهارة} two {مهارتان} few {مهارات} many {مهارةً} other {مهارة}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
+msgstr "{skipTotal, plural, zero {تم تخطي # ملف تعذر إرفاقه.} one {تم تخطي ملف تعذر إرفاقه.} two {تم تخطي ملفين تعذر إرفاقهما.} few {تم تخطي # ملفات تعذر إرفاقها.} many {تم تخطي # ملفًا تعذر إرفاقه.} other {تم تخطي # ملف تعذر إرفاقه.}}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -913,6 +921,10 @@ msgstr "{tokens, plural, zero {رموز} one {رمز} two {رمزان} few {رم
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, zero {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} one {يجري عرض أول عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} two {يجري عرض أول عنصرين في مجلد واحد — بقية ذلك المجلد مخفية.} few {يجري عرض أول {formattedCount} عناصر في مجلد واحد — بقية ذلك المجلد مخفية.} many {يجري عرض أول {formattedCount} عنصرًا في مجلد واحد — بقية ذلك المجلد مخفية.} other {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.}}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
+msgstr "{unknownPathCount, plural, zero {تم تخطي # ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} one {تم تخطي ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} two {تم تخطي ملفين — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} few {تم تخطي # ملفات — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} many {تم تخطي # ملفًا — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} other {تم تخطي # ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

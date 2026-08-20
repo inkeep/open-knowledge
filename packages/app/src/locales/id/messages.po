@@ -792,6 +792,10 @@ msgstr "{omitted, plural, other {# perubahan properti lainnya tidak ditampilkan}
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, other {worktree}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
+msgstr "{outsideWorkspaceCount, plural, other {# file di luar ruang kerja dilewati.}}"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
 msgstr "{owner}/{name} sudah ada"
@@ -881,6 +885,10 @@ msgstr "{sizeText} · rahasia disunting · {fileCount, plural, other {# berkas}}
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {keterampilan}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
+msgstr "{skipTotal, plural, other {# file dilewati karena tidak dapat dilampirkan.}}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -913,6 +921,10 @@ msgstr "{tokens, plural, other {token}}"
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {Menampilkan {formattedCount} item pertama dalam satu folder — sisa folder itu disembunyikan.}}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
+msgstr "{unknownPathCount, plural, other {# file dilewati — browser ini tidak dapat melampirkan file berdasarkan path.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

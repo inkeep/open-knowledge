@@ -792,6 +792,10 @@ msgstr "{omitted, plural, one {# और प्रॉपर्टी बदला
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {वर्कट्री} other {वर्कट्री}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
+msgstr "{outsideWorkspaceCount, plural, one {वर्कस्पेस के बाहर की # फ़ाइल छोड़ी गई।} other {वर्कस्पेस के बाहर की # फ़ाइलें छोड़ी गईं।}}"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
 msgstr "{owner}/{name} पहले से मौजूद है"
@@ -881,6 +885,10 @@ msgstr "{sizeText} · गोपनीय जानकारी हटाई ग�
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {स्किल} other {स्किल}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
+msgstr "{skipTotal, plural, one {# फ़ाइल छोड़ी गई जो अटैच नहीं की जा सकी।} other {# फ़ाइलें छोड़ी गईं जो अटैच नहीं की जा सकीं।}}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -913,6 +921,10 @@ msgstr "{tokens, plural, one {टोकन} other {टोकन}}"
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {एक फ़ोल्डर का पहला आइटम दिखाया जा रहा है — उस फ़ोल्डर का बाकी हिस्सा छिपा है।} other {एक फ़ोल्डर के पहले {formattedCount} आइटम दिखाए जा रहे हैं — उस फ़ोल्डर का बाकी हिस्सा छिपा है।}}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
+msgstr "{unknownPathCount, plural, one {# फ़ाइल छोड़ी गई — यह ब्राउज़र पथ द्वारा फ़ाइलें अटैच नहीं कर सकता।} other {# फ़ाइलें छोड़ी गईं — यह ब्राउज़र पथ द्वारा फ़ाइलें अटैच नहीं कर सकता।}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

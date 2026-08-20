@@ -1925,6 +1925,9 @@
     "PZn2LP": ["Simpan sumbernya"],
     "PZt2Ds": ["Kloning berakhir secara tidak terduga."],
     "PZtgO0": ["Membuka worktree"],
+    "P_KNrS": [
+      ["outsideWorkspaceCount", "plural", { "other": ["#", " file di luar ruang kerja dilewati."] }]
+    ],
     "P_bX4O": ["Cara menyiapkan"],
     "PdA9NZ": [["ahead"], " di depan"],
     "PezM4_": [
@@ -2130,6 +2133,18 @@
     "SXCSQd": ["Jalur disalin"],
     "SXEdCq": ["Pindahkan ke ", ["0"], "?"],
     "SYfHmN": ["Lepas sematan tab"],
+    "Sbb90e": [
+      [
+        "unknownPathCount",
+        "plural",
+        {
+          "other": [
+            "#",
+            " file dilewati — browser ini tidak dapat melampirkan file berdasarkan path."
+          ]
+        }
+      ]
+    ],
     "Sc1bKE": [
       "Data kolaborasi lokal untuk \"",
       ["docName"],
@@ -3720,6 +3735,9 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Menulis entri ke"],
     "m6YGpY": ["Isi panel aktif untuk tab yang dipilih muncul di sini."],
+    "m8gL0G": [
+      ["skipTotal", "plural", { "other": ["#", " file dilewati karena tidak dapat dilampirkan."] }]
+    ],
     "mAzs2H": ["Nonaktifkan ", ["file"]],
     "mBK8zm": [
       "/",

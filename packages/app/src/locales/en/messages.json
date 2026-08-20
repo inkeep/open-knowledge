@@ -1915,6 +1915,16 @@
     "PZn2LP": ["Keep source"],
     "PZt2Ds": ["Clone ended unexpectedly."],
     "PZtgO0": ["Opening worktree"],
+    "P_KNrS": [
+      [
+        "outsideWorkspaceCount",
+        "plural",
+        {
+          "one": ["Skipped ", "#", " file outside the workspace."],
+          "other": ["Skipped ", "#", " files outside the workspace."]
+        }
+      ]
+    ],
     "P_bX4O": ["How to set up"],
     "PdA9NZ": [["ahead"], " ahead"],
     "PezM4_": ["OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."],
@@ -2122,6 +2132,16 @@
     "SXCSQd": ["Copied path"],
     "SXEdCq": ["Move to ", ["0"], "?"],
     "SYfHmN": ["Unpin tab"],
+    "Sbb90e": [
+      [
+        "unknownPathCount",
+        "plural",
+        {
+          "one": ["Skipped ", "#", " file — this browser can't attach files by path."],
+          "other": ["Skipped ", "#", " files — this browser can't attach files by path."]
+        }
+      ]
+    ],
     "Sc1bKE": [
       "Local collaboration data for \"",
       ["docName"],
@@ -3681,6 +3701,16 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Writes an entry to"],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
+    "m8gL0G": [
+      [
+        "skipTotal",
+        "plural",
+        {
+          "one": ["Skipped ", "#", " file that couldn't be attached."],
+          "other": ["Skipped ", "#", " files that couldn't be attached."]
+        }
+      ]
+    ],
     "mAzs2H": ["Disable ", ["file"]],
     "mBK8zm": ["/", ["0"], " isn't a command this agent offers — it will be sent as plain text"],
     "mBltnd": ["Path suggestions"],

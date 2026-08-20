@@ -2240,6 +2240,17 @@
     "PZn2LP": ["Conserver la source"],
     "PZt2Ds": ["Le clonage s'est terminé de façon inattendue."],
     "PZtgO0": ["Ouverture du worktree"],
+    "P_KNrS": [
+      [
+        "outsideWorkspaceCount",
+        "plural",
+        {
+          "one": ["#", " fichier hors de l'espace de travail ignoré."],
+          "many": ["#", " fichiers hors de l'espace de travail ignorés."],
+          "other": ["#", " fichiers hors de l'espace de travail ignorés."]
+        }
+      ]
+    ],
     "P_bX4O": ["Comment configurer"],
     "PdA9NZ": [["ahead"], " en avance"],
     "PezM4_": [
@@ -2473,6 +2484,26 @@
     "SXCSQd": ["Chemin copié"],
     "SXEdCq": ["Déplacer vers ", ["0"], " ?"],
     "SYfHmN": ["Détacher l'onglet"],
+    "Sbb90e": [
+      [
+        "unknownPathCount",
+        "plural",
+        {
+          "one": [
+            "#",
+            " fichier ignoré — ce navigateur ne peut pas joindre les fichiers par chemin."
+          ],
+          "many": [
+            "#",
+            " fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin."
+          ],
+          "other": [
+            "#",
+            " fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin."
+          ]
+        }
+      ]
+    ],
     "Sc1bKE": [
       "Les données de collaboration locales de « ",
       ["docName"],
@@ -4308,6 +4339,17 @@
     "m2T1Xj": ["Étiquette #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Écrit une entrée dans"],
     "m6YGpY": ["Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."],
+    "m8gL0G": [
+      [
+        "skipTotal",
+        "plural",
+        {
+          "one": ["#", " fichier ignoré, impossible à joindre."],
+          "many": ["#", " fichiers ignorés, impossibles à joindre."],
+          "other": ["#", " fichiers ignorés, impossibles à joindre."]
+        }
+      ]
+    ],
     "mAzs2H": ["Désactiver ", ["file"]],
     "mBK8zm": [
       "/",

@@ -792,6 +792,10 @@ msgstr "{omitted, plural, other {另有 # 处属性改动未显示}}"
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, other {worktree}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
+msgstr "{outsideWorkspaceCount, plural, other {已跳过 # 个工作区外的文件。}}"
+
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
 msgstr "{owner}/{name} 已存在"
@@ -881,6 +885,10 @@ msgstr "{sizeText} · 已隐去机密信息 · {fileCount, plural, other {# 个�
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {技能}}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
+msgstr "{skipTotal, plural, other {已跳过 # 个无法附加的文件。}}"
+
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -913,6 +921,10 @@ msgstr "{tokens, plural, other {token}}"
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {只显示某个文件夹里的前 {formattedCount} 个项目——该文件夹的其余内容已隐藏。}}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
+msgstr "{unknownPathCount, plural, other {已跳过 # 个文件 — 此浏览器无法按路径附加文件。}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

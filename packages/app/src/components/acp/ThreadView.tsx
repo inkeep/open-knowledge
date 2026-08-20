@@ -333,6 +333,13 @@ export function ThreadView({
   // soon as any dragenter carrying files hits it, drops on drop / dragleave
   // from the root.
   const [dragActive, setDragActive] = useState(false);
+  const [dropNotice, setDropNotice] = useState<{ text: string; id: number } | null>(null);
+  const dropNoticeIdRef = useRef(0);
+  useEffect(() => {
+    if (dropNotice === null) return;
+    const timer = setTimeout(() => setDropNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [dropNotice]);
   // Pessimistic match to the server's gate: an agent that advertised no
   // capabilities at all (`promptCapabilities` undefined) doesn't accept
   // images. Being optimistic here (accept unless `false`) drops the image
@@ -353,13 +360,17 @@ export function ThreadView({
   };
   /**
    * Validate + encode a batch of dropped, pasted, or picked files, then
-   * extend `pendingAttachments`. Failures raise a per-file toast; a single
-   * event with multiple bad files gets one toast per file rather than one
-   * aggregated — the errors carry different reasons and fusing loses that
-   * specificity. Images become `image` parts (fast-path via ImageContent);
-   * non-image files become `file` parts pointing at a workspace-relative
-   * path — the server resolves those to `EmbeddedResource` (text under the
-   * embed cap) or `ResourceLink` (binaries + oversized).
+   * extend `pendingAttachments`. Actionable failures (`too-large`,
+   * `unsupported-type`, a broken read) raise a per-file toast so the user
+   * can retry each specific case. Non-actionable skips (`outside-workspace`,
+   * `unknown-path`) collapse into a single muted inline notice above the
+   * composer with the aggregate count — the user cannot make the file
+   * attach from outside the workspace, so N red toasts saying the same
+   * thing is noise. Images become `image` parts (fast-path via
+   * ImageContent); non-image files become `file` parts pointing at a
+   * workspace-relative path — the server resolves those to
+   * `EmbeddedResource` (text under the embed cap) or `ResourceLink`
+   * (binaries + oversized).
    */
   const ingestFiles = async (files: readonly File[]): Promise<void> => {
     // Electron exposes `webUtils.getPathForFile` — the only reliable way to
@@ -399,6 +410,8 @@ export function ThreadView({
       mimeType: file.type || '',
     }));
     setPendingUploads((previous) => [...previous, ...placeholders]);
+    let outsideWorkspaceCount = 0;
+    let unknownPathCount = 0;
     for (let i = 0; i < accepted.length; i += 1) {
       const file = accepted[i];
       const placeholderId = placeholders[i]?.id;
@@ -416,6 +429,10 @@ export function ThreadView({
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (outcome.ok) {
           setPendingAttachments((previous) => [...previous, outcome.part]);
+        } else if (outcome.error.kind === 'outside-workspace') {
+          outsideWorkspaceCount += 1;
+        } else if (outcome.error.kind === 'unknown-path') {
+          unknownPathCount += 1;
         } else {
           toast.error(describeImageError(outcome.error));
         }
@@ -427,6 +444,28 @@ export function ThreadView({
         console.error('[ingestFiles] failed to read attachment', fileName, err);
         toast.error(t`Couldn't read ${fileName}.`);
       }
+    }
+    const skipTotal = outsideWorkspaceCount + unknownPathCount;
+    if (skipTotal > 0) {
+      let noticeText: string;
+      if (unknownPathCount === 0) {
+        noticeText = t`${plural(outsideWorkspaceCount, {
+          one: 'Skipped # file outside the workspace.',
+          other: 'Skipped # files outside the workspace.',
+        })}`;
+      } else if (outsideWorkspaceCount === 0) {
+        noticeText = t`${plural(unknownPathCount, {
+          one: "Skipped # file — this browser can't attach files by path.",
+          other: "Skipped # files — this browser can't attach files by path.",
+        })}`;
+      } else {
+        noticeText = t`${plural(skipTotal, {
+          one: "Skipped # file that couldn't be attached.",
+          other: "Skipped # files that couldn't be attached.",
+        })}`;
+      }
+      dropNoticeIdRef.current += 1;
+      setDropNotice({ text: noticeText, id: dropNoticeIdRef.current });
     }
   };
   const removePendingAttachment = (index: number): void => {
@@ -1181,6 +1220,13 @@ export function ThreadView({
               </MessageScroller>
             </MessageScrollerProvider>
           )}
+          <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
+            {dropNotice !== null ? (
+              <div className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs">
+                {dropNotice.text}
+              </div>
+            ) : null}
+          </div>
           {info.steer !== undefined && !archived ? (
             <div
               className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"

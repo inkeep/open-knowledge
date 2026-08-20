@@ -2179,6 +2179,17 @@
     "PZn2LP": ["Manter a fonte"],
     "PZt2Ds": ["A clonagem terminou de forma inesperada."],
     "PZtgO0": ["Abrindo o worktree"],
+    "P_KNrS": [
+      [
+        "outsideWorkspaceCount",
+        "plural",
+        {
+          "one": ["#", " arquivo fora do espaço de trabalho ignorado."],
+          "many": ["#", " arquivos fora do espaço de trabalho ignorados."],
+          "other": ["#", " arquivos fora do espaço de trabalho ignorados."]
+        }
+      ]
+    ],
     "P_bX4O": ["Como configurar"],
     "PdA9NZ": [["ahead"], " à frente"],
     "PezM4_": [
@@ -2410,6 +2421,23 @@
     "SXCSQd": ["Caminho copiado"],
     "SXEdCq": ["Mover para ", ["0"], "?"],
     "SYfHmN": ["Desafixar a aba"],
+    "Sbb90e": [
+      [
+        "unknownPathCount",
+        "plural",
+        {
+          "one": ["#", " arquivo ignorado — este navegador não pode anexar arquivos por caminho."],
+          "many": [
+            "#",
+            " arquivos ignorados — este navegador não pode anexar arquivos por caminho."
+          ],
+          "other": [
+            "#",
+            " arquivos ignorados — este navegador não pode anexar arquivos por caminho."
+          ]
+        }
+      ]
+    ],
     "Sc1bKE": [
       "Não foi possível limpar a tempo os dados locais de colaboração de \"",
       ["docName"],
@@ -4185,6 +4213,17 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Grava uma entrada em"],
     "m6YGpY": ["O conteúdo do painel ativo da aba selecionada aparece aqui."],
+    "m8gL0G": [
+      [
+        "skipTotal",
+        "plural",
+        {
+          "one": ["#", " arquivo ignorado, não foi possível anexar."],
+          "many": ["#", " arquivos ignorados, não foi possível anexar."],
+          "other": ["#", " arquivos ignorados, não foi possível anexar."]
+        }
+      ]
+    ],
     "mAzs2H": ["Desativar ", ["file"]],
     "mBK8zm": [
       "/",

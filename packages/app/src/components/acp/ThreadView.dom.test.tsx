@@ -2623,3 +2623,58 @@ describe('the transcript renders both sides as markdown', () => {
     );
   });
 });
+
+describe('ThreadView drop-notice for unattachable files', () => {
+  const makeFile = (name: string, type: string) => new File(['content'], name, { type });
+
+  const fireDrop = (files: readonly File[]) => {
+    const dt = {
+      types: ['Files'],
+      files,
+      items: files.map((file) => ({ kind: 'file', getAsFile: () => file })),
+      dropEffect: 'copy',
+    };
+    const root = document.querySelector('[data-agent-thread-root]');
+    if (root === null) throw new Error('agent-thread-root not mounted');
+    act(() => {
+      fireEvent.dragEnter(root, { dataTransfer: dt });
+      fireEvent.dragOver(root, { dataTransfer: dt });
+      fireEvent.drop(root, { dataTransfer: dt });
+    });
+  };
+
+  test('a web-host drop of non-image files renders the unknown-path notice', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    fireDrop([makeFile('foo.ts', 'text/typescript'), makeFile('bar.md', 'text/markdown')]);
+    const notice = await screen.findByTestId('agent-thread-drop-notice');
+    expect(notice.textContent).toContain("this browser can't attach files by path");
+    expect(notice.textContent).toContain('2 files');
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.getAttribute('aria-live')).toBe('polite');
+  });
+
+  test('the notice clears after the auto-dismiss window', async () => {
+    vi.useFakeTimers();
+    model = makeModel({ items: [], turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    fireDrop([makeFile('foo.ts', 'text/typescript')]);
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Skipped'),
+    );
+    act(() => {
+      vi.advanceTimersByTime(4100);
+    });
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+  });
+
+  test('an identical repeat drop still re-fires the notice — state carries a fresh identity so React re-runs the auto-clear effect', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    fireDrop([makeFile('foo.ts', 'text/typescript')]);
+    const notice = await screen.findByTestId('agent-thread-drop-notice');
+    await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
+    fireDrop([makeFile('foo.ts', 'text/typescript')]);
+    await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
+  });
+});
