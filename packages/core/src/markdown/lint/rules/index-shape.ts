@@ -1,4 +1,3 @@
-
 import type { List, ListItem } from 'mdast';
 import { EXIT, visit } from 'unist-util-visit';
 import { defineScopedOkfRule } from '../okf-runner.ts';
