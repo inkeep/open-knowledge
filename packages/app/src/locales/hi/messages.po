@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr "{0} {destination} के ऊपर है।"
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} अभी इंस्टॉल नहीं है — इसका डाउनलोड पेज खोला जा रहा है।"
 
@@ -2018,7 +2021,6 @@ msgstr "जाने से पहले, क्या आप बताना �
 msgid "Below"
 msgstr "नीचे"
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr "बीटा"
@@ -6614,14 +6616,6 @@ msgstr "एक सूचकांक दस्तावेज़ में: प�
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "ऐप में"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
-msgstr "ऐप में (बीटा)"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."

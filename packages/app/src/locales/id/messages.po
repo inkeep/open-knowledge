@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr "{0} berada di atas {destination}."
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} belum terpasang — membuka halaman unduhannya."
 
@@ -2018,7 +2021,6 @@ msgstr "Sebelum pergi, boleh cerita kenapa?"
 msgid "Below"
 msgstr "Di bawah"
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr "Beta"
@@ -6614,14 +6616,6 @@ msgstr "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masi
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "Di aplikasi"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
-msgstr "Di aplikasi (beta)"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."

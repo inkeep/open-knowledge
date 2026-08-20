@@ -54,7 +54,7 @@ From your newly created project, select **Knowledge base** from the landing page
 
 ### Open the knowledge base in your AI agent
 
-With no documents open, you will see a screen with an input box and a **Create with Claude** button. Type what you want to learn about in this input box and click **Create with Claude** — use the chevron beside the button to pick a different agent (Codex, Cursor, or a CLI). This hands your project to the agent with your prompt as the starter. Your agent harness may take a few seconds to load the project.
+With no documents open, you will see a screen with an input box and a button labeled **Ask** followed by an agent's name. When an in-app agent is available, that is the default, so the conversation stays inside OpenKnowledge; on a machine where none is set up yet the button falls back to a Terminal CLI, and then to an external app. Type what you want to learn about in the input box and click the button; it hands your project to the agent with your prompt as the starter. Use the chevron beside the button to pick a different agent instead — another in-app agent, a Terminal CLI (macOS and Linux desktop apps), or an external app such as Claude, Codex, or Cursor — and the pick is remembered next time. Your agent may take a few seconds to load the project.
 
 Not sure what to write? Paste this into the input box (or use a topic of your choice):
 
@@ -74,7 +74,7 @@ Not sure what to write? Paste this into the input box (or use a topic of your ch
 
 ### Watch your agent work
 
-If you are working with Cursor, Codex, or Claude Desktop, your agent will open the OpenKnowledge editor in an embedded window.
+An in-app agent works in OpenKnowledge's Agents panel, which opens beside the editor. If you handed the project to an external app instead — Cursor, Codex, or Claude Desktop — that agent opens the OpenKnowledge editor in an embedded window.
 
 You will see your agent's icon in the top right of the editor window. Click on the icon to see the agent's [activity](/docs/features/agent-activity) across files in the knowledge base.
 
@@ -150,7 +150,7 @@ ok start
 
 ### Open the knowledge base in your AI agent
 
-`ok init` already registered OpenKnowledge with the AI editors it could configure, so your agent can use the OpenKnowledge tools right away. Open your project in your agent — or, from the editor, right-click the project in the sidebar, choose **Open with AI ▸**, and pick one. (With a document open, the bottom **Ask AI** field hands a prompt to your agent too.) If a tool's MCP entry didn't appear, see [registration outcomes](/docs/reference/cli#set-up-a-project).
+The quickest route is inside the editor: the empty state's **Ask** button (or, with a document open, the bottom **Ask AI** field) hands your prompt to an in-app agent when one is available, so you can chat without leaving OpenKnowledge. To use an external editor instead, `ok init` already registered OpenKnowledge with the AI editors it could configure, so your agent can use the OpenKnowledge tools right away — open your project there, or right-click the project in the sidebar, choose **Open with AI ▸**, and pick one. If a tool's MCP entry didn't appear, see [registration outcomes](/docs/reference/cli#set-up-a-project).
 
 In the agent's chat window, add the following to get started or use a topic of your choice:
 

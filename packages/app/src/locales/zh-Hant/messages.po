@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr "{0} 位於 {destination} 上方。"
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} 尚未安裝——正在開啟它的下載頁面。"
 
@@ -2022,7 +2025,6 @@ msgstr "在你離開之前，方便說說原因嗎？"
 msgid "Below"
 msgstr "下方"
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr "Beta"
@@ -6618,14 +6620,6 @@ msgstr "在索引文件中：條目位於節標題下，每個條目都帶有連
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "在應用程式內"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
-msgstr "在應用程式內（beta）"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."

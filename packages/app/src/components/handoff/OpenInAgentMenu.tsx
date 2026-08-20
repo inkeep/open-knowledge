@@ -39,7 +39,6 @@ import {
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -174,7 +173,6 @@ function OpenWithAiPanel({
               data-testid="open-in-agent-thread-label"
             >
               <Trans>In app</Trans>
-              <AgentBetaBadge />
             </legend>
             {enabledRegisteredAgents.map((agent) => {
               const agentName = agent.name;

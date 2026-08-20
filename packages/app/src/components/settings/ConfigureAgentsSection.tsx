@@ -22,7 +22,6 @@ import { useLingui } from '@lingui/react/macro';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Search, WifiOff } from 'lucide-react';
 import { type ReactNode, useEffect, useEffectEvent, useState } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
@@ -290,16 +289,7 @@ export function ConfigureAgentsSection(): ReactNode {
 
   // In app — server-hosted agents from the registry catalog.
   const inAppGroup = showInApp ? (
-    <AgentGroup
-      key="in-app"
-      label={
-        <span className="inline-flex items-center gap-1.5">
-          {t`In app`}
-          <AgentBetaBadge />
-        </span>
-      }
-      labelId="settings-configure-agents-in-app"
-    >
+    <AgentGroup key="in-app" label={t`In app`} labelId="settings-configure-agents-in-app">
       {catalog.isLoading ? (
         <div className="flex items-center justify-center gap-2 px-3 py-6 text-muted-foreground text-sm">
           <Spinner className="size-4" aria-hidden="true" />

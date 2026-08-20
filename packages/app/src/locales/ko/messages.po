@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr "{0}이 {destination} 위에 있습니다."
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} 미설치 상태입니다. 다운로드 페이지를 엽니다."
 
@@ -2022,7 +2025,6 @@ msgstr "떠나기 전에 이유를 알려주시겠어요?"
 msgid "Below"
 msgstr "아래"
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr "베타"
@@ -6618,14 +6620,6 @@ msgstr "인덱스 문서에서는 항목이 섹션 제목 아래에 있고 각 �
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "앱 내"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
-msgstr "앱 내 (베타)"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."

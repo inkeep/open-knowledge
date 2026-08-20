@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr ""
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr ""
 
@@ -2018,7 +2021,6 @@ msgstr ""
 msgid "Below"
 msgstr ""
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr ""
@@ -6613,14 +6615,6 @@ msgstr ""
 #: src/components/settings/ConfigureAgentsSection.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
-msgstr ""
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx

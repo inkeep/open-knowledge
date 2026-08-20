@@ -1,6 +1,7 @@
 /**
  * Feature-maturity "Beta" tag for a plugin — about the feature, not the build
- * (mirrors the ACP AgentBetaBadge). Render it on every surface a beta plugin owns.
+ * (unlike `BetaBadge`, which marks the beta auto-update channel). Render it on
+ * every surface a beta plugin owns.
  *
  * Sizing is the `Badge` default on purpose. This badge used to hard-code a
  * smaller `h-4 px-1 text-[10px]`, which is invisible while a header carries only

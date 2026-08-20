@@ -227,6 +227,20 @@ describe('OpenInAgentEmptySpaceSubmenu runtime behavior', () => {
     expect(threadLaunchOpts).toEqual([{ agent: { source: 'registry', id: 'claude-acp' } }]);
   });
 
+  test('the In app group is named "In app" and carries no maturity badge', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderSubmenu();
+    await openEmptySpaceSubmenu();
+
+    const group = document.querySelector<HTMLElement>(
+      '[data-slot="context-menu-group"][aria-label="In app"]',
+    );
+    expect(group).toBeTruthy();
+    expect(group?.textContent).toContain('In app');
+    expect(group?.textContent).not.toContain('Beta');
+    expect(document.querySelector('[aria-label="In app (beta)"]')).toBeNull();
+  });
+
   test('the Settings row opens Configure agents', async () => {
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     await renderSubmenu();

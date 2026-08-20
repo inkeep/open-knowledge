@@ -168,12 +168,11 @@ async function expandInApp(): Promise<void> {
   fireEvent.click(await screen.findByTestId('configure-agents-in-app-show-more'));
 }
 
-/** Group headings in DOM order — what the group-ordering rule acts on. */
+/** Group headings in DOM order — what the group-ordering rule acts on. The
+ *  text is compared verbatim, so a maturity badge rendered back into a heading
+ *  (the In app group used to carry one) reads as a heading-name change here. */
 function groupOrder(): string[] {
-  return screen
-    .getAllByRole('heading', { level: 4 })
-    .map((h) => h.textContent?.trim() ?? '')
-    .map((label) => (label.startsWith('In app') ? 'In app' : label));
+  return screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent?.trim() ?? '');
 }
 
 describe('ConfigureAgentsSection', () => {
@@ -183,6 +182,13 @@ describe('ConfigureAgentsSection', () => {
     expect(screen.getByText('In app')).toBeTruthy();
     expect(screen.getByText('External apps')).toBeTruthy();
     expect(screen.queryByText('Terminal')).toBeNull();
+  });
+
+  test('the In app heading is the plain group name — no feature-Beta badge', async () => {
+    renderSection();
+    await waitFor(() => expect(screen.getByText('Claude Agent')).toBeTruthy());
+    expect(groupOrder()).toEqual(['In app', 'External apps']);
+    expect(screen.queryByText('Beta')).toBeNull();
   });
 
   test('a platform-unsupported in-app agent renders disabled', async () => {

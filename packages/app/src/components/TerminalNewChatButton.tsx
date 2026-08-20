@@ -10,7 +10,6 @@ import {
   SquareTerminalIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { cliIconTargetId, VISIBLE_CLIS } from '@/components/handoff/terminal-cli-display';
@@ -167,10 +166,9 @@ export function TerminalNewChatButton({
               bare "Terminal" (plain shell) is the last row of the Terminal group,
               where it belongs alongside the CLIs. */}
           {showAgents && registeredAgents.length > 0 ? (
-            <DropdownMenuGroup aria-label={t`In app (beta)`}>
+            <DropdownMenuGroup aria-label={t`In app`}>
               <DropdownMenuLabel className="flex items-center gap-1.5">
                 <Trans>In app</Trans>
-                <AgentBetaBadge />
               </DropdownMenuLabel>
               {registeredAgents.map((agent) => {
                 const isSelected =

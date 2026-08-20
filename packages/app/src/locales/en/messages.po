@@ -328,7 +328,10 @@ msgid "{0} is over {destination}."
 msgstr "{0} is over {destination}."
 
 #. placeholder {0}: resolvedTarget.displayName
+#. placeholder {0}: target.displayName
 #: src/components/BottomComposer.tsx
+#: src/components/empty-state/CreatePromptComposer.tsx
+#: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} isn't installed yet — opening its download page."
 
@@ -2022,7 +2025,6 @@ msgstr "Before you go, mind sharing why?"
 msgid "Below"
 msgstr "Below"
 
-#: src/components/acp/AgentBetaBadge.tsx
 #: src/components/settings/PluginBetaBadge.tsx
 msgid "Beta"
 msgstr "Beta"
@@ -6618,14 +6620,6 @@ msgstr "In an index document: entries sit under a section heading and each one c
 #: src/components/TerminalNewChatButton.tsx
 msgid "In app"
 msgstr "In app"
-
-#: src/components/empty-state/CreatePromptComposer.tsx
-#: src/components/handoff/AgentSplitButton.tsx
-#: src/components/handoff/OpenInAgentContextSubmenu.tsx
-#: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
-#: src/components/TerminalNewChatButton.tsx
-msgid "In app (beta)"
-msgstr "In app (beta)"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."

@@ -23,8 +23,11 @@ import { FilesSkillsToggle } from '@/components/FilesSkillsToggle';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
 import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
+import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import {
   buildProjectScopedHandoffInput,
+  openInstallUrl,
+  startAgentThreadForInput,
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
@@ -83,6 +86,19 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
+import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import {
+  enabledDesktopTargets,
+  enabledTerminalClis,
+  enabledThreadAgents,
+  resolveLauncherSelection,
+  unresolvedDesktopTargets,
+} from '@/lib/acp/launcher-selection';
+import {
+  pickEffectiveDefaultAgent,
+  useDefaultRegisteredAgent,
+  useRegisteredAgents,
+} from '@/lib/acp/registered-agents';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToCreateTopLevelFile } from '@/lib/create-file-events';
 import {
@@ -101,6 +117,7 @@ import { ProfilerBoundary } from '@/lib/perf';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { buildFolderShareInput, runShareAction } from '@/lib/share/run-share-action';
+import { useStickyAgent } from '@/lib/unified-agent-store';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
@@ -342,6 +359,16 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const handoffInstallStates = useInstalledAgents().states;
   const { dispatch: dispatchHandoff } = useHandoffDispatch();
   const emptySpaceHandoffInput = buildProjectScopedHandoffInput({ workspace });
+  // Inputs to the shared launcher contract, for the native File → Open with AI
+  // action below. All five are `useSyncExternalStore` snapshots (or a context
+  // value), so they stay referentially stable between real changes and can sit
+  // in the menu-action effect's dependency list without re-subscribing it every
+  // render. The selection itself is resolved inside the handler, at click time.
+  const terminalLaunch = useTerminalLaunch();
+  const enabledOverrides = useEnabledOverrides();
+  const registeredAgents = useRegisteredAgents();
+  const defaultRegisteredAgent = useDefaultRegisteredAgent();
+  const stickyAgentId = useStickyAgent();
   const { projectLocalBinding, merged } = useConfigContext();
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
@@ -543,8 +570,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   //     event bus.
   //   - reveal-in-finder — bridge.shell.* against the
   //     resolved absolute path per scope.
-  //   - send-to-ai — dispatchHandoff against the right input builder per
-  //     scope (file / folder / project; assets intentionally no-op).
+  //   - send-to-ai — the shared launcher selection against the right input
+  //     builder per scope (file / folder / project; assets intentionally no-op).
   //   - copy-full-path / copy-relative-path — navigator.clipboard writes
   //     the absolute / project-relative path.
   //   - toggle-show-* / expand-all-tree / collapse-all-tree — same
@@ -605,36 +632,71 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
           return;
         }
         case 'send-to-ai': {
-          // Surface a request the renderer's existing handoff UX consumes —
-          // mirrors the sparkle-icon click on EditorHeader. The submenu of
-          // installed agents is owned by the renderer; this menu click just
-          // pops it open. The submenu construction happens at render time,
-          // not on each menu pick, so the dispatch reuses the active scope's
-          // input. No-op when the input doesn't resolve (e.g. workspace not
-          // yet loaded). We pick the FIRST installed agent as the default
-          // dispatch target — same default the single-agent handoff menu uses —
-          // when exactly one agent is installed; with multiple installed agents
-          // the renderer surfaces a picker (deferred to a follow-up; for now
-          // the menu click logs the scoped input for diagnostic visibility).
-          //
-          // Iterate VISIBLE_TARGETS (not raw Object.entries on
-          // handoffInstallStates) so the hidden `claude-cowork` row — which
-          // shares the `claude:` scheme with `claude-code` and would be
-          // index [0] when Claude Desktop is installed — never gets picked
-          // as the default. Matches the render-surface precedent in
-          // OpenInAgentEmptySpaceSubmenu.tsx.
-          const enabledTargets = VISIBLE_TARGETS.filter(
-            (target) => handoffInstallStates[target.id]?.installed === true,
-          );
-          if (enabledTargets.length === 0) {
+          // Dispatches the active scope (file / folder / project) through the
+          // SAME contract as every other launcher: a still-usable saved pick
+          // first, else in-app, then Terminal, then an external app. This used
+          // to grab the first installed external app outright, so the one native
+          // entry point could open a different agent than the sparkle menu right
+          // beside it. Capabilities match the empty-space submenu this sidebar
+          // already renders: threads are server-hosted (always launchable), the
+          // terminal needs the desktop bridge, external apps are pickable here.
+          const selection = resolveLauncherSelection({
+            sticky: stickyAgentId,
+            effectiveThreadAgent: pickEffectiveDefaultAgent(
+              enabledThreadAgents(registeredAgents, enabledOverrides),
+              defaultRegisteredAgent,
+            ),
+            enabledClis:
+              terminalLaunch !== null
+                ? enabledTerminalClis(enabledOverrides, terminalLaunch.installedClis)
+                : [],
+            enabledDesktopTargets: enabledDesktopTargets(enabledOverrides, handoffInstallStates),
+            unresolvedDesktopTargets: unresolvedDesktopTargets(
+              enabledOverrides,
+              handoffInstallStates,
+            ),
+            installedClis: terminalLaunch?.installedClis ?? {},
+            terminalAvailable: terminalLaunch !== null,
+            threadsAvailable: true,
+            desktopSelectable: true,
+          });
+          // `none` means nothing is enabled anywhere — the pre-existing
+          // "nothing to send to" toast. A missing input (workspace not resolved
+          // yet) stays the silent no-op it was.
+          if (selection.kind === 'none') {
             toast.error(t`No AI agents installed`);
             return;
           }
           const input = buildSendToAiInputForActiveTarget(activeTarget, workspace);
           if (!input) return;
-          const [defaultTarget] = enabledTargets;
-          if (!defaultTarget) return;
-          void dispatchHandoff(defaultTarget.id, input);
+          if (selection.kind === 'thread') {
+            startAgentThreadForInput(input, {
+              agent: { source: selection.agent.source, id: selection.agent.id },
+            });
+            return;
+          }
+          if (selection.kind === 'cli') {
+            // `terminalAvailable` was true when this resolved, so the launcher
+            // exists; the guard is what narrows it for TypeScript.
+            terminalLaunch?.launchInTerminal(input, selection.cli);
+            return;
+          }
+          if (selection.kind === 'terminal') return; // bare shell — not offered here
+          // External app. An enabled-but-not-installed target routes to its
+          // installer rather than a deep-link that cannot land, matching the
+          // composers. The toast is load-bearing here in a way it is not in a
+          // composer: this action carries no agent picker, so the user chose no
+          // target at all and an unexplained vendor download tab would be the
+          // entire response. Interpolating the member expression reuses the
+          // composer's positional-placeholder msgid rather than forking a new one.
+          const target = VISIBLE_TARGETS.find((tg) => tg.id === selection.target);
+          if (!target) return;
+          if (handoffInstallStates[target.id]?.installed !== true) {
+            void openInstallUrl(target);
+            toast.info(t`${target.displayName} isn't installed yet — opening its download page.`);
+            return;
+          }
+          void dispatchHandoff(target.id, input);
           return;
         }
         case 'copy-full-path': {
@@ -728,6 +790,11 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     showSkillsSection,
     handoffInstallStates,
     dispatchHandoff,
+    terminalLaunch,
+    enabledOverrides,
+    registeredAgents,
+    defaultRegisteredAgent,
+    stickyAgentId,
     toggleSidebar,
     t,
   ]);

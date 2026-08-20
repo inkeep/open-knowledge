@@ -31,7 +31,6 @@ import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, SlidersHorizontal, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   ContextMenuGroup,
@@ -128,10 +127,9 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
         {/* In-app agents — shown only when any is enabled; an empty section is
             hidden. Enablement is managed in Configure agents (footer). */}
         {showThreadSection ? (
-          <ContextMenuGroup aria-label={t`In app (beta)`}>
+          <ContextMenuGroup aria-label={t`In app`}>
             <ContextMenuLabel className="flex items-center gap-1.5">
               <Trans>In app</Trans>
-              <AgentBetaBadge />
             </ContextMenuLabel>
             {enabledRegisteredAgents.map((agent) => {
               const agentName = agent.name;

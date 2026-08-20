@@ -2,7 +2,7 @@ import { type HandoffTarget, TERMINAL_CLIS, type TerminalCli } from '@inkeep/ope
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
+import { toast } from 'sonner';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   clearComposerDraft,
@@ -299,7 +299,10 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     // rather than a failing deep-link dispatch.
     if (states[targetId]?.installed !== true) {
       const target = VISIBLE_TARGETS.find((candidate) => candidate.id === targetId);
-      if (target) void openInstallUrl(target);
+      if (target) {
+        void openInstallUrl(target);
+        toast.info(t`${target.displayName} isn't installed yet — opening its download page.`);
+      }
       return;
     }
     const input = buildCreateHandoffInput({
@@ -518,10 +521,9 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                   {/* In-app agent threads lead the menu when any is enabled;
                       an empty section (all disabled) is hidden entirely. */}
                   {showThreadSection ? (
-                    <DropdownMenuGroup aria-label={t`In app (beta)`}>
+                    <DropdownMenuGroup aria-label={t`In app`}>
                       <DropdownMenuLabel className="flex items-center gap-1.5">
                         <Trans>In app</Trans>
-                        <AgentBetaBadge />
                       </DropdownMenuLabel>
                       {enabledThreadAgents.map((agent) => (
                         <DropdownMenuItem

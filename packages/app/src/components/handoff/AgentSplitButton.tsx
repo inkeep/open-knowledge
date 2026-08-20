@@ -2,7 +2,6 @@ import type { HandoffTarget, TargetData, TerminalCli } from '@inkeep/open-knowle
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { AgentBetaBadge } from '@/components/acp/AgentBetaBadge';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { DesktopAppName } from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
@@ -215,10 +214,9 @@ export function AgentSplitButton({
             // In-app agent threads lead the menu when any is enabled; an empty
             // section (all disabled) is hidden entirely.
             <>
-              <DropdownMenuGroup aria-label={t`In app (beta)`}>
+              <DropdownMenuGroup aria-label={t`In app`}>
                 <DropdownMenuLabel className="flex items-center gap-1.5">
                   <Trans>In app</Trans>
-                  <AgentBetaBadge />
                 </DropdownMenuLabel>
                 {threadAgents?.map((row) => (
                   <DropdownMenuItem

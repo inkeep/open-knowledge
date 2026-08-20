@@ -244,6 +244,21 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
     expect(threadLaunchOpts).toEqual([{ agent: { source: 'registry', id: 'claude-acp' } }]);
   });
 
+  test('the In app group is named "In app" and carries no maturity badge', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderSubmenu();
+
+    const group = document.querySelector<HTMLElement>(
+      '[data-slot="dropdown-menu-group"][aria-label="In app"]',
+    );
+    expect(group).toBeTruthy();
+    // The visible heading and the accessible name say the same thing (the
+    // group used to announce "In app (beta)" over a "Beta" badge).
+    expect(group?.textContent).toContain('In app');
+    expect(group?.textContent).not.toContain('Beta');
+    expect(document.querySelector('[aria-label="In app (beta)"]')).toBeNull();
+  });
+
   test('the Settings row opens Configure agents', async () => {
     registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
     await renderSubmenu();

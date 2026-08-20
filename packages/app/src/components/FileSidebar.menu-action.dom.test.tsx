@@ -181,6 +181,10 @@ vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
   OpenInAgentEmptySpaceSubmenu: () => null,
 }));
 
+const threadLaunchMock = vi.fn(
+  (_input: unknown, _opts?: { agent?: { source: string; id: string } }) => {},
+);
+const openInstallUrlMock = vi.fn((_target: unknown) => Promise.resolve());
 vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
   buildFolderHandoffInput: () => ({ docContext: null, docPath: '', folderRelativePath: 'notes' }),
   buildHandoffInput: () => ({
@@ -193,6 +197,8 @@ vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
     docPath: '',
     projectDir: '/tmp/open-knowledge',
   }),
+  openInstallUrl: openInstallUrlMock,
+  startAgentThreadForInput: threadLaunchMock,
   useHandoffDispatch: () => ({ dispatch: handoffDispatchMock }),
 }));
 
@@ -200,8 +206,19 @@ vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
 // a fresh object per render would churn the menu-action effect's
 // `handoffInstallStates` dep and re-subscribe on every render.
 const installedAgentStates = { codex: { installed: true } };
+// Every VISIBLE_TARGETS entry probed absent → no desktop route is enabled, and
+// with no registered in-app agent and no terminal bridge the resolver yields
+// `kind: 'none'`. Frozen per-branch so the object identity stays stable across
+// renders, like the production `states` useState value.
+const noAgentStates = {
+  'claude-code': { installed: false },
+  'claude-cowork': { installed: false },
+  codex: { installed: false },
+  cursor: { installed: false },
+};
+let noAgentsInstalled = false;
 vi.doMock('@/components/handoff/useInstalledAgents', () => ({
-  useInstalledAgents: () => ({ states: installedAgentStates }),
+  useInstalledAgents: () => ({ states: noAgentsInstalled ? noAgentStates : installedAgentStates }),
 }));
 
 vi.doMock('@/components/ProjectSwitcher', () => ({
@@ -254,9 +271,12 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceStub,
 }));
 
+const toastInfoMock = vi.fn((_msg: string) => {});
+const toastErrorMock = vi.fn((_msg: string) => {});
 vi.doMock('sonner', () => ({
   toast: {
-    error: vi.fn(() => {}),
+    error: toastErrorMock,
+    info: toastInfoMock,
     success: vi.fn(() => {}),
   },
 }));
@@ -267,6 +287,11 @@ const {
   subscribeToFileTreeMenuActionDuplicate,
   subscribeToFileTreeMenuActionRename,
 } = await import('@/lib/file-tree-menu-action-events');
+const { reloadEnabledAgentsFromStorage } = await import('@/lib/acp/enabled-agents');
+const { registerAgent, reloadRegisteredAgentsFromStorage } = await import(
+  '@/lib/acp/registered-agents'
+);
+const { saveStickyAgent } = await import('@/lib/unified-agent-store');
 
 function renderSidebar() {
   return render(<FileSidebar onOpenSearch={() => {}} />, { wrapper: TooltipProvider });
@@ -277,17 +302,28 @@ describe('FileSidebar menu-action runtime routing', () => {
     menuActionCallback = null;
     activeTarget = ACTIVE_TARGET;
     mergedConfig = DEFAULT_MERGED_CONFIG;
+    noAgentsInstalled = false;
     // The section's last-known visibility is cached at module scope so the
     // sidebar can render the right surface before config loads. Without this
     // reset a test that hides the Skills section leaks into later ones, which
     // then render a surface with no FileTree — and the tree-derived View menu
     // gates read false. Same reset the sibling FileSidebar suite does.
     __resetSkillsSectionVisibleCacheForTests();
+    // The launcher selection reads the registered-agent / enabled-override /
+    // sticky-pick stores, so a registration made by one test would otherwise
+    // decide the next one's send-to-ai route.
+    if (typeof localStorage !== 'undefined') localStorage.clear();
+    reloadRegisteredAgentsFromStorage();
+    reloadEnabledAgentsFromStorage();
     for (const fn of [
       notifyViewMenuStateChangedMock,
       toggleSidebarMock,
       showItemInFolderMock,
       handoffDispatchMock,
+      threadLaunchMock,
+      openInstallUrlMock,
+      toastInfoMock,
+      toastErrorMock,
       projectLocalPatch,
       treeCalls.collapseAll,
       treeCalls.expandAll,
@@ -477,6 +513,75 @@ describe('FileSidebar menu-action runtime routing', () => {
       unsubscribeRename();
       unsubscribeDelete();
     }
+  });
+
+  // Native File → Open with AI used to pick the first installed external app
+  // outright, so the one native entry point could open a different agent than
+  // the sparkle menu beside it. It now resolves through `resolveLauncherSelection`:
+  // a still-usable saved pick first, else In app → Terminal → External apps.
+  test('send-to-ai prefers an enabled in-app agent over an installed external app', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    renderSidebar();
+    await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+    menuActionCallback?.('send-to-ai' as MenuAction);
+
+    expect(threadLaunchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ docPath: 'notes/source.md' }),
+      { agent: { source: 'registry', id: 'claude-acp' } },
+    );
+    // The external app is still installed — it just no longer wins the default.
+    expect(handoffDispatchMock).not.toHaveBeenCalled();
+  });
+
+  test('send-to-ai still honors an explicit saved external-app choice', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    saveStickyAgent('codex');
+    renderSidebar();
+    await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+    menuActionCallback?.('send-to-ai' as MenuAction);
+
+    expect(handoffDispatchMock).toHaveBeenCalledWith(
+      'codex',
+      expect.objectContaining({ docPath: 'notes/source.md' }),
+    );
+    expect(threadLaunchMock).not.toHaveBeenCalled();
+  });
+
+  // The install-URL branch is the one outcome that dispatches nothing, so it
+  // needs its own explanation. `claude-code` has no entry in the harness probe
+  // map, so it resolves through `unresolvedDesktopTargets` as a remembered pick
+  // and lands here rather than deep-linking into an app that is not installed.
+  test('send-to-ai sends an uninstalled saved external app to its installer and says so', async () => {
+    saveStickyAgent('claude-code');
+    renderSidebar();
+    await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+    menuActionCallback?.('send-to-ai' as MenuAction);
+
+    expect(openInstallUrlMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'claude-code' }));
+    // Not a deep-link dispatch, and not a silent return.
+    expect(handoffDispatchMock).not.toHaveBeenCalled();
+    expect(threadLaunchMock).not.toHaveBeenCalled();
+    expect(toastInfoMock).toHaveBeenCalledTimes(1);
+    expect(String(toastInfoMock.mock.calls[0]?.[0])).toContain("isn't installed yet");
+  });
+
+  // `kind: 'none'` — nothing enabled in any of the three families. Distinct from
+  // the install-URL branch above: there is no target to send anywhere, so the
+  // action must say so rather than no-op silently.
+  test('send-to-ai reports when no route is available at all', async () => {
+    noAgentsInstalled = true;
+    renderSidebar();
+    await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+    menuActionCallback?.('send-to-ai' as MenuAction);
+
+    expect(toastErrorMock).toHaveBeenCalledTimes(1);
+    expect(handoffDispatchMock).not.toHaveBeenCalled();
+    expect(threadLaunchMock).not.toHaveBeenCalled();
+    expect(openInstallUrlMock).not.toHaveBeenCalled();
   });
 
   test('shell, clipboard, handoff, and visibility-toggle actions use runtime dependencies', async () => {
