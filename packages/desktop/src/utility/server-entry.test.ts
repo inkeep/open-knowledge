@@ -223,7 +223,7 @@ describe('port pinning + EADDRINUSE fallback', () => {
     });
     // First attempt pinned, second attempt ephemeral (0).
     expect(bootPorts).toEqual([24550, 0]);
-    // Ready reports the ACTUAL bound port; the Network access pane compares it
+    // Ready reports the ACTUAL bound port; the Remote control pane compares it
     // (via the bridge apiOrigin) against the configured server.port to warn that
     // the tunnel target no longer matches. The fallback posts no degraded
     // subsystem — it is a recoverable local condition, logged only.

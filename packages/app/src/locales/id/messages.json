@@ -354,6 +354,11 @@
     "4c_a6S": ["Belum ada yang disetel."],
     "4d0VYJ": ["Kami akan membuat ID tema yang aman dari nama ini."],
     "4g19V6": ["Gagal memperbarui properti"],
+    "4gIB21": [
+      "Server akan menerima permintaan untuk ",
+      ["0"],
+      " tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini, termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
+    ],
     "4h3e0H": ["Berbagi keterampilan tidak bisa diperbarui — ", ["detail"], "."],
     "4hJhzz": ["Tabel"],
     "4inh-4": [
@@ -396,9 +401,6 @@
     "56WWtu": ["Paket awal tidak bisa dimuat: ", ["error"]],
     "56xUL1": ["Nama properti"],
     "57fiu8": ["(hanya-baca — untuk sekarang, sunting di mode sumber)"],
-    "58ko2F": [
-      "Ekspos server proyek ini ke jaringan yang lebih luas melalui tunnel yang Anda jalankan (misalnya Tailscale). Pemirsa di tunnel mendapatkan editor dan endpoint agen, mengedit secara langsung terhadap server mesin ini."
-    ],
     "58qIOK": ["Komentari pilihan ini"],
     "59CUI8": ["Bagikan keterampilan antar alat AI"],
     "5ALjdr": ["Menelusuri hasil pencarian penyunting visual dari bidang pencarian."],
@@ -437,6 +439,9 @@
     ],
     "5Umg9i": ["Nonaktifkan pratinjau tautan eksternal"],
     "5WDhAk": ["Menaut ke sebuah halaman atau URL eksternal."],
+    "5W_u0E": [
+      "Tidak dapat memulai ulang server. Jalankan ok start di folder ini untuk mencoba lagi."
+    ],
     "5Y17qa": ["Berlaku untuk (glob — awalan ! mengecualikan; kosong berarti semua dokumen)"],
     "5YWCV_": ["Respons plan salah bentuk"],
     "5ZB7XC": ["Area jatuhkan berkas"],
@@ -655,9 +660,6 @@
     "8PmoQF": ["Membuka menu sisip pada posisi teks yang kosong atau aktif."],
     "8RtNI0": ["Gagal memuat dokumen"],
     "8TvlHF": ["Crash dump"],
-    "8UmUyc": [
-      "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
-    ],
     "8Uv5e6": ["Agen"],
     "8Vq20-": ["Ganti worktree"],
     "8W9CF6": ["Laporan ini sudah dikirim"],
@@ -713,6 +715,7 @@
     "9EykGQ": ["Sisipkan kolom di kanan"],
     "9GbR5F": ["MAKS"],
     "9HKBNN": ["perintah"],
+    "9Hr9WP": ["Tidak dapat menyimpan pengaturan jaringan. ", ["0"]],
     "9Ii3uK": ["panel baru di sebelah kiri ", ["0"]],
     "9J8xNg": [["importedLabel"], " diimpor"],
     "9KooKn": ["Jalankan audit proyek dari panel Masalah."],
@@ -990,11 +993,6 @@
       ["shareBranch"],
       "</0>. Anda punya perubahan yang belum di-commit sehingga tidak bisa berpindah di sini — buka di sebuah worktree agar perubahan Anda tetap utuh."
     ],
-    "DTcfyN": [
-      "Server akan menerima permintaan untuk ",
-      ["0"],
-      " tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini — termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
-    ],
     "DUWgfT": ["Autentikasi ulang dengan GitHub Enterprise Server"],
     "DUb7Ax": ["Beberapa berkas menggunakan nama tema ini"],
     "DVh_Tb": ["Gagal membersihkan setelah pemindahan ke tempat sampah"],
@@ -1034,6 +1032,13 @@
     "Dvr1Sg": ["Menyalin"],
     "Dvwa0U": ["Buat worktree dari cabang ini"],
     "Dz7fsq": ["Perbesar"],
+    "E-G19G": [
+      "Port ",
+      ["configuredPort"],
+      " sedang digunakan, jadi server berjalan di port ",
+      ["boundPort"],
+      ". Tunnel yang meneruskan ke port tetap tidak akan menjangkaunya. Bebaskan port itu dan terapkan lagi, atau pilih port lain."
+    ],
     "E1Da_b": [
       "Ini menghapus ",
       ["0"],
@@ -1170,6 +1175,9 @@
     ],
     "FNTx6u": ["Cari \"", ["semanticSubmitQuery"], "\" berdasarkan makna"],
     "FOGD7m": ["Ciptakan sesuatu yang hebat."],
+    "FQwhfM": [
+      "URL publik yang dilayani tunnel Anda (misalnya alamat Tailscale https://…ts.net Anda). Server menerima permintaan untuk host ini dan mengiklankannya di URL yang diterbitkannya."
+    ],
     "FRYB1Q": ["/api/config mengembalikan isi yang salah bentuk"],
     "FS4Udk": ["OpenKnowledge menjalankan sebuah perintah"],
     "FTUGgh": ["Masukkan URL repositori atau pemilik/repo"],
@@ -1279,6 +1287,9 @@
       "” tidak dipasang — kamu sudah punya skill sendiri dengan nama itu. Ganti nama milikmu jika ingin versi dari paket."
     ],
     "GjsGAu": ["Obrolan agen"],
+    "GkIj9A": [
+      "Ekspos proyek ini melalui tunnel yang Anda jalankan untuk menjangkau editor dan endpoint agennya dari perangkat Anda yang lain."
+    ],
     "GkYV_4": [["0"], " diganti nama → ", ["1"]],
     "Gp_twO": ["Jalur lokal"],
     "GrBgX_": [
@@ -1864,6 +1875,11 @@
     "OxplNM": ["\"", ["0"], "\" diperbarui: ", ["1"], " ditambahkan, ", ["2"], " dihapus"],
     "Oxyd5f": ["Pilih sebuah nama"],
     "OyIC0Q": ["Nama proyek"],
+    "Oz3RWs": [
+      "Hosting aktif. Server berjalan di port ",
+      ["boundPort"],
+      ". Akses melalui tunnel Anda."
+    ],
     "Ozyht_": [
       "Tampilkan dokumen sebagai dek slide di jendela tersendiri. Hanya berfungsi di aplikasi desktop OpenKnowledge dan memerlukan CLI Slidev yang dipasang terpisah. Saat aktif, muncul di Plugins pada bilah sisi."
     ],
@@ -2026,6 +2042,11 @@
     ],
     "RDjuBN": ["Penyiapan"],
     "RDrXh4": ["Atur pengaturan pengguna, proyek, dan integrasi."],
+    "REkvLz": [
+      "Port ",
+      ["0"],
+      " sudah digunakan oleh proses lain. Pilih port lain agar target tunnel Anda tetap stabil setelah restart."
+    ],
     "RG3yW6": ["Masukkan nama untuk tema ini."],
     "RG4XHV": ["Salin prompt ", ["0"]],
     "RGCCrg": ["Salin tautan berbagi"],
@@ -2051,6 +2072,7 @@
     "RZXTlY": ["Perbaikan otomatis (", ["count"], ")"],
     "R_U_A4": ["Tambahkan pola berkas atau folder, mis. guides/**/*"],
     "RaPMZv": ["Pintasan papan ketik yang tersedia di penyunting dan ruang kerja."],
+    "RaUKLu": ["Kontrol jarak jauh"],
     "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
     "RcrskJ": ["Format terlihat salah"],
@@ -2086,13 +2108,6 @@
     "S48xcO": ["tertunda"],
     "S6eHlw": ["Buka proyek terlebih dahulu."],
     "S6l5dv": ["Pembuatan item baru tidak dapat dimulai"],
-    "S79zoi": [
-      "Port ",
-      ["configuredPort"],
-      " sedang digunakan, jadi server berjalan di port ",
-      ["boundPort"],
-      ". Tunnel yang menuju port tetap tidak akan menjangkaunya — bebaskan port itu dan terapkan lagi, atau pilih yang lain."
-    ],
     "S9Vnum": ["Hapus ", ["patternText"]],
     "S9t1PI": ["Memperbaiki ", ["0"], "/", ["1"]],
     "SCoBBH": ["Saran tag"],
@@ -2182,6 +2197,7 @@
     "Tn5sik": [
       "Memberi tahu agen kapan harus memakai keterampilan ini. Anda bisa menyuntingnya nanti."
     ],
+    "TnalFo": ["Pengaturan jaringan belum dimuat. Coba lagi sebentar."],
     "Tofsyo": ["Pindahkan Terminal ke bawah"],
     "TpqW74": ["Tetap"],
     "Tq3pcs": ["Pakai punya saya"],
@@ -2959,7 +2975,6 @@
     "cuA8QW": ["Tata spesifikasi"],
     "cuHhjo": ["Buat dan sunting"],
     "d-GtJt": ["Lihat di sumber Markdown"],
-    "d02jS3": ["Akses jaringan"],
     "d1JjXo": [
       "Salinan lokal cabang <0>",
       ["branch"],
@@ -3796,6 +3811,9 @@
     "n2lRue": ["Lakukan commit atau stash pada perubahan untuk berpindah:"],
     "n3T3EE": ["Terpasang di ", ["label"], " — klik untuk menghapus"],
     "n3wx1q": ["Pulihkan hingga versi ini?"],
+    "n4JOaa": [
+      "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini. Pasang gerbang autentikasi di depannya, seperti jaringan Tailscale pribadi atau reverse proxy dengan autentikasi."
+    ],
     "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
@@ -4345,11 +4363,9 @@
     ],
     "ul1Atu": ["Mengubah..."],
     "um-es7": ["Rilis penyuntingnya dengan sebuah"],
+    "umzaKv": ["Port ", ["0"], " tersedia."],
     "un-K1H": ["Tetap di komputer ini. Tidak di-commit ke git."],
     "un8kBM": ["Membuat halaman: ", ["linkTitle"], "."],
-    "unmCLE": [
-      "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini — batasi akses di tepi tunnel (ACL Tailscale, reverse proxy dengan autentikasi, atau firewall)."
-    ],
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
@@ -4537,7 +4553,6 @@
     "xV5sXw": [["0"], " mgg lalu"],
     "xWEvuo": ["Tanya AI"],
     "xWomUD": ["Pakai versi ", ["editor"]],
-    "xXn6KB": ["Tidak dapat menyimpan pengaturan jaringan — ", ["0"]],
     "xXo8FT": ["Gagal menyimpan: ", ["error"]],
     "xYMPyY": [
       "Penempelan belum lengkap — ",
@@ -4639,7 +4654,6 @@
     "ylXj1N": ["Terpilih"],
     "ymWJLd": ["Tampilkan ", ["0"], " lagi"],
     "ynIa4S": ["Item daftar penyunting visual"],
-    "yopUSw": ["Pengaturan jaringan belum dimuat — coba lagi sebentar."],
     "ypw6My": ["Menampilkan ", ["0"], " judul teratas — terus ketik untuk mempersempit"],
     "ysxgu8": ["proyek"],
     "yutJKi": ["Daftar periksa dengan kotak centang."],
@@ -4673,6 +4687,10 @@
     "zAsDLY": ["Visualisasi graf tautan antardokumen"],
     "zBUqvf": ["Siapkan integrasi OpenKnowledge…"],
     "zD1Nqf": [["count", "plural", { "other": ["#", " dokumen"] }]],
+    "zFH7iU": [
+      "Tidak dapat sepenuhnya menghapus pengaturan jaringan, tetapi paparan sedang dimatikan. ",
+      ["0"]
+    ],
     "zHsZcU": [
       "Masukkan origin publik yang dilayani tunnel Anda, misalnya https://notes.example.com"
     ],

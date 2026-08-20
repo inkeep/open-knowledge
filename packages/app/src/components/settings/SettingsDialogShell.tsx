@@ -314,7 +314,7 @@ export function SettingsDialogShell({
         ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         // Expose-via-tunnel controls — desktop-only (writes the project-local
         // exposure consent + restarts this window's server via the bridge).
-        ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Network access` }] : []),
+        ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Remote control` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills Studio` },
         { id: 'okignore', label: t`Ignore patterns` },

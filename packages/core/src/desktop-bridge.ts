@@ -1923,6 +1923,21 @@ export interface OkDesktopBridge {
   };
 
   /**
+   * Settings → This project → Remote control. OK does not detect or drive the
+   * tunnel (the setup how-to lives in the docs); the one main-process helper the
+   * pane needs is a local port probe.
+   */
+  remoteAccess: {
+    /**
+     * Advisory check of whether `port` is bindable on loopback right now, so the
+     * pane can warn "that port is taken" while the user types a fixed port —
+     * before Apply restarts the server and silently falls back to an ephemeral
+     * port. Best-effort: a TOCTOU gap means `true` is a strong hint, not a lock.
+     */
+    probePort(port: number): Promise<boolean>;
+  };
+
+  /**
    * Per-project consent dialog surface. Navigator-only.
    * Renderer mounts a shadcn Dialog when `onShow` fires; calls
    * `confirm` / `cancel` on user action; calls `signalReady()` once on app

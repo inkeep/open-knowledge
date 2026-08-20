@@ -713,6 +713,13 @@ const bridge: OkDesktopBridge = {
       }) as Promise<ProjectIntegrationsSetResult>,
   },
 
+  remoteAccess: {
+    // `ok:remote-access:dispatch` — the pane's one main-process read: a local
+    // port-availability probe. OK does not detect or drive the tunnel itself.
+    probePort: (port) =>
+      invoke('ok:remote-access:dispatch', { kind: 'probe-port', port }) as Promise<boolean>,
+  },
+
   onboarding: {
     onShow(cb: (payload: OkOnboardingShowPayload) => void) {
       const listener = (_event: IpcRendererEvent, payload: OkOnboardingShowPayload) => cb(payload);

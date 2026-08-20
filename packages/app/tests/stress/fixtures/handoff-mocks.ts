@@ -569,6 +569,9 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
             },
           }),
         },
+        remoteAccess: {
+          probePort: async () => true,
+        },
         // installConsentListener + installOnboardingToastListener are
         // wired unconditionally by main.tsx (both guarded internally by
         // `if (!b.onboarding) return`), so these stubs run at the

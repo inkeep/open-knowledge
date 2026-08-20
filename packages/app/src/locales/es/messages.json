@@ -406,6 +406,11 @@
     "4c_a6S": ["Todavía no hay nada definido."],
     "4d0VYJ": ["Crearemos un ID de tema seguro a partir de este nombre."],
     "4g19V6": ["No se pudo actualizar la propiedad"],
+    "4gIB21": [
+      "El servidor aceptará solicitudes para ",
+      ["0"],
+      " sin autenticación integrada. Cualquiera que pueda alcanzar tu túnel tendrá control total de esta base de conocimiento, incluidas la sincronización, las credenciales de GitHub y las operaciones locales. Asegúrate de que el borde del túnel restrinja quién puede conectarse."
+    ],
     "4h3e0H": ["No se pudo actualizar la compartición de habilidades: ", ["detail"], "."],
     "4hJhzz": ["Tabla"],
     "4inh-4": [
@@ -454,9 +459,6 @@
     "56WWtu": ["No se pudieron cargar los paquetes iniciales: ", ["error"]],
     "56xUL1": ["Nombre de la propiedad"],
     "57fiu8": ["(solo lectura: por ahora edítalo en modo código)"],
-    "58ko2F": [
-      "Expón el servidor de este proyecto a una red más amplia a través de un túnel que tú gestionas (por ejemplo Tailscale). Un visitante del túnel obtiene el editor y el endpoint del agente, editando en directo contra el servidor de esta máquina."
-    ],
     "58qIOK": ["Comentar esta selección"],
     "59CUI8": ["Compartir habilidades entre herramientas de IA"],
     "5ALjdr": ["Recorre los resultados de búsqueda del editor visual desde el campo de búsqueda."],
@@ -507,6 +509,9 @@
     ],
     "5Umg9i": ["Desactivar la vista previa de enlaces externos"],
     "5WDhAk": ["Enlaza a una página o a una URL externa."],
+    "5W_u0E": [
+      "No se pudo reiniciar el servidor. Ejecuta ok start en esta carpeta para reintentar."
+    ],
     "5Y17qa": ["Se aplica a (globs; un ! inicial excluye; vacío significa todos los documentos)"],
     "5YWCV_": ["Respuesta de plan con formato incorrecto"],
     "5ZB7XC": ["Zona para soltar archivos"],
@@ -767,9 +772,6 @@
     "8PmoQF": ["Abre el menú de inserción en una posición de texto vacía o activa."],
     "8RtNI0": ["No se pudieron cargar los documentos"],
     "8TvlHF": ["Volcado de fallo"],
-    "8UmUyc": [
-      "La URL pública que sirve tu túnel. El servidor admite solicitudes para este host y lo anuncia en las URL que emite."
-    ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Cambiar de worktree"],
     "8W9CF6": ["Este informe ya se está enviando"],
@@ -825,6 +827,7 @@
     "9EykGQ": ["Insertar columna a la derecha"],
     "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
+    "9Hr9WP": ["No se pudo guardar la configuración de red. ", ["0"]],
     "9Ii3uK": ["un panel nuevo a la izquierda de ", ["0"]],
     "9J8xNg": ["Se importó ", ["importedLabel"]],
     "9KooKn": ["Ejecuta una auditoría del proyecto desde el panel Problemas."],
@@ -1173,11 +1176,6 @@
       ["shareBranch"],
       "</0>. Tienes cambios sin confirmar que impiden cambiar aquí: ábrelo en un worktree para dejar tus cambios intactos."
     ],
-    "DTcfyN": [
-      "El servidor aceptará solicitudes para ",
-      ["0"],
-      " sin autenticación integrada. Cualquiera que pueda acceder a tu túnel tendrá control total de esta base de conocimiento — incluyendo la sincronización, las credenciales de GitHub y las operaciones locales. Asegúrate de que el perímetro del túnel restrinja quién puede conectarse."
-    ],
     "DUWgfT": ["Volver a autenticarse con GitHub Enterprise Server"],
     "DUb7Ax": ["Varios archivos usan este nombre de tema"],
     "DVh_Tb": ["No se pudo limpiar después de mover a la papelera"],
@@ -1225,6 +1223,13 @@
     "Dvr1Sg": ["Copiando"],
     "Dvwa0U": ["Crear un worktree desde esta rama"],
     "Dz7fsq": ["Acercar"],
+    "E-G19G": [
+      "El puerto ",
+      ["configuredPort"],
+      " está en uso, por lo que el servidor se ejecuta en el puerto ",
+      ["boundPort"],
+      " en su lugar. Un túnel que reenvía al puerto fijo no lo alcanzará. Libera ese puerto y vuelve a aplicar, o elige uno diferente."
+    ],
     "E1Da_b": [
       "Esto elimina definitivamente ",
       ["0"],
@@ -1359,6 +1364,9 @@
     ],
     "FNTx6u": ["Buscar \"", ["semanticSubmitQuery"], "\" por significado"],
     "FOGD7m": ["Crea algo grande."],
+    "FQwhfM": [
+      "La URL pública que sirve tu túnel (por ejemplo tu dirección de Tailscale https://…ts.net). El servidor admite solicitudes para este host y lo anuncia en las URL que emite."
+    ],
     "FRYB1Q": ["/api/config devolvió un cuerpo con formato incorrecto"],
     "FS4Udk": ["OpenKnowledge ejecutó un comando"],
     "FTUGgh": ["Escribe una URL de repositorio o propietario/repositorio"],
@@ -1488,6 +1496,9 @@
       "»: ya tienes una skill propia con ese nombre. Cambia el nombre de la tuya si quieres la versión del paquete."
     ],
     "GjsGAu": ["Chats de agentes"],
+    "GkIj9A": [
+      "Expón este proyecto a través de un túnel que ejecutes tú para acceder a su editor y endpoint de agente desde tus otros dispositivos."
+    ],
     "GkYV_4": ["Se renombró ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Ruta local"],
     "GrBgX_": [
@@ -2150,6 +2161,11 @@
     "OxplNM": ["Se actualizó \"", ["0"], "\": ", ["1"], " añadidos, ", ["2"], " eliminados"],
     "Oxyd5f": ["Elige un nombre"],
     "OyIC0Q": ["Nombre del proyecto"],
+    "Oz3RWs": [
+      "El alojamiento está activo. El servidor se ejecuta en el puerto ",
+      ["boundPort"],
+      ". Accede a él a través de tu túnel."
+    ],
     "Ozyht_": [
       "Presenta un documento como una presentación de diapositivas en su propia ventana. Solo funciona en la aplicación de escritorio de OpenKnowledge y necesita la CLI de Slidev, que se instala por separado. Cuando está activado, aparece en Plugins en la barra lateral."
     ],
@@ -2328,6 +2344,11 @@
     ],
     "RDjuBN": ["Configuración"],
     "RDrXh4": ["Configura los ajustes de usuario, de proyecto y de integraciones."],
+    "REkvLz": [
+      "El puerto ",
+      ["0"],
+      " ya está en uso por otro proceso. Elige uno diferente para que el destino de tu túnel se mantenga estable entre reinicios."
+    ],
     "RG3yW6": ["Introduce un nombre para este tema."],
     "RG4XHV": ["Copiar el prompt de ", ["0"]],
     "RGCCrg": ["Copiar enlace para compartir"],
@@ -2353,6 +2374,7 @@
     "RZXTlY": ["Arreglo automático (", ["count"], ")"],
     "R_U_A4": ["Añade un patrón de archivo o carpeta, p. ej. guides/**/*"],
     "RaPMZv": ["Atajos de teclado disponibles en el editor y en el espacio de trabajo."],
+    "RaUKLu": ["Control remoto"],
     "Rah7yq": ["¿Qué debería hacer la IA? (opcional)"],
     "Rb1zMa": ["Sin extracto"],
     "RcrskJ": ["El formato se veía mal"],
@@ -2389,13 +2411,6 @@
     "S48xcO": ["pendiente"],
     "S6eHlw": ["Abre primero un proyecto."],
     "S6l5dv": ["No se pudo empezar a crear un elemento nuevo"],
-    "S79zoi": [
-      "El puerto ",
-      ["configuredPort"],
-      " está en uso, por lo que el servidor se ejecuta en el puerto ",
-      ["boundPort"],
-      ". Un túnel que apunte al puerto fijo no lo alcanzará: libera ese puerto y aplica de nuevo, o elige otro."
-    ],
     "S9Vnum": ["Quitar ", ["patternText"]],
     "S9t1PI": ["Arreglando ", ["0"], "/", ["1"]],
     "SCoBBH": ["Sugerencias de etiquetas"],
@@ -2508,6 +2523,7 @@
     "Tn5sik": [
       "Indica a los agentes cuándo recurrir a esta habilidad. Puedes editarlo más adelante."
     ],
+    "TnalFo": ["La configuración de red aún no se ha cargado. Vuelve a intentarlo en un momento."],
     "Tofsyo": ["Mover Terminal a la parte inferior"],
     "TpqW74": ["Fijo"],
     "Tq3pcs": ["Conservar el mío"],
@@ -3418,7 +3434,6 @@
     "cuA8QW": ["Organizar las especificaciones"],
     "cuHhjo": ["Crear y editar"],
     "d-GtJt": ["Ver en el Markdown de origen"],
-    "d02jS3": ["Acceso a la red"],
     "d1JjXo": [
       "Tu copia local de la rama <0>",
       ["branch"],
@@ -4365,6 +4380,9 @@
     "n2lRue": ["Haz commit o stash de tus cambios para cambiar:"],
     "n3T3EE": ["Instalado en ", ["label"], ": haz clic para quitarlo"],
     "n3wx1q": ["¿Restaurar hasta esta versión?"],
+    "n4JOaa": [
+      "Este servidor no tiene autenticación integrada. Cualquiera que pueda alcanzar el túnel obtiene control total de esta base de conocimiento. Coloca delante una barrera de autenticación, como una red privada de Tailscale o un proxy inverso con autenticación."
+    ],
     "n4vt3Q": ["Descargar la aplicación"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
@@ -4996,11 +5014,9 @@
     "uksqrP": ["No se encontró el repositorio. Puede que lo hayan renombrado, eliminado o movido."],
     "ul1Atu": ["Convirtiendo..."],
     "um-es7": ["Publica el editor con un"],
+    "umzaKv": ["El puerto ", ["0"], " está disponible."],
     "un-K1H": ["Se queda en este equipo. No se guarda en git."],
     "un8kBM": ["Creando la página: ", ["linkTitle"], "."],
-    "unmCLE": [
-      "Este servidor no tiene autenticación integrada. Cualquiera que pueda acceder al túnel obtiene control total de esta base de conocimiento — restringe el acceso en el perímetro del túnel (una ACL de Tailscale, un proxy inverso con autenticación o un firewall)."
-    ],
     "uoJF_D": ["Era demasiado difícil de configurar o de empezar a usar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["El comando falló."],
@@ -5220,7 +5236,6 @@
     "xV5sXw": ["hace ", ["0"], " sem"],
     "xWEvuo": ["Preguntar a la IA"],
     "xWomUD": ["Usar la versión de ", ["editor"]],
-    "xXn6KB": ["No se pudo guardar la configuración de red — ", ["0"]],
     "xXo8FT": ["Falló al guardar: ", ["error"]],
     "xYMPyY": [
       "El pegado quedó incompleto: llegaron ",
@@ -5338,7 +5353,6 @@
     "ylXj1N": ["Seleccionado"],
     "ymWJLd": ["Mostrar ", ["0"], " más"],
     "ynIa4S": ["Elemento de lista del editor visual"],
-    "yopUSw": ["La configuración de red aún no se ha cargado — inténtalo de nuevo en un momento."],
     "ypw6My": ["Mostrando los ", ["0"], " encabezados principales; sigue escribiendo para acotar"],
     "ysxgu8": ["proyecto"],
     "yutJKi": ["Lista de comprobación con casillas."],
@@ -5387,6 +5401,10 @@
         "plural",
         { "one": ["#", " documento"], "many": ["#", " documentos"], "other": ["#", " documentos"] }
       ]
+    ],
+    "zFH7iU": [
+      "No se pudo borrar por completo la configuración de red, pero la exposición se está desactivando. ",
+      ["0"]
     ],
     "zHsZcU": [
       "Introduce el origen público que sirve tu túnel, por ejemplo https://notes.example.com"

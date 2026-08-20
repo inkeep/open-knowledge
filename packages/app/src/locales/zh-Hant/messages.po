@@ -3560,6 +3560,11 @@ msgstr "找不到該段落 — 它所在的文字可能已變更。"
 msgid "Couldn't finish installing {0} — see below."
 msgstr "無法完成 {0} 的安裝——詳見下方。"
 
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't fully clear network settings, but exposure is turning off. {0}"
+msgstr "無法完全清除網路設定，但正在關閉公開存取。{0}"
+
 #. placeholder {0}: projected.error
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Couldn't install {skillName}: {0}"
@@ -3805,6 +3810,10 @@ msgstr "無法重新啟動伺服器——它正以另一個帳戶執行。請重
 msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "無法自動重新啟動伺服器。請在終端機中執行 `ok stop all`，然後重新開啟這個專案——如果狀況持續，請重新啟動電腦。"
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't restart the server. Run ok start in this folder to retry."
+msgstr "無法重新啟動伺服器。請在此資料夾中執行 ok start 以重試。"
+
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "無法重新啟動伺服器。請在這個資料夾中試試 `ok start`。"
@@ -3835,8 +3844,8 @@ msgstr "無法儲存變更。請再編輯一次色彩。"
 #. placeholder {0}: humanFormat(first.error)
 #. placeholder {0}: humanFormat(second.error)
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't save network settings — {0}"
-msgstr "無法儲存網路設定 — {0}"
+msgid "Couldn't save network settings. {0}"
+msgstr "無法儲存網路設定。{0}"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -5239,12 +5248,12 @@ msgid "Expose and restart"
 msgstr "公開並重新啟動"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project to the network?"
-msgstr "要將此專案公開到網路上嗎？"
+msgid "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+msgstr "透過您自行執行的通道公開此專案，以便從您的其他裝置存取其編輯器和代理端點。"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-msgstr "透過你自行運行的通道（例如 Tailscale）將此專案的伺服器公開到更廣的網路。通道上的檢視者可取得編輯器與智慧代理端點，並即時對這台機器的伺服器進行編輯。"
+msgid "Expose this project to the network?"
+msgstr "要將此專案公開到網路上嗎？"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
@@ -6401,6 +6410,10 @@ msgstr "水平膠囊列，作用中的面板在下方；點一下膠囊即可切
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "用來分隔章節的水平分隔線。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
+msgstr "託管已開啟。伺服器正在連接埠 {boundPort} 上執行。透過您的通道存取它。"
 
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7993,11 +8006,6 @@ msgstr "{path} 中巢狀的 .okignore 有錯誤"
 msgid "Nested fields"
 msgstr "巢狀欄位"
 
-#: src/components/settings/NetworkAccessSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Network access"
-msgstr "網路存取"
-
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "網路錯誤 - {kind}「{createdPath}」在磁碟上仍然存在"
@@ -8016,8 +8024,8 @@ msgid "Network error during cleanup"
 msgstr "清理過程中發生網路錯誤"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Network settings not yet loaded — try again in a moment."
-msgstr "網路設定尚未載入 — 請稍後再試。"
+msgid "Network settings not yet loaded. Try again in a moment."
+msgstr "網路設定尚未載入。請稍後重試。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9767,9 +9775,19 @@ msgstr "熱門"
 msgid "Popular on skills.sh"
 msgstr "skills.sh 上的熱門項目"
 
+#. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-msgstr "連接埠 {configuredPort} 已被占用，伺服器改為在連接埠 {boundPort} 上執行。指向固定連接埠的通道將無法連線——請釋放該連接埠後重新套用，或選擇其他連接埠。"
+msgid "Port {0} is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+msgstr "連接埠 {0} 已被另一個程序佔用。請選擇其他連接埠，讓您的通道目標在重新啟動後保持穩定。"
+
+#. placeholder {0}: portDraft.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {0} is available."
+msgstr "連接埠 {0} 可用。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+msgstr "連接埠 {configuredPort} 正在使用中，因此伺服器改為在連接埠 {boundPort} 上執行。轉發到固定連接埠的通道將無法到達它。請釋放該連接埠並重新套用，或選擇其他連接埠。"
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -10265,6 +10283,11 @@ msgstr "遠端"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "遠端分支 <0>{remoteCheckoutRef}</0> 會被簽出成一個新的本機追蹤分支 <1>{trimmed}</1>，放在 <2>.ok/worktrees/</2> 底下自己的視窗中。"
+
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Remote control"
+msgstr "遠端控制"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Remote skill source"
@@ -12799,8 +12822,8 @@ msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "供應商拒絕了這個要求。請檢查 API 金鑰和模型 id。"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-msgstr "你的通道所提供的公開 URL。伺服器會接受針對此主機的請求，並在其發出的 URL 中公告此位址。"
+msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "您的通道所提供的公開 URL（例如您的 Tailscale https://…ts.net 位址）。伺服器接受針對此主機的請求，並在其發出的 URL 中公布該位址。"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -12824,8 +12847,8 @@ msgstr "伺服器有回應，但 server.lock 裡還沒有連接埠"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-msgstr "伺服器將接受針對 {0} 的請求，且不含內建驗證。任何能連上你的通道的人都將完全掌控此知識庫 — 包括同步、GitHub 憑證與本機操作。請確保通道的邊緣限制了誰能連線。"
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "伺服器將在沒有內建驗證的情況下接受對 {0} 的請求。任何能夠存取您通道的人都將取得對此知識庫的完全控制權，包括同步、GitHub 憑證和本機操作。請確保通道邊緣限制誰可以連線。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -13315,8 +13338,8 @@ msgid "This sends the link's address off your machine"
 msgstr "這會把連結的網址送出你的電腦"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-msgstr "此伺服器不含內建驗證。任何能連上通道的人都將完全掌控此知識庫 — 請在通道的邊緣限制存取（Tailscale ACL、具驗證的反向代理，或防火牆）。"
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+msgstr "此伺服器沒有內建驗證。任何能夠存取該通道的人都將取得對此知識庫的完全控制權。請在其前面設置一道驗證關卡，例如私人的 Tailscale 網路或附驗證的反向代理。"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."

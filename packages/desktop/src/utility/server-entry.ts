@@ -397,7 +397,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       //
       // A pinned port can be held by another process (EADDRINUSE). Don't crash
       // or hang the boot — fall back to an ephemeral port so local editing still
-      // works. The Network access pane surfaces the mismatch: it compares the
+      // works. The Remote control pane surfaces the mismatch: it compares the
       // configured `server.port` against the port this window actually bound
       // (read off the bridge apiOrigin), so the user learns the tunnel target no
       // longer matches. bootServer releases its locks and tears down before

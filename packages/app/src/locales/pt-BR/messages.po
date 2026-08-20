@@ -3556,6 +3556,11 @@ msgstr "Não foi possível encontrar esse trecho — o texto em que ele estava p
 msgid "Couldn't finish installing {0} — see below."
 msgstr "Não deu para terminar de instalar {0} — veja abaixo."
 
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't fully clear network settings, but exposure is turning off. {0}"
+msgstr "Não foi possível limpar totalmente as configurações de rede, mas a exposição está sendo desativada. {0}"
+
 #. placeholder {0}: projected.error
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Couldn't install {skillName}: {0}"
@@ -3801,6 +3806,10 @@ msgstr "Não deu para reiniciar o servidor — ele está rodando em outra conta.
 msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Não deu para reiniciar o servidor automaticamente. Tente rodar `ok stop all` em um terminal e abra este projeto de novo — ou reinicie o computador se persistir."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't restart the server. Run ok start in this folder to retry."
+msgstr "Não foi possível reiniciar o servidor. Execute ok start nesta pasta para tentar novamente."
+
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "Não deu para reiniciar o servidor. Tente `ok start` nesta pasta."
@@ -3831,8 +3840,8 @@ msgstr "Não foi possível salvar as alterações. Tente editar uma cor novament
 #. placeholder {0}: humanFormat(first.error)
 #. placeholder {0}: humanFormat(second.error)
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't save network settings — {0}"
-msgstr "Não foi possível salvar as configurações de rede — {0}"
+msgid "Couldn't save network settings. {0}"
+msgstr "Não foi possível salvar as configurações de rede. {0}"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -5235,12 +5244,12 @@ msgid "Expose and restart"
 msgstr "Expor e reiniciar"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project to the network?"
-msgstr "Expor este projeto à rede?"
+msgid "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+msgstr "Exponha este projeto por meio de um túnel que você mesmo executa para acessar seu editor e endpoint de agente a partir de seus outros dispositivos."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-msgstr "Exponha o servidor deste projeto a uma rede mais ampla por meio de um túnel que você mesmo executa (por exemplo, Tailscale). Um visualizador no túnel recebe o editor e o endpoint do agente, editando ao vivo no servidor desta máquina."
+msgid "Expose this project to the network?"
+msgstr "Expor este projeto à rede?"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
@@ -6397,6 +6406,10 @@ msgstr "Faixa horizontal de pastilhas com o painel ativo abaixo; clique em uma p
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "Linha horizontal que separa seções."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
+msgstr "A hospedagem está ativa. O servidor está em execução na porta {boundPort}. Acesse-o pelo seu túnel."
 
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7989,11 +8002,6 @@ msgstr "Erro no .okignore aninhado em {path}"
 msgid "Nested fields"
 msgstr "Campos aninhados"
 
-#: src/components/settings/NetworkAccessSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Network access"
-msgstr "Acesso à rede"
-
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Erro de rede - {kind} \"{createdPath}\" ainda existe no disco"
@@ -8012,8 +8020,8 @@ msgid "Network error during cleanup"
 msgstr "Erro de rede durante a limpeza"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Network settings not yet loaded — try again in a moment."
-msgstr "Configurações de rede ainda não carregadas — tente novamente em instantes."
+msgid "Network settings not yet loaded. Try again in a moment."
+msgstr "As configurações de rede ainda não foram carregadas. Tente novamente em instantes."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9763,9 +9771,19 @@ msgstr "Populares"
 msgid "Popular on skills.sh"
 msgstr "Populares no skills.sh"
 
+#. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-msgstr "A porta {configuredPort} está em uso, então o servidor está rodando na porta {boundPort}. Um túnel que aponta para a porta fixa não vai alcançá-lo — libere essa porta e aplique novamente, ou escolha outra."
+msgid "Port {0} is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+msgstr "A porta {0} já está em uso por outro processo. Escolha uma diferente para que o destino do seu túnel permaneça estável entre reinicializações."
+
+#. placeholder {0}: portDraft.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {0} is available."
+msgstr "A porta {0} está disponível."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+msgstr "A porta {configuredPort} está em uso, então o servidor está em execução na porta {boundPort}. Um túnel que encaminha para a porta fixa não a alcançará. Libere essa porta e aplique novamente, ou escolha outra."
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -10261,6 +10279,11 @@ msgstr "Remoto"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "O ramo remoto <0>{remoteCheckoutRef}</0> será extraído como um novo ramo local de rastreamento <1>{trimmed}</1>, em uma janela própria dentro de <2>.ok/worktrees/</2>."
+
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Remote control"
+msgstr "Controle remoto"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Remote skill source"
@@ -12795,8 +12818,8 @@ msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "O provedor recusou a requisição. Verifique a chave de API e o id do modelo."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-msgstr "A URL pública que o seu túnel serve. O servidor aceita requisições para este host e o anuncia nas URLs que emite."
+msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "A URL pública que seu túnel serve (por exemplo, seu endereço Tailscale https://…ts.net). O servidor aceita solicitações para este host e o anuncia nas URLs que emite."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -12820,8 +12843,8 @@ msgstr "o servidor respondeu, mas o server.lock ainda não tem porta"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-msgstr "O servidor aceitará requisições para {0} sem autenticação integrada. Qualquer pessoa que conseguir acessar o seu túnel terá controle total desta base de conhecimento — incluindo sincronização, credenciais do GitHub e operações locais. Certifique-se de que a borda do túnel restrinja quem pode se conectar."
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "O servidor aceitará solicitações para {0} sem autenticação integrada. Qualquer pessoa que consiga acessar seu túnel terá controle total desta base de conhecimento, incluindo sincronização, credenciais do GitHub e operações locais. Garanta que a borda do túnel restrinja quem pode se conectar."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -13311,8 +13334,8 @@ msgid "This sends the link's address off your machine"
 msgstr "Isto envia o endereço do link para fora do seu computador"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-msgstr "Este servidor não tem autenticação integrada. Qualquer pessoa que conseguir acessar o túnel obtém controle total desta base de conhecimento — restrinja o acesso na borda do túnel (uma ACL do Tailscale, um proxy reverso com autenticação ou um firewall)."
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+msgstr "Este servidor não tem autenticação integrada. Qualquer pessoa que consiga acessar o túnel obtém controle total desta base de conhecimento. Coloque um portão de autenticação à frente, como uma rede Tailscale privada ou um proxy reverso com autenticação."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."

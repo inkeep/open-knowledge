@@ -351,6 +351,11 @@
     "4c_a6S": ["Nothing set yet."],
     "4d0VYJ": ["We’ll create a safe theme ID from this name."],
     "4g19V6": ["Failed to update property"],
+    "4gIB21": [
+      "The server will accept requests for ",
+      ["0"],
+      " with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+    ],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
     "4inh-4": [
@@ -387,9 +392,6 @@
     "56WWtu": ["Couldn't load starter packs: ", ["error"]],
     "56xUL1": ["Property name"],
     "57fiu8": ["(read-only — edit in source mode for now)"],
-    "58ko2F": [
-      "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-    ],
     "58qIOK": ["Comment on this selection"],
     "59CUI8": ["Share skills between AI tools"],
     "5ALjdr": ["Move through visual-editor find results from the find field."],
@@ -426,6 +428,7 @@
     ],
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
+    "5W_u0E": ["Couldn't restart the server. Run ok start in this folder to retry."],
     "5Y17qa": ["Applies to (globs — leading ! excludes; empty means every doc)"],
     "5YWCV_": ["Malformed plan response"],
     "5ZB7XC": ["File drop zone"],
@@ -649,9 +652,6 @@
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
     "8RtNI0": ["Failed to load documents"],
     "8TvlHF": ["Crash dump"],
-    "8UmUyc": [
-      "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-    ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Switch worktree"],
     "8W9CF6": ["Already sending this report"],
@@ -707,6 +707,7 @@
     "9EykGQ": ["Insert column right"],
     "9GbR5F": ["HI"],
     "9HKBNN": ["commands"],
+    "9Hr9WP": ["Couldn't save network settings. ", ["0"]],
     "9Ii3uK": ["a new pane to the left of ", ["0"]],
     "9J8xNg": ["Imported ", ["importedLabel"]],
     "9KooKn": ["Run a project audit from the Problems panel."],
@@ -1002,11 +1003,6 @@
       ["shareBranch"],
       "</0>. You have uncommitted changes that prevent switching here — open it in a worktree to leave your changes untouched."
     ],
-    "DTcfyN": [
-      "The server will accept requests for ",
-      ["0"],
-      " with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-    ],
     "DUWgfT": ["Re-authenticate with GitHub Enterprise Server"],
     "DUb7Ax": ["Multiple files use this theme name"],
     "DVh_Tb": ["Failed to clean up after trash"],
@@ -1044,6 +1040,13 @@
     "Dvr1Sg": ["Copying"],
     "Dvwa0U": ["Create a worktree from this branch"],
     "Dz7fsq": ["Zoom In"],
+    "E-G19G": [
+      "Port ",
+      ["configuredPort"],
+      " is in use, so the server is running on port ",
+      ["boundPort"],
+      " instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+    ],
     "E1Da_b": [
       "This permanently removes ",
       ["0"],
@@ -1176,6 +1179,9 @@
     ],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
     "FOGD7m": ["Create something great."],
+    "FQwhfM": [
+      "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+    ],
     "FRYB1Q": ["/api/config returned a malformed body"],
     "FS4Udk": ["OpenKnowledge ran a command"],
     "FTUGgh": ["Enter a repository URL or owner/repo"],
@@ -1281,6 +1287,9 @@
       "\" was not installed — you already have your own skill with that name. Rename yours if you want the pack's version."
     ],
     "GjsGAu": ["Agent chats"],
+    "GkIj9A": [
+      "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+    ],
     "GkYV_4": ["Renamed ", ["0"], " → ", ["1"]],
     "Gp_twO": ["Local path"],
     "GrBgX_": [
@@ -1856,6 +1865,11 @@
     "OxplNM": ["Updated \"", ["0"], "\": added ", ["1"], ", removed ", ["2"]],
     "Oxyd5f": ["Pick a name"],
     "OyIC0Q": ["Project name"],
+    "Oz3RWs": [
+      "Hosting is on. The server is running on port ",
+      ["boundPort"],
+      ". Reach it through your tunnel."
+    ],
     "Ozyht_": [
       "Present a document as a slide deck in its own window. Works in the OpenKnowledge desktop app only, and needs the Slidev CLI, which you install separately. When on, it appears under Plugins in the sidebar."
     ],
@@ -2015,6 +2029,11 @@
     ],
     "RDjuBN": ["Setup"],
     "RDrXh4": ["Configure user, project, and integration settings."],
+    "REkvLz": [
+      "Port ",
+      ["0"],
+      " is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+    ],
     "RG3yW6": ["Enter a name for this theme."],
     "RG4XHV": ["Copy ", ["0"], " prompt"],
     "RGCCrg": ["Copy share link"],
@@ -2040,6 +2059,7 @@
     "RZXTlY": ["Auto-fix (", ["count"], ")"],
     "R_U_A4": ["Add file or folder pattern, e.g. guides/**/*"],
     "RaPMZv": ["Keyboard shortcuts available in the editor and workspace."],
+    "RaUKLu": ["Remote control"],
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
     "RcrskJ": ["Formatting looked wrong"],
@@ -2076,13 +2096,6 @@
     "S48xcO": ["pending"],
     "S6eHlw": ["Open a project first."],
     "S6l5dv": ["Could not start creating a new item"],
-    "S79zoi": [
-      "Port ",
-      ["configuredPort"],
-      " is in use, so the server is running on port ",
-      ["boundPort"],
-      " instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-    ],
     "S9Vnum": ["Remove ", ["patternText"]],
     "S9t1PI": ["Fixing ", ["0"], "/", ["1"]],
     "SCoBBH": ["Tag suggestions"],
@@ -2171,6 +2184,7 @@
     "TiPvBP": ["Choose color"],
     "Tjc1pH": ["Section <0>(optional heading anchor)</0>"],
     "Tn5sik": ["Tells agents when to reach for this skill. You can edit it later."],
+    "TnalFo": ["Network settings not yet loaded. Try again in a moment."],
     "Tofsyo": ["Move Terminal to bottom"],
     "TpqW74": ["Fixed"],
     "Tq3pcs": ["Keep mine"],
@@ -2933,7 +2947,6 @@
     "cuA8QW": ["Organize specs"],
     "cuHhjo": ["Create & edit"],
     "d-GtJt": ["View in Source Markdown"],
-    "d02jS3": ["Network access"],
     "d1JjXo": [
       "Your local copy of branch <0>",
       ["branch"],
@@ -3756,6 +3769,9 @@
     "n2lRue": ["Commit or stash changes to switch:"],
     "n3T3EE": ["Installed in ", ["label"], " — click to remove"],
     "n3wx1q": ["Restore to this version?"],
+    "n4JOaa": [
+      "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+    ],
     "n4vt3Q": ["Download app"],
     "n5Vy3l": ["Opened on branch ", ["branch"]],
     "n5n_vi": ["Private repository"],
@@ -4328,11 +4344,9 @@
     "uksqrP": ["Repository not found. It may have been renamed, deleted, or moved."],
     "ul1Atu": ["Converting..."],
     "um-es7": ["Ship the editor with a"],
+    "umzaKv": ["Port ", ["0"], " is available."],
     "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
-    "unmCLE": [
-      "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-    ],
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
@@ -4518,7 +4532,6 @@
     "xV5sXw": [["0"], "w ago"],
     "xWEvuo": ["Ask AI"],
     "xWomUD": ["Use ", ["editor"], " version"],
-    "xXn6KB": ["Couldn't save network settings — ", ["0"]],
     "xXo8FT": ["Save failed: ", ["error"]],
     "xYMPyY": [
       "Paste was incomplete — ",
@@ -4624,7 +4637,6 @@
     "ylXj1N": ["Selected"],
     "ymWJLd": ["Show ", ["0"], " more"],
     "ynIa4S": ["Visual editor list item"],
-    "yopUSw": ["Network settings not yet loaded — try again in a moment."],
     "ypw6My": ["Showing top ", ["0"], " headings — keep typing to narrow"],
     "ysxgu8": ["project"],
     "yutJKi": ["Checklist with checkboxes."],
@@ -4654,6 +4666,7 @@
     "zAsDLY": ["Graph visualization of document links"],
     "zBUqvf": ["Set up OpenKnowledge integrations…"],
     "zD1Nqf": [["count", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
+    "zFH7iU": ["Couldn't fully clear network settings, but exposure is turning off. ", ["0"]],
     "zHsZcU": ["Enter the public origin your tunnel serves, for example https://notes.example.com"],
     "zJL34S": ["New Terminal Window"],
     "zKxoPm": ["Couldn't rename \"", ["0"], "\": ", ["1"]],

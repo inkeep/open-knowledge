@@ -3560,6 +3560,11 @@ msgstr "해당 구절을 찾지 못했습니다. 원문 변경 가능성이 있�
 msgid "Couldn't finish installing {0} — see below."
 msgstr "{0} 설치 완료 실패. 아래 내용 확인."
 
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't fully clear network settings, but exposure is turning off. {0}"
+msgstr "네트워크 설정을 완전히 지우지 못했지만 노출이 꺼지고 있습니다. {0}"
+
 #. placeholder {0}: projected.error
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Couldn't install {skillName}: {0}"
@@ -3805,6 +3810,10 @@ msgstr "서버를 다시 시작하지 못했습니다. 다른 계정으로 실�
 msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "서버를 자동으로 다시 시작하지 못했습니다. 터미널에서 `ok stop all`을 실행한 다음 이 프로젝트를 다시 여세요. 문제가 계속되면 컴퓨터를 다시 시작하세요."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't restart the server. Run ok start in this folder to retry."
+msgstr "서버를 다시 시작할 수 없습니다. 다시 시도하려면 이 폴더에서 ok start를 실행하세요."
+
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "서버를 다시 시작할 수 없습니다. 이 폴더에서 `ok start`를 실행해 보세요."
@@ -3835,8 +3844,8 @@ msgstr "변경사항을 저장하지 못했습니다. 색상을 다시 편집합
 #. placeholder {0}: humanFormat(first.error)
 #. placeholder {0}: humanFormat(second.error)
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't save network settings — {0}"
-msgstr "네트워크 설정을 저장하지 못했습니다 — {0}"
+msgid "Couldn't save network settings. {0}"
+msgstr "네트워크 설정을 저장할 수 없습니다. {0}"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -5239,12 +5248,12 @@ msgid "Expose and restart"
 msgstr "노출하고 재시작"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project to the network?"
-msgstr "이 프로젝트를 네트워크에 노출할까요?"
+msgid "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+msgstr "직접 실행하는 터널을 통해 이 프로젝트를 노출하여 다른 기기에서 편집기와 에이전트 엔드포인트에 접근하세요."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-msgstr "직접 운영하는 터널(예: Tailscale)을 통해 이 프로젝트의 서버를 더 넓은 네트워크에 노출합니다. 터널에 접속한 사람은 에디터와 에이전트 엔드포인트를 사용하여 이 컴퓨터의 서버에 실시간으로 편집할 수 있습니다."
+msgid "Expose this project to the network?"
+msgstr "이 프로젝트를 네트워크에 노출할까요?"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
@@ -6401,6 +6410,10 @@ msgstr "가로 필 스트립과 아래의 활성 패널입니다. 필을 클릭�
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "섹션을 나누는 가로줄입니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
+msgstr "호스팅이 켜져 있습니다. 서버가 포트 {boundPort}에서 실행 중입니다. 터널을 통해 접속하세요."
 
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7993,11 +8006,6 @@ msgstr "{path}의 중첩된 .okignore 오류"
 msgid "Nested fields"
 msgstr "중첩 필드"
 
-#: src/components/settings/NetworkAccessSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Network access"
-msgstr "네트워크 접근"
-
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "{kind} “{createdPath}”에 대한 네트워크 오류입니다. 해당 항목이 디스크에 여전히 있습니다."
@@ -8016,7 +8024,7 @@ msgid "Network error during cleanup"
 msgstr "정리 중 네트워크 오류가 발생했습니다."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Network settings not yet loaded — try again in a moment."
+msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "네트워크 설정이 아직 로드되지 않았습니다. 잠시 후 다시 시도하세요."
 
 #: src/components/SyncStatusBadge.tsx
@@ -9767,9 +9775,19 @@ msgstr "인기"
 msgid "Popular on skills.sh"
 msgstr "skills.sh에서 인기"
 
+#. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-msgstr "포트 {configuredPort}이(가) 사용 중이어서 서버가 대신 포트 {boundPort}에서 실행 중입니다. 고정 포트로 전달하는 터널은 여기에 연결되지 않습니다. 해당 포트를 비운 후 다시 적용하거나 다른 포트를 선택하세요."
+msgid "Port {0} is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+msgstr "포트 {0}은(는) 이미 다른 프로세스가 사용 중입니다. 재시작 후에도 터널 대상이 안정적으로 유지되도록 다른 포트를 선택하세요."
+
+#. placeholder {0}: portDraft.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {0} is available."
+msgstr "포트 {0}을(를) 사용할 수 있습니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+msgstr "포트 {configuredPort}이(가) 사용 중이어서 서버가 대신 포트 {boundPort}에서 실행 중입니다. 고정 포트로 전달하는 터널은 여기에 도달하지 못합니다. 해당 포트를 비우고 다시 적용하거나 다른 포트를 선택하세요."
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -10265,6 +10283,11 @@ msgstr "원격"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "원격 브랜치 <0>{remoteCheckoutRef}</0>에서 새 로컬 추적 브랜치 <1>{trimmed}</1>로 체크아웃합니다. <2>.ok/worktrees/</2> 아래 자체 창에서 엽니다."
+
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Remote control"
+msgstr "원격 제어"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Remote skill source"
@@ -12799,8 +12822,8 @@ msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "제공업체가 요청을 거부했습니다. API 키와 모델 ID를 확인합니다."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-msgstr "터널이 제공하는 공개 URL입니다. 서버는 이 호스트에 대한 요청을 허용하고 발급하는 URL에 이 주소를 사용합니다."
+msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "터널이 제공하는 공개 URL입니다(예: Tailscale https://…ts.net 주소). 서버는 이 호스트에 대한 요청을 허용하고 발급하는 URL에 이를 광고합니다."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -12824,8 +12847,8 @@ msgstr "서버 응답 완료. server.lock에 포트 없음"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-msgstr "서버는 내장 인증 없이 {0}에 대한 요청을 수락합니다. 터널에 접근할 수 있는 사람은 누구나 이 지식 베이스를 완전히 제어할 수 있습니다. 여기에는 동기화, GitHub 자격 증명, 로컬 작업이 포함됩니다. 터널 경계에서 접속할 수 있는 대상을 제한하세요."
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "서버는 기본 인증 없이 {0}에 대한 요청을 허용합니다. 터널에 접근할 수 있는 사람은 누구나 동기화, GitHub 자격 증명, 로컬 작업을 포함하여 이 지식 베이스를 완전히 제어할 수 있습니다. 터널 경계에서 누가 연결할 수 있는지 제한하세요."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -13315,8 +13338,8 @@ msgid "This sends the link's address off your machine"
 msgstr "이 컴퓨터 밖으로 링크 주소를 전송합니다"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-msgstr "이 서버에는 내장 인증이 없습니다. 터널에 접근할 수 있는 사람은 누구나 이 지식 베이스를 완전히 제어할 수 있습니다. 터널 경계에서 접근을 제한하세요(Tailscale ACL, 인증이 있는 리버스 프록시 또는 방화벽)."
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+msgstr "이 서버에는 기본 인증이 없습니다. 터널에 접근할 수 있는 사람은 누구나 이 지식 베이스를 완전히 제어할 수 있습니다. 그 앞에 인증 게이트를 두세요. 예를 들어 비공개 Tailscale 네트워크나 인증이 있는 리버스 프록시를 사용하세요."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."

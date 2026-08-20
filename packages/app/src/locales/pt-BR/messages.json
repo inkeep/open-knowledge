@@ -402,6 +402,11 @@
     "4c_a6S": ["Ainda não há nada definido."],
     "4d0VYJ": ["Criaremos um ID de tema seguro a partir deste nome."],
     "4g19V6": ["Falha ao atualizar a propriedade"],
+    "4gIB21": [
+      "O servidor aceitará solicitações para ",
+      ["0"],
+      " sem autenticação integrada. Qualquer pessoa que consiga acessar seu túnel terá controle total desta base de conhecimento, incluindo sincronização, credenciais do GitHub e operações locais. Garanta que a borda do túnel restrinja quem pode se conectar."
+    ],
     "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
     "4inh-4": [
@@ -450,9 +455,6 @@
     "56WWtu": ["Não deu para carregar os pacotes iniciais: ", ["error"]],
     "56xUL1": ["Nome da propriedade"],
     "57fiu8": ["(somente leitura — por enquanto, edite no modo código)"],
-    "58ko2F": [
-      "Exponha o servidor deste projeto a uma rede mais ampla por meio de um túnel que você mesmo executa (por exemplo, Tailscale). Um visualizador no túnel recebe o editor e o endpoint do agente, editando ao vivo no servidor desta máquina."
-    ],
     "58qIOK": ["Comentar esta seleção"],
     "59CUI8": ["Compartilhar habilidades entre ferramentas de IA"],
     "5ALjdr": ["Percorre os resultados de busca do editor visual a partir do campo de busca."],
@@ -505,6 +507,9 @@
     ],
     "5Umg9i": ["Desativar a pré-visualização de links externos"],
     "5WDhAk": ["Aponta para uma página ou uma URL externa."],
+    "5W_u0E": [
+      "Não foi possível reiniciar o servidor. Execute ok start nesta pasta para tentar novamente."
+    ],
     "5Y17qa": ["Aplica-se a (globs — um ! inicial exclui; vazio significa todos os documentos)"],
     "5YWCV_": ["Resposta de plano malformada"],
     "5ZB7XC": ["Área para soltar arquivos"],
@@ -757,9 +762,6 @@
     "8PmoQF": ["Abre o menu de inserção em uma posição de texto vazia ou ativa."],
     "8RtNI0": ["Falha ao carregar os documentos"],
     "8TvlHF": ["Despejo de falha"],
-    "8UmUyc": [
-      "A URL pública que o seu túnel serve. O servidor aceita requisições para este host e o anuncia nas URLs que emite."
-    ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Trocar de worktree"],
     "8W9CF6": ["Este relatório já está sendo enviado"],
@@ -815,6 +817,7 @@
     "9EykGQ": ["Inserir coluna à direita"],
     "9GbR5F": ["MÁX"],
     "9HKBNN": ["comandos"],
+    "9Hr9WP": ["Não foi possível salvar as configurações de rede. ", ["0"]],
     "9Ii3uK": ["um novo painel à esquerda de ", ["0"]],
     "9J8xNg": [["importedLabel"], " importado"],
     "9KooKn": ["Rode uma auditoria do projeto pelo painel Problemas."],
@@ -1155,11 +1158,6 @@
       ["shareBranch"],
       "</0>. Você tem alterações sem commit que impedem a troca aqui — abra em um worktree para deixar suas alterações intactas."
     ],
-    "DTcfyN": [
-      "O servidor aceitará requisições para ",
-      ["0"],
-      " sem autenticação integrada. Qualquer pessoa que conseguir acessar o seu túnel terá controle total desta base de conhecimento — incluindo sincronização, credenciais do GitHub e operações locais. Certifique-se de que a borda do túnel restrinja quem pode se conectar."
-    ],
     "DUWgfT": ["Autenticar de novo no GitHub Enterprise Server"],
     "DUb7Ax": ["Vários arquivos usam este nome de tema"],
     "DVh_Tb": ["Falha ao limpar depois de mover para o lixo"],
@@ -1203,6 +1201,13 @@
     "Dvr1Sg": ["Copiando"],
     "Dvwa0U": ["Criar um worktree a partir deste ramo"],
     "Dz7fsq": ["Aproximar"],
+    "E-G19G": [
+      "A porta ",
+      ["configuredPort"],
+      " está em uso, então o servidor está em execução na porta ",
+      ["boundPort"],
+      ". Um túnel que encaminha para a porta fixa não a alcançará. Libere essa porta e aplique novamente, ou escolha outra."
+    ],
     "E1Da_b": [
       "Isto remove definitivamente ",
       ["0"],
@@ -1341,6 +1346,9 @@
     ],
     "FNTx6u": ["Buscar \"", ["semanticSubmitQuery"], "\" por significado"],
     "FOGD7m": ["Crie algo excelente."],
+    "FQwhfM": [
+      "A URL pública que seu túnel serve (por exemplo, seu endereço Tailscale https://…ts.net). O servidor aceita solicitações para este host e o anuncia nas URLs que emite."
+    ],
     "FRYB1Q": ["/api/config devolveu um corpo malformado"],
     "FS4Udk": ["OpenKnowledge executou um comando"],
     "FTUGgh": ["Digite uma URL de repositório ou dono/repositório"],
@@ -1472,6 +1480,9 @@
       "” não foi instalada — você já tem uma skill própria com esse nome. Renomeie a sua se quiser a versão do pacote."
     ],
     "GjsGAu": ["Chats de agentes"],
+    "GkIj9A": [
+      "Exponha este projeto por meio de um túnel que você mesmo executa para acessar seu editor e endpoint de agente a partir de seus outros dispositivos."
+    ],
     "GkYV_4": [["0"], " renomeado → ", ["1"]],
     "Gp_twO": ["Caminho local"],
     "GrBgX_": [
@@ -2118,6 +2129,11 @@
     "OxplNM": ["\"", ["0"], "\" atualizado: ", ["1"], " adicionados, ", ["2"], " removidos"],
     "Oxyd5f": ["Escolha um nome"],
     "OyIC0Q": ["Nome do projeto"],
+    "Oz3RWs": [
+      "A hospedagem está ativa. O servidor está em execução na porta ",
+      ["boundPort"],
+      ". Acesse-o pelo seu túnel."
+    ],
     "Ozyht_": [
       "Apresente um documento como slides em uma janela própria. Funciona apenas no aplicativo de desktop do OpenKnowledge e precisa da CLI do Slidev, instalada separadamente. Quando ativado, aparece em Plugins na barra lateral."
     ],
@@ -2294,6 +2310,11 @@
     ],
     "RDjuBN": ["Configuração"],
     "RDrXh4": ["Configure as opções de usuário, de projeto e de integrações."],
+    "REkvLz": [
+      "A porta ",
+      ["0"],
+      " já está em uso por outro processo. Escolha uma diferente para que o destino do seu túnel permaneça estável entre reinicializações."
+    ],
     "RG3yW6": ["Insira um nome para este tema."],
     "RG4XHV": ["Copiar o prompt de ", ["0"]],
     "RGCCrg": ["Copiar link de compartilhamento"],
@@ -2319,6 +2340,7 @@
     "RZXTlY": ["Correção automática (", ["count"], ")"],
     "R_U_A4": ["Adicione um padrão de arquivo ou pasta, ex.: guides/**/*"],
     "RaPMZv": ["Atalhos de teclado disponíveis no editor e no espaço de trabalho."],
+    "RaUKLu": ["Controle remoto"],
     "Rah7yq": ["O que a IA deve fazer? (opcional)"],
     "Rb1zMa": ["Sem trecho"],
     "RcrskJ": ["A formatação parecia errada"],
@@ -2355,13 +2377,6 @@
     "S48xcO": ["pendente"],
     "S6eHlw": ["Abra um projeto primeiro."],
     "S6l5dv": ["Não foi possível começar a criar um novo item"],
-    "S79zoi": [
-      "A porta ",
-      ["configuredPort"],
-      " está em uso, então o servidor está rodando na porta ",
-      ["boundPort"],
-      ". Um túnel que aponta para a porta fixa não vai alcançá-lo — libere essa porta e aplique novamente, ou escolha outra."
-    ],
     "S9Vnum": ["Remover ", ["patternText"]],
     "S9t1PI": ["Corrigindo ", ["0"], "/", ["1"]],
     "SCoBBH": ["Sugestões de tags"],
@@ -2472,6 +2487,9 @@
     "TiPvBP": ["Escolher cor"],
     "Tjc1pH": ["Seção <0>(âncora de título, opcional)</0>"],
     "Tn5sik": ["Diz aos agentes quando recorrer a esta habilidade. Você pode editar depois."],
+    "TnalFo": [
+      "As configurações de rede ainda não foram carregadas. Tente novamente em instantes."
+    ],
     "Tofsyo": ["Mover o Terminal para a parte inferior"],
     "TpqW74": ["Fixa"],
     "Tq3pcs": ["Manter o meu"],
@@ -3344,7 +3362,6 @@
     "cuA8QW": ["Organizar as especificações"],
     "cuHhjo": ["Criar e editar"],
     "d-GtJt": ["Ver no Markdown de origem"],
-    "d02jS3": ["Acesso à rede"],
     "d1JjXo": [
       "Sua cópia local do ramo <0>",
       ["branch"],
@@ -4275,6 +4292,9 @@
     "n2lRue": ["Faça commit ou stash das alterações para trocar:"],
     "n3T3EE": ["Instalado em ", ["label"], " — clique para remover"],
     "n3wx1q": ["Restaurar até esta versão?"],
+    "n4JOaa": [
+      "Este servidor não tem autenticação integrada. Qualquer pessoa que consiga acessar o túnel obtém controle total desta base de conhecimento. Coloque um portão de autenticação à frente, como uma rede Tailscale privada ou um proxy reverso com autenticação."
+    ],
     "n4vt3Q": ["Baixar aplicativo"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
@@ -4899,11 +4919,9 @@
     "uksqrP": ["Repositório não encontrado. Ele pode ter sido renomeado, excluído ou movido."],
     "ul1Atu": ["Convertendo..."],
     "um-es7": ["Publique o editor com um"],
+    "umzaKv": ["A porta ", ["0"], " está disponível."],
     "un-K1H": ["Fica neste computador. Não vai para o git."],
     "un8kBM": ["Criando a página: ", ["linkTitle"], "."],
-    "unmCLE": [
-      "Este servidor não tem autenticação integrada. Qualquer pessoa que conseguir acessar o túnel obtém controle total desta base de conhecimento — restrinja o acesso na borda do túnel (uma ACL do Tailscale, um proxy reverso com autenticação ou um firewall)."
-    ],
     "uoJF_D": ["Foi difícil demais configurar ou começar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["O comando falhou."],
@@ -5102,7 +5120,6 @@
     "xV5sXw": ["há ", ["0"], " sem"],
     "xWEvuo": ["Perguntar à IA"],
     "xWomUD": ["Usar a versão do ", ["editor"]],
-    "xXn6KB": ["Não foi possível salvar as configurações de rede — ", ["0"]],
     "xXo8FT": ["Falha ao salvar: ", ["error"]],
     "xYMPyY": [
       "A colagem ficou incompleta — chegaram ",
@@ -5212,7 +5229,6 @@
     "ylXj1N": ["Selecionado"],
     "ymWJLd": ["Mostrar mais ", ["0"]],
     "ynIa4S": ["Item de lista do editor visual"],
-    "yopUSw": ["Configurações de rede ainda não carregadas — tente novamente em instantes."],
     "ypw6My": ["Mostrando os ", ["0"], " principais títulos — continue digitando para restringir"],
     "ysxgu8": ["projeto"],
     "yutJKi": ["Lista de verificação com caixas de seleção."],
@@ -5255,6 +5271,10 @@
         "plural",
         { "one": ["#", " documento"], "many": ["#", " documentos"], "other": ["#", " documentos"] }
       ]
+    ],
+    "zFH7iU": [
+      "Não foi possível limpar totalmente as configurações de rede, mas a exposição está sendo desativada. ",
+      ["0"]
     ],
     "zHsZcU": [
       "Insira a origem pública que seu túnel serve, por exemplo https://notes.example.com"

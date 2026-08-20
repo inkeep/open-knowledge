@@ -363,6 +363,7 @@ import {
   isPathShimInstalled,
   removePathShimFromRcFiles,
 } from './path-install.ts';
+import { probeLoopbackPort } from './port-probe.ts';
 import { installStdioBrokenPipeGuard } from './process-safety-net.ts';
 import {
   type ProjectIntegrationsCliSurface,
@@ -5129,6 +5130,12 @@ function registerIpcHandlers() {
       return resolveTerminalCliInstalledMap();
     },
   );
+
+  handle('ok:remote-access:dispatch', async (_event, req) => {
+    if (req.kind === 'probe-port') return probeLoopbackPort(req.port);
+    // Exhaustive today; a future `kind` without a branch throws loudly.
+    throw new Error(`unhandled remote-access dispatch kind: ${(req as { kind: string }).kind}`);
+  });
 
   handle('ok:terminal:dock-state', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);

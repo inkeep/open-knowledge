@@ -30,7 +30,13 @@
  * existing channels is preferred over net-new hand-rolled channels until
  * that migration lands.
  *
- * Count is 94 (ratchet cap 94). The 93→94 bump added the pop-out note window
+ * Count is 95 (ratchet cap 95). The 94→95 bump added the Remote control pane's
+ * `ok:remote-access:dispatch`: a local port-availability probe, and no existing
+ * channel is a clean semantic + performance host (integrations is
+ * editor-MCP/skills; get-info is a hot config path that must not run shell
+ * probes). One discriminated dispatch so any future pane read folds in as a new
+ * `kind` rather than a sibling channel.
+ * The 93→94 bump added the pop-out note window
  * (`ok:window:open-note`): the doc-tab context menu and the palette both need
  * main to spawn a `--ok-mode=note` BrowserWindow for a document. The same
  * channel now carries the discriminated note→main conversation handoff; this
@@ -1535,6 +1541,18 @@ export interface RequestChannels {
   'ok:project-integrations:dispatch': {
     args: [request: { kind: 'status' } | ({ kind: 'set' } & ProjectIntegrationsSetRequest)];
     result: ProjectIntegrationsStatus | ProjectIntegrationsSetResult;
+  };
+
+  /**
+   * Settings → This project → Remote control. Discriminated dispatch for the
+   * pane's main-process reads — today just a loopback port-availability probe
+   * (the pane does not detect or drive the tunnel). A dispatch (not N plain
+   * channels) so any later main-process need folds in as a new `kind` without
+   * another channel addition.
+   */
+  'ok:remote-access:dispatch': {
+    args: [request: { kind: 'probe-port'; port: number }];
+    result: boolean;
   };
 
   /**

@@ -420,6 +420,11 @@
     "4c_a6S": ["Rien de défini pour l'instant."],
     "4d0VYJ": ["Nous créerons un ID de thème sûr à partir de ce nom."],
     "4g19V6": ["Échec de la mise à jour de la propriété"],
+    "4gIB21": [
+      "Le serveur acceptera les requêtes pour ",
+      ["0"],
+      " sans authentification intégrée. Toute personne pouvant atteindre votre tunnel aura un contrôle total de cette base de connaissances, y compris la synchronisation, les identifiants GitHub et les opérations locales. Assurez-vous que la périphérie du tunnel restreint qui peut se connecter."
+    ],
     "4h3e0H": ["Impossible de mettre à jour le partage des compétences — ", ["detail"], "."],
     "4hJhzz": ["Tableau"],
     "4inh-4": [
@@ -468,9 +473,6 @@
     "56WWtu": ["Impossible de charger les packs de démarrage : ", ["error"]],
     "56xUL1": ["Nom de la propriété"],
     "57fiu8": ["(lecture seule — modifiez en mode source pour l'instant)"],
-    "58ko2F": [
-      "Exposez le serveur de ce projet à un réseau plus large via un tunnel que vous exécutez (par exemple Tailscale). Un visiteur sur le tunnel obtient l'éditeur et le point de terminaison de l'agent, et modifie en direct sur le serveur de cette machine."
-    ],
     "58qIOK": ["Commenter cette sélection"],
     "59CUI8": ["Partager des compétences entre outils IA"],
     "5ALjdr": [
@@ -527,6 +529,9 @@
     ],
     "5Umg9i": ["Désactiver les aperçus de liens externes"],
     "5WDhAk": ["Lien vers une page ou une URL externe."],
+    "5W_u0E": [
+      "Impossible de redémarrer le serveur. Exécutez ok start dans ce dossier pour réessayer."
+    ],
     "5Y17qa": ["S'applique à (globs — un ! initial exclut ; vide signifie tous les documents)"],
     "5YWCV_": ["Réponse de plan mal formée"],
     "5ZB7XC": ["Zone de dépôt de fichiers"],
@@ -793,9 +798,6 @@
     "8PmoQF": ["Ouvre le menu d'insertion à une position de texte vide ou active."],
     "8RtNI0": ["Échec du chargement des documents"],
     "8TvlHF": ["Vidage de plantage"],
-    "8UmUyc": [
-      "L'URL publique servie par votre tunnel. Le serveur accepte les requêtes destinées à cet hôte et l'annonce dans les URL qu'il émet."
-    ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Changer de worktree"],
     "8W9CF6": ["Ce rapport est déjà en cours d'envoi"],
@@ -851,6 +853,7 @@
     "9EykGQ": ["Insérer une colonne à droite"],
     "9GbR5F": ["MAX"],
     "9HKBNN": ["commandes"],
+    "9Hr9WP": ["Impossible d’enregistrer les paramètres réseau. ", ["0"]],
     "9Ii3uK": ["un nouveau volet à gauche de ", ["0"]],
     "9J8xNg": [["importedLabel"], " importé"],
     "9KooKn": ["Lancez un audit du projet depuis le panneau Problèmes."],
@@ -1203,11 +1206,6 @@
       ["shareBranch"],
       "</0>. Vous avez des modifications non validées qui empêchent de changer de branche ici — ouvrez-le dans un worktree pour laisser vos modifications intactes."
     ],
-    "DTcfyN": [
-      "Le serveur acceptera les requêtes destinées à ",
-      ["0"],
-      " sans authentification intégrée. Quiconque peut atteindre votre tunnel aura le contrôle total de cette base de connaissances — y compris la synchronisation, les identifiants GitHub et les opérations locales. Assurez-vous que la bordure du tunnel restreint qui peut se connecter."
-    ],
     "DUWgfT": ["Se réauthentifier auprès de GitHub Enterprise Server"],
     "DUb7Ax": ["Plusieurs fichiers utilisent ce nom de thème"],
     "DVh_Tb": ["Échec du nettoyage après la mise à la corbeille"],
@@ -1255,6 +1253,13 @@
     "Dvr1Sg": ["Copie en cours"],
     "Dvwa0U": ["Créer un worktree à partir de cette branche"],
     "Dz7fsq": ["Zoom avant"],
+    "E-G19G": [
+      "Le port ",
+      ["configuredPort"],
+      " est utilisé, donc le serveur fonctionne sur le port ",
+      ["boundPort"],
+      " à la place. Un tunnel redirigeant vers le port fixe ne l’atteindra pas. Libérez ce port et appliquez à nouveau, ou choisissez-en un autre."
+    ],
     "E1Da_b": [
       "Ceci retire définitivement ",
       ["0"],
@@ -1392,6 +1397,9 @@
     ],
     "FNTx6u": ["Rechercher « ", ["semanticSubmitQuery"], " » par le sens"],
     "FOGD7m": ["Créez quelque chose de formidable."],
+    "FQwhfM": [
+      "L’URL publique servie par votre tunnel (par exemple votre adresse Tailscale https://…ts.net). Le serveur admet les requêtes pour cet hôte et l’annonce dans les URL qu’il émet."
+    ],
     "FRYB1Q": ["/api/config a renvoyé un corps mal formé"],
     "FS4Udk": ["OpenKnowledge a exécuté une commande"],
     "FTUGgh": ["Saisissez une URL de dépôt ou owner/repo"],
@@ -1521,6 +1529,9 @@
       " » n’a pas été installée : vous avez déjà votre propre compétence portant ce nom. Renommez la vôtre si vous voulez la version du pack."
     ],
     "GjsGAu": ["Chats d'agents"],
+    "GkIj9A": [
+      "Exposez ce projet via un tunnel que vous exécutez pour accéder à son éditeur et à son point de terminaison d’agent depuis vos autres appareils."
+    ],
     "GkYV_4": [["0"], " renommé en ", ["1"]],
     "Gp_twO": ["Chemin local"],
     "GrBgX_": [
@@ -2177,6 +2188,11 @@
     "OxplNM": ["« ", ["0"], " » mis à jour : ", ["1"], " ajouté(s), ", ["2"], " retiré(s)"],
     "Oxyd5f": ["Choisissez un nom"],
     "OyIC0Q": ["Nom du projet"],
+    "Oz3RWs": [
+      "L’hébergement est activé. Le serveur fonctionne sur le port ",
+      ["boundPort"],
+      ". Accédez-y via votre tunnel."
+    ],
     "Ozyht_": [
       "Présentez un document sous forme de diaporama dans sa propre fenêtre. Fonctionne uniquement dans l'application de bureau OpenKnowledge et nécessite la CLI Slidev, à installer séparément. Une fois activé, il apparaît sous Plugins dans la barre latérale."
     ],
@@ -2357,6 +2373,11 @@
     ],
     "RDjuBN": ["Configuration"],
     "RDrXh4": ["Configurez les paramètres utilisateur, projet et intégrations."],
+    "REkvLz": [
+      "Le port ",
+      ["0"],
+      " est déjà utilisé par un autre processus. Choisissez-en un autre pour que la cible de votre tunnel reste stable après les redémarrages."
+    ],
     "RG3yW6": ["Saisissez un nom pour ce thème."],
     "RG4XHV": ["Copier l'invite ", ["0"]],
     "RGCCrg": ["Copier le lien de partage"],
@@ -2382,6 +2403,7 @@
     "RZXTlY": ["Correction automatique (", ["count"], ")"],
     "R_U_A4": ["Ajoutez un motif de fichier ou de dossier, par ex. guides/**/*"],
     "RaPMZv": ["Raccourcis clavier disponibles dans l'éditeur et l'espace de travail."],
+    "RaUKLu": ["Contrôle à distance"],
     "Rah7yq": ["Que doit faire l'IA ? (facultatif)"],
     "Rb1zMa": ["Pas d'extrait"],
     "RcrskJ": ["La mise en forme semblait incorrecte"],
@@ -2418,13 +2440,6 @@
     "S48xcO": ["en attente"],
     "S6eHlw": ["Ouvrez d'abord un projet."],
     "S6l5dv": ["Impossible de commencer la création d'un nouvel élément"],
-    "S79zoi": [
-      "Le port ",
-      ["configuredPort"],
-      " est utilisé, donc le serveur fonctionne sur le port ",
-      ["boundPort"],
-      " à la place. Un tunnel pointant vers le port fixe ne l'atteindra pas — libérez ce port et appliquez à nouveau, ou choisissez-en un autre."
-    ],
     "S9Vnum": ["Retirer ", ["patternText"]],
     "S9t1PI": ["Correction de ", ["0"], "/", ["1"]],
     "SCoBBH": ["Suggestions d'étiquettes"],
@@ -2537,6 +2552,7 @@
     "Tn5sik": [
       "Indique aux agents quand recourir à cette compétence. Vous pourrez le modifier plus tard."
     ],
+    "TnalFo": ["Les paramètres réseau ne sont pas encore chargés. Réessayez dans un instant."],
     "Tofsyo": ["Déplacer Terminal en bas"],
     "TpqW74": ["Fixe"],
     "Tq3pcs": ["Garder la mienne"],
@@ -3455,7 +3471,6 @@
     "cuA8QW": ["Organiser les spécifications"],
     "cuHhjo": ["Créer et modifier"],
     "d-GtJt": ["Afficher dans la source Markdown"],
-    "d02jS3": ["Accès réseau"],
     "d1JjXo": [
       "Votre copie locale de la branche <0>",
       ["branch"],
@@ -4400,6 +4415,9 @@
     "n2lRue": ["Validez ou remisez vos modifications pour changer :"],
     "n3T3EE": ["Installé dans ", ["label"], " — cliquez pour retirer"],
     "n3wx1q": ["Restaurer cette version ?"],
+    "n4JOaa": [
+      "Ce serveur n’a pas d’authentification intégrée. Toute personne pouvant atteindre le tunnel obtient un contrôle total de cette base de connaissances. Placez devant lui une barrière d’authentification, comme un réseau Tailscale privé ou un proxy inverse avec authentification."
+    ],
     "n4vt3Q": ["Télécharger l’application"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
@@ -5050,11 +5068,9 @@
     "uksqrP": ["Dépôt introuvable. Il a peut-être été renommé, supprimé ou déplacé."],
     "ul1Atu": ["Conversion…"],
     "um-es7": ["Livrez l'éditeur avec un"],
+    "umzaKv": ["Le port ", ["0"], " est disponible."],
     "un-K1H": ["Reste sur cet ordinateur. Non validé dans git."],
     "un8kBM": ["Création de la page : ", ["linkTitle"], "."],
-    "unmCLE": [
-      "Ce serveur n'a pas d'authentification intégrée. Quiconque peut atteindre le tunnel obtient le contrôle total de cette base de connaissances — restreignez l'accès à la bordure du tunnel (une ACL Tailscale, un proxy inverse avec authentification ou un pare-feu)."
-    ],
     "uoJF_D": ["C'était trop compliqué à installer ou à prendre en main"],
     "ur2XSb": ["Éditeur visuel"],
     "uuoHOU": ["La commande a échoué."],
@@ -5274,7 +5290,6 @@
     "xV5sXw": ["il y a ", ["0"], " sem"],
     "xWEvuo": ["Demander à l'IA"],
     "xWomUD": ["Utiliser la version ", ["editor"]],
-    "xXn6KB": ["Impossible d'enregistrer les paramètres réseau — ", ["0"]],
     "xXo8FT": ["Échec de l'enregistrement : ", ["error"]],
     "xYMPyY": [
       "Le collage était incomplet — ",
@@ -5392,7 +5407,6 @@
     "ylXj1N": ["Sélectionné"],
     "ymWJLd": ["Afficher ", ["0"], " de plus"],
     "ynIa4S": ["Élément de liste de l'éditeur visuel"],
-    "yopUSw": ["Paramètres réseau pas encore chargés — réessayez dans un instant."],
     "ypw6My": [
       "Affichage des ",
       ["0"],
@@ -5441,6 +5455,10 @@
         "plural",
         { "one": ["#", " document"], "many": ["#", " documents"], "other": ["#", " documents"] }
       ]
+    ],
+    "zFH7iU": [
+      "Impossible d’effacer complètement les paramètres réseau, mais l’exposition est en cours de désactivation. ",
+      ["0"]
     ],
     "zHsZcU": [
       "Saisissez l'origine publique servie par votre tunnel, par exemple https://notes.example.com"

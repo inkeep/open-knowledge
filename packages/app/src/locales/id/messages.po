@@ -3556,6 +3556,11 @@ msgstr "Tidak dapat menemukan bagian teks itu — teks yang ditandainya mungkin 
 msgid "Couldn't finish installing {0} — see below."
 msgstr "Pemasangan {0} tidak bisa diselesaikan — lihat di bawah."
 
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't fully clear network settings, but exposure is turning off. {0}"
+msgstr "Tidak dapat sepenuhnya menghapus pengaturan jaringan, tetapi paparan sedang dimatikan. {0}"
+
 #. placeholder {0}: projected.error
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Couldn't install {skillName}: {0}"
@@ -3801,6 +3806,10 @@ msgstr "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mula
 msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "Server tidak bisa dimulai ulang secara otomatis. Coba jalankan `ok stop all` di terminal, lalu buka lagi proyek ini — atau mulai ulang komputer Anda jika masih berlanjut."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't restart the server. Run ok start in this folder to retry."
+msgstr "Tidak dapat memulai ulang server. Jalankan ok start di folder ini untuk mencoba lagi."
+
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "Server tidak bisa dimulai ulang. Coba `ok start` di folder ini."
@@ -3831,8 +3840,8 @@ msgstr "Perubahan tidak dapat disimpan. Coba sunting warna lagi."
 #. placeholder {0}: humanFormat(first.error)
 #. placeholder {0}: humanFormat(second.error)
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't save network settings — {0}"
-msgstr "Tidak dapat menyimpan pengaturan jaringan — {0}"
+msgid "Couldn't save network settings. {0}"
+msgstr "Tidak dapat menyimpan pengaturan jaringan. {0}"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -5235,12 +5244,12 @@ msgid "Expose and restart"
 msgstr "Ekspos dan mulai ulang"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project to the network?"
-msgstr "Ekspos proyek ini ke jaringan?"
+msgid "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+msgstr "Ekspos proyek ini melalui tunnel yang Anda jalankan untuk menjangkau editor dan endpoint agennya dari perangkat Anda yang lain."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-msgstr "Ekspos server proyek ini ke jaringan yang lebih luas melalui tunnel yang Anda jalankan (misalnya Tailscale). Pemirsa di tunnel mendapatkan editor dan endpoint agen, mengedit secara langsung terhadap server mesin ini."
+msgid "Expose this project to the network?"
+msgstr "Ekspos proyek ini ke jaringan?"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
@@ -6397,6 +6406,10 @@ msgstr "Deretan pil mendatar + panel aktif di bawahnya; klik sebuah pil untuk be
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "Garis mendatar yang memisahkan bagian."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
+msgstr "Hosting aktif. Server berjalan di port {boundPort}. Akses melalui tunnel Anda."
 
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7989,11 +8002,6 @@ msgstr "Galat .okignore bersarang di {path}"
 msgid "Nested fields"
 msgstr "Bidang bersarang"
 
-#: src/components/settings/NetworkAccessSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Network access"
-msgstr "Akses jaringan"
-
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "Galat jaringan - {kind} \"{createdPath}\" masih ada di disk"
@@ -8012,8 +8020,8 @@ msgid "Network error during cleanup"
 msgstr "Galat jaringan saat pembersihan"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Network settings not yet loaded — try again in a moment."
-msgstr "Pengaturan jaringan belum dimuat — coba lagi sebentar."
+msgid "Network settings not yet loaded. Try again in a moment."
+msgstr "Pengaturan jaringan belum dimuat. Coba lagi sebentar."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9763,9 +9771,19 @@ msgstr "Populer"
 msgid "Popular on skills.sh"
 msgstr "Populer di skills.sh"
 
+#. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-msgstr "Port {configuredPort} sedang digunakan, jadi server berjalan di port {boundPort}. Tunnel yang menuju port tetap tidak akan menjangkaunya — bebaskan port itu dan terapkan lagi, atau pilih yang lain."
+msgid "Port {0} is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+msgstr "Port {0} sudah digunakan oleh proses lain. Pilih port lain agar target tunnel Anda tetap stabil setelah restart."
+
+#. placeholder {0}: portDraft.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {0} is available."
+msgstr "Port {0} tersedia."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+msgstr "Port {configuredPort} sedang digunakan, jadi server berjalan di port {boundPort}. Tunnel yang meneruskan ke port tetap tidak akan menjangkaunya. Bebaskan port itu dan terapkan lagi, atau pilih port lain."
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -10261,6 +10279,11 @@ msgstr "Remote"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "Cabang remote <0>{remoteCheckoutRef}</0> akan diambil sebagai cabang pelacak lokal baru <1>{trimmed}</1>, di jendelanya sendiri di bawah <2>.ok/worktrees/</2>."
+
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Remote control"
+msgstr "Kontrol jarak jauh"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Remote skill source"
@@ -12795,8 +12818,8 @@ msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-msgstr "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
+msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "URL publik yang dilayani tunnel Anda (misalnya alamat Tailscale https://…ts.net Anda). Server menerima permintaan untuk host ini dan mengiklankannya di URL yang diterbitkannya."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -12820,8 +12843,8 @@ msgstr "server merespons tetapi server.lock belum memiliki port"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-msgstr "Server akan menerima permintaan untuk {0} tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini — termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "Server akan menerima permintaan untuk {0} tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini, termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -13311,8 +13334,8 @@ msgid "This sends the link's address off your machine"
 msgstr "Ini mengirim alamat tautannya keluar dari komputer Anda"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-msgstr "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini — batasi akses di tepi tunnel (ACL Tailscale, reverse proxy dengan autentikasi, atau firewall)."
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+msgstr "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini. Pasang gerbang autentikasi di depannya, seperti jaringan Tailscale pribadi atau reverse proxy dengan autentikasi."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."

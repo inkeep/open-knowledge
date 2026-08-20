@@ -559,7 +559,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // The resolved server.* runtime. The CLI passes its fully-layered resolution
   // (flags > env > project-local > project > user); the desktop utility passes
   // an equivalent scope-resolved runtime (its `resolveDesktopServerRuntime`
-  // runs the same three-layer `loadConfig`), so desktop's Network access pane
+  // runs the same three-layer `loadConfig`), so desktop's Remote control pane
   // consent (project-local `server.allowExternal`) now takes effect through the
   // trusted branch. Direct embedders that DON'T pass one (the dev-server
   // plugin, tests) fall back to a files-only resolution — but that Config is

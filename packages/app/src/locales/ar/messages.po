@@ -3560,6 +3560,11 @@ msgstr "تعذر العثور على ذلك المقطع — ربما تغير �
 msgid "Couldn't finish installing {0} — see below."
 msgstr "تعذّر إتمام تثبيت {0} — انظر أدناه."
 
+#. placeholder {0}: humanFormat(second.error)
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't fully clear network settings, but exposure is turning off. {0}"
+msgstr "تعذّر مسح إعدادات الشبكة بالكامل، لكن يتم إيقاف العرض. {0}"
+
 #. placeholder {0}: projected.error
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "Couldn't install {skillName}: {0}"
@@ -3805,6 +3810,10 @@ msgstr "تعذّرت إعادة تشغيل الخادم — يعمل تحت حس
 msgid "Couldn't restart the server automatically. Try running `ok stop all` in a terminal, then reopen this project — or restart your computer if it persists."
 msgstr "تعذّرت إعادة تشغيل الخادم تلقائيًا. جرّب تشغيل `ok stop all` في طرفية، ثم أعد فتح هذا المشروع — أو أعد تشغيل جهازك إن استمرت المشكلة."
 
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Couldn't restart the server. Run ok start in this folder to retry."
+msgstr "تعذّر إعادة تشغيل الخادم. شغّل ok start في هذا المجلد لإعادة المحاولة."
+
 #: src/lib/restart-collab-server.ts
 msgid "Couldn't restart the server. Try `ok start` in this folder."
 msgstr "تعذّرت إعادة تشغيل الخادم. جرّب `ok start` في هذا المجلد."
@@ -3835,8 +3844,8 @@ msgstr "تعذّر حفظ التغييرات. حاول تعديل لون مرة 
 #. placeholder {0}: humanFormat(first.error)
 #. placeholder {0}: humanFormat(second.error)
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Couldn't save network settings — {0}"
-msgstr "تعذّر حفظ إعدادات الشبكة — {0}"
+msgid "Couldn't save network settings. {0}"
+msgstr "تعذّر حفظ إعدادات الشبكة. {0}"
 
 #: src/components/TemplateForm.tsx
 msgid "Couldn't save template: {error}"
@@ -5239,12 +5248,12 @@ msgid "Expose and restart"
 msgstr "الكشف وإعادة التشغيل"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project to the network?"
-msgstr "هل تريد كشف هذا المشروع على الشبكة؟"
+msgid "Expose this project over a tunnel you run to reach its editor and agent endpoint from your other devices."
+msgstr "اعرض هذا المشروع عبر نفق تُشغّله بنفسك للوصول إلى محرره ونقطة نهاية الوكيل من أجهزتك الأخرى."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Expose this project's server to a wider network through a tunnel you run (for example Tailscale). A viewer on the tunnel gets the editor and agent endpoint, editing live against this machine's server."
-msgstr "اكشف خادم هذا المشروع لشبكة أوسع عبر نفق تشغّله أنت (على سبيل المثال Tailscale). يحصل المُشاهد على النفق على المحرّر ونقطة نهاية الوكيل، ويحرّر مباشرةً مقابل خادم هذا الجهاز."
+msgid "Expose this project to the network?"
+msgstr "هل تريد كشف هذا المشروع على الشبكة؟"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
@@ -6401,6 +6410,10 @@ msgstr "شريط أقراص أفقي مع اللوحة النشطة أدناه؛
 #: src/editor/slash-command/items.tsx
 msgid "Horizontal rule that divides sections."
 msgstr "خط أفقي يفصل بين الأقسام."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Hosting is on. The server is running on port {boundPort}. Reach it through your tunnel."
+msgstr "الاستضافة مفعّلة. الخادم يعمل على المنفذ {boundPort}. يمكنك الوصول إليه عبر نفقك."
 
 #: src/components/settings/HotkeysSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -7993,11 +8006,6 @@ msgstr "خطأ في .okignore المتداخل في {path}"
 msgid "Nested fields"
 msgstr "حقول متداخلة"
 
-#: src/components/settings/NetworkAccessSection.tsx
-#: src/components/settings/SettingsDialogShell.tsx
-msgid "Network access"
-msgstr "الوصول إلى الشبكة"
-
 #: src/components/FileTree.tsx
 msgid "Network error - {kind} \"{createdPath}\" still exists on disk"
 msgstr "خطأ في الشبكة - لا يزال {kind} «{createdPath}» موجودًا على القرص"
@@ -8016,8 +8024,8 @@ msgid "Network error during cleanup"
 msgstr "خطأ في الشبكة أثناء التنظيف"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Network settings not yet loaded — try again in a moment."
-msgstr "لم يتم تحميل إعدادات الشبكة بعد — أعد المحاولة بعد لحظة."
+msgid "Network settings not yet loaded. Try again in a moment."
+msgstr "لم يتم تحميل إعدادات الشبكة بعد. أعد المحاولة بعد لحظة."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "never"
@@ -9767,9 +9775,19 @@ msgstr "شائع"
 msgid "Popular on skills.sh"
 msgstr "شائع على skills.sh"
 
+#. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it — free that port and apply again, or choose a different one."
-msgstr "المنفذ {configuredPort} قيد الاستخدام، لذا يعمل الخادم على المنفذ {boundPort} بدلاً منه. لن يصل النفق الموجَّه إلى المنفذ الثابت — حرِّر هذا المنفذ وطبِّق مرة أخرى، أو اختر منفذًا آخر."
+msgid "Port {0} is already in use by another process. Pick a different one so your tunnel target stays stable across restarts."
+msgstr "المنفذ {0} مستخدم بالفعل من قبل عملية أخرى. اختر منفذًا مختلفًا حتى يظل هدف نفقك ثابتًا عبر عمليات إعادة التشغيل."
+
+#. placeholder {0}: portDraft.trim()
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {0} is available."
+msgstr "المنفذ {0} متاح."
+
+#: src/components/settings/NetworkAccessSection.tsx
+msgid "Port {configuredPort} is in use, so the server is running on port {boundPort} instead. A tunnel forwarding to the fixed port won't reach it. Free that port and apply again, or choose a different one."
+msgstr "المنفذ {configuredPort} قيد الاستخدام، لذا يعمل الخادم على المنفذ {boundPort} بدلاً منه. لن يصل النفق الذي يوجّه إلى المنفذ الثابت إليه. حرّر ذلك المنفذ وطبّق مرة أخرى، أو اختر منفذًا مختلفًا."
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -10265,6 +10283,11 @@ msgstr "بعيد"
 #: src/components/NewWorktreeDialog.tsx
 msgid "Remote branch <0>{remoteCheckoutRef}</0> will be checked out as a new local tracking branch <1>{trimmed}</1>, in its own window under <2>.ok/worktrees/</2>."
 msgstr "سيُسحب الفرع البعيد <0>{remoteCheckoutRef}</0> كفرع تتبّع محلي جديد <1>{trimmed}</1>، في نافذته الخاصة تحت <2>.ok/worktrees/</2>."
+
+#: src/components/settings/NetworkAccessSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Remote control"
+msgstr "التحكم عن بُعد"
 
 #: src/components/ImportSkillForm.tsx
 msgid "Remote skill source"
@@ -12799,8 +12822,8 @@ msgid "The provider rejected the request. Check the API key and the model id."
 msgstr "رفض المزوّد الطلب. تحقق من مفتاح API ومعرّف النموذج."
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
-msgstr "عنوان URL العام الذي يخدمه النفق الخاص بك. يقبل الخادم الطلبات الموجّهة إلى هذا المضيف ويعلن عنه في عناوين URL التي يُصدرها."
+msgid "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
+msgstr "عنوان URL العام الذي يخدمه نفقك (مثل عنوان Tailscale الخاص بك https://…ts.net). يقبل الخادم الطلبات لهذا المضيف ويعلن عنه في عناوين URL التي يصدرها."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -12824,8 +12847,8 @@ msgstr "استجاب الخادم لكن server.lock لا يحتوي على من
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base — including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
-msgstr "سيقبل الخادم الطلبات الموجّهة إلى {0} دون أي مصادقة مدمجة. أي شخص يمكنه الوصول إلى النفق الخاص بك سيمتلك تحكمًا كاملًا في قاعدة المعرفة هذه — بما في ذلك المزامنة وبيانات اعتماد GitHub والعمليات المحلية. تأكد من أن حافة النفق تقيّد من يمكنه الاتصال."
+msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
+msgstr "سيقبل الخادم الطلبات الموجّهة إلى {0} دون مصادقة مدمجة. أي شخص يمكنه الوصول إلى نفقك سيحصل على تحكم كامل في قاعدة المعرفة هذه، بما في ذلك المزامنة وبيانات اعتماد GitHub والعمليات المحلية. تأكد من أن حافة النفق تقيّد من يمكنه الاتصال."
 
 #: src/components/settings/LintingSection.tsx
 msgid "The shapes of title, description, resource, and tags when you use them. None are required; declaring one only pins its type, so tags written as a comma-separated string is flagged."
@@ -13315,8 +13338,8 @@ msgid "This sends the link's address off your machine"
 msgstr "هذا يرسل عنوان الرابط خارج جهازك"
 
 #: src/components/settings/NetworkAccessSection.tsx
-msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base — restrict access at the tunnel's edge (a Tailscale ACL, a reverse proxy with auth, or a firewall)."
-msgstr "لا يحتوي هذا الخادم على مصادقة مدمجة. أي شخص يمكنه الوصول إلى النفق يحصل على تحكم كامل في قاعدة المعرفة هذه — قيّد الوصول عند حافة النفق (قائمة تحكم ACL في Tailscale، أو وكيل عكسي مع مصادقة، أو جدار حماية)."
+msgid "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
+msgstr "لا يحتوي هذا الخادم على مصادقة مدمجة. أي شخص يمكنه الوصول إلى النفق يحصل على تحكم كامل في قاعدة المعرفة هذه. ضع بوابة مصادقة أمامه، مثل شبكة Tailscale خاصة أو وكيل عكسي مزوّد بمصادقة."
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "This setting is per-machine and isn't shared with collaborators."

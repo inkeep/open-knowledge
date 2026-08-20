@@ -1,5 +1,5 @@
 /**
- * Behavioral tests for Settings → This project → Network access.
+ * Behavioral tests for Settings → This project → Remote control.
  *
  * The system boundaries (the two CRDT-backed config bindings, the desktop
  * restart bridge) are mocked; the real shadcn Switch / Input / RadioGroup /
@@ -118,6 +118,15 @@ describe('NetworkAccessSection', () => {
     expect(exposeToggle().getAttribute('aria-checked')).toBe('true');
   });
 
+  test('shows a hosting-active indicator when exposure is enabled and the port is bound', () => {
+    projectLocalConfig = { server: { allowExternal: true } };
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:24550' },
+    };
+    render(<NetworkAccessSection />);
+    expect(screen.queryByTestId('settings-network-serving')).not.toBeNull();
+  });
+
   test('enabling writes the scope split (origin+port → project, consent → project-local) and restarts', async () => {
     render(<NetworkAccessSection />);
     await userEvent.click(exposeToggle());
@@ -219,6 +228,104 @@ describe('NetworkAccessSection', () => {
     expect(screen.queryByTestId('settings-network-port-inuse')).toBeNull();
   });
 
+  test('preflight probe flags a typed fixed port that is already in use', async () => {
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:24550' },
+      remoteAccess: { probePort: async () => false },
+    };
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle()); // fixed mode + reveals the port input
+    const input = screen.getByTestId('settings-network-port-input');
+    await userEvent.clear(input);
+    await userEvent.type(input, '24560');
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-network-port-unavailable')).not.toBeNull(),
+    );
+    expect(screen.queryByTestId('settings-network-port-available')).toBeNull();
+    // A known-taken port must BLOCK Apply, not just warn — otherwise boot falls
+    // back to an ephemeral port and defeats the pinned target.
+    expect(applyButton().disabled).toBe(true);
+  });
+
+  test('preflight probe confirms a free typed fixed port', async () => {
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:24550' },
+      remoteAccess: { probePort: async () => true },
+    };
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    const input = screen.getByTestId('settings-network-port-input');
+    await userEvent.clear(input);
+    await userEvent.type(input, '24560');
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-network-port-available')).not.toBeNull(),
+    );
+    expect(screen.queryByTestId('settings-network-port-unavailable')).toBeNull();
+  });
+
+  test('a stale port verdict clears immediately when the draft changes', async () => {
+    // 24580 free, everything else taken. Confirm the free verdict, then edit to a
+    // taken port: the stale "available" must not linger through the debounce.
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:24550' },
+      remoteAccess: { probePort: async (p: number) => p === 24580 },
+    };
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    const input = screen.getByTestId('settings-network-port-input');
+    await userEvent.clear(input);
+    await userEvent.type(input, '24580');
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-network-port-available')).not.toBeNull(),
+    );
+    await userEvent.clear(input);
+    await userEvent.type(input, '24575');
+    // Verdict cleared synchronously — the old "available" is gone before the new probe resolves.
+    expect(screen.queryByTestId('settings-network-port-available')).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId('settings-network-port-unavailable')).not.toBeNull(),
+    );
+  });
+
+  test('the port we are already bound to counts as available even when the probe says taken', async () => {
+    // A probe of the bound port returns false (EADDRINUSE — our own socket). The
+    // short-circuit must treat it as available so a user changing the URL while
+    // keeping the same port is not permanently blocked from Apply.
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:24560' },
+      remoteAccess: { probePort: async () => false },
+    };
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    await userEvent.type(
+      screen.getByTestId('settings-network-origin'),
+      'https://box.tailnet.ts.net',
+    );
+    const input = screen.getByTestId('settings-network-port-input');
+    await userEvent.clear(input);
+    await userEvent.type(input, '24560'); // === boundPort
+    await waitFor(() => expect(applyButton().disabled).toBe(false));
+    expect(screen.queryByTestId('settings-network-port-unavailable')).toBeNull();
+  });
+
+  test('an out-of-range port blocks apply — error shown, no writes, no restart', async () => {
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    await userEvent.type(
+      screen.getByTestId('settings-network-origin'),
+      'https://box.tailnet.ts.net',
+    );
+    const input = screen.getByTestId('settings-network-port-input');
+    await userEvent.clear(input);
+    await userEvent.type(input, '99999');
+    await userEvent.click(applyButton());
+
+    expect(screen.getByTestId('settings-network-port-error')).toBeTruthy();
+    expect(projectPatchCalls).toHaveLength(0);
+    expect(localPatchCalls).toHaveLength(0);
+    expect(restartCalls).toHaveLength(0);
+  });
+
   test('a failed config patch surfaces an error toast and does not restart', async () => {
     projectLocalBinding = {
       patch: () => ({ ok: false, error: { code: 'SCHEMA_INVALID', issues: [] } }),
@@ -234,6 +341,24 @@ describe('NetworkAccessSection', () => {
     await waitFor(() => expect(toastErrors.length).toBeGreaterThan(0));
     expect(restartCalls).toHaveLength(0);
     expect(applyButton().disabled).toBe(false);
+  });
+
+  test('disable-path second-write failure still restarts to stop exposure', async () => {
+    // Disabling drops consent FIRST (succeeds), then clears the origin (fails
+    // here). Exposure must still be removed, so the restart proceeds anyway —
+    // the dropped consent takes effect on boot.
+    projectConfig = { server: { externalUrl: 'https://box.example.com', port: 24550 } };
+    projectLocalConfig = { server: { allowExternal: true } };
+    projectBinding = {
+      patch: () => ({ ok: false, error: { code: 'SCHEMA_INVALID', issues: [] } }),
+    };
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle()); // on → off, applies without a confirm
+    await userEvent.click(applyButton());
+
+    await waitFor(() => expect(restartCalls).toHaveLength(1));
+    expect(localPatchCalls).toEqual([{ server: { allowExternal: false } }]);
+    expect(toastErrors.some((m) => String(m).includes('exposure is turning off'))).toBe(true);
   });
 
   test('a first-write failure in the enable path skips the consent write (fail-safe order)', async () => {
@@ -282,6 +407,75 @@ describe('NetworkAccessSection', () => {
     await userEvent.click(applyButton());
 
     await waitFor(() => expect(restartCalls).toHaveLength(1));
+    await waitFor(() => expect(applyButton().disabled).toBe(false));
+    // A teardown rejection is the success path — no error toast.
+    expect(toastErrors.some((m) => String(m).includes('restart the server'))).toBe(false);
+  });
+
+  test('a genuine restart IPC failure surfaces a toast (not a silent re-enable)', async () => {
+    restartImpl = () => Promise.reject(new Error('unexpected main-side error'));
+    projectLocalConfig = { server: { allowExternal: true } };
+    projectConfig = { server: { externalUrl: 'https://box.example.com', port: 24550 } };
+    render(<NetworkAccessSection />);
+    await userEvent.clear(screen.getByTestId('settings-network-port-input'));
+    await userEvent.type(screen.getByTestId('settings-network-port-input'), '24551');
+    await userEvent.click(applyButton());
+    await waitFor(() =>
+      expect(toastErrors.some((m) => String(m).includes('restart the server'))).toBe(true),
+    );
+    expect(applyButton().disabled).toBe(false);
+  });
+
+  test('a valid URL with a non-http(s) scheme is rejected without writing', async () => {
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    await userEvent.type(screen.getByTestId('settings-network-origin'), 'ftp://notes.example.com');
+    await userEvent.click(applyButton());
+    expect(screen.getByTestId('settings-network-origin-error')).toBeTruthy();
+    expect(projectPatchCalls).toHaveLength(0);
+  });
+
+  test('switching from a committed fixed port to Automatic makes Apply dirty and writes port: null', async () => {
+    projectConfig = { server: { port: 24550 } };
+    render(<NetworkAccessSection />);
+    expect(applyButton().disabled).toBe(true);
+    await userEvent.click(screen.getByTestId('settings-network-port-auto'));
+    expect(applyButton().disabled).toBe(false);
+    await userEvent.click(applyButton());
+    await waitFor(() => expect(restartCalls).toHaveLength(1));
+    // Auto mode clears the fixed-port leaf so boot picks a free port each start.
+    expect(projectPatchCalls).toEqual([{ server: { externalUrl: null, port: null } }]);
+  });
+
+  test('cancelling the enable confirmation writes nothing and does not restart', async () => {
+    render(<NetworkAccessSection />);
+    await userEvent.click(exposeToggle());
+    await userEvent.type(
+      screen.getByTestId('settings-network-origin'),
+      'https://box.tailnet.ts.net',
+    );
+    await userEvent.click(applyButton());
+    // Off→on consent is gated — the dialog must appear, and Cancel must abort.
+    await userEvent.click(await screen.findByTestId('settings-network-confirm-cancel'));
+
+    expect(projectPatchCalls).toHaveLength(0);
+    expect(localPatchCalls).toHaveLength(0);
+    expect(restartCalls).toHaveLength(0);
+  });
+
+  test('disabling exposure is never blocked by a taken fixed port (recovery path)', async () => {
+    // Exposed on a fixed port that fell back (configured 24550, bound 51234) and
+    // the port still reads as taken. While exposing, Apply is blocked — but the
+    // user must be able to toggle exposure OFF to recover.
+    projectLocalConfig = { server: { allowExternal: true } };
+    projectConfig = { server: { externalUrl: 'https://box.example.com', port: 24550 } };
+    (globalThis as unknown as { window: { okDesktop?: unknown } }).window.okDesktop = {
+      config: { apiOrigin: 'http://localhost:51234' },
+      remoteAccess: { probePort: async () => false },
+    };
+    render(<NetworkAccessSection />);
+    await waitFor(() => expect(applyButton().disabled).toBe(true));
+    await userEvent.click(exposeToggle()); // on → off
     await waitFor(() => expect(applyButton().disabled).toBe(false));
   });
 });

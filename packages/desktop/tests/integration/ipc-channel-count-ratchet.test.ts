@@ -455,7 +455,7 @@ const CHANNELS_SRC = readFileSync(SRC_PATH, 'utf-8');
  * The typed-ipc migration remains the committed end state, with the
  * `ipc-channels.ts` header updated in lock-step.
  */
-const REQUEST_CHANNEL_CAP = 94;
+const REQUEST_CHANNEL_CAP = 95;
 
 /**
  * Extract the body of an interface block by name. Returns the substring
