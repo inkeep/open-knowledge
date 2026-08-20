@@ -15,7 +15,14 @@
  * treat markdown syntax as elastic on whichever side carries it. Every other
  * character must still match, in order: this is not a fuzzy match and cannot
  * land on different words.
+ *
+ * Markdown syntax is not the only place the two sides legally disagree. The
+ * display pipeline also DECODES a narrow set of numeric character references —
+ * six bytes on disk, one character on screen — and this file is a consumer of
+ * that contract; `whitespace-char-ref.ts` owns which refs are in it.
  */
+
+import { decodeInlineWhitespaceNumericCharRef } from '../markdown/whitespace-char-ref.ts';
 
 /** A located passage as `[start, end)` offsets into the haystack. */
 export interface PassageMatch {
@@ -225,6 +232,59 @@ function invisibleLineRunAt(text: string, i: number): number {
   return line.length;
 }
 
+/**
+ * One numeric character reference.
+ *
+ * LOCKSTEP: the PATTERN BODY is identical to `NUMERIC_CHAR_REF_TOKEN` in
+ * `whitespace-char-ref.ts` and `NUMERIC_CHAR_REF_TOKEN_RE` in
+ * `to-markdown-handlers.ts`; change all three together or they classify
+ * different ref sets. The FLAG differs on purpose and must not be "corrected"
+ * to match: sticky (`/y`) anchors `exec` at `lastIndex`, which is what makes
+ * the run scan below positional. With `/g` the same call would happily return
+ * a match from further down the text, and the scan would report a run that
+ * does not start where it was asked to look.
+ *
+ * This file owns the scan; `whitespace-char-ref.ts` owns which refs decode and
+ * to what, via `decodeInlineWhitespaceNumericCharRef`.
+ */
+const NUMERIC_CHAR_REF_TOKEN = /&#(?:x[0-9A-Fa-f]+|X[0-9A-Fa-f]+|[0-9]+);/y;
+
+/**
+ * A run of back-to-back numeric character references the display pipeline
+ * decodes, and the characters it shows in their place — or null when `i` opens
+ * no such run.
+ *
+ * The byte-fidelity serializer mints these to hold a phrasing-boundary space or
+ * tab across re-parse (CommonMark §6.4), so an ordinary space typed just inside
+ * `**…**` reaches disk as `&#x20;`. Nobody types the entity, which is why this
+ * reaches ordinary documents.
+ *
+ * Deliberately NOT a `syntaxRunAt` entry. A syntax run means "renders as
+ * nothing, skip it" — true of a space or tab, false of `&#xA0;`: NBSP is not
+ * whitespace to `isSpace`, so the other side carries it as content and the run
+ * has to be decoded and compared rather than skipped. Refs outside the decoded
+ * set (`&amp;`, `&hellip;`, `&#x2014;`) reach the screen as their own bytes and
+ * must stay content, so they get null and match literally as they always did.
+ */
+function renderedCharRefRunAt(
+  text: string,
+  i: number,
+): { length: number; rendered: string } | null {
+  if (text[i] !== '&') return null;
+  let end = i;
+  let rendered = '';
+  for (;;) {
+    NUMERIC_CHAR_REF_TOKEN.lastIndex = end;
+    const token = NUMERIC_CHAR_REF_TOKEN.exec(text)?.[0];
+    if (token === undefined) break;
+    const char = decodeInlineWhitespaceNumericCharRef(token);
+    if (char === null) break;
+    rendered += char;
+    end += token.length;
+  }
+  return end === i ? null : { length: end - i, rendered };
+}
+
 function isSpace(ch: string): boolean {
   return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' || ch === '\f' || ch === '\v';
 }
@@ -326,7 +386,13 @@ export function findAllPassages(
     // is content to them and the loop will match it literally. Inline HTML that
     // survives into rendered text is the case: a quote of `<div>` must still be
     // able to start on the `<` that `HTML_TAG` would otherwise call syntax.
-    if (syntaxInHaystack && first !== needle[0] && syntaxRunAt(haystack, start) > 0) continue;
+    if (
+      syntaxInHaystack &&
+      first !== needle[0] &&
+      (syntaxRunAt(haystack, start) > 0 || renderedCharRefRunAt(haystack, start) !== null)
+    ) {
+      continue;
+    }
 
     let hi = start;
     let ni = 0;
@@ -350,6 +416,37 @@ export function findAllPassages(
       if (run > 0) {
         if (syntaxInHaystack) hi += run;
         else ni += run;
+        continue;
+      }
+      // A run of character references the markdown side spends on a character
+      // the other side simply has. Consume the run there, and what it renders
+      // here: a decoded space or tab asks nothing (whitespace is already
+      // elastic both ways), while a decoded NBSP is content the other side has
+      // to supply — its own whitespace in front of it stays elastic.
+      const decoded = syntaxInHaystack
+        ? renderedCharRefRunAt(haystack, hi)
+        : renderedCharRefRunAt(needle, ni);
+      if (decoded !== null) {
+        const other = syntaxInHaystack ? needle : haystack;
+        let oi = syntaxInHaystack ? ni : hi;
+        let supplied = true;
+        for (const ch of decoded.rendered) {
+          if (isSpace(ch)) continue;
+          while (oi < other.length && isSpace(other[oi] as string)) oi += 1;
+          if (other[oi] !== ch) {
+            supplied = false;
+            break;
+          }
+          oi += 1;
+        }
+        if (!supplied) break;
+        if (syntaxInHaystack) {
+          hi += decoded.length;
+          ni = oi;
+        } else {
+          ni += decoded.length;
+          hi = oi;
+        }
         continue;
       }
       break;
@@ -454,6 +551,17 @@ function condense(text: string, from: number, to: number, syntax: boolean): stri
       const run = syntaxRunAt(text, i);
       if (run > 0) {
         i += run;
+        continue;
+      }
+      const decoded = renderedCharRefRunAt(text, i);
+      if (decoded !== null) {
+        // Whitespace is dropped from both sides here, so a decoded space adds
+        // nothing; an NBSP is content and has to survive on this side exactly
+        // as it does on the rendered one, or the two condensations disagree.
+        for (const ch of decoded.rendered) {
+          if (!isSpace(ch)) out += ch;
+        }
+        i += decoded.length;
         continue;
       }
     }

@@ -7,7 +7,14 @@
  */
 
 import { describe, expect, test } from 'vitest';
-import { findAllPassages, findPassage, rewriteCeiling } from './passage-match.ts';
+import { isInlineWhitespaceNumericCharRef } from '../markdown/whitespace-char-ref.ts';
+import {
+  contextEvidenceFloor,
+  contextMatchScore,
+  findAllPassages,
+  findPassage,
+  rewriteCeiling,
+} from './passage-match.ts';
 
 const BODY = `## Ingredients
 
@@ -524,5 +531,193 @@ describe('a needle ending in whitespace, at the end of the haystack', () => {
       [],
     );
     expect(findAllPassages(rendered, `${prefix}crema\n.`, { syntaxIn: 'needle' })).toEqual([]);
+  });
+});
+
+/**
+ * Character references the display pipeline DECODES.
+ *
+ * The matcher treats markdown's own syntax as elastic, but markdown syntax is
+ * not the only place the body and the screen legally disagree. The byte-fidelity
+ * serializer mints a bare numeric char-ref to hold a phrasing-boundary space or
+ * tab across re-parse (CommonMark §6.4) — a space just inside `**…**` would
+ * otherwise dissolve the emphasis — and the display decode turns it back into
+ * the one character the reader sees. Six bytes on disk, one on screen.
+ *
+ * Nothing taught the matcher that, so a quote crossing one cannot find its passage
+ * in the body and the anchor is refused. It reaches ordinary documents because
+ * nobody types the entity: typing a space just inside bold, or indenting a
+ * paragraph, is enough to mint one.
+ *
+ * The decode set is deliberately narrow — `whitespace-char-ref.ts` owns it, and
+ * only SPACE, TAB, and NBSP are in it. Everything else (`&nbsp;`, `&amp;`,
+ * `&#x2014;`) survives to the screen as its own literal bytes and already
+ * matches; making those elastic would let a passage cross an ampersand or an em
+ * dash the quote never contained.
+ */
+describe('numeric character references the display pipeline decodes', () => {
+  /** The slice of `body` a caller's rendered quote resolves to. */
+  function locate(body: string, quote: string): string | null {
+    const hit = findPassage(body, quote, { syntaxIn: 'haystack' });
+    return hit ? body.slice(hit.start, hit.end) : null;
+  }
+
+  /**
+   * The fixtures below name refs on both sides of the decode boundary. This
+   * pins them to the predicate that actually draws it, so widening the decode
+   * set fails here rather than silently leaving the matcher a construct behind
+   * — the exact class of drift a decode-set widening would silently introduce.
+   */
+  /** U+00A0, spelled out — a literal one in a string is invisible to a reader. */
+  const NBSP = '\u00A0';
+
+  const DECODED = ['&#x20;', '&#32;', '&#X20;', '&#x0020;', '&#x9;', '&#xA0;', '&#160;'];
+  const LITERAL = ['&nbsp;', '&amp;', '&hellip;', '&lt;', '&emsp;', '&#x41;', '&#38;', '&#x2014;'];
+
+  test('the fixtures agree with the decode contract they stand for', () => {
+    for (const ref of DECODED) expect(isInlineWhitespaceNumericCharRef(ref)).toBe(true);
+    for (const ref of LITERAL) expect(isInlineWhitespaceNumericCharRef(ref)).toBe(false);
+  });
+
+  test('every decoded ref is crossable, in either spelling', () => {
+    // Decimal and hex, upper and lower `X`, zero-padded — all the same character
+    // to a reader, so all the same to a quote.
+    for (const ref of ['&#x20;', '&#32;', '&#X20;', '&#x0020;']) {
+      expect(locate(`A ${ref} B`, 'A   B')).toBe(`A ${ref} B`);
+    }
+  });
+
+  test('a tab ref is crossable', () => {
+    expect(locate('A &#x9; B', 'A \t B')).toBe('A &#x9; B');
+  });
+
+  test('an NBSP ref is crossable, and its character still has to be there', () => {
+    // NBSP is the case that rules out skipping the run as invisible syntax:
+    // U+00A0 is not whitespace to this matcher, so the quote carries it as
+    // content and the body's six bytes have to answer for it.
+    expect(locate('A &#xA0; B', `A ${NBSP} B`)).toBe('A &#xA0; B');
+    expect(locate('A &#160; B', `A ${NBSP} B`)).toBe('A &#160; B');
+    // ...and a quote holding an ordinary space where the reader sees an NBSP
+    // is quoting a character the body does not have.
+    expect(locate('A &#xA0; B', 'A   B')).toBeNull();
+  });
+
+  test('crosses a ref with no spaces around it', () => {
+    expect(locate('foo&#x20;bar', 'foo bar')).toBe('foo&#x20;bar');
+  });
+
+  test('crosses a run of back-to-back refs', () => {
+    expect(locate('A &#x20;&#x9;&#x20; B', 'A  \t  B')).toBe('A &#x20;&#x9;&#x20; B');
+  });
+
+  test('the reported passage: a boundary space inside emphasis', () => {
+    // The line from the reporter's document, verbatim. The serializer minted the
+    // `&#x20;` to hold the space the author typed before the closing `***`.
+    expect(
+      locate(
+        '~~***External apps &#x20;***[external action icon]~~',
+        'External apps  [external action icon]',
+      ),
+    ).toBe('External apps &#x20;***[external action icon]');
+  });
+
+  test('a ref that renders as itself stays content', () => {
+    // `&nbsp;` and friends are never decoded, so they are on screen and a quote
+    // that omits them is quoting something else.
+    for (const ref of LITERAL) {
+      expect(locate(`A ${ref} B`, 'A B')).toBeNull();
+    }
+  });
+
+  test('a decoded ref does not make the surrounding text elastic', () => {
+    expect(locate('A &#x20; B', 'A   C')).toBeNull();
+    expect(locate('A &#x20; B', 'X   B')).toBeNull();
+  });
+
+  /**
+   * The stored side of the same disagreement.
+   *
+   * An anchor's `exact` is sliced out of the body, so it arrives carrying the
+   * entity; the editor searches the text a reader can see. A comment that
+   * anchored server-side would otherwise lose its highlight here, and the
+   * context scorer would read the neighbourhood as changed.
+   */
+  test('the ref is crossable from the stored side too', () => {
+    expect(findPassage('A   B', 'A &#x20; B', { syntaxIn: 'needle' })).not.toBeNull();
+    expect(findPassage(`A ${NBSP} B`, 'A &#xA0; B', { syntaxIn: 'needle' })).not.toBeNull();
+    expect(findPassage('foo bar', 'foo&#x20;bar', { syntaxIn: 'needle' })).not.toBeNull();
+  });
+
+  test('a literal ref is still content from the stored side', () => {
+    expect(findPassage('A B', 'A &nbsp; B', { syntaxIn: 'needle' })).toBeNull();
+  });
+
+  test('a match does not open on a ref the caller did not select', () => {
+    // The span is stored and re-asserted against the body, so a range that
+    // opens on six bytes the reader never saw is a range that reads wrong.
+    expect(locate('&#x20;foo', 'foo')).toBe('foo');
+  });
+
+  test('a run stops at the first byte that is not a ref', () => {
+    // Guards the sticky flag on the token regex. Sticky anchors `exec` at
+    // `lastIndex`; a global one would happily return a ref from further down
+    // the text, so the scan would swallow whatever sat in between and report a
+    // run that never existed. Here that would make `abc` invisible and let the
+    // quote match across it.
+    expect(locate('x&#x20;abc&#x20;def', 'x def')).toBeNull();
+    expect(locate('x&#x20;abc&#x20;def', 'x abc def')).toBe('x&#x20;abc&#x20;def');
+  });
+
+  test('malformed refs are ordinary content', () => {
+    // Only a complete, well-formed numeric ref decodes. A bare ampersand, an
+    // unterminated ref, and a ref with a bad body are all just characters.
+    for (const body of ['A & B', 'A &#x20 B', 'A &#; B', 'A &#xZZ; B', 'A &# B']) {
+      expect(locate(body, 'A B')).toBeNull();
+    }
+  });
+
+  /**
+   * Context scoring reads the same two substrates and has to make the same
+   * allowance. Without it every candidate near a ref scores near zero, the
+   * evidence floor can no longer be met, and a passage orphans because text
+   * NEAR it — inside the stored context window, outside the quote — was edited.
+   */
+  test('context scoring sees through a ref the same way', () => {
+    const body = 'Intro. External apps &#x20;***[icon]*** trails off here.';
+    const span = { start: body.indexOf('External'), end: body.indexOf(' trails') };
+    // Context as a client captures it: rendered text, no markdown syntax in it.
+    const score = contextMatchScore(body, span, { prefix: 'Intro. ' }, { syntaxIn: 'haystack' });
+    expect(score).toBeGreaterThanOrEqual(contextEvidenceFloor({ prefix: 'Intro. ' }));
+  });
+
+  test('a stored context carrying a ref still scores against the rendered side', () => {
+    // The ref sits at the seam, where the context meets the passage — the
+    // position that decides the score, since agreement is counted inward from
+    // there. Six undecoded bytes at the seam take the common run to zero on
+    // their own, however well the rest of the window agrees.
+    const rendered = 'Intro. External apps today  trails off here.';
+    const span = { start: rendered.indexOf('trails'), end: rendered.length };
+    const score = contextMatchScore(
+      rendered,
+      span,
+      { prefix: 'External apps ***today***&#x20;' },
+      { syntaxIn: 'none', syntaxInContext: true },
+    );
+    expect(score).toBeGreaterThanOrEqual('Externalappstoday'.length);
+  });
+
+  test('context scoring keeps a decoded NBSP as content, not whitespace', () => {
+    // NBSP must survive condense on the body side so both sides of the comparison
+    // carry it. If NBSP were dropped like a space the condensations would disagree
+    // and the score would fall below the floor.
+    const body = 'Intro&#xA0;. External apps trails off here.';
+    const span = { start: body.indexOf('External'), end: body.length };
+    const score = contextMatchScore(
+      body,
+      span,
+      { prefix: `Intro${NBSP}. ` },
+      { syntaxIn: 'haystack' },
+    );
+    expect(score).toBeGreaterThanOrEqual(contextEvidenceFloor({ prefix: `Intro${NBSP}. ` }));
   });
 });

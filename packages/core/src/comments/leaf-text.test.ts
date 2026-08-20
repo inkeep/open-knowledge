@@ -6,7 +6,7 @@
  * hole in it (so a comment on the surrounding prose failed to anchor).
  */
 
-import { getSchema } from '@tiptap/core';
+import { getSchema, type JSONContent } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from '../extensions/shared.ts';
 import { MarkdownManager } from '../markdown/index.ts';
@@ -128,6 +128,13 @@ describe('the captured quote anchors back to the body', () => {
     'Before.\n\n```mermaid\ngraph TD;\n```\n\nAfter.',
     'Before.\n\n$$\nx = 1\n$$\n\nAfter.',
     'See [[page]] and #tag with ==mark== plus $$y$$ and ![a](i.png).',
+    // Boundary-whitespace char-refs. Nobody types these: the byte-fidelity
+    // serializer mints them to hold a phrasing-boundary space across re-parse,
+    // so an ordinary keystroke inside emphasis puts one in the body.
+    'A &#x20; word.',
+    '**bold&#x20;**tail',
+    '~~***External apps &#x20;***[external action icon]~~',
+    '&#x20; indented line',
   ];
 
   for (const md of CASES) {
@@ -135,6 +142,27 @@ describe('the captured quote anchors back to the body', () => {
       expect(locate(md)).not.toBeNull();
     });
   }
+
+  test('the boundary-space fixtures above are what the serializer actually mints', () => {
+    // Keeps those cases honest: they are only worth pinning because a round trip
+    // through this pipeline produces them from an ordinary space.
+    const withBoundarySpace = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', marks: [{ type: 'strong' }], text: 'bold ' },
+            { type: 'text', text: 'tail' },
+          ],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: '  indented line' }] },
+      ],
+    };
+    expect(mdManager.serialize(withBoundarySpace satisfies JSONContent)).toBe(
+      '**bold&#x20;**tail\n\n&#x20; indented line\n',
+    );
+  });
 });
 
 describe('inlineOnly — for callers deciding whether text formatting applies', () => {

@@ -449,3 +449,46 @@ describe('captureSelectionContext across an inline atom', () => {
     expect(createAnchorResolver(doc)('done', context)?.from).toBe(target);
   });
 });
+
+/**
+ * A stored quote carrying a decoded character reference.
+ *
+ * The anchor's `exact` is sliced out of the markdown BODY, so it arrives with
+ * whatever the body spends on formatting — and with the boundary-whitespace
+ * char-refs the byte-fidelity serializer mints to hold a space just inside
+ * emphasis. The editor searches the text a reader can SEE, where those six bytes
+ * are one space. Server-side the passage resolves; here the highlight vanished.
+ */
+describe('findRangeInIndex — a stored quote carrying a boundary-whitespace char-ref', () => {
+  const RENDERED = 'Intro line. External apps  [external action icon] follows.';
+  const STORED = 'External apps &#x20;***[external action icon]';
+
+  test('resolves the passage the reader can see, on the quote alone', () => {
+    // No context, so the bracket recovery that would otherwise paper over this
+    // has nothing to work from — the quote itself has to match.
+    const range = findRangeInIndex(indexOf(RENDERED), STORED);
+    expect(range).not.toBeNull();
+    expect(RENDERED.slice((range?.from ?? 1) - 1, (range?.to ?? 1) - 1)).toBe(
+      'External apps  [external action icon]',
+    );
+  });
+
+  test('resolves it on the quote, not by recovering it from its brackets', () => {
+    // With context present the bracket recovery can reach the same span, but it
+    // reports a REWRITTEN anchor — the caller re-captures `exact` from it, so a
+    // passage nobody edited would churn its stored bytes on every re-find.
+    const range = findRangeInIndex(indexOf(RENDERED), STORED, {
+      prefix: 'Intro line. ',
+      suffix: ' follows.',
+    });
+    expect(range).not.toBeNull();
+    expect(RENDERED.slice((range?.from ?? 1) - 1, (range?.to ?? 1) - 1)).toBe(
+      'External apps  [external action icon]',
+    );
+  });
+
+  test('does not let the ref drag the match across neighbouring words', () => {
+    const rendered = 'alpha omega';
+    expect(findRangeInIndex(indexOf(rendered), 'alpha &amp; omega')).toBeNull();
+  });
+});
