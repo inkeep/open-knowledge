@@ -40,6 +40,7 @@ import { installCrashInviteListener } from '@/lib/crash-invite-store';
 import { installFeedbackNudgeStore } from '@/lib/feedback-nudge-store';
 // Side-effect import: loads + activates the i18n catalog before first render.
 import { i18n } from '@/lib/i18n';
+import { installBugReportSendToasts } from '@/lib/install-bug-report-send-toasts';
 import { installClientLogForwarder } from '@/lib/install-client-log-forwarder';
 import { installDeepLinkListener } from '@/lib/install-deep-link-listener';
 import { installOnboardingToastListener } from '@/lib/install-onboarding-toast';
@@ -208,6 +209,14 @@ if (typeof window !== 'undefined') {
   installCrashInviteListener({ bridge: window.okDesktop });
 }
 
+// Desktop-only: surface background bug-report sends as toasts. The send
+// manager it watches is module-level, so a send outlives the dialog that
+// started it; installing here means the toast is minted from the first
+// progress publish, whatever surface pressed Send.
+if (typeof window !== 'undefined') {
+  installBugReportSendToasts({ bridge: window.okDesktop });
+}
+
 // Desktop-only: ephemeral single-file window (`ok <file>`). Seed the doc into
 // the hash BEFORE `createRoot().render()` so `NavigationHandler`'s first-mount
 // read lands on the file — deterministic, no post-load `ok:deep-link` IPC to
@@ -273,14 +282,21 @@ createRoot(root).render(
                 <ReportBugCrashInviteTrigger bridge={desktopBridge} />
               </CrashReportingBoundary>
             )}
+            {/*
+             * Sonner toaster for ad-hoc status/error toasts (clone dialog, file
+             * tree, etc.). Auto-update notices are NOT routed here — they live
+             * in the sidebar footer via <UpdateNotices /> for a persistent home
+             * that matches their permanent-until-clicked semantics.
+             *
+             * Inside TooltipProvider on purpose: a toast renders outside every
+             * error boundary, so a body that reads a missing Radix provider
+             * throws where nothing can catch it and unmounts the React root —
+             * on whatever the toast was reporting. The provider above it
+             * removes the sharpest edge; toast bodies still avoid
+             * provider-dependent primitives.
+             */}
+            <Toaster richColors closeButton />
           </TooltipProvider>
-          {/*
-           * Sonner toaster for ad-hoc status/error toasts (clone dialog, file
-           * tree, etc.). Auto-update notices are NOT routed here — they live
-           * in the sidebar footer via <UpdateNotices /> for a persistent home
-           * that matches their permanent-until-clicked semantics.
-           */}
-          <Toaster richColors closeButton />
         </ThemeProvider>
       </QueryClientProvider>
     </I18nProvider>

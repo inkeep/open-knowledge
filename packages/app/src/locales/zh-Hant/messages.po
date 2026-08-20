@@ -383,8 +383,8 @@ msgstr "{0} 共用此資料夾。"
 msgid "{0} templates available"
 msgstr "有 {0} 個範本可用"
 
-#. placeholder {0}: formatSize(phase.report.zipSizeBytes)
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
+#: src/components/BugReportSendToast.tsx
 msgid "{0} total"
 msgstr "共 {0} 個"
 
@@ -870,20 +870,12 @@ msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} 不是有效的分支名稱。"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted"
-msgstr "{sizeText} · 已遮蔽機密資訊"
-
-#: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · 已遮蔽機密資訊 · {fileCount, plural, other {# 個檔案}}"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}} · crash dump not redacted"
 msgstr "{sizeText} · 已遮蔽機密資訊 · {fileCount, plural, other {# 個檔案}} · 當機傾印未遮蔽"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted · crash dump not redacted"
-msgstr "{sizeText} · 已遮蔽機密資訊 · 當機傾印未遮蔽"
 
 #: src/components/CreatedItemsList.tsx
 msgid "{skillCount, plural, one {skill} other {skills}}"
@@ -1007,10 +999,6 @@ msgstr "<{descriptorLabel}> 顯示失敗（很可能是屬性有誤）。複製�
 #: src/components/settings/AiToolsSection.tsx
 msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 msgstr "無論如何 <0>~/.ok/bin</0> 和 <1>~/.ok/env.sh</1> 都會保留——應用程式一律會維護它們。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "<0>Have more to add?</0> Write to <1/> and mention your reference."
-msgstr "<0>還有想補充的嗎？</0>請寫信到 <1/> 並附上你的編號。"
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1634,6 +1622,10 @@ msgstr "已經安裝了——沒有可匯入的新內容。"
 msgid "Already open"
 msgstr "已經開啟"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Already sending this report"
+msgstr "這份回報已在傳送中"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Already set up — ok is available in your terminal"
 msgstr "已經設定好了——ok 現在可以在你的終端機中使用"
@@ -1868,10 +1860,6 @@ msgstr "附加檔案"
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
 msgstr "附加圖片"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Attach the file in an email to <0/>"
-msgstr "把檔案用電子郵件寄到 <0/>"
 
 #: src/components/settings/AttachmentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -2177,8 +2165,8 @@ msgstr "瀏覽 skills.sh"
 msgid "Browse your repos:"
 msgstr "瀏覽你的儲存庫："
 
-#. placeholder {0}: phase.reference
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: row.reference
+#: src/components/BugReportHistory.tsx
 msgid "Bug report {0}"
 msgstr "錯誤回報 {0}"
 
@@ -2652,7 +2640,6 @@ msgstr "正在複製…"
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/SubscribeForm.tsx
 #: src/components/ui/dialog.tsx
@@ -3212,6 +3199,7 @@ msgstr "已複製路徑"
 msgid "Copied relative path"
 msgstr "已複製相對路徑"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "已複製！"
@@ -3292,6 +3280,10 @@ msgstr "複製路徑"
 #: src/components/skill-actions.tsx
 msgid "Copy Path"
 msgstr "複製路徑"
+
+#: src/components/BugReportSendToast.tsx
+msgid "Copy reference"
+msgstr "複製編號"
 
 #: src/components/command-palette-commands.ts
 msgid "Copy relative path"
@@ -3880,7 +3872,7 @@ msgstr "無法儲存金鑰——請再試一次。"
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "無法儲存 {filePath} 的解決結果。"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
 msgstr "無法送出回報"
 
@@ -4521,6 +4513,7 @@ msgstr "中斷連接"
 msgid "Disconnecting"
 msgstr "正在中斷連接"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
@@ -4631,7 +4624,6 @@ msgstr "完成"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
@@ -4924,6 +4916,10 @@ msgstr "電子郵件"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Email address"
 msgstr "電子郵件地址"
+
+#: src/components/BugReportHistory.tsx
+msgid "Email support about this report"
+msgstr "就此回報寄郵件給支援團隊"
 
 #: src/components/BugReportHistory.tsx
 msgid "Emailed"
@@ -8615,7 +8611,7 @@ msgstr "無（{0} 不是有效的模式）"
 msgid "Nothing set yet."
 msgstr "還沒有設定任何東西。"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "未上傳任何內容。在你以電子郵件寄給我們之前，報告會保留在這台電腦上。"
 
@@ -8873,7 +8869,7 @@ msgstr "為選取的檔案樹項目開啟刪除確認框。"
 msgid "Open documents tagged #{chip}"
 msgstr "開啟標了 #{chip} 的文件"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
 msgstr "開啟郵件草稿"
 
@@ -10163,6 +10159,10 @@ msgstr "重做"
 msgid "Refactoring"
 msgstr "重構"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Reference"
+msgstr "編號"
+
 #. placeholder {0}: row.reference
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
@@ -10514,10 +10514,6 @@ msgstr "回報問題"
 #: src/components/AppMenubar.tsx
 msgid "Report a bug…"
 msgstr "回報問題…"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Report reference"
-msgstr "回報編號"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -11265,7 +11261,7 @@ msgstr "傳送到對話（{0}）"
 msgid "Send when the agent is free"
 msgstr "在智慧體空閒時傳送"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Send your report by email"
 msgstr "用電子郵件寄出你的回報"
 
@@ -11274,7 +11270,7 @@ msgstr "用電子郵件寄出你的回報"
 msgid "Sending"
 msgstr "正在傳送"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "正在傳送回報"
 
@@ -12587,7 +12583,7 @@ msgstr "謝謝訂閱。請留意你的信箱，我們會寄出產品動態。"
 msgid "Thanks for the feedback!"
 msgstr "謝謝你的意見回饋！"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Thanks for the report!"
 msgstr "謝謝你的回報！"
 
@@ -12771,10 +12767,6 @@ msgstr "供應商拒絕了這個要求。請檢查 API 金鑰和模型 id。"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
 msgstr "你的通道所提供的公開 URL。伺服器會接受針對此主機的請求，並在其發出的 URL 中公告此位址。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "The report service couldn't be reached."
-msgstr "連不上回報服務。"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -13267,6 +13259,10 @@ msgstr "這個儲存庫包含 {count} 個技能，外加 {0}。你可以從外�
 msgid "This repo bundles {count} skills. Install any of them from the plugin."
 msgstr "這個儲存庫包含 {count} 個技能。你可以從外掛中安裝其中任何一個。"
 
+#: src/components/BugReportSendToast.tsx
+msgid "This report is already on its way. Its result will appear in your bug report history."
+msgstr "這份回報已經在傳送途中，結果會顯示在錯誤回報記錄裡。"
+
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
 msgstr "這個要求已經失效。"
@@ -13503,9 +13499,9 @@ msgid "Try a prompt"
 msgstr "試試一段提示"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -13902,10 +13898,6 @@ msgstr "正在上傳 {keyName}"
 msgid "Uploading file"
 msgstr "正在上傳檔案"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Uploading securely"
-msgstr "正在安全上傳"
-
 #: src/components/TimelinePanel.tsx
 msgid "Upstream sync"
 msgstr "上游同步"
@@ -14142,7 +14134,7 @@ msgstr "我們會建立一個儲存庫並開始同步——不必用終端機。
 msgid "We’ll create a safe theme ID from this name."
 msgstr "我們會根據這個名稱建立安全的主題 ID。"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "We've filed it with the team and attached your logs."
 msgstr "我們已經把它交給團隊，並附上了你的記錄。"
 
@@ -14528,17 +14520,9 @@ msgstr "你本機的 <0>{branch}</0> 分支副本落後了。請拉取最新的�
 msgid "Your message didn't reach {agentName}."
 msgstr "你的訊息未送達 {agentName}。"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report couldn't be sent. Try again or email it instead."
-msgstr "你的回報沒能送出去。請再試一次，或者改用電子郵件寄送。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is being sent."
-msgstr "你的回報正在傳送。"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
-msgstr "你的報告已儲存在這台電腦上，因此沒有遺失任何內容。你可以改用電子郵件寄給我們。"
+#: src/components/BugReportSendToast.tsx
+msgid "Your report is saved on this computer, so nothing was lost."
+msgstr "你的回報已儲存在這台電腦上，沒有遺失任何內容。"
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

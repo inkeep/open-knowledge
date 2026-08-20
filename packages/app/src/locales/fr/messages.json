@@ -192,7 +192,6 @@
       "Ajoute à la recherche un classement fondé sur le sens, afin que les pages liées par le concept ressortent même sans mots-clés communs."
     ],
     "1NgrlY": ["Autres méthodes d'installation"],
-    "1OKzC_": ["Votre rapport n'a pas pu être envoyé. Réessayez ou envoyez-le par e-mail."],
     "1QfxQT": ["Ignorer"],
     "1RluQD": ["Afficher le remplacement"],
     "1TNIig": ["Ouvrir"],
@@ -286,6 +285,7 @@
     "2wxgft": ["Renommer"],
     "2zvUIK": ["Afficher ces commentaires dans le panneau des commentaires"],
     "322lyb": ["Mettez en avant des conseils, des avertissements et des remarques."],
+    "32TTpa": ["Écrire au support à propos de ce rapport"],
     "34qyH5": ["Impossible de joindre le serveur"],
     "36WXSC": ["Impossible de supprimer le modèle : ", ["error"]],
     "36aWJD": ["Rejoignez-nous sur Discord"],
@@ -539,6 +539,7 @@
       ["userToken"],
       "</1> pour insérer automatiquement la date du jour ou le nom de l'auteur."
     ],
+    "5hFl0U": ["Copier la référence"],
     "5jEnaB": ["Non disponible sur cette plateforme"],
     "5kWklo": ["(certains sont peut-être déjà masqués par d'autres règles)"],
     "5lWFkC": ["Se connecter"],
@@ -689,6 +690,9 @@
     ],
     "7PzzBU": ["Utilisateur"],
     "7S7FNA": ["OpenKnowledge a vérifié le projet"],
+    "7WnfoD": [
+      "Ce rapport est déjà en route. Son résultat apparaîtra dans l'historique des rapports de bug."
+    ],
     "7Y9yTo": [["owner"], "/", ["name"], " a été créé, mais l'envoi a échoué."],
     "7YRrJ9": [
       "Disponible dans l'application de bureau OpenKnowledge. Depuis un terminal, utilisez<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -749,7 +753,6 @@
       ["fileName"],
       ") à la racine du projet"
     ],
-    "89y7ar": [["sizeText"], " · secrets masqués"],
     "8AjnFz": ["« ", ["0"], " » avait déjà été importé (contenu identique)."],
     "8F1i42": ["Page introuvable"],
     "8FqTCr": [
@@ -784,6 +787,7 @@
     ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Changer de worktree"],
+    "8W9CF6": ["Ce rapport est déjà en cours d'envoi"],
     "8WTrGF": [["summary"], " dans ce fichier. Ouvrez le panneau Problèmes pour plus de détails."],
     "8Wav8y": [
       "Si une mise à jour arrive pour ce que vous êtes en train de modifier, vous choisissez quelle version conserver, comme pour un conflit de fusion."
@@ -854,7 +858,6 @@
     ],
     "9Vh9Jf": ["Rouvrez cette fenêtre pour vous connecter avec votre navigateur"],
     "9Vnjc9": ["Entrée"],
-    "9XIEYq": ["Joignez le fichier à un e-mail adressé à <0/>"],
     "9Y6cCI": ["Échec du chargement des pages"],
     "9_2oe6": [
       "Retransformez ",
@@ -1575,9 +1578,6 @@
     ],
     "HdS4Ft": ["Impossible de restaurer votre dernier document ouvert."],
     "HdkSiO": ["Nouveau fichier"],
-    "HepFJQ": [
-      "Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu. Vous pouvez nous l'envoyer par e-mail à la place."
-    ],
     "HfI1dR": ["Je l'ai déjà en local →"],
     "HjNrT0": [
       [
@@ -1923,7 +1923,6 @@
     "LvdLef": ["Merci pour votre retour !"],
     "LwMxXg": ["Échec de l'ouverture du worktree."],
     "LzM_ga": ["Filtrer les compétences"],
-    "M-IF14": ["Référence du rapport"],
     "M0jOcG": ["Voir dans la source markdown"],
     "M1OfV9": ["Diagnostic de source suivant"],
     "M3ytY_": [
@@ -1960,7 +1959,6 @@
     "MI6Z0f": ["Choisissez un émoji à insérer au curseur."],
     "MIF36T": ["Impossible de résoudre la divergence : ", ["0"]],
     "MILoeL": ["Services"],
-    "MJqRO6": ["Votre rapport est en cours d'envoi."],
     "MJuO1q": ["Fenêtre de contexte :"],
     "MKEPCY": ["Suivre"],
     "MLVPcm": [["0"], " version ", ["1"]],
@@ -2017,6 +2015,7 @@
     "N1KkEO": ["Aller au dernier onglet"],
     "N1YYa7": ["Chargement de l'image"],
     "N1mdmS": ["Ce fichier ne peut pas être ouvert dans l'éditeur de texte."],
+    "N2C89m": ["Référence"],
     "N2FcBE": ["Synchronisé"],
     "N2S1rs": ["Vide"],
     "N2eHWq": ["Bloc de code"],
@@ -2142,7 +2141,6 @@
     "OXdGnd": ["Problèmes"],
     "OYnx7O": ["Le chemin ne peut pas commencer par « / »"],
     "OZavHH": ["tout ce qui se trouve sous ", ["0"], "/"],
-    "Oawo4U": ["Le service de rapports n'a pas pu être joint."],
     "OdmsFg": ["Échec de la suppression de l'élément"],
     "OeAl1e": ["par ex. assets/uploads"],
     "OfhWJH": ["Réinitialiser"],
@@ -3127,7 +3125,6 @@
     ],
     "_Bix3-": ["Occurrences de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Création…"],
-    "_FLBbi": [["sizeText"], " · secrets masqués · vidage de plantage non masqué"],
     "_G7A92": ["Maintenir index.md"],
     "_GRWOJ": ["Changer de fournisseur d'embeddings ?"],
     "_HgF9q": ["Trier par"],
@@ -3671,9 +3668,6 @@
     "fvrHin": ["Disponible dans tous les projets de cette machine. Non partagé via git."],
     "fwhX-N": ["Augmenter ou réduire le retrait de la source"],
     "fwrPh4": ["Veuillez saisir un e-mail valide."],
-    "fxJk_6": [
-      "<0>Vous avez autre chose à ajouter ?</0> Écrivez à <1/> en mentionnant votre référence."
-    ],
     "fxbCNQ": ["Synchronisé. Le lien est à jour."],
     "g-dkjJ": ["Les détails des fichiers locaux ne sont pas encore disponibles."],
     "g12y1g": ["YAML non valide"],
@@ -4705,7 +4699,6 @@
     "qjHMHf": ["Échec de la désactivation de la synchronisation — ", ["detail"]],
     "qkqG0b": ["Prendre la version amont"],
     "qlAIQ1": ["Distant"],
-    "qmL1UG": ["Envoi sécurisé"],
     "qo4zCg": ["Le chemin ne peut pas contenir d'antislash"],
     "qpQwGC": ["Décrivez ce sur quoi vous travaillez et l'agent le met en place pour vous."],
     "qribBG": ["schéma ", ["deleteTarget"]],
@@ -4721,6 +4714,7 @@
     "r6ncaO": ["Fermer l'onglet"],
     "r6y-jM": ["Avertissement"],
     "r7IaYp": ["Open Knowledge Format conseils"],
+    "r7tQuq": ["Votre rapport est enregistré sur cet ordinateur, rien n'a donc été perdu."],
     "r871ed": [
       "Votre base de connaissances est désormais sur GitHub, à l'adresse <0>",
       ["ownerLogin"],

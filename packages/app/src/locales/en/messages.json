@@ -162,7 +162,6 @@
       "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
     ],
     "1NgrlY": ["Other ways to install"],
-    "1OKzC_": ["Your report couldn't be sent. Try again or email it instead."],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
     "1TNIig": ["Open"],
@@ -246,6 +245,7 @@
     "2wxgft": ["Rename"],
     "2zvUIK": ["Show these comments in the Comments panel"],
     "322lyb": ["Highlight tips, warnings, and notes."],
+    "32TTpa": ["Email support about this report"],
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
     "36aWJD": ["Join us on Discord"],
@@ -436,6 +436,7 @@
       ["userToken"],
       "</1> to fill in today's date or the author's name automatically."
     ],
+    "5hFl0U": ["Copy reference"],
     "5jEnaB": ["Not available on this platform"],
     "5kWklo": ["(some may already be hidden by other rules)"],
     "5lWFkC": ["Sign in"],
@@ -561,6 +562,9 @@
     ],
     "7PzzBU": ["User"],
     "7S7FNA": ["OpenKnowledge checked the project"],
+    "7WnfoD": [
+      "This report is already on its way. Its result will appear in your bug report history."
+    ],
     "7Y9yTo": ["Created ", ["owner"], "/", ["name"], ", push failed."],
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -613,7 +617,6 @@
       ["fileName"],
       ") in the project root"
     ],
-    "89y7ar": [["sizeText"], " · secrets redacted"],
     "8AjnFz": ["\"", ["0"], "\" was already imported (identical content)."],
     "8F1i42": ["Page not found"],
     "8FqTCr": [
@@ -642,6 +645,7 @@
     ],
     "8Uv5e6": ["Agents"],
     "8Vq20-": ["Switch worktree"],
+    "8W9CF6": ["Already sending this report"],
     "8WTrGF": [["summary"], " in this file. Open the Problems panel for details."],
     "8Wav8y": [
       "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
@@ -708,7 +712,6 @@
     ],
     "9Vh9Jf": ["Reopen this window to sign in with your browser"],
     "9Vnjc9": ["Enter"],
-    "9XIEYq": ["Attach the file in an email to <0/>"],
     "9Y6cCI": ["Failed to load pages"],
     "9_2oe6": [
       "Turn ",
@@ -1323,9 +1326,6 @@
     ],
     "HdS4Ft": ["Your last open document couldn't be restored."],
     "HdkSiO": ["New file"],
-    "HepFJQ": [
-      "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
-    ],
     "HfI1dR": ["I already have it locally →"],
     "HjNrT0": [["0", "plural", { "one": ["#", " backlink"], "other": ["#", " backlinks"] }]],
     "Hl89Qd": ["Loading templates"],
@@ -1613,7 +1613,6 @@
     "LvdLef": ["Thanks for the feedback!"],
     "LwMxXg": ["Failed to open worktree."],
     "LzM_ga": ["Filter skills"],
-    "M-IF14": ["Report reference"],
     "M0jOcG": ["View in source markdown"],
     "M1OfV9": ["Next source diagnostic"],
     "M3ytY_": [
@@ -1647,7 +1646,6 @@
     "MI6Z0f": ["Pick an emoji to insert at the cursor."],
     "MIF36T": ["Couldn't resolve the fork: ", ["0"]],
     "MILoeL": ["Services"],
-    "MJqRO6": ["Your report is being sent."],
     "MJuO1q": ["Context window:"],
     "MKEPCY": ["Follow"],
     "MLVPcm": [["0"], " version ", ["1"]],
@@ -1702,6 +1700,7 @@
     "N1KkEO": ["Jump to last tab"],
     "N1YYa7": ["Loading image"],
     "N1mdmS": ["This file can't be opened in the text editor."],
+    "N2C89m": ["Reference"],
     "N2FcBE": ["Synced"],
     "N2S1rs": ["Empty"],
     "N2eHWq": ["Code Block"],
@@ -1823,7 +1822,6 @@
     "OXdGnd": ["Problems"],
     "OYnx7O": ["Path cannot start with \"/\""],
     "OZavHH": ["everything under ", ["0"], "/"],
-    "Oawo4U": ["The report service couldn't be reached."],
     "OdmsFg": ["Failed to delete item"],
     "OeAl1e": ["e.g. assets/uploads"],
     "OfhWJH": ["Reset"],
@@ -2661,7 +2659,6 @@
     ],
     "_Bix3-": ["Occurrences of ", ["localizedFirstMessage"]],
     "_DwR-n": ["Creating…"],
-    "_FLBbi": [["sizeText"], " · secrets redacted · crash dump not redacted"],
     "_G7A92": ["Maintain index.md"],
     "_GRWOJ": ["Change the embeddings provider?"],
     "_HgF9q": ["Sort by"],
@@ -3112,7 +3109,6 @@
     "fvrHin": ["Available in every project on this machine. Not shared through git."],
     "fwhX-N": ["Indent or outdent source"],
     "fwrPh4": ["Please enter a valid email."],
-    "fxJk_6": ["<0>Have more to add?</0> Write to <1/> and mention your reference."],
     "fxbCNQ": ["Synced. The link is up to date."],
     "g-dkjJ": ["Local file details aren't available yet."],
     "g12y1g": ["Invalid YAML"],
@@ -4015,7 +4011,6 @@
     "qjHMHf": ["Failed to disable sync — ", ["detail"]],
     "qkqG0b": ["Take upstream"],
     "qlAIQ1": ["Remote"],
-    "qmL1UG": ["Uploading securely"],
     "qo4zCg": ["Path cannot contain backslashes"],
     "qpQwGC": ["Describe what you're working on and the agent sets it up for you."],
     "qribBG": ["schema ", ["deleteTarget"]],
@@ -4029,6 +4024,7 @@
     "r6ncaO": ["Close tab"],
     "r6y-jM": ["Warning"],
     "r7IaYp": ["Open Knowledge Format guidance"],
+    "r7tQuq": ["Your report is saved on this computer, so nothing was lost."],
     "r871ed": [
       "Your knowledge base is now on GitHub at <0>",
       ["ownerLogin"],

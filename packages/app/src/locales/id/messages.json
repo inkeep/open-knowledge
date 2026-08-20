@@ -164,7 +164,6 @@
       "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci."
     ],
     "1NgrlY": ["Cara lain untuk memasang"],
-    "1OKzC_": ["Laporan Anda tidak bisa dikirim. Coba lagi atau kirim lewat surel saja."],
     "1QfxQT": ["Tutup"],
     "1RluQD": ["Tampilkan penggantian"],
     "1TNIig": ["Buka"],
@@ -250,6 +249,7 @@
     "2wxgft": ["Ganti nama"],
     "2zvUIK": ["Tampilkan komentar ini di panel komentar"],
     "322lyb": ["Menyoroti tip, peringatan, dan catatan."],
+    "32TTpa": ["Kirim surel ke dukungan tentang laporan ini"],
     "34qyH5": ["Server tidak dapat dihubungi"],
     "36WXSC": ["Templat tidak bisa dihapus: ", ["error"]],
     "36aWJD": ["Gabung dengan kami di Discord"],
@@ -447,6 +447,7 @@
       ["userToken"],
       "</1> untuk mengisi tanggal hari ini atau nama penulis secara otomatis."
     ],
+    "5hFl0U": ["Salin referensi"],
     "5jEnaB": ["Tidak tersedia di platform ini"],
     "5kWklo": ["(sebagian mungkin sudah disembunyikan oleh aturan lain)"],
     "5lWFkC": ["Masuk"],
@@ -571,6 +572,7 @@
     ],
     "7PzzBU": ["Pengguna"],
     "7S7FNA": ["OpenKnowledge memeriksa proyek"],
+    "7WnfoD": ["Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."],
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -625,7 +627,6 @@
       ["fileName"],
       ") di akar proyek"
     ],
-    "89y7ar": [["sizeText"], " · rahasia disunting"],
     "8AjnFz": ["\"", ["0"], "\" sudah diimpor sebelumnya (isinya sama)."],
     "8F1i42": ["Halaman tidak ditemukan"],
     "8FqTCr": [["chunksRemaining", "plural", { "other": ["#", " bagian belum diselesaikan"] }]],
@@ -650,6 +651,7 @@
     ],
     "8Uv5e6": ["Agen"],
     "8Vq20-": ["Ganti worktree"],
+    "8W9CF6": ["Laporan ini sudah dikirim"],
     "8WTrGF": [["summary"], " di file ini. Buka panel Masalah untuk detailnya."],
     "8Wav8y": [
       "Jika sebuah pembaruan datang untuk hal yang sedang Anda sunting, Anda memilih versi mana yang disimpan, seperti konflik penggabungan."
@@ -720,7 +722,6 @@
     ],
     "9Vh9Jf": ["Buka lagi jendela ini untuk masuk lewat peramban Anda"],
     "9Vnjc9": ["Enter"],
-    "9XIEYq": ["Lampirkan berkasnya dalam surel ke <0/>"],
     "9Y6cCI": ["Gagal memuat halaman"],
     "9_2oe6": [
       "Mengubah ",
@@ -1329,9 +1330,6 @@
     ],
     "HdS4Ft": ["Dokumen terakhir yang Anda buka tidak dapat dipulihkan."],
     "HdkSiO": ["Berkas baru"],
-    "HepFJQ": [
-      "Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang. Anda dapat mengirimkannya kepada kami lewat email."
-    ],
     "HfI1dR": ["Saya sudah punya secara lokal →"],
     "HjNrT0": [["0", "plural", { "other": ["#", " tautan balik"] }]],
     "Hl89Qd": ["Memuat templat"],
@@ -1628,7 +1626,6 @@
     "LvdLef": ["Terima kasih atas masukannya!"],
     "LwMxXg": ["Gagal membuka worktree."],
     "LzM_ga": ["Saring keterampilan"],
-    "M-IF14": ["Referensi laporan"],
     "M0jOcG": ["Lihat di markdown sumber"],
     "M1OfV9": ["Diagnostik sumber berikutnya"],
     "M3ytY_": [
@@ -1653,7 +1650,6 @@
     "MI6Z0f": ["Pilih sebuah emoji untuk disisipkan di posisi kursor."],
     "MIF36T": ["Percabangannya tidak bisa diselesaikan: ", ["0"]],
     "MILoeL": ["Layanan"],
-    "MJqRO6": ["Laporan Anda sedang dikirim."],
     "MJuO1q": ["Jendela konteks:"],
     "MKEPCY": ["Ikuti"],
     "MLVPcm": [["0"], " versi ", ["1"]],
@@ -1710,6 +1706,7 @@
     "N1KkEO": ["Lompat ke tab terakhir"],
     "N1YYa7": ["Memuat gambar"],
     "N1mdmS": ["Berkas ini tidak bisa dibuka di penyunting teks."],
+    "N2C89m": ["Referensi"],
     "N2FcBE": ["Tersinkron"],
     "N2S1rs": ["Kosong"],
     "N2eHWq": ["Blok Kode"],
@@ -1833,7 +1830,6 @@
     "OXdGnd": ["Masalah"],
     "OYnx7O": ["Jalur tidak boleh diawali \"/\""],
     "OZavHH": ["semua yang ada di ", ["0"], "/"],
-    "Oawo4U": ["Layanan laporan tidak dapat dihubungi."],
     "OdmsFg": ["Gagal menghapus item"],
     "OeAl1e": ["mis. assets/uploads"],
     "OfhWJH": ["Setel ulang"],
@@ -2675,7 +2671,6 @@
     ],
     "_Bix3-": ["Kemunculan ", ["localizedFirstMessage"]],
     "_DwR-n": ["Membuat…"],
-    "_FLBbi": [["sizeText"], " · rahasia disunting · crash dump tidak disunting"],
     "_G7A92": ["Pertahankan index.md"],
     "_GRWOJ": ["Ganti penyedia embedding?"],
     "_HgF9q": ["Urutkan menurut"],
@@ -3141,7 +3136,6 @@
     "fvrHin": ["Tersedia di setiap proyek pada komputer ini. Tidak dibagikan lewat git."],
     "fwhX-N": ["Tambah atau kurangi indentasi sumber"],
     "fwrPh4": ["Silakan masukkan surel yang valid."],
-    "fxJk_6": ["<0>Ada yang ingin ditambahkan?</0> Tulis ke <1/> dan sebutkan referensi Anda."],
     "fxbCNQ": ["Tersinkron. Tautannya sudah mutakhir."],
     "g-dkjJ": ["Detail berkas lokal belum tersedia."],
     "g12y1g": ["YAML tidak valid"],
@@ -4041,7 +4035,6 @@
     "qjHMHf": ["Gagal menonaktifkan sinkronisasi — ", ["detail"]],
     "qkqG0b": ["Ambil versi remote"],
     "qlAIQ1": ["Remote"],
-    "qmL1UG": ["Mengunggah dengan aman"],
     "qo4zCg": ["Jalur tidak boleh memuat garis miring terbalik"],
     "qpQwGC": ["Jelaskan apa yang sedang Anda kerjakan dan agennya akan menyiapkannya untuk Anda."],
     "qribBG": ["skema ", ["deleteTarget"]],
@@ -4055,6 +4048,7 @@
     "r6ncaO": ["Tutup tab"],
     "r6y-jM": ["Peringatan"],
     "r7IaYp": ["Open Knowledge Format bimbingan"],
+    "r7tQuq": ["Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang."],
     "r871ed": [
       "Basis pengetahuan Anda kini ada di GitHub di <0>",
       ["ownerLogin"],

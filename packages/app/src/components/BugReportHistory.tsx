@@ -10,44 +10,68 @@
  *     is at least one prior report, so it never clutters the compose flow.
  *
  * State is shown as an inline status badge (modeless — no nested dialogs), and
- * per-row actions are Retry (resend the existing bundle without regenerating),
- * Reveal (open the zip in Finder), and Delete. The surface is deliberately
- * lightweight (a transient posture), not a management console. Desktop-only —
- * the callers gate on `window.okDesktop`.
+ * per-row actions are Retry (hand the existing bundle to the background send
+ * manager without regenerating), a support follow-up on a sent report that has
+ * a reference, Reveal (open the zip in Finder), and Delete. The surface is
+ * deliberately lightweight (a transient posture), not a management console.
+ * Desktop-only — the callers gate on `window.okDesktop`.
  */
 
 import type { OkBugReportListRow } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ChevronDownIcon, FolderOpenIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronDownIcon, FolderOpenIcon, MailIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Spinner } from '@/components/ui/spinner';
+import { bugReportSendManager } from '@/lib/bug-report-send-manager';
+import { formatBundleSize, supportMailtoUrl } from '@/lib/bug-report-support';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 
 type PendingAction = 'retrying' | 'deleting';
 type HistoryStatus = 'loading' | 'ready' | 'error';
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${bytes} B`;
+/**
+ * The settled send operations by id, tagged with the request that settled them.
+ * A retry bumps `requestSeq`, so a report that terminates a second time reads
+ * as a new entry rather than as the one already seen.
+ */
+function settledSends(): Map<string, number> {
+  const settled = new Map<string, number>();
+  for (const operation of bugReportSendManager.getSnapshot()) {
+    if (operation.status !== 'sending') settled.set(operation.operationId, operation.requestSeq);
+  }
+  return settled;
 }
 
 /**
- * Fetch the report history on mount and expose the per-row actions. Retry
- * resends the persisted bundle via the existing `send` path (reconstructing the
- * send metadata from the row); on the no-intake email-draft path it opens the
- * prefilled draft. Every action reloads the list afterward so the row's badge
- * reflects the new on-disk state.
+ * Fetch the report history on mount and expose the per-row actions. Retry hands
+ * the persisted bundle to the background send manager and stops there — the
+ * outcome, including the no-intake email draft, belongs to the send's toast, so
+ * a retry never mails support without being asked. Delete and Reveal still act
+ * directly and reload the list themselves.
+ *
+ * The list also reloads when a background send terminates, whichever surface
+ * started it: a send outlives this component now, so without that an open pane
+ * keeps asserting `Sending` about a report that already landed.
  */
 function useReportHistory() {
+  const { t } = useLingui();
   const [status, setStatus] = useState<HistoryStatus>('loading');
   const [reports, setReports] = useState<OkBugReportListRow[]>([]);
   const [pending, setPending] = useState<Record<string, PendingAction>>({});
+  /**
+   * Bumped by every load and once more on unmount, so a reply that lost the
+   * race to a later load — or arrived after the pane closed — recognizes itself
+   * as stale and writes nothing. Reloads now fire from the send manager as well
+   * as from the action handlers, so two really can be in flight at once.
+   */
+  const loadToken = useRef(0);
 
   async function load() {
+    loadToken.current += 1;
+    const token = loadToken.current;
     const bugReport = window.okDesktop?.bugReport;
     if (!bugReport) {
       setStatus('error');
@@ -55,6 +79,7 @@ function useReportHistory() {
     }
     try {
       const result = await bugReport.list();
+      if (loadToken.current !== token) return;
       if (result.ok) {
         setReports(result.reports);
         setStatus('ready');
@@ -62,47 +87,52 @@ function useReportHistory() {
         setStatus('error');
       }
     } catch {
-      setStatus('error');
+      if (loadToken.current === token) setStatus('error');
     }
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: load the history once on mount; the action handlers reload imperatively
-  useEffect(() => {
-    void load();
-  }, []);
-
-  function clearPending(id: string) {
+  function clearPending(ids: readonly string[]) {
     setPending((prev) => {
-      if (!(id in prev)) return prev;
+      if (!ids.some((id) => id in prev)) return prev;
       const next = { ...prev };
-      delete next[id];
+      for (const id of ids) delete next[id];
       return next;
     });
   }
 
-  async function retry(row: OkBugReportListRow) {
-    const bugReport = window.okDesktop?.bugReport;
-    if (!bugReport || !row.retryable) return;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: one load and one subscription for the pane's lifetime; `load` only touches refs and setState
+  useEffect(() => {
+    void load();
+    // Progress is deliberately ignored: the eased fill publishes five times a
+    // second and changes nothing a row says. Only a terminal state does.
+    let settled = settledSends();
+    const unsubscribe = bugReportSendManager.subscribe(() => {
+      const next = settledSends();
+      const finished = [...next]
+        .filter(([id, requestSeq]) => settled.get(id) !== requestSeq)
+        .map(([id]) => id);
+      settled = next;
+      if (finished.length === 0) return;
+      clearPending(finished);
+      void load();
+    });
+    return () => {
+      unsubscribe();
+      // Whatever is still in flight is answering a pane that no longer exists.
+      loadToken.current += 1;
+    };
+  }, []);
+
+  function retry(row: OkBugReportListRow) {
+    if (!row.retryable) return;
+    // The manager keys the operation by the bundle's basename, which is exactly
+    // how Electron main derives the report id this row was built from — so the
+    // operation and `row.id` name the same report, and the spinner clears when
+    // that operation settles. No bridge guard here: a renderer with no desktop
+    // bridge resolves the operation to a failure the toast can state, which
+    // beats a Retry press that does nothing at all.
+    bugReportSendManager.startBugReportSend({ kind: 'history-row', row });
     setPending((prev) => ({ ...prev, [row.id]: 'retrying' }));
-    // `send` is contract-safe (never rejects); the `.catch` is belt-and-suspenders
-    // so a transport-layer IPC failure still clears the spinner and reloads.
-    const result = await bugReport
-      .send({
-        zipPath: row.zipPath,
-        metadata: {
-          level: row.bundleLevel === 'unknown' ? 'standard' : row.bundleLevel,
-          systemWide: row.systemWide,
-          projectSlug: row.projectSlug,
-        },
-      })
-      .catch(() => null);
-    // The designed no-intake path: nothing uploaded, so hand the user the
-    // prefilled email draft (the same behavior the dialog's Send has).
-    if (result && !result.ok && result.reason === 'email-draft') {
-      void window.okDesktop?.shell.openExternal(result.fallback.mailtoUrl);
-    }
-    await load();
-    clearPending(row.id);
   }
 
   async function remove(row: OkBugReportListRow) {
@@ -111,14 +141,24 @@ function useReportHistory() {
     setPending((prev) => ({ ...prev, [row.id]: 'deleting' }));
     await bugReport.delete(row.id).catch(() => undefined);
     await load();
-    clearPending(row.id);
+    clearPending([row.id]);
   }
 
   function reveal(row: OkBugReportListRow) {
     void window.okDesktop?.shell.showItemInFolder(row.zipPath);
   }
 
-  return { status, reports, pending, retry, remove, reveal };
+  /**
+   * Follow up on a landed report. The reference is the subject so support can
+   * correlate the mail with the bundle already in their hands — which is why
+   * a sent row without one offers nothing to press.
+   */
+  function contactSupport(row: OkBugReportListRow) {
+    if (row.reference === undefined) return;
+    void window.okDesktop?.shell.openExternal(supportMailtoUrl(t`Bug report ${row.reference}`));
+  }
+
+  return { status, reports, pending, retry, remove, reveal, contactSupport };
 }
 
 function StateBadge({ state }: { state: OkBugReportListRow['state'] }) {
@@ -166,12 +206,14 @@ function ReportRow({
   row,
   pending,
   onRetry,
+  onContactSupport,
   onReveal,
   onDelete,
 }: {
   row: OkBugReportListRow;
   pending: PendingAction | undefined;
   onRetry: (row: OkBugReportListRow) => void;
+  onContactSupport: (row: OkBugReportListRow) => void;
   onReveal: (row: OkBugReportListRow) => void;
   onDelete: (row: OkBugReportListRow) => void;
 }) {
@@ -205,7 +247,7 @@ function ReportRow({
           ) : row.state === 'upload-failed' && row.lastError !== undefined ? (
             <span className="text-destructive">{row.lastError.reason}</span>
           ) : (
-            <span>{formatSize(row.zipBytes)}</span>
+            <span>{formatBundleSize(row.zipBytes)}</span>
           )}
         </p>
       </div>
@@ -218,6 +260,17 @@ function ReportRow({
               <RotateCwIcon aria-hidden="true" />
             )}
             <Trans>Retry</Trans>
+          </Button>
+        ) : null}
+        {row.state === 'sent' && row.reference !== undefined ? (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            disabled={busy}
+            aria-label={t`Email support about this report`}
+            onClick={() => onContactSupport(row)}
+          >
+            <MailIcon aria-hidden="true" />
           </Button>
         ) : null}
         {row.zipExists ? (
@@ -257,6 +310,7 @@ function ReportRows({
   retry,
   remove,
   reveal,
+  contactSupport,
 }: ReturnType<typeof useReportHistory>) {
   return (
     <div className="flex flex-col gap-2">
@@ -266,6 +320,7 @@ function ReportRows({
           row={row}
           pending={pending[row.id]}
           onRetry={retry}
+          onContactSupport={contactSupport}
           onReveal={reveal}
           onDelete={remove}
         />

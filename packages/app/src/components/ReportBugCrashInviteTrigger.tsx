@@ -10,9 +10,11 @@
  * subscription attaches at module init — boot-time invitations arrive on the
  * window's first `did-finish-load` and must not race React's effect flush.
  *
- * Any close of the invitation dialog — "Not now", Escape, the ✕, or Done
- * after a successful send — counts as the user's answer: the crash event is
- * acked so it never re-prompts, across restarts included.
+ * Any close of the invitation dialog — "Not now", Escape, the ✕, or the Send
+ * hand-off itself — counts as the user's answer: the crash event is acked so
+ * it never re-prompts, across restarts included. (There is no longer a Done
+ * button: the send runs in the background, so pressing Send closes the dialog
+ * immediately and that close is what carries the ack.)
  */
 
 import { useSyncExternalStore } from 'react';

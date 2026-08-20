@@ -1093,6 +1093,18 @@ export interface OkBugReportSendInput {
    * upload the capture it may still hold.
    */
   includeScreenshot?: boolean;
+  /**
+   * W3C `traceparent` for the renderer span that owns this send attempt. Main
+   * extracts it and parents its transport span underneath, so one trace covers
+   * the whole send rather than two disconnected halves.
+   *
+   * Declared here because it genuinely crosses the boundary: without it on the
+   * shared contract the field travels undeclared (a conditional spread at the
+   * call site slips past excess-property checking), so anyone editing this
+   * interface cannot see it exists, and a validator that rejects unknown keys
+   * would drop it silently. Absent when telemetry is off, which is the default.
+   */
+  traceparent?: string;
 }
 
 /**

@@ -1,9 +1,14 @@
 /**
- * ReportBugDialog state-machine tests: compose → review → send with the
- * success, failure→email-fallback, cancel, and note-preservation paths, all
- * against a scripted `window.okDesktop` bridge. Copy assertions pin the
- * approved copy deck strings; the path-identity assertions pin that the zip
- * reviewed is the zip sent.
+ * ReportBugDialog state-machine tests: compose → review → the Send hand-off,
+ * plus the crash-context and note-preservation paths, all against a scripted
+ * `window.okDesktop` bridge. Copy assertions pin the approved copy deck
+ * strings; the path-identity assertions pin that the zip reviewed is the zip
+ * sent.
+ *
+ * Send starts a background operation and closes the dialog, so nothing here
+ * asserts a send OUTCOME — those layouts belong to BugReportSendToast and its
+ * own DOM tests. What is asserted here is that no outcome can reach back into
+ * the dialog.
  *
  * Substrate: jsdom via `bun run test:dom`.
  */
@@ -19,8 +24,10 @@ import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-b
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -196,21 +203,49 @@ async function renderDialog(
     crashContext?: import('./ReportBugDialogBody').ReportBugCrashContext;
     crashInvite?: OkBugReportCrashDetectedEvent;
   } = {},
+  /**
+   * Honour `onOpenChange` so a close actually unmounts the Radix content and
+   * `reopen()` drives a real second open cycle. Off by default: most tests only
+   * need the callback log, and holding the dialog open keeps their later
+   * queries answerable.
+   */
+  options: { statefulOpen?: boolean } = {},
 ) {
   const { ReportBugDialog } = await import('./ReportBugDialog');
   const openChangeCalls: boolean[] = [];
-  render(
-    <TooltipProvider>
-      <ReportBugDialog open={true} onOpenChange={(next) => openChangeCalls.push(next)} {...props} />
-    </TooltipProvider>,
-  );
+  let setHostOpen: ((open: boolean) => void) | null = null;
+  function Host() {
+    const [open, setOpen] = useState(true);
+    useEffect(() => {
+      setHostOpen = setOpen;
+    }, []);
+    return (
+      <TooltipProvider>
+        <ReportBugDialog
+          open={options.statefulOpen === true ? open : true}
+          onOpenChange={(next) => {
+            openChangeCalls.push(next);
+            setOpen(next);
+          }}
+          {...props}
+        />
+      </TooltipProvider>
+    );
+  }
+  render(<Host />);
   // ReportBugDialog is lazy-loaded — wait for the body chunk to resolve and
   // mount before returning so callers' synchronous queries see the dialog.
   // Generous deadline: the file's first render pays the chunk's cold
   // transform+import cost, which can exceed findByRole's 1s default on a
   // contended CI runner (only the failure path ever waits this long).
   await screen.findByRole('dialog', {}, { timeout: 15_000 });
-  return { openChangeCalls };
+  return {
+    openChangeCalls,
+    reopen: () =>
+      act(() => {
+        setHostOpen?.(true);
+      }),
+  };
 }
 
 async function createReport(note?: string) {
@@ -222,8 +257,15 @@ async function createReport(note?: string) {
 }
 
 describe('ReportBugDialog', () => {
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    // The send manager is a module singleton every test in this file shares.
+    // An operation left mid-flight keeps its progress interval ticking and
+    // makes the next start for the same zip join the stale one instead of
+    // dispatching, so a leak here surfaces as an unrelated test failing.
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+    });
     clearBridge();
     // Drop any launcher stand-in a test appended so it can't stall the next
     // test's capture (the gate waits for these to clear before shooting).
@@ -332,42 +374,25 @@ describe('ReportBugDialog', () => {
     expect((noteBox as HTMLTextAreaElement).value).toBe('my draft note');
   });
 
-  test('sending uploads the reviewed zip and lands on the reference with copy and support follow-up', async () => {
+  test('Send hands the reviewed zip to the background send manager and closes the dialog', async () => {
     const send = deferred<OkBugReportSendResult>();
     const log = installBridge({ send: () => send.promise });
-    const { openChangeCalls } = await renderDialog();
+    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport('upload me');
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
 
-    await screen.findByRole('heading', { name: 'Sending report' });
-    expect(screen.getByText('Uploading securely')).not.toBeNull();
-    // Transport-neutral announcement — the default (no intake endpoint)
-    // configuration never uploads, so the copy must not claim one.
-    expect(screen.getByText('Your report is being sent.')).not.toBeNull();
-    // Only the honest total — no fabricated transferred-bytes counter.
-    expect(screen.getByText(/6\.8 MB total/)).not.toBeNull();
-    expect(screen.queryByText(/MB of/)).toBeNull();
-    const uploadBar = screen.getByRole('progressbar');
-
-    expect(uploadBar).not.toBeNull();
-    // The width here is a time-eased estimate, not real transfer progress, so
-    // the bar must stay indeterminate: no percentage may reach assistive tech.
-    // The primitive omits these whenever `value` is null, so this pins that
-    // this call site keeps passing null rather than the eased fill percentage.
-    expect(uploadBar.getAttribute('aria-valuenow')).toBeNull();
-    expect(uploadBar.getAttribute('aria-valuetext')).toBeNull();
-    expect(uploadBar.getAttribute('data-state')).toBe('indeterminate');
-    expect(
-      (screen.getByRole('button', { name: 'Send report' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-
-    await act(async () => {
-      send.resolve({ ok: true, reference: 'OK-8H3KQD' });
-      await Promise.resolve();
+    // Closed at once, through the dialog's own onOpenChange path: mount sites
+    // hang their own work off that callback (the crash invite acks there).
+    expect(openChangeCalls).toEqual([false]);
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
     });
 
-    await screen.findByRole('heading', { name: 'Thanks for the report!' });
+    // The send is under way behind the closed dialog, carrying the composed
+    // note and the consent read off the bundle's own inventory (this fixture's
+    // summary carries no screenshot entry, so main must be told not to upload
+    // the capture it may still be holding).
     expect(log.sendCalls).toEqual([
       {
         zipPath: ZIP_PATH,
@@ -377,130 +402,122 @@ describe('ReportBugDialog', () => {
           projectSlug: 'demo-project',
           note: 'upload me',
         },
-        // Consent for the separate screenshot upload, read off the bundle's own
-        // file inventory. This fixture's summary carries no screenshot entry, so
-        // main must be told not to upload the capture it may still be holding.
         includeScreenshot: false,
       },
     ]);
-    expect(screen.getByDisplayValue('OK-8H3KQD')).not.toBeNull();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Copy' }));
-    await screen.findByRole('button', { name: 'Copied!' });
-    expect(log.clipboard).toEqual(['OK-8H3KQD']);
+    // No in-dialog upload UI survives anywhere: progress and the outcome are
+    // the toast's job now.
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByText('Uploading securely')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Sending report' })).toBeNull();
 
-    // The public GitHub follow-up is gone — no issue button, and support email
-    // is the only follow-up channel offered.
-    expect(screen.queryByRole('button', { name: 'Open GitHub issue' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'support@inkeep.com' })).not.toBeNull();
+    await act(async () => {
+      send.resolve({ ok: true, reference: 'OK-8H3KQD' });
+      await Promise.resolve();
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(openChangeCalls).toEqual([false]);
+    // The reference lands on the history row and in the toast, never back here.
+    expect(screen.queryByDisplayValue('OK-8H3KQD')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('a failed send falls back to email with the note preserved for the retry', async () => {
-    let sendAttempts = 0;
-    const log = installBridge({
-      send: () => {
-        sendAttempts += 1;
-        return sendAttempts === 1
-          ? Promise.resolve({
-              ok: false,
-              reason: 'send-failed',
-              fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
-            })
-          : Promise.resolve({ ok: true, reference: 'OK-RETRY1' });
+  test.each([
+    [
+      'a failed upload',
+      {
+        ok: false as const,
+        reason: 'send-failed' as const,
+        fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
       },
-    });
-    await renderDialog();
+    ],
+    [
+      'the no-intake email default',
+      {
+        ok: false as const,
+        reason: 'email-draft' as const,
+        fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
+      },
+    ],
+  ])('%s resolves outside the dialog — no terminal phase, no reopen, no draft', async (_, result) => {
+    const log = installBridge({ send: () => Promise.resolve(result) });
+    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport('still my note');
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-
-    await screen.findByRole('heading', { name: "Couldn't send the report" });
-    expect(
-      screen.getByText("Your report couldn't be sent. Try again or email it instead."),
-    ).not.toBeNull();
-    const alert = screen.getByRole('alert');
-    expect(alert.textContent).toContain("The report service couldn't be reached.");
-    expect(alert.textContent).toContain(
-      'Your report is saved on this computer, so nothing was lost. You can email it to us instead.',
-    );
-    expect(screen.getByText('2026-07-10T00-00-00-bugreport.zip')).not.toBeNull();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Reveal in Finder' }));
-    expect(log.revealed).toEqual([ZIP_PATH]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Open email draft' }));
-    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=OpenKnowledge%20bug']);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('heading', { name: 'Thanks for the report!' });
-    expect(log.sendCalls).toHaveLength(2);
-    expect(log.sendCalls[1].zipPath).toBe(ZIP_PATH);
-    expect(log.sendCalls[1].metadata.note).toBe('still my note');
-  });
-
-  test('with no report service configured, send resolves to the email flow — no fake upload, no failure framing', async () => {
-    const log = installBridge({
-      send: () =>
-        Promise.resolve({
-          ok: false,
-          reason: 'email-draft',
-          fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
-        }),
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
     });
-    await renderDialog();
-    await createReport('no intake configured');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-
-    await screen.findByRole('heading', { name: 'Send your report by email' });
-    expect(
-      screen.getByText(
-        'Nothing was uploaded. The report stays on this computer until you email it to us.',
-      ),
-    ).not.toBeNull();
-    // An informational state, not an error: no alert, no unreachable-service
-    // claim, and nothing to retry — the draft is the transport.
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByText(/couldn't be reached/i)).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-    expect(screen.getByText('2026-07-10T00-00-00-bugreport.zip')).not.toBeNull();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Reveal in Finder' }));
-    expect(log.revealed).toEqual([ZIP_PATH]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Open email draft' }));
-    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=OpenKnowledge%20bug']);
+    expect(openChangeCalls).toEqual([false]);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
+    // The draft is offered by the toast's Open draft action, never launched
+    // for the reporter by this flow.
+    expect(log.opened).toEqual([]);
   });
 
-  test('cancel during sending returns to review and the late result is ignored', async () => {
-    const send = deferred<OkBugReportSendResult>();
-    const { openChangeCalls } = await (async () => {
-      installBridge({ send: () => send.promise });
-      return renderDialog();
-    })();
+  test('Escape closes the dialog from review, and review keeps its close button', async () => {
+    installBridge();
+    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
     await createReport();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-    await screen.findByRole('heading', { name: 'Sending report' });
+    expect(screen.getByRole('button', { name: 'Close' })).not.toBeNull();
 
-    // Escape must not dismiss the dialog mid-upload — Cancel is the only exit.
     await userEvent.keyboard('{Escape}');
-    expect(openChangeCalls).toEqual([]);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    await screen.findByRole('heading', { name: 'Review your report' });
-
-    await act(async () => {
-      send.resolve({ ok: true, reference: 'OK-LATE99' });
-      await Promise.resolve();
-      await Promise.resolve();
+    expect(openChangeCalls).toEqual([false]);
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
     });
+  });
 
-    expect(screen.queryByText('OK-LATE99')).toBeNull();
-    expect(screen.getByRole('heading', { name: 'Review your report' })).not.toBeNull();
+  test('a draft survives a non-Send close: the note and checkboxes come back on reopen', async () => {
+    installBridge();
+    const { reopen } = await renderDialog({}, { statefulOpen: true });
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /what happened/i }),
+      'half-written thought',
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Detailed diagnostics' }));
+
+    await userEvent.keyboard('{Escape}');
+    await vi.waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    reopen();
+    await screen.findByRole('dialog');
+
+    expect(
+      (screen.getByRole('textbox', { name: /what happened/i }) as HTMLTextAreaElement).value,
+    ).toBe('half-written thought');
+    expect(
+      screen.getByRole('checkbox', { name: 'Detailed diagnostics' }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  test('sending spends the draft: reopening after a Send starts from an empty form', async () => {
+    const log = installBridge();
+    const { reopen } = await renderDialog({}, { statefulOpen: true });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Detailed diagnostics' }));
+    await createReport('this one is going out');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
+    reopen();
+    await screen.findByRole('dialog');
+
+    expect(
+      (screen.getByRole('textbox', { name: /what happened/i }) as HTMLTextAreaElement).value,
+    ).toBe('');
+    expect(
+      screen.getByRole('checkbox', { name: 'Detailed diagnostics' }).getAttribute('aria-checked'),
+    ).toBe('false');
+    expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
   });
 
   test('a crash context pre-checks detailed diagnostics and folds the context into the note on create and send', async () => {
@@ -527,7 +544,9 @@ describe('ReportBugDialog', () => {
     ]);
 
     await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-    await screen.findByRole('heading', { name: 'Thanks for the report!' });
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
     expect(log.sendCalls[0].metadata.note).toBe(
       'It crashed while I typed\n\nCrash source: document view\nDocument: alpha.md\nError: boom',
     );

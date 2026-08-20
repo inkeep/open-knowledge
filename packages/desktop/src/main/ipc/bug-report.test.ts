@@ -31,7 +31,34 @@ import {
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+/**
+ * Span names started during a send, for the phase-parity assertions below.
+ * The real tracer is a no-op unless OTEL_SDK_DISABLED is 'false', so this
+ * records at the `@inkeep/open-knowledge-server` boundary instead — the same
+ * seam `bug-report-trace.test.ts` uses.
+ */
+const startedSpanNames: string[] = [];
+vi.mock('@inkeep/open-knowledge-server', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  return {
+    ...actual,
+    getTracer: () => ({
+      startSpan(name: string) {
+        startedSpanNames.push(name);
+        return {
+          isRecording: () => true,
+          setAttribute: () => {},
+          setAttributes: () => {},
+          setStatus: () => {},
+          end: () => {},
+        };
+      },
+    }),
+  };
+});
+
 import {
   createBugReportSidecarStore,
   readReportSidecar,
@@ -2422,12 +2449,18 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected refusal');
-    expect(result.reason).toBe('send-failed');
+    // Distinct from a genuine failure: the owning send is still running, so a
+    // renderer that renders this as "couldn't send" would be lying about a
+    // report that is about to succeed.
+    expect(result.reason).toBe('send-in-flight');
     // The refusal must happen BEFORE any network work: the bundle is uploaded
     // exactly once no matter how many retries race.
     expect(stub.requests).toHaveLength(0);
-    // The owning send still holds the report; the refusal left it untouched.
+    // The owning send still holds the report: the refusal returned before the
+    // terminal hook, so it wrote no state and released no lock the owner is
+    // still relying on.
     expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe('uploading');
+    expect((await store.sendHooks.onSendStart(REPORT_ID)).proceed).toBe(false);
   });
 
   test('a zip inside the reports dir with a non-report basename is refused', async () => {
@@ -2462,6 +2495,144 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     expect(result.reason).toBe('email-draft');
     expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe(
       'email-drafted',
+    );
+  });
+});
+
+describe('handleBugReportSend — structured failure diagnostics', () => {
+  /** The `logIpcError` lines emitted while `fn` ran, parsed. */
+  async function captureIpcErrors(fn: () => Promise<unknown>): Promise<Record<string, unknown>[]> {
+    const lines: Record<string, unknown>[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => {
+      try {
+        lines.push(JSON.parse(String(args[0])) as Record<string, unknown>);
+      } catch {
+        // Not a structured line — irrelevant here.
+      }
+    };
+    try {
+      await fn();
+    } finally {
+      console.warn = original;
+    }
+    return lines;
+  }
+
+  function dispatchFailure(lines: Record<string, unknown>[]): Record<string, unknown> {
+    const line = lines.find(
+      (l) => l.channel === 'ok:bug-report:dispatch' && l.handler === 'handleBugReportSend',
+    );
+    if (line === undefined) throw new Error('no dispatch failure line was logged');
+    return line;
+  }
+
+  test('an unresolvable intake names the step, the errno, and the host', async () => {
+    // Driven through real `fetch` rather than a thrown fake because the
+    // behavior under test is undici-specific: it reports
+    // every transport failure as the same opaque `TypeError: fetch failed`
+    // and hangs the errno one level down in `cause`, so an implementation
+    // that read `err.code` off the caught value would pass a fake and still
+    // log nothing useful in production.
+    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+
+    const lines = await captureIpcErrors(() =>
+      handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
+    );
+
+    const details = dispatchFailure(lines).details as Record<string, unknown>;
+    expect(details.step).toBe('mint');
+    expect(details.host).toBe('intake.invalid-tld-for-test.invalid');
+    expect(details.errName).toBe('TypeError');
+    // The field that separates "this machine cannot resolve" from "the intake
+    // refused" from "the certificate expired" — all previously indistinguishable
+    // under the single token `network-error`.
+    expect(details.errCode).toBe('ENOTFOUND');
+  });
+
+  test('a failing upload names the storage host without leaking the signature', async () => {
+    // The upload step targets a MINTED, signed URL. Its host is the fact that
+    // makes a failure triageable; its query is a live credential. Logging the
+    // whole URL would write that credential into a bundle the user hands to
+    // support, so this pins host-only rather than trusting the convention.
+    const stub = await startIntakeStub({
+      mintBody: {
+        uploadUrl: 'https://storage.example.invalid/dest?X-Signature=SUPERSECRETSIG&exp=99',
+        assetUrl: 'https://uploads.example.invalid/asset/dest',
+        headers: {},
+      },
+    });
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const lines = await captureIpcErrors(() =>
+      handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
+    );
+
+    const line = dispatchFailure(lines);
+    const details = line.details as Record<string, unknown>;
+    expect(details.step).toBe('upload');
+    expect(details.host).toBe('storage.example.invalid');
+    // Nothing anywhere on the line may carry the signature.
+    expect(JSON.stringify(line)).not.toContain('SUPERSECRETSIG');
+  });
+
+  test('a rejected mint carries the step and the status it was rejected with', async () => {
+    const stub = await startIntakeStub({ mintStatus: 503 });
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const lines = await captureIpcErrors(() =>
+      handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
+    );
+
+    const details = dispatchFailure(lines).details as Record<string, unknown>;
+    expect(details).toMatchObject({ step: 'mint', status: 503 });
+  });
+});
+
+describe('handleBugReportSend — transport phase spans', () => {
+  beforeEach(() => {
+    startedSpanNames.length = 0;
+    // The tracer is opt-in; without this every span call is a silent no-op,
+    // which is precisely why the mint gap below went unnoticed.
+    process.env.OTEL_SDK_DISABLED = 'false';
+  });
+
+  afterEach(() => {
+    process.env.OTEL_SDK_DISABLED = undefined;
+  });
+
+  test('a REJECTED mint still records how long the mint took', async () => {
+    // The failure this pins: the mint phase span used to be recorded after the
+    // status checks, so a 500 skipped it entirely - the span was absent on
+    // exactly the mint failures it exists to time, while upload and complete
+    // recorded theirs before their own checks. A slow-then-rejecting intake
+    // looked identical to an instant one.
+    const stub = await startIntakeStub({ mintStatus: 500 });
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    const result = await handleBugReportSend(deps, {
+      kind: 'send',
+      zipPath,
+      metadata: SEND_METADATA,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(startedSpanNames).toContain('ok.bug-report.mint');
+  });
+
+  test('a successful send records all three transport phases', async () => {
+    const stub = await startIntakeStub();
+    const { deps, zipPath } = makeSendRig(stub.url);
+
+    await handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA });
+
+    expect(startedSpanNames).toEqual(
+      expect.arrayContaining([
+        'ok.bug-report.send',
+        'ok.bug-report.mint',
+        'ok.bug-report.upload',
+        'ok.bug-report.complete',
+      ]),
     );
   });
 });

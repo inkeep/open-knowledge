@@ -1,17 +1,19 @@
 /**
  * ReportBugDialog — the in-app "Report a bug" flow (compose → review → send).
  *
- * One dialog hosts six phases: compose (optional note + detail level),
- * review (inspect the exact zip before consenting to send), sending, success
- * (report reference + support-email follow-up), email (the designed
- * no-intake default — nothing was uploaded, the prefilled draft is the
- * transport), and failure (the same email fallback framed as an error, for
- * uploads that were attempted and failed). The zip reviewed is byte-identical
- * to the zip sent — `zipPath` from create is handed to send untouched.
+ * Two phases: compose (optional note + detail level) and review (inspect the
+ * exact zip before consenting to send). The zip reviewed is byte-identical to
+ * the zip sent — `zipPath` from create is handed to send untouched.
+ *
+ * Send is a hand-off, not a wait. It starts a background operation on the
+ * module-level send manager and closes the dialog, so the upload outlives this
+ * subtree — which has seven independent mount sites, any of which can unmount
+ * mid-send. Progress and the outcome are surfaced by the send toast and the
+ * report history, not by a phase here.
  *
  * A crash-detected invitation (`crashInvite`) reskins compose — banner,
  * "What were you doing?" label, pre-checked diagnostics, the crash-dump
- * opt-in, a "Not now" dismiss — while review → send stay shared.
+ * opt-in, a "Not now" dismiss — while review and the send hand-off stay shared.
  *
  * Desktop-only surface: bundle creation and the upload both live in Electron
  * main behind `window.okDesktop.bugReport`. Mount sites gate on bridge
@@ -27,16 +29,9 @@ import type {
 } from '@inkeep/open-knowledge-core';
 import { BUG_REPORT_SCREENSHOT_ZIP_ENTRY } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import {
-  AlertCircleIcon,
-  ArchiveIcon,
-  CheckIcon,
-  ShieldIcon,
-  TriangleAlertIcon,
-} from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { AlertCircleIcon, ArchiveIcon, ShieldIcon, TriangleAlertIcon } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
 import { BugReportPreviousReports } from '@/components/BugReportHistory';
-import { CopyButton } from '@/components/CopyButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -49,39 +44,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { bugReportSendManager } from '@/lib/bug-report-send-manager';
+import { formatBundleSize, zipBasename } from '@/lib/bug-report-support';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
-import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
-
-const SUPPORT_EMAIL = 'support@inkeep.com';
-
-/** Bare mailto with a prefilled subject — used on the success screen, where the
- *  report reference becomes the subject so the team can correlate the email. */
-function supportMailtoUrl(subject: string): string {
-  return `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}`;
-}
-
-/**
- * `support@inkeep.com` as the app's external-link affordance rather than a code
- * span. `href` opens the prefilled draft where one exists (email/failure) or a
- * subject-only mailto (success).
- */
-function SupportEmailLink({ href }: { href: string }) {
-  return (
-    <a
-      href={href}
-      onClick={(e) => dispatchExternalLinkClick(e, href)}
-      onAuxClick={(e) => dispatchExternalLinkClick(e, href)}
-      className="text-primary hover:underline"
-    >
-      {SUPPORT_EMAIL}
-    </a>
-  );
-}
 
 export interface ReportBugCrashContext {
   /** Surface the error escaped from, e.g. 'document view' or 'app shell'. */
@@ -191,29 +158,15 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
 
 type Phase =
   | { step: 'compose'; creating: boolean; createError: string | null }
-  | { step: 'review'; report: CreatedReport }
-  | { step: 'sending'; report: CreatedReport }
-  | { step: 'success'; report: CreatedReport; reference: string }
-  | { step: 'email'; report: CreatedReport; mailtoUrl: string }
-  | { step: 'failure'; report: CreatedReport; mailtoUrl: string };
+  | { step: 'review'; report: CreatedReport };
 
 const COMPOSE_IDLE: Phase = { step: 'compose', creating: false, createError: null };
 
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${bytes} B`;
-}
-
-function zipBasename(zipPath: string): string {
-  return zipPath.split(/[\\/]/).pop() ?? zipPath;
-}
-
 /**
- * The one artifact whose rawness the cards must call out is the opted-in crash
- * minidump under `extra/` — process memory that text redaction cannot scrub.
- * The review/email/failure cards must qualify their "secrets redacted" claim
- * whenever one is present. The opted-in screenshot also lands under `extra/`
+ * The one artifact whose rawness the review card must call out is the opted-in
+ * crash minidump under `extra/` — process memory that text redaction cannot
+ * scrub. The card must qualify its "secrets redacted" claim whenever one is
+ * present. The opted-in screenshot also lands under `extra/`
  * but is excluded here: the user previewed it before including it, so it needs
  * no after-the-fact "not redacted" caveat. The summary's file inventory, not
  * the dialog's checkbox state, is the truth: opting in with no dump on disk
@@ -295,9 +248,8 @@ function ReportBugDialog({
   // Default-on per the spec: when a screenshot was captured it rides along
   // unless the user unchecks it. Only ever sent to `create` when one exists.
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
-  const [sentFraction, setSentFraction] = useState(0);
-  // Bumped whenever the current async create/send no longer owns the dialog
-  // (cancel, close): the awaiting handler compares and drops its result.
+  // Bumped whenever the in-flight create no longer owns the dialog (a close):
+  // the awaiting handler compares and drops its result.
   const opSeqRef = useRef(0);
   const noteId = useId();
   const logsId = useId();
@@ -308,10 +260,8 @@ function ReportBugDialog({
   const dumpHintId = useId();
   const screenshotId = useId();
   const screenshotHintId = useId();
-  const referenceId = useId();
   const whatToIncludeId = useId();
 
-  const sending = phase.step === 'sending';
   const noteContextLines =
     crashContext !== undefined
       ? crashContextLines(crashContext)
@@ -319,38 +269,9 @@ function ReportBugDialog({
         ? crashInviteLines(crashInvite)
         : undefined;
 
-  // Fake-determinate upload progress: main exposes no byte-level progress
-  // events (the upload is one awaited IPC call), so ease toward 90% and let
-  // the terminal phase change deliver the rest — the bar never claims done.
-  useEffect(() => {
-    if (!sending) return;
-    setSentFraction(0);
-    const startedAt = Date.now();
-    const timer = setInterval(() => {
-      const elapsedSeconds = (Date.now() - startedAt) / 1000;
-      setSentFraction(Math.min(0.9, 1 - Math.exp(-elapsedSeconds / 3)));
-    }, 200);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [sending]);
-
   function handleOpenChange(nextOpen: boolean) {
-    // Mid-upload the footer Cancel is the only way out — swallowing Radix's
-    // Escape/outside-click close keeps the result from landing in a void.
-    if (!nextOpen && phase.step === 'sending') return;
     if (!nextOpen) {
       opSeqRef.current += 1;
-      // Reset the form on any concluded close (success, email draft, or upload
-      // failure) so the next open starts clean, not just on success.
-      if (phase.step === 'success' || phase.step === 'email' || phase.step === 'failure') {
-        setNote('');
-        setDetailed(crashContext !== undefined || crashInvite !== undefined);
-        setIncludeDump(crashInvite?.minidumpAvailable === true);
-        // Re-default the screenshot to on so the next open (which captures a
-        // fresh screenshot) starts checked, matching the compose default.
-        setIncludeScreenshot(true);
-      }
       setPhase(COMPOSE_IDLE);
     }
     onOpenChange(nextOpen);
@@ -393,19 +314,11 @@ function ReportBugDialog({
     }
   }
 
-  async function handleSend(report: CreatedReport) {
-    const bugReport = window.okDesktop?.bugReport;
-    if (!bugReport) return;
-    const seq = ++opSeqRef.current;
-    setPhase({ step: 'sending', report });
-    const result = await bugReport.send({
-      zipPath: report.zipPath,
-      metadata: {
-        level: report.summary.level,
-        systemWide: report.summary.systemWide,
-        projectSlug: report.summary.projectSlug,
-        note: composeNote(note, noteContextLines),
-      },
+  function handleSend(report: CreatedReport) {
+    bugReportSendManager.startBugReportSend({
+      kind: 'created-report',
+      report,
+      note: composeNote(note, noteContextLines),
       // Read consent off the bundle's own inventory rather than the checkbox
       // state: the inventory is what `create` acted on and what the reporter
       // reviewed, so it cannot drift from the artifact being sent if the checkbox
@@ -413,39 +326,28 @@ function ReportBugDialog({
       // screenshot separately for inline display in the ticket.
       includeScreenshot: report.summary.files.includes(BUG_REPORT_SCREENSHOT_ZIP_ENTRY),
     });
-    if (opSeqRef.current !== seq) return;
-    if (result.ok) {
-      setPhase({ step: 'success', report, reference: result.reference });
-    } else if (result.reason === 'email-draft') {
-      // The designed default (no intake endpoint configured): nothing was
-      // attempted and nothing failed, so the email flow renders without any
-      // failure framing.
-      setPhase({ step: 'email', report, mailtoUrl: result.fallback.mailtoUrl });
-    } else {
-      setPhase({ step: 'failure', report, mailtoUrl: result.fallback.mailtoUrl });
-    }
-  }
-
-  function handleCancelSend(report: CreatedReport) {
-    // The IPC upload has no abort path — abandon the wait and let the seq
-    // guard drop whatever it eventually resolves to.
-    opSeqRef.current += 1;
-    setPhase({ step: 'review', report });
+    // The draft is spent once its send is under way, so it is cleared here and
+    // nowhere else: resetting on every close would silently discard a note the
+    // reporter backed out of to come back to.
+    setNote('');
+    setDetailed(crashContext !== undefined || crashInvite !== undefined);
+    setIncludeDump(crashInvite?.minidumpAvailable === true);
+    // Re-default the screenshot to on so the next open (which captures a fresh
+    // screenshot) starts checked, matching the compose default.
+    setIncludeScreenshot(true);
+    // Closing through the shared path, never a bespoke one: mount sites hang
+    // their own work off `onOpenChange` — the crash invite acks its event there
+    // — so a close that skips it silently drops that work.
+    handleOpenChange(false);
   }
 
   function revealZip(zipPath: string) {
     void window.okDesktop?.shell.showItemInFolder(zipPath);
   }
 
-  function openExternal(url: string) {
-    void window.okDesktop?.shell.openExternal(url);
-  }
-
-  const uploadPct = Math.round(sentFraction * 100);
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl" showCloseButton={!sending}>
+      <DialogContent className="sm:max-w-2xl">
         {phase.step === 'compose' && (
           <>
             <DialogHeader>
@@ -744,228 +646,9 @@ function ReportBugDialog({
               >
                 <Trans>Back</Trans>
               </Button>
-              <Button onClick={() => void handleSend(phase.report)}>
+              <Button onClick={() => handleSend(phase.report)}>
                 <Trans>Send report</Trans>
               </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {phase.step === 'sending' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                <Trans>Sending report</Trans>
-              </DialogTitle>
-              {/* Transport-neutral on purpose: in the default (no intake
-                  endpoint) configuration Send never uploads — it resolves to
-                  an email draft — so the announcement must not claim one. */}
-              <DialogDescription className="sr-only">
-                <Trans>Your report is being sent.</Trans>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogBody className="flex flex-col gap-3">
-              <div role="status" className="flex items-center gap-2.5 text-sm">
-                <Spinner className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                <Trans>Uploading securely</Trans>
-                {/* No byte-level progress crosses the IPC boundary, so the only
-                    honest number here is the total size. */}
-                <span className="ml-auto text-xs text-muted-foreground">
-                  <Trans>{formatSize(phase.report.zipSizeBytes)} total</Trans>
-                </span>
-              </div>
-              {/* The fill is a time-eased estimate, not real transfer progress,
-                  so the machine-readable state stays indeterminate (`value`
-                  null, hence no aria-valuenow) while the bar still moves —
-                  assistive tech must not hear invented percentages. */}
-              <Progress
-                value={null}
-                indeterminateFillPercent={uploadPct}
-                aria-label={t`Sending report`}
-                className="h-1.5 bg-secondary"
-              />
-            </DialogBody>
-            <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => handleCancelSend(phase.report)}
-              >
-                <Trans>Cancel</Trans>
-              </Button>
-              <Button disabled>
-                <Trans>Send report</Trans>
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {phase.step === 'success' && (
-          <>
-            <DialogBody>
-              <div className="flex flex-col gap-3">
-                {/* Scope the live region to the confirmation + summary line so
-                    success announces a focused message, not the whole subtree
-                    (reference field + follow-up copy stay outside it). */}
-                <div role="status" className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <CheckIcon className="size-5 shrink-0 text-primary" aria-hidden="true" />
-                    <DialogTitle>
-                      <Trans>Thanks for the report!</Trans>
-                    </DialogTitle>
-                  </div>
-                  <DialogDescription>
-                    <Trans>We've filed it with the team and attached your logs.</Trans>
-                  </DialogDescription>
-                </div>
-                {/* Reference snippet + shared CopyButton — same affordance as
-                    the ShareButton link field. */}
-                <div className="flex flex-col gap-1.5">
-                  <label htmlFor={referenceId} className="text-sm font-medium">
-                    <Trans>Report reference</Trans>
-                  </label>
-                  <div className="relative">
-                    <Input
-                      id={referenceId}
-                      readOnly
-                      value={phase.reference}
-                      onFocus={(e) => e.currentTarget.select()}
-                      onClick={(e) => e.currentTarget.select()}
-                      className="select-all bg-muted pr-9 font-mono text-sm font-medium tracking-wide"
-                    />
-                    <div className="absolute inset-y-0 right-1 flex items-center">
-                      <CopyButton
-                        copyContent={phase.reference}
-                        clipboardWrite={scheduleClipboardWrite}
-                      />
-                    </div>
-                  </div>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  <Trans>
-                    <span className="font-medium text-foreground">Have more to add?</span> Write to{' '}
-                    <SupportEmailLink href={supportMailtoUrl(t`Bug report ${phase.reference}`)} />{' '}
-                    and mention your reference.
-                  </Trans>
-                </p>
-              </div>
-            </DialogBody>
-            <DialogFooter>
-              <Button onClick={() => handleOpenChange(false)}>
-                <Trans>Done</Trans>
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {phase.step === 'email' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                <Trans>Send your report by email</Trans>
-              </DialogTitle>
-              {/* An informational state, not an error: with no report service
-                  configured, the prefilled draft is how reports travel — no
-                  upload happened, so no alert banner belongs here. */}
-              <DialogDescription>
-                <Trans>
-                  Nothing was uploaded. The report stays on this computer until you email it to us.
-                </Trans>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogBody className="flex flex-col gap-4">
-              <ZipCard
-                zipPath={phase.report.zipPath}
-                zipSizeBytes={phase.report.zipSizeBytes}
-                fileCount={phase.report.summary.files.length}
-                rawDumpIncluded={reportIncludesRawDump(phase.report)}
-                onReveal={revealZip}
-              />
-              <p className="text-sm text-muted-foreground">
-                <Trans>
-                  Attach the file in an email to <SupportEmailLink href={phase.mailtoUrl} />
-                </Trans>
-              </p>
-            </DialogBody>
-            <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => handleOpenChange(false)}
-              >
-                <Trans>Close</Trans>
-              </Button>
-              <Button onClick={() => openExternal(phase.mailtoUrl)}>
-                <Trans>Open email draft</Trans>
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-
-        {phase.step === 'failure' && (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                <Trans>Couldn't send the report</Trans>
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                <Trans>Your report couldn't be sent. Try again or email it instead.</Trans>
-              </DialogDescription>
-            </DialogHeader>
-            <DialogBody className="flex flex-col gap-4">
-              <div
-                role="alert"
-                className="flex items-start gap-2.5 rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2.5 text-sm"
-              >
-                <AlertCircleIcon
-                  className="mt-0.5 size-4 shrink-0 text-destructive"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="font-medium">
-                    <Trans>The report service couldn't be reached.</Trans>
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    <Trans>
-                      Your report is saved on this computer, so nothing was lost. You can email it
-                      to us instead.
-                    </Trans>
-                  </p>
-                </div>
-              </div>
-              <ZipCard
-                zipPath={phase.report.zipPath}
-                zipSizeBytes={phase.report.zipSizeBytes}
-                fileCount={null}
-                rawDumpIncluded={reportIncludesRawDump(phase.report)}
-                onReveal={revealZip}
-              />
-              <p className="text-sm text-muted-foreground">
-                <Trans>
-                  Attach the file in an email to <SupportEmailLink href={phase.mailtoUrl} />
-                </Trans>
-              </p>
-            </DialogBody>
-            <DialogFooter className="sm:justify-between">
-              <Button
-                variant="ghost"
-                className="font-mono uppercase"
-                onClick={() => handleOpenChange(false)}
-              >
-                <Trans>Close</Trans>
-              </Button>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <Button
-                  variant="outline"
-                  className="font-mono uppercase"
-                  onClick={() => void handleSend(phase.report)}
-                >
-                  <Trans>Try again</Trans>
-                </Button>
-                <Button onClick={() => openExternal(phase.mailtoUrl)}>
-                  <Trans>Open email draft</Trans>
-                </Button>
-              </div>
             </DialogFooter>
           </>
         )}
@@ -977,8 +660,7 @@ function ReportBugDialog({
 interface ZipCardProps {
   zipPath: string;
   zipSizeBytes: number;
-  /** `null` hides the file count (the failure card omits it). */
-  fileCount: number | null;
+  fileCount: number;
   /** The bundle carries a raw crash dump — the redaction claim must be qualified. */
   rawDumpIncluded: boolean;
   onReveal: (zipPath: string) => void;
@@ -986,7 +668,7 @@ interface ZipCardProps {
 
 function ZipCard({ zipPath, zipSizeBytes, fileCount, rawDumpIncluded, onReveal }: ZipCardProps) {
   const name = zipBasename(zipPath);
-  const sizeText = formatSize(zipSizeBytes);
+  const sizeText = formatBundleSize(zipSizeBytes);
   return (
     <div className="flex items-center gap-2.5 rounded-md border px-3 py-2.5">
       <div className="flex items-center justify-center size-8 rounded-md bg-muted">
@@ -997,13 +679,7 @@ function ZipCard({ zipPath, zipSizeBytes, fileCount, rawDumpIncluded, onReveal }
           {name}
         </p>
         <p className="text-xs text-muted-foreground">
-          {fileCount === null ? (
-            rawDumpIncluded ? (
-              <Trans>{sizeText} · secrets redacted · crash dump not redacted</Trans>
-            ) : (
-              <Trans>{sizeText} · secrets redacted</Trans>
-            )
-          ) : rawDumpIncluded ? (
+          {rawDumpIncluded ? (
             <Trans>
               {sizeText} · secrets redacted ·{' '}
               <Plural value={fileCount} one="# file" other="# files" /> · crash dump not redacted

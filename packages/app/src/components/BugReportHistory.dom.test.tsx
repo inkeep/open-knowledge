@@ -1,17 +1,23 @@
 /**
  * BugReportHistoryList DOM tests: the persisted report list renders rows with
  * state badges, an empty state with the Report-a-bug CTA, a degraded unknown
- * row, and the Retry / Reveal / Delete actions dispatching the right bridge
- * calls (Retry reconstructs the send metadata from the row).
+ * row, and the Retry / support / Reveal / Delete actions dispatching the right
+ * bridge calls (Retry hands the row to the background send manager, which
+ * reconstructs the send metadata from it).
+ *
+ * The send manager is the real module singleton, driven over the stubbed
+ * desktop bridge — the boundary these surfaces actually meet.
  *
  * Substrate: jsdom via `pnpm run test:dom`.
  */
 import type { OkBugReportListRow, OkBugReportSendResult } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import * as actualSonner from 'sonner';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 // Superset factory: spreading the real module keeps every export the component
@@ -41,8 +47,37 @@ if (globalWithDomShims.ResizeObserver === undefined) {
   globalWithDomShims.ResizeObserver = NoopResizeObserver;
 }
 
-// Imported after the macro mock so the component binds to the shim.
+// Sonner is stubbed so the retry-resurrects-the-toast path can be driven
+// end to end without a toast host. Spread the real module so anything else in
+// this graph reaching for sonner still finds it.
+const toast = {
+  custom: vi.fn((_render: (id: string | number) => unknown, _options?: unknown) => 'toast-id'),
+  dismiss: vi.fn((_id?: unknown) => {}),
+};
+vi.doMock('sonner', () => ({ ...actualSonner, toast }));
+
+// Imported after the mocks so the modules bind to the shims.
 const { BugReportHistoryList, BugReportPreviousReports } = await import('./BugReportHistory');
+const { installBugReportSendToasts } = await import('@/lib/install-bug-report-send-toasts');
+
+/**
+ * Mint calls for one operation. Filtered by id because the adapter walks the
+ * whole snapshot on its first notification, and the manager singleton still
+ * holds the operations earlier tests in this file left behind.
+ */
+function mintsFor(operationId: string): unknown[] {
+  return toast.custom.mock.calls.filter(
+    (call) => (call[1] as { id?: unknown } | undefined)?.id === operationId,
+  );
+}
+
+/** The action bag the newest mint for an operation handed the toast body. */
+function latestActionsFor(operationId: string): { dismiss: () => void } {
+  const mints = mintsFor(operationId);
+  const render = mints[mints.length - 1]?.[0] as ((id: string) => unknown) | undefined;
+  if (render === undefined) throw new Error(`no toast minted for ${operationId}`);
+  return (render('unused') as { props: { actions: { dismiss: () => void } } }).props.actions;
+}
 
 interface BridgeLog {
   listCalls: number;
@@ -53,7 +88,7 @@ interface BridgeLog {
 }
 
 function installBridge(handlers: {
-  reports: OkBugReportListRow[] | (() => OkBugReportListRow[]);
+  reports: OkBugReportListRow[] | (() => OkBugReportListRow[] | Promise<OkBugReportListRow[]>);
   send?: () => Promise<OkBugReportSendResult>;
 }): BridgeLog {
   const log: BridgeLog = {
@@ -65,11 +100,11 @@ function installBridge(handlers: {
   };
   const bridge = {
     bugReport: {
-      list: () => {
+      list: async () => {
         log.listCalls += 1;
         const reports =
-          typeof handlers.reports === 'function' ? handlers.reports() : handlers.reports;
-        return Promise.resolve({ ok: true as const, reports });
+          typeof handlers.reports === 'function' ? await handlers.reports() : handlers.reports;
+        return { ok: true as const, reports };
       },
       send: (request: { zipPath: string; metadata: unknown }) => {
         log.sendCalls.push(request);
@@ -127,8 +162,27 @@ function makeRow(overrides: Partial<OkBugReportListRow> & { id: string }): OkBug
   };
 }
 
-afterEach(() => {
+/** A send the test resolves by hand, so an operation can be held mid-flight. */
+function deferredSend() {
+  let resolve: (result: OkBugReportSendResult) => void = () => {};
+  return {
+    send: () =>
+      new Promise<OkBugReportSendResult>((r) => {
+        resolve = r;
+      }),
+    finish: (result: OkBugReportSendResult) => resolve(result),
+  };
+}
+
+afterEach(async () => {
   cleanup();
+  // The send manager is a module singleton every test in this file shares. An
+  // operation left mid-flight keeps its progress interval ticking and makes the
+  // next start for the same bundle join the stale one instead of dispatching,
+  // so a leak surfaces as an unrelated test failing.
+  await vi.waitFor(() => {
+    expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+  });
   clearBridge();
 });
 
@@ -211,7 +265,7 @@ describe('BugReportHistoryList', () => {
     });
   });
 
-  test('a retry that resolves to the email-draft path opens the prefilled draft', async () => {
+  test('a retry that resolves to the email-draft path leaves the draft unopened', async () => {
     const log = installBridge({
       reports: [makeRow({ id: 'e-bugreport.zip', state: 'upload-failed' })],
       send: async () => ({
@@ -224,7 +278,12 @@ describe('BugReportHistoryList', () => {
     render(<BugReportHistoryList />);
     await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
 
-    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=x']);
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.get('e-bugreport.zip')?.status).toBe('email-draft');
+    });
+    // The draft is the toast's Open draft action now. History launching it
+    // itself is what made a retry mail support without being asked.
+    expect(log.opened).toEqual([]);
   });
 
   test('Reveal opens the zip location and Delete removes by id', async () => {
@@ -238,6 +297,182 @@ describe('BugReportHistoryList', () => {
 
     await userEvent.click(screen.getByLabelText('Delete report'));
     expect(log.deleteCalls).toEqual(['f-bugreport.zip']);
+  });
+
+  test('an open pane flips a row to its terminal badge when a background send lands', async () => {
+    let landed = false;
+    const pending = deferredSend();
+    installBridge({
+      reports: () => [
+        makeRow({
+          id: 'g-bugreport.zip',
+          state: landed ? 'sent' : 'uploading',
+          ...(landed ? { reference: 'OK-77' } : {}),
+          retryable: false,
+        }),
+      ],
+      send: pending.send,
+    });
+
+    render(<BugReportHistoryList />);
+    expect(await screen.findByText('Sending')).toBeDefined();
+
+    // A send for this same report started somewhere else in the window — the
+    // report dialog, the disclosure inside it — while this pane stayed open.
+    bugReportSendManager.startBugReportSend({
+      kind: 'history-row',
+      row: makeRow({ id: 'g-bugreport.zip', state: 'uploading' }),
+    });
+    landed = true;
+    pending.finish({ ok: true, reference: 'OK-77' });
+
+    expect(await screen.findByText('Sent')).toBeDefined();
+    expect(screen.queryByText('Sending')).toBeNull();
+  });
+
+  test('Retry on a report this window is already sending issues no second send', async () => {
+    const pending = deferredSend();
+    const log = installBridge({
+      reports: [makeRow({ id: 'j-bugreport.zip', state: 'upload-failed' })],
+      send: pending.send,
+    });
+
+    render(<BugReportHistoryList />);
+    const retry = await screen.findByRole('button', { name: 'Retry' });
+
+    // The dialog already started this report; this pane is holding a row that
+    // predates the send and still reads as retryable.
+    bugReportSendManager.startBugReportSend({
+      kind: 'history-row',
+      row: makeRow({ id: 'j-bugreport.zip', state: 'upload-failed' }),
+    });
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
+
+    await userEvent.click(retry);
+    expect(log.sendCalls).toHaveLength(1);
+
+    pending.finish({ ok: true, reference: 'OK-3' });
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.get('j-bugreport.zip')?.status).toBe('sent');
+    });
+  });
+
+  test('a list reply that lost the race cannot overwrite the newer one', async () => {
+    const replies: Array<(rows: OkBugReportListRow[]) => void> = [];
+    const pending = deferredSend();
+    installBridge({
+      reports: () =>
+        new Promise<OkBugReportListRow[]>((resolve) => {
+          replies.push(resolve);
+        }),
+      send: pending.send,
+    });
+
+    render(<BugReportHistoryList />);
+    await vi.waitFor(() => {
+      expect(replies).toHaveLength(1);
+    });
+
+    // A background send lands while the mount load is still unanswered, so the
+    // pane asks again.
+    bugReportSendManager.startBugReportSend({
+      kind: 'history-row',
+      row: makeRow({ id: 'l-bugreport.zip', state: 'uploading' }),
+    });
+    pending.finish({ ok: true, reference: 'OK-5' });
+    await vi.waitFor(() => {
+      expect(replies).toHaveLength(2);
+    });
+
+    // The second ask answers first, with the report landed.
+    replies[1]([
+      makeRow({
+        id: 'l-bugreport.zip',
+        state: 'sent',
+        reference: 'OK-5',
+        zipExists: false,
+        retryable: false,
+      }),
+    ]);
+    expect(await screen.findByText('Sent')).toBeDefined();
+
+    // The mount load answers last, describing the report before it was sent.
+    await act(async () => {
+      replies[0]([makeRow({ id: 'l-bugreport.zip', state: 'uploading', retryable: false })]);
+    });
+    expect(screen.getByText('Sent')).toBeDefined();
+    expect(screen.queryByText('Sending')).toBeNull();
+  });
+
+  test('Retry re-surfaces the toast for a send already in flight, even after Dismiss', async () => {
+    const pending = deferredSend();
+    installBridge({
+      reports: [makeRow({ id: 'm-bugreport.zip', state: 'upload-failed' })],
+      send: pending.send,
+    });
+    const uninstallToasts = installBugReportSendToasts();
+
+    try {
+      render(<BugReportHistoryList />);
+      const retry = await screen.findByRole('button', { name: 'Retry' });
+
+      // The send is already running — started from the report dialog, whose
+      // toast the reporter then closed.
+      bugReportSendManager.startBugReportSend({
+        kind: 'history-row',
+        row: makeRow({ id: 'm-bugreport.zip', state: 'upload-failed' }),
+      });
+      await vi.waitFor(() => {
+        expect(mintsFor('m-bugreport.zip')).toHaveLength(1);
+      });
+      latestActionsFor('m-bugreport.zip').dismiss();
+      expect(toast.dismiss).toHaveBeenCalledWith('m-bugreport.zip');
+
+      await userEvent.click(retry);
+
+      // Re-minted under the same id: that is what clears sonner's dismissed
+      // set, so the toast comes back rather than a second one stacking beside
+      // it — and rather than the press producing nothing at all.
+      expect(mintsFor('m-bugreport.zip')).toHaveLength(2);
+
+      pending.finish({ ok: true, reference: 'OK-8' });
+      await vi.waitFor(() => {
+        expect(bugReportSendManager.get('m-bugreport.zip')?.status).toBe('sent');
+      });
+    } finally {
+      uninstallToasts();
+    }
+  });
+
+  test('a sent row offers the support follow-up only when it carries a reference', async () => {
+    const log = installBridge({
+      reports: [
+        makeRow({
+          id: 'h-bugreport.zip',
+          state: 'sent',
+          reference: 'OK-77',
+          zipDeleted: true,
+          zipExists: false,
+          retryable: false,
+        }),
+        makeRow({
+          id: 'i-bugreport.zip',
+          state: 'sent',
+          zipDeleted: true,
+          zipExists: false,
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+    const followUps = await screen.findAllByLabelText('Email support about this report');
+    expect(followUps).toHaveLength(1);
+
+    await userEvent.click(followUps[0]);
+    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=Bug%20report%20OK-77']);
   });
 
   test('renders an error state when the bridge is absent', async () => {
@@ -277,6 +512,27 @@ describe('BugReportPreviousReports', () => {
     await userEvent.click(trigger);
 
     expect(await screen.findAllByLabelText('Reveal in Finder')).toHaveLength(2);
+  });
+
+  test('the compose-step disclosure carries the same sent-row follow-up', async () => {
+    const log = installBridge({
+      reports: [
+        makeRow({
+          id: 'k-bugreport.zip',
+          state: 'sent',
+          reference: 'OK-31',
+          zipDeleted: true,
+          zipExists: false,
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportPreviousReports />);
+    await userEvent.click(await screen.findByRole('button', { name: /Previous reports/ }));
+    await userEvent.click(await screen.findByLabelText('Email support about this report'));
+
+    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=Bug%20report%20OK-31']);
   });
 
   test('renders nothing when the bridge is absent', async () => {

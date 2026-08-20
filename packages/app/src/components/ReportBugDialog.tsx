@@ -1,7 +1,7 @@
 /**
  * Report-a-bug dialog — thin lazy-loading gate + screenshot capture-before-show.
  *
- * The ~800-line dialog body (phase machine, zip preview, upload-transport UI)
+ * The ~700-line dialog body (phase machine, zip preview, screenshot preview)
  * is behind `React.lazy()`, so it only enters the bundle graph the first time
  * the dialog is opened — keeping it out of the main app chunk (size-limit
  * budget). Mirrors the `ConsentDialog` / `ConsentDialogBody` split.

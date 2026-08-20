@@ -46,6 +46,16 @@
  *   metadata). Normalized at the boundary so Error instances preserve
  *   message + name + stack on the wire and circular references degrade
  *   safely instead of throwing — see `normalizeCause` below.
+ * - `details` is optional BOUNDED context, and the two differ by destination
+ *   rather than by taste. `cause` reaches the console only: it carries stacks
+ *   and free-form text, which is exactly what you want when tailing a terminal
+ *   and exactly what must not be indexed. `details` additionally reaches the
+ *   pino file logger, which is collected into user-submitted diagnostic
+ *   bundles — so it takes only primitives whose value set is bounded by
+ *   construction (a step name, an errno, a status code, a host). Never put a
+ *   path, a signed URL, a document body, or a raw error message here; the
+ *   cardinality discipline that governs span attributes governs this field
+ *   for the same reason.
  */
 interface IpcErrorLogPayload {
   readonly event: 'ipc.error';
@@ -53,6 +63,7 @@ interface IpcErrorLogPayload {
   readonly reason: string;
   readonly handler: string;
   readonly cause?: unknown;
+  readonly details?: Readonly<Record<string, string | number | boolean>>;
 }
 
 /**
@@ -138,7 +149,15 @@ export function logIpcError(payload: IpcErrorLogPayload): void {
   try {
     const { getLogger } = require('./desktop-logger.ts');
     getLogger('ipc').warn(
-      { channel: payload.channel, handler: payload.handler, reason: payload.reason },
+      // `details` is spread FIRST so the canonical discriminants always win a
+      // key collision — a caller that passes `channel` in its details cannot
+      // rewrite the field consumers index on.
+      {
+        ...payload.details,
+        channel: payload.channel,
+        handler: payload.handler,
+        reason: payload.reason,
+      },
       `IPC error: ${payload.channel} — ${payload.reason}`,
     );
   } catch {}

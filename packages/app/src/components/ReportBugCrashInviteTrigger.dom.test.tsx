@@ -12,7 +12,11 @@
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 
-import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import type {
+  OkBugReportCrashDetectedEvent,
+  OkBugReportCreateResult,
+  ReportBundleSummary,
+} from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -50,22 +54,40 @@ const INVITE: OkBugReportCrashDetectedEvent = {
   minidumpAvailable: false,
 };
 
+const ZIP_PATH = '/Users/tester/.ok/bug-reports/2026-07-10T00-00-00-bugreport.zip';
+const SUMMARY: ReportBundleSummary = {
+  level: 'full',
+  systemWide: false,
+  projectSlug: 'demo-project',
+  files: ['sysinfo.json'],
+  redactions: [],
+  redactedLineCount: 0,
+  generatedAt: '2026-07-10T00:00:00.000Z',
+};
+const CREATE_OK: OkBugReportCreateResult = {
+  ok: true,
+  zipPath: ZIP_PATH,
+  zipSizeBytes: 7130316,
+  summary: SUMMARY,
+};
+
 interface CrashBridgeStub {
   bridge: OkDesktopBridge;
   /** Deliver a crash-detected event through the captured subscription. */
   fire(event: OkBugReportCrashDetectedEvent): void;
   readonly acked: string[];
+  readonly sent: string[];
 }
 
 /**
- * Fake bridge exposing just the surface the trigger and store touch:
- * `bugReport.onCrashDetected` (subscription), `bugReport.crashAck`, and
- * `config.mode`. The dialog's own bridge calls (create/send) are user-action
- * driven and these tests never reach them.
+ * Fake bridge exposing the surface the trigger, the store, and the dialog's own
+ * report flow touch: `bugReport.onCrashDetected` (subscription),
+ * `bugReport.crashAck`, `bugReport.create`/`send`, and `config.mode`.
  */
 function makeCrashBridge(): CrashBridgeStub {
   let captured: ((event: OkBugReportCrashDetectedEvent) => void) | null = null;
   const acked: string[] = [];
+  const sent: string[] = [];
 
   const bridge = {
     config: { mode: 'editor' },
@@ -80,6 +102,11 @@ function makeCrashBridge(): CrashBridgeStub {
         acked.push(request.eventId);
         return Promise.resolve({ ok: true as const });
       },
+      create: () => Promise.resolve(CREATE_OK),
+      send: (request: { zipPath: string }) => {
+        sent.push(request.zipPath);
+        return Promise.resolve({ ok: true as const, reference: 'OK-CRASH1' });
+      },
     },
   } as unknown as OkDesktopBridge;
 
@@ -90,7 +117,29 @@ function makeCrashBridge(): CrashBridgeStub {
       act(() => captured?.(event));
     },
     acked,
+    sent,
   };
+}
+
+/**
+ * The dialog and the module-level send manager both reach for the bridge on
+ * `window.okDesktop` rather than the prop the trigger threads, so a test that
+ * drives the report flow has to publish it there too.
+ */
+function installGlobalBridge(bridge: OkDesktopBridge) {
+  for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
+    Object.defineProperty(host, 'okDesktop', { configurable: true, writable: true, value: bridge });
+  }
+}
+
+function clearGlobalBridge() {
+  for (const host of [window, globalThis] as unknown as Array<Record<string, unknown>>) {
+    Object.defineProperty(host, 'okDesktop', {
+      configurable: true,
+      writable: true,
+      value: undefined,
+    });
+  }
 }
 
 function installCrashBridge(stub: CrashBridgeStub): (() => void) | undefined {
@@ -109,6 +158,7 @@ describe('ReportBugCrashInviteTrigger', () => {
     // invitation so state never leaks across tests.
     uninstall?.();
     uninstall = undefined;
+    clearGlobalBridge();
   });
 
   test('a crash-detected push opens the crash-invite dialog', async () => {
@@ -208,6 +258,42 @@ describe('ReportBugCrashInviteTrigger', () => {
       { timeout: ASYNC_TIMEOUT_MS },
     );
     expect(stub.acked).toEqual(['boot:1751871600000']);
+  });
+
+  test('sending the report acks the crash event, so the invitation cannot re-prompt', async () => {
+    // Send closes the dialog by handing off to the background send manager. It
+    // has to close through the same onOpenChange callback every other exit
+    // uses, or the ack this trigger hangs off that callback silently stops
+    // firing and the same crash re-invites on every boot.
+    const stub = makeCrashBridge();
+    installGlobalBridge(stub.bridge);
+    uninstall = installCrashBridge(stub);
+    render(<ReportBugCrashInviteTrigger bridge={stub.bridge} />);
+    stub.fire(INVITE);
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('dialog')).not.toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    await waitFor(
+      () => {
+        expect(stub.sent).toEqual([ZIP_PATH]);
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
+    expect(stub.acked).toEqual(['boot:1751871600000']);
+    await waitFor(
+      () => {
+        expect(screen.queryByRole('dialog')).toBeNull();
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
   });
 
   test('dismissing via Escape also counts as the answer and acks', async () => {

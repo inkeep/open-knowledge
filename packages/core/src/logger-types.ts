@@ -145,9 +145,12 @@ export interface OkBugReportSendMetadata {
  * `send-failed` covers real failures: a configured upload that was attempted
  * and refused (offline, timeout, rejection at any step), or a request the
  * handler refused outright (malformed payload, zip outside the bug-reports
- * root).
+ * root). `send-in-flight` is neither: nothing failed and nothing was refused,
+ * the same bundle is simply mid-flight already (a second window retrying a
+ * report whose owning send still holds the in-flight lock). Callers must not
+ * render it as a failure.
  */
-export type OkBugReportSendFallbackReason = 'email-draft' | 'send-failed';
+export type OkBugReportSendFallbackReason = 'email-draft' | 'send-failed' | 'send-in-flight';
 
 /**
  * Result of the desktop `ok:bug-report:dispatch` send operation. Success

@@ -182,7 +182,6 @@
       "Adiciona à busca uma classificação por significado para que páginas relacionadas conceitualmente apareçam mesmo sem palavras-chave em comum."
     ],
     "1NgrlY": ["Outras formas de instalar"],
-    "1OKzC_": ["Não foi possível enviar seu relatório. Tente de novo ou mande por e-mail."],
     "1QfxQT": ["Dispensar"],
     "1RluQD": ["Mostrar substituir"],
     "1TNIig": ["Abrir"],
@@ -270,6 +269,7 @@
     "2wxgft": ["Renomear"],
     "2zvUIK": ["Mostrar estes comentários no painel de comentários"],
     "322lyb": ["Destaca dicas, avisos e notas."],
+    "32TTpa": ["Escrever para o suporte sobre este relatório"],
     "34qyH5": ["Não foi possível contatar o servidor"],
     "36WXSC": ["Não deu para excluir o modelo: ", ["error"]],
     "36aWJD": ["Entre no nosso Discord"],
@@ -515,6 +515,7 @@
       ["userToken"],
       "</1> para preencher automaticamente a data de hoje ou o nome do autor."
     ],
+    "5hFl0U": ["Copiar referência"],
     "5jEnaB": ["Indisponível nesta plataforma"],
     "5kWklo": ["(outras regras podem já ocultar alguns)"],
     "5lWFkC": ["Entrar"],
@@ -661,6 +662,9 @@
     ],
     "7PzzBU": ["Usuário"],
     "7S7FNA": ["OpenKnowledge verificou o projeto"],
+    "7WnfoD": [
+      "Este relatório já está a caminho. O resultado vai aparecer no histórico de relatórios de erro."
+    ],
     "7Y9yTo": [["owner"], "/", ["name"], " foi criado, mas o envio falhou."],
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
@@ -715,7 +719,6 @@
       ["fileName"],
       ") na raiz do projeto"
     ],
-    "89y7ar": [["sizeText"], " · segredos ocultados"],
     "8AjnFz": ["\"", ["0"], "\" já tinha sido importado (conteúdo idêntico)."],
     "8F1i42": ["Página não encontrada"],
     "8FqTCr": [
@@ -750,6 +753,7 @@
     ],
     "8Uv5e6": ["Agentes"],
     "8Vq20-": ["Trocar de worktree"],
+    "8W9CF6": ["Este relatório já está sendo enviado"],
     "8WTrGF": [["summary"], " neste arquivo. Abra o painel Problemas para ver os detalhes."],
     "8Wav8y": [
       "Se chegar uma atualização de algo que você está editando, você escolhe qual versão manter, como em um conflito de mesclagem."
@@ -820,7 +824,6 @@
     ],
     "9Vh9Jf": ["Abra esta janela de novo para entrar pelo navegador"],
     "9Vnjc9": ["Enter"],
-    "9XIEYq": ["Anexe o arquivo em um e-mail para <0/>"],
     "9Y6cCI": ["Falha ao carregar as páginas"],
     "9_2oe6": [
       "Transforma ",
@@ -1530,9 +1533,6 @@
     ],
     "HdS4Ft": ["Não foi possível restaurar seu último documento aberto."],
     "HdkSiO": ["Novo arquivo"],
-    "HepFJQ": [
-      "Seu relatório está salvo neste computador, então nada foi perdido. Você pode nos enviar por e-mail."
-    ],
     "HfI1dR": ["Já tenho isso localmente →"],
     "HjNrT0": [
       [
@@ -1866,7 +1866,6 @@
     "LvdLef": ["Obrigado pelo retorno!"],
     "LwMxXg": ["Falha ao abrir o worktree."],
     "LzM_ga": ["Filtrar habilidades"],
-    "M-IF14": ["Referência do relatório"],
     "M0jOcG": ["Ver no markdown de origem"],
     "M1OfV9": ["Próximo diagnóstico do código"],
     "M3ytY_": [
@@ -1903,7 +1902,6 @@
     "MI6Z0f": ["Escolha um emoji para inserir no cursor."],
     "MIF36T": ["Não deu para resolver a bifurcação: ", ["0"]],
     "MILoeL": ["Serviços"],
-    "MJqRO6": ["Seu relatório está sendo enviado."],
     "MJuO1q": ["Janela de contexto:"],
     "MKEPCY": ["Acompanhar"],
     "MLVPcm": [["0"], " versão ", ["1"]],
@@ -1960,6 +1958,7 @@
     "N1KkEO": ["Ir para a última aba"],
     "N1YYa7": ["Carregando a imagem"],
     "N1mdmS": ["Não dá para abrir este arquivo no editor de texto."],
+    "N2C89m": ["Referência"],
     "N2FcBE": ["Sincronizado"],
     "N2S1rs": ["Vazio"],
     "N2eHWq": ["Bloco de código"],
@@ -2085,7 +2084,6 @@
     "OXdGnd": ["Problemas"],
     "OYnx7O": ["O caminho não pode começar com \"/\""],
     "OZavHH": ["tudo dentro de ", ["0"], "/"],
-    "Oawo4U": ["Não foi possível contatar o serviço de relatórios."],
     "OdmsFg": ["Falha ao excluir o item"],
     "OeAl1e": ["ex.: assets/uploads"],
     "OfhWJH": ["Redefinir"],
@@ -3036,7 +3034,6 @@
     ],
     "_Bix3-": ["Ocorrências de ", ["localizedFirstMessage"]],
     "_DwR-n": ["Criando…"],
-    "_FLBbi": [["sizeText"], " · segredos ocultados · despejo de falha sem ocultação"],
     "_G7A92": ["Manter index.md"],
     "_GRWOJ": ["Trocar o provedor de embeddings?"],
     "_HgF9q": ["Ordenar por"],
@@ -3564,7 +3561,6 @@
     "fvrHin": ["Disponível em todos os projetos deste computador. Não é compartilhado por git."],
     "fwhX-N": ["Aumentar ou diminuir o recuo do código"],
     "fwrPh4": ["Digite um e-mail válido."],
-    "fxJk_6": ["<0>Tem mais a acrescentar?</0> Escreva para <1/> e mencione sua referência."],
     "fxbCNQ": ["Sincronizado. O link está atualizado."],
     "g-dkjJ": ["Os detalhes dos arquivos locais ainda não estão disponíveis."],
     "g12y1g": ["YAML inválido"],
@@ -4556,7 +4552,6 @@
     "qjHMHf": ["Falha ao desativar a sincronização — ", ["detail"]],
     "qkqG0b": ["Aceitar a versão remota"],
     "qlAIQ1": ["Remoto"],
-    "qmL1UG": ["Enviando com segurança"],
     "qo4zCg": ["O caminho não pode conter barras invertidas"],
     "qpQwGC": ["Descreva no que você está trabalhando e o agente prepara tudo para você."],
     "qribBG": ["esquema ", ["deleteTarget"]],
@@ -4570,6 +4565,7 @@
     "r6ncaO": ["Fechar aba"],
     "r6y-jM": ["Aviso"],
     "r7IaYp": ["Open Knowledge Format orientação"],
+    "r7tQuq": ["Seu relatório está salvo neste computador, então nada foi perdido."],
     "r871ed": [
       "Sua base de conhecimento já está no GitHub, em <0>",
       ["ownerLogin"],

@@ -383,8 +383,8 @@ msgstr "{0} berbagi folder ini."
 msgid "{0} templates available"
 msgstr "{0} templat tersedia"
 
-#. placeholder {0}: formatSize(phase.report.zipSizeBytes)
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
+#: src/components/BugReportSendToast.tsx
 msgid "{0} total"
 msgstr "{0} total"
 
@@ -870,20 +870,12 @@ msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} bukan nama cabang yang valid."
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted"
-msgstr "{sizeText} · rahasia disunting"
-
-#: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · rahasia disunting · {fileCount, plural, other {# berkas}}"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}} · crash dump not redacted"
 msgstr "{sizeText} · rahasia disunting · {fileCount, plural, other {# berkas}} · crash dump tidak disunting"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted · crash dump not redacted"
-msgstr "{sizeText} · rahasia disunting · crash dump tidak disunting"
 
 #: src/components/CreatedItemsList.tsx
 msgid "{skillCount, plural, one {skill} other {skills}}"
@@ -1003,10 +995,6 @@ msgstr "<{descriptorLabel}> gagal dirender (kemungkinan prop yang salah). Salin 
 #: src/components/settings/AiToolsSection.tsx
 msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 msgstr "<0>~/.ok/bin</0> dan <1>~/.ok/env.sh</1> tetap ada apa pun pilihannya — aplikasi selalu memeliharanya."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "<0>Have more to add?</0> Write to <1/> and mention your reference."
-msgstr "<0>Ada yang ingin ditambahkan?</0> Tulis ke <1/> dan sebutkan referensi Anda."
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1630,6 +1618,10 @@ msgstr "Sudah terpasang — tidak ada yang baru untuk diimpor."
 msgid "Already open"
 msgstr "Sudah terbuka"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Already sending this report"
+msgstr "Laporan ini sudah dikirim"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Already set up — ok is available in your terminal"
 msgstr "Sudah disiapkan — ok tersedia di terminal Anda"
@@ -1864,10 +1856,6 @@ msgstr "Lampirkan berkas"
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
 msgstr "Lampirkan gambar"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Attach the file in an email to <0/>"
-msgstr "Lampirkan berkasnya dalam surel ke <0/>"
 
 #: src/components/settings/AttachmentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -2173,8 +2161,8 @@ msgstr "Jelajahi skills.sh"
 msgid "Browse your repos:"
 msgstr "Jelajahi repo Anda:"
 
-#. placeholder {0}: phase.reference
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: row.reference
+#: src/components/BugReportHistory.tsx
 msgid "Bug report {0}"
 msgstr "Laporan bug {0}"
 
@@ -2648,7 +2636,6 @@ msgstr "Mengkloning..."
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/SubscribeForm.tsx
 #: src/components/ui/dialog.tsx
@@ -3208,6 +3195,7 @@ msgstr "Jalur disalin"
 msgid "Copied relative path"
 msgstr "Jalur relatif disalin"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "Disalin!"
@@ -3288,6 +3276,10 @@ msgstr "Salin jalur"
 #: src/components/skill-actions.tsx
 msgid "Copy Path"
 msgstr "Salin Jalur"
+
+#: src/components/BugReportSendToast.tsx
+msgid "Copy reference"
+msgstr "Salin referensi"
 
 #: src/components/command-palette-commands.ts
 msgid "Copy relative path"
@@ -3876,7 +3868,7 @@ msgstr "Kuncinya tidak bisa disimpan — silakan coba lagi."
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "Penyelesaian untuk {filePath} tidak bisa disimpan."
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
 msgstr "Laporannya tidak bisa dikirim"
 
@@ -4517,6 +4509,7 @@ msgstr "Putuskan koneksi"
 msgid "Disconnecting"
 msgstr "Memutus koneksi"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
@@ -4627,7 +4620,6 @@ msgstr "selesai"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
@@ -4920,6 +4912,10 @@ msgstr "Surel"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Email address"
 msgstr "Alamat surel"
+
+#: src/components/BugReportHistory.tsx
+msgid "Email support about this report"
+msgstr "Kirim surel ke dukungan tentang laporan ini"
 
 #: src/components/BugReportHistory.tsx
 msgid "Emailed"
@@ -8611,7 +8607,7 @@ msgstr "tidak apa pun ({0} bukan pola yang valid)"
 msgid "Nothing set yet."
 msgstr "Belum ada yang disetel."
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "Tidak ada yang diunggah. Laporan tetap di komputer ini sampai Anda mengirimkannya kepada kami lewat email."
 
@@ -8869,7 +8865,7 @@ msgstr "Membuka konfirmasi penghapusan untuk item pohon berkas yang dipilih."
 msgid "Open documents tagged #{chip}"
 msgstr "Buka dokumen bertag #{chip}"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
 msgstr "Buka draf surel"
 
@@ -10159,6 +10155,10 @@ msgstr "Ulangi"
 msgid "Refactoring"
 msgstr "Refaktor"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Reference"
+msgstr "Referensi"
+
 #. placeholder {0}: row.reference
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
@@ -10510,10 +10510,6 @@ msgstr "Laporkan bug"
 #: src/components/AppMenubar.tsx
 msgid "Report a bug…"
 msgstr "Laporkan bug…"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Report reference"
-msgstr "Referensi laporan"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -11261,7 +11257,7 @@ msgstr "Kirim ke obrolan ({0})"
 msgid "Send when the agent is free"
 msgstr "Kirim saat agen sedang senggang"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Send your report by email"
 msgstr "Kirim laporan Anda lewat surel"
 
@@ -11270,7 +11266,7 @@ msgstr "Kirim laporan Anda lewat surel"
 msgid "Sending"
 msgstr "Mengirim"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "Mengirim laporan"
 
@@ -12583,7 +12579,7 @@ msgstr "Terima kasih sudah berlangganan. Pantau kotak masuk Anda untuk kabar ter
 msgid "Thanks for the feedback!"
 msgstr "Terima kasih atas masukannya!"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Thanks for the report!"
 msgstr "Terima kasih atas laporannya!"
 
@@ -12767,10 +12763,6 @@ msgstr "Penyedianya menolak permintaannya. Periksa kunci API dan id modelnya."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
 msgstr "URL publik yang dilayani tunnel Anda. Server menerima permintaan untuk host ini dan mengumumkannya dalam URL yang diterbitkannya."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "The report service couldn't be reached."
-msgstr "Layanan laporan tidak dapat dihubungi."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -13263,6 +13255,10 @@ msgstr "Repo ini memuat {count} keterampilan, ditambah {0}. Pasang salah satunya
 msgid "This repo bundles {count} skills. Install any of them from the plugin."
 msgstr "Repo ini memuat {count} keterampilan. Pasang salah satunya dari plugin."
 
+#: src/components/BugReportSendToast.tsx
+msgid "This report is already on its way. Its result will appear in your bug report history."
+msgstr "Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."
+
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
 msgstr "Permintaan ini sudah tidak aktif."
@@ -13499,9 +13495,9 @@ msgid "Try a prompt"
 msgstr "Coba sebuah prompt"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -13898,10 +13894,6 @@ msgstr "Mengunggah {keyName}"
 msgid "Uploading file"
 msgstr "Mengunggah berkas"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Uploading securely"
-msgstr "Mengunggah dengan aman"
-
 #: src/components/TimelinePanel.tsx
 msgid "Upstream sync"
 msgstr "Sinkronisasi hulu"
@@ -14138,7 +14130,7 @@ msgstr "Kami akan membuat sebuah repositori dan mulai menyinkronkan — tanpa pe
 msgid "We’ll create a safe theme ID from this name."
 msgstr "Kami akan membuat ID tema yang aman dari nama ini."
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "We've filed it with the team and attached your logs."
 msgstr "Kami sudah meneruskannya ke tim dan melampirkan log Anda."
 
@@ -14524,17 +14516,9 @@ msgstr "Salinan lokal cabang <0>{branch}</0> milik Anda tertinggal. Tarik peruba
 msgid "Your message didn't reach {agentName}."
 msgstr "Pesanmu tidak sampai ke {agentName}."
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report couldn't be sent. Try again or email it instead."
-msgstr "Laporan Anda tidak bisa dikirim. Coba lagi atau kirim lewat surel saja."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is being sent."
-msgstr "Laporan Anda sedang dikirim."
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
-msgstr "Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang. Anda dapat mengirimkannya kepada kami lewat email."
+#: src/components/BugReportSendToast.tsx
+msgid "Your report is saved on this computer, so nothing was lost."
+msgstr "Laporan Anda tersimpan di komputer ini, jadi tidak ada yang hilang."
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"

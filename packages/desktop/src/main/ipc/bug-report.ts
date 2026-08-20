@@ -39,6 +39,7 @@ import {
   type ReportBundleLevel,
 } from '@inkeep/open-knowledge-core';
 import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
 import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
 import { isPathWithinProject } from '../path-containment.ts';
@@ -82,9 +83,9 @@ interface OkBugReportDeleteRequest {
   id: string;
 }
 
-export type OkBugReportSendRequest = OkBugReportSendInput & {
-  kind: 'send';
-};
+// `traceparent` is NOT redeclared here: it lives on `OkBugReportSendInput` in
+// core, which is the shared wire contract both sides read.
+export type OkBugReportSendRequest = OkBugReportSendInput & { kind: 'send' };
 
 export interface OkBugReportCrashAckRequest {
   kind: 'crash-ack';
@@ -778,6 +779,7 @@ function isSendRequest(request: unknown): request is OkBugReportSendRequest {
   const r = request as Record<string, unknown>;
   if (r.kind !== 'send' || typeof r.zipPath !== 'string') return false;
   if (r.includeScreenshot !== undefined && typeof r.includeScreenshot !== 'boolean') return false;
+  if (r.traceparent !== undefined && typeof r.traceparent !== 'string') return false;
   if (typeof r.metadata !== 'object' || r.metadata === null) return false;
   const m = r.metadata as Record<string, unknown>;
   return (
@@ -850,7 +852,84 @@ function parseCompletionReference(payload: unknown): string | null {
 
 type BugReportUploadOutcome =
   | { ok: true; reference: string }
-  | { ok: false; reason: string; cause?: unknown };
+  | {
+      ok: false;
+      reason: string;
+      cause?: unknown;
+      /** Bounded transport facts for the log line — see `describeTransportFailure`. */
+      details?: Readonly<Record<string, string | number | boolean>>;
+    };
+
+/** Transport steps inside a send, in the order `uploadBugReport` runs them. */
+type BugReportSendStep = 'mint' | 'upload' | 'complete';
+
+/**
+ * Pull the transport errno out of a caught `fetch` rejection.
+ *
+ * undici reports every transport failure as the same opaque
+ * `TypeError: fetch failed` and hangs the error that actually names the
+ * problem — `ENOTFOUND`, `ECONNREFUSED`, `ECONNRESET`, `CERT_HAS_EXPIRED` —
+ * one level down in `cause`. Reading `err.code` off the caught value
+ * therefore yields nothing on precisely the failures worth triaging, which is
+ * why this walks the chain instead of inspecting the top error.
+ *
+ * Depth- and cycle-bounded: `Error.cause` chains can be self-referential, and
+ * an unguarded walk would stack-overflow inside a catch block whose whole job
+ * is to keep the send's failure reportable (the hazard `normalizeCause` in
+ * `ipc-log.ts` guards for the same reason).
+ */
+function transportErrorCode(err: unknown): string | undefined {
+  const seen = new Set<unknown>();
+  let cursor: unknown = err;
+  for (let depth = 0; depth < 5 && cursor !== null && cursor !== undefined; depth += 1) {
+    if (seen.has(cursor)) return undefined;
+    seen.add(cursor);
+    const code = (cursor as { code?: unknown }).code;
+    if (typeof code === 'string' && code !== '') return code;
+    cursor = (cursor as { cause?: unknown }).cause;
+  }
+  return undefined;
+}
+
+/** Origin host of a target, or undefined when it will not parse. */
+function hostOf(target: URL | string | undefined): string | undefined {
+  if (target === undefined) return undefined;
+  try {
+    return (typeof target === 'string' ? new URL(target) : target).host;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Bounded facts about a failed transport step, for the structured log line.
+ *
+ * A failed send used to reach the log as the bare token `network-error`, which
+ * cannot distinguish this machine's DNS being broken from the intake being
+ * down from a TLS clock skew — so a report about a failed report was not
+ * answerable from the bundle it shipped with. These are the four fields that
+ * separate those cases.
+ *
+ * Every value is bounded by construction because this line is collected into
+ * user-submitted diagnostic bundles. `host` is the ORIGIN HOST ONLY and that
+ * restriction is load-bearing, not stylistic: the upload step targets a signed
+ * URL whose path and query carry the signature, so logging the full URL would
+ * write a live upload credential into a bundle the user hands to support.
+ */
+function describeTransportFailure(
+  step: BugReportSendStep,
+  target: URL | string | undefined,
+  extras: { err?: unknown; status?: number } = {},
+): Record<string, string | number | boolean> {
+  const details: Record<string, string | number | boolean> = { step };
+  const host = hostOf(target);
+  if (host !== undefined) details.host = host;
+  if (extras.status !== undefined) details.status = extras.status;
+  if (extras.err instanceof Error) details.errName = extras.err.name;
+  const code = transportErrorCode(extras.err);
+  if (code !== undefined) details.errCode = code;
+  return details;
+}
 
 /**
  * Trace a skipped screenshot and return null in one expression. Every exit from
@@ -953,6 +1032,7 @@ async function uploadBugReport(
   metadata: BugReportWireMetadata,
   timeouts?: Partial<BugReportUploadTimeouts>,
   screenshotBytes?: Uint8Array | null,
+  sendTrace?: BugReportSendTrace,
 ): Promise<BugReportUploadOutcome> {
   const base = parseTransportSafeUrl(baseUrl);
   if (base === null) {
@@ -978,9 +1058,19 @@ async function uploadBugReport(
   } catch (err) {
     return { ok: false, reason: 'zip-unreadable', cause: err };
   }
-  let step: 'mint' | 'upload' | 'complete' = 'mint';
+  let step: BugReportSendStep = 'mint';
+  // The host the CURRENT step is talking to. Tracked separately from `base`
+  // because the upload step moves to the minted signed URL, which routinely
+  // lives on a different origin (an object store) than the intake — so a
+  // failure that named `base` would point triage at the wrong service.
+  const mintUrl = new URL('/api/bug-report', base);
+  let stepTarget: URL | string = mintUrl;
+  // Each step's span is closed right after its fetch settles, before the
+  // status checks below — a rejected mint/upload/complete still shows how long
+  // it took, which is the number you want when triaging a slow intake.
+  let stepStartedAt = Date.now();
   try {
-    const mintRes = await fetch(new URL('/api/bug-report', base), {
+    const mintRes = await fetch(mintUrl, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -992,9 +1082,28 @@ async function uploadBugReport(
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.mintMs ?? MINT_TIMEOUT_MS),
     });
-    if (!mintRes.ok) return { ok: false, reason: `mint-rejected: ${mintRes.status}` };
+    // Closed the instant the fetch settles, BEFORE the status checks below,
+    // matching upload and complete. Recording it after them would skip the
+    // span on exactly the mint failures it exists to time.
+    sendTrace?.phase(
+      'mint',
+      { 'http.response.status_code': mintRes.status },
+      stepStartedAt,
+      Date.now(),
+    );
+    if (!mintRes.ok)
+      return {
+        ok: false,
+        reason: `mint-rejected: ${mintRes.status}`,
+        details: describeTransportFailure(step, stepTarget, { status: mintRes.status }),
+      };
     const mint = parseMintResponse(await mintRes.json().catch(() => null));
-    if (mint === null) return { ok: false, reason: 'mint-malformed' };
+    if (mint === null)
+      return {
+        ok: false,
+        reason: 'mint-malformed',
+        details: describeTransportFailure(step, stepTarget, { status: mintRes.status }),
+      };
     // The minted URL is the channel that carries the actual bundle bytes, so
     // it gets the same transport gate as the operator-configured base — a
     // misconfigured or compromised intake must not be able to downgrade the
@@ -1005,10 +1114,15 @@ async function uploadBugReport(
         ok: false,
         reason: 'upload-url-rejected',
         cause: `rejected upload URL: ${mint.uploadUrl}`,
+        // `stepTarget` is still the mint URL here: the minted one was refused,
+        // so naming its host would point triage at a URL we declined to trust.
+        details: describeTransportFailure(step, stepTarget, { status: mintRes.status }),
       };
     }
 
     step = 'upload';
+    stepTarget = mint.uploadUrl;
+    stepStartedAt = Date.now();
     const putRes = await fetch(mint.uploadUrl, {
       method: 'PUT',
       // Minted values win over the baseline content-type when they overlap —
@@ -1021,6 +1135,13 @@ async function uploadBugReport(
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.putMs ?? PUT_TIMEOUT_MS),
     });
+    sendTrace?.phase(
+      'upload',
+      { 'http.response.status_code': putRes.status },
+      stepStartedAt,
+      Date.now(),
+    );
+
     // `redirect: 'manual'` surfaces the un-followed redirect either as the
     // raw 3xx or as an opaque-redirect response (status 0), depending on
     // runtime — classify both apart from an ordinary status rejection.
@@ -1029,9 +1150,18 @@ async function uploadBugReport(
       putRes.status === 0 ||
       (putRes.status >= 300 && putRes.status < 400)
     ) {
-      return { ok: false, reason: 'upload-redirected' };
+      return {
+        ok: false,
+        reason: 'upload-redirected',
+        details: describeTransportFailure(step, stepTarget, { status: putRes.status }),
+      };
     }
-    if (!putRes.ok) return { ok: false, reason: `upload-rejected: ${putRes.status}` };
+    if (!putRes.ok)
+      return {
+        ok: false,
+        reason: `upload-rejected: ${putRes.status}`,
+        details: describeTransportFailure(step, stepTarget, { status: putRes.status }),
+      };
 
     // Upload the screenshot as its own Linear asset so the ticket can embed it
     // inline. Deliberately client-side: the intake cannot read the bytes back out
@@ -1049,7 +1179,9 @@ async function uploadBugReport(
         : await uploadScreenshotAsset(base, screenshotBytes, metadata, timeouts);
 
     step = 'complete';
-    const completeRes = await fetch(new URL('/api/bug-report/complete', base), {
+    stepTarget = new URL('/api/bug-report/complete', base);
+    stepStartedAt = Date.now();
+    const completeRes = await fetch(stepTarget, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(
@@ -1063,9 +1195,25 @@ async function uploadBugReport(
       redirect: 'manual',
       signal: AbortSignal.timeout(timeouts?.completeMs ?? COMPLETE_TIMEOUT_MS),
     });
-    if (!completeRes.ok) return { ok: false, reason: `complete-rejected: ${completeRes.status}` };
+    sendTrace?.phase(
+      'complete',
+      { 'http.response.status_code': completeRes.status },
+      stepStartedAt,
+      Date.now(),
+    );
+    if (!completeRes.ok)
+      return {
+        ok: false,
+        reason: `complete-rejected: ${completeRes.status}`,
+        details: describeTransportFailure(step, stepTarget, { status: completeRes.status }),
+      };
     const reference = parseCompletionReference(await completeRes.json().catch(() => null));
-    if (reference === null) return { ok: false, reason: 'complete-malformed' };
+    if (reference === null)
+      return {
+        ok: false,
+        reason: 'complete-malformed',
+        details: describeTransportFailure(step, stepTarget, { status: completeRes.status }),
+      };
     return { ok: true, reference };
   } catch (err) {
     // Offline, DNS failure, refused connection — or a timeout ceiling firing
@@ -1076,7 +1224,12 @@ async function uploadBugReport(
     // first splitting cancel out of this classification.
     const timedOut =
       err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
-    return { ok: false, reason: timedOut ? `${step}-timeout` : 'network-error', cause: err };
+    return {
+      ok: false,
+      reason: timedOut ? `${step}-timeout` : 'network-error',
+      cause: err,
+      details: describeTransportFailure(step, stepTarget, { err }),
+    };
   }
 }
 
@@ -1228,6 +1381,14 @@ export async function handleBugReportSend(
   // The report id is the zip's basename — the sidecar key the state transitions
   // are recorded under, for both the first dialog send and a later list retry.
   const reportId = basename(request.zipPath);
+  // One trace per send, opened before the first terminal branch so every
+  // outcome below closes it exactly once. Concurrency safety lives in
+  // `beginSendTrace`: the span roots at ROOT_CONTEXT, never the ambient async
+  // context, so simultaneous sends cannot nest inside one another.
+  const sendTrace = beginSendTrace(
+    { 'ok.bug_report.include_screenshot': request.includeScreenshot === true },
+    request.traceparent,
+  );
   if (!deps.intakeBaseUrl) {
     // The designed default, not an error: no intake endpoint means the email
     // draft is the transport and no network request was ever attempted. The
@@ -1240,6 +1401,7 @@ export async function handleBugReportSend(
       handler: 'handleBugReportSend',
     });
     await runSidecarHook(deps.sidecar?.onSendResult(reportId, { kind: 'email-drafted' }));
+    sendTrace.end('email-drafted');
     return { ok: false, reason: 'email-draft', fallback };
   }
   if (deps.sidecar) {
@@ -1270,7 +1432,8 @@ export async function handleBugReportSend(
         reason: 'send-in-flight',
         handler: 'handleBugReportSend',
       });
-      return { ok: false, reason: 'send-failed', fallback };
+      sendTrace.end('send-in-flight');
+      return { ok: false, reason: 'send-in-flight', fallback };
     }
   }
   // Consent gate first, bytes second. main holds the capture for this window
@@ -1295,11 +1458,13 @@ export async function handleBugReportSend(
     wireMetadata,
     deps.timeouts,
     screenshotBytes,
+    sendTrace,
   );
   if (outcome.ok) {
     await runSidecarHook(
       deps.sidecar?.onSendResult(reportId, { kind: 'sent', reference: outcome.reference }),
     );
+    sendTrace.end('sent');
     return { ok: true, reference: outcome.reference };
   }
   logIpcError({
@@ -1308,10 +1473,15 @@ export async function handleBugReportSend(
     reason: outcome.reason,
     handler: 'handleBugReportSend',
     cause: outcome.cause,
+    // The bounded half reaches the pino file, which ships inside diagnostic
+    // bundles — this is what makes a failed send answerable from a later
+    // report rather than only from a terminal someone happened to be tailing.
+    ...(outcome.details === undefined ? {} : { details: outcome.details }),
   });
   await runSidecarHook(
     deps.sidecar?.onSendResult(reportId, { kind: 'upload-failed', reason: outcome.reason }),
   );
+  sendTrace.end('upload-failed');
   return { ok: false, reason: 'send-failed', fallback };
 }
 

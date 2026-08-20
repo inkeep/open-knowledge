@@ -233,3 +233,44 @@ describe('logIpcError — cause boundary normalization', () => {
     expect(parsed.handler).toBe('mcpWiringConfirm');
   });
 });
+
+describe('logIpcError — bounded details', () => {
+  test('details ride the emitted payload alongside the canonical discriminants', () => {
+    // `details` exists so a failed send is diagnosable from the bundle the
+    // user submits rather than only from a terminal someone was tailing: the
+    // fields below are what separate "this machine's DNS is broken" from "the
+    // intake is down" from "the TLS clock is skewed", all of which reached the
+    // log as the bare token `network-error` before.
+    const captured = captureWarn(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'network-error',
+        handler: 'handleBugReportSend',
+        details: { step: 'upload', errCode: 'ENOTFOUND', host: 'intake.example.com' },
+      });
+    });
+
+    expect(captured).toHaveLength(1);
+    expect(JSON.parse(String(captured[0].args[0]))).toEqual({
+      event: 'ipc.error',
+      channel: 'ok:bug-report:dispatch',
+      reason: 'network-error',
+      handler: 'handleBugReportSend',
+      details: { step: 'upload', errCode: 'ENOTFOUND', host: 'intake.example.com' },
+    });
+  });
+
+  test('omitting details leaves the canonical wire shape byte-identical', () => {
+    const captured = captureWarn(() => {
+      logIpcError({ event: 'ipc.error', channel: 'c', reason: 'r', handler: 'h' });
+    });
+
+    expect(JSON.parse(String(captured[0].args[0]))).toEqual({
+      event: 'ipc.error',
+      channel: 'c',
+      reason: 'r',
+      handler: 'h',
+    });
+  });
+});

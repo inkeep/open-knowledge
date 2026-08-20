@@ -383,8 +383,8 @@ msgstr "{0} इस फ़ोल्डर को साझा करते है
 msgid "{0} templates available"
 msgstr "{0} टेम्पलेट उपलब्ध"
 
-#. placeholder {0}: formatSize(phase.report.zipSizeBytes)
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: formatBundleSize(operation.zipSizeBytes)
+#: src/components/BugReportSendToast.tsx
 msgid "{0} total"
 msgstr "कुल {0}"
 
@@ -870,20 +870,12 @@ msgid "{shareBranch} isn't a valid branch name."
 msgstr "{shareBranch} एक मान्य ब्रांच नाम नहीं है।"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted"
-msgstr "{sizeText} · गोपनीय जानकारी हटाई गई"
-
-#: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}}"
 msgstr "{sizeText} · गोपनीय जानकारी हटाई गई · {fileCount, plural, one {# फ़ाइल} other {# फ़ाइलें}}"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "{sizeText} · secrets redacted · {fileCount, plural, one {# file} other {# files}} · crash dump not redacted"
 msgstr "{sizeText} · गोपनीय जानकारी हटाई गई · {fileCount, plural, one {# फ़ाइल} other {# फ़ाइलें}} · क्रैश डंप से नहीं हटाई गई"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "{sizeText} · secrets redacted · crash dump not redacted"
-msgstr "{sizeText} · गोपनीय जानकारी हटाई गई · क्रैश डंप से नहीं हटाई गई"
 
 #: src/components/CreatedItemsList.tsx
 msgid "{skillCount, plural, one {skill} other {skills}}"
@@ -1003,10 +995,6 @@ msgstr "<{descriptorLabel}> रेंडर नहीं हो सका (श�
 #: src/components/settings/AiToolsSection.tsx
 msgid "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
 msgstr "<0>~/.ok/bin</0> और <1>~/.ok/env.sh</1> दोनों ही स्थिति में बने रहते हैं — ऐप हमेशा इनका रखरखाव करता है।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "<0>Have more to add?</0> Write to <1/> and mention your reference."
-msgstr "<0>और कुछ जोड़ना है?</0> <1/> पर लिखें और अपने संदर्भ का उल्लेख करें।"
 
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -1630,6 +1618,10 @@ msgstr "पहले से इंस्टॉल है — आयात कर
 msgid "Already open"
 msgstr "पहले से खुला है"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Already sending this report"
+msgstr "यह रिपोर्ट पहले से भेजी जा रही है"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Already set up — ok is available in your terminal"
 msgstr "पहले से सेट अप है — ok आपके टर्मिनल में उपलब्ध है"
@@ -1864,10 +1856,6 @@ msgstr "फ़ाइल संलग्न करें"
 #: src/components/FeedbackForm.tsx
 msgid "Attach images"
 msgstr "छवियाँ संलग्न करें"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Attach the file in an email to <0/>"
-msgstr "फ़ाइल को एक ईमेल में <0/> पर संलग्न करें"
 
 #: src/components/settings/AttachmentsSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
@@ -2173,8 +2161,8 @@ msgstr "skills.sh ब्राउज़ करें"
 msgid "Browse your repos:"
 msgstr "अपनी रिपॉज़िटरी ब्राउज़ करें:"
 
-#. placeholder {0}: phase.reference
-#: src/components/ReportBugDialogBody.tsx
+#. placeholder {0}: row.reference
+#: src/components/BugReportHistory.tsx
 msgid "Bug report {0}"
 msgstr "बग रिपोर्ट {0}"
 
@@ -2648,7 +2636,6 @@ msgstr "क्लोन किया जा रहा है…"
 #: src/components/EditorTabs.tsx
 #: src/components/FeedbackForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
 #: src/components/SubscribeForm.tsx
 #: src/components/ui/dialog.tsx
@@ -3208,6 +3195,7 @@ msgstr "पथ कॉपी किया गया"
 msgid "Copied relative path"
 msgstr "सापेक्ष पथ कॉपी किया गया"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "कॉपी हो गया!"
@@ -3288,6 +3276,10 @@ msgstr "पथ कॉपी करें"
 #: src/components/skill-actions.tsx
 msgid "Copy Path"
 msgstr "पथ कॉपी करें"
+
+#: src/components/BugReportSendToast.tsx
+msgid "Copy reference"
+msgstr "संदर्भ कॉपी करें"
 
 #: src/components/command-palette-commands.ts
 msgid "Copy relative path"
@@ -3876,7 +3868,7 @@ msgstr "कुंजी नहीं सहेजी जा सकी — कृ
 msgid "Couldn't save the resolution for {filePath}."
 msgstr "{filePath} का समाधान नहीं सहेजा जा सका।"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Couldn't send the report"
 msgstr "रिपोर्ट नहीं भेजी जा सकी"
 
@@ -4517,6 +4509,7 @@ msgstr "कनेक्शन तोड़ें"
 msgid "Disconnecting"
 msgstr "कनेक्शन तोड़ा जा रहा है"
 
+#: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
@@ -4627,7 +4620,6 @@ msgstr "पूर्ण"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/PublishToGitHubDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/CustomThemeEditor.tsx
 #: src/editor/extensions/JsxComponentView.tsx
 #: src/editor/extensions/JsxInlineView.tsx
@@ -4920,6 +4912,10 @@ msgstr "ईमेल"
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "Email address"
 msgstr "ईमेल पता"
+
+#: src/components/BugReportHistory.tsx
+msgid "Email support about this report"
+msgstr "इस रिपोर्ट के बारे में सहायता को ईमेल करें"
 
 #: src/components/BugReportHistory.tsx
 msgid "Emailed"
@@ -8611,7 +8607,7 @@ msgstr "कुछ नहीं ({0} एक मान्य पैटर्न �
 msgid "Nothing set yet."
 msgstr "अभी कुछ भी सेट नहीं।"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
 msgstr "कुछ भी अपलोड नहीं किया गया। जब तक आप हमें ईमेल नहीं करते, रिपोर्ट इसी कंप्यूटर पर रहती है।"
 
@@ -8869,7 +8865,7 @@ msgstr "चयनित फ़ाइल-ट्री आइटम के लि�
 msgid "Open documents tagged #{chip}"
 msgstr "#{chip} टैग वाले दस्तावेज़ खोलें"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Open email draft"
 msgstr "ईमेल मसौदा खोलें"
 
@@ -10159,6 +10155,10 @@ msgstr "फिर से करें"
 msgid "Refactoring"
 msgstr "पुनर्संरचना"
 
+#: src/components/BugReportSendToast.tsx
+msgid "Reference"
+msgstr "संदर्भ"
+
 #. placeholder {0}: row.reference
 #: src/components/BugReportHistory.tsx
 msgid "Reference <0>{0}</0>"
@@ -10510,10 +10510,6 @@ msgstr "बग की रिपोर्ट करें"
 #: src/components/AppMenubar.tsx
 msgid "Report a bug…"
 msgstr "बग की रिपोर्ट करें…"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Report reference"
-msgstr "रिपोर्ट संदर्भ"
 
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
@@ -11261,7 +11257,7 @@ msgstr "चैट में भेजें ({0})"
 msgid "Send when the agent is free"
 msgstr "एजेंट के खाली होने पर भेजें"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Send your report by email"
 msgstr "अपनी रिपोर्ट ईमेल से भेजें"
 
@@ -11270,7 +11266,7 @@ msgstr "अपनी रिपोर्ट ईमेल से भेजें"
 msgid "Sending"
 msgstr "भेजा जा रहा है"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "रिपोर्ट भेजी जा रही है"
 
@@ -12583,7 +12579,7 @@ msgstr "सदस्यता लेने के लिए धन्यवा�
 msgid "Thanks for the feedback!"
 msgstr "प्रतिक्रिया के लिए धन्यवाद!"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "Thanks for the report!"
 msgstr "रिपोर्ट के लिए धन्यवाद!"
 
@@ -12767,10 +12763,6 @@ msgstr "प्रदाता ने अनुरोध अस्वीकार
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The public URL your tunnel serves. The server admits requests for this host and advertises it in the URLs it issues."
 msgstr "वह सार्वजनिक URL जिसे आपका tunnel सर्व करता है। सर्वर इस host के लिए अनुरोध स्वीकार करता है और अपने द्वारा जारी किए गए URL में इसका विज्ञापन करता है।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "The report service couldn't be reached."
-msgstr "रिपोर्ट सेवा तक नहीं पहुँचा जा सका।"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "The repository is private and your GitHub account doesn't have access to it."
@@ -13263,6 +13255,10 @@ msgstr "इस रिपॉज़िटरी में {count} स्किल 
 msgid "This repo bundles {count} skills. Install any of them from the plugin."
 msgstr "इस रिपॉज़िटरी में {count} स्किल हैं। इनमें से कोई भी प्लगइन से इंस्टॉल करें।"
 
+#: src/components/BugReportSendToast.tsx
+msgid "This report is already on its way. Its result will appear in your bug report history."
+msgstr "यह रिपोर्ट पहले ही रास्ते में है। इसका नतीजा बग रिपोर्ट इतिहास में दिखेगा।"
+
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
 msgstr "यह अनुरोध अब सक्रिय नहीं है।"
@@ -13499,9 +13495,9 @@ msgid "Try a prompt"
 msgstr "कोई प्रॉम्प्ट आज़माएँ"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/ReportBugDialogBody.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
@@ -13898,10 +13894,6 @@ msgstr "{keyName} अपलोड किया जा रहा है"
 msgid "Uploading file"
 msgstr "फ़ाइल अपलोड की जा रही है"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Uploading securely"
-msgstr "सुरक्षित रूप से अपलोड किया जा रहा है"
-
 #: src/components/TimelinePanel.tsx
 msgid "Upstream sync"
 msgstr "अपस्ट्रीम सिंक"
@@ -14138,7 +14130,7 @@ msgstr "हम एक रिपॉज़िटरी बनाकर सिं�
 msgid "We’ll create a safe theme ID from this name."
 msgstr "हम इस नाम से एक सुरक्षित थीम ID बनाएँगे।"
 
-#: src/components/ReportBugDialogBody.tsx
+#: src/components/BugReportSendToast.tsx
 msgid "We've filed it with the team and attached your logs."
 msgstr "हमने इसे टीम के पास दर्ज कर दिया है और आपके लॉग संलग्न कर दिए हैं।"
 
@@ -14524,17 +14516,9 @@ msgstr "ब्रांच <0>{branch}</0> की आपकी स्थान�
 msgid "Your message didn't reach {agentName}."
 msgstr "आपका संदेश {agentName} तक नहीं पहुँचा।"
 
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report couldn't be sent. Try again or email it instead."
-msgstr "आपकी रिपोर्ट नहीं भेजी जा सकी। फिर कोशिश करें या इसके बजाय इसे ईमेल करें।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is being sent."
-msgstr "आपकी रिपोर्ट भेजी जा रही है।"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Your report is saved on this computer, so nothing was lost. You can email it to us instead."
-msgstr "आपकी रिपोर्ट इस कंप्यूटर पर सहेजी गई है, इसलिए कुछ भी नहीं खोया। आप इसके बजाय हमें ईमेल कर सकते हैं।"
+#: src/components/BugReportSendToast.tsx
+msgid "Your report is saved on this computer, so nothing was lost."
+msgstr "आपकी रिपोर्ट इस कंप्यूटर पर सेव है, इसलिए कुछ भी नहीं खोया।"
 
 #: src/components/CloneDialog.tsx
 msgid "Your repositories"
