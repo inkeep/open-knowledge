@@ -170,6 +170,10 @@ import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
+import {
+  accessibilityPostureFacts,
+  resolveAccessibilityFeatures,
+} from './accessibility-posture.ts';
 import { docNameFromActiveTarget, EditorActiveTargetRegistry } from './active-target-registry.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
@@ -7489,36 +7493,101 @@ if (A11Y_FORCED_BY_ENV) {
  * from.
  *
  * The companion signal is `ax_mode`, read off a minidump's Crashpad
- * annotations (see `readMinidumpAccessibilityMode`). That one is exact — the
- * full mode bitmask — but exists ONLY where there is a readable dump. This one
- * is coarse and always present, and it carries the thing a dump cannot: WHEN
- * the client attached, relative to everything else in the log.
+ * annotations (see `readMinidumpAccessibilityMode`). This line and that one
+ * differ by SCOPE, not by granularity: `features` below is the BROWSER
+ * process's live flag set, while `ax_mode` is the flag set of ONE renderer at
+ * the instant it died. Chromium can run renderers at different modes from each
+ * other and from the browser-process summary, so neither substitutes for the
+ * other — but this one is present on every session, and it carries the thing a
+ * dump cannot: WHEN the client attached, relative to everything else in the log.
  *
- * Read `supportEnabled` narrowly. It is Electron's `isAccessibilitySupportEnabled`,
- * the browser process's own summary of whether an AT client is attached — not
- * the renderer's `ui::AXMode`, and not a claim about which accessibility flags
- * any particular renderer had set. A false here does NOT establish that no
- * accessibility tree existed; only `ax_mode` answers that, and only for a
- * process that died.
+ * `features` is Electron's `getAccessibilitySupportFeatures()`, whose own docs
+ * direct diagnostics and telemetry to it in preference to the legacy boolean.
+ * `supportEnabled` is kept beside it because it is not derivable from the array:
+ * the boolean is Chromium's own "is this an accessible browser" predicate over
+ * the mode, not a test for a particular flag, and reconstructing it here would
+ * be this file guessing at that predicate.
  *
- * Each phase reports the value from its own authoritative source rather than
- * re-reading: the event hands the new value to the listener directly, and
- * whether the getter has already settled by then is Chromium's business, not a
- * thing this log should quietly depend on.
+ * AS OF THE ELECTRON PINNED IN THIS PACKAGE — re-verify on any upgrade —
+ * `features` is real on EVERY platform, the `@platform darwin,win32` tag in
+ * Electron's typings notwithstanding. That tag is a docs annotation rather than
+ * a runtime gate: the method is registered outside every `#if BUILDFLAG` and
+ * implemented straight over `BrowserAccessibilityState::GetAccessibilityMode()`
+ * with no platform branch, so Linux returns the live flag set like anywhere
+ * else. Checkable at
+ * https://github.com/electron/electron/blob/v41.10.3/shell/browser/api/electron_api_app.cc
+ * (`GetAccessibilitySupportFeatures`, and its `SetMethod` registration in
+ * `GetObjectTemplateBuilder`).
+ *
+ * The version scoping is the load-bearing part, not decoration: the same tag
+ * sits on `isAccessibilitySupportEnabled`, which this very line already reports
+ * unqualified on all platforms, and nobody re-reads a JSDoc during a routine
+ * Electron bump. An incident responder must NOT discard a Linux `features`
+ * value as meaningless — it is evidence.
+ *
+ * An empty array therefore means "no accessibility modes active", not
+ * "unavailable" — and the two stay apart because the field is ABSENT when the
+ * reading did not happen (see `accessibilityPostureFacts`). What an empty array
+ * never means is that no renderer had a tree; only `ax_mode` answers that, and
+ * only for a process that died. A false `supportEnabled` does not establish it
+ * either.
+ *
+ * Each phase reports `supportEnabled` from its own authoritative source rather
+ * than re-reading: the event hands the new value to the listener directly, and
+ * whether the getter has settled by then is Chromium's business, not a thing
+ * this log should quietly depend on. `features` has no such event-supplied
+ * counterpart and is read live at each call.
  */
 function logAccessibilityPosture(phase: 'boot' | 'changed', supportEnabled: boolean): void {
+  const features = resolveAccessibilityFeatures(
+    app.getAccessibilitySupportFeatures?.bind(app),
+    (error) =>
+      getRootDesktopLogger().warn(
+        // `phase` rides along because both phases share this one call site: a
+        // failure on every boot and one that only happens when an AT client
+        // attaches mid-session are different problems, and without it the two
+        // produce a byte-identical line. Reading it off the neighbouring info
+        // line instead would be an implicit dependency on log adjacency.
+        { event: 'desktop.accessibility.features-unreadable', phase, err: error },
+        'could not read accessibility support features',
+      ),
+  );
   getRootDesktopLogger().info(
-    {
-      event: 'desktop.accessibility',
+    accessibilityPostureFacts({
       phase,
       supportEnabled,
-      // Whether the app itself forced the tree on, which makes `supportEnabled`
+      features,
+      // Whether the app itself forced the tree on, which makes both readings
       // beside the point for reachability: with the switch set, every renderer
       // has a full tree whatever any AT client is doing.
       forcedByEnv: A11Y_FORCED_BY_ENV,
-    },
+    }),
     'renderer accessibility posture',
   );
+}
+
+/**
+ * Emit the boot posture without letting it become the thing that breaks a boot.
+ *
+ * The guard is around the WHOLE statement rather than inside the helper because
+ * `app.isAccessibilitySupportEnabled()` is evaluated as an argument, before
+ * anything inside is entered — a guard that reached only the flag-set read
+ * would leave the boolean unprotected at the same position in the same
+ * `whenReady` chain, and the invariant would be half-held.
+ *
+ * The risk is small: that boolean has been called unguarded per window creation
+ * for a long time. Small is not the same as absent, and this call site is the
+ * one place where being wrong costs the launch rather than a log field.
+ */
+function logBootAccessibilityPosture(): void {
+  try {
+    logAccessibilityPosture('boot', app.isAccessibilitySupportEnabled());
+  } catch (error) {
+    getRootDesktopLogger().warn(
+      { event: 'desktop.accessibility.boot-posture-failed', err: error },
+      'could not record boot accessibility posture',
+    );
+  }
 }
 
 if (isDriverBootSmokeMode(process.env)) {
@@ -8041,7 +8110,7 @@ function bootPrimaryInstance(): void {
       // does not exist until then, and a pre-ready read would report a default
       // rather than an answer. `accessibility-support-changed` covers every
       // later flip, so between them the whole session is described.
-      logAccessibilityPosture('boot', app.isAccessibilitySupportEnabled());
+      logBootAccessibilityPosture();
       // Login-shell SSH_AUTH_SOCK harvest — started here so its (2s-bounded)
       // shell spawn overlaps the bootstrap I/O below; awaited + applied just
       // before the window-open branch, ahead of the git preflight and both

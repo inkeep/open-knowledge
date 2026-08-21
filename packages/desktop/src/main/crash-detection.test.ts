@@ -1552,6 +1552,30 @@ describe('the version a boot invitation attributes the crash to', () => {
     expect(breadcrumb?.crashedAppVersion).toBe(CRASHED_VERSION);
   });
 
+  test('a sentinel-driven boot with no dump omits the accessibility fields entirely', () => {
+    // The other half of the distinction the sibling test pins. A dirty shutdown
+    // that left no dump means nothing was ever read, and an explicit null here
+    // would claim we read a dump and it stayed silent. Absent and null are two
+    // different findings; a `?? null` on this line would merge them.
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    // Session ends without markCleanQuit and without seeding any dump.
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.dirtyShutdown).toBe(true);
+    expect(breadcrumb).not.toHaveProperty('crashedAccessibilityMode');
+    expect(breadcrumb).not.toHaveProperty('crashedAccessibilityModeParseFailed');
+  });
+
   test('a dump carrying no accessibility mode logs null, not a missing field', () => {
     // "We looked and the dump does not say" is itself the finding, and it is
     // NOT "accessibility was off" — a dump for a process with no renderer in it

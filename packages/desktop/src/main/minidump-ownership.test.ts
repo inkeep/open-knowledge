@@ -739,6 +739,150 @@ describe('readMinidumpAccessibilityMode', () => {
     ).toBeNull();
   });
 
+  /**
+   * The ceilings, pinned by dumps whose records are ALL PRESENT.
+   *
+   * The three lying-count cases above do not pin them. A declared 4096 makes
+   * `readExactly` run off the end of the fixture, so the EOF bound refuses
+   * first and the ceiling is never consulted — delete `MAX_ANNOTATIONS` or
+   * `MAX_MODULE_LINKS` and every one of those cases still passes. A ceiling
+   * that no test can redden is a comment, not a bound.
+   *
+   * So each case below builds every record it claims, and straddles the limit:
+   * one dump just over it must be refused, one just under it must still answer.
+   */
+  describe('the declared ceilings, pinned by fully-present records', () => {
+    /** `n` real annotation objects, with `ax_mode` last so the whole list is walked. */
+    function objectsWithAxModeLast(n: number): Record<string, string> {
+      const objects: Record<string, string> = {};
+      for (let i = 0; i < n - 1; i += 1) objects[`filler_${i}`] = String(i);
+      objects.ax_mode = REAL_AX_MODE;
+      return objects;
+    }
+
+    // Straddles sit on the EXACT boundary rather than near it. A 300/250 pair
+    // would pin only gross removal of the ceiling; 257/256 additionally catches
+    // the `>` becoming `>=` — the off-by-one that silently narrows every bound
+    // by one and is the likeliest way one of these ever breaks.
+    test('MAX_ANNOTATIONS refuses a module holding one object over the ceiling', () => {
+      // 257 real objects, all present, ceiling is 256.
+      expect(modeOf({ annotationObjects: [objectsWithAxModeLast(257)] })).toBeNull();
+    });
+
+    test('a module exactly AT MAX_ANNOTATIONS still answers', () => {
+      // The other half of the straddle. Without it, a parser that refused every
+      // large module — or one whose comparison slipped to `>=` — would pass the
+      // case above.
+      expect(modeOf({ annotationObjects: [objectsWithAxModeLast(256)] })).toBe(REAL_AX_MODE);
+    });
+
+    /**
+     * `n` real annotation objects and no `ax_mode`, for padding out a walk.
+     * Held at 256 by callers below so the per-module ceiling never fires and
+     * the budget is the only thing that can refuse.
+     */
+    function fillerObjects(n: number): Record<string, string> {
+      const objects: Record<string, string> = {};
+      for (let i = 0; i < n; i += 1) objects[`filler_${i}`] = String(i);
+      return objects;
+    }
+
+    /** `n` objects with `ax_mode` FIRST, so it is found on the walk's next slot. */
+    function objectsWithAxModeFirst(n: number): Record<string, string> {
+      const objects: Record<string, string> = { ax_mode: REAL_AX_MODE };
+      for (let i = 0; i < n - 1; i += 1) objects[`filler_${i}`] = String(i);
+      return objects;
+    }
+
+    // The budget spends exactly one unit per object INSPECTED, so `ax_mode` is
+    // found if and only if its position across the whole walk is <= 1024. That
+    // makes 1024 and 1025 the boundary, and the pair below sits on it rather
+    // than near it — the same standard the two ceilings above are held to.
+    test('the scan budget answers at exactly its last slot', () => {
+      // 3 x 256 fillers = 768 spent, then `ax_mode` last in a 256-object
+      // module — inspection 1024, the final slot the budget can pay for.
+      const modules = [
+        fillerObjects(256),
+        fillerObjects(256),
+        fillerObjects(256),
+        objectsWithAxModeLast(256),
+      ];
+      expect(modeOf({ annotationObjects: modules })).toBe(REAL_AX_MODE);
+    });
+
+    test('the scan budget refuses one object past its last slot', () => {
+      // 4 x 256 fillers spend the budget exactly, and `ax_mode` sits FIRST in
+      // the fifth module — inspection 1025, one past the last payable slot.
+      // Placing it first is what makes this ±1: at a budget of 1025 the walk
+      // reaches it and this test reddens, where a copy with `ax_mode` LAST
+      // would keep passing for any budget up to 1279.
+      //
+      // Every module is under MAX_ANNOTATIONS, so no per-module ceiling fires —
+      // and a budget that RESET per module would answer this with the mode,
+      // which is the distinction the whole-walk budget exists to make.
+      const modules = [
+        fillerObjects(256),
+        fillerObjects(256),
+        fillerObjects(256),
+        fillerObjects(256),
+        objectsWithAxModeFirst(256),
+      ];
+      expect(modeOf({ annotationObjects: modules })).toBeNull();
+    });
+
+    test('the scan budget stops PARTWAY through a module, not only between them', () => {
+      // Both cases above spend the budget on a module boundary, so each is
+      // caught by the between-module check and the per-object cutoff inside the
+      // walk never fires. This one lands the exhaustion mid-module: 200 + 256 +
+      // 256 + 256 = 968 spent, 56 left, and a fifth module of 256 whose
+      // `ax_mode` sits at index 255. Only the per-object cutoff can refuse it.
+      //
+      // Worth a test of its own because deleting that cutoff as redundant does
+      // not merely widen the budget — `remaining` would run NEGATIVE, and the
+      // between-module check compares `=== 0` rather than `<= 0`, so a negative
+      // slips past it and the budget is silently defeated for every module that
+      // follows.
+      const modules = [
+        fillerObjects(200),
+        fillerObjects(256),
+        fillerObjects(256),
+        fillerObjects(256),
+        objectsWithAxModeLast(256),
+      ];
+      expect(modeOf({ annotationObjects: modules })).toBeNull();
+    });
+
+    test('MAX_MODULE_LINKS refuses a link list longer than the ceiling', () => {
+      // 4097 modules that all genuinely exist, ceiling is 4096. Every module
+      // but the last is empty, so the object budget cannot be what refuses
+      // this — the link ceiling is the only thing standing in the way.
+      const modules = Array.from({ length: 4097 }, () => ({}) as Record<string, string>);
+      modules[4096] = { ax_mode: REAL_AX_MODE };
+      expect(modeOf({ annotationObjects: modules })).toBeNull();
+    });
+
+    test('a link list exactly AT MAX_MODULE_LINKS still answers', () => {
+      // Boundary-exact for the same reason as the pair above: 4096 must pass
+      // where 4097 is refused, so a `>` slipping to `>=` reddens this.
+      const modules = Array.from({ length: 4096 }, () => ({}) as Record<string, string>);
+      modules[4095] = { ax_mode: REAL_AX_MODE };
+      expect(modeOf({ annotationObjects: modules })).toBe(REAL_AX_MODE);
+    });
+
+    test('a walk that stays inside the budget still answers from the last module', () => {
+      // Three modules of 250 = 750 objects, under the 1024 budget. Pairs with
+      // the case above so the budget is pinned from both sides rather than by
+      // a parser that simply gives up on multi-module dumps.
+      const modules = [250, 250, 250].map((n, i) =>
+        i === 2 ? objectsWithAxModeLast(n) : objectsWithAxModeLast(n + 1),
+      );
+      modules.slice(0, 2).forEach((m) => {
+        delete m.ax_mode;
+      });
+      expect(modeOf({ annotationObjects: modules })).toBe(REAL_AX_MODE);
+    });
+  });
+
   test('a declared object-list size too small for its own entries is refused', () => {
     expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], annotationObjectsSize: 8 })).toBeNull();
   });

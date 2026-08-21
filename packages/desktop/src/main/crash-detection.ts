@@ -868,12 +868,27 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 // accessibility `CHECK` crashes are reachable only with a live
                 // accessibility tree, and `OK_FORCE_A11Y` is opt-in, so before
                 // this the precondition could only be guessed at from
-                // circumstance. Logged even when null for the same reason the
-                // version is — but null here is NOT "accessibility was off",
-                // only "this dump does not say"; see
-                // `MinidumpAccessibilityModeRead`.
-                crashedAccessibilityMode: dumpAccessibilityMode?.mode ?? null,
-                crashedAccessibilityModeParseFailed: dumpAccessibilityMode?.parseFailed ?? false,
+                // circumstance.
+                //
+                // Present as an explicit null when a dump WAS read and did not
+                // name a mode; absent entirely when no dump was read at all
+                // (the sentinel-driven path, where `eventDump` is undefined).
+                // Those are different findings and a single `?? null` would
+                // merge them — which is the whole distinction
+                // `MinidumpAccessibilityModeRead` exists to preserve, and the
+                // convention the sibling site in `ipc/bug-report.ts` follows.
+                //
+                // The app version beside this one CAN collapse to `?? null`,
+                // because it has a second witness in the sentinel; the
+                // accessibility mode has exactly one source, so absence here
+                // would otherwise be unreadable. Null is never "accessibility
+                // was off".
+                ...(dumpAccessibilityMode !== null
+                  ? {
+                      crashedAccessibilityMode: dumpAccessibilityMode.mode,
+                      crashedAccessibilityModeParseFailed: dumpAccessibilityMode.parseFailed,
+                    }
+                  : {}),
                 detectingAppVersion: deps.appVersion,
               },
               'previous session ended uncleanly — arming report invitation',
