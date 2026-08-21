@@ -1075,6 +1075,7 @@
     "COr1Y7": [
       "Escolha <0>openknowledge.skill</0> na sua pasta <1>Downloads</1>. Ela é ativada automaticamente."
     ],
+    "CPMLsP": ["Revisando o que este pacote adiciona"],
     "CPmYSG": ["Procurando agentes"],
     "CSL0l1": ["Não deu para limpar a chave — tente de novo."],
     "CTJLpz": ["\"", ["trimmed"], "\" já existe aqui"],
@@ -1383,13 +1384,6 @@
     "Fqx38P": ["O que atrapalhou?"],
     "Fr8JGg": ["Arquivo zip"],
     "Fsx78O": ["Adicione o comando <0>ok</0> ao seu terminal"],
-    "Ftz_t9": [
-      [
-        "0",
-        "plural",
-        { "one": ["#", " pasta"], "many": ["#", " pastas"], "other": ["#", " pastas"] }
-      ]
-    ],
     "FvMSms": [
       "Renomear muda o arquivo no disco e o id que os agentes usam para escolher este modelo."
     ],
@@ -2696,6 +2690,19 @@
     "VMlRqi": ["Ocultar detalhes"],
     "VNNRfN": ["tornar fonte"],
     "VNgKZz": ["Configurações avançadas"],
+    "VPwWZu": [
+      "Isto também instala ",
+      [
+        "packSkillCount",
+        "plural",
+        {
+          "one": ["#", " habilidade"],
+          "many": ["#", " habilidades"],
+          "other": ["#", " habilidades"]
+        }
+      ],
+      " do pacote."
+    ],
     "VTulZj": ["Abrir em um worktree"],
     "VU3Nrn": ["Ausente"],
     "VUijjF": ["Incorpora uma imagem com texto alternativo opcional."],
@@ -3021,6 +3028,9 @@
     "Z3FXyt": ["Carregando..."],
     "Z5h97D": [
       "Esconda arquivos e pastas da sua base de conhecimento. Os itens ocultos não aparecem na árvore de arquivos, na busca nem nas ferramentas de IA. <0>Saiba mais sobre os padrões</0>."
+    ],
+    "Z67Zlj": [
+      "Veja o que este pacote adiciona ao seu projeto. Nada é gravado até você criar o projeto."
     ],
     "Z6rrjc": [
       "Ainda não há arquivo <0>.markdownlint.*</0> — todas as regras rodam com os mesmos padrões da extensão markdownlint do VS Code: todas ligadas, exceto o comprimento da linha."
@@ -4004,13 +4014,6 @@
     "jhtG3I": [" Sua seleção foi restaurada."],
     "jjtmV_": ["Nome do primeiro arquivo"],
     "jkt28V": ["Custo de contexto"],
-    "jlT89F": [
-      [
-        "0",
-        "plural",
-        { "one": ["#", " arquivo"], "many": ["#", " arquivos"], "other": ["#", " arquivos"] }
-      ]
-    ],
     "jnCROW": [
       "Um instantâneo de memória da falha, e o artefato que mais nos ajuda. Ele pode conter conteúdo de documentos e não pode ser ocultado, então desmarque se preferir não compartilhá-lo."
     ],
@@ -4239,6 +4242,7 @@
     "lyWa43": ["Páginas desconectadas em todo o projeto"],
     "lzmtKp": ["Falha ao carregar as propriedades da pasta: ", ["message"]],
     "lzwo7p": ["Não foi possível abrir o login do GitHub. Tente de novo."],
+    "m-1Z7o": ["Usar este pacote inicial"],
     "m0eHej": [
       "Substituir a cópia em ",
       ["display"],
@@ -4894,6 +4898,7 @@
     "tiFPjk": ["código"],
     "tiWX6q": ["Editor de código"],
     "tjXez2": ["blog-post"],
+    "tjbyOy": ["Detalhes do projeto"],
     "tkIXtS": [
       ["imported"],
       " habilidades instaladas (",
@@ -5047,6 +5052,19 @@
     "vPLUCm": ["A imagem ", ["identity"], " está ausente. Ir para a referência."],
     "vPXOUw": ["Mostrar ou ocultar a visualização de código"],
     "vQIVHc": ["Propriedades da pasta"],
+    "vUP_HF": [
+      "Sem uma ferramenta de IA conectada, ",
+      [
+        "packSkillCount",
+        "plural",
+        {
+          "one": ["#", " habilidade"],
+          "many": ["#", " habilidades"],
+          "other": ["#", " habilidades"]
+        }
+      ],
+      " do pacote não serão instaladas."
+    ],
     "vXIe7J": ["Idioma"],
     "vYOUOk": ["Adicionar um comentário"],
     "vYPvPB": ["Trocar de projeto…"],

@@ -689,6 +689,9 @@ describe('CreateProjectDialog runtime wiring', () => {
       />,
     );
     await screen.findByTestId('create-project-dialog');
+    // A caller-supplied pack opens on the review screen; the form (and the
+    // location field this waits on) is the screen after it.
+    fireEvent.click(await screen.findByTestId('create-review-continue'));
     await waitForLocationHydrate();
 
     // The launcher-chosen pack is named as read-only context in the dialog

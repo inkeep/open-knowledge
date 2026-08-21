@@ -189,20 +189,10 @@ msgstr "{0, plural, other {# 個文件}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# 個錯誤}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, other {# 個檔案}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {已選 # 個資料夾}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, other {# 個資料夾}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1994,7 +1984,6 @@ msgstr "在 OpenKnowledge 桌面應用程式中提供。在終端機裡可以使
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4799,7 +4788,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "每個 AI 工具都從各自的資料夾讀取技能。將一個資料夾指向另一個，兩個工具就會看到相同的技能——只需新增一次技能，不必複製到每個工具。"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "每個套件都會用現成的資料夾和範本幫你的專案搭好骨架。"
 
@@ -6288,6 +6276,10 @@ msgstr "協助你的智慧代理在任何專案中探索並使用 OpenKnowledge�
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "幫助編碼代理選擇 OKF 文件類型、保留來源並避免發明不支援的元資料。"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "以下是此入門套件會加入專案的內容。在你建立專案之前，不會寫入任何內容。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9968,6 +9960,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "專案的 AI 工具管理只在 OpenKnowledge 桌面應用程式中提供。"
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "專案詳細資料"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "專案資料夾已建立，但 git init 失敗。請再試一次。"
 
@@ -10907,6 +10903,10 @@ msgstr "檢視衝突"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "檢查你的回報"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "檢視此入門套件會加入的內容"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12177,7 +12177,6 @@ msgid "starter pack"
 msgstr "入門套件"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "入門套件"
 
@@ -13116,6 +13115,10 @@ msgstr "這個代理是透過 {0} 執行的，但它雖然已安裝卻無法執�
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "這個代理是透過 {0} 執行的，但它沒有安裝。Open Knowledge 可以下載一份 {1} {2} 的私人副本（約 {3} MB，來自 {4}），不會動到你系統的其他部分。"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "這也會安裝此入門套件的 {packSkillCount, plural, one {# 項技能} other {# 項技能}}。"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14105,6 +14108,10 @@ msgstr "只能用小寫字母、數字和 <0>-</0>。"
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "只能用小寫字母、數字和連字號"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "使用此入門套件"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14413,6 +14420,10 @@ msgstr "會儲存成 <0>{sanitized}</0>。"
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "視窗"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "沒有已連接的 AI 工具，此入門套件的 {packSkillCount, plural, one {# 項技能} other {# 項技能}} 不會安裝。"
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"

@@ -58,20 +58,12 @@ import { FeedbackFormDialog } from './FeedbackFormDialog';
 import { GithubIcon } from './icons/github';
 import { OkIcon } from './icons/ok';
 import { McpConsentDialog } from './McpConsentDialog';
-import { iconForPack, PackCardGrid } from './PackCardGrid';
+import { iconForPack } from './PackCardGrid';
 import { basenameOf } from './project-switcher-recents';
 import { ReportBugDialog } from './ReportBugDialog';
 import { RecentItemContextMenu } from './recent-remove-controls';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from './ui/dialog';
 
 // Cold-path launcher surface: renders nothing until main fires
 // `ok:share:received`. Lazy so its clone / auth-preflight / Q2-picker code
@@ -322,9 +314,11 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const onOpenFile = () =>
     runWithErrorState(() => bridge.project.openFile(), t`Failed to open file.`);
 
-  // First-run pack pick → open the create dialog with the pack pre-selected
-  // and the full pack list so the dialog's Select can switch in-place.
-  const onPackSelect = (packId: OkPackId, packs: OkSeedPackInfo[]) => {
+  // First-run pack entry → open the create dialog with the full pack list. A
+  // chip supplies the pack and the dialog opens on its review screen; the
+  // browse-all affordance supplies none and the dialog opens on its pack grid.
+  // Either way there is one dialog and one flow, not a picker plus a dialog.
+  const onPackSelect = (packId: OkPackId | undefined, packs: OkSeedPackInfo[]) => {
     setCreatePackId(packId);
     setCreatePacks(packs);
     setCreateDialogOpen(true);
@@ -691,11 +685,13 @@ const PILL_PACK_COUNT = 3;
 function StarterPackRow({
   onPackSelect,
 }: {
-  onPackSelect: (packId: OkPackId, packs: OkSeedPackInfo[]) => void;
+  // `packId` is undefined for the browse-all affordance: there is no pack yet,
+  // and the create dialog opens on its own pack grid rather than in a second
+  // picker dialog of this component's own.
+  onPackSelect: (packId: OkPackId | undefined, packs: OkSeedPackInfo[]) => void;
 }) {
   const { t } = useLingui();
   const [packs, setPacks] = useState<OkSeedPackInfo[] | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -728,10 +724,7 @@ function StarterPackRow({
   const pillPacks = packs.slice(0, PILL_PACK_COUNT);
   const overflowCount = packs.length - pillPacks.length;
 
-  const selectPack = (packId: OkPackId) => {
-    setPickerOpen(false);
-    onPackSelect(packId, packs);
-  };
+  const selectPack = (packId: OkPackId) => onPackSelect(packId, packs);
 
   return (
     <section
@@ -772,7 +765,7 @@ function StarterPackRow({
             variant="ghost"
             size="sm"
             className="rounded-full"
-            onClick={() => setPickerOpen(true)}
+            onClick={() => onPackSelect(undefined, packs)}
             // Visible text is a bare count; the accessible name has to say what
             // the count refers to and what activating it does.
             aria-label={t`See all ${packs.length} starter packs`}
@@ -782,22 +775,6 @@ function StarterPackRow({
           </Button>
         ) : null}
       </div>
-
-      <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
-        <DialogContent className="sm:max-w-3xl" data-testid="nav-pack-picker">
-          <DialogHeader>
-            <DialogTitle>
-              <Trans>Starter packs</Trans>
-            </DialogTitle>
-            <DialogDescription>
-              <Trans>Each pack scaffolds your project with ready-made folders and templates.</Trans>
-            </DialogDescription>
-          </DialogHeader>
-          <DialogBody>
-            <PackCardGrid packs={packs} onPackSelect={selectPack} />
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

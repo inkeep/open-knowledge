@@ -153,6 +153,36 @@ async function renderDialog(bridge: OkDesktopBridge, initialPackId?: OkPackId) {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+  // A caller-supplied pack now lands on the review screen, which is a gate in
+  // front of the form. These tests are about the form, so step through it. The
+  // review screen has its own tests below.
+  if (initialPackId !== undefined) {
+    fireEvent.click(await screen.findByTestId('create-review-continue'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
+
+/** Renders with a pack and stops on the review screen, for tests about review
+ *  itself rather than the form behind it. */
+async function renderDialogAtReview(bridge: OkDesktopBridge, initialPackId: OkPackId) {
+  const { CreateProjectDialog } = await import('./CreateProjectDialog');
+  render(
+    <TooltipProvider>
+      <CreateProjectDialog
+        open
+        onOpenChange={() => {}}
+        bridge={bridge}
+        initialPackId={initialPackId}
+        packs={PACKS}
+      />
+    </TooltipProvider>,
+  );
+  await screen.findByTestId('create-review-body');
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 /** Radix renders the radio as a button; the label wraps a whole Field, so the
@@ -204,8 +234,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
       expect(planCalls.at(-1)?.preview).toEqual({ skillsInstallable: true });
     });
 
-    await screen.findByText('external-sources/');
-
     await submit('Wiki');
     await waitFor(() => {
       expect(createNewCalls).toHaveLength(1);
@@ -227,7 +255,6 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await waitFor(() => {
       expect(planCalls.at(-1)?.rootDir).toBe('brain');
     });
-    await screen.findByText('external-sources/');
 
     await submit('Wiki');
     await waitFor(() => {
@@ -283,9 +310,11 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     // rather than stranding them on a permanently disabled button.
     const { bridge, createNewCalls } = makeBridge();
     planFailure = { kind: 'internal', message: 'Failed to fetch' };
-    await renderDialog(bridge, 'knowledge-base');
+    await renderDialogAtReview(bridge, 'knowledge-base');
 
+    // The error annotates the manifest, so it surfaces on the review screen.
     await screen.findByTestId('create-pack-preview-error');
+    fireEvent.click(screen.getByTestId('create-review-continue'));
     await submit('Wiki');
 
     await waitFor(() => {
@@ -300,13 +329,14 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     // Both must stay non-blocking, and they can diverge independently.
     const { bridge, createNewCalls } = makeBridge();
     planRejection = new Error("Error invoking remote method 'ok:seed:plan': read ECONNRESET");
-    await renderDialog(bridge, 'knowledge-base');
+    await renderDialogAtReview(bridge, 'knowledge-base');
 
     const alert = await screen.findByTestId('create-pack-preview-error');
     // The raw transport string is a console concern, not something to put in
     // front of someone who can still create their project.
     expect(alert.textContent).not.toContain('ECONNRESET');
 
+    fireEvent.click(screen.getByTestId('create-review-continue'));
     await submit('Wiki');
     await waitFor(() => {
       expect(createNewCalls).toHaveLength(1);
@@ -330,6 +360,7 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    fireEvent.click(await screen.findByTestId('create-review-continue'));
 
     clickRadio('create-seed-root-subfolder');
     const field = await screen.findByLabelText('Subfolder name');
@@ -349,6 +380,7 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    fireEvent.click(await screen.findByTestId('create-review-continue'));
 
     clickRadio('create-seed-root-subfolder');
     expect((await screen.findByLabelText('Subfolder name')).getAttribute('value')).toBe('brain');
@@ -404,9 +436,10 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     expect(screen.getByRole('radiogroup', { name: /Where should it live/ })).not.toBeNull();
   });
 
-  test('picking a pack moves focus into the form', async () => {
+  test('picking a pack moves focus onto the review screen', async () => {
     // The clicked card unmounts with the grid, so without an explicit move
-    // focus lands on the body and a keyboard user loses their place.
+    // focus lands on the body and a keyboard user loses their place. Picking
+    // now advances to review, so its continue button is the target.
     const { bridge } = makeBridge();
     await renderDialog(bridge, 'knowledge-base');
     fireEvent.click(screen.getByTestId('create-change-pack'));
@@ -414,8 +447,223 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await userEvent.click(screen.getByRole('button', { name: /Plain notes/ }));
 
     await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('create-review-continue'));
+    });
+  });
+
+  test('continuing from review moves focus into the form', async () => {
+    const { bridge } = makeBridge();
+    await renderDialogAtReview(bridge, 'knowledge-base');
+
+    fireEvent.click(screen.getByTestId('create-review-continue'));
+
+    await waitFor(() => {
       expect(document.activeElement).toBe(screen.getByTestId('create-name'));
     });
+  });
+
+  test('opening on review focuses the primary action, not Change pack', async () => {
+    // The launcher-chip path opens straight on review. Each screen mounts its
+    // own body, so a focus target belonging to another screen is null here and
+    // the call silently no-ops — leaving the browser to take the first tabbable
+    // node, which is Change pack: the control that discards the chosen pack.
+    const { bridge } = makeBridge();
+    await renderDialogAtReview(bridge, 'knowledge-base');
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByTestId('create-review-continue'));
+    });
+    expect(document.activeElement).not.toBe(screen.getByTestId('create-change-pack'));
+  });
+
+  test('Change pack moves focus into the grid it opens', async () => {
+    // Same hazard in the other direction: the button unmounts with its own
+    // step, so without a handoff focus falls to the document body.
+    const { bridge } = makeBridge();
+    await renderDialog(bridge, 'knowledge-base');
+
+    fireEvent.click(screen.getByTestId('create-change-pack'));
+
+    // Assert WHICH element took focus, not merely that something did — a
+    // `!== document.body` check passes for any stray tabbable node.
+    await waitFor(() => {
+      const cards = document.querySelectorAll('[data-slot="pack-card"]');
+      expect(cards.length).toBeGreaterThan(0);
+      expect(document.activeElement).toBe(cards[0]);
+    });
+  });
+
+  test('each step announces itself to assistive tech', async () => {
+    // The dialog stays mounted across steps, so Radix's one-shot announcement
+    // on open does not cover the transitions.
+    const { bridge } = makeBridge();
+    await renderDialogAtReview(bridge, 'knowledge-base');
+
+    expect(screen.getByTestId('create-step-announcer').textContent).toContain('Reviewing');
+
+    fireEvent.click(screen.getByTestId('create-review-continue'));
+    await waitFor(() => {
+      expect(screen.getByTestId('create-step-announcer').textContent).toContain('Project details');
+    });
+  });
+
+  test('a typed project name survives a trip out to the grid and back', async () => {
+    // Change pack is not destructive: only closing the dialog resets the form.
+    // Re-picking from the grid returns to the form with the name still there.
+    const { bridge } = makeBridge();
+    await renderDialog(bridge, 'knowledge-base');
+
+    await userEvent.type(screen.getByTestId('create-name'), 'Team Wiki');
+    fireEvent.click(screen.getByTestId('create-change-pack'));
+    await userEvent.click(await screen.findByRole('button', { name: /Plain notes/ }));
+    fireEvent.click(await screen.findByTestId('create-review-continue'));
+
+    expect((await screen.findByTestId('create-name')).getAttribute('value')).toBe('Team Wiki');
+  });
+
+  test('an unresolved pack id opens the grid rather than a half-built review', async () => {
+    // The review body needs a resolved pack; the footer only reads the step. An
+    // id that matches nothing would pair the configure form with review's
+    // buttons, so the step derivation checks the id resolves, not just exists.
+    const { bridge } = makeBridge();
+    const { CreateProjectDialog } = await import('./CreateProjectDialog');
+    render(
+      <TooltipProvider>
+        <CreateProjectDialog
+          open
+          onOpenChange={() => {}}
+          bridge={bridge}
+          initialPackId={'no-such-pack' as OkPackId}
+          packs={PACKS}
+        />
+      </TooltipProvider>,
+    );
+    await screen.findByTestId('create-project-dialog');
+
+    await screen.findByRole('button', { name: /Plain notes/ });
+    expect(screen.queryByTestId('create-review-continue')).toBeNull();
+  });
+
+  test('switching packs from the grid does not strand review on a subfolder error', async () => {
+    // `rootChoice` is a form choice, not a pack property, so it survives a pack
+    // switch — but `subfolder` is re-defaulted from the incoming pack. Switch
+    // from a pack that declares a default to one that does not, while "In a
+    // subfolder" is selected, and the subfolder goes empty: the preview turns
+    // into a BLOCKING error and review renders that instead of the manifest,
+    // with no field on screen to fix it.
+    const { bridge } = makeBridge();
+    await renderDialog(bridge, 'knowledge-base');
+
+    clickRadio('create-seed-root-subfolder');
+    await waitFor(() => {
+      expect(planCalls.at(-1)?.rootDir).toBe('brain');
+    });
+
+    fireEvent.click(screen.getByTestId('create-change-pack'));
+    await userEvent.click(await screen.findByRole('button', { name: /Plain notes/ }));
+
+    // Review must show what the pack adds, not a form error it cannot resolve.
+    await screen.findByTestId('create-review-body');
+    expect(screen.queryByTestId('create-pack-preview-error')).toBeNull();
+    await screen.findByText('daily/');
+  });
+
+  test('re-picking the same pack from the grid keeps the subfolder choice', async () => {
+    // The cross-pack switch above resets `rootChoice` because the incoming
+    // pack re-defaults `subfolder`, which can leave it empty and blocking.
+    // Re-picking the pack already selected re-defaults nothing, so the reset
+    // has nothing to protect against and only destroys the user's choice —
+    // "Change pack" is supposed to be non-destructive.
+    const { bridge } = makeBridge();
+    await renderDialog(bridge, 'knowledge-base');
+
+    clickRadio('create-seed-root-subfolder');
+    await waitFor(() => {
+      expect(planCalls.at(-1)?.rootDir).toBe('brain');
+    });
+
+    fireEvent.click(screen.getByTestId('create-change-pack'));
+    await userEvent.click(await screen.findByRole('button', { name: /Knowledge base/ }));
+
+    // Back through review to the form the choice was made on.
+    await screen.findByTestId('create-review-body');
+    fireEvent.click(screen.getByTestId('create-review-continue'));
+    await screen.findByTestId('create-project-form');
+
+    expect(
+      document.getElementById('create-seed-root-subfolder')?.getAttribute('aria-checked'),
+    ).toBe('true');
+    await waitFor(() => {
+      expect(planCalls.at(-1)?.rootDir).toBe('brain');
+    });
+  });
+
+  test('the grid has no route back to review — only Cancel, which closes', async () => {
+    // A prior revision gave review and the grid a Back apiece pointing at each
+    // other, so a chip user bounced between two screens with no way out. One
+    // named action ("Change pack") with one destination (the grid), and the
+    // grid's only secondary closes outright.
+    const onOpenChange = vi.fn(() => {});
+    const { bridge } = makeBridge();
+    const { CreateProjectDialog } = await import('./CreateProjectDialog');
+    render(
+      <TooltipProvider>
+        <CreateProjectDialog
+          open
+          onOpenChange={onOpenChange}
+          bridge={bridge}
+          initialPackId="knowledge-base"
+          packs={PACKS}
+        />
+      </TooltipProvider>,
+    );
+    await screen.findByTestId('create-review-body');
+
+    // Review offers Change pack, and no Cancel of its own.
+    expect(screen.queryByTestId('create-cancel')).toBeNull();
+    fireEvent.click(screen.getByTestId('create-change-pack'));
+
+    // On the grid: no Change pack (already there), and Cancel closes rather
+    // than returning to review.
+    await screen.findByRole('button', { name: /Plain notes/ });
+    expect(screen.queryByTestId('create-change-pack')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('create-cancel'));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  test('the configure screen names the skills the AI-tools box decides', async () => {
+    // The review screen already counted these skills; the box that decides
+    // whether they install is a screen later. Unticking has to visibly cancel
+    // them rather than silently subtracting from a number already read.
+    const { bridge } = makeBridge();
+    await renderDialog(bridge, 'knowledge-base');
+
+    const note = await screen.findByTestId('create-pack-skills-note');
+    expect(note.textContent).toContain('1 skill');
+    expect(note.textContent).toContain('installs');
+
+    // Untick "Connect AI tools" — the count stays, the consequence flips.
+    await userEvent.click(screen.getByRole('checkbox'));
+
+    await waitFor(() => {
+      const after = screen.getByTestId('create-pack-skills-note');
+      expect(after.textContent).toContain('1 skill');
+      expect(after.textContent).toContain("won't be installed");
+    });
+  });
+
+  test('the manifest renders on review and not on the configure screen', async () => {
+    // The whole point of the split: the configure screen carries only inputs
+    // the user can act on, and the pack's contents are read once, before it.
+    const { bridge } = makeBridge();
+    await renderDialogAtReview(bridge, 'knowledge-base');
+
+    await screen.findByText('external-sources/');
+
+    fireEvent.click(screen.getByTestId('create-review-continue'));
+    await screen.findByTestId('create-name');
+    expect(screen.queryByText('external-sources/')).toBeNull();
   });
 
   test('Change pack swaps the configured pack without leaving the dialog', async () => {
@@ -434,8 +682,10 @@ describe('CreateProjectDialog starter-pack configurator', () => {
     await waitFor(() => {
       expect(planCalls.at(-1)?.packId).toBe('plain-notes');
     });
+    // Re-picking re-enters review, so the swapped pack's manifest is read there.
     await screen.findByText('daily/');
 
+    fireEvent.click(screen.getByTestId('create-review-continue'));
     await submit('Notes');
     await waitFor(() => {
       expect(createNewCalls).toHaveLength(1);

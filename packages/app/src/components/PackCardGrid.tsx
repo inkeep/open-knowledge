@@ -1,5 +1,5 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-import { Plural, Trans, useLingui } from '@lingui/react/macro';
+import { Trans, useLingui } from '@lingui/react/macro';
 import {
   ArrowRight,
   BookMarked,
@@ -259,7 +259,12 @@ function PackCard({ pack, onSelect }: PackCardProps) {
     <button
       type="button"
       onClick={onSelect}
-      className="group flex h-full min-w-0 flex-col items-start gap-4 rounded-2xl border border-border/60 bg-card p-5 text-left transition-[border-color,box-shadow,transform] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px"
+      // Stable handle for callers that need to reach the first card — the
+      // create dialog moves focus here when it opens the grid. Querying for a
+      // bare `button` would also match the Show-more toggle and the
+      // blank-file footer, whose DOM order is not guaranteed.
+      data-slot="pack-card"
+      className="group relative flex h-full min-w-0 flex-col items-start overflow-hidden rounded-2xl border border-border/60 bg-card p-5 text-left transition-[border-color,box-shadow,transform] hover:border-border hover:shadow-sm focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px"
     >
       <div className="flex w-full min-w-0 flex-col gap-2">
         <div className="flex min-w-0 flex-row items-start gap-2">
@@ -272,21 +277,39 @@ function PackCard({ pack, onSelect }: PackCardProps) {
         <p className="line-clamp-2 text-1sm leading-relaxed text-muted-foreground">
           {pack.description}
         </p>
-
-        <p className="text-xs text-muted-foreground">
-          <Plural value={pack.entryCounts.files} one="# file" other="# files" />
-          {' · '}
-          <Plural value={pack.entryCounts.folders} one="# folder" other="# folders" />
-        </p>
       </div>
 
       {/* The card only opens the per-pack configurator — `SeedDialog` writes
           nothing until its explicit Initialize button. Name that so the click
-          doesn't read as "install now". Always visible, unlike the folder
-          detail in the tooltip, which is hover/focus-only. */}
-      <span className="mt-auto inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
-        <Trans>See what's added</Trans>
-        <ArrowRight aria-hidden="true" className="size-3.5" />
+          doesn't read as "install now". Absolutely positioned so it costs no
+          layout height: in flow it spent a permanent row on every card for a
+          label that only matters once the pointer is on one. Frosting the whole
+          card (rather than fading a band over its bottom edge) keeps the label
+          optically centered instead of colliding with the clamped description.
+          Opacity-only reveal (never `hidden`/`display:none`) keeps the label in
+          the button's accessible name regardless of hover state.
+
+          `rounded-[inherit]` is not cosmetic — the parent's `overflow-hidden`
+          clips normal painting to the rounded box, but a `backdrop-filter`
+          layer is composited separately and, on the GPU path, clips its
+          filtered result to its OWN border-radius. With no radius here that is
+          a rectangle, so the frosted panel squares off the card's corners.
+
+          `data-slot` is load-bearing, not decorative: it's the selector that
+          globals.css uses to strip the blur under
+          `prefers-reduced-transparency`. Renaming it here silently drops the
+          suppression — `globals.reduced-transparency.test.ts` pins the pair. */}
+      <span
+        data-slot="pack-card-reveal"
+        className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-card/85 text-sm font-medium text-muted-foreground opacity-0 transition-opacity duration-200 ease-out-strong group-hover:opacity-100 group-focus-visible:opacity-100 supports-backdrop-filter:bg-card/35 supports-backdrop-filter:backdrop-blur-md reduced-transparency:bg-card"
+      >
+        {/* The lift is spatial, so it's opt-in via `motion-safe:`; the opacity
+            fade above stays on for reduced-motion users, who still get the
+            reveal — just without the travel. */}
+        <span className="inline-flex items-center gap-1.5 motion-safe:translate-y-1 motion-safe:transition-[translate] motion-safe:duration-200 motion-safe:ease-out-strong motion-safe:group-hover:translate-y-0 motion-safe:group-focus-visible:translate-y-0">
+          <Trans>See what's added</Trans>
+          <ArrowRight aria-hidden="true" className="size-3.5" />
+        </span>
       </span>
     </button>
   );
@@ -323,7 +346,6 @@ function PackCardSkeleton() {
         <div className="h-3 w-full animate-pulse rounded bg-muted" />
         <div className="h-3 w-4/5 animate-pulse rounded bg-muted" />
       </div>
-      <div className="mt-auto h-3 w-20 animate-pulse rounded bg-muted" />
     </div>
   );
 }

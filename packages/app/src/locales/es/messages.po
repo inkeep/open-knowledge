@@ -189,20 +189,10 @@ msgstr "{0, plural, one {# documento} many {# documentos} other {# documentos}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# error} many {# errores} other {# errores}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, one {# archivo} many {# archivos} other {# archivos}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, one {# carpeta seleccionada} many {# carpetas seleccionadas} other {# carpetas seleccionadas}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, one {# carpeta} many {# carpetas} other {# carpetas}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1994,7 +1984,6 @@ msgstr "Disponible en la aplicación de escritorio de OpenKnowledge. Desde una t
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4799,7 +4788,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "Cada herramienta de IA lee las habilidades desde su propia carpeta. Apunta una carpeta a otra y ambas herramientas verán las mismas habilidades: añade una habilidad una sola vez en lugar de copiarla en cada herramienta."
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "Cada paquete prepara tu proyecto con carpetas y plantillas ya hechas."
 
@@ -6288,6 +6276,10 @@ msgstr "Ayuda a tus agentes a descubrir y usar OpenKnowledge en cualquier proyec
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Ayuda a los agentes de programación a elegir tipos de documento OKF, preservar la procedencia y evitar inventar metadatos no compatibles."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "Esto es lo que este paquete añade a tu proyecto. No se escribe nada hasta que crees el proyecto."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9968,6 +9960,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "La gestión de herramientas de IA del proyecto solo está disponible en la aplicación de escritorio de OpenKnowledge."
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "Detalles del proyecto"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "Se creó la carpeta del proyecto, pero falló git init. Inténtalo de nuevo."
 
@@ -10907,6 +10903,10 @@ msgstr "Revisar los conflictos"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "Revisa tu informe"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "Revisando lo que añade este paquete"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12177,7 +12177,6 @@ msgid "starter pack"
 msgstr "paquete inicial"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "Paquetes iniciales"
 
@@ -13116,6 +13115,10 @@ msgstr "Este agente funciona con {0}, que está instalado pero no arranca: su {1
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "Este agente funciona con {0}, que no está instalado. Open Knowledge puede descargar una copia privada de {1} {2} (unos {3} MB desde {4}) que no tocará el resto de tu sistema."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "Esto también instala {packSkillCount, plural, one {# habilidad} many {# habilidades} other {# habilidades}} del paquete."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14105,6 +14108,10 @@ msgstr "Usa solo letras minúsculas, dígitos y <0>-</0>."
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Usa solo letras minúsculas, números y guiones"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "Usar este paquete inicial"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14413,6 +14420,10 @@ msgstr "Se guardará como <0>{sanitized}</0>."
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "Ventana"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "Sin una herramienta de IA conectada, no se instalarán {packSkillCount, plural, one {# habilidad} many {# habilidades} other {# habilidades}} del paquete."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"

@@ -189,20 +189,10 @@ msgstr "{0, plural, zero {# مستند} one {مستند واحد} two {مستن�
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, zero {# خطأ} one {خطأ واحد} two {خطآن} few {# أخطاء} many {# خطأً} other {# خطأ}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, zero {# ملف} one {ملف واحد} two {ملفان} few {# ملفات} many {# ملفًا} other {# ملف}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, zero {لم يتم اختيار مجلدات} one {تم اختيار مجلد واحد} two {تم اختيار مجلدين} few {تم اختيار # مجلدات} many {تم اختيار # مجلدًا} other {تم اختيار # مجلد}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, zero {# مجلد} one {مجلد واحد} two {مجلدان} few {# مجلدات} many {# مجلدًا} other {# مجلد}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1994,7 +1984,6 @@ msgstr "متاح في تطبيق OpenKnowledge لسطح المكتب. من ال�
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4799,7 +4788,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "تقرأ كل أداة ذكاء اصطناعي المهارات من مجلدها الخاص. وجّه مجلدًا إلى آخر لترى الأداتان المهارات نفسها — أضف المهارة مرة واحدة بدلًا من نسخها إلى كل أداة."
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "تبني كل حزمة هيكل مشروعك بمجلدات وقوالب جاهزة."
 
@@ -6288,6 +6276,10 @@ msgstr "ساعد وكلاءك على اكتشاف OpenKnowledge واستخدام
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "يساعد وكلاء الترميز في اختيار أنواع المستندات OKF والحفاظ على المصدر وتجنب اختراع بيانات تعريف غير مدعومة."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "إليك ما تضيفه هذه الحزمة إلى مشروعك. لا يُكتب أي شيء حتى تنشئ المشروع."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9968,6 +9960,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "إدارة أدوات الذكاء الاصطناعي للمشروع متاحة فقط في تطبيق OpenKnowledge لسطح المكتب."
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "تفاصيل المشروع"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "أُنشئ مجلد المشروع، لكن فشل git init. أعد المحاولة."
 
@@ -10907,6 +10903,10 @@ msgstr "مراجعة التعارضات"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "راجع تقريرك"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "مراجعة ما تضيفه هذه الحزمة"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12177,7 +12177,6 @@ msgid "starter pack"
 msgstr "حزمة بداية"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "حزم البداية"
 
@@ -13116,6 +13115,10 @@ msgstr "يعمل هذا الوكيل عبر {0}، وهو مثبَّت لكنه �
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "يعمل هذا الوكيل عبر {0}، وهو غير مثبَّت. يستطيع Open Knowledge تنزيل نسخة خاصة من {1} {2} (نحو {3} ميغابايت من {4}) لا تمس بقية نظامك."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "يؤدي هذا أيضًا إلى تثبيت {packSkillCount, plural, zero {# مهارة} one {مهارة واحدة} two {مهارتين} few {# مهارات} many {# مهارة} other {# مهارة}} من الحزمة."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14105,6 +14108,10 @@ msgstr "استخدم الحروف الصغيرة والأرقام و<0>-</0> ف�
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "استخدم الحروف الصغيرة والأرقام والشرطات فقط"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "استخدم حزمة البداية هذه"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14413,6 +14420,10 @@ msgstr "سيُحفظ باسم <0>{sanitized}</0>."
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "نافذة"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "بدون أداة ذكاء اصطناعي متصلة، لن يتم تثبيت {packSkillCount, plural, zero {# مهارة} one {مهارة واحدة} two {مهارتين} few {# مهارات} many {# مهارة} other {# مهارة}} من الحزمة."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"

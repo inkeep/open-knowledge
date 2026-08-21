@@ -79,9 +79,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { i18n, type MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowLeft } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreatedItemsList, CreatedItemsSkeleton } from '@/components/CreatedItemsList';
 import { PackCardGrid } from '@/components/PackCardGrid';
@@ -219,6 +219,37 @@ const _CREATE_NEW_REASON_DRIFT_PIN: _Equals<
   Exclude<CreateNewError['reason'], 'unknown'>
 > = true;
 void _CREATE_NEW_REASON_DRIFT_PIN;
+
+type CreateStep = 'pick' | 'review' | 'configure';
+
+/**
+ * The one place that knows where each screen puts focus.
+ *
+ * Every screen mounts a different body, so a target belonging to another screen
+ * is null and `?.focus()` silently no-ops — dropping the user on whatever the
+ * dialog primitive tabs to first, which on review is the control that discards
+ * their pack. That has already cost one regression, so the mapping lives here
+ * and nowhere else. Module scope rather than a closure so the on-open effect
+ * can call it without taking it as a dependency.
+ */
+function focusStepPrimary(
+  next: CreateStep,
+  targets: {
+    reviewContinueRef: RefObject<HTMLButtonElement | null>;
+    nameInputRef: RefObject<HTMLInputElement | null>;
+    packGridRef: RefObject<HTMLDivElement | null>;
+  },
+) {
+  if (next === 'review') {
+    targets.reviewContinueRef.current?.focus();
+    return;
+  }
+  if (next === 'configure') {
+    targets.nameInputRef.current?.focus();
+    return;
+  }
+  targets.packGridRef.current?.querySelector<HTMLElement>('[data-slot="pack-card"]')?.focus();
+}
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -389,10 +420,34 @@ export function CreateProjectDialog({
   // defaults to the project root — same default the in-project seed dialog
   // uses — with the pack's `defaultSubfolder` only pre-filling the input.
   const [packId, setPackId] = useState<OkPackId | undefined>(initialPackId);
-  const [step, setStep] = useState<'pick' | 'configure'>('configure');
+  // `review` sits between picking a pack and configuring the project: it is the
+  // only place the pack's manifest renders, so the configure screen carries
+  // nothing the user cannot act on. A blank create never enters either pack
+  // step.
+  const [step, setStep] = useState<CreateStep>('configure');
   const [rootChoice, setRootChoice] = useState<SeedRootChoice>('project-root');
   const [subfolder, setSubfolder] = useState('');
   const [packPreview, setPackPreview] = useState<PackPreview>({ kind: 'loading' });
+  // Reduced to a boolean so the open effect can depend on "is there a pack list"
+  // without depending on the array itself.
+  const hasPackList = (packs?.length ?? 0) > 0;
+  // Whether the caller's pack id actually resolves, not merely that one was
+  // passed. An unresolved id would open on review, where the body falls through
+  // to the configure form (it needs `selectedPack`) while the footer still
+  // branches on the step — a form wearing the review screen's buttons. Reduced
+  // to a boolean for the same reason as above: the open effect must not
+  // re-trigger on a new `packs` array identity.
+  const initialPackResolves =
+    initialPackId !== undefined && (packs?.some((pack) => pack.id === initialPackId) ?? false);
+  // Same trick for the preview gate: review and configure both want a plan, so
+  // moving between them must not tear the effect down and re-issue a byte
+  // identical round trip.
+  const packPlanActive = step !== 'pick';
+  // A settled plan is the only place the pack's skill count exists, and it is
+  // read three times below. `kind === 'plan'` already implies a selected pack —
+  // the preview effect returns early without one.
+  const packSkillCount =
+    packPreview.kind === 'plan' ? (packPreview.plan.packSkills?.length ?? 0) : 0;
   const [cascade, setCascade] = useState<SettledCascade>({ kind: 'idle' });
   const [probeLifecycle, setProbeLifecycle] = useState<ProbeLifecycle>('idle');
   const [busy, setBusy] = useState(false);
@@ -416,6 +471,19 @@ export function CreateProjectDialog({
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const reviewContinueRef = useRef<HTMLButtonElement | null>(null);
+  const packGridRef = useRef<HTMLDivElement | null>(null);
+
+  // Route every in-dialog step change through here so "changed step without
+  // handing off focus" is not expressible. The on-open effect is the one
+  // exception: it seeds the whole form and owns its own frame cancellation, so
+  // it calls `focusStepPrimary` directly.
+  const goToStep = (next: CreateStep) => {
+    setStep(next);
+    requestAnimationFrame(() =>
+      focusStepPrimary(next, { reviewContinueRef, nameInputRef, packGridRef }),
+    );
+  };
   // Monotonic ID for in-flight remove-.git IPC calls. The post-IPC handler
   // checks this against its captured-at-dispatch value; any completion for a
   // superseded call (gitRoot changed under us, or the user opened a fresh
@@ -452,7 +520,14 @@ export function CreateProjectDialog({
     // Honor the caller's pack on every open — the Navigator clears it when the
     // dialog closes, so a blank create after a pack create must not inherit it.
     setPackId(initialPackId);
-    setStep('configure');
+    // Which screen the dialog opens on is inferred from what the caller handed
+    // it, so no call site has to name a step. A pack means the user already
+    // chose one and lands on review; a pack list with no pack is the browse-all
+    // entry and lands on the grid; neither is a blank create, which has no pack
+    // screens at all. `hasPackList` is the dependency rather than `packs` so a
+    // new array identity from the parent cannot reset the whole form mid-open.
+    const openingStep = initialPackResolves ? 'review' : hasPackList ? 'pick' : 'configure';
+    setStep(openingStep);
     setRootChoice('project-root');
     setPackPreview({ kind: 'loading' });
     previewFirstLoadRef.current = true;
@@ -528,21 +603,28 @@ export function CreateProjectDialog({
         if (!cancelled) setLocationResolving(false);
       });
 
-    // Focus the Name input once shadcn Dialog finishes its mount
-    // animation. requestAnimationFrame defers past the initial render so
-    // Radix's portal/transition handlers don't steal focus back. The name
-    // input is always rendered (no defaultPath-loading gate), so `.focus()`
-    // lands on a real focusable input regardless of where the
-    // defaultProjectsRoot promise is in its lifecycle.
-    const raf = requestAnimationFrame(() => {
-      nameInputRef.current?.focus();
-    });
+    // Move focus to the screen's primary control once shadcn Dialog finishes
+    // its mount animation. requestAnimationFrame defers past the initial
+    // render so Radix's portal/transition handlers don't steal focus back.
+    //
+    // The target has to follow the step chosen above: each screen mounts a
+    // different body, so a ref belonging to another screen is null here and
+    // `?.focus()` silently no-ops — leaving Radix to take the first tabbable
+    // node in DOM order. On review that is `Change pack`, which discards the
+    // pack the user just chose, so the no-op is not a harmless one.
+    const raf = requestAnimationFrame(() =>
+      focusStepPrimary(openingStep, { reviewContinueRef, nameInputRef, packGridRef }),
+    );
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [open, bridge, initialPackId]);
+    // Caller contract: `packs` must be settled before `open` goes true. These
+    // are booleans rather than the array so a re-fetch returning an equal list
+    // cannot re-run this, but a genuine empty→populated flip mid-open still
+    // would — and this effect resets the whole form, so it would wipe input.
+  }, [open, bridge, initialPackId, hasPackList, initialPackResolves]);
 
   // The pack currently configured, resolved from the caller-supplied list.
   // Absent when this is a blank create (no `packId`) or when the caller didn't
@@ -583,7 +665,10 @@ export function CreateProjectDialog({
   useEffect(() => {
     if (!open) return;
     if (selectedPack === undefined) return;
-    if (step !== 'configure') return;
+    // Runs on review and configure alike: review is where the plan is read, and
+    // configure keeps re-planning as the root/subfolder and AI-tool inputs
+    // change. Only the grid has no pack to plan for.
+    if (!packPlanActive) return;
     if (subfolderInvalid) {
       setPackPreview({
         kind: 'error',
@@ -647,7 +732,7 @@ export function CreateProjectDialog({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [open, step, selectedPack, packRootDir, subfolderInvalid, skillsInstallable, t]);
+  }, [open, packPlanActive, selectedPack, packRootDir, subfolderInvalid, skillsInstallable, t]);
 
   // Cascade probe — debounce + abort. Recomputes on every `location` or
   // `name` change. When either is empty (or `name` sanitizes to empty),
@@ -1011,11 +1096,19 @@ export function CreateProjectDialog({
     sanitizeErased || nameTaken || sanitizeDiverged ? `${captionId} ${nameErrorId}` : captionId;
 
   // The pack grid is only reachable when the caller supplied a pack list AND
-  // this open started from a pack — the blank create paths (File → New,
+  // a pack is currently selected — the blank create paths (File → New,
   // command palette, project switcher) stay a plain create dialog.
-  const canChangePack = packId !== undefined && (packs?.length ?? 0) > 0;
+  const canChangePack = packId !== undefined && hasPackList;
   const selectedPackName = selectedPack?.name;
   const selectedPackBlurb = selectedPack ? PACK_BLURBS[selectedPack.id] : undefined;
+  // Named per step so the live region above announces where the user landed,
+  // not merely that something changed.
+  const stepAnnouncement =
+    step === 'pick'
+      ? t`Starter packs`
+      : step === 'review'
+        ? t`Reviewing what this pack adds`
+        : t`Project details`;
   const title =
     selectedPackName !== undefined
       ? t`Create new project from ${selectedPackName}`
@@ -1033,34 +1126,79 @@ export function CreateProjectDialog({
         className={cn('sm:max-w-lg', step === 'pick' && 'sm:max-w-3xl')}
         data-testid="create-project-dialog"
       >
+        {/* Radix announces a dialog when focus enters it, once, on open. This
+            dialog stays mounted and swaps its body, so without a live region a
+            screen-reader user moving between steps hears only the newly focused
+            control and never the screen it belongs to. Mirrors the AI-tools
+            status region below. */}
+        <span aria-live="polite" className="sr-only" data-testid="create-step-announcer">
+          {stepAnnouncement}
+        </span>
+
         <DialogHeader>
           <DialogTitle>{step === 'pick' ? t`Starter packs` : title}</DialogTitle>
           <DialogDescription>
             {step === 'pick'
               ? t`Each pack scaffolds your project with ready-made folders and templates.`
-              : description}
+              : step === 'review'
+                ? // On review the blurb is the wrong register: the user has
+                  // already chosen, and what they need now is what the choice
+                  // costs them on disk. The manifest below answers that, so the
+                  // description only has to frame it.
+                  t`Here's what this pack adds to your project. Nothing is written until you create the project.`
+                : description}
           </DialogDescription>
         </DialogHeader>
 
         {step === 'pick' ? (
-          <DialogBody>
+          <DialogBody ref={packGridRef}>
             <PackCardGrid
               packs={packs ?? null}
               onPackSelect={(id) => {
                 setPackId(id);
-                setStep('configure');
+                // The subfolder field re-defaults from the incoming pack, so a
+                // pack with no default empties it. Left on "In a subfolder"
+                // that reads as an empty required field, and the preview turns
+                // into a BLOCKING error that review renders in place of the
+                // manifest — with no field on screen to resolve it. Reset the
+                // choice with the pack, matching what the open effect does.
+                // Only on a real switch: re-picking the pack already selected
+                // re-defaults no subfolder, so there is nothing to protect
+                // against and the reset would just discard the user's choice.
+                if (id !== packId) setRootChoice('project-root');
                 // The user just clicked a card and expects the preview to
                 // follow immediately, not after the typing debounce.
                 previewFirstLoadRef.current = true;
                 setPackPreview({ kind: 'loading' });
                 // The card the click landed on unmounts with the grid, so
                 // focus would fall to the body and a keyboard user would lose
-                // their place inside the dialog. Same rAF-then-focus shape as
-                // the on-open focus above.
-                requestAnimationFrame(() => nameInputRef.current?.focus());
+                // their place inside the dialog.
+                goToStep('review');
               }}
             />
           </DialogBody>
+        ) : step === 'review' ? (
+          // Total on the step, so the footer (which branches on `step` alone)
+          // can never end up wrapped around the configure form. Both routes
+          // into review resolve a pack by construction; if one ever did not,
+          // rendering nothing is a visible gap rather than a silent hybrid.
+          selectedPack === undefined ? null : (
+            <DialogBody data-testid="create-review-body">
+              {packPreview.kind === 'error' ? (
+                <div
+                  role="alert"
+                  className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
+                  data-testid="create-pack-preview-error"
+                >
+                  {packPreview.message}
+                </div>
+              ) : packPreview.kind === 'plan' ? (
+                <CreatedItemsList plan={packPreview.plan} selectedPack={selectedPack} />
+              ) : (
+                <CreatedItemsSkeleton rowCount={selectedPack.folders.length} />
+              )}
+            </DialogBody>
+          )
         ) : (
           <DialogBody className="space-y-6">
             <form
@@ -1213,7 +1351,11 @@ export function CreateProjectDialog({
                       </Trans>
                     </p>
                   ) : null}
-                  {packPreview.kind === 'error' ? (
+                  {/* The manifest itself lives on the review screen. What stays
+                      here is only the blocking case: a root the planner rejects
+                      is a problem with an input on THIS screen, so its error has
+                      to be readable next to the field that causes it. */}
+                  {packPreview.kind === 'error' && packPreview.blocking ? (
                     <div
                       role="alert"
                       className="rounded-md bg-destructive/10 p-3 text-sm text-destructive"
@@ -1221,11 +1363,7 @@ export function CreateProjectDialog({
                     >
                       {packPreview.message}
                     </div>
-                  ) : packPreview.kind === 'plan' ? (
-                    <CreatedItemsList plan={packPreview.plan} selectedPack={selectedPack} />
-                  ) : (
-                    <CreatedItemsSkeleton rowCount={selectedPack.folders.length} />
-                  )}
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1241,6 +1379,35 @@ export function CreateProjectDialog({
                 onCheckedChange={setConnectEditors}
                 disabled={busy}
               />
+
+              {/* The review screen counted these skills, but whether they
+                  install is decided HERE, a screen later — a pack's skills only
+                  land in tools the project is connected to. Without this line,
+                  unticking above is a silent subtraction from a number the user
+                  already read. Counts every skill the pack ships (the plan
+                  keeps them listed and only flips `pending`), so the number
+                  stays put and only the sentence around it changes. The off-state
+                  copy names the missing *connection*, not the checkbox, because
+                  it covers both ways skills fail to land: the box unticked, and
+                  no tool on the machine at all. The row above already tells the
+                  second case what to do, so this line states only the
+                  consequence rather than repeating the instruction. */}
+              {packSkillCount > 0 ? (
+                <p className="text-1sm text-muted-foreground" data-testid="create-pack-skills-note">
+                  {skillsInstallable ? (
+                    <Trans>
+                      This also installs the pack's{' '}
+                      <Plural value={packSkillCount} one="# skill" other="# skills" />.
+                    </Trans>
+                  ) : (
+                    <Trans>
+                      Without a connected AI tool, the pack's{' '}
+                      <Plural value={packSkillCount} one="# skill" other="# skills" /> won't be
+                      installed.
+                    </Trans>
+                  )}
+                </p>
+              ) : null}
 
               <SharingModeField
                 idPrefix="create"
@@ -1264,12 +1431,18 @@ export function CreateProjectDialog({
         )}
 
         <DialogFooter>
-          {step === 'configure' && canChangePack ? (
+          {/* One named action, one destination: "Change pack" always means the
+              grid, on both screens that can reach it. The grid has no Back of
+              its own — picking a pack IS the way forward out of it, and the
+              form's state survives that round trip, so the non-destructive exit
+              is picking rather than retreating. Its only secondary is Cancel,
+              which closes because that is what Cancel means. */}
+          {(step === 'configure' || step === 'review') && canChangePack ? (
             <Button
               type="button"
               variant="ghost"
               className="me-auto font-mono uppercase"
-              onClick={() => setStep('pick')}
+              onClick={() => goToStep('pick')}
               disabled={busy}
               data-testid="create-change-pack"
             >
@@ -1277,16 +1450,32 @@ export function CreateProjectDialog({
               <Trans>Change pack</Trans>
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            className="font-mono uppercase"
-            onClick={() => (step === 'pick' ? setStep('configure') : onOpenChange(false))}
-            disabled={busy}
-            data-testid="create-cancel"
-          >
-            {step === 'pick' ? <Trans>Back</Trans> : <Trans>Cancel</Trans>}
-          </Button>
+          {/* Cancel closes outright, from the grid as well as the form. Only a
+              close resets the form — every step transition preserves what the
+              user has typed. Review has no Cancel of its own; its exits are
+              Change pack and the dialog's own close control. */}
+          {step !== 'review' ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="font-mono uppercase"
+              onClick={() => onOpenChange(false)}
+              disabled={busy}
+              data-testid="create-cancel"
+            >
+              <Trans>Cancel</Trans>
+            </Button>
+          ) : null}
+          {step === 'review' ? (
+            <Button
+              type="button"
+              ref={reviewContinueRef}
+              onClick={() => goToStep('configure')}
+              data-testid="create-review-continue"
+            >
+              <Trans>Use this starter pack</Trans>
+            </Button>
+          ) : null}
           {step === 'configure' ? (
             <Button
               type="submit"

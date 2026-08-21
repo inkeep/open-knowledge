@@ -140,6 +140,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Opt a single utility into the reduced-transparency fallback. The @media
+   block further down strips `backdrop-filter` from every slot that opts into a
+   blur, but stripping the blur alone is not enough for a translucent overlay:
+   without it, the alpha that the blur was hiding behind turns into sharp text
+   showing through a wash — the exact effect the setting exists to remove. A
+   slot that pairs a blur with an alpha-suffixed background utility uses this
+   variant to restore an opaque background at the same breakpoint. */
+@custom-variant reduced-transparency (@media (prefers-reduced-transparency: reduce));
+
 @theme {
   /* Agent terracotta */
   --color-agent: #d97757;
@@ -375,7 +384,8 @@
 @media (prefers-reduced-transparency: reduce) {
   [data-slot="dialog-overlay"],
   [data-slot="sheet-overlay"],
-  [data-slot="alert-dialog-overlay"] {
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="pack-card-reveal"] {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }

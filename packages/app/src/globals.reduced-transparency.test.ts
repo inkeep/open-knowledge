@@ -58,7 +58,7 @@ describe('globals.css — prefers-reduced-transparency revert', () => {
   // its exact selector. A new overlay primitive inherits the blur but not the
   // suppression, and the omission is invisible: the blur is `backdrop-blur-xs`,
   // subtle enough to pass a sighted spot-check by someone who has the setting on.
-  test('strips backdrop-filter from dialog, sheet, and alert-dialog overlays', () => {
+  test('strips backdrop-filter from every overlay slot that opts into a blur', () => {
     const block = CSS.match(
       /@media \(prefers-reduced-transparency: reduce\) \{[^}]*\[data-slot="dialog-overlay"\][\s\S]*?\}\s*\}/,
     );
@@ -67,8 +67,21 @@ describe('globals.css — prefers-reduced-transparency revert', () => {
     expect(blockText).toContain('[data-slot="dialog-overlay"]');
     expect(blockText).toContain('[data-slot="sheet-overlay"]');
     expect(blockText).toContain('[data-slot="alert-dialog-overlay"]');
+    expect(blockText).toContain('[data-slot="pack-card-reveal"]');
     expect(blockText).toContain('backdrop-filter: none');
     expect(blockText).toContain('-webkit-backdrop-filter: none');
+  });
+
+  // Stripping the blur is only half the revert for a slot whose background is
+  // translucent *because* of the blur. `pack-card-reveal` fades a frosted panel
+  // over the pack description; drop the blur and leave the alpha and the
+  // description reads straight through a wash — worse than either extreme. The
+  // `reduced-transparency` variant is what restores the opaque background, so
+  // the variant has to exist for that class to compile to anything at all.
+  test('declares the reduced-transparency variant used for opaque fallbacks', () => {
+    expect(CSS).toMatch(
+      /@custom-variant\s+reduced-transparency\s+\(@media\s*\(\s*prefers-reduced-transparency:\s*reduce\s*\)\s*\)/,
+    );
   });
 });
 

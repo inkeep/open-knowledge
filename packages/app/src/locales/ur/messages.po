@@ -189,20 +189,10 @@ msgstr "{0, plural, one {# دستاویز} other {# دستاویزات}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, one {# خرابی} other {# خرابیاں}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, one {# فائل} other {# فائلیں}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, one {# فولڈر منتخب} other {# فولڈر منتخب}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, one {# فولڈر} other {# فولڈرز}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1994,7 +1984,6 @@ msgstr "OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب۔ ٹرمینل 
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4799,7 +4788,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "ہر AI ٹول مہارتیں اپنے فولڈر سے پڑھتا ہے۔ ایک فولڈر کو دوسرے کی طرف اشارہ کریں تو دونوں ٹولز ایک ہی مہارتیں دیکھیں گے — ہر ٹول میں نقل کرنے کے بجائے مہارت ایک بار شامل کریں۔"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "ہر پیک آپ کے پروجیکٹ کا ڈھانچہ تیار شدہ فولڈرز اور ٹیمپلیٹس سے بناتا ہے۔"
 
@@ -6288,6 +6276,10 @@ msgstr "اپنے ایجنٹس کو کسی بھی پروجیکٹ میں OpenKnowl
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "کوڈنگ ایجنٹوں کو OKF دستاویز کی اقسام کا انتخاب کرنے، اصل کو محفوظ رکھنے، اور غیر تعاون یافتہ میٹا ڈیٹا ایجاد کرنے سے بچنے میں مدد کرتا ہے۔"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "یہ پیک آپ کے پروجیکٹ میں یہ شامل کرتا ہے۔ جب تک آپ پروجیکٹ نہیں بناتے، کچھ نہیں لکھا جاتا۔"
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9968,6 +9960,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "پروجیکٹ کے AI ٹولز کا انتظام صرف OpenKnowledge ڈیسک ٹاپ ایپ میں دستیاب ہے۔"
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "پروجیکٹ کی تفصیلات"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "پروجیکٹ کا فولڈر بن گیا، مگر git init ناکام رہا۔ دوبارہ کوشش کریں۔"
 
@@ -10907,6 +10903,10 @@ msgstr "تصادمات کا جائزہ لیں"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "اپنی رپورٹ کا جائزہ لیں"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "یہ پیک کیا شامل کرتا ہے، جائزہ"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12177,7 +12177,6 @@ msgid "starter pack"
 msgstr "ابتدائی پیک"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "ابتدائی پیکس"
 
@@ -13116,6 +13115,10 @@ msgstr "یہ ایجنٹ {0} کے ذریعے چلتا ہے، جو نصب تو ہ�
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "یہ ایجنٹ {0} کے ذریعے چلتا ہے، جو نصب نہیں ہے۔ Open Knowledge {1} {2} کی ایک نجی نقل ڈاؤن لوڈ کر سکتا ہے (تقریباً {3} MB، {4} سے) جو آپ کے باقی سسٹم کو نہیں چھوئے گی۔"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "یہ پیک کی {packSkillCount, plural, one {# مہارت} other {# مہارتیں}} بھی انسٹال کرتا ہے۔"
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14105,6 +14108,10 @@ msgstr "صرف چھوٹے حروف، ہندسے اور <0>-</0> استعمال �
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "صرف چھوٹے حروف، اعداد اور ڈیش استعمال کریں"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "یہ ابتدائی پیک استعمال کریں"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14413,6 +14420,10 @@ msgstr "<0>{sanitized}</0> کے نام سے محفوظ ہو گا۔"
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "ونڈو"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "منسلک AI ٹول کے بغیر پیک کی {packSkillCount, plural, one {# مہارت} other {# مہارتیں}} انسٹال نہیں ہوں گی۔"
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"

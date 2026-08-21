@@ -101,14 +101,13 @@ describe('PackCardGrid runtime behavior', () => {
     expect(selected).toEqual(['knowledge-base']);
   });
 
-  test('each card shows entry counts, a preview verb, and folder detail on hover', async () => {
+  test('each card shows a preview verb and folder detail on hover', async () => {
     await renderPackCardGrid({ packs: [makePack('knowledge-base', 1)] });
 
     const card = screen.getByRole('button');
-    // makePack(_, 1) → 1 file, 2 folders: exercises both plural branches.
-    expect(card.textContent).toContain('1 file');
-    expect(card.textContent).toContain('2 folders');
     // The click opens a preview step, not an install — the card has to say so.
+    // The label is revealed on hover/focus rather than sitting in the layout,
+    // so it stays in the card's accessible name at all times.
     expect(card.textContent).toContain("See what's added");
 
     await userEvent.hover(card);

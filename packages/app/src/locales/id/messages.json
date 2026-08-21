@@ -917,6 +917,7 @@
     "COr1Y7": [
       "Pilih <0>openknowledge.skill</0> dari folder <1>Downloads</1> Anda. Ia aktif otomatis."
     ],
+    "CPMLsP": ["Meninjau apa yang ditambahkan paket ini"],
     "CPmYSG": ["Mencari agen"],
     "CSL0l1": ["Kuncinya tidak bisa dibersihkan — silakan coba lagi."],
     "CTJLpz": ["\"", ["trimmed"], "\" sudah ada di sini"],
@@ -1212,7 +1213,6 @@
     "Fqx38P": ["Apa yang menghambat?"],
     "Fr8JGg": ["Berkas zip"],
     "Fsx78O": ["Tambahkan perintah <0>ok</0> ke terminal Anda"],
-    "Ftz_t9": [["0", "plural", { "other": ["#", " folder"] }]],
     "FvMSms": [
       "Mengganti nama mengubah berkas di disk dan id yang dipakai agen untuk memilih templat ini."
     ],
@@ -2367,6 +2367,11 @@
     "VMlRqi": ["Sembunyikan detail"],
     "VNNRfN": ["jadikan sumber"],
     "VNgKZz": ["Pengaturan lanjutan"],
+    "VPwWZu": [
+      "Ini juga memasang ",
+      ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skill"] }],
+      " dari paket."
+    ],
     "VTulZj": ["Buka di worktree"],
     "VU3Nrn": ["Hilang"],
     "VUijjF": ["Menyematkan gambar dengan teks alternatif opsional."],
@@ -2652,6 +2657,9 @@
     "Z3FXyt": ["Memuat..."],
     "Z5h97D": [
       "Sembunyikan berkas dan folder dari basis pengetahuan Anda. Item tersembunyi tidak muncul di pohon berkas, pencarian, maupun alat AI. <0>Pelajari lebih lanjut tentang pola</0>."
+    ],
+    "Z67Zlj": [
+      "Berikut yang ditambahkan paket ini ke proyek Anda. Tidak ada yang ditulis sampai Anda membuat proyek."
     ],
     "Z6rrjc": [
       "Belum ada berkas <0>.markdownlint.*</0> — setiap aturan berjalan dengan bawaan yang sama seperti ekstensi markdownlint VS Code: semuanya aktif, kecuali panjang baris."
@@ -3543,7 +3551,6 @@
     "jhtG3I": [" Pilihan Anda telah dipulihkan."],
     "jjtmV_": ["Nama berkas pertama"],
     "jkt28V": ["Biaya konteks"],
-    "jlT89F": [["0", "plural", { "other": ["#", " berkas"] }]],
     "jnCROW": [
       "Cuplikan memori dari kegagalan itu, dan artefak yang paling membantu kami. Isinya bisa memuat isi dokumen dan tidak bisa disunting, jadi hapus centangnya jika Anda tidak ingin membagikannya."
     ],
@@ -3759,6 +3766,7 @@
     "lyWa43": ["Halaman terputus di tingkat proyek"],
     "lzmtKp": ["Gagal memuat properti folder: ", ["message"]],
     "lzwo7p": ["Halaman masuk GitHub tidak dapat dibuka. Silakan coba lagi."],
+    "m-1Z7o": ["Pakai paket awal ini"],
     "m0eHej": [
       "Ganti salinan di ",
       ["display"],
@@ -4337,6 +4345,7 @@
     "tiFPjk": ["sumber"],
     "tiWX6q": ["Penyunting sumber"],
     "tjXez2": ["blog-post"],
+    "tjbyOy": ["Detail proyek"],
     "tkIXtS": [
       ["imported"],
       " keterampilan dipasang (",
@@ -4456,6 +4465,11 @@
     "vPLUCm": ["Gambar ", ["identity"], " tidak ditemukan. Buka referensi."],
     "vPXOUw": ["Tampilkan atau sembunyikan tampilan sumber"],
     "vQIVHc": ["Properti folder"],
+    "vUP_HF": [
+      "Tanpa alat AI yang terhubung, ",
+      ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skill"] }],
+      " dari paket ini tidak akan dipasang."
+    ],
     "vXIe7J": ["Bahasa"],
     "vYOUOk": ["Tambahkan komentar"],
     "vYPvPB": ["Ganti proyek…"],

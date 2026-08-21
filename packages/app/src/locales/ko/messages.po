@@ -189,20 +189,10 @@ msgstr "{0, plural, other {#개 문서}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {오류 #개}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, other {파일 #개}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {#개 폴더를 선택했습니다}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, other {폴더 #개}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1994,7 +1984,6 @@ msgstr "OpenKnowledge 데스크톱 앱에서 사용할 수 있습니다. 터미�
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4799,7 +4788,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "각 AI 도구는 자체 폴더에서 스킬을 읽습니다. 한 폴더를 다른 폴더로 연결하면 두 도구가 같은 스킬을 봅니다. 모든 도구에 복사하는 대신 스킬을 한 번만 추가하세요."
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "각 팩은 바로 사용할 수 있는 폴더와 템플릿으로 프로젝트의 뼈대를 만듭니다."
 
@@ -6288,6 +6276,10 @@ msgstr "에이전트가 어떤 프로젝트에서든 OpenKnowledge를 찾아 사
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "코딩 에이전트가 OKF 문서 유형을 선택하고 출처를 보존하며 지원되지 않는 메타데이터를 만들지 않도록 돕습니다."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "이 팩이 프로젝트에 추가하는 항목입니다. 프로젝트를 만들기 전까지는 아무것도 기록되지 않습니다."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9968,6 +9960,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "프로젝트 AI 도구 관리는 OpenKnowledge 데스크톱 앱에서만 사용할 수 있습니다."
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "프로젝트 세부 정보"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "프로젝트 폴더는 생성되었지만 git init에 실패했습니다. 다시 시도하세요."
 
@@ -10907,6 +10903,10 @@ msgstr "충돌 검토"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "보고서 검토"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "이 팩이 추가하는 항목 검토"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12177,7 +12177,6 @@ msgid "starter pack"
 msgstr "스타터 팩"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "스타터 팩"
 
@@ -13116,6 +13115,10 @@ msgstr "이 에이전트는 {0}을 통해 실행됩니다. 설치되어 있지�
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "이 에이전트는 {0}을 통해 실행됩니다. 현재 설치되어 있지 않습니다. OpenKnowledge에서 시스템 나머지에 영향을 주지 않는 {1} {2} 개인 복사본을 다운로드할 수 있습니다(약 {3}MB, {4}에서)."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "팩의 {packSkillCount, plural, one {스킬 #개} other {스킬 #개}}도 함께 설치됩니다."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14105,6 +14108,10 @@ msgstr "소문자, 숫자, <0>-</0>만 사용하세요."
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "소문자, 숫자, 하이픈만 사용하세요"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "이 스타터 팩 사용"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14413,6 +14420,10 @@ msgstr "<0>{sanitized}</0>으로 저장됩니다."
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "창"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "연결된 AI 도구가 없으면 팩의 {packSkillCount, plural, one {스킬 #개} other {스킬 #개}}는 설치되지 않습니다."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"

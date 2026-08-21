@@ -266,27 +266,27 @@ describe('NavigatorApp launcher — starter-pack line', () => {
     });
   });
 
-  test('the overflow count opens the picker, and picking there opens the create dialog', async () => {
+  test('the overflow count opens the create dialog on its own pack grid', async () => {
+    // The launcher used to own a second picker dialog that duplicated the
+    // create dialog's pack step. Browsing all packs now enters the same dialog
+    // as a pill does — with no pack chosen, so it opens on the grid — rather
+    // than routing through a parallel surface with its own state.
     const bridge = createBridge([]);
     await renderNavigator(bridge);
 
     fireEvent.click(await screen.findByTestId('nav-pack-more'));
 
-    // The picker shows every pack — including the ones the pill row omitted.
-    const card = await screen.findByTestId('pack-card-plain-notes');
-    fireEvent.click(card);
-
     await waitFor(() => {
       const dialog = screen.getByTestId('create-project-dialog');
       expect(dialog.getAttribute('data-open')).toBe('true');
-      expect(dialog.getAttribute('data-pack-id')).toBe('plain-notes');
-      // Same assertion as the pill path: both routes must thread the full list,
-      // not just the chosen id, or the dialog loses the pack's display metadata.
+      // No pack yet — that is what makes the dialog open on its grid.
+      expect(dialog.getAttribute('data-pack-id')).toBe('');
+      // Same assertion as the pill path: both routes thread the full list, or
+      // the dialog loses the packs' display metadata.
       expect(dialog.getAttribute('data-pack-count')).toBe('5');
     });
-    // Picking dismisses the picker rather than stacking it under the create
-    // dialog.
-    await waitFor(() => expect(screen.queryByTestId('nav-pack-picker')).toBeNull());
+    // The duplicate picker is gone, not merely hidden behind the dialog.
+    expect(screen.queryByTestId('nav-pack-picker')).toBeNull();
   });
 
   test('Create new project opens the create dialog with no pack selected', async () => {

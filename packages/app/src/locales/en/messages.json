@@ -928,6 +928,7 @@
     "COr1Y7": [
       "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
     ],
+    "CPMLsP": ["Reviewing what this pack adds"],
     "CPmYSG": ["Checking for agents"],
     "CSL0l1": ["Couldn't clear the key — please try again."],
     "CTJLpz": ["\"", ["trimmed"], "\" already exists here"],
@@ -1214,7 +1215,6 @@
     "Fqx38P": ["What got in the way?"],
     "Fr8JGg": ["Zip file"],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
-    "Ftz_t9": [["0", "plural", { "one": ["#", " folder"], "other": ["#", " folders"] }]],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "Fx9aOF": ["OpenKnowledge edited a document"],
     "Fxf4jq": ["Description (optional)"],
@@ -2359,6 +2359,11 @@
     "VMlRqi": ["Hide details"],
     "VNNRfN": ["make source"],
     "VNgKZz": ["Advanced settings"],
+    "VPwWZu": [
+      "This also installs the pack's ",
+      ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skills"] }],
+      "."
+    ],
     "VTulZj": ["Open in worktree"],
     "VU3Nrn": ["Missing"],
     "VUijjF": ["Embed an image with optional alt text."],
@@ -2635,6 +2640,9 @@
     "Z3FXyt": ["Loading..."],
     "Z5h97D": [
       "Hide files and folders from your knowledge base. Hidden items don’t appear in the file tree, search, or AI tools. <0>Learn more about patterns</0>."
+    ],
+    "Z67Zlj": [
+      "Here's what this pack adds to your project. Nothing is written until you create the project."
     ],
     "Z6rrjc": [
       "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
@@ -3509,7 +3517,6 @@
     "jhtG3I": [" Your selection has been restored."],
     "jjtmV_": ["First file name"],
     "jkt28V": ["Context cost"],
-    "jlT89F": [["0", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]],
     "jnCROW": [
       "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
     ],
@@ -3725,6 +3732,7 @@
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
+    "m-1Z7o": ["Use this starter pack"],
     "m0eHej": [
       "Replace the copy at ",
       ["display"],
@@ -4320,6 +4328,7 @@
     "tiFPjk": ["source"],
     "tiWX6q": ["Source editor"],
     "tjXez2": ["blog-post"],
+    "tjbyOy": ["Project details"],
     "tkIXtS": [
       "Installed ",
       ["imported"],
@@ -4455,6 +4464,11 @@
     "vPLUCm": ["Missing image ", ["identity"], ". Go to reference."],
     "vPXOUw": ["Toggle source view"],
     "vQIVHc": ["Folder properties"],
+    "vUP_HF": [
+      "Without a connected AI tool, the pack's ",
+      ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skills"] }],
+      " won't be installed."
+    ],
     "vXIe7J": ["Language"],
     "vYOUOk": ["Add a comment"],
     "vYPvPB": ["Switch project…"],

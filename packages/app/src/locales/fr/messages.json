@@ -1119,6 +1119,7 @@
     "COr1Y7": [
       "Choisissez <0>openknowledge.skill</0> dans votre dossier <1>Téléchargements</1>. Elle s'active automatiquement."
     ],
+    "CPMLsP": ["Aperçu de ce que ce pack ajoute"],
     "CPmYSG": ["Recherche d'agents"],
     "CSL0l1": ["Impossible d'effacer la clé — veuillez réessayer."],
     "CTJLpz": ["« ", ["trimmed"], " » existe déjà ici"],
@@ -1432,13 +1433,6 @@
     "Fqx38P": ["Qu'est-ce qui vous a gêné ?"],
     "Fr8JGg": ["Fichier zip"],
     "Fsx78O": ["Ajoutez la commande <0>ok</0> à votre terminal"],
-    "Ftz_t9": [
-      [
-        "0",
-        "plural",
-        { "one": ["#", " dossier"], "many": ["#", " dossiers"], "other": ["#", " dossiers"] }
-      ]
-    ],
     "FvMSms": [
       "Renommer modifie le fichier sur le disque ainsi que l'id que les agents utilisent pour choisir ce modèle."
     ],
@@ -2764,6 +2758,19 @@
     "VMlRqi": ["Masquer les détails"],
     "VNNRfN": ["définir comme source"],
     "VNgKZz": ["Paramètres avancés"],
+    "VPwWZu": [
+      "Cela installe également ",
+      [
+        "packSkillCount",
+        "plural",
+        {
+          "one": ["#", " compétence"],
+          "many": ["#", " compétences"],
+          "other": ["#", " compétences"]
+        }
+      ],
+      " du pack."
+    ],
     "VTulZj": ["Ouvrir dans un worktree"],
     "VU3Nrn": ["Manquant"],
     "VUijjF": ["Intègre une image avec un texte alternatif facultatif."],
@@ -3111,6 +3118,9 @@
     "Z3FXyt": ["Chargement…"],
     "Z5h97D": [
       "Masquez des fichiers et des dossiers de votre base de connaissances. Les éléments masqués n'apparaissent ni dans l'arborescence, ni dans la recherche, ni dans les outils IA. <0>En savoir plus sur les motifs</0>."
+    ],
+    "Z67Zlj": [
+      "Voici ce que ce pack ajoute à votre projet. Rien n'est écrit tant que vous n'avez pas créé le projet."
     ],
     "Z6rrjc": [
       "Pas encore de fichier <0>.markdownlint.*</0> — chaque règle s'exécute avec les mêmes valeurs par défaut que l'extension markdownlint de VS Code : toutes activées, sauf la longueur de ligne."
@@ -4116,13 +4126,6 @@
     "jhtG3I": [" Votre sélection a été restaurée."],
     "jjtmV_": ["Nom du premier fichier"],
     "jkt28V": ["Coût de contexte"],
-    "jlT89F": [
-      [
-        "0",
-        "plural",
-        { "one": ["#", " fichier"], "many": ["#", " fichiers"], "other": ["#", " fichiers"] }
-      ]
-    ],
     "jnCROW": [
       "Un instantané de la mémoire au moment du plantage, et l'élément qui nous aide le plus. Il peut contenir du contenu de document et ne peut pas être masqué, alors décochez-le si vous préférez ne pas le partager."
     ],
@@ -4363,6 +4366,7 @@
     "lyWa43": ["Pages isolées au niveau du projet"],
     "lzmtKp": ["Échec du chargement des propriétés du dossier : ", ["message"]],
     "lzwo7p": ["Impossible d'ouvrir la connexion GitHub. Veuillez réessayer."],
+    "m-1Z7o": ["Utiliser ce pack de démarrage"],
     "m0eHej": [
       "Remplacer la copie située dans ",
       ["display"],
@@ -5044,6 +5048,7 @@
     "tiFPjk": ["source"],
     "tiWX6q": ["Éditeur de source"],
     "tjXez2": ["blog-post"],
+    "tjbyOy": ["Détails du projet"],
     "tkIXtS": [
       ["imported"],
       " compétences installées (",
@@ -5197,6 +5202,19 @@
     "vPLUCm": ["Image ", ["identity"], " manquante. Accéder à la référence."],
     "vPXOUw": ["Basculer l'affichage de la source"],
     "vQIVHc": ["Propriétés du dossier"],
+    "vUP_HF": [
+      "Sans outil d'IA connecté, ",
+      [
+        "packSkillCount",
+        "plural",
+        {
+          "one": ["#", " compétence"],
+          "many": ["#", " compétences"],
+          "other": ["#", " compétences"]
+        }
+      ],
+      " du pack ne seront pas installées."
+    ],
     "vXIe7J": ["Langue"],
     "vYOUOk": ["Ajouter un commentaire"],
     "vYPvPB": ["Changer de projet…"],

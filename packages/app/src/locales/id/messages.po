@@ -189,20 +189,10 @@ msgstr "{0, plural, other {# dokumen}}"
 msgid "{0, plural, one {# error} other {# errors}}"
 msgstr "{0, plural, other {# galat}}"
 
-#. placeholder {0}: pack.entryCounts.files
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# file} other {# files}}"
-msgstr "{0, plural, other {# berkas}}"
-
 #. placeholder {0}: selected.size
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{0, plural, one {# folder picked} other {# folders picked}}"
 msgstr "{0, plural, other {# folder dipilih}}"
-
-#. placeholder {0}: pack.entryCounts.folders
-#: src/components/PackCardGrid.tsx
-msgid "{0, plural, one {# folder} other {# folders}}"
-msgstr "{0, plural, other {# folder}}"
 
 #. placeholder {0}: value.length
 #: src/components/ArrayOfObjectsWidget.tsx
@@ -1990,7 +1980,6 @@ msgstr "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
-#: src/components/CreateProjectDialog.tsx
 #: src/components/NavigationHistoryControls.tsx
 #: src/components/ReportBugDialogBody.tsx
 #: src/components/SeedDialog.tsx
@@ -4795,7 +4784,6 @@ msgid "Each AI tool reads skills from its own folder. Point one folder at anothe
 msgstr "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "Setiap paket menyusun proyek Anda dengan folder dan templat siap pakai."
 
@@ -6284,6 +6272,10 @@ msgstr "Bantu agen Anda menemukan dan menggunakan OpenKnowledge di proyek mana p
 #: src/components/settings/LintingSection.tsx
 msgid "Helps coding agents choose OKF document types, preserve provenance, and avoid inventing unsupported metadata."
 msgstr "Membantu agen pengkodean memilih jenis dokumen OKF, mempertahankan asal, dan menghindari penemuan metadata yang tidak didukung."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Here's what this pack adds to your project. Nothing is written until you create the project."
+msgstr "Berikut yang ditambahkan paket ini ke proyek Anda. Tidak ada yang ditulis sampai Anda membuat proyek."
 
 #: src/components/OkBlobRunner.tsx
 msgid "HI"
@@ -9964,6 +9956,10 @@ msgid "Project AI tool management is only available in the OpenKnowledge desktop
 msgstr "Pengelolaan alat AI proyek hanya tersedia di aplikasi desktop OpenKnowledge."
 
 #: src/components/CreateProjectDialog.tsx
+msgid "Project details"
+msgstr "Detail proyek"
+
+#: src/components/CreateProjectDialog.tsx
 msgid "Project folder created, but git init failed. Try again."
 msgstr "Folder proyek dibuat, tetapi git init gagal. Coba lagi."
 
@@ -10903,6 +10899,10 @@ msgstr "Tinjau konflik"
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
 msgstr "Tinjau laporan Anda"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Reviewing what this pack adds"
+msgstr "Meninjau apa yang ditambahkan paket ini"
 
 #: src/editor/slash-command/items.tsx
 msgid "Role"
@@ -12173,7 +12173,6 @@ msgid "starter pack"
 msgstr "paket awal"
 
 #: src/components/CreateProjectDialog.tsx
-#: src/components/NavigatorApp.tsx
 msgid "Starter packs"
 msgstr "Paket awal"
 
@@ -13112,6 +13111,10 @@ msgstr "Agen ini berjalan lewat {0}, yang sudah terpasang tetapi tidak bisa jala
 #: src/components/acp/ThreadView.tsx
 msgid "This agent runs through {0}, which isn't installed. Open Knowledge can download a private copy of {1} {2} (about {3} MB from {4}) that won't touch the rest of your system."
 msgstr "Agen ini berjalan lewat {0}, yang belum terpasang. Open Knowledge bisa mengunduh salinan pribadi {1} {2} (sekitar {3} MB dari {4}) yang tidak akan menyentuh bagian lain sistem Anda."
+
+#: src/components/CreateProjectDialog.tsx
+msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
+msgstr "Ini juga memasang {packSkillCount, plural, one {# skill} other {# skill}} dari paket."
 
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
@@ -14101,6 +14104,10 @@ msgstr "Pakai hanya huruf kecil, angka, dan <0>-</0>."
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Pakai hanya huruf kecil, angka, dan tanda hubung"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Use this starter pack"
+msgstr "Pakai paket awal ini"
+
 #: src/components/settings/ScopeBadge.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "User"
@@ -14409,6 +14416,10 @@ msgstr "Akan disimpan sebagai <0>{sanitized}</0>."
 #: src/lib/native-menu-catalog.ts
 msgid "Window"
 msgstr "Jendela"
+
+#: src/components/CreateProjectDialog.tsx
+msgid "Without a connected AI tool, the pack's {packSkillCount, plural, one {# skill} other {# skills}} won't be installed."
+msgstr "Tanpa alat AI yang terhubung, {packSkillCount, plural, one {# skill} other {# skill}} dari paket ini tidak akan dipasang."
 
 #: src/components/settings/settings-fields.ts
 msgid "Word wrap"
