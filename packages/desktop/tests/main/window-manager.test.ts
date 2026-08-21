@@ -1662,6 +1662,175 @@ describe('WindowManager', () => {
         expect(pids.size).toBe(0);
       });
 
+      // The defect this guards: a server whose boot legitimately outruns the
+      // startup deadline was SIGTERM'd while mid-boot, so every large project
+      // became permanently unopenable and every retry reproduced it. Being
+      // slow is not being hung — a child observed alive at the deadline has to
+      // keep its wait.
+      test('a live child that binds after the startup deadline still opens the window', async () => {
+        enableSyncTimers();
+        // Gated on elapsed WALL-CLOCK, not poll count: the deadline is
+        // wall-clock and the injected timers fire synchronously, so a
+        // count-based gate would let the lock appear inside the startup
+        // deadline and never exercise the extension at all.
+        const spawnedAt = Date.now();
+        const BINDS_AFTER_MS = 40;
+        env.deps.readServerLock = () =>
+          Date.now() - spawnedAt >= BINDS_AFTER_MS ? spawnedLock : null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        const killed: number[] = [];
+        env.deps.killProbe = (pid: number) => {
+          killed.push(pid);
+        };
+        // Startup deadline lands well before the bind; the extension is what
+        // has to carry the wait the rest of the way.
+        env.deps.spawnLockPollDeadlineMs = 5;
+        env.deps.spawnLockProgressDeadlineMs = 30_000;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(60111);
+        expect(env.windows.length).toBe(1);
+        // The whole point: no SIGTERM went to the healthy child.
+        expect(killed).toEqual([]);
+      });
+
+      test('the extended wait is bounded — a live child that never binds still fails', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 1;
+        env.deps.spawnLockProgressDeadlineMs = 25;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/never-binds' }).then(
+          () => null,
+          (e: unknown) => e as Error & { kind?: string },
+        );
+
+        expect(err?.kind).toBe('spawn-lock-timeout');
+        // The reported deadline is the wait actually served, not the startup
+        // deadline it graduated from — otherwise the message understates the
+        // wait by the extension factor.
+        expect(err?.message).toMatch(/within 25ms/);
+      });
+
+      // The lock is keyed by PROJECT, not by process: when a concurrent starter
+      // wins the acquire our child exits by design and the WINNER is the one
+      // mid-boot. Tying the extension to our own child's liveness would cut
+      // that winner off at the startup deadline — the same slow-boot failure,
+      // one branch over.
+      test('a live lock-holder earns the extension even though our child lost the race', async () => {
+        enableSyncTimers();
+        const spawnedAt = Date.now();
+        const BINDS_AFTER_MS = 40;
+        const winnerPid = 77002;
+        env.deps.readServerLock = () =>
+          Date.now() - spawnedAt >= BINDS_AFTER_MS
+            ? { ...spawnedLock, pid: winnerPid }
+            : // Winner holds the lock but has not bound yet: the documented
+              // `port: 0`-but-not-yet-listening window.
+              { ...spawnedLock, pid: winnerPid, port: 0 };
+        // Our child is dead (it lost the acquire); the winner is alive.
+        env.deps.isProcessAlive = (pid: number) => pid === winnerPid;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 5;
+        env.deps.spawnLockProgressDeadlineMs = 30_000;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(60111);
+        expect(env.windows.length).toBe(1);
+      });
+
+      // A dead child must NOT earn the extension: waiting on a corpse turns a
+      // fast crash into a long stall and reframes it as a slow start.
+      test('a child that dies past the startup deadline is not granted the extension', async () => {
+        enableSyncTimers();
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 1;
+        env.deps.spawnLockProgressDeadlineMs = 60_000;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath: '/tmp/dead-child' }).then(
+          () => null,
+          (e: unknown) => e as Error & { kind?: string },
+        );
+
+        expect(err?.kind).toBe('spawn-lock-timeout');
+        expect(err?.message).toMatch(/exited before binding/);
+      });
+
+      // The captured stderr is whatever the server printed on the way up, and
+      // on a healthy boot that is routinely a config advisory. Presenting it
+      // under a bare "stderr" header next to a failure sends the reader off to
+      // fix a warning that had nothing to do with it.
+      function projectWithSpawnErrorLog(contents: string): string {
+        const root = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
+        mkdirSync(join(root, '.ok', 'local'), { recursive: true });
+        writeFileSync(join(root, '.ok', 'local', 'last-spawn-error.log'), contents);
+        return root;
+      }
+
+      test('a still-running child frames its output as probably not the cause', async () => {
+        enableSyncTimers();
+        const advisory = '[ok] Removed key at .ok/config.yml:5:19: appearance.sidebar.showAllFiles';
+        const projectPath = projectWithSpawnErrorLog(advisory);
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        env.deps.spawnLockPollDeadlineMs = 1;
+        env.deps.spawnLockProgressDeadlineMs = 5;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toContain(advisory);
+        expect(err?.message).toMatch(/probably not the cause/);
+        expect(err?.message).not.toMatch(/^--- stderr ---$/m);
+      });
+
+      test('an exited child keeps its stderr labelled as stderr', async () => {
+        enableSyncTimers();
+        const projectPath = projectWithSpawnErrorLog('Error: EACCES on .ok/local\n');
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toMatch(/exited before binding/);
+        expect(err?.message).toMatch(/^--- stderr ---$/m);
+        expect(err?.message).not.toMatch(/probably not the cause/);
+      });
+
       // A hung start and a crash otherwise render as the same bare deadline.
       // Naming the surviving process is what lets the reader tell them apart.
       test('a deadline reached with the child alive says the process was still running', async () => {

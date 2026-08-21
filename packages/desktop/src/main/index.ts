@@ -1623,6 +1623,19 @@ function ensureDebugIpc(): DebugIpcHandle {
   return debugIpc;
 }
 
+/**
+ * Parse an env override that must be a positive whole number of milliseconds.
+ * Anything else — unset, empty, non-numeric, zero, negative, fractional — is
+ * `undefined` so the caller's default applies. A malformed override must not
+ * become a `0` deadline that fails every spawn instantly.
+ */
+function readPositiveIntEnv(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
 function ensureWindowManager() {
   if (wm) return;
   // Renderer entry (prod path): electron-builder copies packages/cli/dist/public/ to
@@ -1968,6 +1981,13 @@ function ensureWindowManager() {
     // against the exact value a freshly-spawned server reports.
     selfProtocolVersion: PROTOCOL_VERSION,
     selfRuntimeVersion: RUNTIME_VERSION,
+    // Field escape hatch for the spawn wait. Boot cost scales with project
+    // state, so a working copy can always be found that outgrows whatever
+    // defaults ship — without these there is no way to get such a project open
+    // short of a new release, and no way to shorten the wait when diagnosing a
+    // genuinely stuck boot.
+    spawnLockPollDeadlineMs: readPositiveIntEnv(process.env.OK_SPAWN_STARTUP_TIMEOUT_MS),
+    spawnLockProgressDeadlineMs: readPositiveIntEnv(process.env.OK_SPAWN_BIND_TIMEOUT_MS),
     // Dev-only: auto-reclaim a foreign server on the project's contentDir (a
     // leftover from a prior packaged run / CLI / another instance) so this
     // `electron-vite dev` session runs against its own working-tree build
@@ -2732,11 +2752,24 @@ async function openProjectOrFallbackToNavigator(
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
     const holderPid = (err as Error & { holderPid?: number }).holderPid;
-    console.error('[main] openProject failed, falling back to Navigator', {
-      projectPath,
-      kind,
-      err: errorMessage,
-    });
+    // Route through pino, not only `console.error`: a failure reported solely
+    // to the native dialog leaves nothing in `~/.ok/logs/desktop.*.log`, so a
+    // user who hits this can send logs that contain their successful opens and
+    // no trace of the one that failed. The dialog is for the user; this line
+    // is what makes the failure diagnosable afterwards.
+    getLogger('project').error(
+      {
+        event: 'desktop-open-project-failed',
+        projectPath,
+        entryPoint,
+        kind,
+        pid: (err as Error & { pid?: number }).pid,
+        exitCode: (err as Error & { exitCode?: number | null }).exitCode,
+        exitSignal: (err as Error & { exitSignal?: string | null }).exitSignal,
+        err: errorMessage,
+      },
+      '[main] openProject failed, falling back to Navigator',
+    );
     // Pick a dialog title + body based on the error's structured kind.
     // Default ("Unable to open project") matches the existing pre-spec
     // path so plain failures (generic boot crashes) continue to read the

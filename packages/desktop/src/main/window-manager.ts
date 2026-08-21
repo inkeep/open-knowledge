@@ -54,6 +54,25 @@ import { classifyServerVersion } from './version-drift.ts';
 const RESTART_SIGTERM_GRACE_MS = 3_000;
 
 /**
+ * How long a freshly-spawned detached server has to show ANY sign of life
+ * before the parent gives up on it. Reached with the child alive, this is not
+ * a kill deadline — see `spawnLockProgressDeadlineMs`.
+ */
+const DEFAULT_SPAWN_STARTUP_DEADLINE_MS = 15_000;
+
+/**
+ * Multiple of the startup deadline that a still-alive child is allowed to run
+ * to before the wait is abandoned (15 s → 120 s at the shipped default).
+ * Sized to clear the pre-listen boot phase on a large working copy — that
+ * phase grows with project state and has no upper bound in the server today —
+ * while still failing eventually if the process is genuinely wedged.
+ *
+ * Derived from the startup deadline rather than fixed so the two stay in
+ * proportion however the first is configured.
+ */
+const SPAWN_WAIT_EXTENSION_FACTOR = 8;
+
+/**
  * Local mirror of `isValidLockPid` from `@inkeep/open-knowledge-server`. Same
  * import-surface rationale as `isProcessAliveLocal` above.
  *
@@ -615,13 +634,31 @@ export interface WindowManagerDeps {
    */
   removeDir?(dir: string): Promise<void>;
   /**
-   * Upper bound (ms) on waiting for the detached server to publish a valid
-   * `server.lock` after spawn. Default 15s — generous margin for the
-   * `bootServer` cold-start path (shadow-repo init, file-watcher walk,
-   * listen + lock write) while keeping a silently-hung spawn detectable
-   * within a debuggable window. Tests pass small values.
+   * Upper bound (ms) on waiting for a detached server that shows no sign of
+   * life. Default 15s. This bounds the "did the spawn get anywhere at all"
+   * question only — a child observed to be ALIVE at this deadline is not
+   * killed, it graduates to `spawnLockProgressDeadlineMs` below.
+   *
+   * `bootServer` does O(project-state) work (shadow-repo import, file-watcher
+   * walk, index hydration) BEFORE `httpServer.listen` resolves, and only then
+   * flips the lock's port off its `0` sentinel. On a large working copy that
+   * phase alone can outlast any fixed wall-clock figure, so treating this
+   * deadline as a kill deadline makes such projects permanently unopenable.
+   * Tests pass small values.
    */
   spawnLockPollDeadlineMs?: number;
+  /**
+   * Hard cap (ms) on the extended wait a LIVE child earns once
+   * `spawnLockPollDeadlineMs` elapses. Defaults to
+   * `spawnLockPollDeadlineMs * SPAWN_WAIT_EXTENSION_FACTOR`.
+   *
+   * Liveness is the only progress signal the parent has during the pre-listen
+   * phase — the child emits no events there — so the wait is bounded by this
+   * cap rather than continued indefinitely: a genuinely wedged (but alive)
+   * server still has to surface as a failure eventually. Must be >= the
+   * startup deadline; a smaller value is clamped up to it.
+   */
+  spawnLockProgressDeadlineMs?: number;
   /**
    * Override for `DEFAULT_SIGTERM_GRACE_MS` (10 s) — how long
    * `stopAllOwnedServers` waits for a detached pid's lock to release
@@ -1828,8 +1865,14 @@ export class WindowManager {
         reactShellDistDir,
       });
       this.spawnedDetachedPids.set(canonicalKey, handle.pid);
-      const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? 15_000;
-      const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS, handle);
+      const POLL_DEADLINE_MS =
+        this.deps.spawnLockPollDeadlineMs ?? DEFAULT_SPAWN_STARTUP_DEADLINE_MS;
+      const { lock, waitedDeadlineMs } = await this.pollServerLock(
+        lockDir,
+        POLL_DEADLINE_MS,
+        handle,
+        this.deps.spawnLockProgressDeadlineMs,
+      );
       if (lock === null) {
         // Both sampled BEFORE the SIGTERM below — afterwards they would be
         // observing our own kill and would report a merely-slow child as
@@ -1871,7 +1914,7 @@ export class WindowManager {
           pid: handle.pid,
           exit: childExit,
           lockDir,
-          deadlineMs: POLL_DEADLINE_MS,
+          deadlineMs: waitedDeadlineMs,
           spawnLabel: 'spawn',
           childExited,
         });
@@ -2301,8 +2344,13 @@ export class WindowManager {
       throw err;
     }
 
-    const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? 15_000;
-    const lock = await this.pollServerLock(lockDir, POLL_DEADLINE_MS, handle);
+    const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? DEFAULT_SPAWN_STARTUP_DEADLINE_MS;
+    const { lock, waitedDeadlineMs } = await this.pollServerLock(
+      lockDir,
+      POLL_DEADLINE_MS,
+      handle,
+      this.deps.spawnLockProgressDeadlineMs,
+    );
     if (lock === null) {
       // Both sampled BEFORE the SIGTERM below — see the project-open path.
       // This path additionally awaits `removeDir` before throwing, so a
@@ -2335,7 +2383,7 @@ export class WindowManager {
         pid: handle.pid,
         exit: childExit,
         lockDir,
-        deadlineMs: POLL_DEADLINE_MS,
+        deadlineMs: waitedDeadlineMs,
         spawnLabel: 'ephemeral spawn',
         childExited,
       });
@@ -2581,8 +2629,20 @@ export class WindowManager {
       messageBase = `OpenKnowledge server did not bind a port within ${deadlineMs}ms after ${spawnLabel} (pid=${pid}${liveness}).`;
     }
 
+    // Whether the child's output explains the failure depends entirely on
+    // whether it DIED. A child that exited is very likely explaining itself on
+    // the way out, so its stderr reads as the cause and is labelled as such. A
+    // child that is still running has explained nothing — whatever is in the
+    // log is just what the server happened to print during a normal boot
+    // (config advisories, deprecation notices), and juxtaposing it with a
+    // failure header invites the reader to fix a warning that was never the
+    // problem. Say so rather than filtering: a filter would also swallow the
+    // one advisory that did matter.
+    const stderrHeading = exited
+      ? '--- stderr ---'
+      : '--- server output (printed during startup; probably not the cause) ---';
     return Object.assign(
-      new Error(stderrTail ? `${messageBase}\n--- stderr ---\n${stderrTail}` : messageBase),
+      new Error(stderrTail ? `${messageBase}\n${stderrHeading}\n${stderrTail}` : messageBase),
       {
         name: 'SpawnLockTimeoutError' as const,
         // Discriminant held stable across both framings — `index.ts` branches
@@ -2597,18 +2657,31 @@ export class WindowManager {
 
   /**
    * Poll `<lockDir>/server.lock` until a valid lock appears with `port > 0`
-   * and a known `kind`, or until `deadlineMs` elapses — or, when `child` is
-   * supplied, until that child is observed to have exited (a dead child will
-   * never publish a lock, so the rest of the deadline is dead time). Used by
-   * the detached-spawn path to wait for the freshly-spawned CLI to bind a port
-   * and write its lock atomically (the lock writer in `bootServer` only flips
-   * port from `0` to the bound port after `httpServer.listen` resolves, so
-   * seeing `port > 0` is the readiness signal).
+   * and a known `kind`. Used by the detached-spawn path to wait for the
+   * freshly-spawned CLI to bind a port and write its lock atomically (the lock
+   * writer in `bootServer` only flips port from `0` to the bound port after
+   * `httpServer.listen` resolves, so seeing `port > 0` is the readiness
+   * signal).
    *
-   * Returns the parsed lock metadata on success, or `null` on timeout or child
-   * death. When `readServerLock` is not wired in `deps` (back-compat with
-   * tests that don't exercise the detached path), returns `null` immediately —
-   * the caller propagates that as a spawn-failure error.
+   * The wait is TWO-TIER. `deadlineMs` bounds only a spawn showing no sign of
+   * life; when it lands with someone still visibly working on this lock — our
+   * `child`, or the live holder of a non-draining lock in the collision case —
+   * the wait graduates ONCE to `progressDeadlineMs` (default
+   * `deadlineMs * SPAWN_WAIT_EXTENSION_FACTOR`) rather than giving up. The
+   * pre-`listen` boot phase scales with project state and emits no events, so
+   * liveness is the only progress signal available; the cap is what keeps a
+   * genuinely wedged process from waiting forever.
+   *
+   * The wait still ends early once the spawn is observed to have exited with
+   * nobody else starting (a dead child will never publish a lock, so the rest
+   * of the deadline is dead time).
+   *
+   * Always resolves to an object. `lock` is the parsed metadata on success and
+   * `null` on timeout or child death; `waitedDeadlineMs` is the deadline
+   * actually served, which the caller reports rather than the tier it
+   * graduated from. When `readServerLock` is not wired in `deps` (back-compat
+   * with tests that don't exercise the detached path), resolves immediately
+   * with a `null` lock — the caller propagates that as a spawn-failure error.
    *
    * Polling cadence: 50 ms. Uses `deps.setTimeout` so test injections that
    * fire the timer synchronously make the loop deterministic.
@@ -2617,19 +2690,33 @@ export class WindowManager {
     lockDir: string,
     deadlineMs: number,
     child?: { pid: number },
-  ): Promise<ServerLockMetadataLike | null> {
+    progressDeadlineMs?: number,
+  ): Promise<{ lock: ServerLockMetadataLike | null; waitedDeadlineMs: number }> {
     const POLL_INTERVAL_MS = 50;
     const reader = this.deps.readServerLock;
-    if (!reader) return null;
+    if (!reader) return { lock: null, waitedDeadlineMs: deadlineMs };
     const isAlive = this.deps.isProcessAlive;
-    const deadline = Date.now() + deadlineMs;
-    while (Date.now() < deadline) {
+    const started = Date.now();
+    // A cap below the startup deadline would shorten the wait rather than
+    // extend it, inverting the whole point of the second tier.
+    const hardCapMs = Math.max(
+      deadlineMs,
+      progressDeadlineMs ?? deadlineMs * SPAWN_WAIT_EXTENSION_FACTOR,
+    );
+    let effectiveDeadlineMs = deadlineMs;
+    let deadline = started + deadlineMs;
+    let extended = false;
+    // Deliberately not `while (Date.now() < deadline)`: the graduation check
+    // has to run ON the deadline, and a loop that exits at the top can have
+    // its final poll interval straddle it — the child would then be killed
+    // without ever being asked whether it was still alive.
+    for (;;) {
       const lock = reader(lockDir);
       // A draining lock is the PREDECESSOR still exiting, not the fresh
       // spawn's readiness signal — keep polling until the successor's
       // (non-draining) lock appears.
       if (lock !== null && lock.draining !== true && lock.port > 0 && lock.kind !== undefined) {
-        return lock;
+        return { lock, waitedDeadlineMs: effectiveDeadlineMs };
       }
       // Liveness, not wall-clock, ends the wait once the child is gone: a dead
       // child will never publish a lock, so the rest of the deadline is dead
@@ -2648,7 +2735,48 @@ export class WindowManager {
       if (child !== undefined && isAlive !== undefined && !isAlive(child.pid)) {
         const winnerStillStarting =
           lock !== null && lock.draining !== true && lock.pid !== child.pid && isAlive(lock.pid);
-        if (!winnerStillStarting) return null;
+        if (!winnerStillStarting) return { lock: null, waitedDeadlineMs: effectiveDeadlineMs };
+      }
+      if (Date.now() >= deadline) {
+        // Slow is not hung. A spawn still running when the startup deadline
+        // lands has not failed at anything — it is mid-boot — so giving up
+        // there turns "this project takes a while to open" into "this project
+        // cannot be opened", and every retry reproduces it. Graduate to the
+        // hard cap instead, once, and record the decision: an operator reading
+        // the log needs to see that the wait was extended and on what evidence.
+        //
+        // "Still starting" is asked of whoever is actually booting this
+        // project, not only of our own child. In the lock-collision case above
+        // our child is dead BY DESIGN and the live holder of the non-draining
+        // lock is the one mid-boot — binding it to our child's liveness would
+        // cut the winner off at the startup deadline and reintroduce exactly
+        // the failure this tier exists to prevent, one branch over.
+        const childStarting = child !== undefined && isAlive?.(child.pid) === true;
+        const holderStarting =
+          lock !== null && lock.draining !== true && isAlive?.(lock.pid) === true;
+        const stillStarting =
+          !extended && hardCapMs > deadlineMs && (childStarting || holderStarting);
+        if (!stillStarting) return { lock: null, waitedDeadlineMs: effectiveDeadlineMs };
+        extended = true;
+        effectiveDeadlineMs = hardCapMs;
+        deadline = started + hardCapMs;
+        this.deps.log?.info(
+          {
+            event: 'desktop-spawn-wait-extended',
+            pid: child?.pid,
+            lockDir,
+            startupDeadlineMs: deadlineMs,
+            hardCapMs,
+            // Which of the two signals earned the extension: our own child, or
+            // the live holder of the lock our child lost the race for.
+            startingParty: childStarting ? 'child' : 'lock-holder',
+            // The server publishes its lock with a `port: 0` sentinel early in
+            // boot, so its presence separates "alive and initializing" from
+            // "alive but has not started booting" in the log.
+            lockPublished: lock !== null,
+          },
+          '[window-manager] server still starting at the spawn deadline — extending the wait',
+        );
       }
       await new Promise<void>((resolveSleep) => {
         this.deps.setTimeout(() => {
@@ -2656,7 +2784,6 @@ export class WindowManager {
         }, POLL_INTERVAL_MS);
       });
     }
-    return null;
   }
 
   /**
