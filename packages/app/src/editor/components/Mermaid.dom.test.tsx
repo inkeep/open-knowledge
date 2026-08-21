@@ -159,12 +159,45 @@ describe('MermaidView controls', () => {
     expect(panzoom.zoomIn.mock.calls.length).toBe(1);
     expect(panzoom.zoomOut.mock.calls.length).toBe(1);
     expect(panzoom.reset.mock.calls.length).toBe(1);
+    const panOpts = {
+      animate: true,
+      duration: 200,
+      easing: 'ease-out',
+      relative: true,
+    };
     expect(panzoom.pan.mock.calls).toEqual([
-      [0, -48, { relative: true }],
-      [0, 48, { relative: true }],
-      [-48, 0, { relative: true }],
-      [48, 0, { relative: true }],
+      [0, 48, panOpts],
+      [0, -48, panOpts],
+      [48, 0, panOpts],
+      [-48, 0, panOpts],
     ]);
+  });
+
+  test('honors prefers-reduced-motion by skipping the pan animation', async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('reduce'),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      renderMermaidView('graph TD; A-->B;');
+      const panzoom = await waitForPanzoomInstance();
+      fireEvent.click(screen.getByRole('button', { name: 'Pan up' }));
+      expect(panzoom.pan.mock.calls[0]?.[2]).toEqual({
+        animate: false,
+        duration: 200,
+        easing: 'ease-out',
+        relative: true,
+      });
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   test('does not register wheel zoom listeners inside the diagram', async () => {
