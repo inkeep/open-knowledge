@@ -4225,13 +4225,17 @@ function PendingImageStrip({
   return (
     <div className="flex flex-wrap gap-2 px-3 pt-2 pb-1" data-testid="agent-thread-pending-images">
       {images.map((image, index) => {
-        // Per-kind key + label: `image` carries base64 data (unique per
-        // upload); `file`/`folder` carry a workspace path (also stable per
-        // upload); `blob` carries base64 too. Keys stay collision-free.
+        // Per-kind identity + label: `image`/`blob` carry base64 data,
+        // `file`/`folder` a workspace path. None of those is unique on its
+        // own — attaching one picture twice (deliberately, or via a host that
+        // hands the same payload back twice) yields two parts with identical
+        // name and identical leading base64. Index disambiguates: this list is
+        // append-ordered and `onRemove` already treats the index as the tile's
+        // identity, so the two agree.
         const key =
           image.kind === 'image' || image.kind === 'blob'
-            ? `${image.name}:${image.data.slice(0, 24)}`
-            : `${image.name}:${image.path}`;
+            ? `${index}:${image.name}:${image.data.slice(0, 24)}`
+            : `${index}:${image.name}:${image.path}`;
         const src = image.kind === 'image' ? `data:${image.mimeType};base64,${image.data}` : null;
         const label =
           image.kind === 'file' || image.kind === 'folder'

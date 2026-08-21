@@ -133,18 +133,67 @@ describe('collectImageFiles', () => {
     expect(out.map((f) => f.name)).toEqual(['a.png']);
   });
 
-  test('deduplicates a file that shows up on both items and files', () => {
+  /** One payload exposed on both accessors, as a real host exposes it: a
+   *  SEPARATE `File` object per read. Returning the same instance twice (the
+   *  shape this test used to have) cannot fail — the reads are identical by
+   *  construction, so it pinned the stub rather than the browser. */
+  function pastedOnBothAccessors(fromItems: File, fromFiles: File): DataTransfer {
+    return {
+      items: [{ kind: 'file' as const, type: fromItems.type, getAsFile: () => fromItems }],
+      files: {
+        length: 1,
+        item: (i: number) => (i === 0 ? fromFiles : null),
+        0: fromFiles,
+      } as unknown as FileList,
+    } as unknown as DataTransfer;
+  }
+
+  test('reads one payload once: items wins and the files mirror is not consulted', () => {
+    const at = (lastModified: number) =>
+      new File([new Uint8Array([1])], 'a.png', { type: 'image/png', lastModified });
+    const fromItems = at(1_700_000_000_000);
+    const fromFiles = at(1_700_000_000_000);
+    const out = collectImageFiles(pastedOnBothAccessors(fromItems, fromFiles));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(fromItems);
+  });
+
+  /** A clipboard image has no file on disk, so Chromium builds a fresh `File`
+   *  for each read of the DataTransfer and stamps `lastModified` with the clock
+   *  at construction — a clock reading, not a property of the payload. The two
+   *  reads therefore disagree whenever they straddle a millisecond (measured: 4
+   *  of 15 pastes, Chromium 151). Reading `items` alone is what makes that
+   *  disagreement unobservable; any traversal that also read `files` and tried
+   *  to match the two by value would attach the image twice. */
+  test('one payload stays one file even when the two reads disagree on lastModified', () => {
+    const at = (lastModified: number) =>
+      new File([new Uint8Array([1])], 'image.png', { type: 'image/png', lastModified });
+    const fromItems = at(1_787_337_196_630);
+    const out = collectImageFiles(pastedOnBothAccessors(fromItems, at(1_787_337_196_629)));
+    expect(out).toHaveLength(1);
+    expect(out[0]).toBe(fromItems);
+  });
+
+  /** The `files` fallback is the only reader of `dataTransfer.files`, and it is
+   *  what serves an older host that leaves `items` unpopulated — and the
+   *  clipboard-moved-on case, where `getAsFile()` returns null for every item
+   *  but the pre-race `files` snapshot is still good. */
+  test('falls back to files when items yields nothing', () => {
+    const png = makeFile(new Uint8Array([1]), 'a.png', 'image/png');
+    expect(collectImageFiles(dataTransfer([png])).map((f) => f.name)).toEqual(['a.png']);
+  });
+
+  test('falls back to files when every items entry yields a null File', () => {
     const png = makeFile(new Uint8Array([1]), 'a.png', 'image/png');
     const dt = {
-      items: [{ kind: 'file' as const, type: 'image/png', getAsFile: () => png }],
+      items: [{ kind: 'file' as const, type: 'image/png', getAsFile: () => null }],
       files: {
         length: 1,
         item: (i: number) => (i === 0 ? png : null),
         0: png,
       } as unknown as FileList,
     } as unknown as DataTransfer;
-    const out = collectImageFiles(dt);
-    expect(out).toHaveLength(1);
+    expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['a.png']);
   });
 
   test('null DataTransfer returns []', () => {

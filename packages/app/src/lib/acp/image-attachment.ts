@@ -128,9 +128,10 @@ export async function fileToImageAttachment(
 
 /**
  * Yield image files from a DataTransfer — the drop-event and paste-event
- * source. Both `items` (paste + rich drag) and `files` (plain drag) are
- * examined so a screenshot pasted from the OS clipboard is handled the
- * same as a file dragged from Finder.
+ * source. `items` is the authoritative list; `files` is consulted only when
+ * `items` yields nothing, so a screenshot pasted from the OS clipboard is
+ * handled the same as a file dragged from Finder without either being read
+ * twice.
  */
 export function collectImageFiles(dataTransfer: DataTransfer | null): File[] {
   return collectFiles(dataTransfer, (file) => file.type.startsWith('image/'));
@@ -139,7 +140,7 @@ export function collectImageFiles(dataTransfer: DataTransfer | null): File[] {
 /**
  * Yield ALL files (any mime) from a DataTransfer — the wider path the
  * agent-thread panel uses so a code file dragged from Finder attaches the
- * same way a PNG does. Same items+files traversal + dedup as the
+ * same way a PNG does. Same items-first, files-as-fallback traversal as the
  * image-only variant. Excludes zero-byte entries (dragging a folder from
  * Finder emits an entry with size 0 that browsers can't read as bytes).
  */
@@ -149,26 +150,42 @@ export function collectAllFiles(dataTransfer: DataTransfer | null): File[] {
 
 function collectFiles(dataTransfer: DataTransfer | null, accept: (file: File) => boolean): File[] {
   if (dataTransfer === null) return [];
-  const seen = new Set<string>();
   const out: File[] = [];
   const remember = (file: File | null) => {
     if (file === null) return;
     if (!accept(file)) return;
-    const key = `${file.name}|${file.size}|${file.lastModified ?? 0}`;
-    if (seen.has(key)) return;
-    seen.add(key);
     out.push(file);
   };
+  // `items` is the authoritative list: per the HTML drag-and-drop spec,
+  // `DataTransfer.files` IS the `kind: 'file'` subset of `DataTransfer.items`,
+  // so the two accessors describe one payload set rather than two. Reading
+  // both and de-duplicating by value is therefore the wrong shape — and it
+  // could not be made correct, because a clipboard payload has no file on
+  // disk: the host builds a fresh `File` per read and stamps `lastModified`
+  // with the clock at construction, so the two reads of one pasted image
+  // disagree on it whenever they straddle a millisecond, and any key carrying
+  // that field misses, so one paste lands as two attachments.
+  let itemsYieldedFiles = false;
   const items = dataTransfer.items;
   if (items) {
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i];
-      if (it && it.kind === 'file') remember(it.getAsFile());
+      if (!it || it.kind !== 'file') continue;
+      const file = it.getAsFile();
+      if (file === null) continue;
+      itemsYieldedFiles = true;
+      remember(file);
     }
   }
-  const files = dataTransfer.files;
-  if (files) {
-    for (let i = 0; i < files.length; i += 1) remember(files[i] ?? null);
+  // Fall back to `files` only when `items` produced nothing — an older host
+  // that leaves `items` unpopulated, or a synthetic DataTransfer. Guarding on
+  // "yielded a File" rather than "had file-kind entries" keeps the fallback
+  // live when `getAsFile()` returns null for every entry.
+  if (!itemsYieldedFiles) {
+    const files = dataTransfer.files;
+    if (files) {
+      for (let i = 0; i < files.length; i += 1) remember(files[i] ?? null);
+    }
   }
   return out;
 }
