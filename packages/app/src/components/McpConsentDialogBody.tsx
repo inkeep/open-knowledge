@@ -50,7 +50,7 @@ import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { OkIcon } from '@/components/icons/ok';
 import { RowDisclosure } from '@/components/RowDisclosure';
-import { ThemePicker, type ThemePreference } from '@/components/ThemePicker';
+import { narrowThemePreference, ThemePicker, type ThemePreference } from '@/components/ThemePicker';
 import {
   AlertDialog,
   AlertDialogBody,
@@ -198,7 +198,7 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   // mode — resolvedTheme would show 'dark' for a system pick and check the
   // wrong card.
   const { theme, setTheme } = useTheme();
-  const themePreference: ThemePreference = theme === 'dark' || theme === 'light' ? theme : 'system';
+  const themePreference = narrowThemePreference(theme);
   // Optional because this dialog also renders in the Navigator window, which has
   // no server and therefore no ConfigProvider.
   const configContext = useConfigContextOptional();

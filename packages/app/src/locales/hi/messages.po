@@ -4225,7 +4225,6 @@ msgstr "अपने OpenKnowledge अनुभव को अनुकूलि�
 msgid "Cut"
 msgstr "काटें"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "गहरा"
@@ -7243,7 +7242,6 @@ msgstr "चलिए सेटअप करते हैं।"
 msgid "Level"
 msgstr "स्तर"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "हल्का"
@@ -12494,7 +12492,6 @@ msgstr "सिंक हो रहा है"
 msgid "Syncing your changes"
 msgstr "आपके बदलाव सिंक हो रहे हैं"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

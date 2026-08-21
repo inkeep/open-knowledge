@@ -74,6 +74,12 @@ export interface ColorThemePickerProps {
   firstItemId?: string;
   'aria-label'?: string;
   'aria-describedby'?: string;
+  /**
+   * Forwarded for the same reason as `aria-describedby`: a rejected palette
+   * write surfaces through `form.setError`, and without this the group never
+   * signals that state to assistive tech.
+   */
+  'aria-invalid'?: boolean | 'true' | 'false';
 }
 
 /** The handful of palette colors a preview tile renders. */
@@ -216,6 +222,7 @@ export function ColorThemePicker({
   firstItemId,
   'aria-label': ariaLabel,
   'aria-describedby': ariaDescribedby,
+  'aria-invalid': ariaInvalid,
 }: ColorThemePickerProps) {
   const { t } = useLingui();
   return (
@@ -224,6 +231,7 @@ export function ColorThemePicker({
     <fieldset
       aria-label={ariaLabel}
       aria-describedby={ariaDescribedby}
+      aria-invalid={ariaInvalid}
       className="grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-3"
     >
       {themes.map((theme, index) => {

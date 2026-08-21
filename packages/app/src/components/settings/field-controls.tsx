@@ -18,13 +18,12 @@ import {
   getFieldMeta,
   isKnownConfigError,
 } from '@inkeep/open-knowledge-core';
-import type { MessageDescriptor } from '@lingui/core';
-import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, RotateCcw } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { type ControllerRenderProps, type FieldPath, useFormContext } from 'react-hook-form';
+import { narrowThemePreference, ThemePicker } from '@/components/ThemePicker';
 import { Button } from '@/components/ui/button';
 import {
   FormControl,
@@ -74,21 +73,6 @@ import { pickFirstIssueForPath } from './use-config-form';
  */
 export type Scope = 'user' | 'project';
 
-/**
- * Display copy for the enum values a toggle renders.
- *
- * A config enum value is a wire identifier (`'light'`, `'system'`), not copy.
- * Rendering it verbatim puts English on screen in every locale — and visibly
- * so, since the toggle sits directly beneath its own translated label and
- * description. An unmapped value falls through to the raw identifier, so a new
- * enum still renders something rather than blanking.
- */
-const ENUM_OPTION_LABELS: Record<string, MessageDescriptor> = {
-  light: msg`Light`,
-  dark: msg`Dark`,
-  system: msg`System`,
-};
-
 export function firstIssuePath(error: ConfigValidationError): string | null {
   if (!isKnownConfigError(error) || error.code !== 'SCHEMA_INVALID') return null;
   const first = error.issues[0];
@@ -124,6 +108,9 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
   'use no memo';
   const { t } = useLingui();
   const form = useFormContext<Config>();
+  // Safe unconditionally: next-themes returns a no-op `setTheme` with no
+  // provider mounted, which is how the unit harnesses render this.
+  const { setTheme } = useTheme();
   const configContext = useConfigContextOptional();
   const leafSchema = resolveLeafSchema(ConfigSchema, field.path);
   const typeTag = leafSchema ? getLeafTypeTag(leafSchema) : undefined;
@@ -219,6 +206,13 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
     }
     const target = defaultValue === undefined ? null : defaultValue;
     form.setValue(dottedName, target as never, { shouldDirty: false });
+    // The theme row is the one generic-reset field that paints the whole app.
+    // Clearing the value alone snaps the card to System — what an unset
+    // preference resolves to — while the window stays in the mode the old value
+    // forced, so the checked card and the applied theme disagree until the next
+    // merged-effect. The toggle this replaced hid that by rendering nothing
+    // selected for an unset value; the cards state it outright.
+    if (field.control === 'theme-cards') setTheme(narrowThemePreference(target));
     runCommit();
   };
 
@@ -271,6 +265,7 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
                   typeTag={typeTag}
                   enumOptions={enumOptions}
                   onCommit={runCommitIfDirty}
+                  onRevertToBaseline={() => form.resetField(dottedName, { keepError: true })}
                   onSavedOutsideForm={flashSavedTick}
                   onWriteRejected={(error) => {
                     form.setError(dottedName, {
@@ -280,7 +275,7 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
                   }}
                 />
               </FormControl>
-              <SavedIndicator visible={savedTick} srOnly={field.control === 'theme-tiles'} />
+              <SavedIndicator visible={savedTick} srOnly={selfIndicating(field.control)} />
             </div>
             <FormMessage data-field-error={field.path.join('.')} />
           </FormItem>
@@ -288,6 +283,17 @@ export function SettingsField({ field, scope, commitField, isFlashed }: Settings
       }}
     />
   );
+}
+
+/**
+ * Controls that already show their own selection state — each renders a check
+ * badge on the chosen card or tile and spans the full row — so the row's saved
+ * tick would be a redundant second checkmark competing for the same width. It
+ * stays in the tree for screen readers, which get no equivalent from the badge
+ * (the badge is decorative and `aria-hidden`).
+ */
+function selfIndicating(control: FieldDef['control']): boolean {
+  return control === 'theme-tiles' || control === 'theme-cards';
 }
 
 interface FieldControlBodyProps {
@@ -301,6 +307,14 @@ interface FieldControlBodyProps {
    * `ctl.onChange` BEFORE invoking — the commit reads from form state.
    */
   onCommit: () => boolean;
+  /**
+   * Restore the field to its committed baseline and clear its dirty flag,
+   * keeping any error the rejection surfaced. Owned by the caller because only
+   * it holds the form handle; `ctl.onChange(previous)` is NOT equivalent —
+   * writing a value back leaves the key present, which RHF scores as dirty
+   * against a baseline that never had one.
+   */
+  onRevertToBaseline: () => void;
   /**
    * Flash the saved indicator for a control that writes through the binding
    * directly instead of the form's per-field commit. `onCommit` is not usable
@@ -336,6 +350,7 @@ function FieldControlBody({
   typeTag,
   enumOptions,
   onCommit,
+  onRevertToBaseline,
   onSavedOutsideForm,
   onWriteRejected,
   ...slotForwarded
@@ -345,8 +360,8 @@ function FieldControlBody({
   // Optimistic theme apply. next-themes' `useTheme` is safe to
   // call unconditionally — it returns a no-op `setTheme` when no
   // <ThemeProvider> is mounted (e.g. in unit harnesses), and the app always
-  // mounts one in `main.tsx`. The actual flip is gated to the theme field in
-  // the enum-toggle branch below, so non-theme controls are unaffected.
+  // mounts one in `main.tsx`. Only the two theme controls below call
+  // `setTheme`, so every other control is unaffected.
   // `systemTheme` is the OS preference, independent of the mode a palette
   // forces — it's what `appearance.theme: 'system'` resolves to.
   const { setTheme, systemTheme } = useTheme();
@@ -377,6 +392,63 @@ function FieldControlBody({
           }
           ctl.onChange(next);
           onCommit();
+        }}
+      />
+    );
+  }
+  if (field.control === 'theme-cards') {
+    // Slot.Root forwards `id` onto its child, but the picker's group root is a
+    // <div> — not a labelable element — so `<label htmlFor>` on it would focus
+    // nothing. The id rides the first card instead, while the remaining slot
+    // props go to the group, which is what they describe. The picker has to
+    // NAME those two props: it destructures without a rest spread, so anything
+    // handed down that it does not name is dropped rather than reaching the DOM.
+    const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
+    // No `ref` / `onBlur`, matching the theme-tiles card control: RHF's
+    // `form.setFocus` was already inert for this field (the enum-toggle root it
+    // replaced was a non-focusable <div>), and wiring the Controller ref into
+    // one card here would leave the two card controls asymmetric.
+    return (
+      <ThemePicker
+        {...wrapperSlotProps}
+        firstItemId={forwardedId}
+        // Read the stored preference, never next-themes' resolved mode: a
+        // 'system' pick resolves to 'dark'/'light' and would check the wrong
+        // card. An unset value reads as 'system', which is how it behaves.
+        value={narrowThemePreference(ctl.value)}
+        aria-label={t(field.label)}
+        onValueChange={(next) => {
+          // Read before the change: `ctl.value` is the render-time value, so
+          // this is what was last committed. The two reverts below want
+          // different shapes of it — see the rejection branch.
+          const previousTheme = narrowThemePreference(ctl.value);
+          // Optimistic flip, same contract as the toggle this replaced: apply
+          // via next-themes synchronously so the UI changes on click rather
+          // than after the patch -> user-config Y.Text -> ConfigProvider
+          // merged-effect round-trip. `next` is forwarded verbatim so 'system'
+          // stays the OS-tracking lever. The merged-effect still drives remote
+          // clients and Electron native chrome, and no-ops here (same value ->
+          // next-themes state bailout), so there is no double-flip.
+          setTheme(next);
+          ctl.onChange(next);
+          if (onCommit()) return;
+          // Rejected write (an unparseable config.yml, a binding that refused).
+          // The paint already landed, so leaving it shows a theme nothing
+          // persisted until a later merged-effect silently undoes it. Both legs
+          // revert together: restoring only next-themes leaves the checked card
+          // disagreeing with the applied mode, and restoring only the form
+          // value leaves the reverse.
+          //
+          // The two legs revert differently on purpose. next-themes needs a
+          // concrete preference, so it takes the narrowed value. The form goes
+          // back through `resetField`, not `onChange`: `appearance.theme` is
+          // unset by default, and writing any value back — narrowed OR raw —
+          // leaves the row dirty against a baseline that has no such key.
+          // `useConfigForm` bridges remote updates with `keepDirtyValues: true`,
+          // so a permanently dirty row silently stops absorbing theme changes
+          // from other windows or an external config edit.
+          setTheme(previousTheme);
+          onRevertToBaseline();
         }}
       />
     );
@@ -479,9 +551,6 @@ function FieldControlBody({
       // focus into the group. aria-describedby/aria-invalid stay on the
       // wrapper since they describe the group as a whole.
       const { id: forwardedId, ...wrapperSlotProps } = slotForwarded;
-      // Theme is the one enum-toggle that flips app-wide appearance. Detect it
-      // by path so the optimistic next-themes write stays scoped to this field.
-      const isThemeField = field.path[0] === 'appearance' && field.path[1] === 'theme';
       return (
         <ToggleGroup
           {...wrapperSlotProps}
@@ -490,16 +559,6 @@ function FieldControlBody({
           ref={ctl.ref}
           onValueChange={(next) => {
             if (!next) return;
-            // Optimistic flip on the originating client: apply via next-themes
-            // synchronously so the UI changes on click instead of waiting for
-            // the patch -> user-config Y.Text -> ConfigProvider merged-effect
-            // round-trip (the perceived lag). `next` is forwarded verbatim —
-            // 'system' is the OS-tracking lever and must not be resolved here.
-            // The ConfigProvider merged-effect still drives cross-project /
-            // remote clients (via config.yml + file-watcher) and Electron
-            // native chrome, and no-ops here (same value -> next-themes
-            // state bailout), so there is no double-flip.
-            if (isThemeField) setTheme(next);
             ctl.onChange(next);
             onCommit();
           }}
@@ -510,22 +569,20 @@ function FieldControlBody({
           className="bg-muted dark:bg-background p-0.5 rounded-lg"
           aria-label={t(field.label)}
         >
-          {enumOptions.map((opt, idx) => {
-            const label = ENUM_OPTION_LABELS[opt];
-            return (
-              <ToggleGroupItem
-                key={opt}
-                value={opt}
-                id={idx === 0 ? forwardedId : undefined}
-                // `capitalize` only styles the raw-identifier fallback; a
-                // translated label is already cased by its translator, and
-                // some scripts have no case at all.
-                className={label ? 'text-1sm' : 'text-1sm capitalize'}
-              >
-                {label ? t(label) : opt}
-              </ToggleGroupItem>
-            );
-          })}
+          {enumOptions.map((opt, idx) => (
+            <ToggleGroupItem
+              key={opt}
+              value={opt}
+              id={idx === 0 ? forwardedId : undefined}
+              // Raw schema identifiers, so they need casing; no enum field
+              // declares this control today, and the only translated label set
+              // it ever carried belonged to the theme field, which now renders
+              // as cards.
+              className="text-1sm capitalize"
+            >
+              {opt}
+            </ToggleGroupItem>
+          ))}
         </ToggleGroup>
       );
     }

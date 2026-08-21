@@ -31,8 +31,8 @@ describe('ThemePicker', () => {
     expect(screen.getByRole('radiogroup', { name: 'Choose your theme' })).toBeTruthy();
     expect(screen.getAllByRole('radio').map((el) => el.textContent)).toEqual([
       'System',
-      'Dark',
       'Light',
+      'Dark',
     ]);
   });
 
@@ -71,10 +71,10 @@ describe('ThemePicker', () => {
 
     screen.getByTestId('theme-picker-system').focus();
     await userEvent.keyboard('{ArrowRight}');
-    expect(document.activeElement).toBe(screen.getByTestId('theme-picker-dark'));
+    expect(document.activeElement).toBe(screen.getByTestId('theme-picker-light'));
 
     await userEvent.keyboard(' ');
-    expect(onValueChange).toHaveBeenCalledWith('dark');
+    expect(onValueChange).toHaveBeenCalledWith('light');
   });
 
   test('reports nothing while disabled', async () => {

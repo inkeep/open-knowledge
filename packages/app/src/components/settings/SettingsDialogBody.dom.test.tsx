@@ -524,14 +524,14 @@ describe('SettingsDialogBody language picker', () => {
 });
 
 /**
- * Optimistic theme-apply path. The Theme ToggleGroup must flip
- * next-themes immediately on the originating client instead of waiting for
- * the patch -> user-config Y.Text -> ConfigProvider merged-effect round-trip.
+ * Optimistic theme-apply path. The Theme cards must flip next-themes
+ * immediately on the originating client instead of waiting for the patch ->
+ * user-config Y.Text -> ConfigProvider merged-effect round-trip.
  *
  * This harness mounts no ConfigProvider effects; it only supplies the bare
  * ConfigContext needed by project-scope settings. The only thing that can move
  * next-themes state on click is still the optimistic `setTheme(next)` wired
- * into `FieldControlBody`'s enum-toggle branch. That makes the probe assertion
+ * into `FieldControlBody`'s theme-cards branch. That makes the probe assertion
  * a discriminating check: it goes green ONLY if the optimistic path fires. The
  * `binding.patch` assertion proves persistence is still wired.
  */
@@ -569,7 +569,7 @@ function renderPreferencesWithTheme(binding: ConfigBinding) {
 }
 
 /**
- * What each theme value reads as on screen. The toggle renders a translated
+ * What each theme value reads as on screen. Each card renders a translated
  * label rather than the config value, so the value alone no longer finds the
  * control; under this runner the Lingui macros pass English through, which is
  * what these are. Kept as a lookup so the call sites stay written in terms of
@@ -581,13 +581,13 @@ const THEME_OPTION_LABELS: Record<string, string> = {
   system: 'System',
 };
 
-function themeToggleItem(container: HTMLElement, option: string): HTMLElement {
+function themeCardItem(container: HTMLElement, option: string): HTMLElement {
   const field = container.querySelector('[data-field="appearance.theme"]');
   if (!field) throw new Error('appearance.theme field not rendered');
   return within(field as HTMLElement).getByText(THEME_OPTION_LABELS[option] ?? option);
 }
 
-describe('SettingsDialogBody theme toggle — optimistic apply', () => {
+describe('SettingsDialogBody theme cards — optimistic apply', () => {
   afterEach(() => {
     cleanup();
   });
@@ -600,7 +600,7 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     // Default theme before any click.
     expect(screen.getByTestId('theme-probe').textContent).toBe('system');
 
-    await user.click(themeToggleItem(container, 'dark'));
+    await user.click(themeCardItem(container, 'dark'));
 
     // Optimistic flip — observable only via the new setTheme path because
     // this tree has no ConfigProvider merged-effect to drive the theme.
@@ -617,12 +617,12 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     const { container } = renderPreferencesWithTheme(binding);
 
     // Move off the default first so the System transition is observable.
-    await user.click(themeToggleItem(container, 'dark'));
+    await user.click(themeCardItem(container, 'dark'));
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
     });
 
-    await user.click(themeToggleItem(container, 'system'));
+    await user.click(themeCardItem(container, 'system'));
 
     // Verbatim 'system' — the OS-tracking lever — not a resolved light/dark.
     await waitFor(() => {
@@ -636,7 +636,7 @@ describe('SettingsDialogBody theme toggle — optimistic apply', () => {
     const { binding, patches } = makeBinding();
     const { container } = renderPreferencesWithTheme(binding);
 
-    await user.click(themeToggleItem(container, 'light'));
+    await user.click(themeCardItem(container, 'light'));
 
     await waitFor(() => {
       expect(screen.getByTestId('theme-probe').textContent).toBe('light');

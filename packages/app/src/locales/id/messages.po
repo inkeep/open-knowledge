@@ -4225,7 +4225,6 @@ msgstr "Sesuaikan pengalaman OpenKnowledge Anda."
 msgid "Cut"
 msgstr "Potong"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "Gelap"
@@ -7243,7 +7242,6 @@ msgstr "Mari kita siapkan."
 msgid "Level"
 msgstr "Tingkat"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "Terang"
@@ -12494,7 +12492,6 @@ msgstr "Menyinkronkan"
 msgid "Syncing your changes"
 msgstr "Menyinkronkan perubahan Anda"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

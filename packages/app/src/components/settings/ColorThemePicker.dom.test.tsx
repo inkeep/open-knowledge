@@ -60,6 +60,27 @@ describe('ColorThemePicker', () => {
     cleanup();
   });
 
+  test('exposes the slot-forwarded description and invalid state on the group', async () => {
+    // `<FormControl>` is a Radix Slot: it merges these onto its single child,
+    // so they only reach the DOM if this component names them. It destructures
+    // without a rest spread, which means an unnamed prop is dropped silently
+    // and the settings row's description ends up referenced by nothing.
+    const { ColorThemePicker } = await import('./ColorThemePicker');
+    render(
+      <ColorThemePicker
+        selection={DEFAULTS}
+        onAssign={() => {}}
+        aria-label="Color theme"
+        aria-describedby="palette-description"
+        aria-invalid
+      />,
+    );
+
+    const group = screen.getByRole('group', { name: 'Color theme' });
+    expect(group.getAttribute('aria-describedby')).toBe('palette-description');
+    expect(group.getAttribute('aria-invalid')).toBe('true');
+  });
+
   test('renders one tile per registered theme, each with a sun and a moon', async () => {
     await renderPicker(DEFAULTS);
     for (const theme of COLOR_THEMES) {

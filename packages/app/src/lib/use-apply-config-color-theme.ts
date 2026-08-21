@@ -11,6 +11,7 @@ import {
   resolveColorTheme,
   resolveCustomScheme,
 } from './color-themes';
+import { narrowThemePreference } from './use-apply-config-theme';
 
 /**
  * localStorage key the FOUC script in `index.html` reads pre-paint: the light +
@@ -207,7 +208,7 @@ export function applyColorThemeToDom(input: ApplyColorThemeInput): void {
       localStorage.setItem(
         COLOR_THEME_PAIR_STORAGE_KEY,
         JSON.stringify({
-          pref: modePreference === 'light' || modePreference === 'dark' ? modePreference : 'system',
+          pref: narrowThemePreference(modePreference),
           light: cachedSlot(selection.light, 'light', customSeed, themes),
           dark: cachedSlot(selection.dark, 'dark', customSeed, themes),
         }),

@@ -4229,7 +4229,6 @@ msgstr "自訂你的 OpenKnowledge 使用體驗。"
 msgid "Cut"
 msgstr "剪下"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "深色"
@@ -7247,7 +7246,6 @@ msgstr "開始設定吧。"
 msgid "Level"
 msgstr "層級"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "淺色"
@@ -12498,7 +12496,6 @@ msgstr "正在同步"
 msgid "Syncing your changes"
 msgstr "正在同步你的變更"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

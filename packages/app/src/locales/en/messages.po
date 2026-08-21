@@ -4229,7 +4229,6 @@ msgstr "Customize your OpenKnowledge experience."
 msgid "Cut"
 msgstr "Cut"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "Dark"
@@ -7247,7 +7246,6 @@ msgstr "Let's get set up."
 msgid "Level"
 msgstr "Level"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "Light"
@@ -12498,7 +12496,6 @@ msgstr "Syncing"
 msgid "Syncing your changes"
 msgstr "Syncing your changes"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

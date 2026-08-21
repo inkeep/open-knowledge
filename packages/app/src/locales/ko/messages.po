@@ -4229,7 +4229,6 @@ msgstr "OpenKnowledge 환경을 원하는 대로 설정하세요."
 msgid "Cut"
 msgstr "잘라내기"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr "어두운 테마"
@@ -7247,7 +7246,6 @@ msgstr "설정을 시작해 볼까요."
 msgid "Level"
 msgstr "수준"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr "밝은 테마"
@@ -12498,7 +12496,6 @@ msgstr "동기화 중"
 msgid "Syncing your changes"
 msgstr "변경 사항 동기화 중"
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

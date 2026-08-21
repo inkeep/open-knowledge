@@ -740,6 +740,19 @@ describe('McpConsentDialog theme picker', () => {
     expect(screen.getByTestId('theme-picker-dark').getAttribute('aria-checked')).toBe('false');
   });
 
+  test('offers the cards in the one order every surface uses', async () => {
+    // The Settings row asserts this same sequence. Both render the shared
+    // picker, so a reorder in one place must not be able to move only one
+    // screen out from under a user who learned the layout on the other.
+    await renderDialog();
+
+    expect(screen.getAllByRole('radio').map((el) => el.textContent)).toEqual([
+      'System',
+      'Light',
+      'Dark',
+    ]);
+  });
+
   test('applies a pick immediately rather than deferring it to Finish', async () => {
     const harness = await renderDialog();
 

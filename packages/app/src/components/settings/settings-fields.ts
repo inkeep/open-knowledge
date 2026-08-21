@@ -18,12 +18,13 @@ export interface FieldDef {
   description?: MessageDescriptor;
   /**
    * Optional override: 'enum-toggle' renders enum as a ToggleGroup;
+   * 'theme-cards' renders the light/dark/system cards with mode thumbnails;
    * 'theme-tiles' renders the IDE color-palette tile picker;
    * 'language-select' renders the interface-language picker, whose options
    * come from the reviewed picker set rather than from the schema enum;
    * default is a select-style toggle.
    */
-  control?: 'enum-toggle' | 'theme-tiles' | 'language-select';
+  control?: 'enum-toggle' | 'theme-cards' | 'theme-tiles' | 'language-select';
 }
 
 export const FIELDS_USER_PREFERENCES: FieldDef[] = [
@@ -31,7 +32,7 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
     path: ['appearance', 'theme'],
     label: msg`Theme`,
     description: msg`Light, dark, or follow the OS.`,
-    control: 'enum-toggle',
+    control: 'theme-cards',
   },
   {
     path: ['appearance', 'language'],

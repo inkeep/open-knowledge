@@ -4225,7 +4225,6 @@ msgstr ""
 msgid "Cut"
 msgstr ""
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Dark"
 msgstr ""
@@ -7243,7 +7242,6 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
-#: src/components/settings/field-controls.tsx
 #: src/components/ThemePicker.tsx
 msgid "Light"
 msgstr ""
@@ -12494,7 +12492,6 @@ msgstr ""
 msgid "Syncing your changes"
 msgstr ""
 
-#: src/components/settings/field-controls.tsx
 #: src/components/settings/LanguageSelect.tsx
 #: src/components/ThemePicker.tsx
 msgid "System"

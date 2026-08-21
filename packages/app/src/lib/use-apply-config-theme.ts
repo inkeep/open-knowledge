@@ -1,6 +1,27 @@
 import { useTheme } from 'next-themes';
 import { useEffect } from 'react';
 
+/** The three values `appearance.theme` accepts; `system` tracks the OS. */
+export type ThemePreference = 'system' | 'light' | 'dark';
+
+/**
+ * Narrow an unknown stored value to a pickable preference.
+ *
+ * Anything that is not an explicit 'dark' or 'light' — an unset
+ * `appearance.theme`, next-themes' literal 'system', a hand-edited config
+ * carrying nonsense — resolves to 'system', which is what the app actually does
+ * in each of those cases. Callers must NOT substitute the resolved mode here:
+ * 'system' is the OS-tracking lever, and collapsing it to 'dark'/'light' checks
+ * the wrong card and strands the user's choice to follow the OS.
+ *
+ * Lives beside the apply hook rather than beside the picker so the non-React
+ * `lib/` callers can reach it without importing a component, which is where
+ * `narrowLanguagePreference` sits for the same reason.
+ */
+export function narrowThemePreference(value: unknown): ThemePreference {
+  return value === 'dark' || value === 'light' ? value : 'system';
+}
+
 /**
  * Apply the merged-config `appearance.theme` into next-themes, app-wide. Owned
  * by `ConfigProvider`; the single seam that turns a config value (Settings
