@@ -41,7 +41,7 @@ const catalog: AgentCatalog = {
       source: 'registry',
       supported: true,
       featured: true,
-      harness: { cli: 'claude', availability: 'unknown' },
+      harness: { cli: 'claude', availability: 'unknown', credentials: 'unknown' },
     },
     {
       id: 'opencode-acp',
@@ -50,7 +50,7 @@ const catalog: AgentCatalog = {
       source: 'registry',
       supported: false,
       featured: false,
-      harness: { cli: 'opencode', availability: 'not-found' },
+      harness: { cli: 'opencode', availability: 'not-found', credentials: 'unknown' },
     },
     // Not harness-mapped and not enabled → collapsed behind "Show more".
     {
@@ -73,7 +73,7 @@ const catalog: AgentCatalog = {
       featured: false,
       description: 'ACP wrapper for Cursor',
       license: 'Apache-2.0',
-      harness: { cli: 'cursor', availability: 'not-found' },
+      harness: { cli: 'cursor', availability: 'not-found', credentials: 'unknown' },
     },
     // Supported + harness present → detected → defaults on.
     {
@@ -84,7 +84,7 @@ const catalog: AgentCatalog = {
       supported: true,
       featured: false,
       description: 'ACP wrapper for Gemini',
-      harness: { cli: 'pi', availability: 'present' },
+      harness: { cli: 'pi', availability: 'present', credentials: 'unknown' },
     },
   ],
   stale: false,
@@ -221,6 +221,25 @@ describe('ConfigureAgentsSection', () => {
     expect(notFound.getAttribute('data-disabled')).toBeNull();
   });
 
+  test('an existing sign-in detects an agent whose CLI is not on PATH', async () => {
+    // The Codex Desktop case. The adapter brings its own runtime, so a harness
+    // the PATH probe ruled out is still ready to run when its credential
+    // namespace already holds a sign-in: the row defaults on and stays above
+    // the fold, exactly as a PATH-present one does.
+    const cursor = catalog.agents.find((a) => a.id === 'cursor');
+    const restore = cursor?.harness?.credentials;
+    if (cursor?.harness) cursor.harness.credentials = 'present';
+    try {
+      renderSection();
+      const row = await screen.findByTestId('configure-agents-in-app-registry:cursor');
+      expect(row.getAttribute('aria-checked')).toBe('true');
+      // Above the fold without expanding — no `expandInApp()` above.
+      expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
+    } finally {
+      if (cursor?.harness && restore) cursor.harness.credentials = restore;
+    }
+  });
+
   test('collapses to agents the probe has not ruled out, with a Show more toggle for the rest', async () => {
     renderSection();
     // Default view = harness-mapped agents the probe did NOT rule out: Gemini
@@ -304,6 +323,35 @@ describe('ConfigureAgentsSection', () => {
     } finally {
       if (gemini?.harness && restore.g) gemini.harness.availability = restore.g;
       if (claude?.harness && restore.c) claude.harness.availability = restore.c;
+    }
+  });
+
+  test('a credentials-only agent lifts the In app group above one with nothing', async () => {
+    // The group tier scores on `isHarnessDetected`, not PATH presence alone.
+    // Scoring it on PATH would sink In app below External apps for the Codex
+    // Desktop user this signal exists to serve: every harness ruled out by the
+    // probe, yet one of them signed in and ready to run.
+    const patched = catalog.agents.filter((a) => a.harness !== undefined);
+    const restore = patched.map((a) => ({ a, ...a.harness }));
+    for (const a of patched) {
+      if (a.harness) a.harness.availability = 'not-found';
+    }
+    const cursor = catalog.agents.find((a) => a.id === 'cursor');
+    if (cursor?.harness) cursor.harness.credentials = 'present';
+    try {
+      renderSection();
+      // Cursor is the only agent left above the fold, and it got there on the
+      // credential signal alone — waiting on it proves the catalog landed and
+      // that the row-level arm fired, before scoring the group order.
+      await screen.findByText('ACP wrapper for Cursor');
+      expect(groupOrder()).toEqual(['In app', 'External apps']);
+    } finally {
+      for (const r of restore) {
+        if (r.a.harness && r.availability && r.credentials) {
+          r.a.harness.availability = r.availability;
+          r.a.harness.credentials = r.credentials;
+        }
+      }
     }
   });
 

@@ -23,10 +23,32 @@ export interface CatalogAgent {
   harness?: {
     cli: 'claude' | 'codex' | 'cursor' | 'gemini' | 'opencode' | 'pi';
     availability: 'present' | 'not-found' | 'unknown';
+    /** A sign-in already exists in the namespace the adapter reads. */
+    credentials: 'present' | 'unknown';
   };
 }
 
-/** Registry agents whose corresponding first-party CLI is on the server host. */
+/**
+ * Whether this host looks ready to run the agent — the single predicate behind
+ * both the launcher menus and the Settings list, which must never disagree.
+ *
+ * Either signal alone is enough, and both are weak. The CLI on PATH means the
+ * user works with this harness, not that they are signed in; a credential
+ * record means they signed in here at some point, not that the token still
+ * works. Neither is a launchability test either: adapters bring their own
+ * runtime (npx, or a binary OK downloads itself), so a host with neither
+ * signal can still run the agent perfectly well once the user turns it on.
+ *
+ * Being wrong in the offering direction costs a sign-in prompt; being wrong in
+ * the hiding direction costs an agent the user never learns they can use. This
+ * only decides what to offer unprompted, so it leans toward offering.
+ */
+export function isHarnessDetected(agent: CatalogAgent): boolean {
+  if (!agent.supported) return false;
+  return agent.harness?.availability === 'present' || agent.harness?.credentials === 'present';
+}
+
+/** Registry agents this host looks ready to run, best-known first. */
 export function detectedHarnessAgents(agents: readonly CatalogAgent[]): CatalogAgent[] {
   const priority = ['claude-acp', 'codex-acp', 'cursor', 'opencode'];
   // `indexOf` returns -1 for an id not in the priority list; map that to the end
@@ -35,25 +57,24 @@ export function detectedHarnessAgents(agents: readonly CatalogAgent[]): CatalogA
     const i = priority.indexOf(id);
     return i === -1 ? priority.length : i;
   };
-  return agents
-    .filter((agent) => agent.supported && agent.harness?.availability === 'present')
-    .sort((a, b) => rank(a.id) - rank(b.id));
+  return agents.filter(isHarnessDetected).sort((a, b) => rank(a.id) - rank(b.id));
 }
 
 /**
- * Sort rank by what the harness probe found: 0 for an agent whose CLI is on the
- * host or whose probe has not landed yet, 1 for one the probe positively
- * reported absent.
+ * Sort rank by what the harness probes found: 0 for an agent whose CLI is on the
+ * host, whose credentials are already there, or whose probe has not landed yet;
+ * 1 for one the PATH probe positively reported absent with nothing else to go on.
  *
  * `unknown` ranks WITH `present`, not with `not-found` — a probe that has not
  * answered is pending, not a negative result, and burying an agent the user
  * actually has behind a fold because a PATH check was slow is the worse failure.
  * Same three-valued discipline the Desktop rows already apply to their own probe.
  *
- * Distinct from `detectedHarnessAgents`, which filters strictly to `present`
- * because its callers need a positive answer; this one only orders.
+ * Distinct from `isHarnessDetected`, which needs a positive answer; this one
+ * only orders, so it keeps the pending case up top.
  */
 export function harnessPresenceRank(agent: CatalogAgent): number {
+  if (agent.harness?.credentials === 'present') return 0;
   return agent.harness?.availability === 'not-found' ? 1 : 0;
 }
 

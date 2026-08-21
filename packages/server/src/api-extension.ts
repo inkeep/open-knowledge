@@ -8437,6 +8437,8 @@ export function createApiExtension(
       .object({
         cli: z.enum(['claude', 'codex', 'cursor', 'gemini', 'opencode', 'pi']),
         availability: z.enum(['present', 'not-found', 'unknown']),
+        /** No `absent` member — see `HarnessCredentials`. */
+        credentials: z.enum(['present', 'unknown']),
       })
       .optional(),
   });
@@ -8482,7 +8484,8 @@ export function createApiExtension(
                 ? {
                     harness: {
                       cli: harnessCli,
-                      availability: harnessAvailability[harnessCli] ?? 'unknown',
+                      availability: harnessAvailability[harnessCli]?.availability ?? 'unknown',
+                      credentials: harnessAvailability[harnessCli]?.credentials ?? 'unknown',
                     },
                   }
                 : {}),

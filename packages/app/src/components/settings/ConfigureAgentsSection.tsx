@@ -36,7 +36,12 @@ import {
   isInAppAgentEnabled,
   isTerminalCliEnabled,
 } from '@/lib/acp/agent-visibility';
-import { type CatalogAgent, fetchAgentCatalog, harnessPresenceRank } from '@/lib/acp/catalog';
+import {
+  type CatalogAgent,
+  fetchAgentCatalog,
+  harnessPresenceRank,
+  isHarnessDetected,
+} from '@/lib/acp/catalog';
 import {
   desktopEnabledKey,
   inAppEnabledKey,
@@ -220,7 +225,7 @@ export function ConfigureAgentsSection(): ReactNode {
   // use, so this list and every launcher agree.
   const inAppChecked = (agent: CatalogAgent): boolean => {
     const isRegistered = registeredKeys.has(`${agent.source}:${agent.id}`);
-    const isDetected = agent.supported === true && agent.harness?.availability === 'present';
+    const isDetected = isHarnessDetected(agent);
     return isInAppAgentEnabled(
       overrides,
       agent.source,
@@ -267,9 +272,15 @@ export function ConfigureAgentsSection(): ReactNode {
   const terminalHiddenCount =
     terminalFoldable && !searching ? terminalClis.length - terminalPrimary.length : 0;
 
-  // Group ordering: a group holding something present sorts above one that does
-  // not. Two tiers, matching the rule this file already applies per row rather
-  // than inventing a third for ordering.
+  // Group ordering: a group holding something this host can use sorts above one
+  // that does not. Two tiers, matching the rule this file already applies per
+  // row rather than inventing a third for ordering. Each group scores on its
+  // own notion of usable, and the three deliberately differ.
+  //
+  // In app is DETECTED, not merely PATH-present: `isHarnessDetected` also
+  // counts an existing sign-in, so a harness whose CLI was never installed
+  // still lifts the group. Scoring this one on PATH alone would sink In app
+  // below External apps for exactly the user that signal exists to serve.
   //
   // Terminal is FAIL-OPEN (`cliPresent`, `!== false`): a terminal row only opens
   // a shell we own, so a probe that has not answered holds its place rather than
@@ -282,8 +293,7 @@ export function ConfigureAgentsSection(): ReactNode {
   // In app is held up entirely while its catalog is in flight — the rows arrive
   // asynchronously, and scoring the group on a not-yet-populated list would sort
   // it to the bottom and visibly jump it back on every open of this tab.
-  const inAppHasPresent =
-    !catalogReady || inAppAgents.some((a) => a.harness?.availability === 'present');
+  const inAppHasDetected = !catalogReady || inAppAgents.some(isHarnessDetected);
   const terminalHasPresent = terminalClis.some(cliPresent);
   const desktopHasPresent = desktopTargets.some((tg) => states[tg.id]?.installed === true);
 
@@ -454,7 +464,7 @@ export function ConfigureAgentsSection(): ReactNode {
   // Each group carries its own `key`, so React reconciles them across a reorder
   // instead of remounting whichever section happens to land in a given slot.
   const groups = [
-    { node: inAppGroup, hasPresent: inAppHasPresent },
+    { node: inAppGroup, hasPresent: inAppHasDetected },
     { node: terminalGroup, hasPresent: terminalHasPresent },
     { node: desktopGroup, hasPresent: desktopHasPresent },
   ]

@@ -36,6 +36,22 @@ afterEach(() => {
   shims = [];
 });
 
+/**
+ * The real credential probe reads the host filesystem, so every availability
+ * assertion below pins it — otherwise a dev machine with `~/.codex/auth.json`
+ * and CI disagree about the same expected object.
+ */
+const noCredentials = () => 'unknown' as const;
+
+/** Availability-only view, for the assertions that predate the second signal. */
+function availabilityOf(
+  result: Awaited<ReturnType<ReturnType<typeof createAcpHarnessAvailabilityProbe>>>,
+): Record<string, HarnessAvailability> {
+  return Object.fromEntries(
+    Object.entries(result).map(([cli, signals]) => [cli, signals.availability]),
+  );
+}
+
 describe('ACP harness availability', () => {
   test('maps the registry-backed harness agents to their real CLI ids', () => {
     expect(ACP_AGENT_HARNESS_CLIS).toEqual({
@@ -64,13 +80,14 @@ describe('ACP harness availability', () => {
         calls.push(cli);
         return availability[cli] ?? 'unknown';
       },
+      credentials: noCredentials,
       now: () => timestamp,
       ttlMs: 50,
     });
 
     const first = probe();
     expect(probe()).toBe(first);
-    expect(await first).toEqual(availability);
+    expect(availabilityOf(await first)).toEqual(availability);
     expect(calls).toEqual(['claude', 'codex', 'cursor', 'gemini', 'opencode', 'pi']);
 
     timestamp = 151;
@@ -91,8 +108,9 @@ describe('ACP harness availability', () => {
     }
     const probe = createAcpHarnessAvailabilityProbe({
       resolveLoginShellPath: async () => shimDir,
+      credentials: noCredentials,
     });
-    expect(await probe()).toEqual({
+    expect(availabilityOf(await probe())).toEqual({
       claude: 'present',
       codex: 'present',
       cursor: 'present',
@@ -111,11 +129,12 @@ describe('ACP harness availability', () => {
         consulted += 1;
         return emptyDir;
       },
+      credentials: noCredentials,
     });
     const result = await probe();
     // Whatever this machine happens to have installed, every CLI that missed
     // the base PATH must have been given the login-shell second chance.
-    const missing = Object.values(result).filter((v) => v === 'not-found').length;
+    const missing = Object.values(result).filter((v) => v.availability === 'not-found').length;
     expect(consulted).toBe(missing);
   });
 
@@ -125,9 +144,67 @@ describe('ACP harness availability', () => {
         if (cli === 'codex') throw new Error('probe failed');
         return 'not-found';
       },
+      credentials: noCredentials,
     });
 
-    expect((await probe()).codex).toBe('unknown');
+    expect((await probe()).codex?.availability).toBe('unknown');
+  });
+});
+
+describe('harness credentials (a second positive signal, never a negative one)', () => {
+  test('an existing sign-in is reported even when the PATH probe rejects', async () => {
+    // The two signals are independent: a signed-in harness whose preflight blew
+    // up is exactly the case the credential probe exists to rescue, so a
+    // rejected availability probe must not also swallow the credential answer.
+    const probe = createAcpHarnessAvailabilityProbe({
+      probe: async () => {
+        throw new Error('probe failed');
+      },
+      credentials: (cli) => (cli === 'codex' ? 'present' : 'unknown'),
+    });
+
+    expect((await probe()).codex).toEqual({ availability: 'unknown', credentials: 'present' });
+  });
+
+  test('a throwing credential probe degrades that harness without poisoning the cache', async () => {
+    // The result promise is cached for the whole TTL and rejections are never
+    // evicted, so an unguarded throw here would answer every catalog request
+    // for the next minute with a 502 instead of a degraded row.
+    const probe = createAcpHarnessAvailabilityProbe({
+      probe: async () => 'not-found',
+      credentials: (cli) => {
+        if (cli === 'codex') throw new Error('credential probe exploded');
+        return 'unknown';
+      },
+    });
+
+    await expect(probe()).resolves.toMatchObject({
+      codex: { availability: 'not-found', credentials: 'unknown' },
+    });
+  });
+
+  test('reads the Codex sign-in from the CODEX_HOME the adapter would inherit', async () => {
+    // Pins the shared-store contract the Codex Desktop case rests on: Desktop
+    // and CLI both land on `$CODEX_HOME/auth.json`, and the probe has to read
+    // the same env the launch chain passes through `mergedEnv`.
+    const codexHome = mkdtempSync(join(tmpdir(), 'harness-creds-test-'));
+    shims.push(codexHome);
+    const previous = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = codexHome;
+    try {
+      const before = await createAcpHarnessAvailabilityProbe({ probe: async () => 'not-found' })();
+      expect(before.codex?.credentials).toBe('unknown');
+
+      writeFileSync(join(codexHome, 'auth.json'), '{}');
+      const after = await createAcpHarnessAvailabilityProbe({ probe: async () => 'not-found' })();
+      expect(after.codex?.credentials).toBe('present');
+      // Only Codex is mapped — Claude Desktop keeps an app-owned session that
+      // never reaches Claude Code's namespace, so no `~/.claude` inference.
+      expect(after.claude?.credentials).toBe('unknown');
+    } finally {
+      if (previous === undefined) delete process.env.CODEX_HOME;
+      else process.env.CODEX_HOME = previous;
+    }
   });
 });
 
@@ -150,10 +227,11 @@ describe('unverified verdicts (a probe failure is not absence, and must leave a 
     const probe = createAcpHarnessAvailabilityProbe({
       preflight: firstChanceAlwaysMisses,
       resolveLoginShellPath: async () => null,
+      credentials: noCredentials,
     });
     const result = await probe();
-    for (const [cli, verdict] of Object.entries(result)) {
-      expect({ cli, verdict }).toEqual({ cli, verdict: 'unknown' });
+    for (const [cli, signals] of Object.entries(result)) {
+      expect({ cli, verdict: signals.availability }).toEqual({ cli, verdict: 'unknown' });
     }
     // Guard against a vacuous pass: every mapped harness got a verdict.
     expect(Object.keys(result)).toHaveLength(6);
@@ -169,9 +247,10 @@ describe('unverified verdicts (a probe failure is not absence, and must leave a 
       resolveLoginShellPath: async () => {
         throw captureFailure;
       },
+      credentials: noCredentials,
     });
     const result = await probe();
-    for (const verdict of Object.values(result)) expect(verdict).toBe('unknown');
+    for (const signals of Object.values(result)) expect(signals.availability).toBe('unknown');
     const records = [...acpLog.warn.mock.calls, ...acpLog.info.mock.calls];
     expect(records.length).toBeGreaterThan(0);
     expect(
