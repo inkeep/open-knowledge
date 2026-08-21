@@ -56,6 +56,7 @@ type MockPanzoomInstance = {
   reset: ReturnType<typeof vi.fn>;
   destroy: ReturnType<typeof vi.fn>;
   zoomWithWheel: ReturnType<typeof vi.fn>;
+  getScale: ReturnType<typeof vi.fn>;
 };
 type MockPanzoomOptions = {
   cursor?: string;
@@ -73,6 +74,7 @@ const createPanzoom = vi.fn((_element: SVGElement, options?: MockPanzoomOptions)
     reset: vi.fn(() => ({ x: 0, y: 0, scale: 1 })),
     destroy: vi.fn(() => {}),
     zoomWithWheel: vi.fn(() => ({ scale: 1 })),
+    getScale: vi.fn(() => 1),
   };
   panzoomInstances.push(instance);
   panzoomOptions.push(options ?? {});
@@ -224,6 +226,99 @@ describe('MermaidView controls', () => {
     expect(panzoomOptions[0]?.noBind).toBe(true);
     expect(panzoomOptions[0]?.cursor).toBe('default');
     expect(panzoomOptions[0]?.touchAction).toBe('auto');
+  });
+
+  test('standalone .mmd binding wires two-finger wheel to pan and ctrl/meta+wheel to zoom', async () => {
+    const editBinding = { canEdit: true, commitChart: vi.fn() };
+    const { container } = render(
+      <TooltipProvider>
+        <MermaidView chart="graph TD; A-->B;" editBinding={editBinding} />
+      </TooltipProvider>,
+    );
+
+    const panzoom = await waitForPanzoomInstance();
+    const scroller = container.querySelector('.ok-mermaid-svg') as HTMLElement;
+    expect(scroller).not.toBeNull();
+
+    const trackpad = new WheelEvent('wheel', {
+      deltaX: 30,
+      deltaY: 40,
+      bubbles: true,
+      cancelable: true,
+    });
+    scroller.dispatchEvent(trackpad);
+    expect(panzoom.pan).toHaveBeenCalledWith(-30, -40, { relative: true });
+    expect(panzoom.zoomWithWheel).not.toHaveBeenCalled();
+    expect(trackpad.defaultPrevented).toBe(true);
+
+    // Scale-compensated: at 2x zoom, a 60px wheel delta pans 30 local units
+    // so the visible content tracks the gesture 1:1.
+    panzoom.pan.mockClear();
+    panzoom.getScale.mockReturnValueOnce(2);
+    const scaled = new WheelEvent('wheel', {
+      deltaX: 60,
+      deltaY: 0,
+      bubbles: true,
+      cancelable: true,
+    });
+    scroller.dispatchEvent(scaled);
+    expect(panzoom.pan).toHaveBeenCalledWith(-30, -0, { relative: true });
+
+    const zoom = new WheelEvent('wheel', {
+      deltaY: -10,
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    scroller.dispatchEvent(zoom);
+    expect(panzoom.zoomWithWheel).toHaveBeenCalledWith(zoom);
+    expect(zoom.defaultPrevented).toBe(true);
+
+    panzoom.zoomWithWheel.mockClear();
+    const cmdZoom = new WheelEvent('wheel', {
+      deltaY: -10,
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    scroller.dispatchEvent(cmdZoom);
+    expect(panzoom.zoomWithWheel).toHaveBeenCalledWith(cmdZoom);
+    expect(cmdZoom.defaultPrevented).toBe(true);
+  });
+
+  test('standalone wheel listener does not accumulate across re-renders', async () => {
+    const editBinding = { canEdit: true, commitChart: vi.fn() };
+    const { container, rerender } = render(
+      <TooltipProvider>
+        <MermaidView chart="graph TD; A-->B;" editBinding={editBinding} />
+      </TooltipProvider>,
+    );
+    const first = await waitForPanzoomInstance();
+
+    rerender(
+      <TooltipProvider>
+        <MermaidView chart="graph TD; B-->C;" editBinding={editBinding} />
+      </TooltipProvider>,
+    );
+    await waitFor(() => {
+      expect(panzoomInstances.length).toBe(2);
+      expect(first.destroy.mock.calls.length).toBe(1);
+    });
+    const current = panzoomInstances[1];
+
+    const scroller = container.querySelector('.ok-mermaid-svg') as HTMLElement;
+    const wheel = new WheelEvent('wheel', {
+      deltaX: 10,
+      deltaY: 20,
+      bubbles: true,
+      cancelable: true,
+    });
+    scroller.dispatchEvent(wheel);
+    // The wheel binding must fire on the CURRENT panzoom exactly once,
+    // never on the destroyed prior instance, no matter how many renders
+    // have fired between mount and now.
+    expect(current.pan.mock.calls.length).toBe(1);
+    expect(first.pan.mock.calls.length).toBe(0);
   });
 
   test('re-rendering with a different chart destroys the old Panzoom instance', async () => {

@@ -407,7 +407,7 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
           // A newer render may have replaced the SVG while Panzoom loaded.
           if (canvasRef.current?.querySelector('svg') !== svgElement) return;
           panzoomRef.current?.destroy();
-          panzoomRef.current = Panzoom(svgElement, {
+          const panzoom = Panzoom(svgElement, {
             canvas: true,
             cursor: 'default',
             maxScale: MERMAID_ZOOM_MAX,
@@ -416,10 +416,43 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
             step: MERMAID_ZOOM_STEP,
             touchAction: 'auto',
           });
+          panzoomRef.current = panzoom;
         })
         .catch((err) => {
           console.warn('[Mermaid] panzoom setup failed:', err);
         });
+    }
+
+    // Standalone `.mmd` docs own the whole viewport — a two-finger
+    // trackpad scroll here should pan the canvas, not do nothing.
+    // Codefenced fences deliberately skip this so a wheel over an inline
+    // diagram scrolls the enclosing page. Bound once per mount (not per
+    // render) so re-renders don't accumulate listeners; reads
+    // panzoomRef.current on each event so it always targets the current
+    // Panzoom instance (attachPanzoom destroys+replaces it every render).
+    if (editBindingRef.current) {
+      const scrollContainer = canvasRef.current;
+      if (scrollContainer) {
+        const onWheel = (e: WheelEvent) => {
+          const pz = panzoomRef.current;
+          if (!pz) return;
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            pz.zoomWithWheel(e);
+            return;
+          }
+          e.preventDefault();
+          // Scale-compensate: pan translates in element-local units, which
+          // panzoom then scales when it applies transform. Dividing by the
+          // current scale keeps a two-finger swipe tracking the fingers 1:1
+          // at every zoom level.
+          const scale = typeof pz.getScale === 'function' ? pz.getScale() : 1;
+          const denom = scale > 0 ? scale : 1;
+          pz.pan(-e.deltaX / denom, -e.deltaY / denom, { relative: true });
+        };
+        scrollContainer.addEventListener('wheel', onWheel, { passive: false });
+        offs.push(() => scrollContainer.removeEventListener('wheel', onWheel));
+      }
     }
 
     Promise.all([loadMermaid(), loadWysiwyg()])
