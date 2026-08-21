@@ -1,6 +1,6 @@
 ---
 name: open-knowledge-discovery
-description: "Read when the user asks what OpenKnowledge is, wants to install it on a repository, wants to open or preview a single markdown file that is not part of an OpenKnowledge project, wants to share an OpenKnowledge project with collaborators, or asks how `ok init` / `ok cowork` / OK Desktop set up a project. Do NOT load to perform OpenKnowledge reads/writes — the runtime guidance for editing markdown inside an initialized OK project ships as a separate project-local skill installed into each detected agent's skills dir (for example `.claude/skills/open-knowledge/`) whenever `ok init` runs."
+description: "Read when the user asks what OpenKnowledge is, wants to install it on a repository, wants to open or preview a single markdown file that is not part of an OpenKnowledge project, wants to share an OpenKnowledge project with collaborators, asks whether OpenKnowledge supports a particular capability, or asks how `ok init` / `ok cowork` / OK Desktop set up a project. Do NOT load to perform OpenKnowledge reads/writes — the runtime guidance for editing markdown inside an initialized OK project ships as a separate project-local skill installed into each detected agent's skills dir (for example `.claude/skills/open-knowledge/`) whenever `ok init` runs."
 compatibility: "Any agent host — no MCP server required. Pure discovery + install guidance."
 metadata:
   author: "Inkeep"
@@ -116,6 +116,13 @@ The path must be absolute (a file outside a project has no cwd to anchor a
 relative path). Re-opening the same file lands on the same session. Never
 construct or guess the URL — use the one `preview_url` returns.
 
+## What else OK does
+
+This skill does not enumerate OK's capabilities, and they change between releases. When asked whether OK supports something, read rather than guess:
+
+- **Docs** — <https://openknowledge.ai/docs>
+- **Source** — <https://github.com/inkeep/open-knowledge>
+
 ## Working inside a project — use the project-local skill, not this one
 
 Do **not** use this skill to perform OpenKnowledge reads or writes. The
@@ -132,5 +139,4 @@ directory was not committed). Advise the user to run `ok init` to install it.
 
 ## Learn more
 
-- Repository: <https://github.com/inkeep/open-knowledge>
 - Run `ok --help` for the full command list.

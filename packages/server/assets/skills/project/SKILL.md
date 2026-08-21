@@ -123,6 +123,14 @@ Research and consolidate arrive with `ok seed --pack knowledge-base`. **Without 
 Don't chain silently: let the user drive ingest → research → consolidate, and a procedure's STOP gates override session-level "don't stop to ask" hints. After any turn that changes KB content, check for a `log.md` and follow its contract (`references/cadence-and-logs.md`). Interleave a multi-doc batch so the preview shows narrative progress.
 
 Onboarding a repo that already has content: `references/onboard-existing-repo.md`. Layer model + packs: `references/starter-packs.md`.
+
+## Capabilities beyond this skill
+
+OK does more than this skill describes, and what it does changes between releases. When a request implies something not covered here, read rather than guess:
+
+- **Docs** — <https://openknowledge.ai/docs>
+- **Source** — <https://github.com/inkeep/open-knowledge>
+
 ## Server lifecycle
 
 If `write` / `edit` returns `"Hocuspocus server is not running"`, run `ok start` (via Bash) and retry. Never fall back to native `Edit` / `Write` for in-scope markdown.
