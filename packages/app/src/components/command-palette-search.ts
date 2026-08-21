@@ -372,6 +372,31 @@ export async function fetchWorkspaceSearchEntries(
   return { entries, truncated: payload.truncated === true, ready: payload.ready !== false };
 }
 
+/**
+ * Admission predicate for command-shaped rows, shared by the ⌘K palette and
+ * the settings dialog. A row matches when EVERY whitespace-separated term of
+ * the query appears somewhere in its searchable text (`label` plus
+ * `keywords`), case-insensitively, as a substring, in any order. An empty
+ * query matches everything.
+ *
+ * Order-independence is the point: `keywords` holds tokens, and a user typing
+ * two words rarely types them adjacently in the order the label happens to
+ * use.
+ *
+ * Terms come from the same `queryTerms` the highlighter tokenizes with. Where a
+ * surface both admits and highlights through these two helpers — the settings
+ * dialog does — the rows it shows and the spans it marks cannot drift apart.
+ * The palette is not such a surface: command rows render their label as plain
+ * text, and the rows it does highlight are file and folder hits admitted by the
+ * workspace search corpus, not by this predicate. So a keyword-only match
+ * legitimately shows no marked span; that is not tokenizer drift.
+ *
+ * Enabling cmdk's own `commandScore` filter instead is not equivalent and is
+ * not a simplification waiting to happen: its model is in-order, so it scores
+ * `branch switch` against Switch worktree at zero, and turning the flag on also
+ * turns on score-descending sort, which would discard the registry order the
+ * groups depend on.
+ */
 export function matchesCommandQuery(
   label: string,
   query: string,
@@ -380,7 +405,7 @@ export function matchesCommandQuery(
   const normalizedQuery = normalize(query);
   if (!normalizedQuery) return true;
   const haystack = normalize([label, ...keywords].join(' '));
-  return haystack.includes(normalizedQuery);
+  return queryTerms(normalizedQuery).every((term) => haystack.includes(term));
 }
 
 /**

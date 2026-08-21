@@ -222,4 +222,19 @@ describe('buildSettingsSearchIndex + matchesCommandQuery', () => {
   test('a query matching nothing returns no entries', () => {
     expect(find('zzzznomatch')).toHaveLength(0);
   });
+
+  test('a section is found by a multi-word query spanning its label and its group', () => {
+    // "Sync" is the item label and "This project" its group heading, so the two
+    // words a user types are both in the searchable text but never adjacent in
+    // the order typed.
+    expect(find('project sync').some((e) => e.kind === 'section' && e.sectionId === 'sync')).toBe(
+      true,
+    );
+  });
+
+  test('a query whose terms are not ALL present returns no entries', () => {
+    // The counterweight: matching on any one term would surface the Sync
+    // section here.
+    expect(find('sync zzzznomatch')).toHaveLength(0);
+  });
 });

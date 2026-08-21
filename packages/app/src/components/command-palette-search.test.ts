@@ -1,3 +1,4 @@
+import { COMMAND_IDENTITIES, MENU_LABELS } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   buildWorkspaceEntries,
@@ -264,6 +265,70 @@ describe('matchesCommandQuery', () => {
 
   test('returns false when neither label nor keywords include the query', () => {
     expect(matchesCommandQuery('Open graph', 'cursor')).toBe(false);
+  });
+
+  // A command's searchable text is its label plus its keyword tokens. A query
+  // of several words admits the command when EVERY word appears somewhere in
+  // that text; where the words sit relative to one another is not part of the
+  // contract. "Report a bug" is the canonical shape: the label interposes "a"
+  // between the two words a user types, so `report bug` is contiguous nowhere.
+  // `bug report` IS contiguous, inside the keyword string, which makes it the
+  // weaker of the two cases below — it holds under a contiguity rule as well,
+  // so it guards against regression rather than discriminating this contract.
+  const REPORT_BUG_KEYWORDS = ['bug report issue feedback problem'];
+  const WORKTREE_KEYWORDS = ['worktree', 'branch', 'new'];
+
+  test('matches when every query term is present, whatever their order and spacing', () => {
+    expect(matchesCommandQuery('Report a bug', 'report bug', REPORT_BUG_KEYWORDS)).toBe(true);
+    expect(matchesCommandQuery('Report a bug', 'bug report', REPORT_BUG_KEYWORDS)).toBe(true);
+    expect(
+      matchesCommandQuery('Switch worktree', 'branch switch', ['worktree', 'switch', 'branch']),
+    ).toBe(true);
+  });
+
+  test('matches a term that occurs inside a longer word', () => {
+    // "work" and "tree" both land inside "worktree": a term matches by
+    // substring, not by whole-token equality.
+    expect(matchesCommandQuery('New worktree', 'work tree', WORKTREE_KEYWORDS)).toBe(true);
+  });
+
+  test('matches each term case-insensitively', () => {
+    expect(matchesCommandQuery('Report a bug', 'REPORT Bug', REPORT_BUG_KEYWORDS)).toBe(true);
+  });
+
+  // The counterweight to the cases above: every term has to land. Matching on
+  // ANY term would make the palette admit nearly everything a user types.
+  test('rejects when a single term is absent, even when the others match', () => {
+    expect(matchesCommandQuery('Report a bug', 'report cursor', REPORT_BUG_KEYWORDS)).toBe(false);
+    expect(matchesCommandQuery('Report a bug', 'cursor bug', REPORT_BUG_KEYWORDS)).toBe(false);
+    expect(matchesCommandQuery('New worktree', 'work tree cursor', WORKTREE_KEYWORDS)).toBe(false);
+  });
+
+  // Widening admission can hand a phrase to a destructive command that a
+  // narrower matcher kept out of reach. Kill Terminal carries `close` and ends
+  // a live shell with no confirmation and no undo, while in most editors
+  // "close terminal" means dismiss the panel. The reversible command has to
+  // answer that phrasing too, so the destructive one is never the only option.
+  test('a destructive phrasing also reaches its reversible sibling', () => {
+    const killTerminal = COMMAND_IDENTITIES.find((command) => command.id === 'kill-terminal');
+    const toggleTerminal = COMMAND_IDENTITIES.find((command) => command.id === 'toggle-terminal');
+    const labelOf = (key: string | undefined) =>
+      key ? ((MENU_LABELS as Record<string, string>)[key] ?? '') : '';
+
+    expect(
+      matchesCommandQuery(
+        labelOf(killTerminal?.labelKey),
+        'close terminal',
+        killTerminal?.keywords ?? [],
+      ),
+    ).toBe(true);
+    expect(
+      matchesCommandQuery(
+        labelOf(toggleTerminal?.labelKey),
+        'close terminal',
+        toggleTerminal?.keywords ?? [],
+      ),
+    ).toBe(true);
   });
 });
 

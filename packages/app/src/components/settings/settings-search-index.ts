@@ -7,8 +7,9 @@
  * when the markdownlint panel is a visible sidebar item, which is exactly the
  * "plugin enabled + project open" predicate. No gating logic is duplicated here.
  *
- * Filtering at render time reuses `matchesCommandQuery` (the same substring
- * matcher the ⌘K command palette uses), so this module only shapes the corpus.
+ * Filtering at render time reuses `matchesCommandQuery` (the same per-term,
+ * order-independent matcher the ⌘K command palette uses), so this module only
+ * shapes the corpus.
  */
 import { MARKDOWNLINT_RULE_CATALOG } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';

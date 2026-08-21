@@ -256,7 +256,7 @@ function createBridge({
         Promise.resolve([
           recent('Current', '/projects/current'),
           recent('Alpha', '/projects/alpha'),
-          recent('Omega', '/archive/omega-project'),
+          recent('Omega', '/archive/proj-7'),
         ]),
       ),
       open: vi.fn(() => Promise.resolve()),
@@ -428,7 +428,7 @@ describe('CommandPalette DOM behavior', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull(),
     );
-    expect(screen.queryByTestId('command-palette-recent-/archive/omega-project')).not.toBeNull();
+    expect(screen.queryByTestId('command-palette-recent-/archive/proj-7')).not.toBeNull();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
@@ -818,6 +818,87 @@ describe('CommandPalette DOM behavior', () => {
       });
     });
     expect(refreshWorktreesMock).toHaveBeenCalled();
+  });
+
+  // Multi-word admission, one test per population. Each population hands the
+  // shared command matcher its own label + keyword pair, so a boundary-level
+  // assertion alone would not prove any of them actually routes through it.
+  test('fixed command rows match multi-word queries whose terms are not adjacent', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    // "Report a bug" puts "a" between the two words the user typed, and its
+    // keyword string carries them in the opposite order.
+    await setQuery('report bug');
+    expect(screen.getByTestId('command-palette-report-bug').textContent).toContain('Report a bug');
+
+    // The weaker of the two orderings: this one is contiguous inside the
+    // keyword string, so it holds under a contiguity rule too.
+    await setQuery('bug report');
+    expect(screen.queryByTestId('command-palette-report-bug')).not.toBeNull();
+
+    // A term may land inside a longer word: "work" and "tree" are both in
+    // "worktree".
+    await setQuery('work tree');
+    expect(screen.queryByTestId('command-palette-new-worktree')).not.toBeNull();
+    expect(screen.queryByTestId('command-palette-switch-worktree')).not.toBeNull();
+
+    // One unmatched term rejects the row, so the palette cannot degrade into
+    // surfacing everything that shares any single word with the query.
+    await setQuery('report zzzznomatch');
+    expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
+  });
+
+  test('recent-project rows match multi-word queries spanning the name and the path', async () => {
+    const { bridge } = await renderPalette();
+    await waitFor(() => expect(bridge?.project.listRecent).toHaveBeenCalledTimes(1));
+
+    // The row's searchable text spans two fields: "omega" appears only in the
+    // name and "archive" only in the path, so neither field satisfies the query
+    // alone.
+    await setQuery('omega archive');
+    expect(screen.queryByTestId('command-palette-recent-/archive/proj-7')).not.toBeNull();
+    expect(screen.queryByTestId('command-palette-recent-/projects/alpha')).toBeNull();
+  });
+
+  test('worktree-branch rows match multi-word queries spanning the branch and its keywords', async () => {
+    worktreeModelMock = {
+      mainRoot: '/projects/current',
+      currentBranch: 'main',
+      entries: [
+        {
+          branch: 'dev',
+          worktreePath: '/projects/current/.ok/worktrees/dev',
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+        {
+          branch: 'feature-x',
+          worktreePath: null,
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ],
+    };
+    await renderPalette();
+
+    // "branch" comes from the row's keywords, "feature" from the branch name.
+    await setQuery('branch feature');
+    expect(screen.queryByTestId('command-palette-worktree-feature-x')).not.toBeNull();
+    // The dev row shares "branch" but not "feature", so it stays out.
+    expect(screen.queryByTestId('command-palette-worktree-dev')).toBeNull();
+  });
+
+  test('open-with-AI rows match multi-word queries spanning the label and its keywords', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    // "open" heads the label and recurs in the "open in" keyword; "cursor" sits
+    // in the middle of the label, so the pair is never contiguous in order.
+    await setQuery('open cursor');
+    expect(screen.queryByTestId('command-palette-open-in-cursor')).not.toBeNull();
+    // Every other target lacks "cursor" and so stays out on "open" alone.
+    expect(screen.queryByTestId('command-palette-open-in-claude-code')).toBeNull();
   });
 });
 
@@ -1316,6 +1397,26 @@ describe('Cmd+K menu-parity backfill', () => {
     await renderPalette({ bridge: createBridge() });
     await setQuery('kill terminal');
     expect(screen.queryByTestId('command-palette-kill-terminal')).toBeNull();
+  });
+
+  test('"close terminal" puts the reversible row ahead of the destructive one', async () => {
+    // Kill Terminal ends a live shell with no confirmation and no undo, and it
+    // answers to "close" as much as Hide Terminal does. Nothing stops both from
+    // matching; what keeps the safe one preselected is that it sits in the view
+    // group, which renders before the terminal group. With no filtering of its
+    // own, the palette highlights whichever row comes first in the document, so
+    // that group ordering is the whole safety property and it is invisible from
+    // the keyword data alone.
+    setViewMenuState({ terminalLive: true });
+    await renderPalette({ bridge: createBridge() });
+    await setQuery('close terminal');
+
+    const reversible = screen.getByTestId('command-palette-toggle-terminal');
+    const destructive = screen.getByTestId('command-palette-kill-terminal');
+
+    const reversibleComesFirst =
+      reversible.compareDocumentPosition(destructive) & Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(reversibleComesFirst).toBeTruthy();
   });
 
   test('AC6: the spell-check row toggles via the bridge invoke, not view-menu-state', async () => {

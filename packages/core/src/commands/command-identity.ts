@@ -638,6 +638,12 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
       'toggle bottom dock',
       'show terminal',
       'hide terminal',
+      // In most editors "close terminal" dismisses the panel. Kill Terminal
+      // also carries `close`, and it destroys a live shell with no confirm and
+      // no undo, so without this the destructive row is the only answer to that
+      // phrasing. Both now match, and the view group renders above the terminal
+      // group, so the reversible one is preselected.
+      'close',
     ],
     shortcutId: 'toggle-terminal-panel',
     stateToggle: {
