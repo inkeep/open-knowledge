@@ -36,6 +36,19 @@ import { z } from 'zod';
 export const REPORT_SIDECAR_SCHEMA_VERSION = 1;
 
 /**
+ * Where sidecars land inside a diagnostic bundle, at every bundle level.
+ *
+ * Shared rather than spelled at each staging site because the two bundle
+ * assemblers (the standard zip builder and the full-level staging collector)
+ * are independent code paths, and a triager reading a bundle should not have to
+ * know which one produced it to know where to look.
+ *
+ * The sidecars are staged; the zips beside them are not. A bundle must not
+ * contain other bundles.
+ */
+export const REPORT_SIDECAR_BUNDLE_DIR = 'state/bug-reports';
+
+/**
  * Known report lifecycle states. Read as an OPEN enum: an unrecognized value
  * (a newer app wrote a state this build doesn't know) normalizes to `'unknown'`
  * rather than rejecting the sidecar. Transitions:
@@ -102,6 +115,13 @@ const AttemptSchema = z.looseObject({
   reference: z.string().optional(),
   /** Short failure reason when the attempt failed. */
   error: z.string().optional(),
+  /**
+   * The errno behind the failure, when the transport reported one. Bounded by
+   * the platform's errno table, so it is safe to persist into a file that ships
+   * inside a diagnostic bundle — unlike the error's message, which carries the
+   * host or path it failed on.
+   */
+  errorCode: z.string().optional(),
 });
 
 export type ReportSidecarAttempt = z.infer<typeof AttemptSchema>;
@@ -109,6 +129,8 @@ export type ReportSidecarAttempt = z.infer<typeof AttemptSchema>;
 const LastErrorSchema = z.looseObject({
   reason: z.string(),
   at: z.string(),
+  /** The errno behind the failure, when the transport reported one. */
+  errorCode: z.string().optional(),
 });
 
 /**

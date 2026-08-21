@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { SERVER_CRASH_LOG } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { collectReportBundle as collectReportBundleFromIndex } from './index.ts';
 import { collectReportBundle } from './report-bundle.ts';
 import type { LanguageMetadata } from './report-language.ts';
@@ -22,6 +22,22 @@ function makeTmpDir(prefix = 'ok-report-test-'): string {
   tmpDirs.push(dir);
   return dir;
 }
+
+// Several sources default to a path under the home directory when the caller
+// supplies no override — the user-level logs, the ShipIt cache, and the
+// bug-report send ledger. Every one of those resolves `homedir()` at call time
+// rather than at import, precisely so a test can move it. Point HOME at an
+// empty directory for the whole file so a developer's own logs and prior bug
+// reports cannot end up staged into a fixture bundle, and so a run here matches
+// a run on CI, where that directory does not exist.
+const realHome = process.env.HOME;
+beforeAll(() => {
+  process.env.HOME = mkdtempSync(resolve(tmpdir(), 'ok-report-test-home-'));
+});
+afterAll(() => {
+  if (realHome === undefined) delete process.env.HOME;
+  else process.env.HOME = realHome;
+});
 
 afterEach(() => {
   for (const d of tmpDirs) {
@@ -874,5 +890,178 @@ describe('collectReportBundle — opted-in extras that cannot be staged', () => 
 describe('collectReportBundle — package surface', () => {
   test('is exported from the package index', () => {
     expect(collectReportBundleFromIndex).toBe(collectReportBundle);
+  });
+});
+
+/**
+ * The per-report send ledger (`~/.ok/bug-reports/*.yaml`) records every send
+ * attempt with its outcome, and it is the artifact that made the two observed
+ * send failures diagnosable at all — but only because they happened on a
+ * machine we could read directly.
+ *
+ * It is also the copy that outlives the logs: `desktop.*.log` rotates on a
+ * seven-day/45 MB budget, while a sidecar persists next to its zip. A reporter
+ * filing a bug about a send that failed last week has the ledger and no log.
+ */
+describe('collectReportBundle — bug-report send ledger', () => {
+  const LEDGER_YAML = [
+    'version: 1',
+    'id: 2026-08-19T16-42-03-547Z-bugreport.zip',
+    'createdAt: 2026-08-19T16:42:03.547Z',
+    'bundleLevel: full',
+    'state: upload-failed',
+    'lastError:',
+    '  reason: upload-network-error',
+    '  at: 2026-08-19T16:42:19.000Z',
+    'attempts:',
+    '  - at: 2026-08-19T16:42:03.547Z',
+    '    transport: upload',
+    '    outcome: failed',
+    '    error: upload-network-error',
+    '',
+  ].join('\n');
+
+  /** A reports dir shaped like the real one: sidecars beside their payloads. */
+  function makeBugReportsDir(): string {
+    const dir = makeTmpDir('ok-bug-reports-');
+    writeAt(dir, '2026-08-19T16-42-03-547Z-bugreport.yaml', LEDGER_YAML);
+    writeAt(dir, '2026-08-19T16-42-03-547Z-bugreport.zip', Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    return dir;
+  }
+
+  test('full level stages the ledger so a failed send is answerable from the bundle', async () => {
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportsDir: makeBugReportsDir(),
+    });
+
+    const entry = 'state/bug-reports/2026-08-19T16-42-03-547Z-bugreport.yaml';
+    expect(listZipEntries(zipPath)).toContain(entry);
+    expect(summary.files).toContain(entry);
+    // The attempt sequence is the whole point: two failures then a success is
+    // what separates a transient fault from a broken intake.
+    expect(readZipEntry(zipPath, entry)).toContain('upload-network-error');
+  });
+
+  test('standard level stages it too', async () => {
+    // A reporter filing at standard level is reporting the same failed send.
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'standard',
+      projectDir: makeStandardProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportsDir: makeBugReportsDir(),
+    });
+
+    expect(listZipEntries(zipPath)).toContain(
+      'state/bug-reports/2026-08-19T16-42-03-547Z-bugreport.yaml',
+    );
+  });
+
+  test('neither level stages the zip payloads sitting beside the sidecars', async () => {
+    // A bundle must not contain other bundles: the reports dir holds every
+    // previously-captured zip, and harvesting them would multiply a 6 MB
+    // report by every report the machine has ever kept.
+    for (const level of ['standard', 'full'] as const) {
+      const outputPath = join(makeTmpDir(), `${level}.zip`);
+      const { zipPath } = await collectReportBundle({
+        level,
+        projectDir: level === 'full' ? makeFullProjectDir() : makeStandardProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        bugReportsDir: makeBugReportsDir(),
+      });
+
+      expect(listZipEntries(zipPath).filter((e) => e.endsWith('-bugreport.zip'))).toEqual([]);
+    }
+  });
+
+  test('the ledger goes through the secret scrub like every other staged text file', async () => {
+    // Sidecars carry a `note` field holding the reporter's own words, so this
+    // is user-authored text, not machine output. Staging it without the scrub
+    // would ship a credential a reporter pasted into a bug description.
+    // `.yaml` is not one of the extensions the full-level scrub recognized, so
+    // this is the failure mode a scrub-by-extension design invites.
+    const dir = makeTmpDir('ok-bug-reports-');
+    writeAt(
+      dir,
+      '2026-08-19T16-42-03-547Z-bugreport.yaml',
+      `${LEDGER_YAML}note: it died right after I pasted ${SECRET}\n`,
+    );
+
+    for (const level of ['standard', 'full'] as const) {
+      const outputPath = join(makeTmpDir(), `${level}.zip`);
+      const { zipPath } = await collectReportBundle({
+        level,
+        projectDir: level === 'full' ? makeFullProjectDir() : makeStandardProjectDir(),
+        redact: true,
+        outputPath,
+        userLogsDir: makeTmpDir(),
+        bugReportsDir: dir,
+      });
+
+      const body = readZipEntry(
+        zipPath,
+        'state/bug-reports/2026-08-19T16-42-03-547Z-bugreport.yaml',
+      );
+      expect(body).toContain('upload-network-error');
+      expect(body).not.toContain(SECRET);
+    }
+  });
+
+  test('a dir with dozens of reports contributes a bounded, newest-first slice', async () => {
+    // Retention keeps reports around, so this directory grows without limit on
+    // a machine that files often. Report ids are timestamp-prefixed, so newest
+    // sorts last lexicographically and no stat call is needed to rank them.
+    const dir = makeTmpDir('ok-bug-reports-');
+    for (let i = 0; i < 40; i += 1) {
+      const stamp = `2026-08-${String((i % 28) + 1).padStart(2, '0')}T10-00-${String(i).padStart(2, '0')}-000Z`;
+      writeAt(dir, `${stamp}-bugreport.yaml`, `id: ${stamp}-bugreport.zip\nstate: sent\n`);
+    }
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportsDir: dir,
+    });
+
+    const staged = listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'));
+    // Exact, not a range: 40 readable sidecars go in, so a range assertion
+    // holds just as well if the cap regresses to 1, and the ordering
+    // assertions below would still pass. The number is the contract.
+    expect(staged.length).toBe(25);
+    // Newest kept: the last id by sort order must be present, the first absent.
+    expect(staged).toContain('state/bug-reports/2026-08-28T10-00-27-000Z-bugreport.yaml');
+    expect(staged).not.toContain('state/bug-reports/2026-08-01T10-00-00-000Z-bugreport.yaml');
+  });
+
+  test('an absent reports dir is not an error', async () => {
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportsDir: join(makeTmpDir(), 'does-not-exist'),
+    });
+
+    expect(existsSync(zipPath)).toBe(true);
+    expect(listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'))).toEqual([]);
   });
 });

@@ -29,7 +29,11 @@ import {
 import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
-import { SERVER_CRASH_LOG, SERVER_EXIT_LOG } from '@inkeep/open-knowledge-core';
+import {
+  REPORT_SIDECAR_BUNDLE_DIR,
+  SERVER_CRASH_LOG,
+  SERVER_EXIT_LOG,
+} from '@inkeep/open-knowledge-core';
 import {
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SPANS_MAX_BYTES,
@@ -201,6 +205,20 @@ export interface CollectBundleOpts {
    * text and must be scrubbed.
    */
   userLogFiles?: string[];
+  /**
+   * Absolute paths to user-level state files staged under
+   * `state/bug-reports/` — the per-report send-ledger sidecars, resolved by the
+   * caller (see `collectBugReportLedgerFiles`).
+   *
+   * They answer a question the logs stop being able to answer: `desktop.*.log`
+   * rotates on a seven-day budget, while a sidecar persists beside its zip, so
+   * a report filed about a send that failed last week has the ledger and no
+   * log line.
+   *
+   * Staged BEFORE the redaction + secret scrub, like `userLogFiles` and unlike
+   * `extraFiles` — these are text, and a sidecar carries the reporter's note.
+   */
+  userStateFiles?: string[];
   /** Test-injectable dependencies — every field defaults to a real-system implementation. */
   deps?: CollectBundleDeps;
 }
@@ -672,7 +690,18 @@ function shouldCountLines(relPath: string): boolean {
   return LINE_COUNTED_EXTENSIONS.has(relPath.slice(lastDot));
 }
 
-const SECRET_SCRUB_EXTENSIONS = new Set(['.jsonl', '.json', '.txt', '.log', '.lock']);
+// `.yaml`/`.yml` are here for the bug-report sidecars staged under
+// `state/bug-reports/`: they carry the reporter's own note, so they are
+// user-authored text and have to be scrubbed like any other.
+const SECRET_SCRUB_EXTENSIONS = new Set([
+  '.jsonl',
+  '.json',
+  '.txt',
+  '.log',
+  '.lock',
+  '.yaml',
+  '.yml',
+]);
 
 function isSecretScrubbable(relPath: string): boolean {
   // A rotated log's real extension is its counter (`.log.3` slices to `.3`), so
@@ -744,6 +773,12 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     stageFileIfPresent(logsPreviousPath(projectDir), join(stagingDir, 'logs', LOGS_PREVIOUS));
     for (const userLogPath of opts.userLogFiles ?? []) {
       stageFileIfPresent(userLogPath, join(stagingDir, 'logs', basename(userLogPath)));
+    }
+    for (const userStatePath of opts.userStateFiles ?? []) {
+      stageFileIfPresent(
+        userStatePath,
+        join(stagingDir, REPORT_SIDECAR_BUNDLE_DIR, basename(userStatePath)),
+      );
     }
 
     // Server lock + status + agent presence.

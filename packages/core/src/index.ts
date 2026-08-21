@@ -6,6 +6,7 @@ export {
   isReportIdShape,
   normalizeReportSidecarState,
   REPORT_ID_PATTERN,
+  REPORT_SIDECAR_BUNDLE_DIR,
   REPORT_SIDECAR_SCHEMA_VERSION,
   REPORT_SIDECAR_STATES,
   type ReportSidecar,

@@ -364,7 +364,13 @@ async function recordSendResult(
       outcome.kind === 'sent'
         ? { at, transport: 'upload', outcome: 'success', reference: outcome.reference }
         : outcome.kind === 'upload-failed'
-          ? { at, transport: 'upload', outcome: 'failed', error: outcome.reason }
+          ? {
+              at,
+              transport: 'upload',
+              outcome: 'failed',
+              error: outcome.reason,
+              ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
+            }
           : { at, transport: 'email', outcome: 'success' };
     const attempts = [...(base.attempts ?? []), attempt].slice(-MAX_REPORT_ATTEMPTS);
     // Rebuild without a stale lastError, then set the new terminal fields.
@@ -373,7 +379,15 @@ async function recordSendResult(
     if (outcome.kind === 'sent') {
       next = { ...next, state: 'sent', reference: outcome.reference };
     } else if (outcome.kind === 'upload-failed') {
-      next = { ...next, state: 'upload-failed', lastError: { reason: outcome.reason, at } };
+      next = {
+        ...next,
+        state: 'upload-failed',
+        lastError: {
+          reason: outcome.reason,
+          at,
+          ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
+        },
+      };
     } else {
       next = { ...next, state: 'email-drafted' };
     }

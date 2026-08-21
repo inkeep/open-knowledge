@@ -19,7 +19,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import {
   type BundleLogger,
   collectReportBundle,
@@ -422,13 +422,19 @@ export async function handleBugReportCreate(
       await writeFile(screenshotTmpPath, screenshotBytes, { mode: 0o600 });
       extraFiles.push({ sourcePath: screenshotTmpPath, zipName: BUG_REPORT_SCREENSHOT_ZIP_NAME });
     }
+    const outputPath = deps.outputPath ?? defaultBugReportZipPath();
     const { zipPath, summary } = await collectReportBundle({
       level: request.level,
       projectDir: deps.projectDir ?? undefined,
       note: request.note,
       // The in-app surface always redacts; only the CLI exposes an opt-out.
       redact: true,
-      outputPath: deps.outputPath ?? defaultBugReportZipPath(),
+      outputPath,
+      // A sidecar lives next to its zip, so the ledger to collect is the one in
+      // the directory this report is being written into. That is the real
+      // reports dir in production and the fixture dir under test, without a
+      // second seam that could disagree with where the report actually lands.
+      bugReportsDir: dirname(outputPath),
       userLogsDir: deps.userLogsDir,
       extraFiles: extraFiles.length === 0 ? undefined : extraFiles,
       logger: deps.logger,
@@ -729,7 +735,7 @@ export interface GeneratedReportMeta {
  */
 export type SidecarSendOutcome =
   | { kind: 'sent'; reference: string }
-  | { kind: 'upload-failed'; reason: string }
+  | { kind: 'upload-failed'; reason: string; errorCode?: string }
   | { kind: 'email-drafted' };
 
 /**
@@ -1222,11 +1228,18 @@ async function uploadBugReport(
     // `AbortSignal.timeout()` abort carries; the flip side is that no
     // user-cancel AbortController may be wired to these fetches without
     // first splitting cancel out of this classification.
+    //
+    // Both branches name their leg, because the send is three requests across
+    // two different hosts and "the intake is unreachable" and "the storage
+    // bucket is unreachable" are different investigations with different
+    // owners. The leg also rides `details`, but only the reason survives into
+    // the durable per-report ledger and the history row, and the ledger is
+    // what a reporter still has after the logs have rotated.
     const timedOut =
       err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
     return {
       ok: false,
-      reason: timedOut ? `${step}-timeout` : 'network-error',
+      reason: `${step}-${timedOut ? 'timeout' : 'network-error'}`,
       cause: err,
       details: describeTransportFailure(step, stepTarget, { err }),
     };
@@ -1479,7 +1492,16 @@ export async function handleBugReportSend(
     ...(outcome.details === undefined ? {} : { details: outcome.details }),
   });
   await runSidecarHook(
-    deps.sidecar?.onSendResult(reportId, { kind: 'upload-failed', reason: outcome.reason }),
+    deps.sidecar?.onSendResult(reportId, {
+      kind: 'upload-failed',
+      reason: outcome.reason,
+      // The errno, and only the errno: the ledger outlives the log, so it is
+      // worth carrying, and it is bounded enough to sit in a file the reporter
+      // can read and forwards to support. The message and stack are not.
+      ...(typeof outcome.details?.errCode === 'string'
+        ? { errorCode: outcome.details.errCode }
+        : {}),
+    }),
   );
   sendTrace.end('upload-failed');
   return { ok: false, reason: 'send-failed', fallback };

@@ -19,7 +19,7 @@
  *      return shape that retriable-consent dialogs depend on.
  */
 
-import { describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 
 interface CapturedWarn {
@@ -271,6 +271,210 @@ describe('logIpcError — bounded details', () => {
       channel: 'c',
       reason: 'r',
       handler: 'h',
+    });
+  });
+});
+
+/**
+ * The pino leg is the ONLY `logIpcError` surface that reaches
+ * `~/.ok/logs/desktop.*.log`, and therefore the only one that reaches a
+ * diagnostic bundle a reporter sends us. `console.warn` goes to main-process
+ * stdio, which nothing captures in a packaged app launched from Finder.
+ *
+ * Every other test in this file asserts `console.warn`. That asymmetry is why
+ * a failed bug-report send reached support as one bare line carrying no cause
+ * and no errno: the leg that ships was never exercised, so nothing noticed it
+ * was being handed three fields while the leg nobody reads got the rest.
+ */
+const pinoWarn = vi.hoisted(() => vi.fn());
+
+vi.mock('./desktop-logger.ts', () => ({
+  getLogger: () => ({
+    warn: pinoWarn,
+    info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
+describe('logIpcError — the pino leg (the surface that ships in diagnostic bundles)', () => {
+  beforeEach(() => {
+    pinoWarn.mockClear();
+  });
+
+  /** Emit once with `console.warn` silenced and return what pino was handed. */
+  function pinoFields(emit: () => void): Record<string, unknown> {
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      emit();
+    } finally {
+      console.warn = originalWarn;
+    }
+    expect(pinoWarn).toHaveBeenCalledTimes(1);
+    return pinoWarn.mock.calls[0]?.[0] as Record<string, unknown>;
+  }
+
+  test('the canonical discriminants reach the file logger', () => {
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'upload-network-error',
+        handler: 'handleBugReportSend',
+      });
+    });
+
+    expect(fields).toMatchObject({
+      channel: 'ok:bug-report:dispatch',
+      reason: 'upload-network-error',
+      handler: 'handleBugReportSend',
+    });
+  });
+
+  test('an Error cause contributes its class to the file logger', () => {
+    // Every channel that catches an unknown and passes `cause: err` gets this
+    // without hand-building `details` — which is what makes the fix worth
+    // making here rather than at one call site.
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:window:open-note',
+        reason: 'unexpected',
+        handler: 'openNoteWindow',
+        cause: new TypeError('fetch failed'),
+      });
+    });
+
+    expect(fields.errName).toBe('TypeError');
+  });
+
+  test('an errno hidden one level down in cause is recovered', () => {
+    // undici reports every transport failure as the same opaque
+    // `TypeError: fetch failed` and hangs the real error in `cause`, so reading
+    // `code` off the caught value alone yields nothing on exactly the failures
+    // worth triaging.
+    const inner = Object.assign(new Error('getaddrinfo ENOTFOUND intake'), {
+      code: 'ENOTFOUND',
+    });
+    const outer = new TypeError('fetch failed', { cause: inner });
+
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'mint-network-error',
+        handler: 'handleBugReportSend',
+        cause: outer,
+      });
+    });
+
+    expect(fields.errName).toBe('TypeError');
+    expect(fields.errCode).toBe('ENOTFOUND');
+  });
+
+  test('no stack and no free-form message reach the file logger', () => {
+    // `details` (and everything derived alongside it) is collected into
+    // user-submitted bundles, so it takes only values bounded by construction.
+    // A stack carries absolute paths out of the reporter's home directory and
+    // an errno message carries the filename that could not be opened; neither
+    // may be written into a file the reporter hands to support. The class and
+    // the errno are what discriminate the failure, and they are bounded.
+    const err = Object.assign(
+      new Error("ENOENT: no such file or directory, open '/Users/someone/private/notes.md'"),
+      { code: 'ENOENT' },
+    );
+    err.stack = 'Error: ENOENT\n    at /Users/someone/private/app.ts:1:1';
+
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:shell:open-asset',
+        reason: 'open-failed',
+        handler: 'openAssetSafely',
+        cause: err,
+      });
+    });
+
+    expect(fields.errCode).toBe('ENOENT');
+    const serialized = JSON.stringify(fields);
+    expect(serialized).not.toContain('/Users/someone');
+    expect(serialized).not.toContain('no such file or directory');
+  });
+
+  test('call-site details win over facts derived from the cause', () => {
+    // A handler that has already classified its own failure knows more than a
+    // generic walk of the caught value can.
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:bug-report:dispatch',
+        reason: 'upload-network-error',
+        handler: 'handleBugReportSend',
+        cause: Object.assign(new TypeError('fetch failed'), { code: 'GENERIC' }),
+        details: { step: 'upload', errCode: 'UND_ERR_SOCKET', host: 'storage.example.com' },
+      });
+    });
+
+    expect(fields).toMatchObject({
+      step: 'upload',
+      errCode: 'UND_ERR_SOCKET',
+      host: 'storage.example.com',
+    });
+  });
+
+  test('a cyclic cause chain cannot cost the log line', () => {
+    // `normalizeCause` guards the console leg against this; anything that walks
+    // the same hostile input for the pino leg has to guard it too, or the
+    // failure that most needs recording is the one that records nothing.
+    const a = new Error('a');
+    const b = new Error('b');
+    Object.assign(a, { cause: b });
+    Object.assign(b, { cause: a });
+
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:mcp-wiring:confirm',
+        reason: 'write-mcp-configs-threw',
+        handler: 'mcpWiringConfirm',
+        cause: a,
+      });
+    });
+
+    expect(fields).toMatchObject({
+      channel: 'ok:mcp-wiring:confirm',
+      reason: 'write-mcp-configs-threw',
+    });
+  });
+
+  test('a cause that throws on inspection cannot suppress the log line', () => {
+    // Deriving the bounded facts must not run inside the try that already
+    // wraps the emit: a throw there would swallow the whole line and leave the
+    // failure with no record at all, which is strictly worse than the bare
+    // line this change exists to improve on.
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, 'code', {
+      enumerable: true,
+      get() {
+        throw new Error('inspection refused');
+      },
+    });
+
+    const fields = pinoFields(() => {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:shell:spawn-cursor',
+        reason: 'spawn-failed',
+        handler: 'spawnCursor',
+        cause: hostile,
+      });
+    });
+
+    expect(fields).toMatchObject({
+      channel: 'ok:shell:spawn-cursor',
+      reason: 'spawn-failed',
+      handler: 'spawnCursor',
     });
   });
 });

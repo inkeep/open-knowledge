@@ -11,6 +11,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   type BundleLogger,
+  collectBugReportLedgerFiles,
   collectShipItLogFiles,
   collectStandardBundle,
   collectUserLogFiles,
@@ -692,6 +693,90 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
 
     const readme = readZipEntry(zipPath, 'README.md');
     expect(readme).not.toContain('user-wide rather than project-scoped');
+  });
+
+  // A sidecar records the project ITS OWN report was filed from, so a bundle
+  // filed from project A ships the slugs of B, C and D. The `Project:` header
+  // names one project, and the "safe to attach" claim sits a few lines below —
+  // so a reader who is not told would reasonably take the whole zip to be
+  // scoped to the project named at the top. Filtering by slug is not the fix:
+  // a system-wide report carries no slug and is routinely the record being
+  // reported on, so narrowing would drop exactly the evidence this collects.
+  test('discloses the send ledger as machine-wide, naming its entries', async () => {
+    const reportsDir = makeTmpDir('ok-bugreport-ledger-');
+    writeFileSync(
+      join(reportsDir, '2026-08-19T16-42-03-547Z-bugreport.yaml'),
+      'id: 2026-08-19T16-42-03-547Z-bugreport.zip\nprojectSlug: someotherproject\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportLedgerFiles: collectBugReportLedgerFiles(reportsDir),
+    });
+
+    // Scoped to the Privacy section: the Contents list names every file, so a
+    // whole-README assertion would pass whatever the notes actually said.
+    const readme = readZipEntry(zipPath, 'README.md');
+    const privacy = readme.slice(readme.indexOf('## Privacy'));
+    expect(privacy).toContain('Send history:');
+    expect(privacy).toContain('names the other projects reports were filed');
+    expect(
+      privacy.match(/^- state\/bug-reports\/2026-08-19T16-42-03-547Z-bugreport\.yaml$/gm),
+    ).toHaveLength(1);
+  });
+
+  // The unscoped bundle is the one most likely to be attached to a public issue
+  // under "safe to attach", and it is exactly the case a slug-based filter
+  // would have handled worst — so the disclosure cannot ride on the scope note,
+  // which stays silent when nothing was narrowed.
+  test('discloses the send ledger in an unscoped bundle too', async () => {
+    const reportsDir = makeTmpDir('ok-bugreport-ledger-');
+    writeFileSync(
+      join(reportsDir, '2026-08-19T16-42-03-547Z-bugreport.yaml'),
+      'id: 2026-08-19T16-42-03-547Z-bugreport.zip\nprojectSlug: null\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportLedgerFiles: collectBugReportLedgerFiles(reportsDir),
+    });
+
+    const readme = readZipEntry(zipPath, 'README.md');
+    const privacy = readme.slice(readme.indexOf('## Privacy'));
+    expect(privacy).not.toContain('user-wide rather than project-scoped');
+    expect(privacy).toContain('Send history:');
+  });
+
+  // Disclosure is intersected with what was actually written, so a sidecar that
+  // vanished between listing and staging is not announced as present. A README
+  // that over-claims is its own privacy defect: it tells a reader to look for
+  // something, and its absence reads as the collector having hidden it.
+  test('does not disclose a sidecar that failed to stage', async () => {
+    const reportsDir = makeTmpDir('ok-bugreport-ledger-');
+    const ghost = join(reportsDir, '2026-08-19T16-42-03-547Z-bugreport.yaml');
+    writeFileSync(ghost, 'id: x\n');
+    const listed = collectBugReportLedgerFiles(reportsDir);
+    rmSync(ghost);
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportLedgerFiles: listed,
+    });
+
+    const readme = readZipEntry(zipPath, 'README.md');
+    expect(readme.slice(readme.indexOf('## Privacy'))).not.toContain('Send history:');
+    expect(listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'))).toEqual([]);
   });
 });
 

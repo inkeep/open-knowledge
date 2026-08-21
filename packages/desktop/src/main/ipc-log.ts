@@ -4,21 +4,25 @@
  * Mirrors the HTTP `errorResponse(...)` discipline (RFC 9457) at
  * the IPC transport. Every IPC handler that returns `{ ok: false; reason }`
  * (or `{ ok: false; error }`) emits a `logIpcError(...)` call on the same
- * code path, producing a JSON-shaped console.warn line that downstream
- * consumers (Sentry breadcrumbs, file tail, structured-pipeline) can index
- * by channel + reason + handler.
+ * code path, producing a payload that downstream consumers (file tail,
+ * structured-pipeline) can index by channel + reason + handler.
  *
- * Why not Pino: adding Pino to Electron main has build-graph
- * implications (electron-vite externalizeDeps + main bundle entry), and
- * the existing per-module Logger interfaces in `mcp-wiring.ts`
- * (`McpWiringLogger`) and `auto-updater.ts` (`Logger`) already use a
- * JSON-shaped `console.warn` + structured payload pattern. This module
- * is the canonical declaration so all 42 channels speak the same shape.
+ * TWO legs, and which one a field reaches is the whole design:
  *
- * Why structured + JSON-on-console: keeps the host-process bridge simple
- * (Electron's stderr/stdout pipe + standard log capture pattern) while
- * giving consumers a parseable shape. The `event: 'ipc.error'` discriminant
- * lets downstream filters separate IPC failures from arbitrary stdout noise.
+ *   - the PINO leg writes `~/.ok/logs/desktop.*.log`, the file collected into
+ *     the diagnostic bundles reporters send us. This is the leg that has to
+ *     answer "why did it fail" for someone whose machine we cannot read, and
+ *     it is therefore the leg that must never carry a path, a credential, or
+ *     free-form user text.
+ *   - the CONSOLE leg emits one JSON line on main-process stdio. It carries
+ *     the unbounded context (message, stack) because a developer tailing a
+ *     terminal wants it — but nothing captures stdio in a packaged app
+ *     launched from Finder, so anything that reaches ONLY this leg is, for
+ *     support purposes, unrecorded.
+ *
+ * The single JSON line per console call keeps multi-line stdio interleaving
+ * deterministic; the `event: 'ipc.error'` discriminant lets downstream filters
+ * separate IPC failures from arbitrary stdout noise.
  *
  * The meta-test at
  * `packages/app/tests/integration/ipc-log-coverage.test.ts` gates that
@@ -27,6 +31,8 @@
  * statements above (block-local). New handlers fail the build until they
  * adopt the discipline.
  */
+
+import { getLogger } from './desktop-logger.ts';
 
 /**
  * Canonical IPC failure-event payload. Internal type — `logIpcError`
@@ -45,7 +51,10 @@
  * - `cause` is optional structured context (Error object, additional
  *   metadata). Normalized at the boundary so Error instances preserve
  *   message + name + stack on the wire and circular references degrade
- *   safely instead of throwing — see `normalizeCause` below.
+ *   safely instead of throwing — see `normalizeCause` below. It reaches the
+ *   console leg WHOLE; the pino leg gets only the bounded facts derived from
+ *   it by `boundedCauseFacts` (the error's class and its errno), because the
+ *   message and stack cannot be written into a bundle handed to support.
  * - `details` is optional BOUNDED context, and the two differ by destination
  *   rather than by taste. `cause` reaches the console only: it carries stacks
  *   and free-form text, which is exactly what you want when tailing a terminal
@@ -126,12 +135,72 @@ function normalizeCause(cause: unknown, seen: WeakSet<object> = new WeakSet()): 
 }
 
 /**
- * Emit an IPC failure to the structured-log surface.
+ * Links of an `Error.cause` chain walked when looking for an errno. undici
+ * hangs the real transport error one level below its opaque
+ * `TypeError: fetch failed`; a handful of links is slack for a wrapper or two
+ * above that without letting a long chain turn a log call into a traversal.
+ */
+const CAUSE_CHAIN_MAX_DEPTH = 5;
+
+/**
+ * The bounded half of a `cause` — the part that may reach the pino leg.
  *
- * Uses `console.warn(JSON.stringify(...))` for compatibility with Electron's
- * stderr capture, Sentry's breadcrumb capture, and any file-tail-based
- * structured-pipeline consumer (`bunyan -P`, `vector`, etc.). The single
- * JSON line per call keeps multi-line stdio interleaving deterministic.
+ * A failed IPC call reached a diagnostic bundle as one line carrying a channel,
+ * a handler, and a single reason token: enough to know that something failed,
+ * never enough to know what. The cause was captured and normalized at the
+ * boundary, then emitted only to stdio, which a packaged app records nowhere.
+ * These two fields are the ones that can close that gap without breaking the
+ * bounded-value contract the pino leg is held to:
+ *
+ * - `errName` — the error's CLASS. Bounded by the set of constructors in play.
+ * - `errCode` — the errno, which is what separates "this machine cannot
+ *   resolve the host" from "the host refused the connection" from "the
+ *   certificate is not valid yet". Bounded by the platform's errno table.
+ *
+ * The errno needs the chain walk rather than a direct `code` read: undici
+ * reports every transport failure as the same opaque `TypeError: fetch failed`
+ * and hangs the real error one level down in `cause`, so reading `code` off the
+ * caught value yields nothing on exactly the failures worth triaging.
+ *
+ * Deliberately omits `message` and `stack`. A stack carries absolute paths out
+ * of the reporter's home directory, and an errno message carries the file that
+ * could not be opened or the URL that could not be reached — both are exactly
+ * what must not be written into a file a reporter hands to support. They stay
+ * on the console leg, where the audience is a developer at a terminal.
+ *
+ * Cycle-safe and depth-bounded for the same reason `normalizeCause` is: the
+ * caller passes a raw caught value of unknown shape, and a hostile one must not
+ * be able to turn a log call into a hang or a stack overflow.
+ */
+function boundedCauseFacts(cause: unknown): Record<string, string> {
+  const facts: Record<string, string> = {};
+  if (cause instanceof Error) facts.errName = cause.name;
+
+  const seen = new Set<unknown>();
+  let cursor: unknown = cause;
+  for (
+    let depth = 0;
+    depth < CAUSE_CHAIN_MAX_DEPTH && cursor !== null && cursor !== undefined;
+    depth += 1
+  ) {
+    if (seen.has(cursor)) break;
+    seen.add(cursor);
+    const code = (cursor as { code?: unknown }).code;
+    if (typeof code === 'string' && code !== '') {
+      facts.errCode = code;
+      break;
+    }
+    cursor = (cursor as { cause?: unknown }).cause;
+  }
+  return facts;
+}
+
+/**
+ * Emit an IPC failure to both structured-log surfaces.
+ *
+ * The console leg uses `console.warn(JSON.stringify(...))` for compatibility
+ * with Electron's stderr capture and any file-tail-based structured-pipeline
+ * consumer (`bunyan -P`, `vector`, etc.).
  *
  * `cause` is normalized at this boundary (Error instances → plain objects;
  * circular references → degraded-but-safe). Callers can pass any
@@ -146,13 +215,26 @@ export function logIpcError(payload: IpcErrorLogPayload): void {
   const normalized: IpcErrorLogPayload =
     payload.cause !== undefined ? { ...payload, cause: normalizeCause(payload.cause) } : payload;
 
+  // Derived BEFORE the emit below rather than inside its try/catch. A cause
+  // hostile to inspection (a throwing getter, a cyclic chain) must cost its own
+  // two fields and nothing else — swallowing the whole line would leave the
+  // failure with no record at all, which is worse than the bare line this
+  // derivation exists to improve on.
+  let causeFacts: Record<string, string> = {};
+  if (payload.cause !== undefined) {
+    try {
+      causeFacts = boundedCauseFacts(payload.cause);
+    } catch {}
+  }
+
   try {
-    const { getLogger } = require('./desktop-logger.ts');
     getLogger('ipc').warn(
-      // `details` is spread FIRST so the canonical discriminants always win a
-      // key collision — a caller that passes `channel` in its details cannot
-      // rewrite the field consumers index on.
+      // Derived facts first, then `details`, then the canonical discriminants:
+      // a handler that classified its own failure knows more than a generic
+      // walk of the caught value, and a caller that passes `channel` in its
+      // details cannot rewrite the field consumers index on.
       {
+        ...causeFacts,
         ...payload.details,
         channel: payload.channel,
         handler: payload.handler,

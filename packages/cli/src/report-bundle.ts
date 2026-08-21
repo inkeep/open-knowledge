@@ -16,9 +16,11 @@ import { parse as parseYaml } from 'yaml';
 import {
   type BundleExtraFile,
   type BundleLogger,
+  collectBugReportLedgerFiles,
   collectShipItLogFiles,
   collectStandardBundle,
   collectUserLogFiles,
+  okBugReportsDir,
   resolveProjectSlug,
 } from './commands/bug-report-bundle.ts';
 import {
@@ -57,6 +59,8 @@ export interface CollectReportBundleOptions {
   userLogsDir?: string;
   /** Override the macOS caches directory searched for ShipIt install logs (test seam). */
   cachesDir?: string;
+  /** Override the bug-reports directory the send ledger is read from (test seam). */
+  bugReportsDir?: string;
   /**
    * Collection-progress + warning sink. The full level reports its inventory
    * via the manifest and uses this only for warnings (e.g. an opted-in extra
@@ -140,6 +144,9 @@ async function collectFullBundle(
       // app bundle, and it is the only record of why a post-exit install failed.
       ...collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
     ],
+    // The per-report send ledger. Both levels carry it: a reporter filing at
+    // standard level is reporting the same failed send.
+    userStateFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
     deps: { readDesktopEnv, readLanguage, logger: opts.logger },
   });
   try {
@@ -198,6 +205,7 @@ export async function collectReportBundle(
     outputPath: opts.outputPath,
     userLogsDir: opts.userLogsDir,
     shipItLogFiles: collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),
+    bugReportLedgerFiles: collectBugReportLedgerFiles(opts.bugReportsDir ?? okBugReportsDir()),
     logger: opts.logger,
     note: opts.note,
     extraFiles: opts.extraFiles,

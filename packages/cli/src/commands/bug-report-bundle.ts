@@ -18,6 +18,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import {
   type BundleManifest,
   type BundleRedaction,
+  REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
 } from '@inkeep/open-knowledge-core';
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
@@ -88,6 +89,13 @@ export interface CollectStandardBundleOptions {
    * same reason `userLogsDir` is injectable, but enforced by construction.
    */
   shipItLogFiles?: string[];
+  /**
+   * Per-report send-ledger sidecars, already resolved by the caller (see
+   * `collectBugReportLedgerFiles`). Injected rather than resolved here for the
+   * same reason as `shipItLogFiles`: this collector keeps no implicit
+   * dependency on the real home directory.
+   */
+  bugReportLedgerFiles?: string[];
   /** User note added as `note.txt`, scrubbed like any content file when `redact` is on. */
   note?: string;
   /** Extra files (e.g. an opted-in crash minidump) added under `extra/`. */
@@ -270,6 +278,48 @@ export function collectShipItLogFiles(
   const shipItDir = join(cachesDir, `${bundleId}.ShipIt`);
   if (!existsSync(shipItDir)) return [];
   return SHIPIT_LOG_FILES.map((name) => join(shipItDir, name)).filter((p) => existsSync(p));
+}
+
+/**
+ * How many sidecars a bundle carries. Retention keeps reports around, so this
+ * directory grows without limit on a machine that files often, and a bundle
+ * must not scale with a reporter's history. Each file is small and bounded by
+ * construction (the writer caps the attempt list), so the count is the only
+ * bound needed.
+ */
+const MAX_BUNDLED_LEDGER_FILES = 25;
+
+/**
+ * The per-report send ledger: one small YAML sidecar per report, recording
+ * every send attempt with its outcome and reason.
+ *
+ * This is the artifact that answers "did the send fail before, and how" — and
+ * the only one that still answers it later, because `desktop.*.log` rotates on
+ * a seven-day budget while a sidecar persists beside its zip. Without it, a
+ * report about a failed send carries no account of the failure unless the
+ * reporter happens to file it the same day, on a machine we can read.
+ *
+ * Sidecars ONLY: `*.yaml` is an allowlist, not a filter, so the zips sitting
+ * beside them in the same directory cannot be swept in. That matters twice —
+ * a bundle must not contain other bundles, and the zips are the bulk of the
+ * directory.
+ *
+ * Newest kept, ranked by name: report ids are timestamp-prefixed, so
+ * lexicographic order IS chronological order and no `stat` call is needed.
+ */
+export function collectBugReportLedgerFiles(bugReportsDir: string): string[] {
+  if (!existsSync(bugReportsDir)) return [];
+  try {
+    return readdirSync(bugReportsDir)
+      .filter((name) => name.endsWith('.yaml'))
+      .sort()
+      .slice(-MAX_BUNDLED_LEDGER_FILES)
+      .map((name) => join(bugReportsDir, name));
+  } catch {
+    // An unreadable reports dir must cost the ledger, never the report the
+    // user is trying to file.
+    return [];
+  }
 }
 
 function collectLogs(
@@ -467,6 +517,18 @@ export async function collectStandardBundle(
     redactions,
     logger,
   });
+  // The send ledger. Scrubbed like every other content file here: a sidecar
+  // carries the reporter's own note, so it is user-authored text, not machine
+  // output.
+  addContentFiles({
+    zipfile,
+    files: opts.bugReportLedgerFiles ?? [],
+    prefix: REPORT_SIDECAR_BUNDLE_DIR,
+    redact,
+    bundleFiles,
+    redactions,
+    logger,
+  });
 
   for (const extra of opts.extraFiles ?? []) {
     try {
@@ -524,6 +586,21 @@ export async function collectStandardBundle(
   const shipItEntryNames = new Set(shipItFiles.map((f) => `logs/${basename(f)}`));
   const installerLogEntries = bundleFiles.filter((f) => shipItEntryNames.has(f));
 
+  // Disclosed independently of project scope, for a different reason than the
+  // installer log above: a sidecar records the project its own report was filed
+  // from, so a bundle filed from one project names every OTHER project this
+  // machine has reported from. `collectLogs` narrows the families a slug CAN
+  // narrow and reports what it dropped; this family cannot be narrowed that
+  // way, because a system-wide report carries no slug at all and is routinely
+  // the very record being reported on — filtering by slug would drop exactly
+  // the evidence the ledger exists to preserve. So the scope is stated instead.
+  // Intersected with what was actually written, so a sidecar that turned out to
+  // be unreadable is never disclosed as present.
+  const ledgerEntryNames = new Set(
+    (opts.bugReportLedgerFiles ?? []).map((f) => `${REPORT_SIDECAR_BUNDLE_DIR}/${basename(f)}`),
+  );
+  const ledgerEntries = bundleFiles.filter((f) => ledgerEntryNames.has(f));
+
   // The families the slug cannot narrow are per-machine, per-day singletons, so
   // a project-scoped bundle still carries whatever else the machine was doing
   // that day. Secret scrubbing does not narrow this — it matches credentials,
@@ -572,6 +649,18 @@ export async function collectStandardBundle(
           'this machine. Only this app is collected, never other applications',
           'that use the same update mechanism:',
           ...installerLogEntries.map((f) => `- ${f}`),
+          '',
+        ]
+      : []),
+    ...(ledgerEntries.length > 0
+      ? [
+          'Send history: one small record per bug report previously generated',
+          'on this machine — when it was generated, whether sending it',
+          'succeeded, and why it failed if it did. This is what makes a failed',
+          'send diagnosable at all. It is machine-wide rather than scoped to',
+          'this project, so it names the other projects reports were filed',
+          'from. It carries no document content:',
+          ...ledgerEntries.map((f) => `- ${f}`),
           '',
         ]
       : []),

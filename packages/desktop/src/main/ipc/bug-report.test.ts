@@ -238,6 +238,35 @@ describe('handleBugReportCreate — project bundle', () => {
     expect(readZipEntry(result.zipPath, 'note.txt')).toContain('it crashed while saving');
   });
 
+  test('carries the send ledger from the directory the report is written into', async () => {
+    // A sidecar lives beside its zip, so the ledger that belongs with a report
+    // is the one in the report's own directory — the real reports dir in
+    // production, a fixture dir here. Without that the collector would fall
+    // back to the home directory and a test would bundle the developer's own
+    // prior reports while proving nothing about the wiring.
+    //
+    // This is the evidence a send failure leaves behind. Its absence is why the
+    // two observed failures were only diagnosable on a machine we could read.
+    const reportsDir = makeTmpDir('ok-bugreport-reports-');
+    writeFileSync(
+      join(reportsDir, '2026-08-19T16-42-03-547Z-bugreport.yaml'),
+      ['id: 2026-08-19T16-42-03-547Z-bugreport.zip', 'state: upload-failed'].join('\n'),
+    );
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      outputPath: join(reportsDir, 'report.zip'),
+    });
+
+    const result = await handleBugReportCreate(deps, { kind: 'create', level: 'standard' });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain('state/bug-reports/2026-08-19T16-42-03-547Z-bugreport.yaml');
+    // The zip being written is in that same directory; a bundle must not
+    // contain itself or any other bundle.
+    expect(entries.filter((e) => e.endsWith('.zip'))).toEqual([]);
+  });
+
   test('rejects a create request whose note exceeds the length ceiling', async () => {
     const deps = makeDeps({ projectDir: makeProjectDir() });
 
@@ -2433,6 +2462,43 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     expect(row?.retryable).toBe(true);
   });
 
+  test('a transport failure persists its leg and its errno in the durable ledger', async () => {
+    // The ledger outlives the log. `desktop.*.log` rotates on a seven-day
+    // budget, and a reporter filing about a send that failed last week still
+    // has the sidecar beside the zip they are retrying. Whatever the ledger
+    // does not record is unrecoverable by then.
+    //
+    // Driven through real `fetch` against an unresolvable host so the errno is
+    // produced the way undici produces it — hung one level down in `cause`
+    // under an opaque `TypeError: fetch failed` — rather than by a fake that
+    // would let a top-level `err.code` read pass.
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+
+    const result = await handleBugReportSend(
+      {
+        ...makeSendDeps('https://intake.invalid-tld-for-test.invalid', dir),
+        sidecar: store.sendHooks,
+      },
+      { kind: 'send', zipPath, metadata: SEND_METADATA },
+    );
+
+    expect(result.ok).toBe(false);
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.lastError).toMatchObject({
+      reason: 'mint-network-error',
+      errorCode: 'ENOTFOUND',
+    });
+    expect(sidecar?.attempts?.at(-1)).toMatchObject({
+      outcome: 'failed',
+      error: 'mint-network-error',
+      errorCode: 'ENOTFOUND',
+    });
+    // The message and the stack stay out: this file is readable by the reporter
+    // and ships inside the bundle they hand to support.
+    expect(JSON.stringify(sidecar)).not.toContain('fetch failed');
+  });
+
   test('a send refused by the in-flight lock never reaches the intake', async () => {
     const { dir, store, createDeps, zipPath } = makeSidecarRig();
     await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
@@ -2586,6 +2652,26 @@ describe('handleBugReportSend — structured failure diagnostics', () => {
 
     const details = dispatchFailure(lines).details as Record<string, unknown>;
     expect(details).toMatchObject({ step: 'mint', status: 503 });
+  });
+
+  test('a transport throw names its leg in the reason, not just in the details', async () => {
+    // Every other failure return already carries its leg — `mint-rejected`,
+    // `upload-rejected`, `upload-redirected`, `complete-rejected`,
+    // `mint-malformed`, `complete-malformed`, `upload-url-rejected`. The
+    // throw branch was the one exception, so the three-leg flow across two
+    // different hosts collapsed to one word and could not say whether the
+    // intake or the storage bucket was unreachable.
+    //
+    // The reason, unlike `details`, is what the durable per-report ledger
+    // stores and what the history row shows, so the leg has to live in the
+    // string as well as beside it.
+    const { deps, zipPath } = makeSendRig('https://intake.invalid-tld-for-test.invalid');
+
+    const lines = await captureIpcErrors(() =>
+      handleBugReportSend(deps, { kind: 'send', zipPath, metadata: SEND_METADATA }),
+    );
+
+    expect(dispatchFailure(lines).reason).toBe('mint-network-error');
   });
 });
 
