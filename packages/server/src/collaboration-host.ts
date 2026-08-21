@@ -189,6 +189,7 @@ export function createCollaborationHost(options: CollaborationHostOptions): Coll
               currentDoc: '(connected)',
               mode: 'idle',
               ts: Date.now(),
+              docTs: Date.now(),
             });
           } catch (err) {
             log.error({ err, connectionId }, '[keepalive] presence bootstrap failed');

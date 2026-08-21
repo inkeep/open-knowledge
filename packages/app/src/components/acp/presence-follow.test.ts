@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { appendPresenceWrite, latestAgentWrite } from './presence-follow';
 
-function awarenessWith(entries: Record<string, { currentDoc: string | null; ts: number }>) {
+function awarenessWith(
+  entries: Record<string, { currentDoc: string | null; ts: number; docTs?: number }>,
+) {
   return {
     getStates: () =>
       new Map([
@@ -25,10 +27,10 @@ describe('latestAgentWrite', () => {
 
   test('freshest write across agents wins; stale and doc-less entries are skipped', () => {
     const awareness = awarenessWith({
-      'agent-a': { currentDoc: 'articles/wine/tannins', ts: NOW - 100 },
-      'agent-b': { currentDoc: 'articles/wine/terroir', ts: NOW - 50 },
-      'agent-idle': { currentDoc: null, ts: NOW },
-      'agent-stale': { currentDoc: 'old/doc', ts: NOW - 60_000 },
+      'agent-a': { currentDoc: 'articles/wine/tannins', ts: NOW - 100, docTs: NOW - 100 },
+      'agent-b': { currentDoc: 'articles/wine/terroir', ts: NOW - 50, docTs: NOW - 50 },
+      'agent-idle': { currentDoc: null, ts: NOW, docTs: NOW },
+      'agent-stale': { currentDoc: 'old/doc', ts: NOW - 60_000, docTs: NOW - 60_000 },
     });
     expect(latestAgentWrite(awareness, NOW)).toEqual({
       doc: 'articles/wine/terroir',
@@ -38,7 +40,7 @@ describe('latestAgentWrite', () => {
 
   test('dot-segment plumbing targets never become follow targets', () => {
     const awareness = awarenessWith({
-      'agent-a': { currentDoc: '.ok/skills/foo/SKILL', ts: NOW - 10 },
+      'agent-a': { currentDoc: '.ok/skills/foo/SKILL', ts: NOW - 10, docTs: NOW - 10 },
     });
     expect(latestAgentWrite(awareness, NOW)).toBeNull();
   });
@@ -48,17 +50,23 @@ describe('latestAgentWrite', () => {
     // bar — following them opens a phantom tab and, at turn end, drags the
     // editor off the last real page.
     expect(
-      latestAgentWrite(awarenessWith({ a: { currentDoc: '(agent thread)', ts: NOW } }), NOW),
+      latestAgentWrite(
+        awarenessWith({ a: { currentDoc: '(agent thread)', ts: NOW, docTs: NOW } }),
+        NOW,
+      ),
     ).toBeNull();
     expect(
-      latestAgentWrite(awarenessWith({ a: { currentDoc: '(connected)', ts: NOW } }), NOW),
+      latestAgentWrite(
+        awarenessWith({ a: { currentDoc: '(connected)', ts: NOW, docTs: NOW } }),
+        NOW,
+      ),
     ).toBeNull();
   });
 
   test('a real write still wins over a fresher sentinel from another agent', () => {
     const awareness = awarenessWith({
-      writer: { currentDoc: 'articles/tea/terroir', ts: NOW - 100 },
-      idler: { currentDoc: '(agent thread)', ts: NOW },
+      writer: { currentDoc: 'articles/tea/terroir', ts: NOW - 100, docTs: NOW - 100 },
+      idler: { currentDoc: '(agent thread)', ts: NOW, docTs: NOW },
     });
     expect(latestAgentWrite(awareness, NOW)).toEqual({
       doc: 'articles/tea/terroir',
@@ -69,6 +77,28 @@ describe('latestAgentWrite', () => {
   test('non-awareness values return null', () => {
     expect(latestAgentWrite(null, NOW)).toBeNull();
     expect(latestAgentWrite({}, NOW)).toBeNull();
+  });
+
+  test('a keepalive-bumped `ts` cannot defeat the staleness guard when `docTs` is stale', () => {
+    const awareness = awarenessWith({
+      keepalive: { currentDoc: 'stale/doc', ts: NOW - 100, docTs: NOW - 60_000 },
+    });
+    expect(latestAgentWrite(awareness, NOW)).toBeNull();
+  });
+
+  test('the entry with the freshest `docTs` wins even when another has a fresher `ts`', () => {
+    const awareness = awarenessWith({
+      keepalive: { currentDoc: 'stale/doc', ts: NOW - 10, docTs: NOW - 4_000 },
+      writer: { currentDoc: 'fresh/doc', ts: NOW - 1_000, docTs: NOW - 200 },
+    });
+    expect(latestAgentWrite(awareness, NOW)).toEqual({ doc: 'fresh/doc', ts: NOW - 200 });
+  });
+
+  test('a publisher that forgets docTs is silently skipped rather than silently regressed', () => {
+    const awareness = awarenessWith({
+      forgetful: { currentDoc: 'articles/wine/oak', ts: NOW - 10 },
+    });
+    expect(latestAgentWrite(awareness, NOW)).toBeNull();
   });
 });
 

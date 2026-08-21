@@ -3322,6 +3322,7 @@ export class AcpThreadManager {
         currentDoc,
         mode: 'writing',
         ts: Date.now(),
+        docTs: Date.now(),
       });
     } catch (err) {
       this.opts.log.warn({ err }, '[acp-threads] presence update failed');

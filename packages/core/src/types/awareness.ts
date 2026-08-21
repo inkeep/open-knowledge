@@ -108,6 +108,8 @@ export interface AgentPresenceEntry {
   mode: 'idle' | 'writing';
   /** `Date.now()` at publication time. Stale entries (>=AGENT_PRESENCE_STALE_MS) are filtered. */
   ts: number;
+  /** `Date.now()` when `currentDoc` was last set. Unlike `ts`, keepalive bumps do not refresh it. */
+  docTs?: number;
 }
 
 /**

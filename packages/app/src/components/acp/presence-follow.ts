@@ -43,11 +43,13 @@ export function latestAgentWrite(awareness: unknown, now: number): PresenceWrite
       // following one opens a phantom tab and drags the editor off the last
       // real page.
       if (isPresenceSentinelDocName(entry.currentDoc)) continue;
-      if (now - entry.ts >= AGENT_PRESENCE_STALE_MS) continue;
-      if (latest !== null && entry.ts <= latest.ts) continue;
+      const docTs = entry.docTs;
+      if (docTs === undefined) continue;
+      if (now - docTs >= AGENT_PRESENCE_STALE_MS) continue;
+      if (latest !== null && docTs <= latest.ts) continue;
       const doc = sanitizeDocName(entry.currentDoc);
       if (doc === null) continue;
-      latest = { doc, ts: entry.ts };
+      latest = { doc, ts: docTs };
     }
   }
   return latest;
