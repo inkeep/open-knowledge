@@ -8,7 +8,13 @@
  * opposite of what the server actually ran.
  */
 
-import { DEFAULT_EMBEDDINGS_BASE_URL, DEFAULT_EMBEDDINGS_MODEL } from '@inkeep/open-knowledge-core';
+import {
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+  DEFAULT_EMBEDDINGS_MODEL,
+} from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 
 export interface ResolvedSemanticConfig {
@@ -18,6 +24,9 @@ export interface ResolvedSemanticConfig {
   dimensions?: number;
   /** Cosine noise gate for retrieval; omitted → core's default for the model. */
   similarityFloor?: number;
+  maxBatchSize: number;
+  maxBatchChars: number;
+  docTimeoutMs: number;
 }
 
 /**
@@ -45,5 +54,8 @@ export function readProjectLocalSemanticConfig(
     model: semantic?.model ?? DEFAULT_EMBEDDINGS_MODEL,
     dimensions: semantic?.dimensions ?? undefined,
     similarityFloor: semantic?.similarityFloor ?? undefined,
+    maxBatchSize: semantic?.maxBatchSize ?? DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
+    maxBatchChars: semantic?.maxBatchChars ?? DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+    docTimeoutMs: semantic?.docTimeoutMs ?? DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
   };
 }

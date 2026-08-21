@@ -16,6 +16,7 @@ export {
   type Embedder,
   type EmbeddingsCredentialSource,
   type EmbeddingsKeyStore,
+  type LoadOpenAiEmbedderInput,
   loadOpenAiEmbedder,
   normalizeProviderId,
   probeEmbeddingEndpoint,

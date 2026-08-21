@@ -25,12 +25,22 @@
  * value set from the CLI is never hidden from the person who set it. Both are
  * destructive to change — the cached vectors are keyed by provider + model, so
  * a change re-embeds and re-sends the whole corpus — hence the confirmation.
+ *
+ * "Embedding request settings" (batch size / char budget / indexing timeout) is
+ * a SIBLING disclosure of "Custom endpoint", not a child: those knobs apply to
+ * whatever endpoint is in use — default OpenAI included — so burying them under
+ * a custom-endpoint disclosure would hide them from everyone who never set one.
+ * It auto-expands on its own overrides, independently of the endpoint one.
  */
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import {
+  type ConfigBinding,
   checkEmbeddingsBaseUrl,
   DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
   type LocalOpEmbeddingsTestResponse,
@@ -89,6 +99,12 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const configuredBaseUrl =
     projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
   const configuredModel = projectLocalConfig?.search?.semantic?.model ?? DEFAULT_EMBEDDINGS_MODEL;
+  const configuredMaxBatchSize =
+    projectLocalConfig?.search?.semantic?.maxBatchSize ?? DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE;
+  const configuredMaxBatchChars =
+    projectLocalConfig?.search?.semantic?.maxBatchChars ?? DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS;
+  const configuredDocTimeoutMs =
+    projectLocalConfig?.search?.semantic?.docTimeoutMs ?? DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
 
   const [baseUrlDraft, setBaseUrlDraft] = useState(configuredBaseUrl);
   const [modelDraft, setModelDraft] = useState(configuredModel);
@@ -99,6 +115,9 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   } | null>(null);
   // null = follow the auto-expand rule; a boolean = the user has decided.
   const [disclosureOverride, setDisclosureOverride] = useState<boolean | null>(null);
+  const [performanceDisclosureOverride, setPerformanceDisclosureOverride] = useState<
+    boolean | null
+  >(null);
   const [testing, setTesting] = useState(false);
   // `null` inside the result means the request itself never got a verdict.
   const [testResult, setTestResult] = useState<{
@@ -127,9 +146,15 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const hasProviderOverride =
     configuredBaseUrl !== DEFAULT_EMBEDDINGS_BASE_URL ||
     configuredModel !== DEFAULT_EMBEDDINGS_MODEL;
-  // Auto-expand when either knob is already overridden: an endpoint set from the
-  // CLI must not be invisible to the person looking for it in Settings.
+  const hasTransportOverride =
+    configuredMaxBatchSize !== DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE ||
+    configuredMaxBatchChars !== DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS ||
+    configuredDocTimeoutMs !== DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
+  // Auto-expand each disclosure when its own knobs are already overridden: a
+  // value set from the CLI must not be invisible to the person looking for it
+  // in Settings. The two disclosures are siblings, so each tracks only its own.
   const disclosureOpen = disclosureOverride ?? hasProviderOverride;
+  const performanceDisclosureOpen = performanceDisclosureOverride ?? hasTransportOverride;
 
   function scheduleSettleRefresh() {
     for (const timer of settleTimersRef.current) clearTimeout(timer);
@@ -383,8 +408,8 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         <CollapsibleContent className="space-y-4 border-t px-3 py-3">
           <p className="text-muted-foreground text-1sm">
             <Trans>
-              Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted
-              server or another provider. The API key above is for whichever endpoint you set here.
+              Use any OpenAI-compatible embeddings endpoint, including a local server or another
+              provider. The API key above is sent to the endpoint you set here.
             </Trans>
           </p>
 
@@ -426,7 +451,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
               }
             >
               {baseUrlError ?? (
-                <Trans>Clear the field to reset back to the default OpenAI endpoint.</Trans>
+                <Trans>Clear the field to reset to the default OpenAI endpoint.</Trans>
               )}
             </p>
           </div>
@@ -485,6 +510,79 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         </CollapsibleContent>
       </Collapsible>
 
+      <Collapsible
+        open={performanceDisclosureOpen}
+        onOpenChange={setPerformanceDisclosureOverride}
+        className="rounded-md border"
+        data-testid="settings-search-performance"
+        data-field="search.semantic.maxBatchSize"
+      >
+        <CollapsibleTrigger
+          className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
+          data-testid="settings-search-performance-trigger"
+        >
+          <Trans>Embedding request settings</Trans>
+          <ChevronRight
+            className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+            aria-hidden
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="space-y-4 border-t px-3 py-3">
+          <p className="text-muted-foreground text-1sm">
+            <Trans>
+              Adjust indexing request size and timeout for slow or memory-constrained embedding
+              servers. Most setups should keep the defaults.
+            </Trans>
+          </p>
+          <PerformanceTuningField
+            id="settings-search-max-batch-size"
+            label={<Trans>Maximum text chunks per indexing request</Trans>}
+            help={
+              <Trans>
+                Lower this to reduce memory use and work per request. Smaller batches send more
+                requests and may make indexing slower overall.
+              </Trans>
+            }
+            configKey="maxBatchSize"
+            configuredValue={configuredMaxBatchSize}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+          />
+          <PerformanceTuningField
+            id="settings-search-max-batch-chars"
+            label={<Trans>Character budget per indexing request</Trans>}
+            help={
+              <Trans>
+                Limits the combined text sent in each request. A single larger chunk is sent on its
+                own; documents are not split again.
+              </Trans>
+            }
+            configKey="maxBatchChars"
+            configuredValue={configuredMaxBatchChars}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+          />
+          <PerformanceTuningField
+            id="settings-search-doc-timeout-seconds"
+            label={<Trans>Indexing request timeout (seconds)</Trans>}
+            help={
+              <Trans>
+                How long OpenKnowledge waits for each embedding request while indexing. Search
+                requests use a separate timeout.
+              </Trans>
+            }
+            configKey="docTimeoutMs"
+            configuredValue={configuredDocTimeoutMs}
+            defaultValue={DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS}
+            displayDivisor={1000}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+          />
+        </CollapsibleContent>
+      </Collapsible>
+
       <EnableSemanticSearchConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -497,6 +595,123 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         onConfirm={onConfirmProviderChange}
       />
     </section>
+  );
+}
+
+type PerformanceTuningKey = 'maxBatchSize' | 'maxBatchChars' | 'docTimeoutMs';
+
+interface PerformanceTuningFieldProps {
+  id: string;
+  label: ReactNode;
+  help: ReactNode;
+  configKey: PerformanceTuningKey;
+  configuredValue: number;
+  defaultValue: number;
+  displayDivisor?: number;
+  binding: ConfigBinding | null;
+  bindingReady: boolean;
+}
+
+function PerformanceTuningField({
+  id,
+  label,
+  help,
+  configKey,
+  configuredValue,
+  defaultValue,
+  displayDivisor = 1,
+  binding,
+  bindingReady,
+}: PerformanceTuningFieldProps) {
+  const { t } = useLingui();
+  const displayedConfiguredValue = configuredValue / displayDivisor;
+  const displayedDefaultValue = defaultValue / displayDivisor;
+  const [draft, setDraft] = useState(String(displayedConfiguredValue));
+  const [error, setError] = useState<string | null>(null);
+  const [previousConfiguredValue, setPreviousConfiguredValue] = useState(displayedConfiguredValue);
+
+  // Keep an in-progress edit stable, but re-seed after an external CLI/config
+  // write changes the effective value underneath this mounted control.
+  if (displayedConfiguredValue !== previousConfiguredValue) {
+    setPreviousConfiguredValue(displayedConfiguredValue);
+    setDraft(String(displayedConfiguredValue));
+    setError(null);
+  }
+
+  function commit(): void {
+    const trimmed = draft.trim();
+    const displayValue = trimmed === '' ? displayedDefaultValue : Number(trimmed);
+    const storedValue = displayValue * displayDivisor;
+    if (
+      !/^\d+$/.test(trimmed === '' ? String(displayedDefaultValue) : trimmed) ||
+      !Number.isSafeInteger(displayValue) ||
+      displayValue <= 0 ||
+      !Number.isSafeInteger(storedValue)
+    ) {
+      setError(t`Enter a positive whole number.`);
+      return;
+    }
+    if (binding === null) {
+      setError(t`Search settings not yet loaded — try again in a moment`);
+      return;
+    }
+
+    const semanticPatch =
+      configKey === 'maxBatchSize'
+        ? { maxBatchSize: storedValue }
+        : configKey === 'maxBatchChars'
+          ? { maxBatchChars: storedValue }
+          : { docTimeoutMs: storedValue };
+    const result = binding.patch({ search: { semantic: semanticPatch } });
+    if (!result.ok) {
+      const detail = humanFormat(result.error);
+      const message = t`Failed to update performance setting — ${detail}`;
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    setDraft(String(displayValue));
+    setError(null);
+  }
+
+  const messageId = `${id}-message`;
+  return (
+    <div className="space-y-2">
+      <label htmlFor={id} className="block text-sm font-medium">
+        {label}
+      </label>
+      <Input
+        id={id}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          if (error !== null) setError(null);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          }
+        }}
+        disabled={!bindingReady}
+        inputMode="numeric"
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={error !== null}
+        aria-describedby={messageId}
+        data-testid={id}
+        className="h-8 font-mono text-sm"
+      />
+      <p
+        id={messageId}
+        aria-live="polite"
+        className={error ? 'text-1sm text-destructive' : 'text-muted-foreground text-1sm'}
+        data-testid={error ? `${id}-error` : `${id}-help`}
+      >
+        {error ?? help}
+      </p>
+    </div>
   );
 }
 

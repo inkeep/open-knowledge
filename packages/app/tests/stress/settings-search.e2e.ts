@@ -18,6 +18,9 @@
  * wired into the CI `test:e2e` subset (packages/app/package.json).
  */
 
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { join } from 'node:path';
 import {
   expect,
   SETTINGS_PANEL_TIMEOUT_MS,
@@ -182,5 +185,165 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
     await page.getByTestId('settings-search-input').fill('MD013');
     await expect(page.getByTestId('settings-search-result-rule:MD013')).toHaveCount(0);
     await expect(page.getByTestId('settings-search-empty')).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+test.describe('Settings → Search — embedding performance tuning', () => {
+  test('persists overrides and hot-applies HTTP batching without restarting or replacing the cache', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    test.setTimeout(120_000);
+    const requests: string[][] = [];
+    let slowSpecialRequest = false;
+    let delayedSpecialRequest = false;
+    const fakeProvider = createServer((request, response) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => {
+        body += chunk;
+      });
+      request.on('end', () => {
+        const parsed = JSON.parse(body) as { input?: string[] };
+        const input = parsed.input ?? [];
+        requests.push(input);
+        const send = () => {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(
+            JSON.stringify({
+              data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0, 0, 0, 0, 0] })),
+              usage: { total_tokens: input.length },
+            }),
+          );
+        };
+        if (
+          slowSpecialRequest &&
+          !delayedSpecialRequest &&
+          input.some((text) => text.includes('SPECIAL-SLOW-DOCUMENT'))
+        ) {
+          delayedSpecialRequest = true;
+          setTimeout(send, 31_000);
+        } else {
+          send();
+        }
+      });
+    });
+    await new Promise<void>((resolve) => fakeProvider.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const address = fakeProvider.address();
+      if (address === null || typeof address === 'string')
+        throw new Error('fake provider did not bind');
+      const providerBaseUrl = `http://127.0.0.1:${address.port}/v1`;
+      await api.seedDocs(
+        Array.from({ length: 5 }, (_, index) => ({
+          name: `embedding-default-${index}`,
+          markdown: `# Default ${index}\n\nDEFAULT-BATCH-DOCUMENT-${index} unique semantic content.`,
+        })),
+      );
+
+      await openSettings(page);
+      await page.getByTestId('settings-sidebar-item-search').click();
+      await page.getByTestId('settings-search-custom-endpoint-trigger').click();
+      await page.getByTestId('settings-search-base-url').fill(providerBaseUrl);
+      await page.getByTestId('settings-search-base-url').press('Enter');
+      await page.getByTestId('settings-search-provider-confirm-apply').click();
+      await page.getByTestId('settings-search-semantic-toggle').click();
+      await page.getByTestId('settings-search-confirm-enable').click();
+
+      const configPath = join(workerServer.contentDir, '.ok', 'local', 'config.yml');
+      const readConfig = () => (existsSync(configPath) ? readFileSync(configPath, 'utf8') : '');
+      await expect.poll(readConfig, { timeout: 10_000 }).toMatch(/enabled:\s*true/);
+      await expect
+        .poll(
+          async () => {
+            const status = await page.request.get('/api/semantic-status');
+            return ((await status.json()) as { enabled?: boolean }).enabled;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe(true);
+
+      const runSemanticSearch = async (query: string) => {
+        const result = await page.request.post('/api/search', {
+          data: { query, intent: 'full_text', semantic: true },
+        });
+        expect(result.ok()).toBe(true);
+      };
+      await runSemanticSearch('default embedding batch');
+      await expect
+        .poll(
+          () =>
+            requests.some(
+              (input) =>
+                input.length >= 5 && input.some((text) => text.includes('DEFAULT-BATCH-DOCUMENT')),
+            ),
+          { timeout: 20_000 },
+        )
+        .toBe(true);
+
+      const cacheDir = join(workerServer.contentDir, '.ok', 'local', 'embeddings');
+      await expect.poll(() => statSync(cacheDir).isDirectory(), { timeout: 10_000 }).toBe(true);
+      const cacheDirectoryInode = statSync(cacheDir).ino;
+      const originalPid = workerServer.pid;
+      process.kill(originalPid, 0);
+
+      await page.getByTestId('settings-search-performance-trigger').click();
+      for (const [testId, value] of [
+        ['settings-search-max-batch-size', '2'],
+        ['settings-search-max-batch-chars', '16000'],
+        ['settings-search-doc-timeout-seconds', '120'],
+      ] as const) {
+        const input = page.getByTestId(testId);
+        await input.fill(value);
+        await input.press('Enter');
+      }
+
+      await expect
+        .poll(readConfig, { timeout: 10_000 })
+        .toMatch(/maxBatchSize:\s*2[\s\S]*maxBatchChars:\s*16000[\s\S]*docTimeoutMs:\s*120000/);
+
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('settings-dialog')).toBeHidden();
+      await openSettings(page);
+      await page.getByTestId('settings-sidebar-item-search').click();
+      await expect(page.getByTestId('settings-search-max-batch-size')).toHaveValue('2');
+      await expect(page.getByTestId('settings-search-max-batch-chars')).toHaveValue('16000');
+      await expect(page.getByTestId('settings-search-doc-timeout-seconds')).toHaveValue('120');
+
+      requests.length = 0;
+      slowSpecialRequest = true;
+      await api.seedDocs(
+        Array.from({ length: 5 }, (_, index) => ({
+          name: `embedding-special-${index}`,
+          markdown: `# Special ${index}\n\nSPECIAL-SLOW-DOCUMENT-${index} unique semantic content.`,
+        })),
+      );
+      await runSemanticSearch('special embedding batch');
+      await expect
+        .poll(
+          () => {
+            const special = requests.filter((input) =>
+              input.some((text) => text.includes('SPECIAL-SLOW-DOCUMENT')),
+            );
+            return (
+              delayedSpecialRequest &&
+              special.length >= 3 &&
+              special.every((input) => input.length <= 2)
+            );
+          },
+          { timeout: 50_000 },
+        )
+        .toBe(true);
+
+      expect(workerServer.pid).toBe(originalPid);
+      process.kill(originalPid, 0);
+      expect(statSync(cacheDir).ino).toBe(cacheDirectoryInode);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        fakeProvider.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });

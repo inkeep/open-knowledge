@@ -88,6 +88,9 @@
     ],
     "0NA4b3": ["میرا ورژن رکھیں"],
     "0NkNB5": [["0"], " ماہ پہلے"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["زیادہ سے زیادہ ایجنٹس پہلے ہی چل رہے ہیں"],
     "0TnCvC": [["0"], " کا نام بدلیں"],
     "0YEbfk": ["AI ٹولز سے منسلک ہوں"],
@@ -801,6 +804,9 @@
     "9tJX8r": ["معنی کے لحاظ سے"],
     "9uI_rE": ["واپس لیں"],
     "9uRLEH": ["«", ["name"], "» نہیں کھل سکی — یہ ابھی پروجیکٹ کی مہارتوں میں شامل نہیں۔"],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["دوبارہ ڈھانچہ سازی"],
     "9x-lMu": ["اس ریپوزٹری میں — ساتھیوں کو git کے ذریعے کاپیاں ملتی ہیں۔"],
     "9xCnv8": ["Terminal چھپائیں"],
@@ -920,6 +926,7 @@
     "Bdha5y": ["شائع کیا جا رہا ہے..."],
     "BeWTQy": ["ابتدائی پیکس لوڈ ہو رہے ہیں"],
     "BgV29F": ["بصری ایڈیٹر کا تلاش اِن پٹ فوکس میں ہے"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "Bh9671": [
       "یہ پروجیکٹ صرف مقامی ہے، اس لیے .ok/skills git سے چھپا ہے اور یہ مہارتیں کمٹ یا شیئر نہیں ہو سکتیں۔ صرف مہارتوں کا فولڈر شیئر کریں — آپ کی باقی OK کنفیگ اسی کمپیوٹر پر رہتی ہے۔"
     ],
@@ -1443,6 +1450,7 @@
       "OpenKnowledge اپنی کنفیگریشن اور داخلی فائلیں آپ کے پروجیکٹ کے جڑ فولڈر میں نئے بنے <0>.ok</0> ڈائریکٹری کے اندر رکھتا ہے۔"
     ],
     "Hrz9NY": ["وکی لنک"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" کو git نظر انداز کر رہا ہے"],
     "HzVAoz": [
       "اس فائل کو مہارت کے اندر منتقل کریں یا اس کا نام بدلیں — راستہ references/ یا scripts/ کے تحت ہی رہتا ہے۔"
@@ -2091,6 +2099,7 @@
     "QQbwzK": ["کوئی ایجنٹ دستیاب نہیں۔"],
     "QQghPu": ["Claude Desktop میں نصب کریں"],
     "QR5SP1": ["ٹیمپلیٹ بنایا"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QWdKwH": ["منتقل کریں"],
     "QYTOaN": ["آپ اسے بعد میں <0>ترتیبات ← مطابقت پذیری</0> میں بدل سکتے ہیں۔"],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2174,6 +2183,9 @@
     ],
     "RO-yts": ["لنکس کے پیش منظر بند نہیں ہو سکے — ", ["detail"]],
     "RO9IbI": ["واپس پلٹنا ناکام: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["پیغام قطار میں لگائیں"],
     "RS98db": ["کمانڈز دیکھنے کے لیے '/' ٹائپ کریں"],
     "RSqaSd": ["پروجیکٹ کی جڑ"],
@@ -2624,6 +2636,9 @@
     "XYZ7tp": ["ناقابلِ حل"],
     "XYlJJT": ["ترتیب دیا جا رہا ہے"],
     "XZkdtg": ["برانچ بدلیں"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["چھپی ہوئی فائلیں دکھائیں"],
     "Xet9MX": ["بیک لنکس لوڈ نہیں ہو سکے"],
     "Xewl6B": ["آپ کی مقامی نقل پیچھے ہے۔ تازہ ترین تبدیلیاں کھینچیں، پھر لنک دوبارہ کھولیں۔"],
@@ -3096,6 +3111,7 @@
     "cRm498": ["اس پروجیکٹ میں ابھی کوئی اسکیما فائل نہیں — توثیق شروع کرنے کے لیے ایک بنائیں۔"],
     "cSCbv3": ["بیٹا"],
     "cT_pW4": ["سکڑنے والا مواد بلاک (Notion طرز کا ٹوگل)۔"],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["کرسر والے بلاک کے Markdown سورس پر جائیں، بیچ میں اور نمایاں۔"],
     "cUK8lW": [["conflictCount", "plural", { "one": ["#", " تصادم"], "other": ["#", " تصادمات"] }]],
     "cUagXn": [["gitignorePath"], " میں شامل کریں"],
@@ -3762,10 +3778,8 @@
     "kNGLX6": ["دوبارہ کوشش جاری ہے…"],
     "kNiQp6": ["پن شدہ"],
     "kNqMMd": ["فولڈر"],
-    "kRTXGw": [
-      "معنوی تلاش کو OpenAI سے ہم آہنگ کسی بھی ایمبیڈنگز اینڈ پوائنٹ کی طرف موڑیں — خود میزبان سرور یا کوئی دوسرا فراہم کنندہ۔ اوپر دی گئی API کلید اسی اینڈ پوائنٹ کے لیے ہے جو آپ یہاں مقرر کریں۔"
-    ],
     "kSiB3X": [["trashNoun"], " میں منتقل نہیں ہو سکا"],
+    "kUgGPO": ["Character budget per indexing request"],
     "kUn-CN": ["مطابقت پذیری بند"],
     "kV2YZv": [
       "<0>مہارتیں</0> نظر نہیں آ رہیں؟ پہلے <1>ترتیبات <2/> صلاحیتیں <3/> کوڈ کا اجرا اور فائل سازی</1> فعال کریں۔"
@@ -3857,7 +3871,6 @@
     "lAiyU_": ["صرف موجودہ دستاویز <0>#", ["tag"], "</0> استعمال کرتی ہے۔"],
     "lCC_D5": ["رکنیت لی جا رہی ہے..."],
     "lGs_bQ": ["صفحہ <0>*</0>"],
-    "lHCR4I": ["طے شدہ OpenAI اینڈ پوائنٹ پر واپس جانے کے لیے فیلڈ صاف کریں۔"],
     "lHwYMr": ["سرور کی خرابی: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["صرف حروف، ہندسے، <0>_</0> اور <1>-</1> استعمال کریں۔"],
     "lISYEX": ["وہ تبصرہ دوبارہ نہیں کھل سکا۔"],
@@ -4606,6 +4619,9 @@
     "uoJF_D": ["اسے ترتیب دینا یا شروع کرنا بہت مشکل تھا"],
     "ur2XSb": ["بصری ایڈیٹر"],
     "uuoHOU": ["کمانڈ ناکام ہو گئی۔"],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["تعارف"],
     "uyOQ4e": ["تھیم base16 YAML کے طور پر کاپی ہو گئی"],
     "uynXup": [["tokens", "plural", { "one": ["ٹوکن"], "other": ["ٹوکنز"] }]],
@@ -4844,6 +4860,7 @@
     "y5UgU8": [["0"], " بند کریں"],
     "y8B54M": ["آپ کا پرامپٹ نہیں بھیجا جا سکا — براہِ کرم دوبارہ کوشش کریں۔"],
     "yCX4jp": [" آپ کا انتخاب بحال نہیں کیا جا سکا۔"],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["حذف کرنے سے پہلے ", ["files"], " کا تنازع حل کریں۔"],
     "yEJ-sl": [
       "پیش منظر ان وسائل کو روکتا ہے جو اس کے سیکیورٹی قواعد پر پورے نہ اتریں (مثلاً سادہ http:// والے URLs، یا وہ کوڈ جو eval استعمال کرے)۔ اوپر کا مواد نامکمل رینڈر ہو سکتا ہے۔"
@@ -4976,6 +4993,7 @@
     "zo3Dl7": ["تھمب نیلز بدلیں"],
     "zpfN9p": ["ابھی کوئی تبصرہ نہیں۔ ایک شامل کرنے کے لیے دستاویز میں متن منتخب کریں۔"],
     "zq2eBA": ["سورس میں دیکھیں"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "وہ frontmatter جس سے اس ٹیمپلیٹ سے بننے والی ہر دستاویز شروع ہوتی ہے۔ اقدار YAML میں ہیں — فہرست یوں لکھی جاتی ہے <0>[a, b]</0>؛ اور <1>{",
       ["date"],

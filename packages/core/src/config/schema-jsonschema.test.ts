@@ -418,3 +418,34 @@ describe('loose-mode forgiveness', () => {
     expect(config.bridge.flushOnHide.enabled).toBe(false);
   });
 });
+
+describe('semantic embedding transport JSON schema', () => {
+  test('publishes positive-integer constraints and legacy defaults', () => {
+    const root = jsonSchema as {
+      properties?: {
+        search?: {
+          properties?: {
+            semantic?: { properties?: Record<string, unknown> };
+          };
+        };
+      };
+    };
+    const properties = root.properties?.search?.properties?.semantic?.properties;
+
+    expect(properties?.maxBatchSize).toMatchObject({
+      type: 'integer',
+      exclusiveMinimum: 0,
+      default: 96,
+    });
+    expect(properties?.maxBatchChars).toMatchObject({
+      type: 'integer',
+      exclusiveMinimum: 0,
+      default: 96_000,
+    });
+    expect(properties?.docTimeoutMs).toMatchObject({
+      type: 'integer',
+      exclusiveMinimum: 0,
+      default: 30_000,
+    });
+  });
+});

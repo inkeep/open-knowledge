@@ -88,6 +88,9 @@
     ],
     "0NA4b3": ["Keep my version"],
     "0NkNB5": [["0"], "mo ago"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["Maximum agents already running"],
     "0TnCvC": ["Rename ", ["0"]],
     "0YEbfk": ["Connect to AI tools"],
@@ -783,6 +786,9 @@
     "9tJX8r": ["By meaning"],
     "9uI_rE": ["Undo"],
     "9uRLEH": ["Couldn't open \"", ["name"], "\" — it isn't in the project's skills yet."],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["Refactoring"],
     "9x-lMu": ["In this repo — collaborators get copies via git."],
     "9xCnv8": ["Hide Terminal"],
@@ -906,6 +912,7 @@
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "Bh9671": [
       "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
     ],
@@ -1409,6 +1416,7 @@
       "OpenKnowledge stores its configuration and internal files inside a newly created <0>.ok</0> directory in your project root folder."
     ],
     "Hrz9NY": ["Wiki link"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" is ignored by git"],
     "HzVAoz": [
       "Move or rename this file inside the skill — the path stays under references/ or scripts/."
@@ -2041,6 +2049,7 @@
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2122,6 +2131,9 @@
     ],
     "RO-yts": ["Failed to disable link previews — ", ["detail"]],
     "RO9IbI": ["Revert failed: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["Queue message"],
     "RS98db": ["Type '/' for commands"],
     "RSqaSd": ["Project root"],
@@ -2554,6 +2566,9 @@
     "XYZ7tp": ["Unresolvable"],
     "XYlJJT": ["Setting up"],
     "XZkdtg": ["Switch branch"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["Show hidden files"],
     "Xet9MX": ["Failed to load backlinks"],
     "Xewl6B": ["Your local copy is behind. Pull the latest changes, then open the link again."],
@@ -3009,6 +3024,7 @@
     "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["Collapsible content block (Notion-style toggle)."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": [
       "Jump to the markdown source for the block at the cursor, centered and highlighted."
     ],
@@ -3674,10 +3690,8 @@
     "kNGLX6": ["Retrying…"],
     "kNiQp6": ["Pinned"],
     "kNqMMd": ["Folder"],
-    "kRTXGw": [
-      "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
-    ],
     "kSiB3X": ["Couldn't move to ", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kUn-CN": ["Sync off"],
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
@@ -3765,7 +3779,6 @@
     "lAiyU_": ["Only the current document uses <0>#", ["tag"], "</0>."],
     "lCC_D5": ["Subscribing..."],
     "lGs_bQ": ["Page <0>*</0>"],
-    "lHCR4I": ["Clear the field to reset back to the default OpenAI endpoint."],
     "lHwYMr": ["Server error: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["Use letters, digits, <0>_</0> and <1>-</1> only."],
     "lISYEX": ["Couldn't reopen that comment."],
@@ -4531,6 +4544,9 @@
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["About"],
     "uyOQ4e": ["Theme copied as base16 YAML"],
     "uynXup": [["tokens", "plural", { "one": ["token"], "other": ["tokens"] }]],
@@ -4762,6 +4778,7 @@
     "y5UgU8": ["Disable ", ["0"]],
     "y8B54M": ["Couldn't send your prompt — please try again."],
     "yCX4jp": [" Your selection could not be restored."],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["Resolve the conflict on ", ["files"], " before deleting."],
     "yEJ-sl": [
       "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
@@ -4891,6 +4908,7 @@
     "zo3Dl7": ["Toggle thumbnails"],
     "zpfN9p": ["No comments yet. Select text in the document to add one."],
     "zq2eBA": ["View in source"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "Frontmatter every document created from this template starts with. Values are YAML — a list is <0>[a, b]</0>; <1>{",
       ["date"],

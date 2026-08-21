@@ -84,6 +84,9 @@
     ],
     "0NA4b3": ["আমার সংস্করণ রাখুন"],
     "0NkNB5": [["0"], " মাস আগে"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["সর্বোচ্চসংখ্যক এজেন্ট আগে থেকেই চলছে"],
     "0TnCvC": [["0"], "-এর নাম বদলান"],
     "0YEbfk": ["AI টুলের সঙ্গে যুক্ত করুন"],
@@ -765,6 +768,9 @@
     "9tJX8r": ["অর্থ অনুসারে"],
     "9uI_rE": ["পূর্বাবস্থায় ফেরান"],
     "9uRLEH": ["\"", ["name"], "\" খোলা যায়নি — এটি এখনও প্রকল্পের স্কিলে নেই।"],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["পুনর্গঠন"],
     "9x-lMu": ["এই রিপোজিটরিতে — সহযোগীরা git-এর মাধ্যমে কপি পাবেন।"],
     "9xCnv8": ["Terminal লুকান"],
@@ -878,6 +884,7 @@
     "Bdha5y": ["প্রকাশ করা হচ্ছে…"],
     "BeWTQy": ["স্টার্টার প্যাক লোড হচ্ছে"],
     "BgV29F": ["দৃশ্য সম্পাদকের খোঁজার ইনপুট ফোকাসে"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "Bh9671": [
       "এই প্রকল্পটি শুধু-স্থানীয়, তাই .ok/skills git থেকে লুকানো এবং এই স্কিলগুলো কমিট বা ভাগ করা যায় না। শুধু স্কিল ফোল্ডারটিই ভাগ করুন — আপনার বাকি OK কনফিগ এই কম্পিউটারেই থাকে।"
     ],
@@ -1368,6 +1375,7 @@
       "OpenKnowledge তার কনফিগারেশন ও অভ্যন্তরীণ ফাইল আপনার প্রকল্পের রুট ফোল্ডারে নতুন তৈরি হওয়া <0>.ok</0> ডিরেক্টরির ভেতরে রাখে।"
     ],
     "Hrz9NY": ["উইকি লিংক"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\" git উপেক্ষা করছে"],
     "HzVAoz": [
       "এই ফাইলটি স্কিলের ভেতরে সরান বা এর নাম বদলান — পথটি references/ বা scripts/-এর নিচেই থাকে।"
@@ -1987,6 +1995,7 @@
     "QQbwzK": ["কোনো এজেন্ট নেই।"],
     "QQghPu": ["Claude Desktop-এ ইনস্টল করুন"],
     "QR5SP1": ["টেমপ্লেট তৈরি হয়েছে"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QWdKwH": ["সরান"],
     "QYTOaN": ["আপনি এটি পরে <0>Settings → Sync</0>-এ বদলাতে পারেন।"],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2068,6 +2077,9 @@
     ],
     "RO-yts": ["লিংক প্রাকদর্শন নিষ্ক্রিয় করতে ব্যর্থ — ", ["detail"]],
     "RO9IbI": ["ফিরিয়ে নেওয়া ব্যর্থ: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["বার্তা সারিতে রাখুন"],
     "RS98db": ["কমান্ড দেখতে '/' টাইপ করুন"],
     "RSqaSd": ["প্রকল্পের রুট"],
@@ -2495,6 +2507,9 @@
     "XYZ7tp": ["সমাধান অযোগ্য"],
     "XYlJJT": ["সেট আপ করা হচ্ছে"],
     "XZkdtg": ["ব্রাঞ্চ বদলান"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["লুকানো ফাইল দেখান"],
     "Xet9MX": ["ব্যাকলিংক লোড করতে ব্যর্থ"],
     "Xewl6B": ["আপনার স্থানীয় অনুলিপি পিছিয়ে আছে। সর্বশেষ পরিবর্তন টেনে নিন, তারপর লিংকটি আবার খুলুন।"],
@@ -2946,6 +2961,7 @@
     "cRm498": ["এই প্রকল্পে এখনও কোনো স্কিমা ফাইল নেই — যাচাই শুরু করতে একটি তৈরি করুন।"],
     "cSCbv3": ["বিটা"],
     "cT_pW4": ["সংকোচনযোগ্য কনটেন্ট ব্লক (Notion-ধাঁচের টগল)।"],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["কার্সরে থাকা ব্লকের markdown সোর্সে যান, মাঝখানে ও হাইলাইট করা অবস্থায়।"],
     "cUK8lW": [["conflictCount", "plural", { "one": ["#", " দ্বন্দ্ব"], "other": ["#", " দ্বন্দ্ব"] }]],
     "cUagXn": [["gitignorePath"], "-এ যোগ করুন"],
@@ -3568,10 +3584,8 @@
     "kNGLX6": ["পুনরায় চেষ্টা করা হচ্ছে…"],
     "kNiQp6": ["পিন করা"],
     "kNqMMd": ["ফোল্ডার"],
-    "kRTXGw": [
-      "অর্থভিত্তিক অনুসন্ধানকে যেকোনো OpenAI-সঙ্গতিপূর্ণ এমবেডিং এন্ডপয়েন্টে লাগান — নিজে হোস্ট করা সার্ভার বা অন্য কোনো সরবরাহকারী। উপরের API কী-টি আপনি এখানে যে এন্ডপয়েন্ট নির্ধারণ করেন তার জন্যই।"
-    ],
     "kSiB3X": [["trashNoun"], "-এ পাঠানো যায়নি"],
+    "kUgGPO": ["Character budget per indexing request"],
     "kUn-CN": ["সিঙ্ক বন্ধ"],
     "kV2YZv": [
       "<0>Skills</0> দেখতে পাচ্ছেন না? আগে <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> চালু করুন।"
@@ -3656,7 +3670,6 @@
     "lAiyU_": ["কেবল বর্তমান নথিটিই <0>#", ["tag"], "</0> ব্যবহার করে।"],
     "lCC_D5": ["সদস্য করা হচ্ছে…"],
     "lGs_bQ": ["পাতা <0>*</0>"],
-    "lHCR4I": ["ডিফল্ট OpenAI এন্ডপয়েন্টে ফিরতে ফিল্ডটি খালি করুন।"],
     "lHwYMr": ["সার্ভার ত্রুটি: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["কেবল অক্ষর, অঙ্ক, <0>_</0> ও <1>-</1> ব্যবহার করুন।"],
     "lISYEX": ["ওই মন্তব্যটি আবার খোলা যায়নি।"],
@@ -4389,6 +4402,9 @@
     "uoJF_D": ["এটি সেট আপ করা বা শুরু করা খুব কঠিন ছিল"],
     "ur2XSb": ["দৃশ্য সম্পাদক"],
     "uuoHOU": ["কমান্ড ব্যর্থ।"],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["সম্পর্কে"],
     "uyOQ4e": ["থিমটি base16 YAML হিসেবে কপি করা হয়েছে"],
     "uynXup": [["tokens", "plural", { "one": ["টোকেন"], "other": ["টোকেন"] }]],
@@ -4608,6 +4624,7 @@
     "y5UgU8": [["0"], " নিষ্ক্রিয় করুন"],
     "y8B54M": ["আপনার প্রম্পট পাঠানো যায়নি — অনুগ্রহ করে আবার চেষ্টা করুন।"],
     "yCX4jp": [" আপনার নির্বাচন পুনরুদ্ধার করা যায়নি।"],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["মোছার আগে ", ["files"], "-এর দ্বন্দ্ব মিটিয়ে নিন।"],
     "yEJ-sl": [
       "প্রাকদর্শন সেসব সম্পদ আটকে দেয় যেগুলো তার নিরাপত্তা নিয়ম মানে না (উদাহরণস্বরূপ সাধারণ http:// URL, বা eval ব্যবহার করা কোড)। উপরের বিষয়বস্তু অসম্পূর্ণভাবে রেন্ডার হতে পারে।"
@@ -4730,6 +4747,7 @@
     "zo3Dl7": ["থাম্বনেইল চালু বা বন্ধ করুন"],
     "zpfN9p": ["এখনও কোনো মন্তব্য নেই। একটি যোগ করতে নথিতে লেখা নির্বাচন করুন।"],
     "zq2eBA": ["সোর্সে দেখুন"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "এই টেমপ্লেট থেকে তৈরি প্রতিটি নথি যে frontmatter দিয়ে শুরু হয়। মানগুলো YAML — তালিকা হলো <0>[a, b]</0>; <1>{",
       ["date"],

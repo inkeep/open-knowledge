@@ -1561,6 +1561,10 @@ msgstr ""
 msgid "Adds these folders"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr ""
+
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr ""
@@ -2431,6 +2435,10 @@ msgstr ""
 msgid "Changes saved automatically."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr ""
@@ -2623,7 +2631,7 @@ msgid "Clear selection"
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
-msgid "Clear the field to reset back to the default OpenAI endpoint."
+msgid "Clear the field to reset to the default OpenAI endpoint."
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -5086,6 +5094,11 @@ msgid "Embed an image with optional alt text."
 msgstr ""
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr ""
 
@@ -5249,6 +5262,10 @@ msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a positive whole number."
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
@@ -5740,6 +5757,10 @@ msgstr ""
 
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
 msgstr ""
 
 #: src/components/ObjectWidget.tsx
@@ -6595,6 +6616,10 @@ msgstr ""
 msgid "How does sharing work?"
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+msgstr ""
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr ""
@@ -6836,6 +6861,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -7382,6 +7411,10 @@ msgstr ""
 msgid "Light, dark, or follow the OS."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr ""
@@ -7699,6 +7732,10 @@ msgstr ""
 msgid "Lost connection to \"{docName}\"."
 msgstr ""
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr ""
@@ -7796,6 +7833,10 @@ msgstr ""
 
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
 msgstr ""
 
 #: src/lib/install-onboarding-toast.ts
@@ -9973,10 +10014,6 @@ msgstr ""
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Plugins"
-msgstr ""
-
-#: src/components/settings/SearchSection.tsx
-msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
 msgstr ""
 
 #: src/components/acp/working-status.ts
@@ -14314,6 +14351,10 @@ msgstr ""
 
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
+msgid "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
 msgstr ""
 
 #: src/components/TemplateProperties.tsx

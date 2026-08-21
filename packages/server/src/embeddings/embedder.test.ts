@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   cosineSimilarity,
   createOpenAiEmbedder,
@@ -108,6 +108,22 @@ describe('createOpenAiEmbedder', () => {
     expect((calls[1].body as { input: string[] }).input).toEqual(['c']);
   });
 
+  test('splits document inputs by the cumulative character budget', async () => {
+    const { fetchImpl, calls } = stubFetch([
+      { json: embeddingsResponse(2, 8) },
+      { json: embeddingsResponse(1, 8) },
+    ]);
+    const embedder = createOpenAiEmbedder(
+      { baseUrl: 'https://x/v1', model: 'm', dimensions: 8, apiKey: KEY },
+      { fetchImpl, sleep: noSleep, maxBatchChars: 5 },
+    );
+    await embedder.embed(['aa', 'bbb', 'c'], { role: 'document' });
+    expect(calls.map((call) => (call.body as { input: string[] }).input)).toEqual([
+      ['aa', 'bbb'],
+      ['c'],
+    ]);
+  });
+
   test('sends the dimensions param only when configured', async () => {
     const withDims = stubFetch([{ json: embeddingsResponse(1, 512) }]);
     await createOpenAiEmbedder(
@@ -187,6 +203,41 @@ describe('createOpenAiEmbedder', () => {
       caught = e as Error;
     });
     expect(caught).not.toBeNull();
+  });
+
+  test('uses the configured document timeout without changing the query timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchImpl } = stubFetch([{ abortable: true }]);
+      const embedder = createOpenAiEmbedder(
+        { baseUrl: 'https://x/v1', model: 'm', apiKey: KEY },
+        {
+          fetchImpl,
+          sleep: noSleep,
+          maxRetries: 0,
+          queryTimeoutMs: 10,
+          docTimeoutMs: 100,
+        },
+      );
+
+      const query = embedder.embed(['q'], { role: 'query' });
+      const queryAssertion = expect(query).rejects.toMatchObject({ reason: 'timeout' });
+      await vi.advanceTimersByTimeAsync(10);
+      await queryAssertion;
+
+      let documentSettled = false;
+      const document = embedder.embed(['doc'], { role: 'document' }).catch((error) => {
+        documentSettled = true;
+        throw error;
+      });
+      const documentAssertion = expect(document).rejects.toMatchObject({ reason: 'timeout' });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(documentSettled).toBe(false);
+      await vi.advanceTimersByTimeAsync(90);
+      await documentAssertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('throws EmbeddingDimsMismatchError when a CONFIGURED size is not honored', async () => {

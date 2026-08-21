@@ -1565,6 +1565,10 @@ msgstr "添加这些文件"
 msgid "Adds these folders"
 msgstr "添加这些文件夹"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+msgstr ""
+
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "高级"
@@ -2435,6 +2439,10 @@ msgstr "更改会自动保存。"
 msgid "Changes saved automatically."
 msgstr "更改已自动保存。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Character budget per indexing request"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "检查更新"
@@ -2627,8 +2635,8 @@ msgid "Clear selection"
 msgstr "清除选择"
 
 #: src/components/settings/SearchSection.tsx
-msgid "Clear the field to reset back to the default OpenAI endpoint."
-msgstr "清空该字段即可恢复为默认的 OpenAI 端点。"
+msgid "Clear the field to reset to the default OpenAI endpoint."
+msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
 msgid "cleared folder properties"
@@ -5090,6 +5098,11 @@ msgid "Embed an image with optional alt text."
 msgstr "嵌入一张图片，可选填替代文本。"
 
 #: src/components/settings/SearchSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "Embedding request settings"
+msgstr ""
+
+#: src/components/settings/SearchSection.tsx
 msgid "Embeddings API key"
 msgstr "嵌入服务 API 密钥"
 
@@ -5254,6 +5267,10 @@ msgstr "输入此主题的名称。"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter a port between 1 and 65535."
 msgstr "请输入 1 到 65535 之间的端口。"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Enter a positive whole number."
+msgstr ""
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Enter a project name"
@@ -5745,6 +5762,10 @@ msgstr "更新附件位置失败——{detail}"
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Failed to update markdownlint rules"
 msgstr "更新 markdownlint 规则失败"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Failed to update performance setting — {detail}"
+msgstr ""
 
 #: src/components/ObjectWidget.tsx
 #: src/components/PropertyPanel.tsx
@@ -6599,6 +6620,10 @@ msgstr "你觉得 OpenKnowledge 怎么样？"
 msgid "How does sharing work?"
 msgstr "共享是怎么运作的？"
 
+#: src/components/settings/SearchSection.tsx
+msgid "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+msgstr ""
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "如何在“问题”、编辑器诊断、审计和代理工具中报告缺失的项目本地文档、文件和图像。"
@@ -6841,6 +6866,10 @@ msgstr "由于无法保存项目设置，索引维护已停止。检查项目文
 #: src/components/settings/SearchSection.tsx
 msgid "Indexed {embedded} of {total} pages."
 msgstr "已索引 {total} 个页面中的 {embedded} 个。"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Indexing request timeout (seconds)"
+msgstr ""
 
 #: src/components/CommandPalette.tsx
 msgid "Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready. Results may be incomplete."
@@ -7386,6 +7415,10 @@ msgstr "浅色"
 msgid "Light, dark, or follow the OS."
 msgstr "浅色、深色，或跟随系统。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "第 {displayLine} 行"
@@ -7703,6 +7736,10 @@ msgstr "正在寻找 <0>{lookingForUrl}</0>。"
 msgid "Lost connection to \"{docName}\"."
 msgstr "与“{docName}”的连接已断开。"
 
+#: src/components/settings/SearchSection.tsx
+msgid "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Maintain generated indexes in every folder?"
 msgstr "在每个文件夹中维护 generated 索引？"
@@ -7801,6 +7838,10 @@ msgstr "最多 {MAX_ATTACHMENTS} 个附件"
 #: src/components/TerminalNewChatButton.tsx
 msgid "Maximum agents already running"
 msgstr "运行中的智能体已达上限"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Maximum text chunks per indexing request"
+msgstr ""
 
 #: src/lib/install-onboarding-toast.ts
 msgid "MCP auto-repair failed"
@@ -9978,10 +10019,6 @@ msgstr "请输入有效的邮箱。"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Plugins"
 msgstr "插件"
-
-#: src/components/settings/SearchSection.tsx
-msgid "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
-msgstr "把语义搜索指向任何兼容 OpenAI 的嵌入端点——自建服务器或其他提供方均可。上方的 API 密钥用于你在这里设置的端点。"
 
 #: src/components/acp/working-status.ts
 msgid "Pondering…"
@@ -14319,6 +14356,10 @@ msgstr "请使用 http:// 或 https:// 来源。"
 #: src/components/settings/SearchSection.tsx
 msgid "Use an https:// URL — http:// is only allowed for localhost."
 msgstr "请使用 https:// 的 URL——http:// 只允许用于 localhost。"
+
+#: src/components/settings/SearchSection.tsx
+msgid "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+msgstr ""
 
 #: src/components/TemplateProperties.tsx
 msgid "Use letters, digits, <0>_</0> and <1>-</1> only."

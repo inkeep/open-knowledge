@@ -129,6 +129,7 @@ import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
+  type LoadOpenAiEmbedderInput,
   loadOpenAiEmbedder,
   normalizeProviderId,
   type ResolvedSemanticConfig,
@@ -434,7 +435,7 @@ export interface ServerOptions {
    * real engine + cache + ranking with no network. Same rationale as
    * `detectGh` / `tokenStore`.
    */
-  embedderLoader?: () => Promise<Embedder | null>;
+  embedderLoader?: (input: LoadOpenAiEmbedderInput) => Promise<Embedder | null>;
   /**
    * Single-file content scope (no-project ephemeral open). When set to a
    * contentDir-relative path, the content filter admits ONLY that one document
@@ -953,6 +954,10 @@ export function createServer(options: ServerOptions): ServerInstance {
     return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
+  function semanticTransportFingerprint(cfg: ResolvedSemanticConfig): string {
+    return `${cfg.maxBatchSize}|${cfg.maxBatchChars}|${cfg.docTimeoutMs}`;
+  }
+
   // Last attachment folder actually applied to the content filter (seeded at
   // boot). Lets the config-apply path log only genuine changes, not the
   // re-apply that runs on every project-config persist.
@@ -1001,6 +1006,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     semanticSearch.applyConfig({
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
+      transportFingerprint: semanticTransportFingerprint(semCfg),
     });
     // The effective lint config is derived from the on-disk `.ok/config.yml`
     // (readLinterBaseConfig reads fresh per request) — clients that refetched
@@ -1242,19 +1248,24 @@ export function createServer(options: ServerOptions): ServerInstance {
   // so a runtime provider/model/dims change re-warms cleanly.
   const initialSemanticConfig = readSemanticSearchConfig();
   const semanticSearch = new SemanticSearchService({
-    loadEmbedder:
-      options.embedderLoader ??
-      (() => {
-        const cfg = readSemanticSearchConfig();
-        return loadOpenAiEmbedder({
-          keyStore: options.embeddingsKeyStore ?? null,
-          projectDir,
-          config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
-        });
-      }),
+    loadEmbedder: () => {
+      const cfg = readSemanticSearchConfig();
+      const input: LoadOpenAiEmbedderInput = {
+        keyStore: options.embeddingsKeyStore ?? null,
+        projectDir,
+        config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
+        options: {
+          maxBatchSize: cfg.maxBatchSize,
+          maxBatchChars: cfg.maxBatchChars,
+          docTimeoutMs: cfg.docTimeoutMs,
+        },
+      };
+      return (options.embedderLoader ?? loadOpenAiEmbedder)(input);
+    },
     cacheDir: join(getLocalDir(projectDir), 'embeddings'),
     enabled: initialSemanticConfig.enabled,
     providerFingerprint: semanticProviderFingerprint(initialSemanticConfig),
+    transportFingerprint: semanticTransportFingerprint(initialSemanticConfig),
   });
 
   // Mutable principal holder — populated by the async load in initAsync.

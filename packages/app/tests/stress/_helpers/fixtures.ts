@@ -65,6 +65,8 @@ import {
 } from './server-process.ts';
 
 export interface WorkerServer {
+  /** PID of the long-lived pnpm/Vite process group leader. */
+  pid: number;
   /** Port the dev server is listening on. */
   port: number;
   /** `http://127.0.0.1:${port}` — the bound loopback literal. */
@@ -491,7 +493,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         );
       }
 
-      await use({ port, baseURL, contentDir });
+      if (proc.pid === undefined) throw new Error('dev server process has no pid');
+      await use({ pid: proc.pid, port, baseURL, contentDir });
 
       // Cleanup must run even if killGracefully throws — a leaked
       // viteCacheDir under node_modules accumulates prebundled chunks with no

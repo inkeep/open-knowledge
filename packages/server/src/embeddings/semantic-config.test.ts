@@ -16,11 +16,14 @@ describe('readProjectLocalSemanticConfig', () => {
     try {
       writeFileSync(
         join(dir, '.ok', 'local', 'config.yml'),
-        'search:\n  semantic:\n    enabled: true\n    model: text-embedding-3-large\n',
+        'search:\n  semantic:\n    enabled: true\n    model: text-embedding-3-large\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: 120000\n',
       );
       const cfg = readProjectLocalSemanticConfig(dir);
       expect(cfg.enabled).toBe(true);
       expect(cfg.model).toBe('text-embedding-3-large');
+      expect(cfg.maxBatchSize).toBe(2);
+      expect(cfg.maxBatchChars).toBe(16_000);
+      expect(cfg.docTimeoutMs).toBe(120_000);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -32,8 +35,16 @@ describe('readProjectLocalSemanticConfig', () => {
   test('IGNORES a committed project config — project-local only (egress safety)', () => {
     const dir = makeProject();
     try {
-      writeFileSync(join(dir, '.ok', 'config.yml'), 'search:\n  semantic:\n    enabled: true\n');
-      expect(readProjectLocalSemanticConfig(dir).enabled).toBe(false);
+      writeFileSync(
+        join(dir, '.ok', 'config.yml'),
+        'search:\n  semantic:\n    enabled: true\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: 120000\n',
+      );
+      expect(readProjectLocalSemanticConfig(dir)).toMatchObject({
+        enabled: false,
+        maxBatchSize: 96,
+        maxBatchChars: 96_000,
+        docTimeoutMs: 30_000,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -47,6 +58,9 @@ describe('readProjectLocalSemanticConfig', () => {
       expect(cfg.baseUrl).toContain('openai');
       expect(typeof cfg.model).toBe('string');
       expect(cfg.dimensions).toBeUndefined();
+      expect(cfg.maxBatchSize).toBe(96);
+      expect(cfg.maxBatchChars).toBe(96_000);
+      expect(cfg.docTimeoutMs).toBe(30_000);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

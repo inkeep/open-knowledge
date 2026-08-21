@@ -15,6 +15,8 @@
 export interface SidebarSubsection {
   id: string;
   label: string;
+  /** Additional terms that should navigate to this subsection. */
+  keywords?: string[];
   /**
    * `data-field` value on the subsection's root (or primary control). Search
    * navigation scrolls to and flashes this node, same mechanism as schema

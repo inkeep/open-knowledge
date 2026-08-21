@@ -80,6 +80,9 @@
     ],
     "0NA4b3": ["保留我的版本"],
     "0NkNB5": [["0"], " 個月前"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["同時執行的代理已達上限"],
     "0TnCvC": ["重新命名 ", ["0"]],
     "0YEbfk": ["連接 AI 工具"],
@@ -706,6 +709,9 @@
     "9tJX8r": ["依語意"],
     "9uI_rE": ["復原"],
     "9uRLEH": ["無法開啟「", ["name"], "」——它還不在這個專案的技能裡。"],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["重構"],
     "9x-lMu": ["位於此儲存庫中——協作者會透過 git 取得副本。"],
     "9xCnv8": ["隱藏 Terminal"],
@@ -807,6 +813,7 @@
     "Bdha5y": ["正在發布…"],
     "BeWTQy": ["正在載入入門套件"],
     "BgV29F": ["視覺化編輯器尋找輸入框已聚焦"],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "Bh9671": [
       "這個專案是僅本機的，所以 .ok/skills 對 git 隱藏，這些技能無法提交或分享。可以只分享技能資料夾——你 OK 設定的其餘部分仍會留在這台電腦上。"
     ],
@@ -1255,6 +1262,7 @@
     "HqOPpj": ["Git 需要一個輔助工具（例如 git-lfs），但它沒有安裝或找不到。請先安裝再試一次。"],
     "HqiZvw": ["OpenKnowledge 會把設定和內部檔案放在你專案根資料夾中新建的 <0>.ok</0> 目錄裡。"],
     "Hrz9NY": ["維基連結"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["git 已忽略「", ["0"], "」"],
     "HzVAoz": ["在技能內部移動或重新命名這個檔案——路徑仍會留在 references/ 或 scripts/ 底下。"],
     "HzVv6g": ["貼上"],
@@ -1825,6 +1833,7 @@
     "QQbwzK": ["沒有可用的代理。"],
     "QQghPu": ["安裝到 Claude Desktop"],
     "QR5SP1": ["已建立範本"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QWdKwH": ["移動"],
     "QYTOaN": ["之後可以在<0>「設定 → 同步」</0>中變更。"],
     "QYfQdv": [["displayName"], " CLI"],
@@ -1889,6 +1898,9 @@
     ],
     "RO-yts": ["關閉連結預覽失敗——", ["detail"]],
     "RO9IbI": ["回復失敗：", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["把訊息排入佇列"],
     "RS98db": ["輸入「/」開啟命令"],
     "RSqaSd": ["專案根目錄"],
@@ -2292,6 +2304,9 @@
     "XYZ7tp": ["無法解析"],
     "XYlJJT": ["正在設定"],
     "XZkdtg": ["切換分支"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["顯示隱藏的檔案"],
     "Xet9MX": ["載入反向連結失敗"],
     "Xewl6B": ["你的本機副本落後了。請拉取最新的變更，然後重新開啟連結。"],
@@ -2695,6 +2710,7 @@
     "cRm498": ["這個專案還沒有結構描述檔案——建立一個就能開始驗證。"],
     "cSCbv3": ["BETA"],
     "cT_pW4": ["可摺疊內容區塊（Notion 風格摺疊）。"],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["跳到游標所在區塊的 markdown 原始碼，置中並醒目提示。"],
     "cUK8lW": [["conflictCount", "plural", { "other": ["#", " 處衝突"] }]],
     "cUagXn": ["新增至 ", ["gitignorePath"]],
@@ -3279,10 +3295,8 @@
     "kNGLX6": ["正在重試…"],
     "kNiQp6": ["已置頂"],
     "kNqMMd": ["資料夾"],
-    "kRTXGw": [
-      "把語意搜尋指向任何相容 OpenAI 的嵌入端點——自架的伺服器或別家供應商都行。上面的 API 金鑰是給你在這裡設定的端點用的。"
-    ],
     "kSiB3X": ["無法移到", ["trashNoun"]],
+    "kUgGPO": ["Character budget per indexing request"],
     "kUn-CN": ["同步已關閉"],
     "kV2YZv": ["沒看到<0>技能</0>嗎？請先啟用<1>設定 <2/> 功能 <3/> 程式碼執行與檔案建立</1>。"],
     "kVS5tE": ["在每個資料夾中維護 generated 索引？"],
@@ -3359,7 +3373,6 @@
     "lAiyU_": ["只有目前這份文件用到 <0>#", ["tag"], "</0>。"],
     "lCC_D5": ["正在訂閱…"],
     "lGs_bQ": ["頁面 <0>*</0>"],
-    "lHCR4I": ["把這個欄位清空，就會恢復成預設的 OpenAI 端點。"],
     "lHwYMr": ["伺服器錯誤：", ["status"], " ", ["statusText"]],
     "lI0Td2": ["只能用字母、數字、<0>_</0> 和 <1>-</1>。"],
     "lISYEX": ["無法重新開啟那則註解。"],
@@ -3999,6 +4012,9 @@
     "uoJF_D": ["設定或上手太麻煩了"],
     "ur2XSb": ["視覺化編輯器"],
     "uuoHOU": ["指令執行失敗。"],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["關於"],
     "uyOQ4e": ["主題已複製為 base16 YAML"],
     "uynXup": [["tokens", "plural", { "other": ["token"] }]],
@@ -4195,6 +4211,7 @@
     "y5UgU8": ["停用 ", ["0"]],
     "y8B54M": ["無法送出你的提示——請再試一次。"],
     "yCX4jp": [" 無法還原你的選取內容。"],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["刪除前請先解決 ", ["files"], " 上的衝突。"],
     "yEJ-sl": [
       "預覽會擋掉不符合它安全性規則的資源（例如純 http:// 的 URL，或用了 eval 的程式碼）。上面的內容可能顯示不完整。"
@@ -4308,6 +4325,7 @@
     "zo3Dl7": ["切換縮圖"],
     "zpfN9p": ["還沒有註解。在文件中選取文字就能加上一則。"],
     "zq2eBA": ["在原始碼中檢視"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "用這個範本建立的每份文件都會以這段 frontmatter 開頭。值使用 YAML——清單寫成 <0>[a, b]</0>；<1>{",
       ["date"],

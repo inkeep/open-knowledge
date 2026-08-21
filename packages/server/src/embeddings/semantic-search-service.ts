@@ -108,6 +108,8 @@ export interface SemanticSearchServiceOptions {
   enabled?: boolean;
   /** Initial provider fingerprint (provider|model|dims) for cache identity. */
   providerFingerprint?: string;
+  /** Initial document transport fingerprint (batch count|chars|timeout). */
+  transportFingerprint?: string;
 }
 
 export class SemanticSearchService {
@@ -116,6 +118,7 @@ export class SemanticSearchService {
 
   private enabled: boolean;
   private providerFingerprint: string;
+  private transportFingerprint: string;
   private capable = false;
   private ready = false;
   private embedder: Embedder | null = null;
@@ -132,6 +135,7 @@ export class SemanticSearchService {
     this.cacheDir = options.cacheDir;
     this.enabled = options.enabled ?? false;
     this.providerFingerprint = options.providerFingerprint ?? '';
+    this.transportFingerprint = options.transportFingerprint ?? '';
   }
 
   isEnabled(): boolean {
@@ -155,7 +159,11 @@ export class SemanticSearchService {
    * identity check invalidates stale vectors. Idempotent; never embeds eagerly
    * (lazy — the first opt-in search drives the corpus embed).
    */
-  applyConfig(input: { enabled: boolean; providerFingerprint: string }): void {
+  applyConfig(input: {
+    enabled: boolean;
+    providerFingerprint: string;
+    transportFingerprint?: string;
+  }): void {
     if (input.providerFingerprint !== this.providerFingerprint) {
       this.providerFingerprint = input.providerFingerprint;
       // A different provider deserves its own drift budget — the previous one
@@ -163,6 +171,15 @@ export class SemanticSearchService {
       // `resetWarm`, which drift recovery itself calls: refunding the budget on
       // every recovery would leave the bound doing nothing at all.
       this.dimsDriftResets = 0;
+      this.resetWarm();
+    }
+    if (
+      input.transportFingerprint !== undefined &&
+      input.transportFingerprint !== this.transportFingerprint
+    ) {
+      this.transportFingerprint = input.transportFingerprint;
+      // Transport tuning changes client request shape only. Rebuild the warm
+      // embedder, but preserve provider identity and the on-disk vector cache.
       this.resetWarm();
     }
     if (input.enabled === this.enabled) return;

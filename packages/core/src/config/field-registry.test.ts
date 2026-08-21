@@ -317,7 +317,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'linkPreviews.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',
+      'search.semantic.docTimeoutMs',
       'search.semantic.enabled',
+      'search.semantic.maxBatchChars',
+      'search.semantic.maxBatchSize',
       'search.semantic.model',
       'search.semantic.similarityFloor',
       // `server.allowExternal` is exposure CONSENT — the `terminal.enabled`

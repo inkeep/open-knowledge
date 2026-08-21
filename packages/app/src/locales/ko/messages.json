@@ -82,6 +82,9 @@
     ],
     "0NA4b3": ["내 버전 유지"],
     "0NkNB5": [["0"], "개월 전"],
+    "0OCUP7": [
+      "How long OpenKnowledge waits for each embedding request while indexing. Search requests use a separate timeout."
+    ],
     "0QVrvp": ["에이전트 최대 실행 수 도달"],
     "0TnCvC": [["0"], " 이름 변경"],
     "0YEbfk": ["AI 도구 연결"],
@@ -757,6 +760,9 @@
     "9tJX8r": ["의미순"],
     "9uI_rE": ["실행 취소"],
     "9uRLEH": ["\"", ["name"], "\" 열기 실패: 프로젝트 스킬에 아직 없습니다."],
+    "9wIf0H": [
+      "Lower this to reduce memory use and work per request. Smaller batches send more requests and may make indexing slower overall."
+    ],
     "9wQrUU": ["리팩터링"],
     "9x-lMu": ["이 저장소에 저장 — 협업자는 git을 통해 사본을 받습니다."],
     "9xCnv8": ["터미널 가리기"],
@@ -868,6 +874,7 @@
     "Bdha5y": ["게시 중…"],
     "BeWTQy": ["스타터 팩 불러오는 중"],
     "BgV29F": ["비주얼 편집기 찾기 입력 필드에 포커스가 있습니다."],
+    "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
     "Bh9671": [
       "이 프로젝트는 로컬 전용이므로 .ok/skills가 git에서 숨겨지고 이 스킬을 커밋하거나 공유할 수 없습니다. 스킬 폴더만 공유하세요. 나머지 OK 설정은 이 컴퓨터에 남습니다."
     ],
@@ -1364,6 +1371,7 @@
       "OpenKnowledge는 프로젝트 루트 폴더에 새로 만든 <0>.ok</0> 디렉터리 안에 구성과 내부 파일을 저장합니다."
     ],
     "Hrz9NY": ["위키 링크"],
+    "HuiwWm": ["Clear the field to reset to the default OpenAI endpoint."],
     "HwAKaw": ["\"", ["0"], "\"은 git에서 무시됩니다"],
     "HzVAoz": [
       "이 스킬 내부에서 파일을 이동하거나 이름을 바꿉니다. 경로는 references/ 또는 scripts/ 아래에 유지됩니다."
@@ -1971,6 +1979,7 @@
     "QQbwzK": ["사용 가능한 에이전트 없음."],
     "QQghPu": ["Claude Desktop에 설치"],
     "QR5SP1": ["템플릿 생성됨"],
+    "QRSdsO": ["Indexing request timeout (seconds)"],
     "QWdKwH": ["이동"],
     "QYTOaN": ["나중에 <0>설정 → 동기화</0>에서 변경할 수 있습니다."],
     "QYfQdv": [["displayName"], " CLI"],
@@ -2040,6 +2049,9 @@
     ],
     "RO-yts": ["링크 미리보기를 끄지 못했습니다: ", ["detail"]],
     "RO9IbI": ["되돌리기 실패: ", ["0"]],
+    "ROl-cU": [
+      "Use any OpenAI-compatible embeddings endpoint, including a local server or another provider. The API key above is sent to the endpoint you set here."
+    ],
     "RQWuCs": ["메시지 대기열 추가"],
     "RS98db": ["명령을 사용하려면 '/' 입력"],
     "RSqaSd": ["프로젝트 루트"],
@@ -2473,6 +2485,9 @@
     "XYZ7tp": ["해결할 수 없음"],
     "XYlJJT": ["설정 중"],
     "XZkdtg": ["브랜치 전환"],
+    "Xafwko": [
+      "Limits the combined text sent in each request. A single larger chunk is sent on its own; documents are not split again."
+    ],
     "XcGbim": ["숨김 파일 표시"],
     "Xet9MX": ["백링크 불러오기 실패"],
     "Xewl6B": ["로컬 사본이 뒤처져 있습니다. 최신 변경 사항을 푼 후 링크를 다시 여세요."],
@@ -2911,6 +2926,7 @@
     "cRm498": ["이 프로젝트에 스키마 파일이 아직 없습니다. 하나를 만들면 검증을 시작합니다."],
     "cSCbv3": ["베타"],
     "cT_pW4": ["접을 수 있는 콘텐츠 블록입니다. Notion 스타일 토글입니다."],
+    "cTrVa1": ["Embedding request settings"],
     "cU-seF": ["커서가 있는 블록의 Markdown 소스로 이동해 가운데에 표시하고 강조합니다."],
     "cUK8lW": [["conflictCount", "plural", { "other": ["충돌 ", "#", "개"] }]],
     "cUagXn": [["gitignorePath"], "에 추가"],
@@ -3554,10 +3570,8 @@
     "kNGLX6": ["다시 시도 중…"],
     "kNiQp6": ["고정됨"],
     "kNqMMd": ["폴더"],
-    "kRTXGw": [
-      "의미 기반 검색을 OpenAI 호환 임베딩 엔드포인트에 연결합니다. 자체 호스팅 서버나 다른 제공업체를 사용할 수 있습니다. 위의 API 키는 여기서 설정한 엔드포인트에 사용됩니다."
-    ],
     "kSiB3X": [["trashNoun"], "으로 이동하지 못했습니다"],
+    "kUgGPO": ["Character budget per indexing request"],
     "kUn-CN": ["동기화 끔"],
     "kV2YZv": [
       "<0>Skills</0> 미표시? 먼저 <1>설정 <2/> 기능 <3/> 코드 실행 및 파일 생성</1> 활성화."
@@ -3638,7 +3652,6 @@
     "lAiyU_": ["현재 문서만 <0>#", ["tag"], "</0>을 사용합니다."],
     "lCC_D5": ["구독 중…"],
     "lGs_bQ": ["페이지 <0>*</0>"],
-    "lHCR4I": ["필드를 지우면 기본 OpenAI 엔드포인트로 돌아갑니다."],
     "lHwYMr": ["서버 오류: ", ["status"], " ", ["statusText"]],
     "lI0Td2": ["문자, 숫자, <0>_</0>, <1>-</1>만 사용하세요."],
     "lISYEX": ["댓글 다시 열기에 실패했습니다."],
@@ -4337,6 +4350,9 @@
     "uoJF_D": ["설정하거나 시작하기가 너무 어려웠습니다"],
     "ur2XSb": ["비주얼 편집기"],
     "uuoHOU": ["명령에 실패했습니다."],
+    "uwzRx4": [
+      "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
+    ],
     "uyJsf6": ["정보"],
     "uyOQ4e": ["테마를 base16 YAML로 복사함"],
     "uynXup": [["tokens", "plural", { "other": ["토큰"] }]],
@@ -4557,6 +4573,7 @@
     "y5UgU8": [["0"], " 비활성화"],
     "y8B54M": ["프롬프트 전송 실패. 다시 시도하세요."],
     "yCX4jp": [" 선택 영역을 복원할 수 없습니다."],
+    "yChG5C": ["Enter a positive whole number."],
     "yDlK9k": ["삭제하기 전에 ", ["files"], "의 충돌을 해결하세요."],
     "yEJ-sl": [
       "미리보기는 보안 규칙을 충족하지 않는 리소스를 차단합니다. 예를 들어 일반 http:// URL이나 eval을 사용하는 코드가 차단됩니다. 위 콘텐츠가 완전히 렌더링되지 않을 수 있습니다."
@@ -4679,6 +4696,7 @@
     "zo3Dl7": ["썸네일 전환"],
     "zpfN9p": ["아직 댓글 없음. 문서에서 텍스트 선택 후 댓글 추가"],
     "zq2eBA": ["소스에서 보기"],
+    "zqQlBg": ["Maximum text chunks per indexing request"],
     "zrP8HX": [
       "이 템플릿으로 만든 모든 문서는 이 frontmatter로 시작합니다. 값은 YAML이며, 목록은 <0>[a, b]</0>이고 <1>{",
       ["date"],
