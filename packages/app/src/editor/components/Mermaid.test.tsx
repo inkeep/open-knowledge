@@ -22,7 +22,7 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-const { MermaidView } = await import('./Mermaid.tsx');
+const { MermaidView, compensatedMaxScale } = await import('./Mermaid.tsx');
 
 describe('MermaidView — placeholder branch', () => {
   test('empty chart renders the placeholder shell with real height', () => {
@@ -56,5 +56,26 @@ describe('MermaidView — pre-render mount state', () => {
     const html = renderToString(<MermaidView chart="graph TD; A-->B;" />);
     expect(html).toContain('data-component-type="mermaid"');
     expect(html).toContain('mermaid-rendering');
+  });
+});
+
+describe('compensatedMaxScale', () => {
+  test('returns the raw MERMAID_ZOOM_MAX floor when the diagram paints at or above natural size', () => {
+    expect(compensatedMaxScale(500, 500)).toBe(4);
+    expect(compensatedMaxScale(1000, 500)).toBe(4);
+  });
+
+  test('compensates a fit-shrunk diagram so it can still reach the intended natural-size multiple', () => {
+    // A 2000-wide viewBox rendered at 500 CSS pixels sits at 0.25× on screen.
+    // MERMAID_ZOOM_MAX (4) means "4× natural" — Panzoom must reach scale 16.
+    expect(compensatedMaxScale(500, 2000)).toBe(16);
+    // 0.5× fit → 2× the floor.
+    expect(compensatedMaxScale(1000, 2000)).toBe(8);
+  });
+
+  test('falls back to the raw floor for degenerate inputs', () => {
+    expect(compensatedMaxScale(0, 500)).toBe(4);
+    expect(compensatedMaxScale(500, 0)).toBe(4);
+    expect(compensatedMaxScale(-5, 500)).toBe(4);
   });
 });

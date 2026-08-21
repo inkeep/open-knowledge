@@ -97,6 +97,21 @@ interface RenderState {
 const MERMAID_ZOOM_MIN = 0.5;
 const MERMAID_ZOOM_MAX = 4;
 const MERMAID_ZOOM_STEP = 0.25;
+
+/**
+ * Compensate Panzoom's `maxScale` so it caps zoom relative to the SVG's
+ * natural (viewBox) size, not its fit-shrunk painted size. Given `MERMAID_ZOOM_MAX`
+ * as the "max multiple of natural size" intent, a fit-shrunk diagram
+ * (`paintedWidth < viewBoxWidth`) needs a proportionally larger `maxScale`
+ * so the user can still zoom to `MERMAID_ZOOM_MAX * natural`. Diagrams that
+ * paint at or above natural size keep the raw `MERMAID_ZOOM_MAX` floor.
+ */
+export function compensatedMaxScale(paintedWidth: number, viewBoxWidth: number): number {
+  if (viewBoxWidth <= 0 || paintedWidth <= 0) return MERMAID_ZOOM_MAX;
+  const displayScale = paintedWidth / viewBoxWidth;
+  return Math.max(MERMAID_ZOOM_MAX, MERMAID_ZOOM_MAX / displayScale);
+}
+
 const MERMAID_PAN_STEP = 48;
 const MERMAID_PAN_ANIMATE_MS = 200;
 const MERMAID_PAN_EASING = 'ease-out';
@@ -335,6 +350,7 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
   const editorRef = useRef<MermaidWysiwygEditor | null>(null);
   const viewRef = useRef<MermaidCanvasView | null>(null);
   const panzoomRef = useRef<PanzoomObject | null>(null);
+  const maxScaleObsRef = useRef<ResizeObserver | null>(null);
   const loadFailedRef = useRef(false);
 
   const hasChart = Boolean(chart.trim());
@@ -420,6 +436,38 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
             touchAction: 'auto',
           });
           panzoomRef.current = panzoom;
+          maxScaleObsRef.current?.disconnect();
+          maxScaleObsRef.current = null;
+          if (viewBox && viewBox.width > 0) {
+            const vbW = viewBox.width;
+            // `getBoundingClientRect().width` is transform-inclusive, so
+            // measuring it AFTER the user has zoomed would fold the zoom
+            // factor into `displayScale` and re-introduce the bug this
+            // compensation exists to solve. The initial call runs right
+            // after Panzoom mounts (no transform yet) so bounding-rect is
+            // fine; the ResizeObserver callback reads `contentRect.width`
+            // instead — untransformed content box.
+            const applyMaxScale = (width: number) => {
+              if (disposed || panzoomRef.current !== panzoom) return;
+              if (width <= 0) return;
+              try {
+                panzoom.setOptions({
+                  maxScale: compensatedMaxScale(width, vbW),
+                });
+              } catch (err) {
+                console.warn('[Mermaid] maxScale compensation failed:', err);
+              }
+            };
+            applyMaxScale(svgElement.getBoundingClientRect().width);
+            if (typeof ResizeObserver !== 'undefined') {
+              const ro = new ResizeObserver((entries) => {
+                const width = entries[0]?.contentRect.width ?? 0;
+                applyMaxScale(width);
+              });
+              ro.observe(svgElement);
+              maxScaleObsRef.current = ro;
+            }
+          }
         })
         .catch((err) => {
           console.warn('[Mermaid] panzoom setup failed:', err);
@@ -509,6 +557,8 @@ export function MermaidView({ chart = '', className, editBinding }: MermaidProps
       for (const off of offs) off();
       panzoomRef.current?.destroy();
       panzoomRef.current = null;
+      maxScaleObsRef.current?.disconnect();
+      maxScaleObsRef.current = null;
       view?.destroy();
       editorRef.current = null;
       viewRef.current = null;
