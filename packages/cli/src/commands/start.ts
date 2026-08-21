@@ -20,10 +20,11 @@
  * path the CLI uses, without process-level signal coupling.
  */
 import { spawn as nativeSpawn } from 'node:child_process';
-import { existsSync as fsExistsSync } from 'node:fs';
+import { existsSync as fsExistsSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
-import { basename, resolve as pathResolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
   applyConfigOverlay,
@@ -32,19 +33,22 @@ import {
   EnvVarError,
   IDLE_SHUTDOWN_DURATION_RE,
   idleShutdownToMs,
+  OK_DIR,
   resolveEnvConfigLayer,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
 } from '@inkeep/open-knowledge-core';
+import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import {
   type BootedServer,
   type Config,
+  EPHEMERAL_PROJECT_DIR_PREFIX,
   isProjectRoot,
   lockAdvertisesUi,
   type PinoLogger,
   prepareSingleFileOpen,
 } from '@inkeep/open-knowledge-server';
-import { Command, InvalidArgumentError } from 'commander';
+import { Command, InvalidArgumentError, Option } from 'commander';
 import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
@@ -269,12 +273,88 @@ export class OkDirMissingError extends Error {
 }
 
 /**
+ * Thrown by `bootStartServer` when `--single-file` is given a `--project-dir`
+ * that is not the sanctioned throwaway shape (`ok-ephemeral-*` directly under
+ * the OS temp dir) — whether bare or already initialized. Booting with an
+ * ordinary directory as the ephemeral root would write `.ok/` state into a
+ * directory the user may not consider disposable, and the shutdown reap would
+ * then (rightly) decline to clean it up. Refuse up front with the working
+ * alternatives instead.
+ */
+export class EphemeralProjectDirNotThrowawayError extends Error {
+  readonly projectDir: string;
+  constructor(projectDir: string) {
+    super(
+      `--project-dir must be a throwaway ${EPHEMERAL_PROJECT_DIR_PREFIX}* directory under the OS temp dir. ` +
+        `Refusing to write ephemeral session state into ${projectDir}. ` +
+        'Omit --project-dir to let ok start create (and clean up) its own.',
+    );
+    this.name = 'EphemeralProjectDirNotThrowawayError';
+    this.projectDir = projectDir;
+  }
+}
+
+/**
+ * Provenance check for the destructive ephemeral reap: the CANONICAL target
+ * must be a direct `ok-ephemeral-*` child of `os.tmpdir()` — the exact shape
+ * `createEphemeralProjectDir` mints. The reap recursively deletes its target,
+ * so it must never trust a flag value alone: `--project-dir` is user-reachable,
+ * and an earlier cwd fallback let the reap delete a real project (content,
+ * `.git`, everything) on idle shutdown.
+ *
+ * The whole path is realpath-resolved before the check: a symlinked temp-root
+ * prefix (macOS `/tmp` → `/private/tmp`, `/var` → `/private/var`) still
+ * matches, and a symlink LEAF named `ok-ephemeral-*` resolves to its target,
+ * so a link pointing at a real project fails the check and is refused. When
+ * the leaf does not exist (already reaped), its parent is still resolved and
+ * the literal basename is kept. Any other realpath failure (EACCES, ELOOP,
+ * EIO) fails CLOSED: a path that cannot be trusted is not a reap target.
+ * Never throws. Deps are injectable for tests.
+ */
+export function isReapableEphemeralProjectDir(
+  dir: string,
+  deps: { tmpdirFn?: () => string; realpathFn?: (path: string) => string } = {},
+): boolean {
+  const tmpdirFn = deps.tmpdirFn ?? tmpdir;
+  const realpathFn = deps.realpathFn ?? realpathSync;
+  const canonical = (path: string): string | null => {
+    try {
+      return realpathFn(path);
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === 'ENOENT' ? pathResolve(path) : null;
+    }
+  };
+  const literal = pathResolve(dir);
+  let target: string | null;
+  try {
+    target = realpathFn(literal);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      const parent = canonical(dirname(literal));
+      target = parent === null ? null : pathResolve(parent, basename(literal));
+    } else {
+      target = null;
+    }
+  }
+  if (target === null) return false;
+  const tmpRoot = canonical(tmpdirFn());
+  if (tmpRoot === null) return false;
+  return dirname(target) === tmpRoot && basename(target).startsWith(EPHEMERAL_PROJECT_DIR_PREFIX);
+}
+
+/**
  * Wrap an idle-shutdown handler so that, after the server is destroyed, the
  * ephemeral session's throwaway temp projectDir is removed. Without this an
  * agent- or tab-closed single-file session leaks its temp dir — boot's destroy
  * alone releases the locks but leaves the dir on disk. Reaping is best-effort
- * (the dir lives in os.tmpdir and is OS-reaped regardless). `rmFn` is injected
- * for testing.
+ * (the dir lives in os.tmpdir and is OS-reaped regardless). `rmFn` is
+ * injected for testing.
+ *
+ * The reap REFUSES any target that fails `isReapableEphemeralProjectDir` —
+ * this is the containment backstop for a recursive delete of a user-influenced
+ * path, and it must stay in front of every rm this wrapper performs. The
+ * predicate is deliberately NOT injectable: an injection seam here is a
+ * bypass door for the one check standing between a flag value and `rm -rf`.
  */
 export function withEphemeralTempDirReap(
   handler: () => Promise<void>,
@@ -287,14 +367,22 @@ export function withEphemeralTempDirReap(
     } finally {
       // `finally` so a throwing handler (e.g. destroy() propagating) still reaps
       // the temp dir rather than leaking it.
-      try {
-        await rmFn(projectDir);
-      } catch (err) {
-        // best-effort; the dir is in os.tmpdir (OS-reaped) regardless. rm with
-        // force already swallows ENOENT, so anything here (EPERM, bad path) is
-        // unexpected — log it so leaked dirs are attributable.
+      if (isReapableEphemeralProjectDir(projectDir)) {
+        try {
+          await rmFn(projectDir);
+        } catch (err) {
+          // best-effort; the dir is in os.tmpdir (OS-reaped) regardless. rm with
+          // force already swallows ENOENT, so anything here (EPERM, bad path) is
+          // unexpected — log it so leaked dirs are attributable.
+          process.stderr.write(
+            `[start] ephemeral temp dir reap failed for ${projectDir}: ${err instanceof Error ? err.message : String(err)}\n`,
+          );
+        }
+      } else {
+        // A non-throwaway target means a caller wired a real directory into the
+        // ephemeral teardown — leave it in place rather than delete user data.
         process.stderr.write(
-          `[start] ephemeral temp dir reap failed for ${projectDir}: ${err instanceof Error ? err.message : String(err)}\n`,
+          `[start] leaving ${projectDir} in place: only ${EPHEMERAL_PROJECT_DIR_PREFIX}* dirs under the OS temp dir are removed on ephemeral teardown\n`,
         );
       }
     }
@@ -498,14 +586,18 @@ interface BootStartServerOptions {
    *   - boots with `ephemeral: true` + `gitEnabled: false` + MCP unmounted, and
    *     skips the init-required guard and the reclaim sweeps (no project to
    *     reclaim).
-   * The caller (`runSingleFileBrowserOpen` / the desktop spawn) owns the temp
-   * projectDir's lifecycle and removes it on teardown.
+   * With `projectDir` set, the caller (`runSingleFileBrowserOpen` / the desktop
+   * spawn) owns the temp dir's lifecycle and removes it on teardown; without
+   * it, `bootStartServer` creates its own throwaway dir and reaps it on
+   * destroy and idle shutdown.
    */
   singleFile?: string;
   /**
    * Explicit project root, distinct from `cwd`. Only meaningful in the
    * ephemeral single-file path, where it is the throwaway temp dir carrying the
-   * synthesized `.ok/config.yml`. Defaults to `cwd`.
+   * synthesized `.ok/config.yml` (seeded on boot when missing). When absent in
+   * that path, a fresh temp dir is created — never `cwd`: a real project as the
+   * ephemeral root gets recursively deleted by the idle-shutdown reap.
    */
   projectDir?: string;
 }
@@ -546,9 +638,16 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     opts.idleThresholdMs === undefined ? DEFAULT_IDLE_THRESHOLD_MS : opts.idleThresholdMs;
 
   const { existsSync, mkdirSync } = await import('node:fs');
-  const { basename, dirname } = await import('node:path');
-  const { bootServer, getLogger, resolveContentDir, resolveLockDir, waitForServerLockDrain } =
-    await import('@inkeep/open-knowledge-server');
+  const { basename, dirname, resolve } = await import('node:path');
+  const {
+    bootServer,
+    createEphemeralProjectDir,
+    getLogger,
+    resolveContentDir,
+    resolveLockDir,
+    seedEphemeralProjectDir,
+    waitForServerLockDrain,
+  } = await import('@inkeep/open-knowledge-server');
 
   const log = opts.log ?? getLogger('start');
 
@@ -558,7 +657,6 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
   // `.ok/` state lives only in the throwaway `projectDir`. The init-required
   // guard + reclaim sweeps target a real project — neither applies here.
   const ephemeral = opts.singleFile !== undefined;
-  const ephemeralProjectDir = opts.projectDir ?? cwd;
   // `--single-file` is the desktop→child spawn contract (the desktop passes a
   // path already validated by `prepareSingleFileOpen`), but the flag is directly
   // reachable. Re-validate to the same typed rejections `ok <file>` gives
@@ -570,6 +668,65 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     : undefined;
   const ephemeralContentDir = ephemeralFile ? dirname(ephemeralFile) : undefined;
   const ephemeralDocRelPath = ephemeralFile ? basename(ephemeralFile) : undefined;
+
+  // Establish the ephemeral project root this boot consumes — the invariant is
+  // that whoever boots the ephemeral shape provisions its throwaway projectDir.
+  // A parent-provided `--project-dir` (the desktop / `ok <file>` spawn ABI) is
+  // used as-is, seeded if its synthesized config is missing; with no
+  // `--project-dir`, a fresh temp dir is created HERE and owned by this boot
+  // (reaped on destroy and on idle shutdown). Never fall back to cwd: an
+  // initialized cwd passes the boot config gate and the ephemeral teardown
+  // would then recursively delete a real project on idle shutdown.
+  let ephemeralProjectDir: string | undefined;
+  let ownsEphemeralProjectDir = false;
+  if (ephemeralContentDir !== undefined) {
+    if (opts.projectDir !== undefined) {
+      ephemeralProjectDir = opts.projectDir;
+      // EVERY provided --project-dir must be the sanctioned throwaway shape,
+      // config or no config. Gating only the seeding branch would wave through
+      // an initialized real project (it has a config), boot with it as the
+      // ephemeral root, and scatter `.ok/local/` runtime state into it — the
+      // exact input class the cwd fallback destroyed. Both spawn-ABI producers
+      // pass a `createEphemeralProjectDir` result, which satisfies this.
+      if (!isReapableEphemeralProjectDir(ephemeralProjectDir)) {
+        throw new EphemeralProjectDirNotThrowawayError(ephemeralProjectDir);
+      }
+      if (!existsSync(resolve(ephemeralProjectDir, OK_DIR, 'config.yml'))) {
+        seedEphemeralProjectDir(ephemeralProjectDir, ephemeralContentDir);
+      }
+    } else {
+      ephemeralProjectDir = createEphemeralProjectDir(ephemeralContentDir);
+      ownsEphemeralProjectDir = true;
+    }
+  }
+  // Best-effort cleanup for the self-provisioned dir when boot fails below —
+  // the parent-provided dir stays the parent's to remove. Failures are logged,
+  // not swallowed: this process is the dir's sole owner, so a silent rm
+  // failure would orphan `ok-ephemeral-*` dirs with no diagnostic trail.
+  const reapOwnedEphemeralDir = async (): Promise<void> => {
+    if (!ownsEphemeralProjectDir || ephemeralProjectDir === undefined) return;
+    if (!isReapableEphemeralProjectDir(ephemeralProjectDir)) {
+      // Can only fire if the dir this process minted stopped resolving to the
+      // throwaway shape between mint and teardown — something replaced it
+      // under a running session. Worth a trail, not silence.
+      log.warn(
+        { ephemeralProjectDir },
+        '[start] refusing to reap self-provisioned ephemeral dir: no longer resolves to an ok-ephemeral-* temp dir',
+      );
+      return;
+    }
+    try {
+      await rm(ephemeralProjectDir, { recursive: true, force: true });
+    } catch (err) {
+      log.warn(
+        { err, ephemeralProjectDir },
+        '[start] failed to reap self-provisioned ephemeral temp dir',
+      );
+    }
+  };
+  // `const` capture: `let` narrowing does not survive into the idle-shutdown
+  // closure passed to bootServer below.
+  const reapDirOnIdle = ephemeralProjectDir;
 
   if (!ephemeral) {
     // Guard: cwd must already be a valid OK project root (`.ok/config.yml`
@@ -673,95 +830,119 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
   // within the predecessor's last seconds. On timeout we proceed anyway and
   // let the acquire collide: a wedged teardown should fail loud, not spawn a
   // duplicate.
-  {
-    const drainLockDir = resolveLockDir(ephemeral ? ephemeralProjectDir : cwd);
-    const drainWaitStartedAt = Date.now();
-    const drainOutcome = await waitForServerLockDrain(drainLockDir);
-    if (drainOutcome !== 'no-drain') {
-      // `waitedMs` is the tuning signal for the 10s drain timeout: released
-      // durations creeping toward it mean real teardowns are outgrowing the
-      // budget and would start colliding under normal load.
-      log.info(
-        {
-          event: 'start-waited-for-draining-predecessor',
-          outcome: drainOutcome,
-          waitedMs: Date.now() - drainWaitStartedAt,
-          drainLockDir,
-        },
-        drainOutcome === 'released'
-          ? '[start] predecessor server finished draining — proceeding'
-          : '[start] predecessor server still draining after wait — proceeding to collide',
-      );
+  // From here to the end of bootServer a throw must clean up the
+  // self-provisioned ephemeral dir — the caller never learns the path, so an
+  // unreaped dir on a failed boot is unattributable.
+  let booted: BootedServer;
+  try {
+    {
+      const drainLockDir = resolveLockDir(ephemeralProjectDir ?? cwd);
+      const drainWaitStartedAt = Date.now();
+      const drainOutcome = await waitForServerLockDrain(drainLockDir);
+      if (drainOutcome !== 'no-drain') {
+        // `waitedMs` is the tuning signal for the 10s drain timeout: released
+        // durations creeping toward it mean real teardowns are outgrowing the
+        // budget and would start colliding under normal load.
+        log.info(
+          {
+            event: 'start-waited-for-draining-predecessor',
+            outcome: drainOutcome,
+            waitedMs: Date.now() - drainWaitStartedAt,
+            drainLockDir,
+          },
+          drainOutcome === 'released'
+            ? '[start] predecessor server finished draining — proceeding'
+            : '[start] predecessor server still draining after wait — proceeding to collide',
+        );
+      }
     }
+
+    booted = await bootServer({
+      config,
+      contentDir,
+      projectDir: ephemeralProjectDir ?? cwd,
+      contentRoot: ephemeral ? undefined : config.content.dir,
+      port: opts.port,
+      host,
+      quiet: false,
+      detectGh,
+      tokenStore,
+      embeddingsKeyStore,
+      mcpTomlEditor: getNativeTomlMcpEditor(),
+      // Ephemeral single-file mode: scope content to the one doc, no MCP, no git
+      // (shadow repo + commits off), and a no-op git preflight so a machine
+      // without git can still open a loose file. The synthesized config lives at
+      // `ephemeralProjectDir/.ok/config.yml`; the file edit lands on the real
+      // file inside `contentDir`.
+      ...(ephemeral
+        ? {
+            ephemeral: true as const,
+            singleDocRelPath: ephemeralDocRelPath,
+            gitEnabled: false as const,
+            gitPreflight: () => ({
+              ok: true as const,
+              version: '0.0.0',
+              resolvedPath: 'git',
+              source: 'PATH' as const,
+            }),
+          }
+        : {}),
+      // Pass the exact runtime that started this server so /api/local-op/* can
+      // spawn additional CLI processes without needing open-knowledge on PATH.
+      localOpCliArgs: [process.execPath, process.argv[1]],
+      // ACP threads skip injecting the `open-knowledge` MCP server when the
+      // agent's own harness already loads OK's managed editor-config entry.
+      probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
+        probeOwnManagedEditorMcpEntry(editorId, agentCwd),
+      // Pi has no MCP client, so its ACP threads get OK tools from the managed
+      // bridge extension in the project instead — probed at session setup and,
+      // with the user's consent, provisioned there and then.
+      probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
+      ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
+      // CLI-specific opt-ins
+      idleShutdownMs: idleThresholdMs,
+      ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
+      ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
+      skipAutoInit: true, // Guard already ran above; no scaffold fn to pass
+      idleShutdownHandler: (destroyServer) => {
+        const handler = destroyServer;
+        const reaped =
+          reapDirOnIdle !== undefined ? withEphemeralTempDirReap(handler, reapDirOnIdle) : handler;
+        // Outermost: the exit fires only after destroy AND the ephemeral temp
+        // dir reap have both run.
+        return withIdleShutdownProcessExit(reaped, { log, exit: opts.idleExit });
+      },
+      log,
+      // Content assets serve by default (bootServer default-on). The React
+      // shell dir is passed through when present — the default for plain
+      // `ok start` — so the one-listener composition is the norm.
+      ...(opts.serveContentAssets !== undefined
+        ? { serveContentAssets: opts.serveContentAssets }
+        : {}),
+      ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
+    });
+  } catch (err) {
+    await reapOwnedEphemeralDir();
+    throw err;
   }
 
-  const booted: BootedServer = await bootServer({
-    config,
-    contentDir,
-    projectDir: ephemeral ? ephemeralProjectDir : cwd,
-    contentRoot: ephemeral ? undefined : config.content.dir,
-    port: opts.port,
-    host,
-    quiet: false,
-    detectGh,
-    tokenStore,
-    embeddingsKeyStore,
-    mcpTomlEditor: getNativeTomlMcpEditor(),
-    // Ephemeral single-file mode: scope content to the one doc, no MCP, no git
-    // (shadow repo + commits off), and a no-op git preflight so a machine
-    // without git can still open a loose file. The synthesized config lives at
-    // `ephemeralProjectDir/.ok/config.yml`; the file edit lands on the real
-    // file inside `contentDir`.
-    ...(ephemeral
-      ? {
-          ephemeral: true as const,
-          singleDocRelPath: ephemeralDocRelPath,
-          gitEnabled: false as const,
-          gitPreflight: () => ({
-            ok: true as const,
-            version: '0.0.0',
-            resolvedPath: 'git',
-            source: 'PATH' as const,
-          }),
+  // A parent-provided dir stays the parent's to remove (the desktop and the
+  // `ok <file>` browser path both reap their own temp dir on teardown); the
+  // self-provisioned dir has no other owner, so destroy() reaps it here.
+  const innerDestroy = booted.destroy;
+  const destroy = ownsEphemeralProjectDir
+    ? async (): Promise<void> => {
+        try {
+          await innerDestroy();
+        } finally {
+          await reapOwnedEphemeralDir();
         }
-      : {}),
-    // Pass the exact runtime that started this server so /api/local-op/* can
-    // spawn additional CLI processes without needing open-knowledge on PATH.
-    localOpCliArgs: [process.execPath, process.argv[1]],
-    // ACP threads skip injecting the `open-knowledge` MCP server when the
-    // agent's own harness already loads OK's managed editor-config entry.
-    probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
-      probeOwnManagedEditorMcpEntry(editorId, agentCwd),
-    // Pi has no MCP client, so its ACP threads get OK tools from the managed
-    // bridge extension in the project instead — probed at session setup and,
-    // with the user's consent, provisioned there and then.
-    probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
-    ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
-    // CLI-specific opt-ins
-    idleShutdownMs: idleThresholdMs,
-    ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
-    ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
-    skipAutoInit: true, // Guard already ran above; no scaffold fn to pass
-    idleShutdownHandler: (destroyServer) => {
-      const handler = destroyServer;
-      const reaped = ephemeral ? withEphemeralTempDirReap(handler, ephemeralProjectDir) : handler;
-      // Outermost: the exit fires only after destroy AND the ephemeral temp
-      // dir reap have both run.
-      return withIdleShutdownProcessExit(reaped, { log, exit: opts.idleExit });
-    },
-    log,
-    // Content assets serve by default (bootServer default-on). The React
-    // shell dir is passed through when present — the default for plain
-    // `ok start` — so the one-listener composition is the norm.
-    ...(opts.serveContentAssets !== undefined
-      ? { serveContentAssets: opts.serveContentAssets }
-      : {}),
-    ...(opts.reactShellDistDir ? { reactShellDistDir: opts.reactShellDistDir } : {}),
-  });
+      }
+    : innerDestroy;
 
   return {
     httpServer: booted.httpServer,
-    destroy: booted.destroy,
+    destroy,
     lockDir: booted.lockDir,
     contentDir,
     port: booted.port,
@@ -813,6 +994,34 @@ interface StartCommandOptions {
   projectDir?: string;
   /** From `--external-url <url>`: flag-layer `server.externalUrl` for this run. */
   externalUrl?: string;
+}
+
+/**
+ * Resolve the file-layer config for a `start` invocation. An ephemeral
+ * single-file session drops the PROJECT layers: the CLI's cwd anchor points
+ * at whatever project the shell happens to sit in, which is unrelated to the
+ * loose file being opened — inheriting its `server.*` settings made the same
+ * session behave differently by cwd. The user-global `~/.ok/global.yml`
+ * layer SURVIVES, matching `ok <file>` (whose `loadConfig(ephemeralRoot)`
+ * reads user-global plus the synthesized project config, which contributes
+ * only `content.dir` — overridden explicitly by the ephemeral boot anyway).
+ * Flags and env still override through the normal precedence.
+ *
+ * The user-layer read does not sideline a broken file (the primary
+ * `loadConfig` this session already did that and reported it); it degrades
+ * to schema defaults. `readUserConfig` is injected for tests.
+ */
+export function resolveStartConfig(
+  config: Config,
+  singleFile: string | undefined,
+  readUserConfig: () => Config = () =>
+    readConfigSafely({
+      absPath: resolveConfigPath('user', process.cwd()),
+      sideline: false,
+      warn: () => {},
+    }).value,
+): Config {
+  return singleFile !== undefined ? readUserConfig() : config;
 }
 
 /**
@@ -873,7 +1082,8 @@ export function formatShutdownNotice(signal: NodeJS.Signals): string[] {
  * This is the "browser mode" path; bit-for-bit identical to today's
  * behavior when called with no `--mode` or with `--mode=browser`.
  */
-export async function runStartCommand(config: Config, opts: StartCommandOptions): Promise<void> {
+export async function runStartCommand(configArg: Config, opts: StartCommandOptions): Promise<void> {
+  const config = resolveStartConfig(configArg, opts.singleFile);
   // Quiet the terminal BEFORE any getLogger()/reclaim sweep fires (both happen
   // inside bootStartServer below). The `start` logger and the skill-reclaim
   // sweep are constructed before bootServer wires the file sink, so a level
@@ -1043,6 +1253,13 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       process.exit(1);
     }
 
+    // --project-dir refused (not a throwaway shape) — the message carries the
+    // fix; render it cleanly like the other flag-validation rejections.
+    if (err instanceof EphemeralProjectDirNotThrowawayError) {
+      console.error(error(err.message));
+      process.exit(1);
+    }
+
     // Git preflight failure: bootServer already emitted telemetry, logged the
     // event, wrote install guidance to stderr, and flushed the OTel exporter
     // before re-throwing the typed error. The CLI just maps it to EX_CONFIG
@@ -1071,6 +1288,15 @@ export async function runStartCommand(config: Config, opts: StartCommandOptions)
       err instanceof serverModule.SingleFileNotAFileError ||
       err instanceof serverModule.SingleFileNotMarkdownError
     ) {
+      console.error(error(err.message));
+      process.exit(1);
+    }
+
+    // bootServer's own config gate (`.ok/config.yml` absent at the resolved
+    // projectDir). The CLI guard above normally fires first; this arm covers
+    // the remaining direct-flag shapes so the user gets the message, not a
+    // stack trace.
+    if (err instanceof serverModule.MissingOkConfigError) {
       console.error(error(err.message));
       process.exit(1);
     }
@@ -1391,13 +1617,20 @@ export function startCommand(getConfig: () => Config): Command {
       'Serve content assets from this server (now the default; kept for compatibility)',
     )
     .option('--react-shell-dist-dir <path>', 'Serve React shell from <path>')
-    .option(
-      '--single-file <path>',
-      'No-project ephemeral single-file mode: scope the server to one markdown file (git + MCP off)',
+    // Hidden from --help: both are the desktop→child spawn ABI, not a user
+    // surface — the supported way to open one file is `ok <file>`. They stay
+    // functional (and validated) for parent spawners and anyone who knows.
+    .addOption(
+      new Option(
+        '--single-file <path>',
+        'No-project ephemeral single-file mode: scope the server to one markdown file (git + MCP off)',
+      ).hideHelp(),
     )
-    .option(
-      '--project-dir <dir>',
-      'Throwaway project root for --single-file (where ephemeral .ok/ state lives)',
+    .addOption(
+      new Option(
+        '--project-dir <dir>',
+        'Throwaway project root for --single-file (where ephemeral .ok/ state lives)',
+      ).hideHelp(),
     )
     .option(
       '--external-url <url>',
@@ -1413,6 +1646,15 @@ export function startCommand(getConfig: () => Config): Command {
         process.stderr.write(
           "error: option '--only server' cannot be combined with '--react-shell-dist-dir'\n",
         );
+        process.exit(2);
+      }
+
+      // `--project-dir` names the throwaway root of the ephemeral single-file
+      // shape and means nothing outside it. Fail loud rather than silently
+      // ignore — a user pointing it at a real project must not believe the
+      // server is rooted there.
+      if (opts.projectDir !== undefined && opts.singleFile === undefined) {
+        process.stderr.write("error: option '--project-dir' requires '--single-file'\n");
         process.exit(2);
       }
 

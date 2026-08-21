@@ -529,11 +529,13 @@ export {
 export { originGitHubHost } from './share/git-context.ts';
 export {
   createEphemeralProjectDir,
+  EPHEMERAL_PROJECT_DIR_PREFIX,
   prepareSingleFileOpen,
   SingleFileNotAFileError,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
+  seedEphemeralProjectDir,
 } from './single-file-open.ts';
 export {
   BUNDLE_IDS,

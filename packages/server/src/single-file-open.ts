@@ -138,19 +138,25 @@ function resolveProjectContentDir(projectRoot: string): string {
 }
 
 /**
- * Create the throwaway `projectDir` for an ephemeral single-file session: an
- * `os.tmpdir()` `mkdtemp` carrying a synthesized minimal `.ok/config.yml`
- * (so the boot config gate passes) plus a `.ok/.gitignore` (so the
- * boot hygiene warning stays quiet). The `.ok/local/` runtime state (lock,
- * shadow, caches) lands here, never in the user's directory. The owner of
- * the session lifecycle (the CLI browser path, or the desktop window) removes
- * this directory on teardown.
+ * Basename prefix of every throwaway ephemeral projectDir this module mints
+ * (`mkdtemp` under `os.tmpdir()`). The CLI's idle-shutdown reap uses it as a
+ * provenance check before recursively deleting a projectDir — a dir that is
+ * not a direct `ok-ephemeral-*` child of the temp root is never a sanctioned
+ * reap target, whatever flag value claimed it was.
+ */
+export const EPHEMERAL_PROJECT_DIR_PREFIX = 'ok-ephemeral-';
+
+/**
+ * Seed an existing directory as an ephemeral single-file projectDir: a
+ * synthesized minimal `.ok/config.yml` (so the boot config gate passes) plus
+ * a `.ok/.gitignore` (so the boot hygiene warning stays quiet). Writes
+ * unconditionally — callers that might hand it a dir with a real config guard
+ * with their own existence check first.
  *
  * `contentDir` is written into `content.dir` for honesty, but the ephemeral
  * boot passes `contentDir` explicitly — config resolution does not drive it.
  */
-export function createEphemeralProjectDir(contentDir: string): string {
-  const projectDir = mkdtempSync(resolve(tmpdir(), 'ok-ephemeral-'));
+export function seedEphemeralProjectDir(projectDir: string, contentDir: string): string {
   const okDir = resolve(projectDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });
   // Minimal valid YAML config — empty would also parse to schema defaults, but
@@ -164,4 +170,19 @@ export function createEphemeralProjectDir(contentDir: string): string {
   // dir is in os.tmpdir with no git, so the contents are informational only.
   writeFileSync(resolve(okDir, '.gitignore'), 'local/\n', 'utf-8');
   return projectDir;
+}
+
+/**
+ * Create the throwaway `projectDir` for an ephemeral single-file session: an
+ * `os.tmpdir()` `mkdtemp` seeded via `seedEphemeralProjectDir`. The
+ * `.ok/local/` runtime state (lock, shadow, caches) lands here, never in the
+ * user's directory. The owner of the session lifecycle (the CLI browser path,
+ * the desktop window, or `bootStartServer` when it self-provisions for a
+ * direct `ok start --single-file`) removes this directory on teardown.
+ */
+export function createEphemeralProjectDir(contentDir: string): string {
+  return seedEphemeralProjectDir(
+    mkdtempSync(resolve(tmpdir(), EPHEMERAL_PROJECT_DIR_PREFIX)),
+    contentDir,
+  );
 }

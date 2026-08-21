@@ -13,10 +13,12 @@ import { basename, join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   createEphemeralProjectDir,
+  EPHEMERAL_PROJECT_DIR_PREFIX,
   prepareSingleFileOpen,
   SingleFileNotAFileError,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
+  seedEphemeralProjectDir,
 } from './single-file-open.ts';
 
 const cleanups: string[] = [];
@@ -134,8 +136,23 @@ describe('createEphemeralProjectDir', () => {
     // spaces are valid YAML.
     expect(cfg).toContain(JSON.stringify(contentDir));
     // The throwaway dir is an `ok-ephemeral-*` mkdtemp under os.tmpdir, NOT the
-    // user's content dir.
-    expect(basename(projectDir).startsWith('ok-ephemeral-')).toBe(true);
+    // user's content dir. The prefix doubles as the reap's provenance marker,
+    // so the constant and the minted name must stay one and the same.
+    expect(basename(projectDir).startsWith(EPHEMERAL_PROJECT_DIR_PREFIX)).toBe(true);
     expect(projectDir).not.toBe(contentDir);
+  });
+});
+
+describe('seedEphemeralProjectDir', () => {
+  test('seeds .ok/config.yml + .gitignore into an existing dir and returns it', () => {
+    const contentDir = tmp('sfo-content-');
+    const bareDir = tmp('sfo-bare-');
+    const returned = seedEphemeralProjectDir(bareDir, contentDir);
+    expect(returned).toBe(bareDir);
+    expect(existsSync(join(bareDir, '.ok', 'config.yml'))).toBe(true);
+    expect(existsSync(join(bareDir, '.ok', '.gitignore'))).toBe(true);
+    expect(readFileSync(join(bareDir, '.ok', 'config.yml'), 'utf-8')).toContain(
+      JSON.stringify(contentDir),
+    );
   });
 });
