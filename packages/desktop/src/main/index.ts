@@ -1454,6 +1454,14 @@ let crashDetection: CrashDetection | null = null;
 let rendererRecovery: RendererRecovery | null = null;
 /** Sentinel liveness heartbeat; cleared on `will-quit` with the other teardowns. */
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
+/**
+ * Whether this session already recorded the OS's `session-end` (win32). Every
+ * open window is told separately about the one ending, and the handler runs
+ * inside the few seconds Windows allows before it kills us, so the sentinel
+ * write happens once instead of once per window. Never reset: a session that
+ * has been told the OS is ending it does not get told otherwise.
+ */
+let osShutdownNoted = false;
 
 /**
  * Records the server's last exit (code + Electron process-gone reason) to
@@ -7663,6 +7671,50 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('shutdown', () => crashDetection?.noteOsShutdown());
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
+  // The win32 half of that `shutdown` marker, which `powerMonitor` cannot
+  // provide: Electron documents its `shutdown` event as linux/darwin only, and
+  // Windows delivers the same news as `WM_ENDSESSION` to each top-level window
+  // instead. Without this, a Windows logoff/shutdown/restart left the sentinel
+  // dirty with nothing to explain it, and every such session was reported to
+  // the user as a crash — win32 was the only platform with none of our three
+  // "the environment ended it" signals, since the boot-session UUID is null
+  // there and `SIGTERM` is not delivered on Windows at all.
+  //
+  // Three properties of the event this relies on, none of them ours to change:
+  //   * It is emitted SYNCHRONOUSLY, inside the window procedure. That is what
+  //     makes a marker possible at all — Electron terminates the process the
+  //     moment the handlers return, so `noteOsShutdown`'s synchronous write
+  //     lands and anything deferred would not.
+  //   * Electron only emits it for a REAL ending (`wParam` true), so a
+  //     shutdown the user cancels leaves no marker to go stale. The heartbeat's
+  //     TTL clear stays as the backstop for anything that slips through.
+  //   * Hidden and minimized top-level windows still receive it; only
+  //     message-only windows do not. Off Windows the event simply never fires,
+  //     which is why this needs no platform guard.
+  //
+  // `browser-window-created` rather than the six construction sites: Electron
+  // emits it synchronously from `new BrowserWindow`, so every window is covered
+  // including the first, and a window closing takes its listener with it.
+  app.on('browser-window-created', (_event, win) => {
+    win.on('session-end', (event) => {
+      // Every window gets its own `WM_ENDSESSION`, but they all describe one
+      // ending — and this runs inside a ~5s budget the OS enforces, so the
+      // marker is written once rather than once per open window.
+      if (crashDetection === null || osShutdownNoted) return;
+      osShutdownNoted = true;
+      crashDetection.noteOsShutdown(event.reasons);
+      getLogger('lifecycle').info(
+        { event: 'lifecycle.session-end', reasons: event.reasons },
+        'the OS is ending this session — marked the sentinel before termination',
+      );
+      // The log destination is `sync: false`, and the termination above runs
+      // no `will-quit`, so none of the other shutdown-path drains fire here.
+      // Without this the sentinel would still be correct and the one line
+      // proving this path ran would not survive — which is the whole diagnostic
+      // on a path no unit test can reach.
+      flushDesktopLogger();
+    });
+  });
   // Clean-quit on catchable termination signals (SIGTERM/SIGINT/SIGHUP) so an
   // orderly stop (logout, `killall`, Activity Monitor's "Quit") isn't misread
   // as a crash next boot. Installed after crashDetection is wired so

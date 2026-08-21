@@ -1,4 +1,3 @@
-
 import type { OkfRuleId } from '../okf-rule-meta.ts';
 import { fileNameFor, OKF_SCHEMA_DIR, okfSchemaPathFor } from './paths.ts';
 import { OKF_FRONTMATTER_REGISTRY } from './registry.ts';

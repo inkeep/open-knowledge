@@ -167,6 +167,19 @@ interface SentinelState {
   bootSessionUuid?: string;
   /** Set when the OS announced a shutdown/restart; TTL-cleared if we survive it. */
   pendingOsShutdownAt?: string;
+  /**
+   * Why the OS said it was ending the session, when it told us. Windows is the
+   * only platform that says: `WM_ENDSESSION`'s flags reach us as Electron's
+   * `session-end` `reasons` (`shutdown` / `close-app` / `critical` / `logoff`),
+   * where the macOS/Linux `powerMonitor` `shutdown` event carries no argument
+   * at all. Recorded purely so the next boot's suppression breadcrumb can name
+   * the cause — nothing branches on it, because every value means the same
+   * thing here: the machine ended the session, not the app.
+   *
+   * Note `shutdown` does NOT distinguish restart from power-off; Microsoft
+   * documents that as indeterminable from these flags.
+   */
+  osShutdownReasons?: string[];
   /** Set on suspend, cleared on resume — a never-resumed sentinel died asleep. */
   suspendedAt?: string;
   /**
@@ -245,8 +258,12 @@ export interface CrashDetection {
    * The OS announced a shutdown/restart. If the process is killed before the
    * quit sequence completes, the next boot suppresses the report prompt (and
    * warns about the unfinished quit) instead of blaming the app.
+   *
+   * `reasons` is Windows-only detail for the breadcrumb (see
+   * `SentinelState.osShutdownReasons`); the macOS/Linux `powerMonitor` caller
+   * has nothing to pass and omits it. Suppression does not depend on it.
    */
-  noteOsShutdown(): void;
+  noteOsShutdown(reasons?: readonly string[]): void;
   /** System is suspending; a sentinel that never resumes died asleep (power loss). */
   noteSuspend(): void;
   noteResume(): void;
@@ -611,6 +628,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       let prevBootSessionUuid: string | null = null;
       let prevLastAliveAt: string | null = null;
       let prevPendingOsShutdownAt: string | null = null;
+      let prevOsShutdownReasons: string[] | null = null;
       let prevSuspendedAt: string | null = null;
       let prevAppVersion: string | null = null;
       if (sentinelRaw !== null) {
@@ -624,6 +642,17 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           prevBootSessionUuid = field('bootSessionUuid');
           prevLastAliveAt = field('lastAliveAt');
           prevPendingOsShutdownAt = field('pendingOsShutdownAt');
+          // Element-wise filtered rather than trusted wholesale: this file is
+          // read across app-version boundaries, so the array is only as
+          // well-formed as whichever build wrote it. A non-array, or one with
+          // nothing usable in it, reads as "no cause named" — same as absent.
+          const rawReasons = parsed?.osShutdownReasons;
+          if (Array.isArray(rawReasons)) {
+            const usable = rawReasons.filter(
+              (value): value is string => typeof value === 'string' && value !== '',
+            );
+            prevOsShutdownReasons = usable.length > 0 ? usable : null;
+          }
           prevSuspendedAt = field('suspendedAt');
           // Must be read here, before this boot overwrites the file below:
           // afterwards the value on disk is the RUNNING version, which is the
@@ -737,6 +766,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           lastAliveAt: prevLastAliveAt,
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
+          // Windows-only, and null everywhere else — see
+          // `SentinelState.osShutdownReasons`. The one thing the win32 path
+          // knows that the others do not: whether this was a logoff, a
+          // shutdown/restart, or a forced end.
+          osShutdownReasons: prevOsShutdownReasons,
         };
         if (reason === 'os-shutdown') {
           // Same kernel session yet the shutdown marker survived: our quit
@@ -890,15 +924,26 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           nowAt.getTime() - announcedMs > OS_SHUTDOWN_MARKER_TTL_MS
         ) {
           delete sentinel.pendingOsShutdownAt;
+          // Cleared with the marker they describe: a cancelled shutdown we
+          // outlived must not leave the next boot a cause for an event that
+          // never happened.
+          delete sentinel.osShutdownReasons;
         }
       }
       sentinel.lastAliveAt = nowAt.toISOString();
       writeSentinel('alive');
     },
 
-    noteOsShutdown(): void {
+    noteOsShutdown(reasons?: readonly string[]): void {
       if (sentinel === null || cleanQuitMarked) return;
       sentinel.pendingOsShutdownAt = deps.now().toISOString();
+      // Absent rather than empty when the caller had nothing to say, so the
+      // next boot can tell "the OS did not name a cause" from "it named none".
+      if (reasons !== undefined && reasons.length > 0) {
+        sentinel.osShutdownReasons = [...reasons];
+      } else {
+        delete sentinel.osShutdownReasons;
+      }
       writeSentinel('os-shutdown');
     },
 

@@ -738,6 +738,100 @@ describe('machine-level death suppression', () => {
     expect(breadcrumb?.prevBootSessionUuid).toBe('boot-epoch-a');
   });
 
+  test('the reasons Windows gives reach the suppression breadcrumb', () => {
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    // What Electron's win32 `session-end` hands us; `powerMonitor` on
+    // linux/darwin has nothing to pass and calls this with no argument.
+    sessionA.noteOsShutdown(['shutdown', 'logoff']);
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = warnLines.find(
+      (line) => line.event === 'crash-detection.machine-level-death',
+    );
+    expect(breadcrumb?.reason).toBe('os-shutdown');
+    expect(breadcrumb?.osShutdownReasons).toEqual(['shutdown', 'logoff']);
+  });
+
+  test('an OS shutdown that named no cause reads as null, not an empty list', () => {
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    // The macOS/Linux caller's shape — and the shape every sentinel written
+    // before this field existed has.
+    sessionA.noteOsShutdown();
+    expect(readSentinel(rig).osShutdownReasons).toBeUndefined();
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = warnLines.find(
+      (line) => line.event === 'crash-detection.machine-level-death',
+    );
+    // Suppression is unaffected — the reasons are commentary, never a
+    // precondition.
+    expect(breadcrumb?.reason).toBe('os-shutdown');
+    expect(breadcrumb?.osShutdownReasons).toBeNull();
+  });
+
+  test('a malformed reasons array degrades to null rather than throwing', () => {
+    const rig = makeRig();
+    const warnLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: () => {},
+      warn: (payload: Record<string, unknown>) => {
+        warnLines.push(payload);
+      },
+    };
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.noteOsShutdown(['shutdown']);
+    // This file is read across app-version boundaries, so the array is only as
+    // well-formed as whichever build wrote it.
+    const sentinel = readSentinel(rig) as Record<string, unknown>;
+    sentinel.osShutdownReasons = [42, '', null];
+    writeFileSync(rig.deps.sentinelPath, JSON.stringify(sentinel));
+
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = warnLines.find(
+      (line) => line.event === 'crash-detection.machine-level-death',
+    );
+    expect(breadcrumb?.reason).toBe('os-shutdown');
+    expect(breadcrumb?.osShutdownReasons).toBeNull();
+  });
+
+  test('a cancelled OS shutdown clears the reasons along with the marker', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.noteOsShutdown(['shutdown']);
+    expect((readSentinel(rig) as Record<string, unknown>).osShutdownReasons).toEqual(['shutdown']);
+
+    // Outlive the marker TTL, as the cancelled-shutdown test below does.
+    for (let i = 0; i < 15; i++) sessionA.noteAlive();
+
+    // A cause left behind for an ending that never happened would name a
+    // shutdown in the breadcrumb of whatever killed the app next.
+    expect(readSentinel(rig).pendingOsShutdownAt).toBeUndefined();
+    expect(readSentinel(rig).osShutdownReasons).toBeUndefined();
+  });
+
   test('a cancelled OS shutdown stops suppressing once heartbeats outlive the marker', () => {
     const rig = makeRig();
     const sessionA = createCrashDetection(rig.deps);
