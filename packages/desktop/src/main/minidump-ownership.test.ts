@@ -339,6 +339,39 @@ describe('crashpad app-version annotations', () => {
   });
 
   /**
+   * `MAX_ANNOTATIONS` on THIS walk, straddled by dictionaries whose entries are
+   * all actually present.
+   *
+   * The lying-count case in this block ("an entry count beyond the parser cap",
+   * declaring 100_000) does not PIN the ceiling. It is refused with the ceiling
+   * in place, but delete the ceiling and the declared-size floor below it
+   * absorbs the same dump — 100_000 entries need far more bytes than the
+   * dictionary claims — so the case stays green either way and proves nothing
+   * about the constant. These two do: their counts are real and their blocks
+   * are sized to match, which leaves the ceiling as the only thing that can
+   * refuse.
+   *
+   * Worth pinning rather than trusting: `entryCount` is an untrusted `u32` from
+   * the dump, and the read below it allocates in proportion to that number on
+   * the boot-time scan path.
+   */
+  function dictionaryOf(entries: number): Record<string, string> {
+    const annotations: Record<string, string> = {};
+    for (let i = 0; i < entries - 1; i += 1) annotations[`pad_${i}`] = String(i);
+    // Last, so the whole dictionary is walked on the way to it.
+    annotations._version = '0.41.0';
+    return annotations;
+  }
+
+  test('a dictionary one entry over MAX_ANNOTATIONS is refused', () => {
+    expect(versionOf({ annotations: dictionaryOf(257) })).toBeNull();
+  });
+
+  test('a dictionary exactly AT MAX_ANNOTATIONS still names the version', () => {
+    expect(versionOf({ annotations: dictionaryOf(256) })).toBe('0.41.0');
+  });
+
+  /**
    * One lie per case with the rest of the dump well-formed, so a failure names
    * a single offset. Each uses a single-entry dictionary because the patches
    * target the first entry.
@@ -571,6 +604,37 @@ describe('classifyMinidumpCrashKind', () => {
     );
   });
 
+  /**
+   * `MAX_ANNOTATIONS` on the marker lookup, which is a THIRD walk over the same
+   * constant and was pinned by nothing.
+   *
+   * Straddled with dictionaries whose entries all genuinely exist, because a
+   * lying count cannot pin this constant: strip the ceiling and the
+   * declared-size floor beneath it refuses the same dump anyway, since a count
+   * that large needs far more bytes than the dictionary claims to hold. Only a
+   * real count against a correctly sized block leaves the ceiling as the
+   * deciding bound.
+   *
+   * Failing CLOSED here is the safe direction and is what the ceiling produces:
+   * an oversized dictionary yields no marker, and a dump with no marker stays
+   * `'indeterminate'`, which callers treat exactly as they treat a crash.
+   */
+  function markerDictionaryOf(entries: number): Record<string, string> {
+    const annotations: Record<string, string> = {};
+    for (let i = 0; i < entries - 1; i += 1) annotations[`pad_${i}`] = String(i);
+    // Last, so the whole dictionary is walked on the way to it.
+    annotations['is-dump-process-without-crashing'] = 'true';
+    return annotations;
+  }
+
+  test('a dictionary one entry over MAX_ANNOTATIONS hides the marker', () => {
+    expect(kindOf({ annotations: markerDictionaryOf(257) })).toBe('indeterminate');
+  });
+
+  test('a dictionary exactly AT MAX_ANNOTATIONS still finds the marker', () => {
+    expect(kindOf({ annotations: markerDictionaryOf(256) })).toBe('non-crash');
+  });
+
   test('the marker must actually say true', () => {
     expect(kindOf({ annotations: { 'is-dump-process-without-crashing': 'false' } })).toBe(
       'indeterminate',
@@ -742,11 +806,12 @@ describe('readMinidumpAccessibilityMode', () => {
   /**
    * The ceilings, pinned by dumps whose records are ALL PRESENT.
    *
-   * The three lying-count cases above do not pin them. A declared 4096 makes
-   * `readExactly` run off the end of the fixture, so the EOF bound refuses
-   * first and the ceiling is never consulted — delete `MAX_ANNOTATIONS` or
-   * `MAX_MODULE_LINKS` and every one of those cases still passes. A ceiling
-   * that no test can redden is a comment, not a bound.
+   * The three lying-count cases above do not pin them. A declared 4096 is
+   * refused with the ceiling in place, but delete `MAX_ANNOTATIONS` or
+   * `MAX_MODULE_LINKS` and the declared-size floor beneath it absorbs the same
+   * dump — 4096 records need far more bytes than the block claims to hold — so
+   * every one of those cases stays green either way. A ceiling that no test can
+   * redden is a comment, not a bound.
    *
    * So each case below builds every record it claims, and straddles the limit:
    * one dump just over it must be refused, one just under it must still answer.
