@@ -1,3 +1,4 @@
+
 import { isOkfRuleEnabled, type OkfRuleId, type OkfRuleToggles } from './okf-rule-meta.ts';
 import type { OkfRule } from './okf-runner.ts';
 import { indexShape } from './rules/index-shape.ts';

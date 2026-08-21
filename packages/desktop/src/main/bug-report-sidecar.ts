@@ -22,6 +22,14 @@
  * never break the list, and a pre-feature zip with no sidecar must still appear.
  * Writes are atomic; a write failure never loses the newest unsent bundle. The
  * state machine is enforced by these writers, not by the schema.
+ *
+ * Reading and writing are forgiving in *different* ways, and the difference is
+ * load-bearing. The list tolerates an unreadable sidecar by degrading the row.
+ * The send-path writers refuse to REWRITE one: only a genuinely absent record
+ * is synthesized over, because since the note is persisted the file holds the
+ * reporter's own prose, and a transient EACCES must not be allowed to erase it.
+ * Retention is the deliberate exception — it still unlinks an unreadable
+ * sidecar whose bundle is already gone, and one evicted by the unsent caps.
  */
 
 import { readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
@@ -115,27 +123,76 @@ export async function writeReportSidecar(dir: string, sidecar: ReportSidecar): P
 }
 
 /**
- * Read + validate a sidecar. Returns `null` on ENOENT, YAML parse error, or
- * schema violation — the forgiving-read contract (the caller synthesizes a
- * degraded row). Only a genuine non-ENOENT IO error propagates.
+ * Why a sidecar could be read but not used — diagnostic only; all three
+ * preserve. Deliberately not exported: it is reachable through
+ * `SidecarReadResult`, and knip fails the drift gate on an export nothing
+ * outside this module consumes.
  */
-export async function readReportSidecar(sidecarPath: string): Promise<ReportSidecar | null> {
+type SidecarUnreadableReason = 'io-error' | 'parse-error' | 'schema-invalid';
+
+/**
+ * The outcome of reading one sidecar. `absent` and `unreadable` are separate
+ * arms on purpose: a missing file means this report has no record, an
+ * unreadable one means we could not tell what its record says. Collapsing them
+ * into a single nullish channel is what let a transient EACCES be mistaken for
+ * "never had a sidecar" and overwritten.
+ */
+export type SidecarReadResult =
+  | { kind: 'ok'; sidecar: ReportSidecar }
+  | { kind: 'absent' }
+  | { kind: 'unreadable'; reason: SidecarUnreadableReason; err?: unknown };
+
+/**
+ * Read + validate a sidecar. Never throws: every failure is a value, so no
+ * caller has to wrap this in a `.catch` that flattens the distinction back out.
+ */
+export async function readReportSidecar(sidecarPath: string): Promise<SidecarReadResult> {
   let content: string;
   try {
     content = await readFile(sidecarPath, 'utf-8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
-    throw err;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'absent' };
+    return { kind: 'unreadable', reason: 'io-error', err };
   }
-  const doc = parseDocument(content);
-  if (doc.errors.length > 0) return null;
-  const parsed = ReportSidecarSchema.safeParse(doc.toJSON());
-  return parsed.success ? parsed.data : null;
+  let doc: ReturnType<typeof parseDocument>;
+  try {
+    // Guarded for the same reason as `toJSON` below: the composer is recursive
+    // descent, so deeply nested input can exhaust the stack and throw rather
+    // than fill `doc.errors`. `scanReports` no longer has a `.catch`, so any
+    // escape here would take the whole history list with it.
+    doc = parseDocument(content);
+  } catch (err) {
+    return { kind: 'unreadable', reason: 'parse-error', err };
+  }
+  if (doc.errors.length > 0) {
+    return { kind: 'unreadable', reason: 'parse-error', err: doc.errors[0] };
+  }
+  let value: unknown;
+  try {
+    // `toJSON` throws rather than filling `doc.errors` on an alias bomb
+    // (`ReferenceError: Excessive alias count indicates a resource exhaustion
+    // attack`). The never-throws contract has to cover that too: `scanReports`
+    // no longer wraps this call, so one such file would otherwise reject its
+    // `Promise.all` and fail the whole history list.
+    value = doc.toJSON();
+  } catch (err) {
+    return { kind: 'unreadable', reason: 'parse-error', err };
+  }
+  const parsed = ReportSidecarSchema.safeParse(value);
+  return parsed.success
+    ? { kind: 'ok', sidecar: parsed.data }
+    : { kind: 'unreadable', reason: 'schema-invalid', err: parsed.error };
 }
 
 interface ScannedReport {
   id: string;
   sidecar: ReportSidecar | null;
+  /**
+   * The full read outcome. Kept alongside the flattened `sidecar` so consumers
+   * that must not treat a momentary IO failure as durable corruption (the
+   * retention orphan sweep) can tell the two apart.
+   */
+  sidecarRead: SidecarReadResult;
   /** A sidecar FILE was present (even if unreadable/corrupt). */
   sidecarPresent: boolean;
   zipExists: boolean;
@@ -167,12 +224,17 @@ async function scanReports(dir: string): Promise<ScannedReport[]> {
     [...ids].map(async (id): Promise<ScannedReport> => {
       const zipStat = await stat(zipPathForId(dir, id)).catch(() => null);
       const sidecarPresent = sidecarIds.has(id);
-      const sidecar = sidecarPresent
-        ? await readReportSidecar(sidecarPathForId(dir, id)).catch(() => null)
-        : null;
+      // The list stays forgiving: an unreadable sidecar renders as a degraded
+      // `unknown` row rather than failing the scan. `sidecarPresent` is what
+      // keeps it from being mistaken for a sidecar-less legacy zip.
+      const read = sidecarPresent
+        ? await readReportSidecar(sidecarPathForId(dir, id))
+        : ({ kind: 'absent' } as const);
+      const sidecar = read.kind === 'ok' ? read.sidecar : null;
       return {
         id,
         sidecar,
+        sidecarRead: read,
         sidecarPresent,
         zipExists: zipStat !== null,
         zipBytes: zipStat?.size ?? sidecar?.zipBytes ?? 0,
@@ -302,7 +364,7 @@ export async function deleteReport(
   return zipOk && sidecarOk ? { ok: true } : { ok: false, reason: 'io-error' };
 }
 
-/** Build a minimal `generated` sidecar for a report with no readable record (a retried legacy zip). */
+/** Build a minimal `generated` sidecar for a report with no record at all (a retried legacy zip). */
 async function synthesizeSidecar(dir: string, id: string): Promise<ReportSidecar> {
   const zipStat = await stat(zipPathForId(dir, id)).catch(() => null);
   return {
@@ -315,6 +377,34 @@ async function synthesizeSidecar(dir: string, id: string): Promise<ReportSidecar
     systemWide: true,
     projectSlug: null,
   };
+}
+
+/**
+ * Resolve the record a state transition should be built on, or `null` when the
+ * existing record must not be overwritten.
+ *
+ * `absent` is the only outcome it is safe to synthesize for: there is no record
+ * to lose, which is exactly the sidecar-less legacy zip being retried for the
+ * first time. An `unreadable` sidecar is a file we failed to read, not a report
+ * without a record — and since the note is persisted it holds the reporter's
+ * own prose, so synthesizing over it destroys the text the row is titled by and
+ * a retry would have resent. A transient EACCES, EIO or Windows AV lock would
+ * erase it permanently and silently, so the send proceeds and the file is left
+ * exactly as it is.
+ */
+async function readSidecarForTransition(
+  dir: string,
+  id: string,
+  logger?: SidecarLogger,
+): Promise<ReportSidecar | null> {
+  const read = await readReportSidecar(sidecarPathForId(dir, id));
+  if (read.kind === 'ok') return read.sidecar;
+  if (read.kind === 'absent') return await synthesizeSidecar(dir, id);
+  logger?.warn(
+    { id, reason: read.reason, err: read.err },
+    'bug-report: sidecar unreadable, preserving the existing record and skipping the update',
+  );
+  return null;
 }
 
 /**
@@ -333,10 +423,13 @@ async function markUploading(
   if (inFlight.has(id)) return { proceed: false };
   inFlight.add(id);
   try {
-    const base =
-      (await readReportSidecar(sidecarPathForId(dir, id)).catch(() => null)) ??
-      (await synthesizeSidecar(dir, id));
-    await writeReportSidecar(dir, { ...base, state: 'uploading' });
+    const base = await readSidecarForTransition(dir, id, logger);
+    // A skipped mark is not a blocked send: the in-flight registry, not the
+    // sidecar, is what refuses a second concurrent retry, and leaving the prior
+    // state also spares the row a poison `uploading` a crash could strand.
+    if (base !== null) {
+      await writeReportSidecar(dir, { ...base, state: 'uploading' });
+    }
   } catch (err) {
     logger?.warn({ id, err }, 'bug-report: failed to mark report uploading');
   }
@@ -347,7 +440,9 @@ async function markUploading(
  * Record a send's terminal outcome (the `onSendResult` hook): write the
  * `sent`/`upload-failed`/`email-drafted` state, append a bounded attempt,
  * release the in-flight lock, and run retention (which reclaims the zip on a
- * confirmed send). Never throws.
+ * confirmed send). Never throws. The state write is SKIPPED when the existing
+ * sidecar could not be read — the outcome is logged instead of overwriting a
+ * record whose contents are unknown, so the report stays retryable.
  */
 async function recordSendResult(
   dir: string,
@@ -358,43 +453,53 @@ async function recordSendResult(
 ): Promise<void> {
   const at = new Date().toISOString();
   try {
-    const base =
-      (await readReportSidecar(sidecarPathForId(dir, id)).catch(() => null)) ??
-      (await synthesizeSidecar(dir, id));
-    const attempt =
-      outcome.kind === 'sent'
-        ? { at, transport: 'upload', outcome: 'success', reference: outcome.reference }
-        : outcome.kind === 'upload-failed'
-          ? {
-              at,
-              transport: 'upload',
-              outcome: 'failed',
-              error: outcome.reason,
-              ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
-            }
-          : { at, transport: 'email', outcome: 'success' };
-    const attempts = [...(base.attempts ?? []), attempt].slice(-MAX_REPORT_ATTEMPTS);
-    // Rebuild without a stale lastError, then set the new terminal fields.
-    const { lastError: _priorError, reference: _priorRef, ...rest } = base;
-    let next: ReportSidecar = { ...rest, attempts };
-    if (outcome.kind === 'sent') {
-      next = { ...next, state: 'sent', reference: outcome.reference };
-    } else if (outcome.kind === 'upload-failed') {
-      next = {
-        ...next,
-        state: 'upload-failed',
-        lastError: {
-          reason: outcome.reason,
-          at,
-          ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
-        },
-      };
+    const base = await readSidecarForTransition(dir, id, logger);
+    if (base === null) {
+      // The outcome cannot be persisted without erasing a record we could
+      // not read. Log it instead: a confirmed send's reference is the
+      // reporter's only handle on the report with support, so losing it
+      // silently is worse than the missed state write. The row keeps its
+      // prior state, which leaves the report retryable rather than stranded.
+      logger?.warn({ id, outcome }, 'bug-report: send outcome not recorded, sidecar unreadable');
     } else {
-      next = { ...next, state: 'email-drafted' };
+      const attempt =
+        outcome.kind === 'sent'
+          ? { at, transport: 'upload', outcome: 'success', reference: outcome.reference }
+          : outcome.kind === 'upload-failed'
+            ? {
+                at,
+                transport: 'upload',
+                outcome: 'failed',
+                error: outcome.reason,
+                ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
+              }
+            : { at, transport: 'email', outcome: 'success' };
+      const attempts = [...(base.attempts ?? []), attempt].slice(-MAX_REPORT_ATTEMPTS);
+      // Rebuild without a stale lastError, then set the new terminal fields.
+      const { lastError: _priorError, reference: _priorRef, ...rest } = base;
+      let next: ReportSidecar = { ...rest, attempts };
+      if (outcome.kind === 'sent') {
+        next = { ...next, state: 'sent', reference: outcome.reference };
+      } else if (outcome.kind === 'upload-failed') {
+        next = {
+          ...next,
+          state: 'upload-failed',
+          lastError: {
+            reason: outcome.reason,
+            at,
+            ...(outcome.errorCode === undefined ? {} : { errorCode: outcome.errorCode }),
+          },
+        };
+      } else {
+        next = { ...next, state: 'email-drafted' };
+      }
+      await writeReportSidecar(dir, next);
     }
-    await writeReportSidecar(dir, next);
   } catch (err) {
-    logger?.warn({ id, err }, 'bug-report: failed to record send result');
+    // `outcome` rides along for the same reason the `base === null` branch logs
+    // it: on a `sent` whose write failed, this is the only surviving copy of
+    // the reference.
+    logger?.warn({ id, err, outcome }, 'bug-report: failed to record send result');
   } finally {
     inFlight.delete(id);
   }
@@ -510,10 +615,25 @@ export async function runRetentionSweep(
   // sidecar written by a newer app with a state this build doesn't recognize
   // still parses, and reclaiming it would make the open-enum forward
   // compatibility the schema exists for a lie.
+  //
+  // `io-error` is excluded for the same reason the send-path writers preserve:
+  // it means we could not READ the file, not that the file is junk. A sent
+  // tombstone is exactly this shape (zip reclaimed, sidecar holding the state,
+  // the reference and the reporter's note), so unlinking one that is merely
+  // locked or momentarily unreadable would destroy the record outright — a
+  // harder version of the overwrite this fix exists to prevent.
   for (const r of scanned) {
-    if (r.sidecarPresent && r.sidecar === null && !r.zipExists && !inFlight.has(r.id)) {
+    const durablyCorrupt =
+      r.sidecarRead.kind === 'unreadable' && r.sidecarRead.reason !== 'io-error';
+    if (durablyCorrupt && !r.zipExists && !inFlight.has(r.id)) {
       await unlinkIfPresent(sidecarPathForId(dir, r.id));
-      logger?.warn({ id: r.id }, 'bug-report: reclaimed an unreadable sidecar with no bundle');
+      logger?.warn(
+        {
+          id: r.id,
+          reason: r.sidecarRead.kind === 'unreadable' ? r.sidecarRead.reason : undefined,
+        },
+        'bug-report: reclaimed an unreadable sidecar with no bundle',
+      );
     }
   }
 

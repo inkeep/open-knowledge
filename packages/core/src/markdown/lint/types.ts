@@ -1,3 +1,4 @@
+
 import type { BrokenLinkReason } from '../../schemas/api/agent-write.ts';
 import type { OkfRuleId } from './okf-rule-meta.ts';
 
@@ -111,6 +112,7 @@ export interface OkfSlice {
   rules?: Partial<Record<OkfRuleId, boolean>>;
   generate?: { index?: boolean };
 }
+
 
 interface RuleOptionSpecBase {
   key: string;

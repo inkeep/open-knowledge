@@ -89,6 +89,16 @@ import {
   resolveMinidumpIntent,
 } from './bug-report.ts';
 
+/**
+ * Test projection: the sidecar's value, or `null` when it is absent or
+ * unreadable. The tests below assert on stored VALUES; the absent-vs-unreadable
+ * distinction is exercised directly against `readReportSidecar` instead.
+ */
+async function readSidecarValue(path: string) {
+  const result = await readReportSidecar(path);
+  return result.kind === 'ok' ? result.sidecar : null;
+}
+
 const tmpDirs: string[] = [];
 
 function makeTmpDir(prefix = 'ok-bugreport-ipc-'): string {
@@ -2684,7 +2694,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
     expect(result.zipPath).toBe(zipPath);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.id).toBe(REPORT_ID);
     expect(sidecar?.state).toBe('generated');
     expect(sidecar?.bundleLevel).toBe('standard');
@@ -2701,7 +2711,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.note).toBe('The editor froze after I pasted a large table');
   });
 
@@ -2716,7 +2726,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.note).toBe(note);
     expect(readZipEntry(zipPath, 'note.txt')).toContain(note);
   });
@@ -2727,7 +2737,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     const result = await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar).not.toBeNull();
     expect(sidecar && 'note' in sidecar).toBe(false);
   });
@@ -2745,7 +2755,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar).not.toBeNull();
     expect(sidecar && 'note' in sidecar).toBe(false);
   });
@@ -2764,7 +2774,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
 
     expect(result.ok).toBe(true);
     // No sidecar landed, and that is the accepted cost — the report itself did.
-    expect(await readReportSidecar(sidecarPathForId(dir, REPORT_ID))).toBeNull();
+    expect(await readSidecarValue(sidecarPathForId(dir, REPORT_ID))).toBeNull();
   });
 
   test('a whitespace-only note is stored as no note', async () => {
@@ -2780,7 +2790,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     // The row would title itself by the fallback either way, but a stored blank
     // still reads as "has a note", so a retry would send whitespace to the
     // intake as the reporter's own words.
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar).not.toBeNull();
     expect(sidecar && 'note' in sidecar).toBe(false);
   });
@@ -2799,7 +2809,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     // is empty, so it derives no title from this. If the writer disagreed and
     // stored it, the row would fall back while the sidecar claimed a note and
     // a retry would put the controls on the wire.
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar).not.toBeNull();
     expect(sidecar && 'note' in sidecar).toBe(false);
   });
@@ -2818,7 +2828,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     // case that made the writer and the renderer disagree: the row derived no
     // title while the sidecar still claimed to hold a note, and a retry put it
     // on the wire as the reporter's words.
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar).not.toBeNull();
     expect(sidecar && 'note' in sidecar).toBe(false);
   });
@@ -2840,7 +2850,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const stored = (await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.note;
+    const stored = (await readSidecarValue(sidecarPathForId(dir, REPORT_ID)))?.note;
     expect(stored?.length).toBe(32_768);
     expect(stored?.endsWith('\u{1F600}')).toBe(true);
   });
@@ -2856,7 +2866,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.note).toBe('auth broke with [REDACTED-ANTHROPIC] in the header');
     // Nothing on the durable path may carry the raw secret, YAML included.
     const raw = readFileSync(sidecarPathForId(dir, REPORT_ID), 'utf-8');
@@ -2876,7 +2886,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     });
     if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
 
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.note).toBe('db at postgres://[REDACTED]@localhost timed out');
     expect(sidecar?.note?.length).toBeGreaterThan(note.length);
   });
@@ -2900,7 +2910,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
 
     // Clamped at the ceiling with the orphaned high surrogate dropped, so the
     // stored copy ends on the filler rather than half an emoji.
-    const stored = (await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.note;
+    const stored = (await readSidecarValue(sidecarPathForId(dir, REPORT_ID)))?.note;
     expect(stored).toBe(`://[REDACTED]@${filler}`);
 
     // The property that matters: send re-validates the note against the same
@@ -2929,7 +2939,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     );
 
     expect(result).toEqual({ ok: true, reference: 'OK-1042' });
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.state).toBe('sent');
     expect(sidecar?.reference).toBe('OK-1042');
     expect(sidecar?.zipDeleted).toBe(true);
@@ -2949,7 +2959,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     );
 
     expect(result.ok).toBe(false);
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.state).toBe('upload-failed');
     expect(sidecar?.lastError?.reason).toContain('mint-rejected');
     expect(existsSync(zipPath)).toBe(true);
@@ -2984,7 +2994,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     );
 
     expect(result.ok).toBe(false);
-    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    const sidecar = await readSidecarValue(sidecarPathForId(dir, REPORT_ID));
     expect(sidecar?.lastError).toMatchObject({
       reason: 'mint-network-error',
       errorCode: 'ENOTFOUND',
@@ -3025,7 +3035,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     // The owning send still holds the report: the refusal returned before the
     // terminal hook, so it wrote no state and released no lock the owner is
     // still relying on.
-    expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe('uploading');
+    expect((await readSidecarValue(sidecarPathForId(dir, REPORT_ID)))?.state).toBe('uploading');
     expect((await store.sendHooks.onSendStart(REPORT_ID)).proceed).toBe(false);
   });
 
@@ -3059,9 +3069,7 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected fallback');
     expect(result.reason).toBe('email-draft');
-    expect((await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.state).toBe(
-      'email-drafted',
-    );
+    expect((await readSidecarValue(sidecarPathForId(dir, REPORT_ID)))?.state).toBe('email-drafted');
   });
 });
 
