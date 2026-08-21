@@ -192,6 +192,15 @@ export interface BugReportCreateDeps {
    * outcome — the zip is already on disk.
    */
   onReportGenerated?: (meta: GeneratedReportMeta) => Promise<void>;
+  /**
+   * Bind the staged screenshot bytes to the report that was just written, keyed
+   * by the same `basename(zipPath)` report id `send` and the sidecar use. Called
+   * only when a capture actually reached this bundle, so what `send` later
+   * resolves is the picture this report was composed from — not whatever the
+   * sender window's capture slot happens to hold by then. Absent simply means
+   * the standalone asset upload has nothing to resolve.
+   */
+  onScreenshotStaged?: (reportId: string, png: Buffer) => void;
 }
 
 /**
@@ -446,6 +455,21 @@ export async function handleBugReportCreate(
       readLanguage: deps.readLanguage,
     });
     const { size: zipSizeBytes } = await stat(zipPath);
+    if (screenshotBytes !== null) {
+      // The report has an id for the first time here, so this is the earliest
+      // point the capture can be filed under it. Guarded for the same reason
+      // the sidecar write below is: the zip is already on disk, and a
+      // bookkeeping fault must not turn a written report into a create failure.
+      try {
+        deps.onScreenshotStaged?.(basename(zipPath), screenshotBytes);
+      } catch (err) {
+        try {
+          deps.logger?.warn({ zipPath, err }, 'bug-report: failed to retain screenshot for send');
+        } catch {
+          // The logger is the thing that failed; there is nowhere left to report it.
+        }
+      }
+    }
     // Persist the durable `generated` record next to the zip. A failure here
     // must never lose the report (the zip is written) — the writer is fail-soft
     // and the call is guarded, so create still succeeds if the sidecar can't be
@@ -595,6 +619,99 @@ export async function handleBugReportCaptureScreenshot(
   }
 }
 
+/**
+ * Ceiling on reports whose screenshot is held for a later send. Each entry is a
+ * full-resolution PNG of one screen (~1 MB), so a small cap keeps the ceiling in
+ * single-digit megabytes while still covering the case this store exists for: a
+ * handful of reports composed in one sitting, each retryable on its own. Bounding
+ * by report count rather than by window lifetime is the point — the window slot
+ * cannot tell two reports apart.
+ *
+ * Deliberately smaller than `MAX_UNSENT_REPORT_COUNT`: the retry list keeps more
+ * bundles on disk than this keeps pictures in memory, so a report far enough down
+ * that list files without its inline image. Bundles are the report; the inline
+ * image is a nicety, and megabytes of screen captures are the wrong thing to hold
+ * in main to serve it. An eviction is logged so triage can tell that case apart
+ * from a capture that never existed.
+ */
+const MAX_PENDING_REPORT_SCREENSHOTS = 4;
+
+/**
+ * Report-keyed hold for the standalone screenshot upload, filled by `create` and
+ * read by `send`.
+ *
+ * `create` stages its capture into the bundle synchronously, so a zip is always
+ * self-consistent. The Linear asset is a separate client upload the intake cannot
+ * derive from the bundle, and it is resolved when the user sends — which, since
+ * sends became backgrounded and retryable, can be long after a second report was
+ * composed from the same window. Keying on the report rather than the window is
+ * what makes a retry resolve its own bytes.
+ *
+ * Eviction is oldest-first and costs the evicted report only its inline image;
+ * a report with nothing held files without one, which is the same safe shape as
+ * a capture that never happened. The cap is a backstop, not the lifetime: every
+ * entry is filed under an owner so the caller can release a whole group at once
+ * (desktop main passes the composing window, whose renderer holds the only
+ * surface that can ask for these bytes).
+ */
+export interface BugReportScreenshotHold {
+  /**
+   * File a report's staged capture under its id, evicting the oldest over cap.
+   * `owner` is an opaque grouping key for `forgetOwner`.
+   */
+  remember(reportId: string, png: Buffer, owner: number): void;
+  /** Non-destructive — a failed send must leave the bytes for the retry. */
+  read(reportId: string): Buffer | null;
+  /** Drop a report's capture once no send can want it again. */
+  forget(reportId: string): void;
+  /** Drop every capture filed by one owner, for when that owner goes away. */
+  forgetOwner(owner: number): void;
+}
+
+export interface BugReportScreenshotHoldOptions {
+  maxReports?: number;
+  /**
+   * Called with a report id dropped to stay under the cap. Send logs an
+   * unavailable capture the same way whether it was evicted here or never
+   * existed (a retry in a later session), so without this the two are one
+   * indistinguishable line in a diagnostic bundle.
+   */
+  onEvict?: (reportId: string) => void;
+}
+
+export function createBugReportScreenshotHold(
+  options: BugReportScreenshotHoldOptions = {},
+): BugReportScreenshotHold {
+  const maxReports = options.maxReports ?? MAX_PENDING_REPORT_SCREENSHOTS;
+  const byReport = new Map<string, { png: Buffer; owner: number }>();
+  return {
+    remember(reportId, png, owner) {
+      // Delete-then-set so a re-created report moves to the back of the queue;
+      // Map preserves first-insertion order otherwise, which would make the
+      // freshest report the next one evicted.
+      byReport.delete(reportId);
+      byReport.set(reportId, { png, owner });
+      while (byReport.size > maxReports) {
+        const oldest = byReport.keys().next();
+        if (oldest.done === true) break;
+        byReport.delete(oldest.value);
+        options.onEvict?.(oldest.value);
+      }
+    },
+    read(reportId) {
+      return byReport.get(reportId)?.png ?? null;
+    },
+    forget(reportId) {
+      byReport.delete(reportId);
+    },
+    forgetOwner(owner) {
+      for (const [reportId, entry] of byReport) {
+        if (entry.owner === owner) byReport.delete(reportId);
+      }
+    },
+  };
+}
+
 const SUPPORT_EMAIL = 'support@inkeep.com';
 
 /**
@@ -656,13 +773,16 @@ export interface BugReportSendDeps {
    */
   sidecar?: BugReportSendSidecarHooks;
   /**
-   * Main-owned PNG bytes of the screenshot captured when the report dialog
-   * opened, uploaded as its own Linear asset so the ticket embeds it inline.
-   * Returns null when nothing was captured, when the reporter opted out, or on a
-   * list retry in a later session. Absent (or null) simply means the ticket files
-   * without the inline image.
+   * Main-owned PNG bytes of the screenshot THIS report was composed from,
+   * uploaded as its own Linear asset so the ticket embeds it inline. Resolved by
+   * report id, never by sender window: a window's capture slot belongs to
+   * whichever dialog opened last, so a report retried after a second one was
+   * composed would otherwise attach the second report's picture. Returns null
+   * when nothing was captured, when the reporter opted out, or on a retry in a
+   * later session; absent (or null) simply means the ticket files without the
+   * inline image.
    */
-  screenshotPngBytes?: () => Buffer | null;
+  screenshotPngBytes?: (reportId: string) => Buffer | null;
 }
 
 /**
@@ -1449,13 +1569,13 @@ export async function handleBugReportSend(
       return { ok: false, reason: 'send-in-flight', fallback };
     }
   }
-  // Consent gate first, bytes second. main holds the capture for this window
-  // regardless of what the reporter chose, so reading it without checking
-  // `includeScreenshot` would upload a screenshot the reporter declined. The flag
-  // reflects the bundle's own inventory, so it is the same decision the reporter
-  // reviewed. Absent (a list retry, or an older renderer) means no upload.
+  // Consent gate first, bytes second. main holds this report's capture whatever
+  // the reporter chose, so reading it without checking `includeScreenshot` would
+  // upload a screenshot the reporter declined. The flag reflects the bundle's own
+  // inventory, so it is the same decision the reporter reviewed. Absent (a list
+  // retry, or an older renderer) means no upload.
   const screenshotBytes =
-    request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
+    request.includeScreenshot === true ? (deps.screenshotPngBytes?.(reportId) ?? null) : null;
   if (request.includeScreenshot === true && screenshotBytes === null) {
     // Consent was given and the capture is gone — a list retry in a later session
     // is the ordinary cause. Distinct from consent being withheld, and traced for

@@ -30,7 +30,7 @@ import {
 } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 /**
@@ -72,6 +72,7 @@ import {
   type BugReportSendDeps,
   type CapturableImage,
   type CaptureScreenshotDeps,
+  createBugReportScreenshotHold,
   DEFAULT_BUG_REPORT_INTAKE_URL,
   handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
@@ -865,6 +866,201 @@ describe('handleBugReportSend — inline screenshot upload', () => {
       unknown
     >;
     expect('screenshotAssetUrl' in body).toBe(false);
+  });
+});
+
+describe('bug-report screenshot hold — two reports composed from one window', () => {
+  // Distinguishable PNG signatures: WHICH report's capture reached the ticket is
+  // the entire assertion, so the two must never compare equal.
+  const SCREENSHOT_A = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x0a, 0x0a]);
+  const SCREENSHOT_B = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x0b, 0x0b]);
+
+  test('a retried send uploads its own capture, not that of a report composed after it', async () => {
+    const stub = await startIntakeStub();
+    const bugReportsRoot = makeBugReportsRoot();
+    // main keeps ONE open-time capture per window, and both dialogs open on the
+    // same window — the shape that makes the second report overwrite the first.
+    const SENDER_ID = 7;
+    const windowStore = new Map<number, BugReportScreenshotEntry>();
+    const capture = (png: Buffer) =>
+      windowStore.set(SENDER_ID, { png, cleanup: () => windowStore.delete(SENDER_ID) });
+    const hold = createBugReportScreenshotHold();
+    const createDeps = (zipName: string): BugReportCreateDeps => ({
+      projectDir: null,
+      desktopMeta: DESKTOP_META,
+      outputPath: join(bugReportsRoot, zipName),
+      userLogsDir: makeTmpDir(),
+      screenshotPngBytes: () => windowStore.get(SENDER_ID)?.png ?? null,
+      onScreenshotStaged: (reportId, png) => hold.remember(reportId, png, SENDER_ID),
+    });
+
+    capture(SCREENSHOT_A);
+    const reportA = await handleBugReportCreate(
+      createDeps('2026-07-15T18-30-00-000Z-bugreport.zip'),
+      { kind: 'create', level: 'standard', includeScreenshot: true },
+    );
+    if (!reportA.ok) throw new Error(`expected report A to build, got: ${reportA.error}`);
+
+    // The reporter opens the dialog again while A's send is still retryable.
+    capture(SCREENSHOT_B);
+    const reportB = await handleBugReportCreate(
+      createDeps('2026-07-15T18-31-00-000Z-bugreport.zip'),
+      { kind: 'create', level: 'standard', includeScreenshot: true },
+    );
+    if (!reportB.ok) throw new Error(`expected report B to build, got: ${reportB.error}`);
+
+    // Each bundle stages its own capture at collect time, so the zips are right
+    // even when the standalone asset is not — that asymmetry is the bug.
+    expect(readZipEntryBytes(reportA.zipPath, 'extra/screenshot.png').equals(SCREENSHOT_A)).toBe(
+      true,
+    );
+    expect(readZipEntryBytes(reportB.zipPath, 'extra/screenshot.png').equals(SCREENSHOT_B)).toBe(
+      true,
+    );
+
+    const result = await handleBugReportSend(
+      {
+        ...makeSendDeps(stub.url, bugReportsRoot),
+        screenshotPngBytes: (reportId) => hold.read(reportId),
+      },
+      {
+        kind: 'send',
+        zipPath: reportA.zipPath,
+        metadata: SEND_METADATA,
+        includeScreenshot: true,
+      },
+    );
+
+    expect(result).toEqual({ ok: true, reference: 'OK-1042' });
+    const imagePut = stub.requests[3];
+    expect(imagePut?.headers['content-type']).toBe('image/png');
+    expect(imagePut?.body.equals(SCREENSHOT_A)).toBe(true);
+  });
+
+  test('create files the capture under the report id, and files nothing without one', async () => {
+    const hold = createBugReportScreenshotHold();
+    const reportsDir = makeTmpDir();
+    // Distinct basenames because the basename IS the report id.
+    const holdDeps = (zipName: string) =>
+      makeDeps({
+        outputPath: join(reportsDir, zipName),
+        screenshotPngBytes: () => SCREENSHOT_A,
+        onScreenshotStaged: (reportId, png) => hold.remember(reportId, png, 7),
+      });
+
+    const withCapture = await handleBugReportCreate(holdDeps('opted-in-bugreport.zip'), {
+      kind: 'create',
+      level: 'standard',
+      includeScreenshot: true,
+    });
+    if (!withCapture.ok) throw new Error(`expected ok, got: ${withCapture.error}`);
+    expect(hold.read(basename(withCapture.zipPath))?.equals(SCREENSHOT_A)).toBe(true);
+
+    // Opting out is indistinguishable at send time from never having captured:
+    // both leave the hold empty, and the ticket files without the inline image.
+    const optedOut = await handleBugReportCreate(holdDeps('opted-out-bugreport.zip'), {
+      kind: 'create',
+      level: 'standard',
+    });
+    if (!optedOut.ok) throw new Error(`expected ok, got: ${optedOut.error}`);
+    expect(hold.read(basename(optedOut.zipPath))).toBeNull();
+  });
+
+  test('a create whose screenshot bookkeeping throws still succeeds, logger included', async () => {
+    // The zip is on disk by this point, so neither a hand-off that throws nor a
+    // logger that throws while reporting it may turn a written report into a
+    // create failure. Same fail-soft posture `recordMinidumpDecision` takes.
+    const result = await handleBugReportCreate(
+      makeDeps({
+        screenshotPngBytes: () => SCREENSHOT_A,
+        onScreenshotStaged: () => {
+          throw new Error('hold refused the capture');
+        },
+        logger: {
+          info: () => {},
+          warn: () => {
+            throw new Error('logger is down');
+          },
+        },
+      }),
+      { kind: 'create', level: 'standard', includeScreenshot: true },
+    );
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(existsSync(result.zipPath)).toBe(true);
+    // The bundle still carries its own capture; only the send-time hold was lost.
+    expect(readZipEntryBytes(result.zipPath, 'extra/screenshot.png').equals(SCREENSHOT_A)).toBe(
+      true,
+    );
+  });
+
+  test('an unknown report reads as null rather than as some other report', () => {
+    const hold = createBugReportScreenshotHold();
+    hold.remember('report-a', SCREENSHOT_A, 7);
+
+    expect(hold.read('report-never-created')).toBeNull();
+    hold.forget('report-a');
+    expect(hold.read('report-a')).toBeNull();
+  });
+
+  test('reading is non-destructive, so a failed send leaves the bytes for the retry', () => {
+    // The retry reading its own bytes is the whole point of this change, and a
+    // send reads before it can know it failed. A consume-on-read would leave
+    // every retry imageless while every other test here still passed.
+    const hold = createBugReportScreenshotHold();
+    hold.remember('report-a', SCREENSHOT_A, 7);
+
+    expect(hold.read('report-a')?.equals(SCREENSHOT_A)).toBe(true);
+    expect(hold.read('report-a')?.equals(SCREENSHOT_A)).toBe(true);
+    expect(hold.read('report-a')?.equals(SCREENSHOT_A)).toBe(true);
+  });
+
+  test('the hold evicts oldest-first at the cap, and re-filing refreshes recency', () => {
+    const hold = createBugReportScreenshotHold({ maxReports: 2 });
+    hold.remember('one', Buffer.from([1]), 7);
+    hold.remember('two', Buffer.from([2]), 7);
+    // Re-filing `one` must move it behind `two`, or the freshest report is the
+    // next evicted.
+    hold.remember('one', Buffer.from([1]), 7);
+    hold.remember('three', Buffer.from([3]), 7);
+
+    expect(hold.read('two')).toBeNull();
+    expect(hold.read('one')?.equals(Buffer.from([1]))).toBe(true);
+    expect(hold.read('three')?.equals(Buffer.from([3]))).toBe(true);
+  });
+
+  test('an eviction names the report it dropped, so triage can tell it from a stale retry', () => {
+    // Send logs an unavailable capture identically whether it was evicted here or
+    // never existed, so the eviction is the only place the difference is knowable.
+    const evicted: string[] = [];
+    const hold = createBugReportScreenshotHold({
+      maxReports: 1,
+      onEvict: (reportId) => evicted.push(reportId),
+    });
+
+    hold.remember('first', Buffer.from([1]), 7);
+    hold.remember('second', Buffer.from([2]), 7);
+
+    expect(evicted).toEqual(['first']);
+    // A report dropped explicitly is not an eviction — nothing was over cap.
+    hold.forget('second');
+    expect(evicted).toEqual(['first']);
+  });
+
+  test('losing a window drops every report it composed and nothing another window did', () => {
+    // The send toast that can retry a report lives in the composing window's
+    // renderer, so once that window's contents are gone its captures are
+    // unreachable and must not wait for the cap to evict them.
+    const hold = createBugReportScreenshotHold();
+    hold.remember('from-window-7-a', Buffer.from([1]), 7);
+    hold.remember('from-window-7-b', Buffer.from([2]), 7);
+    hold.remember('from-window-9', Buffer.from([3]), 9);
+
+    hold.forgetOwner(7);
+
+    expect(hold.read('from-window-7-a')).toBeNull();
+    expect(hold.read('from-window-7-b')).toBeNull();
+    expect(hold.read('from-window-9')?.equals(Buffer.from([3]))).toBe(true);
   });
 });
 

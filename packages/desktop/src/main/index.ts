@@ -277,6 +277,7 @@ import {
 } from './integrations-settings.ts';
 import {
   type BugReportScreenshotEntry,
+  createBugReportScreenshotHold,
   handleBugReportCaptureScreenshot,
   handleBugReportCrashAck,
   handleBugReportCrashDumpAvailability,
@@ -1483,8 +1484,43 @@ function getServerExitRecorder(): ServerExitRecorder {
  * previewed; it is overwritten by the next open's capture and deleted when the
  * window's contents are destroyed, so at most one screenshot per live window
  * sits in memory.
+ *
+ * This slot answers "what did the window look like when its dialog opened?", so
+ * it is the right source for `create`, which runs while that dialog is still up.
+ * It is NOT a report identity — `send` uses the hold below instead.
  */
 const bugReportScreenshots = new Map<number, BugReportScreenshotEntry>();
+
+/**
+ * Screenshots held per REPORT for the standalone Linear asset upload, filled by
+ * `create` the moment a bundle (and therefore a report id) exists. Sends run in
+ * the background and stay retryable, so by the time one is retried the sender
+ * window's slot above may belong to a report composed afterwards; resolving the
+ * asset by report id is what keeps a retry attaching its own picture.
+ *
+ * Entries are filed under the composing window and released when its contents are
+ * destroyed, because the send toast that can retry a report lives in that
+ * window's renderer: once it is gone nothing can ask for the bytes again, and a
+ * picture of the user's whole screen should not sit in memory waiting for the
+ * cap to evict it. `MAX_PENDING_REPORT_SCREENSHOTS` is the backstop behind that,
+ * not the lifetime.
+ */
+const bugReportSendScreenshots = createBugReportScreenshotHold({
+  onEvict: (reportId) => {
+    getLogger('bug-report').info(
+      { event: 'bug-report.screenshot-evicted', reportId },
+      'bug-report: dropped a held screenshot to stay under the cap',
+    );
+  },
+});
+
+/**
+ * Windows that already carry a `destroyed` reaper for the hold above. One
+ * listener per composing window however many reports it files — the sibling
+ * capture store learned the same lesson about accumulating MaxListeners-worth of
+ * reapers on a single `WebContents`.
+ */
+const bugReportSendScreenshotReapers = new Set<number>();
 
 /** Max width (logical px) of the screenshot preview data-URL handed to the renderer. */
 const BUG_REPORT_SCREENSHOT_PREVIEW_WIDTH = 720;
@@ -5983,7 +6019,12 @@ function registerIpcHandlers() {
       return bugReportSidecar.list();
     }
     if (request.kind === 'delete') {
-      return bugReportSidecar.remove(request.id);
+      const removed = await bugReportSidecar.remove(request.id);
+      // Only once the report is actually gone. A refused delete leaves it in the
+      // list (`in-flight` most of all, where the send may still fail and be
+      // retried), and that report keeps needing its picture.
+      if (removed.ok) bugReportSendScreenshots.forget(request.id);
+      return removed;
     }
     if (request.kind === 'send') {
       return handleBugReportSend(
@@ -6000,12 +6041,28 @@ function registerIpcHandlers() {
           bugReportsRoot: dirname(defaultBugReportZipPath()),
           // Records uploading → sent/upload-failed/email-drafted on the sidecar
           // and holds the in-flight lock, for the first send and a list retry.
-          sidecar: bugReportSidecar.sendHooks,
-          // Same per-window capture `create` stages into the zip, uploaded
-          // separately as its own Linear asset so the ticket embeds it inline.
-          // Still present here because the dialog has not closed yet; a list retry
-          // in a later session finds nothing and files without the inline image.
-          screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
+          sidecar: {
+            onSendStart: (id) => bugReportSidecar.sendHooks.onSendStart(id),
+            onSendResult: async (id, outcome) => {
+              try {
+                await bugReportSidecar.sendHooks.onSendResult(id, outcome);
+              } finally {
+                // A confirmed send has already uploaded the asset and the report
+                // can no longer be retried, so nothing wants these bytes again —
+                // a picture of the user's screen should not outlive its use.
+                // Every other outcome stays retryable and keeps its capture.
+                // In `finally` so releasing them never depends on the sidecar
+                // honoring its never-throws contract.
+                if (outcome.kind === 'sent') bugReportSendScreenshots.forget(id);
+              }
+            },
+          },
+          // The capture THIS report was composed from, uploaded separately as its
+          // own Linear asset so the ticket embeds it inline. Keyed by report, not
+          // by window: a retry that lands after a second report was composed must
+          // still attach its own picture. A retry in a later session finds nothing
+          // and files without the inline image.
+          screenshotPngBytes: (reportId) => bugReportSendScreenshots.read(reportId),
         },
         request,
       );
@@ -6069,6 +6126,19 @@ function registerIpcHandlers() {
         // Main-owned bytes captured for this exact window; `create` stages them
         // only when the renderer opted in via `includeScreenshot`.
         screenshotPngBytes: () => bugReportScreenshots.get(event.sender.id)?.png ?? null,
+        // Whatever reached the bundle is filed under the new report's id, so the
+        // later (possibly retried) send resolves this report's picture rather
+        // than the window slot's current occupant.
+        onScreenshotStaged: (reportId, png) => {
+          const composedBy = event.sender.id;
+          bugReportSendScreenshots.remember(reportId, png, composedBy);
+          if (bugReportSendScreenshotReapers.has(composedBy)) return;
+          bugReportSendScreenshotReapers.add(composedBy);
+          event.sender.once('destroyed', () => {
+            bugReportSendScreenshotReapers.delete(composedBy);
+            bugReportSendScreenshots.forgetOwner(composedBy);
+          });
+        },
         // Persist the report's `generated` sidecar and run the retention sweep
         // once the bundle is written, so it survives dialog close + restart.
         onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
