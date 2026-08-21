@@ -1,5 +1,11 @@
 # @inkeep/open-knowledge-docs
 
+## 0.0.137
+
+### Patch Changes
+
+- @inkeep/open-knowledge-core@0.60.1
+
 ## 0.0.136
 
 ### Patch Changes
