@@ -118,38 +118,57 @@
       "dependsOn": ["^build"],
       "cache": true,
       "inputs": [
-        "src/editor/**/*.ts",
-        "src/editor/**/*.tsx",
-        "tests/integration/**/*.ts",
-        "tests/meta/**/*.ts",
-        "tests/lint-plugins/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.tsx",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",
         "vite.dedupe.ts",
-        "tests/lingui-macro-shim.tsx",
         "../../test-support/*.ts",
         "../server/src/**/*.ts",
-        "../core/src/**/*.ts"
+        "../core/src/**/*.ts",
+        "../../biome.jsonc",
+        "../../biome-plugins/**"
       ]
     },
     "test:integration:shard2": {
       "dependsOn": ["^build"],
       "cache": true,
       "inputs": [
-        "src/editor/**/*.ts",
-        "src/editor/**/*.tsx",
-        "tests/integration/**/*.ts",
-        "tests/meta/**/*.ts",
-        "tests/lint-plugins/**/*.ts",
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.tsx",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",
         "vite.dedupe.ts",
-        "tests/lingui-macro-shim.tsx",
         "../../test-support/*.ts",
         "../server/src/**/*.ts",
-        "../core/src/**/*.ts"
+        "../core/src/**/*.ts",
+        "../../biome.jsonc",
+        "../../biome-plugins/**"
+      ]
+    },
+    "test:integration:shard3": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "tests/**/*.ts",
+        "tests/**/*.tsx",
+        "playwright.config.ts",
+        "vitest.integration.config.ts",
+        "vitest.config.ts",
+        "vite.dedupe.ts",
+        "../../test-support/*.ts",
+        "../server/src/**/*.ts",
+        "../core/src/**/*.ts",
+        "../../biome.jsonc",
+        "../../biome-plugins/**"
       ]
     },
     "test:conversion": {

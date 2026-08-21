@@ -1,3 +1,4 @@
+
 import type { Point } from 'unist';
 import { visit } from 'unist-util-visit';
 import { defineOkfRule } from '../okf-runner.ts';

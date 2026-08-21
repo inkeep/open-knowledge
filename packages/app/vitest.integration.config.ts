@@ -4,8 +4,8 @@ import { appVitestConfig } from './vitest.config';
 // Integration tier: multi-client CRDT convergence over the real Node test
 // harness (tests/integration) plus the meta and lint-plugin suites. Reuses the
 // app base config (lingui macro shim, single-instance dedupe, development-
-// conditions pin, Bun global facade, per-test IDB reset); the two CI cells map
-// 1:1 onto vitest's native `--shard=1/2` and `--shard=2/2`.
+// conditions pin, Bun global facade, per-test IDB reset); the three CI cells
+// map 1:1 onto vitest's native `--shard=1/3`, `--shard=2/3`, `--shard=3/3`.
 //
 // `per-session-um-perf` is held out here because it is a perf tier with its own
 // 60s-budget `test:perf:sessions` script. Bun's
