@@ -826,6 +826,27 @@ describe('DocumentContext tab close force contract', () => {
     expect(screen.getByTestId('active-new-tab').textContent).toBe('');
   });
 
+  // A blank tab renders exactly what the empty state renders, so synthesizing
+  // one on close made closing the last tab look like it reopened one. Blank
+  // tabs are now minted on explicit request only ("+" / Cmd-T).
+  test('closing the last document tab leaves no tab rather than a blank one', async () => {
+    mockCollabUrl = 'ws://localhost:1/collab';
+    globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
+    seedActiveOtherTabSession();
+    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Close active' }));
+    await user.click(screen.getByRole('button', { name: 'Close active' }));
+
+    expect(screen.getByTestId('open-tabs').textContent).toBe('');
+    expect(screen.getByTestId('active-tab').textContent).toBe('');
+    expect(screen.getByTestId('new-tabs').textContent).toBe('');
+    expect(screen.getByTestId('active-new-tab').textContent).toBe('');
+    // Files keeps the surface, so the Files empty state is what renders.
+    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
+  });
+
   test('closes the last Files new tab even when a hidden skill tab remains', async () => {
     window.localStorage.setItem(
       localTabSessionStorageKey(window.location.origin),
@@ -1739,6 +1760,10 @@ describe('DocumentContext pane workspace', () => {
 
     expect(screen.getByTestId('skill-focused').textContent).toBe('false');
     expect(screen.getByTestId('active-tab').textContent).toBe('');
+    // The placeholder is load-bearing when the OTHER surface still holds tabs:
+    // occupying `activeNewTabId` is the only thing that stops `normalizePane`
+    // from falling back to `openTabs[0]` — the skill tab below. Without it the
+    // hash follows that tab and the surface flips to Skills.
     expect(screen.getByTestId('active-new-tab').textContent).toMatch(/^new-tab:\d+$/);
     expect(screen.getByTestId('open-tabs').textContent).toBe(SKILL_TAB_ID);
   });

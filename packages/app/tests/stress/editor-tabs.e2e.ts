@@ -277,6 +277,84 @@ test.describe('Editor tabs', () => {
     await expect(closeNewTabButtons(page)).toHaveCount(3);
   });
 
+  // The hash-driven navigation handler re-resolves on every workspace change,
+  // not only on `hashchange`. Both surface destinations below are addressed by
+  // hash alone (no tab id to compare against), so a re-resolve used to re-assert
+  // them: it re-activated the surface's FIRST blank tab, and re-minted one the
+  // moment the last was closed — a close button that visibly did nothing.
+  test('the last blank tab closes for good and leaves the empty state', async ({ page, api }) => {
+    await api.testReset();
+    await page.goto('/');
+    // Cold start with nothing open mints no placeholder — the empty state is
+    // the whole surface, and "+" is the only way to a blank tab.
+    await expect(page.getByTestId('empty-editor-state')).toBeVisible({ timeout: 10_000 });
+    await expect(activateNewTabButtons(page)).toHaveCount(0);
+
+    await editorNewTabButton(page).click();
+    await expect(activateNewTabButtons(page)).toHaveCount(1);
+
+    await clickNewTabCloseButton(page, 0);
+
+    await expect(activateNewTabButtons(page)).toHaveCount(0);
+    await expect(page.getByTestId('empty-editor-state')).toBeVisible();
+    // Not just "gone on the next paint" — nothing re-mints it afterwards.
+    await expect(activateNewTabButtons(page)).toHaveCount(0);
+  });
+
+  test('closing the last document tab leaves the empty state, not a blank tab', async ({
+    page,
+    api,
+  }) => {
+    const id = testId();
+    const docName = `last-doc-close-${id}`;
+    const label = `${docName}.md`;
+    await seedMarkdownDocs(api, [{ name: docName, markdown: `# Last Doc Close ${id}` }]);
+
+    await page.goto(`/#/${docName}`);
+    const docTab = editorTabButtons(page, label);
+    await expect(docTab).toHaveCount(1, { timeout: 10_000 });
+
+    const chrome = editorTabChrome(docTab.first());
+    await chrome.hover();
+    await chrome.getByTestId('editor-tab-close-button').click();
+
+    await expect(docTab).toHaveCount(0);
+    await expect(page.getByTestId('empty-editor-state')).toBeVisible();
+    // Closing meant closing: no placeholder takes the closed tab's place.
+    await expect(activateNewTabButtons(page)).toHaveCount(0);
+  });
+
+  test('Skills blank tabs stay independently selectable and close for good', async ({
+    page,
+    api,
+  }) => {
+    await api.testReset();
+    await page.goto('/#/__skills__');
+    const newTabs = activateNewTabButtons(page);
+    await expect(newTabs).toHaveCount(1, { timeout: 10_000 });
+
+    await editorNewTabButton(page).click();
+    await expect(newTabs).toHaveCount(2);
+    await expectActiveTab(newTabs.nth(1));
+
+    await newTabs.nth(0).click();
+    await expectActiveTab(newTabs.nth(0));
+    await expectInactiveTab(newTabs.nth(1));
+
+    await newTabs.nth(1).click();
+    await expectActiveTab(newTabs.nth(1));
+    await expectInactiveTab(newTabs.nth(0));
+
+    await clickNewTabCloseButton(page, 0);
+    await expect(newTabs).toHaveCount(1);
+    await clickNewTabCloseButton(page, 0);
+
+    await expect(newTabs).toHaveCount(0);
+    // Skills' own empty state (its blank tab renders the same page) survives.
+    await expect(page.getByTestId('skill-source-new')).toBeVisible();
+    await expect(newTabs).toHaveCount(0);
+  });
+
   test('closing multiple new tabs preserves active placeholder and falls back to document tab', async ({
     page,
     api,

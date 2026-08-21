@@ -640,7 +640,7 @@ test.describe('vertical editor splits', () => {
     await expect.poll(() => windowHash(page)).toContain(third);
   });
 
-  test('keyboard split isolates source navigation and closing tabs leave an active home tab', async ({
+  test('keyboard split isolates source navigation and closing every tab leaves the empty state', async ({
     page,
     api,
     workerServer,
@@ -722,13 +722,16 @@ test.describe('vertical editor splits', () => {
       .locator(`[data-editor-pane-tabs="${onlyPaneId}"]`)
       .getByTestId('editor-tab-close-button')
       .click();
+    // The last close collapses to a single pane holding no tabs at all. It used
+    // to synthesize a blank "home" tab here; that placeholder renders exactly
+    // what the empty state renders, so closing the last tab looked like it
+    // reopened one.
     await expect(paneTabs(page)).toHaveCount(1);
     const remainingTabs = page.locator(
       `[data-editor-pane-tabs="${onlyPaneId}"] [data-editor-tab-sortable]`,
     );
-    await expect(remainingTabs).toHaveCount(1);
-    await expect(remainingTabs).toHaveAttribute('data-active-tab', 'true');
-    await expect(remainingTabs.getByTestId('editor-new-tab-placeholder-button')).toBeVisible();
+    await expect(remainingTabs).toHaveCount(0);
+    await expect(page.getByTestId('empty-editor-state')).toBeVisible();
   });
 
   // A restored session can carry pane percentages that the pane minimum

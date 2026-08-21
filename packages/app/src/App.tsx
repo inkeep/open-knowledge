@@ -34,6 +34,7 @@ import { ValidationFreshness } from '@/components/ValidationFreshness';
 import { BackgroundThrottleReporter } from '@/editor/BackgroundThrottleReporter';
 import {
   DocumentProvider,
+  isSkillsNewTabId,
   useDocumentContext,
   useDocumentTransition,
 } from '@/editor/DocumentContext';
@@ -165,6 +166,7 @@ function knownTargetsSignature(
  *  lives here plus resolveNavigationTarget. */
 function NavigationHandler() {
   const {
+    activeNewTabId,
     activeTabId,
     activeTarget,
     clearTarget,
@@ -197,6 +199,10 @@ function NavigationHandler() {
   // inside the traversal while hashchange is queued as a later task, so a flag
   // set by one navigation could be read by another.
   const historyTraversalUrlRef = useRef<string | null>(null);
+  // Last hash whose SURFACE destination was observed live on screen. Only the
+  // tab-id-less surface branches read it (see `isSurfaceHashRepeat`); every
+  // other branch still re-resolves freely.
+  const lastResolvedSurfaceHashRef = useRef<string | null>(null);
   const targetsSignature = knownTargetsSignature(pages, folderPaths, assetPaths, filePaths);
 
   useEffect(
@@ -281,7 +287,35 @@ function NavigationHandler() {
       // Marking has to follow the classification, or it would stamp the very
       // entry being classified.
       markCurrentHashHistoryEntry();
+      // This effect re-runs (and re-resolves) on every workspace change, not
+      // just on a real `hashchange` — deliberately, so a target that could not
+      // resolve yet (page list still loading, collab not connected) resolves
+      // once its data lands. Document-shaped targets tolerate that because
+      // `openHashTarget` compares the resolved tab id against the active one.
+      //
+      // The SURFACE destinations below (Skills home, and the empty hash) carry
+      // no tab id to compare against, so for them a re-run is indistinguishable
+      // from the user navigating there again — it re-activates that surface's
+      // FIRST placeholder rather than the one they selected. They fire on hash
+      // TRANSITIONS only, tracked by `lastResolvedSurfaceHashRef`:
+      //
+      //   - latched only once the surface is observably on screen, so an early
+      //     run whose open no-ops (collab still connecting) stays retryable;
+      //   - cleared by any NON-surface resolution, so leaving for a document and
+      //     coming back — Back/Forward, a sidebar click — reads as the fresh
+      //     arrival it is rather than a stale repeat.
+      const isSurfaceHashRepeat = lastResolvedSurfaceHashRef.current === window.location.hash;
+      const latchSurfaceHash = () => {
+        lastResolvedSurfaceHashRef.current = window.location.hash;
+      };
+      const clearSurfaceHash = () => {
+        lastResolvedSurfaceHashRef.current = null;
+      };
       const openHashTarget = (target: ResolvedNavigationTarget) => {
+        // Before the already-active early return: whether or not this resolves
+        // to a change, the hash now names a document, so any latched surface is
+        // stale.
+        clearSurfaceHash();
         // Absorbs this effect's own re-entry on the hash a forward open just
         // wrote. The test is "the same navigation", not "the same tab": a skill
         // preview keeps one tab across its bundle files, so a hash that moved
@@ -345,6 +379,11 @@ function NavigationHandler() {
         return;
       }
       if (skillsFromHash(window.location.hash)) {
+        if (isSkillsNewTabId(activeNewTabId)) {
+          latchSurfaceHash();
+          return;
+        }
+        if (isSurfaceHashRepeat) return;
         mark('ok/nav/hash-change', { docName: null, kind: 'skills' });
         openTargetTransition({ kind: 'skills', target: 'skills' });
         return;
@@ -377,6 +416,11 @@ function NavigationHandler() {
       }
       const docName = docNameFromHash(window.location.hash);
       if (!docName) {
+        if (activeNewTabId !== null) {
+          latchSurfaceHash();
+          return;
+        }
+        if (isSurfaceHashRepeat) return;
         mark('ok/nav/hash-change', { docName: null, kind: 'clear' });
         clearTarget();
         return;
@@ -408,6 +452,7 @@ function NavigationHandler() {
       window.removeEventListener('hashchange', onHashChange);
     };
   }, [
+    activeNewTabId,
     activeTabId,
     activeTarget,
     clearTarget,

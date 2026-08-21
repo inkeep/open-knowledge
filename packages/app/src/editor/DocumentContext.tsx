@@ -1302,6 +1302,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       }));
     }
 
+    // Nothing left on the closed tab's surface, but the OTHER surface still has
+    // tabs. The placeholder is load-bearing here, not cosmetic: it occupies
+    // `activeNewTabId`, which is the only thing that stops `normalizePane` from
+    // falling back to `openTabs[0]` — the other surface's tab. Without it the
+    // hash follows that tab and the whole surface flips under you.
     const prefix = closedSkillsTab ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
     const newTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
     nextNewTabOrdinalRef.current += 1;
@@ -2185,9 +2190,23 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     openTargetTransition,
     promoteTabInPane: promoteTabInPaneById,
     promoteAllPreviewTabs,
+    // An empty hash means nothing is addressed. A wholly empty pane needs no
+    // placeholder: a blank tab renders exactly what the empty state renders, so
+    // minting one adds nothing but a close button that appears to do nothing.
+    //
+    // While ANY tab remains the placeholder is load-bearing, which is why this
+    // still routes through the surface activator rather than holding the empty
+    // state. It clears `activeTarget` — a stale folder target otherwise keeps
+    // capturing sidebar creates, so a new folder lands inside whatever you last
+    // had open — and it occupies `activeNewTabId`, without which `normalizePane`
+    // falls back to `openTabs[0]` and the hash follows a tab nobody picked.
     clearTarget: () => {
       const pane = focusedPane(workspaceRef.current);
       if (pane.activeNewTabId !== null && !isSkillsNewTabId(pane.activeNewTabId)) return;
+      if (pane.openTabs.length === 0 && pane.newTabIds.length === 0) {
+        setSkillsSidebarState(false);
+        return;
+      }
       activateOrOpenSurfaceNewTab(pane.id, 'files');
     },
     closeDocument: (docName: string) => {

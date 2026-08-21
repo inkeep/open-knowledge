@@ -128,6 +128,7 @@ export function EmptyEditorState({
       // narrow layout even on a wide monitor. The padding + blob-stacking below
       // key off `@md/emptystate:` for that reason.
       <div
+        data-testid="empty-editor-state"
         className={cn(
           '@container/emptystate flex min-h-0 flex-1 flex-col items-center pb-8 pt-10',
           terminalOpen ? 'justify-end' : 'justify-center',
@@ -149,7 +150,10 @@ export function EmptyEditorState({
   return (
     // See the terminal branch above for why this is an `@container/emptystate`:
     // padding + header layout respond to the pane width, not the viewport.
-    <div className="@container/emptystate flex min-h-0 flex-1 flex-col items-center overflow-y-auto subtle-scrollbar">
+    <div
+      data-testid="empty-editor-state"
+      className="@container/emptystate flex min-h-0 flex-1 flex-col items-center overflow-y-auto subtle-scrollbar"
+    >
       <div className="flex w-full flex-1 flex-col items-center px-4 @md/emptystate:px-10 @2xl/emptystate:px-16">
         {messageReady ? (
           isOnboarding ? (
