@@ -1664,11 +1664,23 @@ function ensureDebugIpc(): DebugIpcHandle {
  * Anything else — unset, empty, non-numeric, zero, negative, fractional — is
  * `undefined` so the caller's default applies. A malformed override must not
  * become a `0` deadline that fails every spawn instantly.
+ *
+ * A REJECTED non-empty value is logged. These vars exist as an escape hatch
+ * during an incident, and silently falling back would look identical to the
+ * variable not being read at all — leaving whoever set `...=30s` to conclude
+ * the override does not work rather than that they wrote the wrong units.
  */
-function readPositiveIntEnv(raw: string | undefined): number | undefined {
+function readPositiveIntEnv(envVar: string): number | undefined {
+  const raw = process.env[envVar];
   if (raw === undefined || raw.trim() === '') return undefined;
   const parsed = Number(raw);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return undefined;
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    getLogger('lifecycle').warn(
+      { event: 'desktop-env-override-rejected', envVar, raw },
+      `[main] ignoring malformed ${envVar}; expected a positive integer count of milliseconds`,
+    );
+    return undefined;
+  }
   return parsed;
 }
 
@@ -2022,8 +2034,8 @@ function ensureWindowManager() {
     // defaults ship — without these there is no way to get such a project open
     // short of a new release, and no way to shorten the wait when diagnosing a
     // genuinely stuck boot.
-    spawnLockPollDeadlineMs: readPositiveIntEnv(process.env.OK_SPAWN_STARTUP_TIMEOUT_MS),
-    spawnLockProgressDeadlineMs: readPositiveIntEnv(process.env.OK_SPAWN_BIND_TIMEOUT_MS),
+    spawnLockPollDeadlineMs: readPositiveIntEnv('OK_SPAWN_STARTUP_TIMEOUT_MS'),
+    spawnLockProgressDeadlineMs: readPositiveIntEnv('OK_SPAWN_BIND_TIMEOUT_MS'),
     // Dev-only: auto-reclaim a foreign server on the project's contentDir (a
     // leftover from a prior packaged run / CLI / another instance) so this
     // `electron-vite dev` session runs against its own working-tree build
@@ -2799,10 +2811,20 @@ async function openProjectOrFallbackToNavigator(
         projectPath,
         entryPoint,
         kind,
-        pid: (err as Error & { pid?: number }).pid,
+        // Deliberately no top-level `pid`. The logger's `base` sets it to the
+        // writing process, and re-using the key for the spawned child would
+        // make this the one line in the desktop log where `pid` means
+        // something else. The child's is on `err.pid`.
+        //
+        // `exitCode` / `exitSignal` ARE duplicated from the serialized error,
+        // for query ergonomics on the fields an operator filters by first.
         exitCode: (err as Error & { exitCode?: number | null }).exitCode,
         exitSignal: (err as Error & { exitSignal?: string | null }).exitSignal,
-        err: errorMessage,
+        // The Error itself, not its message: pino's `err` serializer needs the
+        // object to record type + stack, and a string collapses to the message
+        // we already have in the dialog. It also carries the error's own
+        // enumerable fields, so `kind`, `pid` and the stderr tail ride along.
+        err,
       },
       '[main] openProject failed, falling back to Navigator',
     );
@@ -2860,6 +2882,18 @@ async function openProjectOrFallbackToNavigator(
             );
             return;
           } catch (retryErr) {
+            // Same reasoning as the primary catch: a second failure that only
+            // ever reaches a message box leaves the user's logs describing the
+            // first failure and silent about the one they actually hit.
+            getLogger('project').error(
+              {
+                event: 'desktop-open-project-retry-failed',
+                projectPath,
+                entryPoint,
+                err: retryErr,
+              },
+              '[main] openProject retry after stopping the conflicting server failed',
+            );
             dialog.showErrorBox(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,

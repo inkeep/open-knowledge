@@ -824,10 +824,17 @@ export interface WindowManagerDeps {
   probeWsUpgrade?(url: string, timeoutMs: number): Promise<boolean>;
   /**
    * Upper bound (ms) on waiting for the utility to post `ready` or `error`
-   * after `init`. Default 15s — enough margin for `bootServer` to run shadow-
-   * repo init + initial file-watcher walk on a large project, narrow enough
-   * that a silently-hung utility surfaces within a debuggable window. Test
-   * injections typically pass a much smaller value.
+   * after `init`. Default 15s, narrow enough that a silently-hung utility
+   * surfaces within a debuggable window. Test injections typically pass a
+   * much smaller value.
+   *
+   * Unlike the detached-spawn wait, this one is a flat reject with no
+   * liveness graduation — and 15s is NOT a safe margin for `bootServer` on a
+   * large project: that pre-`listen` phase scales with project state and has
+   * no upper bound, which is precisely why the detached path grew a second
+   * tier. This path stays flat because it is the dev/electron-vite runtime
+   * only (production wires `spawnDetachedServer`), so a slow reject costs a
+   * developer a retry rather than making a project unopenable.
    */
   utilityInitTimeoutMs?: number;
   /**

@@ -1699,6 +1699,41 @@ describe('WindowManager', () => {
         expect(killed).toEqual([]);
       });
 
+      // The shipped path: no `OK_SPAWN_BIND_TIMEOUT_MS`, so the cap comes from
+      // the multiplier. Every other test that REACHES the graduation branch
+      // pins the cap explicitly, so without this one a regression in that
+      // expression (dropped factor, swapped operand) would ship green while
+      // reintroducing the exact failure for every user who has not set the
+      // env var.
+      test('with no progress override the cap is derived from the startup deadline', async () => {
+        enableSyncTimers();
+        const spawnedAt = Date.now();
+        // Between the 20ms startup deadline and the 20 * 8 = 160ms derived cap.
+        // The RATIO is what pins mutation sensitivity (drop the factor and the
+        // cap collapses to 20ms, well short of the bind); the absolute numbers
+        // are scaled up so a stalled spin loop does not flip a pass into a
+        // timeout on a loaded runner.
+        const BINDS_AFTER_MS = 60;
+        env.deps.readServerLock = () =>
+          Date.now() - spawnedAt >= BINDS_AFTER_MS ? spawnedLock : null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 88001 });
+        const killed: number[] = [];
+        env.deps.killProbe = (pid: number) => {
+          killed.push(pid);
+        };
+        env.deps.spawnLockPollDeadlineMs = 20;
+        env.deps.spawnLockProgressDeadlineMs = undefined;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(60111);
+        expect(killed).toEqual([]);
+      });
+
       test('the extended wait is bounded — a live child that never binds still fails', async () => {
         enableSyncTimers();
         env.deps.readServerLock = () => null;

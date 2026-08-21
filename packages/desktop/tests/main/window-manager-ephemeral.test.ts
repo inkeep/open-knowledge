@@ -138,7 +138,9 @@ function buildEphemeralEnv(): EphemeralEnv {
       rendererEntryPath: '/fake/renderer/index.html',
       appVersion: '9.9.9-test',
       // Fast, deterministic poll: the success path finds the lock on the first
-      // read, so the recorded timers are never fired.
+      // read, so no sleep is ever attempted. This stub DISCARDS the callback
+      // rather than recording it — a test that needs the loop to advance has
+      // to supply its own firing timer.
       spawnLockPollDeadlineMs: 5_000,
       setTimeout: () => null,
       killProbe: (pid, signal) => {
@@ -328,6 +330,53 @@ describe('createEphemeralWindow', () => {
     expect(env.removedDirs).toEqual(['/tmp/ok-ephemeral-1']);
     // No window was ever created.
     expect(env.windows).toHaveLength(0);
+  });
+
+  // Same two-tier wait as the project-open path, second call site. Without
+  // this, dropping the progress-deadline argument here would regress the
+  // ephemeral path to the original bug while the project-open coverage stayed
+  // green. The base env's `setTimeout` is a no-op that never invokes its
+  // callback — fine for the `deadlineMs = 0` tests, which return before any
+  // sleep is attempted — so this test supplies one that fires immediately.
+  test('a live child that binds after the startup deadline is not SIGTERMd', async () => {
+    env.publishLock = false; // the lock is published late, by the reader below
+    env.deps.setTimeout = (cb: () => void) => {
+      cb();
+      return null;
+    };
+    const spawnedAt = Date.now();
+    // Past the DERIVED cap (5 * 8 = 40ms) as well as the startup deadline, so
+    // the test fails if the explicit progress deadline stops being forwarded
+    // — dropping it would otherwise still leave a 40ms cap that covers a
+    // shorter bind, and the regression would pass unnoticed.
+    const BINDS_AFTER_MS = 150;
+    env.deps.readServerLock = () =>
+      Date.now() - spawnedAt >= BINDS_AFTER_MS
+        ? {
+            pid: 42001,
+            hostname: 'testhost',
+            port: 52001,
+            startedAt: '2026-06-05T00:00:00.000Z',
+            worktreeRoot: '/tmp/ok-ephemeral-1',
+            kind: 'interactive',
+            capabilities: ['ws'],
+          }
+        : null;
+    env.deps.spawnLockPollDeadlineMs = 5;
+    env.deps.spawnLockProgressDeadlineMs = 30_000;
+
+    const wm = new WindowManager(env.deps);
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+
+    // The session came up, and nothing killed the healthy child or tore down
+    // the temp project underneath it.
+    expect(env.windows).toHaveLength(1);
+    expect(env.killCalls).toEqual([]);
+    expect(env.removedDirs).toEqual([]);
   });
 
   // This path SIGTERMs the orphan and then awaits `removeDir` before throwing.
