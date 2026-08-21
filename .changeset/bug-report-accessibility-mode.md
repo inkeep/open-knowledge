@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Bug reports and crash logs from the desktop app now record whether assistive technology was active. A recurring family of editor crashes only happens when Chromium is building its accessibility tree, which it does lazily once it detects a screen reader, a voice-input tool, or an input method that reads the screen. Reports carried no trace of that at all, so the single most important fact about these crashes had to be guessed at from circumstance. Two records close the gap. Chromium already stamps the exact accessibility state onto every crash dump it writes, and reports now read it out and put it in the log rather than leaving it buried in a binary file nobody opens. Separately, the app now notes at startup, and again whenever it changes, whether assistive technology is attached, so the timing is visible even on reports that carry no crash dump. Nothing new is collected about you or your documents: the accessibility state is a Chromium setting, identical for everyone running the same assistive tool.

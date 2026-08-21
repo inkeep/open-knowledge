@@ -147,6 +147,60 @@ const ANNOTATION_ENTRY_BYTES = 8;
 const APP_VERSION_ANNOTATION_KEY = '_version';
 
 /**
+ * Chromium's crash keys do NOT live in the simple dictionary above.
+ *
+ * `base::debug::AllocateCrashKeyString` registers into Crashpad's per-module
+ * ANNOTATION OBJECT list, a second and entirely separate structure reached
+ * through `MinidumpCrashpadInfo.module_list`. Measured on a real OK renderer
+ * dump: the simple dictionary held exactly `_productName`, `_version`, `plat`,
+ * `prod`, `ver` — Electron's own five — while `ax_mode` sat in the annotation
+ * objects of one module alongside `process_type`, `renderer_foreground` and the
+ * v8 addresses.
+ *
+ * Written down because the two structures look interchangeable from a key name
+ * and are not: `findSimpleAnnotation` can never return `ax_mode` no matter how
+ * well-formed the dump, and the failure is silent — a null that reads exactly
+ * like "this dump predates the annotation".
+ *
+ *   `MinidumpCrashpadInfo.module_list` (a location descriptor at +44/+48)
+ *     -> `MinidumpModuleCrashpadInfoList`: count u32, then N links of
+ *        `(minidumpModuleListIndex u32, dataSize u32, rva u32)`
+ *     -> `MinidumpModuleCrashpadInfo`: version u32, then THREE location
+ *        descriptors — list_annotations, simple_annotations, annotation_objects
+ *     -> `MinidumpAnnotationList`: count u32, then N of
+ *        `(nameRva u32, type u16, reserved u16, valueRva u32)`
+ *
+ * Name and value are both u32-length-prefixed byte runs, so `readAnnotationString`
+ * reads either — but only for `type == kString`; every other type's bytes are
+ * not text and must never be decoded as such.
+ */
+const CRASHPAD_MODULE_LIST_SIZE_OFFSET = 44;
+const CRASHPAD_MODULE_LIST_RVA_OFFSET = 48;
+/** Through `module_list`, the last field this file reads. Real streams are padded past it. */
+const CRASHPAD_INFO_MODULE_LIST_PREFIX_BYTES = 52;
+const MODULE_LINK_BYTES = 12;
+const MODULE_LINK_RVA_OFFSET = 8;
+/** `version u32` followed by three 8-byte location descriptors. */
+const MODULE_CRASHPAD_INFO_BYTES = 28;
+const MODULE_ANNOTATION_OBJECTS_SIZE_OFFSET = 20;
+const MODULE_ANNOTATION_OBJECTS_RVA_OFFSET = 24;
+const ANNOTATION_OBJECT_BYTES = 12;
+const ANNOTATION_OBJECT_TYPE_OFFSET = 4;
+const ANNOTATION_OBJECT_VALUE_RVA_OFFSET = 8;
+/** `crashpad::Annotation::Type::kString`. Every other type's value is not text. */
+const ANNOTATION_TYPE_STRING = 1;
+
+/**
+ * Chromium's crash key for the renderer's live `ui::AXMode`, recorded as the
+ * flag names joined by ` | ` — e.g.
+ * `kNativeAPIs | kWebContents | kInlineTextBoxes | kExtendedPropert`, cut mid-word
+ * because Crashpad caps an annotation at 64 bytes. Truncation is ordinary here,
+ * not damage: the flags that decide reachability of the accessibility code paths
+ * are the leading ones, and a short tail still names them.
+ */
+const AX_MODE_ANNOTATION_KEY = 'ax_mode';
+
+/**
  * Ceilings on every count read out of the file before any allocation. A
  * corrupt or hostile dump can name any u32 here, and a dump is untrusted input
  * for exactly the reason this module exists: it may have been written for a
@@ -159,6 +213,20 @@ const MAX_MODULE_NAME_BYTES = 8192;
 const MAX_ANNOTATIONS = 256;
 /** Both keys and values: a version string is tens of bytes. */
 const MAX_ANNOTATION_STRING_BYTES = 256;
+/** A dump names as many modules as the process loaded; a thousand is a normal count. */
+const MAX_MODULE_LINKS = 4096;
+/**
+ * A whole-walk budget on annotation objects INSPECTED, not a per-list ceiling.
+ *
+ * The two bounds above are per-record, so on their own they multiply: a dump
+ * claiming the maximum links each holding the maximum objects would cost
+ * millions of positional reads, on the boot path, for a file we already distrust.
+ * One budget across the walk keeps the cost linear in what a real dump contains
+ * (one link, a dozen objects) and bounded for everything else. Exhausting it
+ * ends the search as "not found", which is the same honest null as a dump that
+ * never carried the key.
+ */
+const MAX_ANNOTATION_OBJECTS_SCANNED = 1024;
 
 /** Exact positional read, or null when the file is shorter than the request. */
 function readExactly(fd: number, length: number, position: number): Buffer | null {
@@ -528,6 +596,249 @@ export function classifyMinidumpCrashKind(
     return marker === 'true' ? 'non-crash' : 'indeterminate';
   } catch {
     return 'indeterminate';
+  } finally {
+    if (fd !== null) {
+      try {
+        closeSync(fd);
+      } catch {
+        // Descriptor already reclaimed; nothing left to release.
+      }
+    }
+  }
+}
+
+export interface MinidumpAccessibilityModeRead {
+  /**
+   * Chromium's `ax_mode` crash key as the crashed renderer recorded it, or null
+   * when the dump does not carry one.
+   *
+   * Null is "we do not know", and it must never be read as "accessibility was
+   * off". Chromium allocates this key when it first sets an accessibility mode,
+   * so a renderer that never had a tree built may register nothing at all — and
+   * so may a dump for a process that has no renderer in it, a Chromium revision
+   * that renames the key, or a dump truncated before its Crashpad stream. Those
+   * are four different situations wearing one null, and the only thing they all
+   * rule out is a confident "off".
+   *
+   * Non-null has already been through `asReportableAnnotationValue`, so it is
+   * safe to print on a line of its own.
+   */
+  mode: string | null;
+  /**
+   * The walk threw rather than declining. Separates "this dump has no mode to
+   * give" from "the parser broke on a layout it no longer recognizes" — the same
+   * distinction `MinidumpAppVersionRead.parseFailed` carries, and for the same
+   * reason: both reach a reader as one absent field and point in opposite
+   * directions.
+   */
+  parseFailed: boolean;
+}
+
+/** Bounds for `asReportableAnnotationValue`; see its contract below. */
+const FIRST_PRINTABLE_ASCII = 0x20;
+const LAST_PRINTABLE_ASCII = 0x7e;
+
+/**
+ * What a Crashpad annotation value must satisfy before it is printed.
+ *
+ * Deliberately NOT `asReportableAppVersion`. That function's stated contract is
+ * that ONE gate decides what a version may be, so its two witnesses can never
+ * come to disagree; routing a non-version through it would quietly make it a
+ * gate for two different questions sharing one ceiling.
+ *
+ * The threat is the same one and worth restating: a dump is untrusted input, its
+ * every string is attacker-shaped, and the destination is a line-oriented log. A
+ * value carrying a line break could forge the context printed around it. Stated
+ * as a whitelist because a reject list is always under-enumerated — U+0085,
+ * U+2028/U+2029 and the bidi overrides all change how a line renders and none of
+ * them is a C0 control.
+ *
+ * Chromium writes these values with `ui::AXMode`'s flag-name join, printable
+ * ASCII by construction, so anything outside that range is not a value this app
+ * can vouch for. Length needs no ceiling here: `readAnnotationString` already
+ * refuses anything past `MAX_ANNOTATION_STRING_BYTES` before allocating.
+ */
+function asReportableAnnotationValue(value: string | null): string | null {
+  if (value === null || value === '') return null;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < FIRST_PRINTABLE_ASCII || code > LAST_PRINTABLE_ASCII) return null;
+  }
+  return value;
+}
+
+/**
+ * One module's annotation objects, searched for `key`. Returns what is left of
+ * the scan budget alongside the hit, so the caller's ceiling spans the whole
+ * walk instead of resetting at every module.
+ */
+function findAnnotationObjectInModule(
+  fd: number,
+  moduleInfoRva: number,
+  key: string,
+  budget: number,
+): { value: string | null; budget: number } {
+  const moduleInfo = readExactly(fd, MODULE_CRASHPAD_INFO_BYTES, moduleInfoRva);
+  if (moduleInfo === null) return { value: null, budget };
+  const listRva = moduleInfo.readUInt32LE(MODULE_ANNOTATION_OBJECTS_RVA_OFFSET);
+  // A zero location is how a module with no annotation objects spells it, which
+  // is the ordinary state for every module but the one holding the crash keys.
+  if (listRva === 0) return { value: null, budget };
+
+  const count = readExactly(fd, 4, listRva);
+  if (count === null) return { value: null, budget };
+  const objectCount = count.readUInt32LE(0);
+  if (objectCount === 0 || objectCount > MAX_ANNOTATIONS) return { value: null, budget };
+  // Floor rather than equality, so a future revision may pad the list without
+  // this lookup silently going dark.
+  const declaredBytes = moduleInfo.readUInt32LE(MODULE_ANNOTATION_OBJECTS_SIZE_OFFSET);
+  if (declaredBytes < 4 + objectCount * ANNOTATION_OBJECT_BYTES) return { value: null, budget };
+
+  const objects = readExactly(fd, objectCount * ANNOTATION_OBJECT_BYTES, listRva + 4);
+  if (objects === null) return { value: null, budget };
+
+  let remaining = budget;
+  for (let i = 0; i < objectCount; i += 1) {
+    if (remaining === 0) return { value: null, budget: 0 };
+    remaining -= 1;
+    const at = i * ANNOTATION_OBJECT_BYTES;
+    // Type first: it is a two-byte compare against bytes already in hand, where
+    // the name costs a positional read. Screening non-strings here also keeps a
+    // colliding key of another type from ever having its bytes decoded as text.
+    if (objects.readUInt16LE(at + ANNOTATION_OBJECT_TYPE_OFFSET) !== ANNOTATION_TYPE_STRING) {
+      continue;
+    }
+    if (readAnnotationString(fd, objects.readUInt32LE(at)) !== key) continue;
+    const value = readAnnotationString(
+      fd,
+      objects.readUInt32LE(at + ANNOTATION_OBJECT_VALUE_RVA_OFFSET),
+    );
+    return { value: asReportableAnnotationValue(value), budget: remaining };
+  }
+  return { value: null, budget: remaining };
+}
+
+/**
+ * The walk below paired with whether it threw on the way. Never throws itself:
+ * a failure here stays contained rather than unwinding the caller, and the flag
+ * is what keeps that containment from also being silent.
+ *
+ * Deliberately narrower than the caller's own catch. An unopenable file, a torn
+ * read or a dump that is not a minidump at all are ordinary states during a scan
+ * of a directory Crashpad is also writing to — folding those in would make the
+ * flag fire constantly and stop meaning "the parser broke", which is the only
+ * thing it is for. Same split as `readAppVersionAnnotation`.
+ */
+function readModuleAnnotation(
+  fd: number,
+  infoRva: number,
+  infoSize: number,
+  key: string,
+): { value: string | null; parseFailed: boolean } {
+  try {
+    return { value: findModuleAnnotation(fd, infoRva, infoSize, key), parseFailed: false };
+  } catch {
+    return { value: null, parseFailed: true };
+  }
+}
+
+/** The annotation-object walk. Declines by returning null for any layout it distrusts. */
+function findModuleAnnotation(
+  fd: number,
+  infoRva: number,
+  infoSize: number,
+  key: string,
+): string | null {
+  if (infoSize < CRASHPAD_INFO_MODULE_LIST_PREFIX_BYTES) return null;
+  const info = readExactly(fd, CRASHPAD_INFO_MODULE_LIST_PREFIX_BYTES, infoRva);
+  if (info === null) return null;
+  const listRva = info.readUInt32LE(CRASHPAD_MODULE_LIST_RVA_OFFSET);
+  if (listRva === 0) return null;
+
+  const count = readExactly(fd, 4, listRva);
+  if (count === null) return null;
+  const linkCount = count.readUInt32LE(0);
+  if (linkCount === 0 || linkCount > MAX_MODULE_LINKS) return null;
+  const declaredBytes = info.readUInt32LE(CRASHPAD_MODULE_LIST_SIZE_OFFSET);
+  if (declaredBytes < 4 + linkCount * MODULE_LINK_BYTES) return null;
+
+  const links = readExactly(fd, linkCount * MODULE_LINK_BYTES, listRva + 4);
+  if (links === null) return null;
+
+  // Every link is searched rather than a known index: WHICH module carries
+  // Chromium's crash keys is a build detail — the framework, not the executable
+  // the ownership parse reads — and pinning an index would silently stop
+  // answering the first time a build reorders its module list.
+  let budget = MAX_ANNOTATION_OBJECTS_SCANNED;
+  for (let i = 0; i < linkCount; i += 1) {
+    const found = findAnnotationObjectInModule(
+      fd,
+      links.readUInt32LE(i * MODULE_LINK_BYTES + MODULE_LINK_RVA_OFFSET),
+      key,
+      budget,
+    );
+    if (found.value !== null) return found.value;
+    budget = found.budget;
+    if (budget === 0) return null;
+  }
+  return null;
+}
+
+/**
+ * Read the accessibility mode the process described by `dumpPath` was running
+ * with when it died.
+ *
+ * This is the recorded answer to the precondition a whole family of Blink
+ * accessibility `CHECK` crashes turns on — `AXBlockFlowData::ComputeNeighborOnLine`
+ * and its neighbours are reachable only with a live accessibility tree, and the
+ * app's own `OK_FORCE_A11Y` switch is opt-in, so without this the tree's
+ * presence can only ever be inferred from circumstance. Chromium has been
+ * recording it on every dump all along; nothing was reading it.
+ *
+ * Opens its own descriptor rather than riding the ownership pass, for the same
+ * reason `findSimpleAnnotation` does: ownership decides whether a report may
+ * carry raw process memory at all, and keeping this question on its own handle
+ * means a change here cannot reach that answer by accident.
+ *
+ * Like `readMinidumpAppVersion`, only meaningful for a dump this app has not
+ * already disowned — Crashpad stamps our annotations onto dumps it writes for
+ * descendant processes. Classify first.
+ */
+export function readMinidumpAccessibilityMode(dumpPath: string): MinidumpAccessibilityModeRead {
+  let fd: number | null = null;
+  try {
+    fd = openSync(dumpPath, 'r');
+    const header = readExactly(fd, HEADER_BYTES, 0);
+    if (header === null || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) {
+      return { mode: null, parseFailed: false };
+    }
+    const streamCount = header.readUInt32LE(NUMBER_OF_STREAMS_OFFSET);
+    if (streamCount === 0 || streamCount > MAX_STREAMS) return { mode: null, parseFailed: false };
+
+    const directory = readExactly(
+      fd,
+      streamCount * DIRECTORY_ENTRY_BYTES,
+      header.readUInt32LE(STREAM_DIRECTORY_RVA_OFFSET),
+    );
+    if (directory === null) return { mode: null, parseFailed: false };
+
+    for (let i = 0; i < streamCount; i += 1) {
+      const at = i * DIRECTORY_ENTRY_BYTES;
+      if (directory.readUInt32LE(at) !== CRASHPAD_INFO_STREAM_TYPE) continue;
+      const read = readModuleAnnotation(
+        fd,
+        directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET),
+        directory.readUInt32LE(at + DIRECTORY_ENTRY_SIZE_OFFSET),
+        AX_MODE_ANNOTATION_KEY,
+      );
+      return { mode: read.value, parseFailed: read.parseFailed };
+    }
+    return { mode: null, parseFailed: false };
+  } catch {
+    // Unopenable file, torn read, permissions change mid-scan, or a dump that
+    // is not a minidump — none of which is a broken parser, so none of which
+    // sets the flag. Matches what `readMinidumpFacts` does with the same shapes.
+    return { mode: null, parseFailed: false };
   } finally {
     if (fd !== null) {
       try {

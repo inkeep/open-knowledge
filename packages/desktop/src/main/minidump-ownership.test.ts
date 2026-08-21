@@ -21,6 +21,7 @@ import { buildMinidump, type MinidumpPatch } from './minidump.test-helper.ts';
 import {
   classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
+  readMinidumpAccessibilityMode,
   readMinidumpAppVersion,
 } from './minidump-ownership.ts';
 
@@ -623,5 +624,197 @@ describe('classifyMinidumpCrashKind', () => {
     writeFileSync(dumpPath, buildMinidump([modulePath], { exceptionCode: SIMULATED }));
     expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
     expect(classifyMinidumpCrashKind(dumpPath, 'darwin')).toBe('non-crash');
+  });
+});
+
+describe('readMinidumpAccessibilityMode', () => {
+  /**
+   * The `ax_mode` value a real 0.49.0-beta.30 renderer dump carried, copied
+   * exactly — including the cut-off `kExtendedPropert`, which is Crashpad's
+   * 64-byte annotation cap and not damage. A fixture that quietly rounded it up
+   * to `kExtendedProperties` would stop testing the truncation the parser has
+   * to pass through untouched.
+   */
+  const REAL_AX_MODE = 'kNativeAPIs | kWebContents | kInlineTextBoxes | kExtendedPropert';
+
+  /**
+   * The annotation objects beside `ax_mode` in that same dump, in the order
+   * Crashpad wrote them, so the lookup is exercised past the first entry and
+   * against neighbours that really do sit there.
+   */
+  const REAL_NEIGHBOURS = {
+    max_idle_tasks: '0',
+    ax_mode: REAL_AX_MODE,
+    renderer_foreground: 'true',
+    v8_isolate_address: '0x13400780000',
+    process_type: 'renderer',
+  };
+
+  function modeOf(patch: MinidumpPatch): string | null {
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(dumpPath, buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], patch));
+    const read = readMinidumpAccessibilityMode(dumpPath);
+    // Every case below is a dump the parse DECLINES to trust, never one that
+    // broke it — the distinction the flag carries. Asserted once here so each
+    // case stays a plain value comparison.
+    expect(read.parseFailed).toBe(false);
+    return read.mode;
+  }
+
+  test('a renderer dump names the accessibility mode it died with', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS] })).toBe(REAL_AX_MODE);
+  });
+
+  test('the mode is found on a later module, not just the first', () => {
+    // Measured on a real dump: the crash keys sit on the framework, and a
+    // second link carrying no objects at all sits beside it. A walk that
+    // stopped at link 0 would read that dump as having no mode.
+    expect(modeOf({ annotationObjects: [{}, REAL_NEIGHBOURS] })).toBe(REAL_AX_MODE);
+  });
+
+  test('the simple dictionary is NOT where this lives', () => {
+    // The whole reason this parse exists rather than another key passed to
+    // `findSimpleAnnotation`. A dump carrying `ax_mode` as a simple annotation
+    // is not a shape Chromium produces, and reading it from there would be the
+    // parser agreeing with a fiction.
+    expect(modeOf({ annotations: { ax_mode: REAL_AX_MODE, _version: '0.58.9' } })).toBeNull();
+  });
+
+  test('module annotations and the simple dictionary coexist without interfering', () => {
+    // Real dumps carry both structures. Neither may be reached through the
+    // other, and neither may cost the other its answer.
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(
+      dumpPath,
+      buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], {
+        annotations: { _productName: 'OpenKnowledge', _version: '0.58.9', ver: '41.9.1' },
+        annotationObjects: [REAL_NEIGHBOURS],
+      }),
+    );
+    expect(readMinidumpAccessibilityMode(dumpPath).mode).toBe(REAL_AX_MODE);
+    expect(readMinidumpAppVersion(dumpPath).version).toBe('0.58.9');
+  });
+
+  test('a utility-process dump has no mode, and that is not "accessibility was off"', () => {
+    // Measured shape: a NodeService dump carries `process_type=utility` and
+    // simply never registers `ax_mode`. Null is the honest answer; the contract
+    // that it must not be read as "off" is on `MinidumpAccessibilityModeRead`.
+    expect(
+      modeOf({ annotationObjects: [{ process_type: 'utility', chrome_trace_id: '69107426' }] }),
+    ).toBeNull();
+  });
+
+  test('a dump with no crashpad stream at all has no mode', () => {
+    expect(modeOf({})).toBeNull();
+  });
+
+  test('a dump registering no module annotations has no mode', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], crashpadModuleListRva: 0 })).toBeNull();
+  });
+
+  test('a module carrying no annotation objects has no mode', () => {
+    expect(modeOf({ annotationObjects: [{}] })).toBeNull();
+  });
+
+  test('a non-string annotation type is never decoded as text', () => {
+    // A value of any other type is raw bytes — v8 addresses and counters live
+    // in this same list. Decoding one because its key matched would put
+    // arbitrary process bytes on a log line.
+    expect(
+      modeOf({ annotationObjects: [{ ax_mode: REAL_AX_MODE }], annotationObjectType: 2 }),
+    ).toBe(null);
+  });
+
+  test('a value carrying a newline is refused rather than printed', () => {
+    // The destination is a line-oriented log, and a dump is untrusted input: a
+    // value with a line break could forge the context printed around it.
+    expect(modeOf({ annotationObjects: [{ ax_mode: 'kNativeAPIs\nevent: forged' }] })).toBeNull();
+  });
+
+  test('an object count larger than the list holds is refused', () => {
+    expect(
+      modeOf({ annotationObjects: [{ ax_mode: REAL_AX_MODE }], annotationObjectCount: 4096 }),
+    ).toBeNull();
+  });
+
+  test('a declared object-list size too small for its own entries is refused', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], annotationObjectsSize: 8 })).toBeNull();
+  });
+
+  test('a link count larger than the list holds is refused', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], moduleLinkCount: 4096 })).toBeNull();
+  });
+
+  test('a declared link-list size too small for its own links is refused', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], crashpadModuleListSize: 4 })).toBeNull();
+  });
+
+  test('an object-list pointer past the end of the file is refused', () => {
+    expect(
+      modeOf({ annotationObjects: [REAL_NEIGHBOURS], annotationObjectsRva: 0x7fff_0000 }),
+    ).toBeNull();
+  });
+
+  // The two lies below land on the FIRST object of the first module, so these
+  // cases pass a single-key map — against `REAL_NEIGHBOURS` they would corrupt
+  // `max_idle_tasks` and leave `ax_mode` perfectly readable, which is a test
+  // that passes while checking nothing.
+  test('a value pointer past the end of the file is refused', () => {
+    expect(
+      modeOf({
+        annotationObjects: [{ ax_mode: REAL_AX_MODE }],
+        annotationObjectValueRva: 0x7fff_0000,
+      }),
+    ).toBeNull();
+  });
+
+  test('a value length past the annotation ceiling is refused', () => {
+    expect(
+      modeOf({
+        annotationObjects: [{ ax_mode: REAL_AX_MODE }],
+        annotationObjectValueByteLength: 4096,
+      }),
+    ).toBeNull();
+  });
+
+  test('a dump truncated before its module annotations has no mode', () => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], truncateTo: 80 })).toBeNull();
+  });
+
+  test.each([
+    ['a bad signature', { signature: 'XXXX' }],
+    ['a stream count past the ceiling', { streamCount: 100_000 }],
+    ['a stream directory pointing nowhere', { streamDirectoryRva: 0x7fff_0000 }],
+    ['a crashpad stream hidden behind another type', { crashpadStreamType: 99 }],
+  ])('%s yields no mode and never throws', (_label, patch) => {
+    expect(modeOf({ annotationObjects: [REAL_NEIGHBOURS], ...patch })).toBeNull();
+  });
+
+  test('reading the mode leaves the ownership verdict untouched', () => {
+    // Ownership decides whether raw process memory may leave the machine. This
+    // question rides its own file handle precisely so it cannot reach that
+    // answer, and adding module annotations must not perturb it.
+    const dir = makeDir();
+    const bundleRoot = join(dir, 'OpenKnowledge.app');
+    const dumpPath = join(dir, 'crash.dmp');
+    mkdirSync(join(bundleRoot, 'Contents', 'MacOS'), { recursive: true });
+    writeFileSync(
+      dumpPath,
+      buildMinidump([ownModule(bundleRoot)], { annotationObjects: [REAL_NEIGHBOURS] }),
+    );
+    expect(classifyMinidumpOwnership(dumpPath, bundleRoot)).toBe('ours');
+    expect(readMinidumpAccessibilityMode(dumpPath).mode).toBe(REAL_AX_MODE);
+  });
+
+  test('an unreadable path declines rather than throwing, and is not a parse failure', () => {
+    const absent = join(makeDir(), 'absent.dmp');
+    expect(() => readMinidumpAccessibilityMode(absent)).not.toThrow();
+    // An absent file is not a broken parser — it is the ordinary state during a
+    // scan of a directory Crashpad is also writing to. `parseFailed` exists to
+    // separate "this dump has no mode" from "the parser broke", and a flag that
+    // fired on every missing file would say neither.
+    expect(readMinidumpAccessibilityMode(absent)).toEqual({ mode: null, parseFailed: false });
   });
 });

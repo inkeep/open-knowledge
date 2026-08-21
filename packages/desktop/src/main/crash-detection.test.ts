@@ -61,6 +61,12 @@ interface Rig {
   /** The same dump, plus the Crashpad annotations a real one carries. */
   ownDumpStamped(version: string): Buffer;
   /**
+   * A dump stamped like `ownDumpStamped`, plus Chromium's `ax_mode` crash key
+   * in the module annotation objects — the SEPARATE structure real dumps carry
+   * it in, not the simple dictionary beside the version.
+   */
+  ownDumpWithAxMode(version: string, mode: string): Buffer;
+  /**
    * Ours, but captured by `CRASHPAD_SIMULATE_CRASH()` rather than by a fault —
    * what Chromium's GPU watchdog leaves behind for a process it then lets keep
    * running.
@@ -113,6 +119,13 @@ function makeRig(): Rig {
     ownDumpStamped: (version: string) =>
       buildMinidump(ownModules, {
         annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
+      }),
+    ownDumpWithAxMode: (version: string, mode: string) =>
+      buildMinidump(ownModules, {
+        annotations: { _productName: 'OpenKnowledge', _version: version, prod: 'Electron' },
+        // A module carrying nothing comes first, as in a real dump, so a walk
+        // that gave up at the first link would fail this.
+        annotationObjects: [{}, { ax_mode: mode, process_type: 'renderer' }],
       }),
     setRendererAvailable(available: boolean) {
       rendererAvailable = available;
@@ -1409,6 +1422,66 @@ describe('the version a boot invitation attributes the crash to', () => {
     const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
     expect(breadcrumb?.crashedAppVersion).toBeNull();
     expect(breadcrumb?.crashedAppVersionParseFailed).toBe(false);
+  });
+
+  test('the boot breadcrumb names the accessibility mode the dead session ran with', () => {
+    // The precondition the Blink accessibility CHECK crashes turn on: that
+    // CHECK is only reachable with a live accessibility tree, and
+    // OK_FORCE_A11Y is opt-in, so before this line the tree's presence could
+    // only be argued from circumstance. Chromium records it on every dump;
+    // nothing read it.
+    const mode = 'kNativeAPIs | kWebContents | kInlineTextBoxes | kExtendedPropert';
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(
+      rig,
+      'pending/native.dmp',
+      rig.tick(),
+      rig.ownDumpWithAxMode(CRASHED_VERSION, mode),
+    );
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.crashedAccessibilityMode).toBe(mode);
+    expect(breadcrumb?.crashedAccessibilityModeParseFailed).toBe(false);
+    // Read from the SAME dump as the version, so the two describe one death.
+    expect(breadcrumb?.crashedAppVersion).toBe(CRASHED_VERSION);
+  });
+
+  test('a dump carrying no accessibility mode logs null, not a missing field', () => {
+    // "We looked and the dump does not say" is itself the finding, and it is
+    // NOT "accessibility was off" — a dump for a process with no renderer in it
+    // never registers the key at all. A field that vanished here would make the
+    // absent case indistinguishable from a build that predates this line.
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick(), rig.ownDumpStamped(CRASHED_VERSION));
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb).toHaveProperty('crashedAccessibilityMode');
+    expect(breadcrumb?.crashedAccessibilityMode).toBeNull();
+    expect(breadcrumb?.crashedAccessibilityModeParseFailed).toBe(false);
   });
 
   test('a foreign dump does not make the event dump-driven', () => {

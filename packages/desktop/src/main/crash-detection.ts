@@ -63,6 +63,7 @@ import {
   classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
   type MinidumpOwnership,
+  readMinidumpAccessibilityMode,
   readMinidumpAppVersion,
 } from './minidump-ownership.ts';
 
@@ -793,6 +794,12 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             : undefined;
           const dumpVersion =
             eventDump === undefined ? null : readMinidumpAppVersion(eventDump.entry.path);
+          // Chromium's own record of whether an accessibility tree was live in
+          // the process that died. Read from the SAME dump the event id and the
+          // version come from, so all three describe one death rather than
+          // three separately-chosen dumps.
+          const dumpAccessibilityMode =
+            eventDump === undefined ? null : readMinidumpAccessibilityMode(eventDump.entry.path);
           const crashedAppVersion = dumpDriven ? (dumpVersion?.version ?? null) : prevAppVersion;
           const event: OkBugReportCrashDetectedEvent = {
             eventId,
@@ -823,6 +830,16 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 // change both reach the report as no version at all, and they
                 // send whoever debugs it in opposite directions.
                 crashedAppVersionParseFailed: dumpVersion?.parseFailed ?? false,
+                // Chromium's `ax_mode` for the process that died. The Blink
+                // accessibility `CHECK` crashes are reachable only with a live
+                // accessibility tree, and `OK_FORCE_A11Y` is opt-in, so before
+                // this the precondition could only be guessed at from
+                // circumstance. Logged even when null for the same reason the
+                // version is — but null here is NOT "accessibility was off",
+                // only "this dump does not say"; see
+                // `MinidumpAccessibilityModeRead`.
+                crashedAccessibilityMode: dumpAccessibilityMode?.mode ?? null,
+                crashedAccessibilityModeParseFailed: dumpAccessibilityMode?.parseFailed ?? false,
                 detectingAppVersion: deps.appVersion,
               },
               'previous session ended uncleanly — arming report invitation',

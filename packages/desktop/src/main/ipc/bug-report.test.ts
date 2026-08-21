@@ -65,6 +65,7 @@ import {
   sidecarPathForId,
 } from '../bug-report-sidecar.ts';
 import { createCrashDetection } from '../crash-detection.ts';
+import { buildMinidump } from '../minidump.test-helper.ts';
 import { handleShellOpenExternal } from '../shell-allowlist.ts';
 import {
   type BugReportCreateDeps,
@@ -1549,6 +1550,82 @@ describe('handleBugReportCreate — crash-dump opt-in', () => {
     expect(readZipEntryBytes(result.zipPath, 'extra/renderer-crash.dmp').equals(dumpBytes)).toBe(
       true,
     );
+  });
+
+  test('the decision line names the accessibility mode the crashed process ran with', async () => {
+    // The one fact that makes a Blink-accessibility-CHECK bundle diagnosable:
+    // whether an accessibility tree was live. It rides this line specifically
+    // because the line is written BEFORE collection, so it lands in the same
+    // bundle as the dump it describes rather than in some later report.
+    const mode = 'kNativeAPIs | kWebContents | kInlineTextBoxes | kExtendedPropert';
+    const dumpPath = join(makeTmpDir(), 'renderer-crash.dmp');
+    writeFileSync(
+      dumpPath,
+      buildMinidump(['/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge'], {
+        annotationObjects: [{}, { ax_mode: mode, process_type: 'renderer' }],
+      }),
+    );
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toMatchObject({
+      event: 'bug-report.minidump-decision',
+      accessibilityMode: mode,
+      accessibilityModeParseFailed: false,
+    });
+  });
+
+  test('a dump that names no accessibility mode records an explicit null', async () => {
+    // "We read the dump and it does not say" and "no dump was ever read" are
+    // different findings. The first is a null; the second is the field being
+    // absent entirely, asserted in the next test.
+    const dumpPath = join(makeTmpDir(), 'renderer-crash.dmp');
+    writeFileSync(dumpPath, 'dump-bytes');
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(dumpPath),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).toHaveProperty('accessibilityMode');
+    expect(recorder.intent()?.payload.accessibilityMode).toBeNull();
+  });
+
+  test('a report with no dump in play carries no accessibility field at all', async () => {
+    // A null here would read as "we looked at a dump and it was silent", which
+    // is a claim about a dump that does not exist.
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      newestMinidumpForReport: () => dumpLookup(null),
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      includeCrashDump: true,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(recorder.intent()?.payload).not.toHaveProperty('accessibilityMode');
+    expect(recorder.intent()?.payload).not.toHaveProperty('accessibilityModeParseFailed');
   });
 
   test('without the opt-in no minidump is included even when one exists', async () => {

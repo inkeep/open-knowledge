@@ -7465,8 +7465,52 @@ if (instanceLabel) {
 // because the always-on AX tree carries a small perpetual cost — set
 // `OK_FORCE_A11Y=1` when driving the app with an accessibility/automation tool.
 // Must run before `app` is ready (command-line switches are read at that point).
-if (process.env.OK_FORCE_A11Y === '1') {
+const A11Y_FORCED_BY_ENV = process.env.OK_FORCE_A11Y === '1';
+if (A11Y_FORCED_BY_ENV) {
   app.commandLine.appendSwitch('force-renderer-accessibility');
+}
+
+/**
+ * Record whether assistive technology is attached, at boot and on every flip.
+ *
+ * A whole family of renderer crashes reaches a Blink `CHECK` that is only
+ * reachable with a live accessibility tree. Chromium builds that tree lazily,
+ * once it detects an AT client — so on a report where `OK_FORCE_A11Y` was not
+ * set, the precondition of the entire diagnosis had to be argued from
+ * circumstance. Not one accessibility line existed in any bundled log to argue
+ * from.
+ *
+ * The companion signal is `ax_mode`, read off a minidump's Crashpad
+ * annotations (see `readMinidumpAccessibilityMode`). That one is exact — the
+ * full mode bitmask — but exists ONLY where there is a readable dump. This one
+ * is coarse and always present, and it carries the thing a dump cannot: WHEN
+ * the client attached, relative to everything else in the log.
+ *
+ * Read `supportEnabled` narrowly. It is Electron's `isAccessibilitySupportEnabled`,
+ * the browser process's own summary of whether an AT client is attached — not
+ * the renderer's `ui::AXMode`, and not a claim about which accessibility flags
+ * any particular renderer had set. A false here does NOT establish that no
+ * accessibility tree existed; only `ax_mode` answers that, and only for a
+ * process that died.
+ *
+ * Each phase reports the value from its own authoritative source rather than
+ * re-reading: the event hands the new value to the listener directly, and
+ * whether the getter has already settled by then is Chromium's business, not a
+ * thing this log should quietly depend on.
+ */
+function logAccessibilityPosture(phase: 'boot' | 'changed', supportEnabled: boolean): void {
+  getRootDesktopLogger().info(
+    {
+      event: 'desktop.accessibility',
+      phase,
+      supportEnabled,
+      // Whether the app itself forced the tree on, which makes `supportEnabled`
+      // beside the point for reachability: with the switch set, every renderer
+      // has a full tree whatever any AT client is doing.
+      forcedByEnv: A11Y_FORCED_BY_ENV,
+    },
+    'renderer accessibility posture',
+  );
 }
 
 if (isDriverBootSmokeMode(process.env)) {
@@ -7680,6 +7724,12 @@ function bootPrimaryInstance(): void {
   // xterm's `screenReaderMode` in place. Cold-start value rides window
   // creation via `--ok-screen-reader-active` (see withDebugFlagIfAllowed).
   app.on('accessibility-support-changed', (_event, screenReaderActive) => {
+    // Logged before the fan-out, so the record survives a send that throws.
+    // The timestamp is the point: it places an AT client attaching against the
+    // rest of the session, which is the one thing a crash dump's `ax_mode`
+    // cannot say. `@platform darwin,win32` — this never fires on Linux, so a
+    // Linux log carries the boot line alone.
+    logAccessibilityPosture('changed', screenReaderActive);
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.webContents.isDestroyed()) continue;
       sendToRenderer(win.webContents, 'ok:accessibility:changed', { screenReaderActive });
@@ -7933,6 +7983,13 @@ function bootPrimaryInstance(): void {
       // its return tells the waterfall whether main spans are live.
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
+      // The cold-start accessibility posture. Read HERE rather than beside the
+      // `desktop.boot` line, which runs before `whenReady`:
+      // `isAccessibilitySupportEnabled` reaches into browser-process state that
+      // does not exist until then, and a pre-ready read would report a default
+      // rather than an answer. `accessibility-support-changed` covers every
+      // later flip, so between them the whole session is described.
+      logAccessibilityPosture('boot', app.isAccessibilitySupportEnabled());
       // Login-shell SSH_AUTH_SOCK harvest — started here so its (2s-bounded)
       // shell spawn overlaps the bootstrap I/O below; awaited + applied just
       // before the window-open branch, ahead of the git preflight and both

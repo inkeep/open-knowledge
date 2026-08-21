@@ -44,6 +44,7 @@ import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-b
 import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
 import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
+import { readMinidumpAccessibilityMode } from '../minidump-ownership.ts';
 import { isPathWithinProject } from '../path-containment.ts';
 import type { UpdateChannel } from '../state-store.ts';
 
@@ -409,9 +410,22 @@ export async function handleBugReportCreate(
       : await stat(minidumpPath)
           .then((s) => s.size)
           .catch(() => undefined);
+  // Chromium's own record of whether an accessibility tree was live in the
+  // process that died. The Blink accessibility `CHECK` crashes are reachable
+  // only with one, and `OK_FORCE_A11Y` is opt-in, so until this line existed no
+  // bundle could tell a triager whether the precondition held — Crashpad had
+  // been recording it on every dump and nothing read it.
+  //
+  // Read from the dump about to be attached, so the fact and the memory it
+  // describes ride the same report rather than being correlated later.
+  const dumpAccessibilityMode =
+    minidumpPath === null ? null : readMinidumpAccessibilityMode(minidumpPath);
+
   // Deliberately says nothing about WHICH dump: a minidump is unredactable
   // process memory and its filename is a per-crash identifier, so the record
-  // carries a size at most.
+  // carries a size at most. The accessibility mode does not weaken that: it is
+  // a Chromium flag string, identical for every user running the same assistive
+  // technology, and names no dump.
   const decisionFacts = {
     event: 'bug-report.minidump-decision',
     requested: request.includeCrashDump === true,
@@ -426,6 +440,17 @@ export async function handleBugReportCreate(
         }
       : {}),
     ...(dumpSizeBytes !== undefined ? { sizeBytes: dumpSizeBytes } : {}),
+    // Present as an explicit null whenever a dump was read, absent when none
+    // was. "We looked and the dump does not say" and "nothing was ever looked
+    // at" are different findings, and a field that vanished for both would make
+    // them one. Null is never "accessibility was off" — see
+    // `MinidumpAccessibilityModeRead`.
+    ...(dumpAccessibilityMode === null
+      ? {}
+      : {
+          accessibilityMode: dumpAccessibilityMode.mode,
+          accessibilityModeParseFailed: dumpAccessibilityMode.parseFailed,
+        }),
   };
 
   // Written BEFORE the bundle is collected, because the collector snapshots
