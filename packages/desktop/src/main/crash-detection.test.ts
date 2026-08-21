@@ -1626,6 +1626,145 @@ describe('the version a boot invitation attributes the crash to', () => {
 });
 
 /**
+ * When the dead session was last known alive, and whether the machine ended it
+ * rather than the app failing — asleep, or mid-shutdown. The arming breadcrumb
+ * is what a dirty-shutdown report gets reconstructed from, and on the path
+ * where a fresh dump routes a machine-level death here it is the only record.
+ * So a crash it cannot date leaves the death anywhere in the gap between the
+ * session's last log line and the next launch, and one whose machine-level
+ * cause it cannot name reads as an ordinary crash.
+ */
+describe('when a boot invitation says the dead session stopped', () => {
+  test('the boot breadcrumb dates the dead session to its last heartbeat', () => {
+    // Without this the line names a crash but never says when it happened, so
+    // the window the session could have died in is the whole gap between its
+    // last log line and this launch. The heartbeat refreshes the value every
+    // SENTINEL_HEARTBEAT_INTERVAL_MS, which narrows that window to a minute —
+    // and the readings it separates ("died early, the relaunch was late" vs
+    // "hung until the relaunch") point at completely different bugs.
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    rig.advance(5 * 60_000);
+    dying.noteAlive();
+    const lastAliveAt = readSentinel(rig).lastAliveAt;
+    expect(lastAliveAt).toBeDefined();
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.lastAliveAt).toBe(lastAliveAt);
+    expect(breadcrumb?.suspendedAt).toBeNull();
+    expect(breadcrumb?.pendingOsShutdownAt).toBeNull();
+  });
+
+  test('a sentinel written before the liveness fields existed logs them as null', () => {
+    // Logged even when null, for the same reason the version beside them is:
+    // "we could not tell" is itself the finding, and an old-format sentinel and
+    // a torn write otherwise reach the report identically. A field that
+    // vanished here would be indistinguishable from a build predating the line.
+    const rig = makeRig();
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      `${JSON.stringify({ bootId: '1784494925550', startedAt: '2026-07-09T21:02:05.550Z' })}\n`,
+    );
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb).toHaveProperty('lastAliveAt');
+    expect(breadcrumb).toHaveProperty('suspendedAt');
+    expect(breadcrumb).toHaveProperty('pendingOsShutdownAt');
+    expect(breadcrumb?.lastAliveAt).toBeNull();
+    expect(breadcrumb?.suspendedAt).toBeNull();
+    expect(breadcrumb?.pendingOsShutdownAt).toBeNull();
+  });
+
+  test('a dump-driven arming after a death asleep carries the suspend marker', () => {
+    // The one path a non-null suspend marker reaches this line: a fresh dump
+    // overrides the died-asleep suppression, so the session is reported as the
+    // process dying rather than the machine ending it. The marker is then the
+    // only thing telling a reader the crash happened with the lid shut, which
+    // is the difference between a renderer fault and a power-loss artifact.
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    dying.noteSuspend();
+    const { lastAliveAt, suspendedAt } = readSentinel(rig);
+    expect(suspendedAt).toBeDefined();
+    expect(lastAliveAt).toBeDefined();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick());
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    // Pin the routing the premise above depends on. Both branches forward
+    // these two fields identically, so a refactor that dropped the suspend
+    // marker from `machineLevelDeath` would fall through to the ordinary
+    // dirty-shutdown branch and nothing here would notice.
+    expect(armed.eventId).toMatch(/^boot:dump:/);
+    expect(armed.context.dirtyShutdown).toBe(false);
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.suspendedAt).toBe(suspendedAt);
+    expect(breadcrumb?.lastAliveAt).toBe(lastAliveAt);
+    expect(breadcrumb?.pendingOsShutdownAt).toBeNull();
+  });
+
+  test('a dump-driven arming after an announced OS shutdown carries that marker', () => {
+    // The third witness the suppression predicate is built from, and it reaches
+    // this line under the same dump override as the suspend marker. Without it
+    // a reader seeing no suspend marker cannot separate an ordinary crash from
+    // one the OS killed mid-quit, because on this path the suppression
+    // breadcrumb that would have said so is never emitted at all.
+    const rig = makeRig();
+    const dying = createCrashDetection(rig.deps);
+    dying.detectBootCrash();
+    dying.noteOsShutdown();
+    const pendingOsShutdownAt = readSentinel(rig).pendingOsShutdownAt;
+    expect(pendingOsShutdownAt).toBeDefined();
+    seedMinidump(rig, 'pending/native.dmp', rig.tick());
+
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    const armed = bootInvite(createCrashDetection(rig.deps).detectBootCrash());
+
+    expect(armed.eventId).toMatch(/^boot:dump:/);
+    expect(armed.context.dirtyShutdown).toBe(false);
+
+    const breadcrumb = infoLines.find((line) => line.event === 'crash-detection.boot');
+    expect(breadcrumb?.pendingOsShutdownAt).toBe(pendingOsShutdownAt);
+    expect(breadcrumb?.suspendedAt).toBeNull();
+  });
+});
+
+/**
  * Dumps that were captured without a fault.
  *
  * Chromium's GPU watchdog calls `DumpWithoutCrashing()` on a process that

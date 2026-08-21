@@ -855,6 +855,26 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 detectedAt: detectedAt.toISOString(),
                 dirtyShutdown: !dumpDriven,
                 newMinidumps: newDumps.length,
+                // When the dead session was last known alive, and whether it
+                // was asleep at the time. The heartbeat refreshes `lastAliveAt`
+                // every `SENTINEL_HEARTBEAT_INTERVAL_MS`, so it dates the death
+                // to within a minute; without it the only bound is the gap
+                // between the session's last log line and this launch, which
+                // runs to hours, leaving "died early, the relaunch was late"
+                // and "hung until the relaunch" equally consistent with the
+                // report while pointing at different bugs.
+                //
+                // The suspend and OS-shutdown markers are the other two
+                // witnesses the suppression predicate is built from, and a
+                // fresh dump routes their sessions here instead, where that
+                // breadcrumb is never emitted. Carrying only some of them
+                // would let their absence read as "no machine-level death"
+                // when it only means "not the one we happened to log". All
+                // three are logged even when null, for the same reason the
+                // version below is.
+                lastAliveAt: prevLastAliveAt,
+                suspendedAt: prevSuspendedAt,
+                pendingOsShutdownAt: prevPendingOsShutdownAt,
                 // Logged even when null: this line is what an incident gets
                 // reconstructed from, and "we could not tell" is itself the
                 // finding when the two sources both come up empty.
