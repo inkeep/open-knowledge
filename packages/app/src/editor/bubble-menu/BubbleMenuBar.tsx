@@ -6,8 +6,12 @@ import { BubbleMenu } from '@tiptap/react/menus';
 import { useRef, useState } from 'react';
 import { CommentBubbleButton } from '@/comments/CommentBubbleButton';
 import { Separator } from '@/components/ui/separator';
+import {
+  deriveEditorClipOptions,
+  deriveEditorShiftOptions,
+  SELECTION_SURFACE_GAP_PX,
+} from '../utils/editor-visible-region';
 import { BlockTypeSelector } from './BlockTypeSelector';
-import { deriveEditorClipOptions } from './bubble-menu-clip';
 import { shouldShowBubbleMenu } from './bubble-menu-state';
 import { FileBubbleButtons, isFileNodeSelected } from './FileBubbleButtons';
 import { FootnoteBubbleButton } from './FootnoteBubbleButton';
@@ -60,8 +64,11 @@ export function BubbleMenuBar({
 
   // Clips placement to the editor's visible content region and hides the bar
   // when the selection scrolls behind the toolbar / bottom composer / footer —
-  // see bubble-menu-clip.ts for why the viewport alone is the wrong boundary.
+  // see editor-visible-region.ts for why the viewport alone is the wrong boundary.
   const clipOptions = deriveEditorClipOptions(editor);
+  // The clamp that keeps the bar inside that region. The boundary alone only
+  // detects the overflow.
+  const shiftOptions = deriveEditorShiftOptions(editor);
 
   const onShow = () => {
     const popup = menuRef.current;
@@ -71,7 +78,12 @@ export function BubbleMenuBar({
       computePosition(virtualEl, popup, {
         placement: 'top',
         strategy: 'fixed',
-        middleware: [offset(8), flip(clipOptions), shift({ padding: 8 }), hide(clipOptions)],
+        middleware: [
+          offset(SELECTION_SURFACE_GAP_PX),
+          flip(clipOptions),
+          shift(shiftOptions),
+          hide(clipOptions),
+        ],
       })
         .then(({ x, y, middlewareData }) => {
           if (popup.isConnected) {
@@ -84,8 +96,12 @@ export function BubbleMenuBar({
             popup.style.visibility = middlewareData.hide?.referenceHidden ? 'hidden' : 'visible';
           }
         })
-        .catch(() => {
-          // Position calculation failed (e.g., detached element) — autoUpdate will retry
+        .catch((error: unknown) => {
+          // computePosition is deferred third-party work, so teardown can win
+          // the race. Live popups need a diagnostic; autoUpdate will retry.
+          if (popup.isConnected) {
+            console.warn('[bubble-menu] computePosition failed', error);
+          }
         });
     });
   };
@@ -108,15 +124,24 @@ export function BubbleMenuBar({
       updateDelay={250}
       // flip/shift/hide mirror the autoUpdate loop above: the plugin runs its
       // own computePosition on editor transactions (remote CRDT edits
-      // included), so both paths must agree on clipping and on when the
-      // selection counts as occluded — the plugin applies `referenceHidden`
-      // itself.
+      // included), so both paths must agree on clipping, on the clamp that
+      // keeps the bar inside the clip region, and on when the selection counts
+      // as occluded — the plugin applies `referenceHidden` itself.
+      //
+      // `placement` and `offset` are stated rather than inherited from the
+      // plugin's defaults because `pendingOffsetPx` below compensates for this
+      // chain applying its gap AFTER the clamp — that compensation is only
+      // correct while the gap matches the loop's, so both paths name it.
       options={{
         onShow,
         onHide,
         strategy: 'fixed',
+        placement: 'top',
+        offset: SELECTION_SURFACE_GAP_PX,
         flip: clipOptions,
-        shift: { padding: 8 },
+        shift: deriveEditorShiftOptions(editor, {
+          pendingOffsetPx: SELECTION_SURFACE_GAP_PX,
+        }),
         hide: clipOptions,
       }}
       className="z-50 flex items-center gap-0.5 rounded-lg border bg-background p-1 shadow-md"

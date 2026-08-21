@@ -1,10 +1,23 @@
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
+import type { Editor } from '@tiptap/core';
 import type { SuggestionProps } from '@tiptap/suggestion';
+import {
+  deriveEditorClipOptions,
+  deriveEditorShiftOptions,
+} from '@/editor/utils/editor-visible-region';
 
 export interface SuggestionPositionState {
   popup: HTMLDivElement | null;
   stopAutoUpdate: (() => void) | null;
 }
+
+/**
+ * Gap a suggestion picker keeps from its caret, in both the document editor and
+ * the composers. Independent of the visible-region contract: the clamp works at
+ * any gap, so this stays at the value the pickers have always used rather than
+ * harmonising with the bubble bar's.
+ */
+const SUGGESTION_ANCHOR_GAP_PX = 4;
 
 /**
  * How many selectable items the currently-open suggestion picker holds, keyed
@@ -34,6 +47,56 @@ export function suggestionHasSelectableItem(view: object): boolean {
 }
 
 /**
+ * The picker's middleware chain.
+ *
+ * Without an `editor` this is the window-relative chain: `flip`/`shift` fall
+ * back to floating-ui's clipping ancestors, and `size` caps the list at 40vh.
+ * With one, all three take the editor's visible content region instead, so a
+ * ~490px picker opened past the middle of the prose column stops sliding over
+ * whatever sits in the rail beside the pane.
+ *
+ * `size` sits BEFORE `shift`, which is the reverse of floating-ui's usual
+ * advice and is load-bearing here. `size` measures the floating rect where it
+ * currently is; run after the clamp it sees a box the clamp has already pushed
+ * inside the region, reports no overflow, and never shrinks anything — leaving
+ * a full-height picker parked over the caret line whenever the caret sits too
+ * far from both region edges to host one. Run before the clamp it measures the
+ * ideal placement, caps the list at the room actually available beside the
+ * anchor, and leaves the clamp with nothing to do.
+ */
+function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
+  const applySize = {
+    apply({ availableHeight }: { availableHeight: number }) {
+      if (popup.isConnected) {
+        popup.style.setProperty(
+          '--suggestion-menu-max-height',
+          `${Math.min(availableHeight, window.innerHeight * 0.4)}px`,
+        );
+      }
+    },
+  };
+  if (!editor) {
+    return [
+      offset(SUGGESTION_ANCHOR_GAP_PX),
+      flip(),
+      // Keep the popup inside the viewport when its width pushes past the
+      // right edge — required since the slash-menu preview panel widened the
+      // popup to ~490px, where right-half cursor positions or narrow viewports
+      // would otherwise clip the preview.
+      shift({ padding: 8 }),
+      size(applySize),
+    ];
+  }
+  const clipOptions = deriveEditorClipOptions(editor);
+  return [
+    offset(SUGGESTION_ANCHOR_GAP_PX),
+    flip(clipOptions),
+    size(() => ({ ...clipOptions(), ...applySize })),
+    shift(deriveEditorShiftOptions(editor)),
+  ];
+}
+
+/**
  * Create a positioned suggestion popup element and its positioning helpers.
  * Shared by slash-command and wiki-link suggestion menus.
  *
@@ -58,10 +121,19 @@ export function suggestionHasSelectableItem(view: object): boolean {
  * is async (returns Promise). The `.then()` can resolve after cleanup has
  * called `popup.remove()` — at that point the reference is non-null but
  * disconnected. A null-check alone would miss this race.
+ *
+ * `clipToEditorPane` opts a picker into the editor's visible-region contract:
+ * the caret it tracks lives in the document's scroll container, so the picker
+ * belongs inside that container's visible box rather than merely inside the
+ * window. It is opt-in rather than derived because this factory also serves the
+ * COMPOSER pickers, whose caret sits in the Ask AI / comment composer — a
+ * surface that legitimately floats outside the document pane, and would be
+ * clamped into it by a blanket application.
  */
 export function createSuggestionPopup(
   getCurrentProps: () => SuggestionProps<unknown> | null,
   label: string,
+  { clipToEditorPane = false }: { clipToEditorPane?: boolean } = {},
 ): {
   popup: HTMLDivElement;
   doPosition: () => void;
@@ -107,27 +179,10 @@ export function createSuggestionPopup(
     // available space → items load but flip() still sees the constrained height
     // → never flips above. The fallback 40vh matches the component's CSS default.
     popup.style.removeProperty('--suggestion-menu-max-height');
+    const editor = clipToEditorPane ? getCurrentProps()?.editor : undefined;
     computePosition(virtualEl, popup, {
       placement: 'bottom-start',
-      middleware: [
-        offset(4),
-        flip(),
-        // Keep the popup inside the viewport when its width pushes past the
-        // right edge — required since the slash-menu preview panel widened the
-        // popup to ~490px, where right-half cursor positions or narrow viewports
-        // would otherwise clip the preview.
-        shift({ padding: 8 }),
-        size({
-          apply({ availableHeight }) {
-            if (popup.isConnected) {
-              popup.style.setProperty(
-                '--suggestion-menu-max-height',
-                `${Math.min(availableHeight, window.innerHeight * 0.4)}px`,
-              );
-            }
-          },
-        }),
-      ],
+      middleware: buildMiddleware(popup, editor),
     })
       .then(({ x, y }) => {
         if (popup.isConnected) {

@@ -1071,7 +1071,7 @@ export function ScrollPreservingContainer({
     <div
       ref={ref}
       data-testid="editor-scroll-container"
-      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Five
+      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Six
       // load-bearing constants must move together if the toolbar height changes:
       //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
       //     start behind the absolute-positioned EditorToolbar overlay.
@@ -1092,6 +1092,9 @@ export function ScrollPreservingContainer({
       //   - editorToolbarOverlapPx in editor/mode-switch-landing.ts: the mode-switch
       //     capture probes step in from this inset, and the landing hands it to
       //     the controller as the target's resting offset below the toolbar.
+      //   - editorToolbarOverlapPx in editor/utils/editor-visible-region.ts: the
+      //     top inset of the region selection-anchored floating surfaces clip
+      //     and clamp against, so the toolbar band counts as occluded.
       // The toolbar itself: components/EditorToolbar.tsx.
       className={cn(
         'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',

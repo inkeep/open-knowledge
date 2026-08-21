@@ -949,7 +949,7 @@ test.describe('markdown lint — WYSIWYG hover callout vs the editing region', (
 
   /**
    * Max distance from the callout's bottom edge to the top of the block it
-   * describes. `offset(6)` sets the intended gap; the allowance absorbs
+   * describes. `LINT_CALLOUT_GAP_PX` sets the intended gap; the allowance absorbs
    * `shift()` nudges and sub-pixel jitter while staying far below a callout
    * that has lost its anchor altogether — an anchor rect of all zeros parks it
    * at the viewport origin, measured 170.4 px from its block on this fixture

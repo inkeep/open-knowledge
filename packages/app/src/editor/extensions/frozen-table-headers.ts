@@ -56,11 +56,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { EDITOR_TOOLBAR_HEIGHT, editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 
 // EditorToolbar is absolutely positioned at the top of the scroll container,
-// 3.5rem tall. Frozen headers must clear it. One of the four load-bearing
+// 3.5rem tall. Frozen headers must clear it. One of the six load-bearing
 // toolbar-height constants listed in components/EditorActivityPool.tsx —
-// move them together. Exported so selection-anchored floating menus can treat
-// the toolbar band as occluded (editor/bubble-menu/bubble-menu-clip.ts)
-// instead of keeping a fifth drifting copy of the value.
+// move them together. A re-export of the canonical value in
+// lib/editor-toolbar-overlap.ts rather than a second copy: the
+// selection-anchored floating surfaces read that module directly (through
+// editorToolbarOverlapPx), and this name is what their region tests and the
+// globals.css occluder note cite for the band.
 export const TOOLBAR_HEIGHT = EDITOR_TOOLBAR_HEIGHT;
 
 // Subtle shadow to indicate the frozen row overlaps the table body.

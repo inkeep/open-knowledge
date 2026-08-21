@@ -41,7 +41,7 @@ import {
   MarkdownManager,
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
-import { Extension } from '@tiptap/core';
+import { type Editor, Extension } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
@@ -52,10 +52,21 @@ import {
   clearPendingSourceNavigation,
   peekPendingSourceNavigation,
 } from '@/editor/source-editor-navigation';
+import {
+  deriveEditorClipOptions,
+  deriveEditorShiftOptions,
+} from '@/editor/utils/editor-visible-region';
 import { cn } from '@/lib/utils';
 import { blockIndexForLine, comparableChildCount, computeSourceBlockSpans } from '../block-spans';
 import { fetchEffectiveLintConfig, subscribeToLintConfigChanged } from '../lint-config-client';
 import { runScrollNavigation } from '../scroll-restore-coordination';
+
+/**
+ * Gap the hover callout keeps from the block it describes. Independent of the
+ * visible-region contract: the clamp works at any gap, so this stays at the
+ * value the callout has always used.
+ */
+const LINT_CALLOUT_GAP_PX = 6;
 
 const markdownLintDecorationKey = new PluginKey<DecorationSet>('markdownLintDecorations');
 
@@ -176,6 +187,8 @@ function createLintTooltip(
   opts: {
     getFixes: (block: HTMLElement) => LintTextEdit[];
     applyFix?: (fixes: LintTextEdit[]) => void;
+    /** The host editor, for the visible-region clip/clamp the callout takes. */
+    editor: Editor;
   },
 ): { destroy: () => void } {
   const tooltip = document.createElement('div');
@@ -257,10 +270,19 @@ function createLintTooltip(
     hideTimer = setTimeout(reallyHide, 140);
   }
 
+  // The callout is anchored to a line inside the document's scroll container,
+  // so the editor's visible content region — not the window — is the box it has
+  // to stay in. The boundary alone only detects the overflow; the clamp is what
+  // keeps a callout hovered near the column's right edge from sliding over the
+  // rail beside the pane, and one hovered near the top of the pane from
+  // painting across the toolbar.
+  const clipOptions = deriveEditorClipOptions(opts.editor);
+  const shiftOptions = deriveEditorShiftOptions(opts.editor);
+
   function position() {
     computePosition(virtualEl, tooltip, {
       placement: 'top-start',
-      middleware: [offset(6), flip(), shift({ padding: 8 })],
+      middleware: [offset(LINT_CALLOUT_GAP_PX), flip(clipOptions), shift(shiftOptions)],
     })
       .then(({ x, y }) => {
         if (tooltip.isConnected) {
@@ -426,6 +448,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
 
   addProseMirrorPlugins() {
     const { docName, getSource, applyFix } = this.options;
+    const { editor } = this;
     // One serializer/parser for this editor's lifetime — same extension set the
     // bridge uses, so serialize→lint→parseToMdast matches the rendered content.
     const md = new MarkdownManager({ extensions: coreExtensions });
@@ -662,7 +685,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             const offset = resolved.depth >= 1 ? resolved.before(1) : 0;
             return currentFixes.get(offset) ?? [];
           };
-          const tooltip = createLintTooltip(view, { getFixes, applyFix });
+          const tooltip = createLintTooltip(view, { getFixes, applyFix, editor });
           window.addEventListener(LINT_NAV_EVENT, onLintNav);
           // Re-lint after a source-only auto-fix (which leaves the PM doc — and
           // thus the update() hook below — untouched) so the stale squiggle clears.

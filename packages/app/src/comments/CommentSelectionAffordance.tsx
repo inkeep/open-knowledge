@@ -13,9 +13,12 @@
  * selection, so without that mark a multi-line pick lost its end; with it, a
  * quote preview would be saying twice what the page already shows.
  *
- * Positioning clones the BubbleMenuBar recipe (posToDOMRect virtual element +
+ * Positioning follows the BubbleMenuBar recipe (posToDOMRect virtual element +
  * floating-ui autoUpdate/computePosition) anchored to the captured range so the
- * card stays put while you type. Rendered above the native bar (z-60).
+ * card stays put while you type. The middleware chain is this card's own, but
+ * the region it clips and clamps against comes from the same producers the
+ * formatting bar uses (editor/utils/editor-visible-region.ts) rather than a
+ * second description of the pane. Rendered above the native bar (z-60).
  */
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
@@ -32,6 +35,11 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import {
+  deriveEditorClipOptions,
+  deriveEditorShiftOptions,
+  SELECTION_SURFACE_GAP_PX,
+} from '@/editor/utils/editor-visible-region';
 import { getEditorView } from '@/editor/utils/get-editor-view';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
@@ -143,12 +151,36 @@ export function CommentSelectionAffordance({
       computePosition(virtualEl, floating, {
         placement: 'bottom-start',
         strategy: 'fixed',
-        middleware: [offset(8), flip(), shift({ padding: 8 })],
-      }).then(({ x, y }) => {
-        floating.style.position = 'fixed';
-        floating.style.left = `${x}px`;
-        floating.style.top = `${y}px`;
-      });
+        middleware: [
+          offset(SELECTION_SURFACE_GAP_PX),
+          // A bare flip() clips against the viewport, which includes the
+          // tab strip above the pane — so the card needs the region
+          // boundary as well as the clamp that keeps it inside it.
+          flip(deriveEditorClipOptions(editor)),
+          shift(deriveEditorShiftOptions(editor)),
+          // No hide(): unlike the formatting bar, this card holds a draft and
+          // owns focus, so stamping `visibility: hidden` on it would drop the
+          // caret to <body> mid-sentence. Scrolling the captured passage out
+          // of the region parks the card at the region's edge instead, where
+          // the draft stays reachable.
+        ],
+      })
+        .then(({ x, y }) => {
+          if (!floating.isConnected) return;
+          floating.style.position = 'fixed';
+          floating.style.left = `${x}px`;
+          floating.style.top = `${y}px`;
+        })
+        .catch((error: unknown) => {
+          // The region producers are evaluated inside this call, so a rejection
+          // can originate here or in floating-ui. Keep the last good
+          // coordinates rather than moving the card somewhere wrong, and say
+          // why — a silent card that has stopped tracking its passage reads as
+          // a positioning bug with no trail.
+          if (floating.isConnected) {
+            console.warn('[comments] composer computePosition failed', error);
+          }
+        });
     });
   }, [captured, editor]);
 

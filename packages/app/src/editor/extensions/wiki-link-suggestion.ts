@@ -761,7 +761,9 @@ export function configureWikiLinkSuggestion(editor: Editor) {
           currentProps = props;
           selectedIndex = 0;
 
-          const result = createSuggestionPopup(() => currentProps, 'wiki-link-suggestion');
+          const result = createSuggestionPopup(() => currentProps, 'wiki-link-suggestion', {
+            clipToEditorPane: true,
+          });
           posState.popup = result.popup;
           doPosition = result.doPosition;
           reveal = result.reveal;

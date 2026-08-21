@@ -306,7 +306,9 @@ export function configureTagSuggestion(editor: Editor) {
           currentProps = props;
           selectedIndex = 0;
 
-          const result = createSuggestionPopup(() => currentProps, 'tag-suggestion');
+          const result = createSuggestionPopup(() => currentProps, 'tag-suggestion', {
+            clipToEditorPane: true,
+          });
           posState.popup = result.popup;
           doPosition = result.doPosition;
           reveal = result.reveal;

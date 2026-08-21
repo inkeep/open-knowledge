@@ -202,7 +202,9 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
               currentProps = props;
               selectedIndex = 0;
 
-              const result = createSuggestionPopup(() => currentProps, 'slash-command');
+              const result = createSuggestionPopup(() => currentProps, 'slash-command', {
+                clipToEditorPane: true,
+              });
               posState.popup = result.popup;
               doPosition = result.doPosition;
 
