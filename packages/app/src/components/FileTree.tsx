@@ -43,6 +43,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { DeleteConfirmationDialog } from '@/components/DeleteConfirmationDialog';
+import { requestDocPanelTab } from '@/components/doc-panel-events';
 import {
   FileTargetMenuItems,
   type FileTargetMenuPrimitives,
@@ -127,6 +128,7 @@ import {
 import {
   applyProblemIndicators,
   FILE_TREE_PROBLEM_CSS,
+  OK_PROBLEM_BADGE_ATTR,
 } from '@/components/file-tree-problem-indicators';
 import {
   applyRenameInputAffordance,
@@ -1019,14 +1021,17 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     setSkillsSidebar(false);
     notifySidebarFileSelected();
   }
-  function activateTreePath(treePath: string, entries: readonly FileEntry[] = documents) {
+  function activateTreePath(
+    treePath: string,
+    entries: readonly FileEntry[] = documents,
+  ): 'doc' | 'non-doc' | 'none' {
     const action = resolveFileTreeSelectionAction(treePath, entries);
     if (action.kind === 'none') {
       console.debug(
         '[FileTree] Dropped selection for unknown docName:',
         treePathToAppPath(treePath),
       );
-      return;
+      return 'none';
     }
     if (action.kind === 'asset') {
       openTarget(
@@ -1040,11 +1045,11 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       );
       pushHashWithoutNavigation(action.hash);
       notifySidebarFileSelected();
-      return;
+      return 'non-doc';
     }
     if (action.kind === 'folder') {
       navigateWithPulse({ kind: 'folder', folderPath: action.path });
-      return;
+      return 'non-doc';
     }
     const docEntry = entries.find(
       (item): item is DocumentEntry => isDocumentEntry(item) && item.docName === action.path,
@@ -1064,11 +1069,11 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       openTarget(okTarget, previewOpenOptions);
       pushHashWithoutNavigation(hashFromAssetPath(okTarget.assetPath));
       notifySidebarFileSelected();
-      return;
+      return 'non-doc';
     }
     if (okTarget?.kind === 'doc') {
       navigateWithPulse({ kind: 'doc', docName: okTarget.docName });
-      return;
+      return 'doc';
     }
     navigateWithPulse({
       kind: 'doc',
@@ -1076,6 +1081,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       size: docEntry?.size,
       registerPage: hasSupportedDocumentExtension(action.path),
     });
+    return 'doc';
   }
   const activeDocNameRef = useRef(activeDocName);
   const assetTreePaths = new Set(
@@ -2640,6 +2646,30 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
   // this component but would leave every chip already on screen in the old
   // language until the tree next mutated or an audit landed.
   const problemIndicatorsEnabled = merged?.validation?.fileTreeIndicators !== false;
+  /**
+   * A row's problem badge asks about that row's file, so activation opens that
+   * row first and only then asks for the panel — the panel lists problems for
+   * whatever doc is active when it opens.
+   *
+   * `activateTreePath` rather than a navigation built from the badge's own
+   * docName: it is the single resolver that already knows about tree paths with
+   * no matching document, asset rows, and the read-only reroute a revealed
+   * `.ok` doc takes. A badge has to land exactly where a click on its own row
+   * would, and reaching past the resolver is how those three diverge.
+   *
+   * An effect event rather than a plain closure: the pass below installs this
+   * on a badge from an effect that does not re-run per render, so it has to
+   * resolve the navigation deps as of the click, not as of the install.
+   */
+  const openProblemsForTreePath = useEffectEvent(
+    (treePath: string, source: 'pointer' | 'keyboard') => {
+      if (activateTreePath(treePath) !== 'doc') return;
+      requestDocPanelTab('problems', {
+        scope: 'doc',
+        focus: source === 'keyboard' ? 'panel' : undefined,
+      });
+    },
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: i18n.locale is an intentional re-run trigger, not a value the body reads; the strings it controls are written inside applyProblemIndicators.
   useEffect(() => {
     if (loading || documents.length === 0) return;
@@ -2651,7 +2681,8 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       applyProblemIndicators(shadow, new Map());
       return;
     }
-    const apply = () => applyProblemIndicators(shadow, getValidationSnapshot());
+    const apply = () =>
+      applyProblemIndicators(shadow, getValidationSnapshot(), openProblemsForTreePath);
     apply();
     const observer = new MutationObserver(apply);
     observer.observe(shadow, {
@@ -2664,6 +2695,10 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     return () => {
       observer.disconnect();
       unsubscribe();
+      // Dependency changes also run this cleanup. Stripping a focused badge
+      // here would move focus back to its row during unrelated file-list or
+      // locale updates; the next pass updates badges in place, while an actual
+      // unmount removes the shadow host with them.
     };
   }, [loading, documents.length, problemIndicatorsEnabled, i18n.locale]);
 
@@ -3372,6 +3407,13 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
 
+    // A row's problem badge is a control of its own and answers this click
+    // itself. Letting the row resolve it as well navigates twice for one
+    // gesture, down two different resolution paths. The badge cannot prevent
+    // that by stopping propagation: this handler runs in the capture phase,
+    // before the badge's own listener ever sees the event.
+    if (eventPathHasProblemBadge(event.nativeEvent)) return;
+
     // Pierre only emits selection changes when the selected path changes.
     // If app navigation lags behind the selected row, a plain click on that
     // already-selected row still needs to activate the row's target.
@@ -3772,6 +3814,20 @@ function findTreeItemElement(event: MouseEvent): HTMLElement | null {
     }
   }
   return null;
+}
+
+/**
+ * Whether the click started on a problem badge. Walks the composed path rather
+ * than reading `event.target`, which retargets to the shadow host for any
+ * listener outside Pierre's shadow root.
+ */
+function eventPathHasProblemBadge(event: MouseEvent): boolean {
+  for (const entry of event.composedPath()) {
+    if (entry instanceof HTMLElement && entry.hasAttribute(OK_PROBLEM_BADGE_ATTR)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function findTreeVirtualizedRootElement(event: MouseEvent): HTMLElement | null {

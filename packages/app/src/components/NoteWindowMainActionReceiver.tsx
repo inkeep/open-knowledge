@@ -44,7 +44,7 @@ export function dispatchNoteWindowMainAction(
         revealQueue();
         return;
       }
-      requestDocPanelTab('comments', target);
+      requestDocPanelTab('comments', {}, target);
       if (typeof window === 'undefined' || target !== window) return;
       const nextHash = hashFromDocName(action.docName);
       if (!isSameHash(window.location.hash, nextHash)) window.location.hash = nextHash;

@@ -1162,6 +1162,7 @@
     "F4_wQj": ["Search with Google"],
     "F4vEsL": ["Sync status: ", ["syncStateLabel"]],
     "F6pfE9": ["Active"],
+    "F8GW_c": [["label"], " problems"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Run a real terminal docked inside OpenKnowledge, starting in this project's folder."
@@ -3065,6 +3066,7 @@
       ["overflow"],
       " more before deleting."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": ["More than ", ["0"], " requests were blocked by the preview's security policy"],
     "dprWmL": ["Anchor in this page"],
     "dr1vFs": ["Replace all matches"],
@@ -3087,6 +3089,7 @@
     "e8zYa8": ["Could not open ", ["shareBranch"], " in a worktree. Try again."],
     "e9sHSO": ["Pick up where you left off"],
     "eBIT9h": ["Paste failed.", ["restoreSuffix"]],
+    "eCDwNN": [["total", "plural", { "one": ["#", " problem"], "other": ["#", " problems"] }]],
     "eFJkVt": ["Clone failed: ", ["cloneError"]],
     "eG8Jsg": ["Toggle source tab focus mode"],
     "eGUbmF": ["Copy selected file or folder"],

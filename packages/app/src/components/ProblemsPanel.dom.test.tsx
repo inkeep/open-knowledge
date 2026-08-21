@@ -8,7 +8,14 @@
  */
 
 import type { LintDiagnostic, ValidationAuditResponse } from '@inkeep/open-knowledge-core';
-import { cleanup, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render as rtlRender,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { SWEEP_PROGRESS_CHUNK, sweepProgressInterval } from '@/components/problems-sweep';
@@ -133,6 +140,9 @@ const { __resetProjectFixSweepForTests } = await import('@/lib/project-fix-sweep
 const { consumePendingSourceNavigation, clearPendingSourceNavigationsForTest } = await import(
   '@/editor/source-editor-navigation'
 );
+// The real bus, deliberately unmocked: the scope tests raise a request exactly
+// the way the file tree's problem badge does.
+const { consumePendingDocPanelRequest, requestDocPanelTab } = await import('./doc-panel-events');
 
 /** Diagnostic at a 1-based line/column (the display convention these tests assert). */
 function diag(over: Partial<LintDiagnostic> & { line?: number; column?: number }): LintDiagnostic {
@@ -247,6 +257,9 @@ afterEach(() => {
   clearPendingSourceNavigationsForTest();
   __resetProjectFixSweepForTests();
   window.location.hash = '';
+  // Production expiry owns abandoned requests; the explicit drain keeps this
+  // synchronous test boundary deterministic even under fake timers.
+  consumePendingDocPanelRequest('problems');
 });
 
 /**
@@ -1733,6 +1746,108 @@ describe('ProblemsPanel — project scope', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.getByText('second.md')).toBeTruthy();
     expect(screen.queryByText('first.md')).toBeNull();
+  });
+});
+
+describe('ProblemsPanel — scoped tab requests', () => {
+  /** Put a freshly rendered panel into project scope with a settled plane. */
+  async function showProjectScope() {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({})] }] });
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+  }
+
+  test('a doc-scoped problems request pulls a project-scope panel back to this doc', async () => {
+    render(
+      <ProblemsPanel docName="notes" diagnostics={[diag({ line: 1, message: 'Hard tabs' })]} />,
+    );
+    await showProjectScope();
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+
+    expect(screen.queryByTestId('problems-project-scope')).toBeNull();
+    expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+    expect(screen.getByText('Hard tabs')).toBeTruthy();
+  });
+
+  test('leaves the scope alone for another tab and for a request carrying no scope', async () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    await showProjectScope();
+
+    act(() => requestDocPanelTab('comments', { scope: 'doc' }));
+    expect(screen.getByTestId('problems-project-scope')).toBeTruthy();
+
+    act(() => requestDocPanelTab('problems'));
+    expect(screen.getByTestId('problems-project-scope')).toBeTruthy();
+  });
+
+  test('scope and keyboard focus named before the panel existed reach it on mount', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({})] }] });
+    // The request that names the Problems tab is what mounts this panel, so it
+    // goes out with nobody subscribed. Delivering only over the wire would drop
+    // the scope and leave the panel on its own default.
+    act(() => requestDocPanelTab('problems', { scope: 'project', focus: 'panel' }));
+
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    expect(screen.getByTestId('panel-scope-project').getAttribute('data-state')).toBe('on');
+    expect(document.activeElement).toBe(screen.getByTestId('problems-panel'));
+  });
+
+  test('pointer-style requests preserve focus while keyboard requests move it to the panel', () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    const prior = document.createElement('button');
+    document.body.appendChild(prior);
+    prior.focus();
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+    expect(document.activeElement).toBe(prior);
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc', focus: 'panel' }));
+    expect(document.activeElement).toBe(screen.getByTestId('problems-panel'));
+    prior.remove();
+  });
+
+  test('a latched scope is spent once, not re-applied to the next panel', async () => {
+    runLintAuditImpl = async () =>
+      auditResult({ files: [{ file: 'guides/setup.md', diagnostics: [diag({})] }] });
+    act(() => requestDocPanelTab('problems', { scope: 'project' }));
+    const first = render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    await waitFor(() => expect(screen.getByText('guides/setup.md')).toBeTruthy());
+    first.unmount();
+
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+  });
+
+  test('a live panel consumes the scope, leaving nothing for the next mount', async () => {
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    await showProjectScope();
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+    cleanup();
+    render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+
+    // Nothing latched, so this panel lands on its own default rather than
+    // re-running a scope the previous panel already answered.
+    expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+  });
+
+  test('stops honoring scoped requests once the panel unmounts', () => {
+    runLintAuditImpl = async () => auditResult();
+    const { unmount } = render(<ProblemsPanel docName="notes" diagnostics={[]} />);
+    unmount();
+
+    // A leaked subscription would run the scope change against the dead panel;
+    // asking for project scope is what makes that observable, because a first
+    // project activation fetches the audit plane.
+    act(() => requestDocPanelTab('problems', { scope: 'project' }));
+
+    expect(auditCalls).toBe(0);
   });
 });
 

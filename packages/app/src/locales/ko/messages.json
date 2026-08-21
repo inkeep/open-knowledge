@@ -1111,6 +1111,7 @@
     "F4_wQj": ["Google로 검색"],
     "F4vEsL": ["동기화 상태: ", ["syncStateLabel"]],
     "F6pfE9": ["활성"],
+    "F8GW_c": ["문제 ", ["label"], "개"],
     "FBknns": ["HTML"],
     "FCAcjR": ["이 프로젝트 폴더에서 시작하는 실제 터미널을 OpenKnowledge 안에 고정해 실행합니다."],
     "FCKppt": ["엔드포인트"],
@@ -2958,6 +2959,7 @@
       ["overflow"],
       "개 항목을 더 처리하세요."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": [["0"], "개를 초과하는 요청이 미리보기 보안 정책으로 차단되었습니다"],
     "dprWmL": ["이 페이지의 앵커"],
     "dr1vFs": ["일치 항목 모두 바꾸기"],
@@ -2980,6 +2982,7 @@
     "e8zYa8": ["워크트리에서 ", ["shareBranch"], " 브랜치 열기에 실패했습니다. 다시 시도하세요."],
     "e9sHSO": ["중단한 지점부터 계속"],
     "eBIT9h": ["붙여넣기에 실패했습니다.", ["restoreSuffix"]],
+    "eCDwNN": [["total", "plural", { "other": ["#", "개 문제"] }]],
     "eFJkVt": ["클론 실패: ", ["cloneError"]],
     "eG8Jsg": ["소스 탭 포커스 모드 전환"],
     "eGUbmF": ["선택한 파일 또는 폴더 복사"],

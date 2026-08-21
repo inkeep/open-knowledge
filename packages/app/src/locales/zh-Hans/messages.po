@@ -739,6 +739,10 @@ msgstr "{label}（{0}）"
 msgid "{label} enabled"
 msgstr "已启用 {label}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "{label} 个问题"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {会移除这个文件上 # 处较新的编辑。}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, other {模板}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, other {token}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, other {# 个问题}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {只显示某个文件夹里的前 {formattedCount} 个项目——该文件夹的其余内容已隐藏。}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, other {# 个标签页}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}，{tabCount, plural, other {# 个并发标签页}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}。{0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"

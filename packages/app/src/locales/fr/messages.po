@@ -739,6 +739,10 @@ msgstr "{label} ({0})"
 msgid "{label} enabled"
 msgstr "{label} activé"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "{label} problèmes"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {Supprime # modification plus récente de ce fichier.} many {Supprime # modifications plus récentes de ce fichier.} other {Supprime # modifications plus récentes de ce fichier.}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, one {modèle} many {modèles} other {modèles}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, one {token} many {tokens} other {tokens}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, one {# problème} many {# problèmes} other {# problèmes}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {Affichage du premier élément d'un dossier — le reste de ce dossier est masqué.} many {Affichage des {formattedCount} premiers éléments d'un dossier — le reste de ce dossier est masqué.} other {Affichage des {formattedCount} premiers éléments d'un dossier — le reste de ce dossier est masqué.}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, one {# onglet} many {# onglets} other {
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, one {# onglet simultané} many {# onglets simultanés} other {# onglets simultanés}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}. {0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"

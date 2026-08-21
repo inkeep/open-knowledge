@@ -1380,6 +1380,7 @@
     "F4_wQj": ["Rechercher avec Google"],
     "F4vEsL": ["État de la synchronisation : ", ["syncStateLabel"]],
     "F6pfE9": ["Actif"],
+    "F8GW_c": [["label"], " problèmes"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Exécutez un vrai terminal ancré dans OpenKnowledge, démarrant dans le dossier de ce projet."
@@ -3613,6 +3614,7 @@
       ["overflow"],
       " autres fichiers avant de supprimer."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": [
       "Plus de ",
       ["0"],
@@ -3639,6 +3641,13 @@
     "e8zYa8": ["Impossible d'ouvrir ", ["shareBranch"], " dans un worktree. Réessayez."],
     "e9sHSO": ["Reprenez là où vous vous étiez arrêté"],
     "eBIT9h": ["Échec du collage.", ["restoreSuffix"]],
+    "eCDwNN": [
+      [
+        "total",
+        "plural",
+        { "one": ["#", " problème"], "many": ["#", " problèmes"], "other": ["#", " problèmes"] }
+      ]
+    ],
     "eFJkVt": ["Échec du clonage : ", ["cloneError"]],
     "eG8Jsg": ["Basculer le mode focus de la touche Tab dans la source"],
     "eGUbmF": ["Copier le fichier ou dossier sélectionné"],

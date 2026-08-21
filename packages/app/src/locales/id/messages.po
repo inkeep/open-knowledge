@@ -739,6 +739,10 @@ msgstr "{label} ({0})"
 msgid "{label} enabled"
 msgstr "{label} diaktifkan"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "{label} masalah"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {Menghapus # suntingan yang lebih baru pada berkas ini.}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, other {templat}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, other {token}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, other {# masalah}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {Menampilkan {formattedCount} item pertama dalam satu folder — sisa folder itu disembunyikan.}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, other {# tab}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, other {# tab bersamaan}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}. {0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"

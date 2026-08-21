@@ -1329,6 +1329,7 @@
     "F4_wQj": ["Pesquisar com o Google"],
     "F4vEsL": ["Status da sincronização: ", ["syncStateLabel"]],
     "F6pfE9": ["Ativo"],
+    "F8GW_c": [["label"], " problemas"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Rode um terminal de verdade acoplado dentro do OpenKnowledge, começando na pasta deste projeto."
@@ -3505,6 +3506,7 @@
       ["overflow"],
       " antes de excluir."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": [
       "A política de segurança da pré-visualização bloqueou mais de ",
       ["0"],
@@ -3531,6 +3533,13 @@
     "e8zYa8": ["Não foi possível abrir ", ["shareBranch"], " em um worktree. Tente de novo."],
     "e9sHSO": ["Continue de onde parou"],
     "eBIT9h": ["Falha ao colar.", ["restoreSuffix"]],
+    "eCDwNN": [
+      [
+        "total",
+        "plural",
+        { "one": ["#", " problema"], "many": ["#", " problemas"], "other": ["#", " problemas"] }
+      ]
+    ],
     "eFJkVt": ["Falha ao clonar: ", ["cloneError"]],
     "eG8Jsg": ["Ativar ou desativar o modo de foco do Tab no código"],
     "eGUbmF": ["Copiar o arquivo ou a pasta selecionados"],

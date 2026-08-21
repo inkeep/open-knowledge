@@ -739,6 +739,10 @@ msgstr "{label} ({0})"
 msgid "{label} enabled"
 msgstr "{label} مفعَّل"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "{label} مشكلة"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, zero {يزيل # تعديل أحدث على هذا الملف.} one {يزيل تعديلًا واحدًا أحدث على هذا الملف.} two {يزيل تعديلين أحدث على هذا الملف.} few {يزيل # تعديلات أحدث على هذا الملف.} many {يزيل # تعديلًا أحدث على هذا الملف.} other {يزيل # تعديل أحدث على هذا الملف.}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, zero {قوالب} one {قالب} two {قالبا
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, zero {رموز} one {رمز} two {رمزان} few {رموز} many {رمزًا} other {رمز}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, zero {# مشكلة} one {# مشكلة} two {# مشكلتان} few {# مشكلات} many {# مشكلة} other {# مشكلة}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, zero {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} one {يجري عرض أول عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} two {يجري عرض أول عنصرين في مجلد واحد — بقية ذلك المجلد مخفية.} few {يجري عرض أول {formattedCount} عناصر في مجلد واحد — بقية ذلك المجلد مخفية.} many {يجري عرض أول {formattedCount} عنصرًا في مجلد واحد — بقية ذلك المجلد مخفية.} other {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, zero {# تبويب} one {تبويب و�
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}، {tabCount, plural, zero {# تبويب متزامن} one {تبويب واحد متزامن} two {تبويبان متزامنان} few {# تبويبات متزامنة} many {# تبويبًا متزامنًا} other {# تبويب متزامن}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}. {0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"

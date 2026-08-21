@@ -739,6 +739,10 @@ msgstr "{label} ({0})"
 msgid "{label} enabled"
 msgstr "{label} 활성화됨"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "문제 {label}개"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {이 파일의 최신 편집 #개를 제거합니다.}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, other {템플릿}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, other {토큰}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, other {#개 문제}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {한 폴더의 첫 {formattedCount}개 항목만 표시됩니다. 해당 폴더의 나머지 항목은 숨겨져 있습니다.}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, other {탭 #개}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}, {tabCount, plural, other {동시 탭 #개}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}. {0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"

@@ -1,4 +1,10 @@
 import { describe, expect, test } from 'vitest';
+import {
+  consumePendingDocPanelRequest,
+  consumePendingDocPanelTabRequest,
+  requestDocPanelTab,
+  subscribeToDocPanelTabRequests,
+} from '@/components/doc-panel-events';
 import { subscribeToActiveTerminalInput } from '@/components/handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from '@/components/handoff/terminal-launch-events';
 import { subscribeToAgentThreadLaunchRequests } from '@/components/handoff/thread-launch-events';
@@ -49,5 +55,27 @@ describe('dispatchNoteWindowMainAction', () => {
       { prompt: 'Review', cli: 'codex', stage: false },
     ]);
     for (const stop of unsubscribe) stop();
+  });
+
+  test('routes comment reveals through the owning renderer target', () => {
+    const target = new EventTarget();
+    const received: string[] = [];
+    const unsubscribe = subscribeToDocPanelTabRequests((tab) => received.push(tab), target);
+
+    dispatchNoteWindowMainAction(
+      { kind: 'reveal-comments', scope: 'doc', docName: 'notes/alpha' },
+      target,
+    );
+
+    expect(received).toEqual(['comments']);
+    expect(consumePendingDocPanelTabRequest()).toBeNull();
+    unsubscribe();
+  });
+
+  test('does not latch detailed requests addressed to a foreign renderer target', () => {
+    requestDocPanelTab('problems', { scope: 'doc', focus: 'panel' }, new EventTarget());
+
+    expect(consumePendingDocPanelRequest('problems')).toBeNull();
+    expect(consumePendingDocPanelTabRequest()).toBeNull();
   });
 });

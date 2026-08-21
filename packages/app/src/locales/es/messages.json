@@ -1347,6 +1347,7 @@
     "F4_wQj": ["Buscar con Google"],
     "F4vEsL": ["Estado de sincronización: ", ["syncStateLabel"]],
     "F6pfE9": ["Activo"],
+    "F8GW_c": [["label"], " problemas"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Ejecuta una terminal real acoplada dentro de OpenKnowledge, que arranca en la carpeta de este proyecto."
@@ -3581,6 +3582,7 @@
       ["overflow"],
       " más antes de eliminar."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": [
       "La política de seguridad de la vista previa bloqueó más de ",
       ["0"],
@@ -3609,6 +3611,13 @@
     "e8zYa8": ["No se pudo abrir ", ["shareBranch"], " en un worktree. Inténtalo de nuevo."],
     "e9sHSO": ["Continúa donde lo dejaste"],
     "eBIT9h": ["Falló el pegado.", ["restoreSuffix"]],
+    "eCDwNN": [
+      [
+        "total",
+        "plural",
+        { "one": ["#", " problema"], "many": ["#", " problemas"], "other": ["#", " problemas"] }
+      ]
+    ],
     "eFJkVt": ["No se pudo clonar: ", ["cloneError"]],
     "eG8Jsg": ["Activar o desactivar el modo de foco del tabulador en el código"],
     "eGUbmF": ["Copiar el archivo o la carpeta seleccionados"],

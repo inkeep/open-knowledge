@@ -1158,6 +1158,7 @@
     "F4_wQj": ["Cari dengan Google"],
     "F4vEsL": ["Status sinkronisasi: ", ["syncStateLabel"]],
     "F6pfE9": ["Aktif"],
+    "F8GW_c": [["label"], " masalah"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Jalankan terminal sungguhan yang tertambat di dalam OpenKnowledge, dimulai di folder proyek ini."
@@ -3085,6 +3086,7 @@
       ["overflow"],
       " berkas lainnya sebelum menghapus."
     ],
+    "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": ["Lebih dari ", ["0"], " permintaan diblokir oleh kebijakan keamanan pratinjau"],
     "dprWmL": ["Jangkar di halaman ini"],
     "dr1vFs": ["Ganti semua kecocokan"],
@@ -3107,6 +3109,7 @@
     "e8zYa8": [["shareBranch"], " tidak dapat dibuka di worktree. Coba lagi."],
     "e9sHSO": ["Lanjutkan dari tempat Anda berhenti"],
     "eBIT9h": ["Penempelan gagal.", ["restoreSuffix"]],
+    "eCDwNN": [["total", "plural", { "other": ["#", " masalah"] }]],
     "eFJkVt": ["Kloning gagal: ", ["cloneError"]],
     "eG8Jsg": ["Alihkan mode fokus Tab di sumber"],
     "eGUbmF": ["Salin berkas atau folder terpilih"],

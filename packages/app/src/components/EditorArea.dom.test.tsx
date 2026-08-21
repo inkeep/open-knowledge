@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { PanelTab } from './DocPanel';
 
 type SettingsDialogShellProps = {
   open: boolean;
@@ -42,11 +43,18 @@ vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({ projectBinding: null }),
 }));
 
+/** Counts the rail handing itself back from the agent drill-in. */
+let closeActivityPanelCalls = 0;
+const closeActivityPanel = () => {
+  closeActivityPanelCalls += 1;
+};
+
 const FOLDER_DOC_CTX = {
   activeDocName: 'folder/index',
   activeProvider: null,
   activeTarget: { kind: 'folder', target: 'folder', folderPath: 'folder' },
   recycleDocument: () => {},
+  closeActivityPanel,
   docPanelMode: 'timeline',
   docPanelAgentId: null,
   docPanelExpandSignal: 0,
@@ -56,6 +64,7 @@ const EMPTY_DOC_CTX = {
   activeProvider: null,
   activeTarget: null,
   recycleDocument: () => {},
+  closeActivityPanel,
   docPanelMode: 'timeline',
   docPanelAgentId: null,
   docPanelExpandSignal: 0,
@@ -65,6 +74,7 @@ const LARGE_FILE_DOC_CTX = {
   activeProvider: null,
   activeTarget: { kind: 'large-file', docName: 'big', size: 9_999_999, limit: 1_000_000 },
   recycleDocument: () => {},
+  closeActivityPanel,
   docPanelMode: 'timeline',
   docPanelAgentId: null,
   docPanelExpandSignal: 0,
@@ -74,6 +84,7 @@ const ASSET_DOC_CTX = {
   activeProvider: null,
   activeTarget: { kind: 'asset', assetPath: 'images/diagram.png', mediaKind: 'image' },
   recycleDocument: () => {},
+  closeActivityPanel,
   docPanelMode: 'timeline',
   docPanelAgentId: null,
   docPanelExpandSignal: 0,
@@ -104,6 +115,7 @@ const DOC_COLD_CTX = {
   activeProvider: null,
   activeTarget: { kind: 'doc', target: 'some-doc', docName: 'some-doc' },
   recycleDocument: () => {},
+  closeActivityPanel,
   docPanelMode: 'timeline',
   docPanelAgentId: null,
   docPanelExpandSignal: 0,
@@ -334,6 +346,7 @@ vi.doMock('@/lib/use-settings-route', () => ({
 const { EditorArea } = await import('./EditorArea');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 const { emitLocalMenuAction } = await import('@/lib/local-menu-action-bus');
+const { requestDocPanelTab } = await import('./doc-panel-events');
 
 function renderEditorArea() {
   return render(
@@ -1522,5 +1535,102 @@ describe('EditorArea terminal persists across a mid-session cold navigation', ()
     expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
     expect(screen.queryByTestId('resizable-group')).toBeNull();
     expect(screen.queryByTestId('terminal-dock')).toBeNull();
+  });
+});
+
+// The doc-panel tab bus is the rail's remote control: anything that wants the
+// panel on a given tab dispatches a request rather than reaching for panel
+// state it does not own (the file tree's problem badge, a comment reveal, the
+// command palette). EditorArea owns the half a caller is promised here — the
+// tab switches, a collapsed rail comes back open, and the agent drill-in gives
+// the rail back — pinned against the real DocPanel and the real group-layout
+// assert. The scope half of a request belongs to `ProblemsPanel`, which
+// subscribes to the same bus and is covered in its own suite.
+describe('EditorArea doc-panel tab requests', () => {
+  const pctOf = (px: number) => (px / 1360) * 100;
+
+  // The real app owns the tab as state and hands EditorArea a setter, so the
+  // request's effect is only visible through a parent that honours the callback.
+  function TabHost({ initialTab }: { initialTab: PanelTab }) {
+    const [tab, setTab] = useState<PanelTab>(initialTab);
+    return (
+      <TooltipProvider>
+        <EditorArea
+          editorMode="wysiwyg"
+          onModeChange={() => {}}
+          activeTab={tab}
+          onActiveTabChange={setTab}
+        />
+      </TooltipProvider>
+    );
+  }
+
+  beforeEach(() => {
+    cleanup();
+    localStorage.clear();
+    // `mode: 'doc'` is what renders the tab strip — the agent drill-in owns the
+    // panel body in the other mode and offers no tabs to switch.
+    docCtx = { ...DOC_LIVE_CTX, docPanelMode: 'doc' };
+    groupLayout = {};
+    groupSetLayoutCalls = [];
+    mockGroupPx = 1360;
+    closeActivityPanelCalls = 0;
+  });
+
+  test('a doc-scoped problems request opens the Problems tab and expands the collapsed rail', () => {
+    render(<TabHost initialTab="timeline" />);
+    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
+    groupSetLayoutCalls = [];
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.getAttribute('id')).toBe('panel-problems');
+    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+  });
+
+  test('a panel already parked on Problems in project scope comes back in doc scope', () => {
+    render(<TabHost initialTab="problems" />);
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    expect(screen.getByTestId('problems-project-scope')).toBeTruthy();
+    // The rail is shut with the tab already selected: nothing about the tab
+    // changes, so the expand and the scope reset are the whole of the answer.
+    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
+    groupSetLayoutCalls = [];
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+
+    expect(screen.getByTestId('panel-scope-doc').getAttribute('data-state')).toBe('on');
+    expect(screen.queryByTestId('problems-project-scope')).toBeNull();
+    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+  });
+
+  test('a tab request takes the rail back from the agent drill-in', () => {
+    docCtx = { ...DOC_LIVE_CTX, docPanelMode: 'agent', docPanelAgentId: 'agent-1' };
+    render(<TabHost initialTab="timeline" />);
+    // The drill-in owns the whole body and offers no tab strip, so there is no
+    // tabpanel to find while it is up.
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+
+    expect(closeActivityPanelCalls).toBe(1);
+  });
+
+  test('re-rendering does not stack the subscription, and unmounting drops it', () => {
+    const view = render(<TabHost initialTab="timeline" />);
+    // The subscribing effect mounts once; useEffectEvent keeps its callback's
+    // render-owned values fresh without resubscribing. A cleanup that stopped
+    // running would leave that mount-time handler live after unmount.
+    for (let i = 0; i < 3; i += 1) view.rerender(<TabHost initialTab="timeline" />);
+    groupLayout = { 'editor-main': 100, 'doc-panel': 0 };
+    groupSetLayoutCalls = [];
+
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+    expect(groupSetLayoutCalls).toHaveLength(1);
+
+    view.unmount();
+    act(() => requestDocPanelTab('problems', { scope: 'doc' }));
+    expect(groupSetLayoutCalls).toHaveLength(1);
   });
 });

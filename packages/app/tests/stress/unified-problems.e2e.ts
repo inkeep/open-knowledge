@@ -188,6 +188,120 @@ test.describe('unified Problems — file-tree indicators', () => {
     expect(colors.problem).not.toBe(colors.clean);
   });
 
+  test('the badge is a keyboard-reachable control with a real hit target', async ({ page }) => {
+    // The rung nothing below can reach: jsdom implements no sequential focus
+    // navigation, resolves no layout, and never matches :focus-visible, so
+    // "can this badge hold focus, does it paint a ring, is it big enough to
+    // hit, and does Enter open the panel" are all invisible until a real
+    // browser runs it. The badge is a tabindex'd span INSIDE the host's row
+    // <button>, and the host re-seats DOM focus onto that button from a layout
+    // effect, so its ability to keep focus is a property of the host, not of
+    // this code — pin it here or it regresses on a dependency bump.
+    await openProblemsTab(page);
+    await openProjectScope(page);
+    await expect
+      .poll(
+        async () => {
+          const row = await treeRowHandle(page, `${lintDocName}.md`);
+          return row.evaluate((el) => el?.getAttribute('data-ok-problem') ?? null);
+        },
+        { timeout: 15_000 },
+      )
+      .toBe('warning');
+
+    const rowSelector = `[data-type="item"][data-item-path="${lintDocName}.md"]`;
+    const badge = page
+      .locator('file-tree-container')
+      .locator(`${rowSelector} [data-ok-problem-badge]`);
+
+    // Focus the row the way a click would, then Tab: the badge is the next stop.
+    await page.locator('file-tree-container').evaluate((host, selector) => {
+      const shadow = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+      (shadow?.querySelector(selector) as HTMLElement | null)?.focus();
+    }, rowSelector);
+    await page.keyboard.press('Tab');
+
+    const focused = await page.locator('file-tree-container').evaluate((host) => {
+      const shadow = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+      const active = shadow?.activeElement as HTMLElement | null;
+      if (!active?.hasAttribute('data-ok-problem-badge')) return null;
+      const style = getComputedStyle(active);
+      const box = active.getBoundingClientRect();
+      // The painted chip stays small; the TARGET is expanded around it, so
+      // probe the extremes of the required 24px box by hit-testing rather than
+      // measuring the chip. Half a pixel inside each edge, so a target that is
+      // exactly 24px does not fail on a rounding boundary.
+      const probe = (dy: number) =>
+        shadow?.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2 + dy) ?? null;
+      return {
+        role: active.getAttribute('role'),
+        chipHeight: box.height,
+        outlineWidth: style.outlineWidth,
+        outlineStyle: style.outlineStyle,
+        outlineColor: style.outlineColor,
+        hitsAbove: probe(-11.5) === active,
+        hitsBelow: probe(11.5) === active,
+      };
+    });
+
+    // Tab reached it and the host did not pull focus back onto the row.
+    expect(focused).not.toBeNull();
+    expect(focused?.role).toBe('button');
+    // DOM role/name alone are insufficient here: a role nested under a native
+    // button can be flattened out of the accessibility tree. Chromium must
+    // expose this exact control to assistive technology, not merely focus it.
+    expect(await badge.ariaSnapshot()).toContain(
+      'button "1 problem. 1 warning in this file. Open the Problems panel for details."',
+    );
+    // A ring that resolves to zero width or a transparent color is no ring.
+    expect(focused?.outlineStyle).not.toBe('none');
+    expect(focused?.outlineWidth).not.toBe('0px');
+    expect(focused?.outlineColor).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
+    // Vertically the target clears 24px, which the painted chip alone does not.
+    expect(focused?.chipHeight).toBeLessThan(24);
+    expect(focused?.hitsAbove).toBe(true);
+    expect(focused?.hitsBelow).toBe(true);
+
+    // Enter on the focused badge is the whole feature, from the keyboard.
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('panel-scope-doc')).toHaveAttribute('data-state', 'on', {
+      timeout: 10_000,
+    });
+    await expect(page.getByTestId('problems-panel')).toBeFocused();
+    await expect(page).toHaveURL(new RegExp(`#/${lintDocName}$`), { timeout: 10_000 });
+  });
+
+  test('a modified click on the badge stays the tree multi-select gesture', async ({ page }) => {
+    // The badge sits inside the row, so a gesture it swallows is a gesture the
+    // tree never sees. Only a real browser resolves the host's selection model.
+    await openProblemsTab(page);
+    await openProjectScope(page);
+    const badge = page
+      .locator('file-tree-container')
+      .locator(`[data-item-path="${lintDocName}.md"] [data-ok-problem-badge]`);
+    await expect(badge).toBeVisible({ timeout: 15_000 });
+
+    const selected = () =>
+      page.locator('file-tree-container').evaluate((host) => {
+        const shadow = (host as Element & { shadowRoot: ShadowRoot | null }).shadowRoot;
+        return [...(shadow?.querySelectorAll('[data-item-selected]') ?? [])]
+          .map((el) => el.getAttribute('data-item-path'))
+          .sort();
+      });
+
+    await page
+      .locator('file-tree-container')
+      .locator(`[data-item-path="${openDocName}.md"]`)
+      .click();
+    await expect.poll(selected).toEqual([`${openDocName}.md`]);
+
+    await badge.click({ modifiers: ['Meta'] });
+
+    // Cmd-click ADDS to the selection. Activating the badge instead would
+    // collapse it to one row and destroy the selection being assembled.
+    await expect.poll(selected).toEqual([`${lintDocName}.md`, `${openDocName}.md`].sort());
+  });
+
   test('enabling the plugin from Settings lights up an UNOPENED doc row', async ({ page, api }) => {
     // The report's headline symptom: "you enable the plugin, nothing lights up."
     // Driven through the real Settings switch rather than an API call, because

@@ -142,9 +142,14 @@ describe('DocPanel — tab gating', () => {
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 
-  test('renders the Problems panel when its tab is active', () => {
+  test('renders the Problems panel when its tab is active, against the active doc', () => {
     renderPanel('problems');
     expect(screen.getByTestId('problems-panel')).toBeTruthy();
+    // The panel answers a question about one file, so the doc it is handed has
+    // to be the one the editor has open — a stale or absent name would list
+    // another file's problems under this one's tab.
+    expect(lastProblemsProps?.docName).toBe('notes');
+    expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
   });
 });
 

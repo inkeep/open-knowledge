@@ -21,8 +21,22 @@ import {
   Sparkles,
   Wrench,
 } from 'lucide-react';
-import { type ReactElement, type ReactNode, useEffect, useRef, useState } from 'react';
+import {
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
+import type { PanelTab } from '@/components/DocPanel';
+import {
+  consumePendingDocPanelRequest,
+  type DocPanelTabRequest,
+  subscribeToDocPanelTabRequests,
+} from '@/components/doc-panel-events';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { type PanelScope, PanelScopeHeader } from '@/components/PanelScopeHeader';
 import { LINT_PLUGIN_META, type LintPluginMeta } from '@/components/settings/lint-plugin-meta';
@@ -605,6 +619,8 @@ export function ProblemsPanel({
   onFixWithAi?: (scope: PanelScope) => void;
 }) {
   const { t } = useLingui();
+  const panelRef = useRef<HTMLElement>(null);
+  const panelTitleId = useId();
   const [scope, setScope] = useState<PanelScope>('doc');
   // Which lint plugins actually check content, from the server-resolved
   // effective config (the same truth the diagnostics come from). Null while
@@ -782,6 +798,29 @@ export function ProblemsPanel({
     [],
   );
 
+  // A request that names a scope was raised on behalf of one document (the file
+  // tree's problem badge), so it overrides whatever scope the user last left the
+  // panel in — otherwise a panel parked in project scope answers a question
+  // about one file with the whole project. Keyboard activation also moves focus
+  // to the panel so the user's next Tab continues from the content they opened;
+  // pointer activation preserves pointer focus. The subscription is installed
+  // once, while the Effect Event reads the latest scope and audit state.
+  const onDocPanelTabRequest = useEffectEvent((tab: PanelTab, request: DocPanelTabRequest) => {
+    if (tab !== 'problems') return;
+    // Handled live, so no part of this request stays latched for a later mount.
+    consumePendingDocPanelRequest('problems');
+    if (request.scope !== undefined) handleScopeChange(request.scope);
+    if (request.focus === 'panel') panelRef.current?.focus({ preventScroll: true });
+  });
+  useEffect(() => {
+    // The request that switches TO this tab is what mounts this panel, so it
+    // went out before this subscription existed. The latch is the only way that
+    // scope and focus intent reach the panel they were addressed to.
+    const pending = consumePendingDocPanelRequest('problems');
+    if (pending !== null) onDocPanelTabRequest('problems', pending);
+    return subscribeToDocPanelTabRequests(onDocPanelTabRequest);
+  }, []);
+
   // A settled sweep leaves the loaded plane describing problems it just fixed.
   // Refresh it in place — but only for a panel that is actually mounted and
   // showing one; a sweep that outlives this panel has nothing to refresh, and
@@ -878,10 +917,10 @@ export function ProblemsPanel({
   }
 
   return (
-    <Panel>
+    <Panel ref={panelRef} tabIndex={-1} aria-labelledby={panelTitleId} data-testid="problems-panel">
       <PanelHeader>
         <div className="flex min-w-0 items-center gap-2">
-          <PanelTitle>
+          <PanelTitle id={panelTitleId}>
             <Trans>Problems</Trans>
           </PanelTitle>
           {activePlugins !== null && activePlugins.length > 0 && (

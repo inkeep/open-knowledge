@@ -739,6 +739,10 @@ msgstr ""
 msgid "{label} enabled"
 msgstr ""
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr ""
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr ""
@@ -917,6 +921,10 @@ msgstr ""
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr ""
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr ""
@@ -948,6 +956,11 @@ msgstr ""
 
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
+msgstr ""
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
 msgstr ""
 
 #: src/components/file-tree-problem-indicators.ts

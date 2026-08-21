@@ -16,6 +16,7 @@ import {
   Suspense,
   useDeferredValue,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useRef,
   useState,
@@ -375,6 +376,7 @@ function EditorAreaInner({
     docPanelMode,
     docPanelAgentId,
     docPanelExpandSignal,
+    closeActivityPanel,
   } = useDocumentContext();
   const { openDocumentTransition } = useDocumentTransition();
   const stats = useDocumentStats(activeProvider, activeDocName);
@@ -1197,33 +1199,35 @@ function EditorAreaInner({
     return () => ro.disconnect();
   }, [groupContainerEl, isEmbedded]);
 
+  const openRequestedDocPanelTab = useEffectEvent((tab: PanelTab) => {
+    // The agent drill-in owns the whole panel body and offers no tab strip, so
+    // answering a tab request means giving the rail back to the document.
+    if (docPanelMode === 'agent') closeActivityPanel();
+    onActiveTabChange(tab);
+    expandDocPanel();
+  });
+
+  // Install the tab-request subscription once. The effect event keeps the
+  // render-owned callbacks and current panel mode fresh without replaying the
+  // mount-only pending-request read on later mode changes.
+  useEffect(() => {
+    const pendingTab = consumePendingDocPanelTabRequest();
+    if (pendingTab) {
+      openRequestedDocPanelTab(pendingTab);
+    }
+
+    return subscribeToDocPanelTabRequests((tab) => {
+      consumePendingDocPanelTabRequest();
+      openRequestedDocPanelTab(tab);
+    });
+  }, []);
+
   // Expand-on-avatar-click. `docPanelExpandSignal` is a monotonic counter
   // incremented by `DocumentContext.openActivityPanel` (called from
   // `PresenceBar` avatar clicks and the mode-toggle button). When it
   // increments, expand/open the panel in whichever layout mode is active.
   // Initial 0 → 0 transition (mount) is harmless — calling `expand` when
   // already expanded is a no-op in react-resizable-panels.
-  useEffect(() => {
-    const openRequestedTab = (tab: PanelTab) => {
-      onActiveTabChange(tab);
-      expandDocPanel();
-    };
-
-    const pendingTab = consumePendingDocPanelTabRequest();
-    if (pendingTab) {
-      openRequestedTab(pendingTab);
-    }
-
-    return subscribeToDocPanelTabRequests((tab) => {
-      consumePendingDocPanelTabRequest();
-      openRequestedTab(tab);
-    });
-  }, [
-    onActiveTabChange,
-    // biome-ignore lint/correctness/useExhaustiveDependencies: expandDocPanel is render-bound; re-subscribing keeps the handler fresh
-    expandDocPanel,
-  ]);
-
   useEffect(() => {
     if (docPanelExpandSignal === 0) return;
     expandDocPanel();

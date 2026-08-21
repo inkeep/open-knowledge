@@ -739,6 +739,10 @@ msgstr "{label} ({0})"
 msgid "{label} enabled"
 msgstr "{label} فعال"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{label} problems"
+msgstr "{label} مسائل"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {اس فائل پر # نئی ترمیم ہٹاتا ہے۔} other {اس فائل پر # نئی ترامیم ہٹاتا ہے۔}}"
@@ -917,6 +921,10 @@ msgstr "{templateCount, plural, one {ٹیمپلیٹ} other {ٹیمپلیٹس}}"
 msgid "{tokens, plural, one {token} other {tokens}}"
 msgstr "{tokens, plural, one {ٹوکن} other {ٹوکنز}}"
 
+#: src/components/file-tree-problem-indicators.ts
+msgid "{total, plural, one {# problem} other {# problems}}"
+msgstr "{total, plural, one {# مسئلہ} other {# مسائل}}"
+
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {ایک فولڈر میں پہلا آئٹم دکھایا جا رہا ہے — اس فولڈر کا باقی حصہ چھپا ہوا ہے۔} other {ایک فولڈر میں پہلے {formattedCount} آئٹمز دکھائے جا رہے ہیں — اس فولڈر کا باقی حصہ چھپا ہوا ہے۔}}"
@@ -949,6 +957,11 @@ msgstr "{userName} · {tabCount, plural, one {# ٹیب} other {# ٹیبز}}"
 #: src/presence/PresenceBar.tsx
 msgid "{userName}, {tabCount, plural, one {# concurrent tab} other {# concurrent tabs}}"
 msgstr "{userName}، {tabCount, plural, one {# بیک وقت ٹیب} other {# بیک وقت ٹیبز}}"
+
+#. placeholder {0}: problemBadgeLabel(counts)
+#: src/components/file-tree-problem-indicators.ts
+msgid "{visibleSummary}. {0}"
+msgstr "{visibleSummary}۔ {0}"
 
 #: src/components/file-tree-problem-indicators.ts
 msgid "{warningCount, plural, one {# warning} other {# warnings}}"
