@@ -1522,6 +1522,10 @@ msgid "Agent settings"
 msgstr "एजेंट सेटिंग"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "एजेंट सेटिंग: परिवर्तन तब लागू होंगे जब आप यह बातचीत फिर से शुरू करेंगे"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "एजेंट प्रतिलेख"
 
@@ -1729,6 +1733,10 @@ msgstr "इस मशीन के सभी प्रोजेक्ट पर 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "केवल इस कंप्यूटर पर इस प्रोजेक्ट पर लागू होता है। .ok/local में सहेजा जाता है, git के ज़रिए साझा नहीं होता।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "जब आप यह बातचीत फिर से शुरू करेंगे तब लागू होगा"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"

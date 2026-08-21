@@ -772,7 +772,51 @@ function writeResumableAgentEntry(localDir: string, id: string, env: Record<stri
   writeFileSync(
     agentPath,
     `
+import { appendFileSync } from 'node:fs';
 const caps = (process.env.FAKE_CAPS ?? '').split(',').filter(Boolean);
+const withConfig = process.env.FAKE_CONFIG === '1';
+const withModes = process.env.FAKE_MODES === '1';
+let modeValue = 'ask';
+const modeState = () => ({
+  currentModeId: modeValue,
+  availableModes: [
+    { id: 'ask', name: 'Ask#' + process.pid },
+    { id: 'plan', name: 'Plan#' + process.pid },
+  ],
+});
+// applyInitialMode records a successful set locally rather than storing an
+// agent-returned object, so unlike configOptions the mode cannot be proven to
+// have reached the agent by inspecting the manager. This log is that proof:
+// the test truncates it before resuming, so any line in it came from the
+// process the resume started.
+const logSetMode = (modeId) => {
+  if (process.env.FAKE_LOG) appendFileSync(process.env.FAKE_LOG, modeId + '\\n');
+};
+// A resumed agent is a NEW process, so this resets to the default on every
+// resume — which is exactly what a real agent does with a fresh session.
+let modelValue = 'sonnet';
+// The pid tags every option this process hands out, so a test can tell values
+// that came from THIS session's response apart from ones the manager merely
+// replayed out of the persisted meta.
+const configOptions = () => [
+  {
+    id: 'model',
+    name: 'Model#' + process.pid,
+    type: 'select',
+    category: 'model',
+    currentValue: modelValue,
+    options: [{ value: 'sonnet', name: 'Sonnet' }, { value: 'opus', name: 'Opus' }],
+  },
+];
+// FAKE_CONFIG_ON_RESUME=0 models an agent that resumes without reporting its
+// config — legal per ACP, both response types mark configOptions optional.
+const resumeReply = () => {
+  const reportState = process.env.FAKE_CONFIG_ON_RESUME !== '0';
+  const out = {};
+  if (withConfig && reportState) out.configOptions = configOptions();
+  if (withModes && reportState) out.modes = modeState();
+  return out;
+};
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
 let buffer = '';
 process.stdin.setEncoding('utf8');
@@ -795,11 +839,25 @@ process.stdin.on('data', (chunk) => {
       if (caps.includes('resume')) agentCapabilities.sessionCapabilities = { resume: {} };
       reply({ protocolVersion: 1, agentCapabilities });
     } else if (msg.method === 'session/new') {
-      reply({ sessionId: 'sess-fixed' });
+      const newSession = { sessionId: 'sess-fixed' };
+      if (withConfig) newSession.configOptions = configOptions();
+      if (withModes) newSession.modes = modeState();
+      reply(newSession);
       notify({
         sessionUpdate: 'available_commands_update',
         availableCommands: [{ name: 'fresh_only', description: 'advertised on session/new only' }],
       });
+    } else if (msg.method === 'session/set_config_option') {
+      if (msg.params.configId === 'model') modelValue = msg.params.value;
+      reply({ configOptions: configOptions() });
+    } else if (msg.method === 'session/set_mode') {
+      if (!modeState().availableModes.some((m) => m.id === msg.params.modeId)) {
+        replyErr(-32602, 'unknown mode');
+      } else {
+        modeValue = msg.params.modeId;
+        logSetMode(msg.params.modeId);
+        reply({});
+      }
     } else if (msg.method === 'session/prompt') {
       notify({
         sessionUpdate: 'agent_message_chunk',
@@ -812,11 +870,16 @@ process.stdin.on('data', (chunk) => {
       } else {
         notify({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'old-user' } });
         notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'old-agent' } });
-        reply({});
+        reply(resumeReply());
       }
     } else if (msg.method === 'session/resume') {
       if (msg.params.sessionId !== 'sess-fixed') replyErr(-32002, 'unknown session');
-      else reply({});
+      // Holding the reply widens the window between the manager clearing
+      // 'archived' and the session actually being back, which is the state a
+      // concurrency guard has to be tested against.
+      else if (Number(process.env.FAKE_RESUME_DELAY_MS ?? 0) > 0)
+        setTimeout(() => reply(resumeReply()), Number(process.env.FAKE_RESUME_DELAY_MS));
+      else reply(resumeReply());
     } else if (msg.id !== undefined) {
       reply({});
     }
@@ -1091,6 +1154,233 @@ describe('AcpThreadManager persistence + resume', () => {
       'title adopted',
     );
     expect(manager.getInfo(info.threadId)?.title).toBe('Fix the login redirect');
+  }, 45_000);
+
+  /**
+   * A resumed thread keeps answering on the model it was answering on. The
+   * agent comes up on its own defaults (the fake resets `modelValue` because
+   * resume spawns a new process), and the manager re-applies what the thread
+   * had settled on.
+   *
+   * The pid tag is what makes the assertion honest: the manager's cached
+   * options survive the archive, so `currentValue` alone would read 'opus'
+   * whether or not anything reached the agent. A name carrying the NEW pid can
+   * only have come from the resumed session's own response.
+   */
+  async function resumeWithConfig(reportOnResume: boolean): Promise<void> {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_CONFIG: '1',
+      ...(reportOnResume ? {} : { FAKE_CONFIG_ON_RESUME: '0' }),
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+
+    manager.setConfigOption(threadId, 'model', 'opus');
+    await waitUntil(
+      () => manager.getInfo(threadId)?.configOptions?.[0]?.currentValue === 'opus',
+      15_000,
+      'model applied before archive',
+    );
+    const beforeArchive = manager.getInfo(threadId)?.configOptions?.[0];
+
+    await manager.closeThread(threadId);
+    expect(manager.getInfo(threadId)?.archived).toBe(true);
+    await manager.resumeThread(threadId);
+    await waitUntil(
+      () => manager.getInfo(threadId)?.status === 'ready',
+      15_000,
+      'resumed thread ready',
+    );
+
+    const afterResume = manager.getInfo(threadId)?.configOptions?.[0];
+    expect(afterResume?.currentValue).toBe('opus');
+    // Different pid ⇒ these options came back from the resumed agent, so the
+    // set actually reached it rather than the manager replaying stale meta.
+    expect(afterResume?.name).not.toBe(beforeArchive?.name);
+
+    await manager.closeThread(threadId);
+  }
+
+  test('resume re-applies the thread settled config when the agent reports it', async () => {
+    await resumeWithConfig(true);
+  }, 45_000);
+
+  test('resume re-applies the thread settled config when the agent reports none', async () => {
+    // configOptions is optional in both resume responses. With none reported,
+    // the cached values look already-correct, so the re-apply has to fire on
+    // the unverified-cache path or the agent silently stays on its default.
+    await resumeWithConfig(false);
+  }, 45_000);
+
+  /**
+   * The mode half of the same contract. The manager records a successful mode
+   * set locally instead of storing an agent-returned object, so — unlike the
+   * config options — its own state cannot show whether the set reached the
+   * agent. The fake's set_mode log is the evidence: it is truncated before the
+   * resume, so anything in it afterwards came from the resumed process.
+   */
+  async function resumeWithMode(reportOnResume: boolean): Promise<void> {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const setModeLog = join(tmp(), 'set-mode.log');
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_MODES: '1',
+      FAKE_LOG: setModeLog,
+      ...(reportOnResume ? {} : { FAKE_CONFIG_ON_RESUME: '0' }),
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+
+    manager.setMode(threadId, 'plan');
+    await waitUntil(
+      () => manager.getInfo(threadId)?.modes?.currentModeId === 'plan',
+      15_000,
+      'mode applied before archive',
+    );
+
+    await manager.closeThread(threadId);
+    writeFileSync(setModeLog, '');
+    await manager.resumeThread(threadId);
+    await waitUntil(
+      () => manager.getInfo(threadId)?.status === 'ready',
+      15_000,
+      'resumed thread ready',
+    );
+
+    expect(manager.getInfo(threadId)?.modes?.currentModeId).toBe('plan');
+    expect(readFileSync(setModeLog, 'utf8')).toContain('plan');
+
+    await manager.closeThread(threadId);
+  }
+
+  test('resume re-applies the thread settled mode when the agent reports it', async () => {
+    await resumeWithMode(true);
+  }, 45_000);
+
+  test('resume re-applies the thread settled mode when the agent reports none', async () => {
+    await resumeWithMode(false);
+  }, 45_000);
+
+  test('a mode pick on an archived thread is kept and applied by the resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const setModeLog = join(tmp(), 'set-mode.log');
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_MODES: '1',
+      FAKE_LOG: setModeLog,
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+    await manager.closeThread(threadId);
+    writeFileSync(setModeLog, '');
+
+    // No agent to call, so this records intent — nothing should reach the wire.
+    manager.setMode(threadId, 'plan');
+    expect(manager.getInfo(threadId)?.modes?.currentModeId).toBe('plan');
+    expect(readFileSync(setModeLog, 'utf8')).toBe('');
+    // A mode the settled surface does not offer is refused rather than stored.
+    expect(() => manager.setMode(threadId, 'nope')).toThrow();
+    expect(manager.getInfo(threadId)?.modes?.currentModeId).toBe('plan');
+
+    await manager.resumeThread(threadId);
+    await waitUntil(
+      () => manager.getInfo(threadId)?.status === 'ready',
+      15_000,
+      'resumed thread ready',
+    );
+    expect(readFileSync(setModeLog, 'utf8')).toContain('plan');
+
+    await manager.closeThread(threadId);
+  }, 45_000);
+
+  test('a pick mid-resume is refused rather than sent at a half-open session', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_CONFIG: '1',
+      FAKE_RESUME_DELAY_MS: '2000',
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+    await manager.closeThread(threadId);
+
+    const resuming = manager.resumeThread(threadId);
+    // The flag clears well before the session is back — two awaits precede it —
+    // so from here the archived branch no longer covers picks and the
+    // in-flight guard is the only thing standing between a pick and a session
+    // the agent has not resumed yet.
+    await waitUntil(
+      () => manager.getInfo(threadId)?.archived === false,
+      15_000,
+      'resume past the archived flip',
+    );
+    expect(() => manager.setConfigOption(threadId, 'model', 'opus')).toThrow(/still resuming/);
+    expect(() => manager.setMode(threadId, 'plan')).toThrow(/still resuming/);
+
+    await resuming;
+    await manager.closeThread(threadId);
+  }, 45_000);
+
+  test('a config pick on an archived thread is kept and applied by the resume', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_CONFIG: '1',
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+    await manager.closeThread(threadId);
+    expect(manager.getInfo(threadId)?.archived).toBe(true);
+    const beforePick = manager.getInfo(threadId)?.configOptions?.[0];
+    expect(beforePick?.currentValue).toBe('sonnet');
+
+    // No agent is running, so this records intent rather than calling one.
+    manager.setConfigOption(threadId, 'model', 'opus');
+    expect(manager.getInfo(threadId)?.configOptions?.[0]?.currentValue).toBe('opus');
+
+    await manager.resumeThread(threadId);
+    await waitUntil(
+      () => manager.getInfo(threadId)?.status === 'ready',
+      15_000,
+      'resumed thread ready',
+    );
+    const afterResume = manager.getInfo(threadId)?.configOptions?.[0];
+    expect(afterResume?.currentValue).toBe('opus');
+    // New pid ⇒ the pick reached the resumed agent, not just our own record.
+    expect(afterResume?.name).not.toBe(beforePick?.name);
+
+    await manager.closeThread(threadId);
+  }, 45_000);
+
+  test('an archived thread rejects a value its options do not offer', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'fake-resume', {
+      FAKE_CAPS: 'resume,load',
+      FAKE_CONFIG: '1',
+    });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const threadId = await runOneTurn(manager, 'fake-resume', 'first message');
+    await manager.closeThread(threadId);
+
+    // Recording intent still validates against the settled options — otherwise
+    // the resume would carry a value the agent will refuse.
+    expect(() => manager.setConfigOption(threadId, 'model', 'gpt-9')).toThrow();
+    expect(() => manager.setConfigOption(threadId, 'nonexistent', 'opus')).toThrow();
+    expect(manager.getInfo(threadId)?.configOptions?.[0]?.currentValue).toBe('sonnet');
   }, 45_000);
 
   test('resume via session/resume: same thread continues, no history duplication', async () => {

@@ -1657,6 +1657,9 @@
     "IKoTAC": ["Laisser désactivé"],
     "IMLUBh": ["Valeur de couleur non valide"],
     "INN7OX": ["Afficher ", ["hiddenCount"], " de plus"],
+    "INZWqo": [
+      "Paramètres de l'agent : les modifications s'appliquent lorsque vous reprendrez cette conversation"
+    ],
     "INp_z6": ["Commenter ce ", ["0"], " ou interroger l’IA à son sujet"],
     "IO8REi": ["Impossible d'ouvrir « ", ["name"], " » : ", ["0"]],
     "IQPyrD": ["Page manquante — cliquez pour la créer"],
@@ -2188,6 +2191,7 @@
     "Oos8fo": ["Copier la commande"],
     "OplnBG": ["La gestion des outils IA n'est pas disponible dans cette version."],
     "OsSaYm": ["Échec du clonage : ", ["title"]],
+    "OuQezS": ["S'applique lorsque vous reprendrez cette conversation"],
     "OuY8t9": ["Ouvrir dans la branche actuelle"],
     "OvEjsP": ["Copie en cours…"],
     "OxplNM": ["« ", ["0"], " » mis à jour : ", ["1"], " ajouté(s), ", ["2"], " retiré(s)"],

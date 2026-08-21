@@ -1526,6 +1526,10 @@ msgid "Agent settings"
 msgstr "智能体设置"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "智能体设置：更改将在继续此对话时生效"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "智能体记录"
 
@@ -1733,6 +1737,10 @@ msgstr "适用于这台电脑上的所有项目。从内置终端启动的 Claud
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "仅在这台电脑上对本项目生效。保存在 .ok/local 中，不通过 git 共享。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "继续此对话时生效"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"

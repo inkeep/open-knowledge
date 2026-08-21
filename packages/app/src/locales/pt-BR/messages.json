@@ -1606,6 +1606,9 @@
     "IKoTAC": ["Deixar desativado"],
     "IMLUBh": ["Valor de cor inválido"],
     "INN7OX": ["Mostrar mais ", ["hiddenCount"]],
+    "INZWqo": [
+      "Configurações do agente: as alterações se aplicam quando você retomar esta conversa"
+    ],
     "INp_z6": ["Comente ou pergunte à IA sobre este ", ["0"]],
     "IO8REi": ["Não deu para abrir \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Página inexistente — clique para criar"],
@@ -2131,6 +2134,7 @@
     "Oos8fo": ["Copiar comando"],
     "OplnBG": ["O gerenciamento de ferramentas de IA não está disponível nesta compilação."],
     "OsSaYm": ["Falha ao clonar: ", ["title"]],
+    "OuQezS": ["Aplica-se quando você retomar esta conversa"],
     "OuY8t9": ["Abrir no ramo atual"],
     "OvEjsP": ["Copiando..."],
     "OxplNM": ["\"", ["0"], "\" atualizado: ", ["1"], " adicionados, ", ["2"], " removidos"],

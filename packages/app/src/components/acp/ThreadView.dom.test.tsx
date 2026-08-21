@@ -315,6 +315,78 @@ describe('ThreadView agent settings', () => {
     expect(document.activeElement).not.toBe(screen.getByTestId('agent-thread-composer'));
   });
 
+  test('an archived thread keeps the menu usable and says when a pick lands', async () => {
+    // The server records a pick against an archived thread and the resume
+    // applies it. A pick that sticks in the menu but changes nothing until the
+    // conversation wakes is indistinguishable from a menu that silently failed,
+    // so the row that explains it is part of the behaviour, not decoration.
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'exited',
+          archived: true,
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'sonnet',
+              options: [
+                { value: 'sonnet', name: 'Sonnet' },
+                { value: 'opus', name: 'Opus' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    // The caveat rides the trigger's accessible name too. A menu label is a
+    // bare div outside both the roving-focus collection and the menu's
+    // accessible name, so on its own it never reaches a screen reader — the
+    // one audience the "did my pick do anything?" confusion hits hardest.
+    const trigger = screen.getByRole('button', { name: /Agent settings/ });
+    expect(trigger.getAttribute('aria-label')).toMatch(/pick this conversation back up/);
+
+    await userEvent.click(trigger);
+    expect(screen.getByTestId('agent-thread-settings-archived-hint')).toBeTruthy();
+
+    await userEvent.click(screen.getByTestId('agent-thread-config-model'));
+    await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
+    expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
+  });
+
+  test('a live thread carries no archived hint', async () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'sonnet',
+              options: [
+                { value: 'sonnet', name: 'Sonnet' },
+                { value: 'opus', name: 'Opus' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    // Both channels, not just the visible one: an inverted archived check would
+    // otherwise announce the caveat on every live thread and still pass here.
+    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    expect(trigger.getAttribute('aria-label')).not.toMatch(/pick this conversation back up/);
+    await userEvent.click(trigger);
+    expect(screen.queryByTestId('agent-thread-settings-archived-hint')).toBeNull();
+  });
+
   test('remembers every pick for this agent, modes included', async () => {
     const key = agentSettingsKey({ source: 'registry', id: 'claude' });
     render(

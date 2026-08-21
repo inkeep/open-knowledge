@@ -1609,10 +1609,17 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
     primarySelect !== undefined
       ? selectOptionSummary(info.agent.id, primarySelect)
       : (legacyModeName ?? t`Settings`);
+  // The archived caveat rides the trigger's label as well as the row inside the
+  // menu: a menu label is a bare div outside the roving-focus collection and
+  // outside the menu's accessible name, so on its own it would leave exactly
+  // the "picked it and nothing happened" impression it exists to prevent for
+  // anyone not reading the menu visually.
   const accentTooltip =
-    permissiveMode && modeSurface !== null
-      ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
-      : t`Agent settings`;
+    info.archived === true
+      ? t`Agent settings — changes apply when you pick this conversation back up`
+      : permissiveMode && modeSurface !== null
+        ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
+        : t`Agent settings`;
 
   return (
     <DropdownMenu>
@@ -1649,6 +1656,19 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
           as agents expose more (and longer-described) options — the sprawl lives
           in the submenus instead of stretching one flat panel. */}
       <DropdownMenuContent align="end" className="w-60" data-testid="agent-thread-settings-popover">
+        {/* An archived thread has no agent to apply a pick to — the server
+            records it against the thread and the resume starts on it. Without
+            saying so, a pick that visibly sticks but changes nothing until you
+            send a message is indistinguishable from a menu that silently
+            failed. */}
+        {info.archived === true ? (
+          <DropdownMenuLabel
+            className="font-normal text-muted-foreground"
+            data-testid="agent-thread-settings-archived-hint"
+          >
+            {t`Applies when you pick this conversation back up`}
+          </DropdownMenuLabel>
+        ) : null}
         {configOptions.map((option) =>
           option.type === 'select' ? (
             <ConfigSelectSub

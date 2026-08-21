@@ -2311,11 +2311,32 @@ export class AcpThreadManager {
           );
         }
         t.sessionId = sessionId;
+        // The agent brings up a fresh session on its own defaults, and the
+        // response below overwrites the settled choices this thread was using
+        // (they survive a restart via the persisted meta). Capture them first:
+        // a resumed conversation continuing on a different model than it was
+        // answering with is a silent change of behaviour mid-thread.
+        const resumedConfig: Record<string, string | boolean> = Object.fromEntries(
+          (t.info.configOptions ?? []).map((option) => [option.id, option.currentValue]),
+        );
+        const resumedModeId = t.info.modes?.currentModeId;
         const modes = response.modes as ThreadInfo['modes'] | undefined;
         if (modes !== undefined && modes !== null) t.info.modes = modes;
         const configOptions = response.configOptions as ThreadInfo['configOptions'] | undefined;
         if (configOptions !== undefined && configOptions !== null) {
           t.info.configOptions = configOptions;
+        }
+        // Same order as a fresh session: config first, then the mode, since a
+        // model pick can reshape the mode surface. Both are best-effort against
+        // the settled session, so an option the agent has since retired is
+        // skipped rather than failing the resume. Reporting is optional in both
+        // resume responses, and when it is absent the cached values describe
+        // the session that ended — so re-send rather than trust them.
+        await this.applyInitialConfig(t, conn, resumedConfig, configOptions == null);
+        if (t.closed) throw new ThreadOpError('not-ready', 'thread closed during resume');
+        if (resumedModeId !== undefined) {
+          await this.applyInitialMode(t, conn, resumedModeId, modes == null);
+          if (t.closed) throw new ThreadOpError('not-ready', 'thread closed during resume');
         }
         this.emitStatus(t, 'ready');
         this.opts.log.info(
@@ -3085,6 +3106,20 @@ export class AcpThreadManager {
 
   setMode(threadId: string, modeId: string): void {
     const t = this.mustGet(threadId);
+    // Same as `setConfigOption`: record the pick against the archived thread so
+    // the resume starts on it.
+    if (t.info.archived === true) {
+      const modes = t.info.modes;
+      if (modes == null || !modes.availableModes.some((m) => m.id === modeId)) {
+        throw new ThreadOpError('not-ready', `no such mode: ${modeId}`);
+      }
+      t.info.modes = { ...modes, currentModeId: modeId };
+      this.emitInfo(t);
+      return;
+    }
+    if (t.resumeInFlight) {
+      throw new ThreadOpError('not-ready', 'the thread is still resuming');
+    }
     if (t.conn === null || t.sessionId === null) {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
@@ -3109,6 +3144,30 @@ export class AcpThreadManager {
    */
   setConfigOption(threadId: string, configId: string, value: string | boolean): void {
     const t = this.mustGet(threadId);
+    // An archived thread has no agent to ask, but it does have the settled
+    // options on record. Store the choice against them and the resume applies
+    // it to the session it starts — the alternative is refusing a pick the UI
+    // offered, which reads to the user as the menu doing nothing.
+    if (t.info.archived === true) {
+      const option = (t.info.configOptions ?? []).find((o) => o.id === configId);
+      if (option === undefined) {
+        throw new ThreadOpError('not-ready', `no such config option: ${configId}`);
+      }
+      if (!initialConfigValueValid(option, value)) {
+        throw new ThreadOpError('not-ready', `invalid value for ${configId}`);
+      }
+      t.info.configOptions = (t.info.configOptions ?? []).map((o) =>
+        o.id === configId ? ({ ...o, currentValue: value } as SessionConfigOption) : o,
+      );
+      this.emitInfo(t);
+      return;
+    }
+    if (t.resumeInFlight) {
+      // `archived` flips to false at the top of the resume, so the branch above
+      // stops catching picks well before the agent has the session back. Same
+      // race `sendPrompt` guards: the connection exists, the session does not.
+      throw new ThreadOpError('not-ready', 'the thread is still resuming');
+    }
     if (t.conn === null || t.sessionId === null) {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
@@ -3142,6 +3201,12 @@ export class AcpThreadManager {
     record: ThreadRecord,
     conn: NonNullable<ThreadRecord['conn']>,
     config: Record<string, string | boolean>,
+    // A resumed session that reported no `configOptions` leaves the cached
+    // values unverified: they describe the session that ended, not the one that
+    // just came up. Skipping a set because the cache already reads as the
+    // wanted value would then leave the agent on its own default while we
+    // report the wanted one, so the caller can turn that shortcut off.
+    sessionStateUnknown = false,
   ): Promise<void> {
     const sessionId = record.sessionId;
     if (sessionId === null) return;
@@ -3155,7 +3220,7 @@ export class AcpThreadManager {
       if (value === undefined) continue;
       const option = (record.info.configOptions ?? []).find((o) => o.id === configId);
       if (option === undefined) continue; // agent no longer offers this option
-      if (option.currentValue === value) continue; // already the agent's default
+      if (!sessionStateUnknown && option.currentValue === value) continue; // already the agent's default
       if (!initialConfigValueValid(option, value)) continue; // stored value gone (e.g. retired model)
       const request: SetSessionConfigOptionRequest =
         typeof value === 'boolean'
@@ -3182,7 +3247,7 @@ export class AcpThreadManager {
     // didn't stick" diagnosable from a bundle without correlating per-id lines.
     if (rejected.length > 0) {
       this.opts.log.warn(
-        { threadId: record.info.threadId, rejectedConfigIds: rejected },
+        { threadId: record.info.threadId, rejectedConfigIds: rejected, sessionStateUnknown },
         '[acp-threads] some remembered config options could not be applied to the new session',
       );
     }
@@ -3201,6 +3266,8 @@ export class AcpThreadManager {
     record: ThreadRecord,
     conn: NonNullable<ThreadRecord['conn']>,
     modeId: string,
+    /** See `applyInitialConfig` — same unverified-cache case, same shortcut. */
+    sessionStateUnknown = false,
   ): Promise<void> {
     const sessionId = record.sessionId;
     if (sessionId === null) return;
@@ -3208,7 +3275,7 @@ export class AcpThreadManager {
     if (modes != null) {
       // Legacy SessionModeState path (Claude's permission modes).
       if (modes.availableModes.some((m) => m.id === modeId)) {
-        if (modes.currentModeId === modeId) return; // already the session default
+        if (!sessionStateUnknown && modes.currentModeId === modeId) return; // already the session default
         try {
           await conn.agent.request(acpMethods.agent.session.setMode, { sessionId, modeId });
           record.info.modes = { ...modes, currentModeId: modeId };
@@ -3226,7 +3293,8 @@ export class AcpThreadManager {
     const option = (record.info.configOptions ?? []).find(
       (o) => o.category === 'mode' && initialConfigValueValid(o, modeId),
     );
-    if (option === undefined || option.currentValue === modeId) return;
+    if (option === undefined) return;
+    if (!sessionStateUnknown && option.currentValue === modeId) return;
     try {
       const response: SetSessionConfigOptionResponse = await conn.agent.request(
         acpMethods.agent.session.setConfigOption,

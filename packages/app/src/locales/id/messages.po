@@ -1522,6 +1522,10 @@ msgid "Agent settings"
 msgstr "Pengaturan agen"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "Pengaturan agen: perubahan berlaku saat Anda melanjutkan percakapan ini"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "Transkrip agen"
 
@@ -1729,6 +1733,10 @@ msgstr "Berlaku untuk semua proyek di komputer ini. Claude dan Codex, yang dijal
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "Berlaku untuk proyek ini hanya di komputer ini. Disimpan di .ok/local, tidak dibagikan lewat git."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "Berlaku saat Anda melanjutkan percakapan ini"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"

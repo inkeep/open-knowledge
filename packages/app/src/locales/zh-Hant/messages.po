@@ -1526,6 +1526,10 @@ msgid "Agent settings"
 msgstr "代理設定"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "代理設定：變更將在繼續此對話時生效"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "代理記錄"
 
@@ -1733,6 +1737,10 @@ msgstr "適用於這台電腦上的所有專案。從內建終端機啟動的 Cl
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "只在這台電腦上對這個專案生效。存在 .ok/local 中，不會透過 git 分享。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "繼續此對話時生效"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"

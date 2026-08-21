@@ -1526,6 +1526,10 @@ msgid "Agent settings"
 msgstr "إعدادات الوكيل"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "إعدادات الوكيل: تسري التغييرات عند استئناف هذه المحادثة"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "نص جلسة الوكيل"
 
@@ -1733,6 +1737,10 @@ msgstr "ينطبق على كل المشاريع على هذا الجهاز. يو
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "ينطبق على هذا المشروع على هذا الكمبيوتر فقط. يُخزَّن في ‎.ok/local ولا يُشارك عبر git."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "يسري عند استئناف هذه المحادثة"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"

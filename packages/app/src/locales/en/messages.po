@@ -1526,6 +1526,10 @@ msgid "Agent settings"
 msgstr "Agent settings"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Agent settings — changes apply when you pick this conversation back up"
+msgstr "Agent settings — changes apply when you pick this conversation back up"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
 msgstr "Agent transcript"
 
@@ -1733,6 +1737,10 @@ msgstr "Applies to all projects on this machine. Claude and Codex, started from 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
 msgstr "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Applies when you pick this conversation back up"
+msgstr "Applies when you pick this conversation back up"
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Apply and restart project server"
