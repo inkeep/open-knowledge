@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  AGENT_PANEL_ID,
   AGENTS_COLUMN_ID,
   accountRailLayout,
   DOC_PANEL_ID,
@@ -33,10 +32,9 @@ describe('right-rail panel registry', () => {
   // Pins membership AND order. Dropping a peer (e.g. the terminal column) or
   // reordering fails here — a rendered column that is not registered would be
   // mistaken for the residual editor and silently consume its width.
-  test('registers exactly the four rail peers in canonical order', () => {
+  test('registers exactly the three rail peers in canonical order', () => {
     expect([...RIGHT_RAIL_PANEL_ORDER]).toEqual([
       DOC_PANEL_ID,
-      AGENT_PANEL_ID,
       TERMINAL_COLUMN_ID,
       AGENTS_COLUMN_ID,
     ]);
@@ -68,7 +66,7 @@ describe('residual editor discovery across reachable layouts', () => {
     }
   });
 
-  test('accounts cleanly for the four-peer wide rail', () => {
+  test('accounts cleanly for the full rail', () => {
     const layout = [EDITOR, DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID];
     const accounting = accountRailLayout(layout);
     expect(accounting.ok).toBe(true);
@@ -76,7 +74,7 @@ describe('residual editor discovery across reachable layouts', () => {
     expect(accounting.presentPeers).toEqual([DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID]);
   });
 
-  test('accounts cleanly for the narrow three-peer rail (agents closed)', () => {
+  test('accounts cleanly for a narrow rail (agents closed)', () => {
     const layout = [EDITOR, DOC_PANEL_ID, TERMINAL_COLUMN_ID];
     const accounting = accountRailLayout(layout);
     expect(accounting.ok).toBe(true);

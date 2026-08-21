@@ -26,8 +26,8 @@ interface StickyRepinParams {
  * (editor) panel takes exactly what the pins leave, whatever the topology.
  *
  * Returns a new `panelId -> percentage` map summing to 100. Pinned panels take
- * `px / containerPx`; other panels (e.g. the folder view's agent panel) keep
- * their current percentage; the residual panel takes the rest. Falls back to
+ * `px / containerPx`; any panel the caller does not pin keeps its current
+ * percentage; the residual panel takes the rest. Falls back to
  * the input layout — same reference, so callers can skip `setLayout` on
  * identity — when it can't compute a valid result: a non-positive container,
  * an absent residual panel, or pins that don't fit (a negative residual).

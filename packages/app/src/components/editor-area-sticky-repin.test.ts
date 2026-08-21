@@ -42,8 +42,8 @@ describe('computeStickyRepinLayout', () => {
     expect(next.editor).toBeCloseTo(60, 6);
   });
 
-  test('preserves a non-pinned, non-residual panel (agent-panel) in the layout', () => {
-    // The folder view mounts an agent panel that is neither pinned nor the
+  test('preserves a non-pinned, non-residual panel in the layout', () => {
+    // A layout can carry a member that is neither pinned nor the
     // residual — its share must pass through untouched while the residual
     // absorbs only what the pins leave.
     const next = computeStickyRepinLayout({
@@ -71,7 +71,7 @@ describe('computeStickyRepinLayout', () => {
     expect(next.editor).toBeCloseTo(100, 6);
   });
 
-  test('preserves peer key order and passes an unpinned peer through (four-peer rail)', () => {
+  test('preserves peer key order and passes an unpinned peer through', () => {
     // editor | doc-panel | terminal-column | agents-column, with the terminal
     // column unpinned. The returned layout must keep the same key order (the
     // library has no ordering prop — source/DOM order is the contract) and pass

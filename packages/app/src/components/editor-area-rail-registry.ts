@@ -15,21 +15,22 @@
 // of a string literal already narrows to its literal type, which the ordered
 // tuple below relies on for `RightRailPanelId`.
 export const DOC_PANEL_ID = 'doc-panel';
-export const AGENT_PANEL_ID = 'agent-panel';
 export const TERMINAL_COLUMN_ID = 'terminal-column';
 export const AGENTS_COLUMN_ID = 'agents-column';
 
 /**
- * Left-to-right order of the rail peers, after the residual editor column.
- * `doc-panel` and `agent-panel` share the rightPanel slot (never both present);
- * the terminal column sits between the document side pane and the agents column.
+ * Left-to-right order of the rail peers, after the residual editor column. The
+ * terminal column sits between the document side pane and the agents column.
+ *
+ * Every peer is a PERMANENT member of the group: the set of ids is the same on
+ * every view, and a peer with nothing to show is a zero-width member rather than
+ * an unmounted one. react-resizable-panels caches one layout per id set and
+ * restores it whenever the set changes, so a peer that came and went would drag
+ * the whole rail back to whatever widths its absence was last paired with.
+ * `doc-panel` is one slot whose CONTENT varies (document side pane, agent
+ * activity, or nothing); it is not one id per kind of content.
  */
-export const RIGHT_RAIL_PANEL_ORDER = [
-  DOC_PANEL_ID,
-  AGENT_PANEL_ID,
-  TERMINAL_COLUMN_ID,
-  AGENTS_COLUMN_ID,
-] as const;
+export const RIGHT_RAIL_PANEL_ORDER = [DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID] as const;
 
 export type RightRailPanelId = (typeof RIGHT_RAIL_PANEL_ORDER)[number];
 

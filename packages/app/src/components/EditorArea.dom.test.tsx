@@ -83,6 +83,13 @@ const ASSET_DOC_CTX = {
 // branch, so a later provider-null render counts as a mid-session navigation
 // rather than a cold start.
 const FOLDER_LIVE_CTX = { ...FOLDER_DOC_CTX, activeProvider: {} as never };
+// A folder view drilled into an agent's activity — the case that used to render
+// its own `agent-panel` and now fills the shared document slot.
+const FOLDER_AGENT_CTX = {
+  ...FOLDER_DOC_CTX,
+  docPanelMode: 'agent',
+  docPanelAgentId: 'conn-1',
+};
 const DOC_LIVE_CTX = {
   ...FOLDER_LIVE_CTX,
   activeDocName: 'docs/notes',
@@ -104,6 +111,7 @@ const DOC_COLD_CTX = {
 let docCtx:
   | typeof FOLDER_DOC_CTX
   | typeof FOLDER_LIVE_CTX
+  | typeof FOLDER_AGENT_CTX
   | typeof DOC_LIVE_CTX
   | typeof EMPTY_DOC_CTX
   | typeof LARGE_FILE_DOC_CTX
@@ -282,6 +290,15 @@ vi.doMock('./BottomComposer', () => ({
   BottomComposer: ({ docName, folderPath }: { docName?: string | null; folderPath?: string }) => (
     <div data-testid="bottom-composer" data-doc={docName ?? ''} data-folder={folderPath ?? ''} />
   ),
+}));
+
+// The agent-activity view reaches for PageList/workspace context this layout
+// harness does not stand up. It is lazy, so before an `await act()` anywhere in
+// the file it stayed suspended and never rendered; once resolved it renders
+// synchronously in every later test. Stub it for the same reason the other heavy
+// children here are stubbed — these tests are about the rail, not its contents.
+vi.doMock('@/components/ActivityModeContent', () => ({
+  ActivityModeContent: () => <div data-testid="activity-mode-content" />,
 }));
 
 vi.doMock('@/components/AssetPreview', () => ({
@@ -472,6 +489,10 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     mockGroupPx = 1360;
     toastInfoMessages = [];
   });
+
+  /** Rail panel ids currently in the group, in render order. */
+  const renderedPanelIds = () =>
+    [...screen.getByTestId('resizable-group').children].map((el) => el.id).filter(Boolean);
 
   test('moving the terminal right at a narrow width closes agents without moving focus', async () => {
     setViewportWidth(650);
@@ -729,8 +750,11 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
   test('hiding the agents panel re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
     // Below 1280px the doc panel starts collapsed (no pin), so the intended
     // post-hide state is "collapsed" even though the cached two-panel layout
-    // (mimicked) says expanded.
+    // (mimicked) says expanded. Needs a live document: the slot is a permanent
+    // member on every view, so only a view that HAS a document pane exercises
+    // the collapsed-vs-open intent rather than the empty-slot pin.
     setViewportWidth(1024);
+    docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} agentsVisible />);
     expect(groupSetLayoutCalls).toHaveLength(0);
     // The stale two-panel layout the library restores on unmount: doc panel
@@ -750,6 +774,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     // could say anything; the assert must restore the pre-reveal state (open)
     // at the persisted width, with the agents column at its own persisted width.
     setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
     const view = render(<EditorArea {...baseProps} agentsVisible={false} />);
     groupLayout = { 'editor-main': 45, 'doc-panel': 25, 'agents-column': 30 };
     view.rerender(<EditorArea {...baseProps} agentsVisible />);
@@ -762,6 +787,168 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(corrected?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
     expect(corrected?.['agents-column']).toBeCloseTo(pctOf(480), 3);
     expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320) - pctOf(480), 3);
+  });
+
+  // react-resizable-panels caches one layout per panel-ID set and
+  // restores it whenever the set changes, so any rail member that mounted and
+  // unmounted would drag the whole rail back to the widths its absence was last
+  // paired with — which stranded the agents column at zero width while the app
+  // still believed it was open. These pin the fix at its root: the set never
+  // changes, whatever the view.
+  test('the rail keeps one panel-ID set from a document to a new tab', () => {
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    const withDocument = renderedPanelIds();
+    expect(withDocument).toEqual(['doc-panel', 'terminal-column', 'agents-column']);
+
+    docCtx = EMPTY_DOC_CTX;
+    view.rerender(<EditorArea {...baseProps} agentsVisible />);
+
+    expect(renderedPanelIds()).toEqual(withDocument);
+    // Present, but holding nothing — a zero-width member, not an absent one.
+    expect(document.getElementById('doc-panel')?.childElementCount).toBe(0);
+  });
+
+  test('the rail keeps one panel-ID set across every view kind', () => {
+    setViewportWidth(1400);
+    const expected = ['doc-panel', 'terminal-column', 'agents-column'];
+    for (const ctx of [
+      DOC_LIVE_CTX,
+      EMPTY_DOC_CTX,
+      FOLDER_DOC_CTX,
+      FOLDER_AGENT_CTX,
+      ASSET_DOC_CTX,
+      LARGE_FILE_DOC_CTX,
+    ]) {
+      cleanup();
+      docCtx = ctx;
+      render(<EditorArea {...baseProps} agentsVisible />);
+      expect(renderedPanelIds()).toEqual(expected);
+    }
+  });
+
+  test('an empty slot is clamped out of flex flow, like every hidden rail column', () => {
+    // A permanent member that holds nothing must not be able to take a flex
+    // share, or it paints a gap the editor should own. RRP applies
+    // `Math.min(maxSize, size)` last, so `maxSize: 0px` is what enforces it —
+    // the handle's `display: none` covers the separator's own width.
+    setViewportWidth(1400);
+    docCtx = ASSET_DOC_CTX;
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    expect(document.getElementById('doc-panel')?.dataset.maxSize).toBe('0px');
+
+    // Filled again, the ceiling goes back to the pane's real drag limit.
+    docCtx = DOC_LIVE_CTX;
+    view.rerender(<EditorArea {...baseProps} agentsVisible />);
+    expect(document.getElementById('doc-panel')?.dataset.maxSize).toBe('600px');
+  });
+
+  test('the mid-session load gap keeps the panel-ID set and fills the slot', () => {
+    // The load-gap branch is the one that replaced the deleted placeholder
+    // panel, so it is the single most important view to pin — and it is not
+    // reachable by fixture alone. It needs a hash naming the incoming doc AND a
+    // latched `everHadProvider`, so render a live provider first and re-render
+    // (no cleanup) to keep the same component instance and its latch.
+    setViewportWidth(1400);
+    docCtx = FOLDER_LIVE_CTX;
+    const view = render(<EditorArea {...baseProps} agentsVisible />);
+    window.location.hash = '#/incoming-doc';
+    docCtx = DOC_COLD_CTX;
+    view.rerender(<EditorArea {...baseProps} agentsVisible />);
+
+    // Guard the fixture itself: without the skeleton this test would silently
+    // re-cover the empty state, which is what it did before.
+    expect(screen.getByTestId('editor-skeleton')).toBeTruthy();
+    expect(renderedPanelIds()).toEqual(['doc-panel', 'terminal-column', 'agents-column']);
+    // Filled with the visual-only filler, so the slot holds its width across the
+    // gap rather than collapsing and reopening when the doc lands.
+    expect(document.getElementById('doc-panel')?.childElementCount).toBe(1);
+    window.location.hash = '';
+  });
+
+  test('emptying the slot hands its width to the editor; refilling takes it back', async () => {
+    // No visibility flag moves on a view switch, so the flag-keyed sync sits it
+    // out. Without its own re-pin the emptied pane keeps the width the document
+    // view left behind.
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    const view = render(<EditorArea {...baseProps} />);
+    groupLayout = {
+      'editor-main': 60,
+      'doc-panel': 40,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    docCtx = ASSET_DOC_CTX;
+    view.rerender(<EditorArea {...baseProps} />);
+    await act(async () => {});
+    const emptied = groupSetLayoutCalls.at(-1);
+    expect(emptied?.['doc-panel']).toBe(0);
+    expect(emptied?.['editor-main']).toBe(100);
+
+    groupLayout = { ...groupLayout, 'editor-main': 100, 'doc-panel': 0 };
+    docCtx = DOC_LIVE_CTX;
+    view.rerender(<EditorArea {...baseProps} />);
+    await act(async () => {});
+    const refilled = groupSetLayoutCalls.at(-1);
+    expect(refilled?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+    expect(refilled?.['editor-main']).toBeCloseTo(100 - pctOf(320), 3);
+  });
+
+  test('folder-view agent activity fills the shared slot, not a panel of its own', () => {
+    setViewportWidth(1400);
+    docCtx = FOLDER_AGENT_CTX;
+    render(<EditorArea {...baseProps} />);
+
+    expect(document.getElementById('agent-panel')).toBeNull();
+    expect(document.getElementById('doc-panel')?.childElementCount).toBe(1);
+  });
+
+  test('a folder-view avatar click opens the slot even when the pane was collapsed', async () => {
+    // The merged slot answers to `isCollapsed`, which the separate agent panel
+    // never did. `openActivityPanel` bumps the expand signal on every path into
+    // agent mode, so the drill-in still opens against a collapsed pane — if it
+    // did not, clicking an avatar would silently do nothing.
+    setViewportWidth(1024); // below the threshold: the pane starts collapsed
+    docCtx = FOLDER_DOC_CTX;
+    const view = render(<EditorArea {...baseProps} />);
+    groupLayout = {
+      'editor-main': 100,
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    docCtx = { ...FOLDER_AGENT_CTX, docPanelExpandSignal: 1 };
+    view.rerender(<EditorArea {...baseProps} />);
+    await act(async () => {});
+
+    const opened = groupSetLayoutCalls.at(-1);
+    expect(opened?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+  });
+
+  test('a view with no document pane pins the slot shut and ignores the toggle', async () => {
+    // The slot is a permanent member everywhere, so the chord must key off
+    // whether this view HAS a document pane — not off the panel existing.
+    setViewportWidth(1400);
+    docCtx = ASSET_DOC_CTX;
+    render(<EditorArea {...baseProps} agentsVisible />);
+    groupSetLayoutCalls = [];
+    groupLayout = {
+      'editor-main': 45,
+      'doc-panel': 25,
+      'terminal-column': 0,
+      'agents-column': 30,
+    };
+
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+    await act(async () => {});
+
+    expect(groupSetLayoutCalls).toHaveLength(0);
   });
 
   test('releasing an agents-handle drag with the column snapped shut hides the panel', async () => {
@@ -1214,10 +1401,9 @@ describe('EditorArea terminal persists across view-kind switches', () => {
 
 // Locks the fix for the COLD-START path: on first load (no provider has
 // ever been active), a hash-driven doc load renders the skeleton as a standalone
-// early-return, NOT inside the shared panel group. Routing it through the group
-// renders one panel and then adds the doc panel when the doc lands — a 1→3
-// panel-count transition that corrupts react-resizable-panels' doc-panel
-// sticky-width restore. (The e2e qa-sidebar also covers this; this is the
+// early-return, NOT inside the shared panel group. There is no group state to
+// preserve and nothing docked to keep alive on this path, so mounting a group to
+// hold a skeleton buys nothing. (The e2e qa-sidebar also covers this; this is the
 // fast guard.) The MID-SESSION counterpart — where the dock must persist — is
 // the next describe block.
 describe('EditorArea hash-load skeleton renders outside the panel group (cold start)', () => {
@@ -1307,9 +1493,8 @@ describe('EditorArea terminal persists across a mid-session cold navigation', ()
     expect(terminalDockMounts).toBe(mountsAfterInitial);
     // Mid-session skeleton routes THROUGH the shared group (not a bare
     // early-return) — the symmetric guard to the cold-start group-absent
-    // assertion. Pins that the placeholder holds the panel count inside the
-    // group, so a future refactor that lifts the dock outside the group can't
-    // silently revert the 1→3 invariant while keeping the dock mounted.
+    // assertion. Pins that the docked terminal's PTY survives the load gap: a
+    // refactor that lifted the dock outside the group would unmount it here.
     expect(screen.getByTestId('resizable-group')).toBeTruthy();
   });
 

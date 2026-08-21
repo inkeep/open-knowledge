@@ -98,7 +98,6 @@ import {
 } from './EditorWorkspace';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import {
-  AGENT_PANEL_ID,
   AGENTS_COLUMN_ID,
   accountRailLayout,
   DOC_PANEL_ID,
@@ -234,9 +233,8 @@ const LazyAgentDiffPane = lazy(async () => {
   return { default: mod.AgentDiffPane };
 });
 
-// Shared doc-panel sizing — referenced by both the live doc panel and the
-// hash-load placeholder that mirrors it, so the two stay structurally linked and
-// their min/max can't drift apart.
+// Sizing for the permanent document slot. Its content varies by view; these
+// bounds do not.
 const DOC_PANEL_MIN_WIDTH_PX = 300;
 const DOC_PANEL_MIN_SIZE = `${DOC_PANEL_MIN_WIDTH_PX}px`;
 const DOC_PANEL_MAX_SIZE = '600px';
@@ -285,7 +283,7 @@ interface EditorAreaProps {
   onTerminalVisibleChange?: (visible: boolean) => void;
   onTerminalRightWidthChange?: (width: number) => void;
   /** Agents-panel visibility. Its own resizable column to the right of the
-   * doc/agent panel. Independent of the terminal. */
+   * document side pane. Independent of the terminal. */
   agentsVisible?: boolean;
   onAgentsVisibleChange?: (visible: boolean) => void;
   /** Report both panels' attach points to the session hosts owned by EditorPane. */
@@ -618,10 +616,6 @@ function EditorAreaInner({
       RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
     ),
   );
-  const terminalDefaultWidthPx = Math.max(
-    terminalRightWidth ?? initialTerminalWidthPx,
-    RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
-  );
   const terminalWidthPxRef = useRef(initialTerminalWidthPx);
   const [isDraggingTerminalHandle, setIsDraggingTerminalHandle] = useState(false);
   const isDraggingTerminalHandleRef = useRef(false);
@@ -673,6 +667,17 @@ function EditorAreaInner({
     return () => observer.disconnect();
   }, [workspaceHeaderContainer, workspaceColumnEl]);
 
+  // Whether the active view has a right document pane at all. The slot itself is
+  // a permanent rail member; this is whether it has anything to show. Written by
+  // an effect declared after the branch chain that decides it (see the note
+  // there); declared up here because the rail functions below read it, and the
+  // compiler rejects a reference that sits above its declaration.
+  const docSlotPresentRef = useRef(false);
+  // Pending-frame handle for the presence re-pin's bounded retry (declared with
+  // the presence ref for the same declaration-order reason; the retry itself
+  // lives in the presence effect below).
+  const presenceRepinFrameRef = useRef(0);
+
   // Group-level imperative handle. Layout corrections MUST go through
   // `setLayout` (the whole layout in one shot): the per-panel imperative APIs
   // (`resize`/`collapse`/`expand`) always exchange space with the panel's flex
@@ -709,9 +714,9 @@ function EditorAreaInner({
     try {
       const workspaceWidthPx = resolveGroupPxWidth();
       if (workspaceWidthPx == null) return null;
-      const layout = group.getLayout();
-      const otherRailPresent = DOC_PANEL_ID in layout || AGENT_PANEL_ID in layout;
-      if (!otherRailPresent) {
+      // The slot is in every layout now, so membership says nothing about
+      // whether this view HAS a document pane — read the content predicate.
+      if (!docSlotPresentRef.current) {
         return { workspaceWidthPx, otherRailWidthPx: 0 };
       }
       // A collapsed document pane still counts, at its floor. It measures zero
@@ -857,11 +862,12 @@ function EditorAreaInner({
     const buildPins = (atFloor: boolean): Record<string, number> => {
       const pins: Record<string, number> = {};
       if (DOC_PANEL_ID in layout) {
-        pins[DOC_PANEL_ID] = docCollapsed
-          ? 0
-          : atFloor
-            ? DOC_PANEL_MIN_WIDTH_PX
-            : docPanelWidthPxRef.current;
+        pins[DOC_PANEL_ID] =
+          !docSlotPresentRef.current || docCollapsed
+            ? 0
+            : atFloor
+              ? DOC_PANEL_MIN_WIDTH_PX
+              : docPanelWidthPxRef.current;
       }
       if (TERMINAL_COLUMN_ID in layout) {
         pins[TERMINAL_COLUMN_ID] = !admissionVisibilityRef.current.terminalRightVisible
@@ -880,13 +886,13 @@ function EditorAreaInner({
       return pins;
     };
 
-    const pinnedPx = buildPins(false);
-    if (Object.keys(pinnedPx).length === 0) return false;
+    let pins = buildPins(false);
+    if (Object.keys(pins).length === 0) return false;
 
     let next = computeStickyRepinLayout({
       currentLayout: layout,
       containerPx,
-      pinnedPx,
+      pinnedPx: pins,
       residualId,
     });
     // The preferred widths did not fit. Retry with every open column at its
@@ -894,10 +900,11 @@ function EditorAreaInner({
     // opened a column the app believes is visible at zero width, with a live
     // handle that can move nothing.
     if (next === layout) {
+      pins = buildPins(true);
       next = computeStickyRepinLayout({
         currentLayout: layout,
         containerPx,
-        pinnedPx: buildPins(true),
+        pinnedPx: pins,
         residualId,
       });
     }
@@ -907,6 +914,29 @@ function EditorAreaInner({
     } catch (error) {
       reportUnexpectedPanelGroupFailure('apply-rail-layout-write-failed', error);
       return false;
+    }
+    // `setLayout` validates against the store's derived panel constraints, and
+    // those refresh only when the GROUP next re-renders after a Panel
+    // re-registers — a constraint prop that changed in this very commit
+    // (`maxSize` flipping off its '0px' clamp, `defaultSize` moving) is not
+    // visible to a write issued from this commit's layout effects. The library
+    // then clamps the write against the stale constraints and reports nothing:
+    // the call "succeeds" while the rail keeps its old widths. Read the layout
+    // back and compare each pinned column so callers with a retry loop can see
+    // the rejection and re-apply once the group has settled. The 1px tolerance
+    // absorbs basis drift between our px→% conversion and the library's own
+    // group-size basis.
+    let readBack: Record<string, number>;
+    try {
+      readBack = group.getLayout();
+    } catch (error) {
+      reportUnexpectedPanelGroupFailure('apply-rail-layout-verify-failed', error);
+      return false;
+    }
+    for (const [id, px] of Object.entries(pins)) {
+      const pct = readBack[id];
+      if (pct == null) continue;
+      if (Math.abs((pct / 100) * containerPx - px) > 1) return false;
     }
     return true;
   }
@@ -955,19 +985,23 @@ function EditorAreaInner({
     });
   }
 
-  function assertRightRailLayout(docCollapsed: boolean) {
+  // Returns whether the rail verifiably holds the asserted layout — false when
+  // the write was rejected (see the read-back check in `applyRailLayout`) so
+  // callers with a retry loop can re-apply. A live drag returns true: the drag
+  // owns the layout and retrying against it would fight the pointer.
+  function assertRightRailLayout(docCollapsed: boolean): boolean {
     if (
       isDraggingDocHandleRef.current ||
       isDraggingTerminalHandleRef.current ||
       isDraggingAgentsHandleRef.current
     )
-      return;
+      return true;
     // Record the intent before applying it. The write changes panel widths,
     // which fires the ResizeObserver below synchronously — and that re-asserts
     // from this ref, which React's own state effect has not caught up to yet.
     // Without this the correction would immediately undo itself.
     isCollapsedRef.current = docCollapsed;
-    applyRailLayout(docCollapsed);
+    return applyRailLayout(docCollapsed);
   }
 
   // Latest-ref mirror of the assert for effects that must NOT re-run on render
@@ -1081,20 +1115,22 @@ function EditorAreaInner({
   }, [terminalColumnPresent, agentsColumnPresent]);
 
   // Expand the doc panel from a non-toggle path (tab request, avatar click,
-  // width-threshold crossing). The terminal and agents columns are permanent
-  // group members even while hidden at zero width, so the panel API would try
-  // to trade with a zero-width neighbor and silently do nothing. Route every
-  // transition through the full-group layout instead.
+  // width-threshold crossing). Every rail column is a permanent group member
+  // even while hidden at zero width, so the panel API would try to trade with a
+  // zero-width neighbor and silently do nothing. Route every transition through
+  // the full-group layout instead.
   function expandDocPanel() {
-    if (panelRef.current == null) return;
+    if (!docSlotPresentRef.current) return;
     assertRightRailLayout(false);
   }
 
   function togglePanel() {
-    // Folder / asset views render a different tree with no doc panel, so
-    // panelRef is unbound there. Bail before applyToggle so the global ⌥⌘B
-    // handler doesn't write a spurious 'right' pin for a panel that can't move.
-    if (panelRef.current == null) return;
+    // Asset / skill / empty views have nothing to put in the slot, and the slot
+    // is a permanent member whether or not they do — so presence, not the ref,
+    // is what says the toggle has something to move. Bail before applyToggle so
+    // the global ⌥⌘B handler doesn't write a spurious 'right' pin, and so the
+    // chord can't open an empty pane on a view that has no document.
+    if (!docSlotPresentRef.current) return;
     // Read partition from the ref (live value) — `rightPartition` captured by
     // the closure at render time goes stale if the user crosses the 1280px
     // threshold and immediately invokes the toggle before React commits the
@@ -1197,28 +1233,6 @@ function EditorAreaInner({
     expandDocPanel,
   ]);
 
-  // react-resizable-panels caches layouts keyed by the panel-ID set and
-  // restores the cached layout whenever the set changes — so mounting or
-  // unmounting the agents column would resurrect whatever doc-panel state the
-  // OTHER panel set last saw (e.g. hiding the panel re-opened a doc panel
-  // the user had closed while it was up). Re-assert the intended layout on
-  // every panel-set change: the doc panel keeps its pre-change collapsed state,
-  // both rail widths stay pinned, and the editor absorbs the difference. The
-  // library's restore runs synchronously in the re-registration render that a
-  // panel-set change triggers, so the correction is deferred one microtask to
-  // land after it (still ahead of paint — `setLayout` notifies the panels'
-  // external stores synchronously).
-  const panelSetKey = `${terminalColumnPresent}:${agentsColumnPresent}`;
-  const previousPanelSetKeyRef = useRef(panelSetKey);
-  useLayoutEffect(() => {
-    if (previousPanelSetKeyRef.current === panelSetKey) return;
-    previousPanelSetKeyRef.current = panelSetKey;
-    const docCollapsed = isCollapsed;
-    queueMicrotask(() => {
-      assertRightRailLayoutRef.current(docCollapsed);
-    });
-  }, [panelSetKey, isCollapsed]);
-
   useLayoutEffect(() => {
     if (!isCollapsed) return;
     const panelEl = document.getElementById(DOC_PANEL_ID);
@@ -1312,19 +1326,30 @@ function EditorAreaInner({
     }
   }
 
-  // Resolve the active view's content (the left/primary column) and any
-  // right-side panel (doc panel for docs, agent panel for a folder + agent
-  // view). The docked terminal lives in the left column BELOW `viewContent`, so
-  // it sits beside the right panel rather than spanning under it, and stays at
-  // one stable React position across view kinds so the PTY survives tab switches
-  // and view-kind changes.
+  // Resolve the active view's content (the left/primary column) and what goes in
+  // the right document slot (the document side pane, or agent activity on a
+  // folder view). The docked terminal lives in the left column BELOW
+  // `viewContent`, so it sits beside the slot rather than spanning under it, and
+  // stays at one stable React position across view kinds so the PTY survives tab
+  // switches and view-kind changes.
+  //
+  // Branches choose the slot's CONTENT, never whether the slot exists: the panel
+  // is rendered once at the group level below and is a permanent member of the
+  // rail (see RIGHT_RAIL_PANEL_ORDER). Null content means a zero-width slot, not
+  // an absent one. A branch that unmounted it would change the group's id set,
+  // and react-resizable-panels would answer by restoring the widths that set was
+  // last paired with — which is how the agents column ended up stranded at zero
+  // width, open as far as the app knew, with no way to reopen it.
   let viewContent: ReactNode;
-  let rightPanel: ReactNode = null;
+  let docSlotContent: ReactNode = null;
   let renderFocusedDocument: ((activityMount: ReactNode) => ReactNode) | null = null;
+  // Cold start with no group to preserve: render the bare skeleton and nothing
+  // else. Set here, acted on at the single exit below.
+  let coldStartSkeleton = false;
 
-  // The agents column (when visible) is rendered once at the
-  // panel-group level below, to the right of `rightPanel`, so the branches here
-  // only resolve the view content and its own doc/agent panel.
+  // The terminal and agents columns are rendered once at the panel-group level
+  // below, to the right of the slot, so the branches here only resolve the view
+  // content and the slot's content.
   if (activeTarget?.kind === 'large-file') {
     viewContent = (
       <LargeFileEditorState
@@ -1367,34 +1392,27 @@ function EditorAreaInner({
         {showFolderComposer ? <BottomComposer folderPath={activeTarget.folderPath} /> : null}
       </div>
     );
-    const showAgentPanel = docPanelMode === 'agent' && docPanelAgentId !== null;
-    if (showAgentPanel) {
-      rightPanel = (
-        <>
-          <ResizableHandle withHandle />
-          {/* Non-collapsible — folder view has no toolbar toggle; dismiss via avatar re-click. */}
-          <ResizablePanel
-            id={AGENT_PANEL_ID}
-            defaultSize="25%"
-            minSize="300px"
-            maxSize="40%"
-            className="flex flex-col bg-muted/20"
-          >
-            <Suspense
-              fallback={
-                <div
-                  role="status"
-                  aria-busy="true"
-                  className="flex h-full items-center justify-center text-sm text-muted-foreground"
-                >
-                  <Trans>Loading agent activity</Trans>
-                </div>
-              }
+    // A folder has no document side pane, but an agent avatar click still drills
+    // into that agent's activity — the same view `DocPanel` shows in agent mode,
+    // so it fills the same slot rather than a panel of its own. Dismissal is the
+    // avatar re-click (`closeActivityPanel`), which empties the slot; the slot's
+    // own drag-to-close works here too, unlike the separate panel this replaced.
+    const showAgentActivity = docPanelMode === 'agent' && docPanelAgentId !== null;
+    if (showAgentActivity) {
+      docSlotContent = (
+        <Suspense
+          fallback={
+            <div
+              role="status"
+              aria-busy="true"
+              className="flex h-full items-center justify-center text-sm text-muted-foreground"
             >
-              <LazyActivityModeContent showBackButton={false} />
-            </Suspense>
-          </ResizablePanel>
-        </>
+              <Trans>Loading agent activity</Trans>
+            </div>
+          }
+        >
+          <LazyActivityModeContent showBackButton={false} />
+        </Suspense>
       );
     }
   } else if (
@@ -1484,48 +1502,28 @@ function EditorAreaInner({
         // already names the next doc. Render the load skeleton THROUGH the shared
         // group (not a bare early return) so the persistent left column, and the
         // docked TerminalDock + its live PTY inside it, stay mounted across the
-        // gap instead of unmounting and resetting the terminal. The doc-panel
-        // sibling holds the panel count at 3 (we only reach this branch in doc
-        // context; folder/asset/large-file are handled above), so the
-        // sticky-width restore is not corrupted by a 1→3 transition.
+        // gap instead of unmounting and resetting the terminal.
         viewContent = <EditorSkeleton />;
-        // A ref-free placeholder that mirrors the doc-panel's id + sizing so
-        // react-resizable-panels treats it as the same doc-panel element
-        // across skeleton → doc and preserves its pixel width. It carries no
-        // panelRef/onResize/drag handlers — those read refs and the load window
-        // is brief and non-interactive — which also keeps this off the React
-        // Compiler's "ref passed to a render-time function" path.
-        rightPanel = (
-          <>
-            <ResizableHandle withHandle disabled />
-            <ResizablePanel
-              id={DOC_PANEL_ID}
-              defaultSize={initialRightCollapsed ? 0 : `${initialDocPanelWidthPx}px`}
-              minSize={DOC_PANEL_MIN_SIZE}
-              maxSize={DOC_PANEL_MAX_SIZE}
-              collapsible
-              collapsedSize={0}
-              inert
-              className="flex flex-col bg-muted/20"
-            >
-              {/* Visual-only filler. `inert` removes this subtree from the a11y
-                  tree + focus order, so a live-region role/aria-busy here would
-                  be dead ARIA — the skeleton in the left column is the announced
-                  loading state. Mirrors the real doc-panel (no ARIA on children
-                  under its own `inert`). */}
-              <div className="min-h-0 flex-1" />
-            </ResizablePanel>
-          </>
-        );
+        // Visual-only filler, so the slot keeps its width across the load gap
+        // instead of collapsing and reopening. Content-only: the slot's own
+        // panel is permanent, so nothing here has to reproduce its id or sizing
+        // the way a placeholder panel once did. No ARIA — the slot goes `inert`
+        // on empty content, and the skeleton in the left column is the announced
+        // loading state.
+        docSlotContent = <div className="min-h-0 flex-1" />;
       } else {
         // Genuine cold start (group never mounted; no docked terminal alive yet)
-        // or the web host (no dock to preserve): keep the standalone early return
-        // OUTSIDE the shared horizontal panel group, so when the doc lands its
-        // group mounts fresh with the doc panel already present. Routing it
-        // through the group here would render one panel and then ADD the doc
-        // panel — a 1→3 panel-count transition that corrupts react-resizable-
-        // panels' doc-panel pixel-width sticky restore.
-        return <EditorSkeleton />;
+        // or the web host (no dock to preserve): render the bare skeleton
+        // OUTSIDE the shared horizontal panel group. There is no group state to
+        // preserve on this path and nothing docked to keep alive, so mounting
+        // one to hold a skeleton buys nothing; when the doc lands, the group
+        // mounts fresh with the slot already in it.
+        //
+        // Flagged rather than returned on the spot: a hook is declared after
+        // this chain (the doc-slot publish), and returning from inside the chain
+        // would skip it on this path alone. The bare skeleton still renders,
+        // outside the group, just from the single exit below.
+        coldStartSkeleton = true;
       }
     } else if (isBlobRunnerNewTabId(activeNewTabId)) {
       // Checked before the Skills arm: a blob-runner tab must win even when the
@@ -1708,78 +1706,77 @@ function EditorAreaInner({
 
     viewContent = null;
     renderFocusedDocument = renderEditorContent;
-    // While the agents column is open and the doc panel is closed, the
-    // collapsed doc panel sits as a zero-width flex neighbor between the editor
-    // and the agents column. Its own handle is disabled whenever it is collapsed
-    // (see the ResizableHandle below), but drags on the TERMINAL's handle still
-    // route through the collapsed panel: the library snap-expands it once the
-    // drag crosses half its min size, instead of returning the space to the
-    // editor. Neutralize the panel itself: `disabled` makes drag redistribution
-    // skip it (deltas flow through to the editor) and `minSize 0` disarms the
-    // snap-expand threshold. Imperative paths (`setLayout`, `expand`) still
-    // move it, so the toolbar toggle keeps working. Scoped to a resizable rail
-    // being present: without one no drag can reach the collapsed panel at all.
-    // A collapsed panel stays a NORMAL member of the group. Disabling it (the
-    // previous behaviour) is what turned a collapsed interior panel into a dead
-    // neighbour: the handle beside it had nothing to trade against and moved
-    // nothing. Left enabled, the library snap-expands it instead — visible
-    // movement rather than a frozen rail.
-    rightPanel = (
-      <>
-        <ResizableHandle
-          data-doc-panel-handle=""
-          // No visible grip while collapsed — there is nothing to drag.
-          withHandle={!isCollapsed}
-          // A collapsed panel is not drag-resizable: the toolbar toggle and
-          // ⌥⌘B are its single open mechanism (mirrors TerminalDock's
-          // hidden-dock handle and the agents column, which unmounts its
-          // handle entirely when hidden). Disabling while collapsed also
-          // keeps this handle from overlapping the agents column's
-          // handle at the same pixel seam, and from being a misclick target
-          // under embedded AI-editor hosts whose own container chrome sits at
-          // the iframe edge.
-          disabled={isCollapsed}
-          onPointerDown={(event) => {
-            trackHandleDrag(event.pointerId, setIsDraggingDocHandle, isDraggingDocHandleRef);
-          }}
-        />
-        <ResizablePanel
-          id={DOC_PANEL_ID}
-          panelRef={panelRef}
-          defaultSize={initialRightCollapsed ? 0 : `${initialDocPanelWidthPx}px`}
-          minSize={DOC_PANEL_MIN_SIZE}
-          maxSize={DOC_PANEL_MAX_SIZE}
-          collapsible
-          collapsedSize={0}
-          onResize={(size) => {
-            setIsCollapsed(size.asPercentage === 0);
-            // Persist only when this resize came from a user drag — RO-driven
-            // recomputes (sticky width restoration) also fire onResize, but
-            // they're replaying the persisted value and must NOT overwrite it.
-            if (size.inPixels > 0 && isDraggingDocHandleRef.current) {
-              docPanelWidthPxRef.current = size.inPixels;
-              debouncedWriteDocPanelWidth(size.inPixels);
-            }
-          }}
-          // react-resizable-panels does NOT apply inert/aria-hidden/display:none when
-          // a panel collapses (verified against the installed runtime) — children stay
-          // in DOM, in Tab order, and announced by screen readers. `inert` removes the
-          // collapsed subtree from the a11y tree and focus order without remounting.
-          inert={isCollapsed}
-          className="flex flex-col bg-muted/20"
-        >
-          <DocPanel
-            docName={activeDocName}
-            isSourceMode={isSourceMode}
-            activeTab={activeTab}
-            onActiveTabChange={onActiveTabChange}
-            mode={docPanelMode}
-            isCollapsed={isCollapsed}
-          />
-        </ResizablePanel>
-      </>
+    docSlotContent = (
+      <DocPanel
+        docName={activeDocName}
+        isSourceMode={isSourceMode}
+        activeTab={activeTab}
+        onActiveTabChange={onActiveTabChange}
+        mode={docPanelMode}
+        isCollapsed={isCollapsed}
+      />
     );
   }
+
+  // A popped-out note window carries no document side pane. Emptied here rather
+  // than in each branch: every branch that fills the slot is equally out of
+  // scope, and one exit keeps the presence read below honest. The slot itself
+  // still renders — permanent membership is what keeps the group's id set
+  // constant — it just holds nothing and sits at zero width.
+  if (noteWindow) docSlotContent = null;
+
+  // Read presence into a const, and let the effect below close over THAT rather
+  // than over `docSlotContent`. The slot's content is a `let` the branch chain
+  // reassigns, and React Compiler treats any value an effect observes as
+  // immutable — an effect capturing it directly turns every branch assignment
+  // above into a compile error. Both this const and the effect must also sit
+  // after the chain, since a reader declared above it cannot update when a
+  // later-declared binding changes (the compiler rejects that too).
+  const docSlotPresent = docSlotContent != null;
+
+  // Filling or emptying the slot changes what the rail owes each column, and no
+  // visibility flag moves when it happens — `syncRailColumns` is keyed on the
+  // terminal/agents flags and would sit this one out. An emptied slot has to
+  // hand its width back to the editor, and a filled one has to take its width
+  // back, or the pane arrives at whatever width the last view left behind.
+  //
+  // Applied through a bounded by-frame retry (mirrors the visibility-flag
+  // effect above): the same render that flips presence also flips the panel's
+  // constraint props, so a write from this commit's layout effect is validated
+  // against the PREVIOUS constraints and silently clamped — the slot stays at
+  // zero, `onResize(0)` reads as a user collapse, and the pane never comes
+  // back until a reload. Retrying on the next frame lands after the group has
+  // re-registered the constraints.
+  //
+  // The collapse intent is captured ONCE, at flip time. The clamped write's
+  // zero-width report flips `isCollapsed` state before the first retry runs;
+  // re-reading the ref inside the loop would launder that artifact into "the
+  // user collapsed it" and pin the slot shut.
+  useLayoutEffect(() => {
+    const docSlotPresenceChanged = docSlotPresentRef.current !== docSlotPresent;
+    docSlotPresentRef.current = docSlotPresent;
+    if (!docSlotPresenceChanged) return;
+    // A new flip supersedes a retry still in flight from the previous one.
+    if (presenceRepinFrameRef.current !== 0) {
+      cancelAnimationFrame(presenceRepinFrameRef.current);
+      presenceRepinFrameRef.current = 0;
+    }
+    const docCollapsed = isCollapsedRef.current;
+    const attempt = (attemptsLeft: number) => {
+      presenceRepinFrameRef.current = 0;
+      if (assertRightRailLayoutRef.current(docCollapsed) || attemptsLeft <= 0) return;
+      presenceRepinFrameRef.current = requestAnimationFrame(() => attempt(attemptsLeft - 1));
+    };
+    attempt(30);
+  });
+  useEffect(
+    () => () => {
+      if (presenceRepinFrameRef.current !== 0) {
+        cancelAnimationFrame(presenceRepinFrameRef.current);
+      }
+    },
+    [],
+  );
 
   function renderUnfocusedPane({
     activityMount,
@@ -1931,6 +1928,85 @@ function EditorAreaInner({
     </TerminalDock>
   );
 
+  // The document side pane: `docSlotContent` decides what it holds, never
+  // whether it is here. A view with nothing to put in it gets a zero-width slot,
+  // the same way a hidden terminal or agents column is a zero-width member.
+  //
+  // While the agents column is open and this slot is closed, it sits as a
+  // zero-width flex neighbor between the editor and the agents column. Its own
+  // handle is disabled whenever it is collapsed, but drags on the TERMINAL's
+  // handle still route through it: the library snap-expands it once the drag
+  // crosses half its min size, instead of returning the space to the editor.
+  // That is deliberate — a collapsed panel stays a NORMAL member of the group.
+  // Disabling it is what turned a collapsed interior panel into a dead
+  // neighbour: the handle beside it had nothing to trade against and moved
+  // nothing. Left enabled, the library snap-expands it — visible movement
+  // rather than a frozen rail.
+  const docSlot = (
+    <>
+      <ResizableHandle
+        data-doc-panel-handle=""
+        // No visible grip while collapsed or empty — there is nothing to drag.
+        withHandle={docSlotPresent && !isCollapsed}
+        // A collapsed pane is not drag-resizable: the toolbar toggle and ⌥⌘B are
+        // its single open mechanism (mirrors TerminalDock's hidden-dock handle).
+        // Disabling while collapsed also keeps this handle from overlapping the
+        // terminal column's handle at the same pixel seam, and from being a
+        // misclick target under embedded AI-editor hosts whose own container
+        // chrome sits at the iframe edge.
+        disabled={!docSlotPresent || isCollapsed}
+        className={docSlotPresent ? undefined : 'pointer-events-none'}
+        // Out of flex flow entirely while the slot holds nothing, matching the
+        // sibling rail handles — a separator for a column that is not there
+        // still paints its own width.
+        style={docSlotPresent ? undefined : { display: 'none' }}
+        onPointerDown={(event) => {
+          trackHandleDrag(event.pointerId, setIsDraggingDocHandle, isDraggingDocHandleRef);
+        }}
+      />
+      <ResizablePanel
+        id={DOC_PANEL_ID}
+        panelRef={panelRef}
+        defaultSize={!docSlotPresent || initialRightCollapsed ? 0 : `${initialDocPanelWidthPx}px`}
+        minSize={DOC_PANEL_MIN_SIZE}
+        // While filled this is the pane's drag ceiling. While empty the same
+        // knob is the flex-flow clamp every hidden rail column carries: RRP
+        // applies `Math.min(maxSize, size)` last in its layout validator, so
+        // `0px` holds the outer flex item at zero share through every
+        // redistribution pass. Without it an empty slot can take a share for a
+        // frame and paint a gap the editor should own.
+        maxSize={docSlotPresent ? DOC_PANEL_MAX_SIZE : '0px'}
+        collapsible
+        collapsedSize={0}
+        onResize={(size) => {
+          // A view with no document pane pins the slot to zero, and that zero is
+          // about the VIEW, not about the user having closed anything. Reading it
+          // as a collapse would silently rewrite their open/closed preference
+          // every time they opened an image or a skill file.
+          if (docSlotPresent) {
+            setIsCollapsed(size.asPercentage === 0);
+          }
+          // Persist only when this resize came from a user drag — RO-driven
+          // recomputes (sticky width restoration) also fire onResize, but
+          // they're replaying the persisted value and must NOT overwrite it.
+          if (size.inPixels > 0 && isDraggingDocHandleRef.current) {
+            docPanelWidthPxRef.current = size.inPixels;
+            debouncedWriteDocPanelWidth(size.inPixels);
+          }
+          reclaimHiddenRailColumn(DOC_PANEL_ID, docSlotPresent, size.inPixels);
+        }}
+        // react-resizable-panels does NOT apply inert/aria-hidden/display:none when
+        // a panel collapses (verified against the installed runtime) — children stay
+        // in DOM, in Tab order, and announced by screen readers. `inert` removes the
+        // collapsed subtree from the a11y tree and focus order without remounting.
+        inert={!docSlotPresent || isCollapsed}
+        className="flex flex-col bg-muted/20"
+      >
+        {docSlotContent}
+      </ResizablePanel>
+    </>
+  );
+
   // The rail's panel set is FIXED: this column is always a member of the group
   // and represents "hidden" as collapsed, never as unmounted.
   //
@@ -1965,7 +2041,18 @@ function EditorAreaInner({
       <ResizablePanel
         id={TERMINAL_COLUMN_ID}
         panelRef={terminalColumnPanelRef}
-        defaultSize={terminalColumnPresent ? `${terminalDefaultWidthPx}px` : 0}
+        // Frozen at the mount-time width on purpose. `defaultSize` is a
+        // registration input: a live value re-registers the panel with the
+        // library each time the persisted width changes, which the debounced
+        // width write does moments after every drag on this column's handle.
+        // Re-registration makes the group re-resolve its layout from a cache
+        // keyed by panel ORDER — and permanently-mounted zero-width columns
+        // tie in that ordering (same offsetLeft, same offsetWidth), so the
+        // resolve can land on a stale permutation entry such as the launch-era
+        // all-collapsed rail, zeroing every column the app believes is open.
+        // Width restores don't need this to be live: every reopen routes
+        // through the rail re-pin, which reads the live width ref above.
+        defaultSize={terminalColumnPresent ? `${initialTerminalWidthPx}px` : 0}
         minSize={`${RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX}px`}
         // Clamp the outer flex item to zero while hidden. RRP's own layout
         // validator applies `Math.min(maxSize, size)` last (after the collapsible
@@ -2061,24 +2148,23 @@ function EditorAreaInner({
     </>
   );
 
-  // A popped-out note window carries no doc-panel rail, so the editor takes the
-  // window's full width. Cleared after the branches above rather than guarding
-  // each one: every branch that builds a rail is equally out of scope here, and
-  // one exit keeps the layout arithmetic below honest (`rightPanel == null`
-  // feeds `editorAbsorbsResidual`).
-  if (noteWindow) rightPanel = null;
+  // Cold start with no group to preserve: the bare skeleton, outside the panel
+  // group. Every hook above has run by now, so this exit is safe.
+  if (coldStartSkeleton) return <EditorSkeleton />;
 
   // The editor absorbs the residual width whenever something on the right claims
-  // space — the doc panel (when present and not collapsed) or a resizable rail.
+  // space — the document side pane (when filled and not collapsed) or a
+  // resizable rail.
   const editorAbsorbsResidual =
-    (rightPanel != null && !initialRightCollapsed) || resizableRailColumnPresent;
+    (docSlotPresent && !initialRightCollapsed) || resizableRailColumnPresent;
 
   // The agents reveal tab pins to the far-right column edge here; the terminal's
   // tab lives inside TerminalDock, pinned to the bottom of the editor column.
   // (Each gated by its own predicate above; both can be up at once.)
 
-  // Order: EDITOR | doc/agent panel | agents column. The agents panel is the
-  // far-right column, so it renders AFTER `rightPanel`.
+  // Order: EDITOR | document side pane | terminal column | agents column. Every
+  // member is permanent and always in this order, so the group's panel-ID set is
+  // the same on every view and the library never swaps in a cached layout.
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -2123,7 +2209,7 @@ function EditorAreaInner({
               {leftColumn}
             </div>
           </ResizablePanel>
-          {rightPanel}
+          {docSlot}
           {terminalColumn}
           {agentsColumn}
         </ResizablePanelGroup>
