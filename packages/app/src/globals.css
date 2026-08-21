@@ -3337,7 +3337,7 @@ button:active:not(:disabled) {
   with it. No drift, no cycle (we override background-color, NOT --sidebar).
 
   Browser support: relative-color syntax is Chromium 119+ / WebKit 16.4+ /
-  Firefox 128+. Electron 41 ships Chromium 134+ — fully supported.
+  Firefox 128+. Electron 43 ships Chromium 150+ — fully supported.
 
   prefers-reduced-transparency has its own dedicated fallback path below
   (the @media (prefers-reduced-transparency: reduce) block) and is
@@ -3370,9 +3370,13 @@ html.electron-mode {
   Windows/Linux chrome (electron-platform-* classes come from the FOUC
   script alongside electron-mode, read off `window.okDesktop.platform`).
   No traffic lights on these platforms — collapse the left reserve back to
-  the 1rem base padding. The OS window controls instead float top-RIGHT via
-  Electron's titleBarOverlay (Window Controls Overlay), so reserve the right
-  edge of the chrome row for them. The `titlebar-area-*` env() vars are live
+  the 1rem base padding. The OS window controls instead float via Electron's
+  titleBarOverlay (Window Controls Overlay), so reserve the chrome row's edge
+  for them. Windows always places them top-right; Linux follows the desktop
+  environment's own title-bar layout, so a DE configured to put them on the
+  left gets only the 1rem base reserve and can crowd whatever sits leftmost
+  in the row. Verify on a packaged build before assuming the left edge is
+  clear there. The `titlebar-area-*` env() vars are live
   exactly when WCO is enabled; the fallbacks make the reserve 0 on darwin,
   web, and any WCO-less window. Consumers use the precedent-#49 fallback
   form `mr-[var(--ok-titlebar-reserve-right,0px)]`.

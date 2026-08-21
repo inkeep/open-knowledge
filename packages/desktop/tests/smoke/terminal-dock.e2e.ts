@@ -324,6 +324,31 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   await revealTerminalSurface(app, terminalSection(page));
 }
 
+/**
+ * Wait until the terminal panel has stopped resizing and the throttled PTY
+ * resize behind it has had its window to land.
+ *
+ * The panel width is the observable half: it stops changing once the panel
+ * group finishes reflowing. The PTY resize is coalesced behind a trailing
+ * throttle in the renderer, so it lands after the final fit — the settle beat
+ * covers that tail. Both matter because `tput cols` samples the winsize once,
+ * when the shell evaluates it.
+ */
+async function waitForTerminalWidthStable(page: Page): Promise<void> {
+  const panel = page.locator('#terminal-dock-panel');
+  let previous = Number.NaN;
+  let stable = 0;
+  await expect(async () => {
+    const width = await panel.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    stable = width === previous ? stable + 1 : 0;
+    previous = width;
+    expect(stable).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: 15_000, intervals: [100] });
+  // Trailing PTY resize: the renderer coalesces on a ~100ms window, so give it
+  // several windows plus IPC and SIGWINCH delivery before sampling the winsize.
+  await page.waitForTimeout(500);
+}
+
 async function waitForStatus(page: Page, status: string, timeoutMs = 20_000): Promise<void> {
   await expect(terminalStatus(page)).toHaveAttribute('data-terminal-status', status, {
     timeout: timeoutMs,
@@ -653,6 +678,16 @@ test.describe('Docked terminal — live Electron', () => {
       }
       win.setSize(w, h, false);
     });
+
+    // Let the storm settle BEFORE asking the shell how wide it is. Two things
+    // are still in flight when the last `setSize` returns: the panel group is
+    // reflowing (a window step can cross a responsive breakpoint, which swings
+    // the terminal's width by far more than the step itself), and the PTY
+    // resize is throttled, so the final one lands after the final fit.
+    // `tput cols` is evaluated once, at the moment the shell runs it — ask too
+    // early and a mid-storm width is baked into the output, and no amount of
+    // re-reading the buffer afterwards can change it.
+    await waitForTerminalWidthStable(page);
 
     // The shell still echoes (no wedged PTY, no dead renderer), and its
     // winsize settled back to the pre-storm width — the trailing throttled

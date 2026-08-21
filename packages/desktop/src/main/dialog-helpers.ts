@@ -111,9 +111,14 @@ function readTestPickedPath(): string | null {
  * `showHiddenFiles` flips the picker's initial dot-file/dir visibility on
  * — necessary so users can navigate into folders like
  * `.claude/worktrees/<name>` and pick a linked worktree as its own
- * project. macOS users can still toggle visibility with Cmd+Shift+. (this
- * property only changes the initial state). Routes through the E2E test
- * seam so smoke tests can drive the path without an OS picker.
+ * project. It is honored on macOS and Windows only; GTK treats that
+ * visibility as the user's choice, so Linux ignores it and starts hidden
+ * entries collapsed. macOS users can still toggle with Cmd+Shift+. (the
+ * property only sets the initial state). The picker's starting directory
+ * is whatever `defaultPath` says, and the runtime no longer restores the
+ * last-used one — omit it and the picker opens in Downloads. Routes
+ * through the E2E test seam so smoke tests can drive the path without an
+ * OS picker.
  */
 export async function promptForExistingFolder(
   dialogModule: DialogLike,

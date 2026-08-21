@@ -18,7 +18,9 @@ minimumReleaseAgeExclude:
   - '@visimer/*'
 
 # Dependency build scripts are blocked by default under pnpm; only these run.
-# electron downloads its platform binary in a postinstall. The napi native addon
+# electron ships no install script of its own as of 43 — it fetches its platform
+# binary lazily on first use instead — but the entry stays so a future release
+# that reintroduces one is not silently blocked. The napi native addon
 # (@inkeep/open-knowledge-native-config) builds via its own turbo `napi build`
 # task, not a dependency install script, so it needs no entry here. node-pty
 # publishes N-API prebuilds for the supported desktop platforms; its install
