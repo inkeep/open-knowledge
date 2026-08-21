@@ -164,6 +164,10 @@ export function attachAcpThreadSocket(
             manager.respondRuntimeConsent(frame.threadId, frame.requestId, frame.outcome);
             return;
           }
+          case 'pi_bridge_consent_response': {
+            manager.respondPiBridgeConsent(frame.threadId, frame.requestId, frame.outcome);
+            return;
+          }
           case 'cancel': {
             manager.cancel(frame.threadId);
             return;

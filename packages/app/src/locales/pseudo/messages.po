@@ -317,6 +317,12 @@ msgstr ""
 msgid "{0} doesn't offer any settings to adjust"
 msgstr ""
 
+#. placeholder {0}: prompt.agentName
+#. placeholder {1}: item.bridgePath
+#: src/components/acp/ThreadView.tsx
+msgid "{0} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to {1} and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+msgstr ""
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} hasn't reported its settings yet"
@@ -1752,6 +1758,10 @@ msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Applying…"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Approve"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -3970,6 +3980,10 @@ msgstr ""
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
+msgstr ""
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr ""
@@ -5052,6 +5066,11 @@ msgstr ""
 msgid "Enable indexes"
 msgstr ""
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "Enable Open Knowledge tools for {0}?"
+msgstr ""
+
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
 msgstr ""
@@ -5082,6 +5101,10 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enabling index generation"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Enabling Open Knowledge tools"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
@@ -7008,6 +7031,12 @@ msgstr ""
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
+msgstr ""
+
+#. placeholder {0}: prompt.cwd
+#. placeholder {1}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "It also marks {0} as trusted, which is what makes the extension load. That trust covers the whole folder — {1} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
 msgstr ""
 
 #: src/uninstall/UninstallSurveyScreen.tsx
@@ -8999,6 +9028,18 @@ msgstr ""
 
 #: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are available in this thread."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: something is already at {bridgePath} but couldn't be read, so Open Knowledge left it alone."
 msgstr ""
 
 #. placeholder {0}: item.displayName
@@ -11911,6 +11952,10 @@ msgstr ""
 msgid "Skipped downloading {0}."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Skipped enabling Open Knowledge tools. This thread runs without them."
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Slash command menu"
 msgstr ""
@@ -12664,6 +12709,11 @@ msgstr ""
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr ""
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "That folder already holds code Open Knowledge didn't write, which the same trust would let {0} run: {otherExtensions}."
+msgstr ""
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr ""
@@ -12842,6 +12892,10 @@ msgstr ""
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "The repository's original clone directory"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "The request to enable Open Knowledge tools timed out. This thread runs without them."
 msgstr ""
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
@@ -14406,6 +14460,10 @@ msgstr ""
 
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx

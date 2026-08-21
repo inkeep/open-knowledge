@@ -57,6 +57,7 @@ import {
   launchDesktop,
   notFoundMessage,
 } from './desktop-dispatch.ts';
+import { ensurePiBridge, probePiBridgeState } from './pi-acp-bridge.ts';
 
 /** 30 minutes — default threshold. */
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
@@ -731,6 +732,11 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
     // agent's own harness already loads OK's managed editor-config entry.
     probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
       probeOwnManagedEditorMcpEntry(editorId, agentCwd),
+    // Pi has no MCP client, so its ACP threads get OK tools from the managed
+    // bridge extension in the project instead — probed at session setup and,
+    // with the user's consent, provisioned there and then.
+    probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
+    ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
     // CLI-specific opt-ins
     idleShutdownMs: idleThresholdMs,
     ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),

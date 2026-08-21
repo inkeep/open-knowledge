@@ -16,6 +16,7 @@ import { describe, expect, test } from 'vitest';
 import { DESKTOP_UPDATER_CACHE_DIR_NAME } from '../integrations/desktop-state.ts';
 import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { buildManagedServerEntry } from './editors.ts';
+import { ensurePiBridge, probePiBridgeState } from './pi-acp-bridge.ts';
 import {
   applicationDataOps,
   buildUninstallPlan,
@@ -24,7 +25,12 @@ import {
   runRemoval,
   type UninstallPlanInput,
 } from './removal-plan.ts';
-import { formatRemovalPlan, removalPlanToJson } from './removal-render.ts';
+import {
+  formatRemovalOutcome,
+  formatRemovalPlan,
+  removalOutcomeToJson,
+  removalPlanToJson,
+} from './removal-render.ts';
 
 const OWN_ENTRY = buildManagedServerEntry({ mode: 'published' });
 
@@ -563,6 +569,80 @@ describe('deinitOps', () => {
       expect(mcpWholeRemove).toBeUndefined();
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Pi's integration is two artifacts: the managed bridge file AND a folder-wide
+ * trust grant that lets Pi auto-load anything in that directory. Removing the
+ * first while the second stays is a half-finished removal, so what happened to
+ * the trust entry has to reach the user rather than hide under "✓ Removed".
+ */
+describe('pi trust revocation surfaces through the removal plan', () => {
+  function piOp(cwd: string, home: string) {
+    return {
+      kind: 'mcp-entry' as const,
+      group: 'Editor integrations',
+      label: "Remove OK's Pi bridge",
+      editorId: 'pi' as const,
+      scope: 'project' as const,
+      cwd,
+      home,
+      configPath: join(cwd, '.pi', 'extensions', 'open-knowledge.ts'),
+    };
+  }
+
+  test('a revoked trust entry reports plain removal', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'ok-pi-removal-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-'));
+    try {
+      await ensurePiBridge(cwd, { mode: 'published' }, home);
+      const { results } = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+      expect(results[0]).toMatchObject({ status: 'removed' });
+      expect(results[0]?.detail).toBeUndefined();
+      expect(probePiBridgeState(cwd, home).trust).toBe('untrusted');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a trust entry kept for another extension says so instead of claiming a clean sweep', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'ok-pi-removal-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-'));
+    try {
+      await ensurePiBridge(cwd, { mode: 'published' }, home);
+      write(join(cwd, '.pi', 'extensions', 'theirs.ts'), '// someone else\n');
+      const outcome = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+      expect(outcome.results[0]?.status).toBe('removed');
+      expect(outcome.results[0]?.detail).toContain('folder trust');
+      // …and the grant really is still there, which is why it had to be said.
+      expect(probePiBridgeState(cwd, home).trust).toBe('trusted');
+      // The user has to actually SEE it — a detail nobody renders is the same
+      // silence this whole branch exists to break.
+      expect(formatRemovalOutcome(outcome)).toContain('folder trust');
+      const json = removalOutcomeToJson('deinit', outcome);
+      expect(json.mode === 'applied' && json.removed[0]?.detail).toContain('folder trust');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('a trust store OK cannot parse fails the op rather than reporting success', async () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'ok-pi-removal-'));
+    const home = mkdtempSync(join(tmpdir(), 'ok-pi-removal-home-'));
+    try {
+      await ensurePiBridge(cwd, { mode: 'published' }, home);
+      write(join(home, '.pi', 'agent', 'trust.json'), 'not json at all');
+      const { results, failed } = await runRemoval({ ops: [piOp(cwd, home)] }, stubDeps());
+      expect(results[0]?.status).toBe('failed');
+      expect(results[0]?.detail).toContain('refused-unreadable');
+      expect(failed).toHaveLength(1);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
     }
   });
 });

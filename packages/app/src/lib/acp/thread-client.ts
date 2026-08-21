@@ -21,6 +21,7 @@ import type {
   ThreadInfo,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
 import { useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
@@ -56,9 +57,9 @@ const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 15_000;
 const CREATE_TIMEOUT_MS = 30_000;
 /** Resume resolves only after the full agent respawn + session handshake (npx cold boots take a while). */
-const RESUME_TIMEOUT_MS = 90_000;
+const RESUME_TIMEOUT_MS = THREAD_REOPEN_OP_TIMEOUT_MS;
 /** Retry re-runs the same launch, plus a fresh login-shell PATH probe. */
-const RETRY_TIMEOUT_MS = 90_000;
+const RETRY_TIMEOUT_MS = THREAD_REOPEN_OP_TIMEOUT_MS;
 /** Sign-in can park on a browser round trip before the session re-opens. */
 const AUTHENTICATE_TIMEOUT_MS = 180_000;
 const CHANNEL_WAIT_MS = 8_000;
@@ -327,6 +328,15 @@ export class AgentThreadClient {
     outcome: { kind: 'granted' } | { kind: 'declined' },
   ): void {
     this.send({ op: 'runtime_consent_response', threadId, requestId, outcome });
+  }
+
+  /** Allow (or refuse) provisioning Pi's bridge extension for this project. */
+  respondPiBridgeConsent(
+    threadId: string,
+    requestId: string,
+    outcome: { kind: 'granted' } | { kind: 'declined' },
+  ): void {
+    this.send({ op: 'pi_bridge_consent_response', threadId, requestId, outcome });
   }
 
   cancel(threadId: string): void {

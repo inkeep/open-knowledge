@@ -39,18 +39,36 @@ export const FEATURED_AGENT_IDS: readonly string[] = [
 ];
 
 /**
- * Registry agents whose harness independently loads the editor MCP configs
- * OK's own wiring installs (`ok init` / the Desktop consent flow), keyed to
- * the editor id that wiring writes for. Agent ids pinned to the live
- * registry catalog like `FEATURED_AGENT_IDS`; agents absent here (gemini,
- * github-copilot-cli, custom entries) have no OK-managed config surface, so
- * the thread manager always injects for them.
+ * Registry agents that reach OK's tools through the wiring OK installs for
+ * their editor (`ok init` / the Desktop consent flow), keyed to that editor
+ * id. For most, the wiring is an MCP config entry their harness loads on its
+ * own, which is why the thread manager stands down from injecting a
+ * same-name duplicate. Pi is the other shape: it has no MCP client at all,
+ * and its wiring is a whole managed extension FILE in the project — the
+ * thread manager provisions that instead of injecting anything.
+ *
+ * Agent ids pinned to the live registry catalog like `FEATURED_AGENT_IDS`;
+ * agents absent here (gemini, github-copilot-cli, custom entries) have no
+ * OK-managed config surface, so the thread manager always injects for them.
+ *
+ * Cursor is deliberately absent despite having one. It treats a configured
+ * server as offered rather than loaded: config-declared MCP servers sit behind
+ * a separate approval step (`cursor-agent mcp list` reports an unapproved
+ * entry as "not loaded (needs approval)"), so the entry's presence says
+ * nothing about whether the agent will have the tools, and standing down
+ * strands the user with no tools and no error. Tracking the approval instead
+ * would mean reproducing two undocumented Cursor internals — the per-project
+ * directory slug and the hash keying each approval entry — either of which can
+ * drift silently back into that same failure. Injecting sidesteps the gate and
+ * is safe even for an already-approved entry: Cursor merges config-declared
+ * and injected servers by name, and the injected one wins the tie. The editor
+ * wiring itself stays — it still serves the user's own non-ACP Cursor use.
  */
 export const ACP_AGENT_EDITOR_IDS: { readonly [agentId: string]: EditorId | undefined } = {
   'claude-acp': 'claude',
   'codex-acp': 'codex',
-  cursor: 'cursor',
   opencode: 'opencode',
+  'pi-acp': 'pi',
 };
 
 /** One platform target inside a manifest's `binary` distribution. */

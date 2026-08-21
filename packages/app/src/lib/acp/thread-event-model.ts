@@ -23,6 +23,7 @@
 
 import type {
   PermissionOption,
+  PiBridgeThreadState,
   SessionUpdate,
   ThreadEvent,
   ThreadFailureDetail,
@@ -149,12 +150,56 @@ interface RenderedRuntimeConsent {
   progress: { receivedBytes: number; totalBytes: number | null } | null;
 }
 
+/**
+ * Pi's bridge extension for this project, as one transcript row: the consent
+ * prompt while it is pending, and its settled outcome afterwards. A status
+ * event can arrive with no prompt before it (a file OK won't touch already
+ * sits at the managed path), which is why `requestId` is nullable — that row
+ * is a limitation notice, not an answered question.
+ */
+interface RenderedPiBridgePrompt {
+  requestId: string;
+  agentName: string;
+  cwd: string;
+  /** Other extensions in that folder the trust grant would also turn on. */
+  otherExtensions: readonly string[];
+}
+
+interface RenderedPiBridgeOutcome {
+  state: PiBridgeThreadState;
+  detail: string | null;
+}
+
+/**
+ * A Pi bridge row is one of two things, tagged so the renderer narrows instead
+ * of guarding a state that cannot exist: a row the user was asked about (which
+ * may still be awaiting its outcome), or a standing limitation notice, which is
+ * an outcome nobody was asked about. `outcome` alone can't carry the tag — a
+ * property only discriminates when its type is a union of unit types, and an
+ * object-or-null is not.
+ */
+interface RenderedPiBridgeBase {
+  kind: 'pi_bridge';
+  bridgePath: string;
+  /** null while awaiting the user's answer. */
+  decision: 'granted' | 'declined' | 'timeout' | null;
+}
+
+type RenderedPiBridge =
+  | (RenderedPiBridgeBase & {
+      row: 'prompted';
+      prompt: RenderedPiBridgePrompt;
+      outcome: RenderedPiBridgeOutcome | null;
+    })
+  | (RenderedPiBridgeBase & { row: 'notice'; prompt: null; outcome: RenderedPiBridgeOutcome });
+
 export type RenderedItem =
   | RenderedMessage
   | RenderedToolCall
   | RenderedPermission
   | RenderedNotice
-  | RenderedRuntimeConsent;
+  | RenderedRuntimeConsent
+  | RenderedPiBridge;
 
 export interface PlanEntry {
   content: string;
@@ -214,6 +259,8 @@ export class ThreadRenderModelBuilder {
   private permissionsByToolCall: Record<string, RenderedPermission> = {};
   private messageIndex = new Map<string, number>();
   private runtimeConsentIndex = new Map<string, number>();
+  /** Item index of the Pi bridge card by consent requestId. */
+  private piBridgeIndex = new Map<string, number>();
   /** Item index of the most recent consent card — progress events target it. */
   private lastConsentIndex: number | null = null;
   private appliedCount = 0;
@@ -266,6 +313,7 @@ export class ThreadRenderModelBuilder {
     this.permissionsByToolCall = {};
     this.messageIndex = new Map();
     this.runtimeConsentIndex = new Map();
+    this.piBridgeIndex = new Map();
     this.lastConsentIndex = null;
     this.appliedCount = 0;
     this.dirty = true;
@@ -439,6 +487,52 @@ export class ThreadRenderModelBuilder {
           resolved: event.decision,
           install: event.decision === 'granted' ? 'running' : null,
         };
+        break;
+      }
+      case 'pi_bridge_consent_request':
+        this.piBridgeIndex.set(event.requestId, this.items.length);
+        this.items.push({
+          kind: 'pi_bridge',
+          row: 'prompted',
+          prompt: {
+            requestId: event.requestId,
+            agentName: event.agentName,
+            cwd: event.cwd,
+            // Persisted events from before this field existed replay without it.
+            otherExtensions: event.otherExtensions ?? [],
+          },
+          bridgePath: event.bridgePath,
+          decision: null,
+          outcome: null,
+        });
+        break;
+      case 'pi_bridge_consent_resolved': {
+        const index = this.piBridgeIndex.get(event.requestId);
+        if (index === undefined) break;
+        const target = this.items[index];
+        if (target.kind !== 'pi_bridge') break;
+        this.items[index] = { ...target, decision: event.decision };
+        break;
+      }
+      case 'pi_bridge_status': {
+        const outcome = { state: event.state, detail: event.detail ?? null };
+        const index =
+          event.requestId === undefined ? undefined : this.piBridgeIndex.get(event.requestId);
+        const target = index === undefined ? undefined : this.items[index];
+        // Fold onto the card that asked, so one row carries question and
+        // answer. A status with no card of its own to update stands alone.
+        if (index !== undefined && target?.kind === 'pi_bridge') {
+          this.items[index] = { ...target, outcome };
+          break;
+        }
+        this.items.push({
+          kind: 'pi_bridge',
+          row: 'notice',
+          prompt: null,
+          bridgePath: event.bridgePath,
+          decision: null,
+          outcome,
+        });
         break;
       }
       case 'runtime_install_progress': {

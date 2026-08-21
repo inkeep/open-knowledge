@@ -17,6 +17,7 @@
     "-K0AvT": ["Disconnect"],
     "-LHLx7": ["edited template"],
     "-QCLWk": ["Templates available"],
+    "-QVER4": ["Enabling Open Knowledge tools"],
     "-Qw-1t": ["GitHub authentication failed. Try signing in again."],
     "-VqsyR": ["Thinking…"],
     "-WFFG2": ["Default properties"],
@@ -691,6 +692,11 @@
     "8x6zk9": ["Hide ", ["0"], " editor"],
     "9-lMCF": [["slot"], " color — ", ["0"]],
     "90-wKT": ["OpenKnowledge read the history of ", ["subject"]],
+    "92G3B2": [
+      "Open Knowledge tools are unavailable: something is already at ",
+      ["bridgePath"],
+      " but couldn't be read, so Open Knowledge left it alone."
+    ],
     "92rbk2": ["Mirror loading <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Hide Agents"],
     "96G6Re": ["New folder"],
@@ -1175,6 +1181,7 @@
       "Settings for this project. Some are shared with every collaborator through git; others apply only on this computer."
     ],
     "FNTx6u": ["Search \"", ["semanticSubmitQuery"], "\" by meaning"],
+    "FNsxBc": ["Open Knowledge tools are available in this thread."],
     "FOGD7m": ["Create something great."],
     "FQwhfM": [
       "The public URL your tunnel serves (for example your Tailscale https://…ts.net address). The server admits requests for this host and advertises it in the URLs it issues."
@@ -1468,6 +1475,12 @@
     "Jw6EC4": ["Branch switch failed — try opening the ", ["targetNoun"], " manually."],
     "JyM0gO": ["Sent, but the comments could not be marked done — they're still waiting to send."],
     "JyW5aS": ["Sifting…"],
+    "JznUmv": [
+      ["0"],
+      " has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to ",
+      ["1"],
+      " and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+    ],
     "K-NcyU": ["This folder doesn't contain a git repository. Pick a different folder?"],
     "K-a33w": ["Start writing to create this page"],
     "K-h9cT": ["Couldn't save the resolution for ", ["filePath"], "."],
@@ -1746,6 +1759,7 @@
     "NRSLBe": [["diffMin"], "m ago"],
     "NSnIUP": ["Two-page (even)"],
     "NUr4kz": ["A reusable starting point for new documents in this folder."],
+    "NY0p7s": ["Skipped enabling Open Knowledge tools. This thread runs without them."],
     "NYUhy5": ["Subfolder name"],
     "NYn1cR": ["Loading editor"],
     "NYu2Pt": ["New project…"],
@@ -2122,6 +2136,7 @@
     "SItQRc": ["How do you like OpenKnowledge?"],
     "SOPwPh": ["Restore to this edit"],
     "SRBk2G": ["Couldn't add that comment."],
+    "SRLcL7": ["Enable Open Knowledge tools for ", ["0"], "?"],
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
@@ -2623,6 +2638,7 @@
       "No <0>.markdownlint.*</0> file yet — every rule runs on the same defaults as the VS Code markdownlint extension: all on, except line length."
     ],
     "Z79bnE": ["View diff for edit ", ["burstNumber"], " of ", ["docName"]],
+    "Z7ZXbT": ["Approve"],
     "Z7x_Zh": [
       "Git needs ",
       ["tool"],
@@ -2888,6 +2904,13 @@
     "c863eW": ["Could not switch to ", ["shareBranch"], ". Try switching manually."],
     "c8iK2Y": ["No templates found."],
     "c8jBgX": ["Checking for updates on GitHub"],
+    "c8wKUP": [
+      "It also marks ",
+      ["0"],
+      " as trusted, which is what makes the extension load. That trust covers the whole folder — ",
+      ["1"],
+      " will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
+    ],
     "cCd8Bs": ["Cut"],
     "cD3aew": ["Re-embedding happens as searches run, so coverage restarts at zero and refills."],
     "cEoyWz": ["Add item to ", ["keyName"]],
@@ -3439,6 +3462,11 @@
       "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
     ],
     "j5CWO4": ["Up to date"],
+    "j6HvUO": [
+      "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at ",
+      ["bridgePath"],
+      "."
+    ],
     "j9Vqvc": ["inherited"],
     "j9tqwO": ["Not in sidebar"],
     "jAMpHn": ["What is a starter pack?"],
@@ -3550,6 +3578,9 @@
       "</0> has changes that aren't on GitHub. The ",
       ["targetNoun"],
       " will appear once the branch syncs."
+    ],
+    "kNG0s5": [
+      "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
     ],
     "kNGLX6": ["Retrying…"],
     "kNqMMd": ["Folder"],
@@ -3718,6 +3749,9 @@
     "mGaZwZ": ["See the full install guide"],
     "mHVPm5": ["Reconnect required"],
     "mHf8mp": ["Delete schema file ", ["file"]],
+    "mHo0kp": [
+      "The request to enable Open Knowledge tools timed out. This thread runs without them."
+    ],
     "mLAjyL": [
       "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
     ],
@@ -3766,6 +3800,9 @@
     "mk2poV": ["e.g. server.ts"],
     "mlA3HX": [
       "Globally install the OpenKnowledge skills and MCP to let the agents you already use read and update your projects."
+    ],
+    "mlDKzr": [
+      "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
     ],
     "mlvM8g": ["Couldn't re-place that comment."],
     "mmpzAq": ["Wrap long lines in the markdown source editor."],
@@ -4523,6 +4560,13 @@
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
     "wqD3pI": [["failed"], " of ", ["0"], " comments could not be updated."],
     "ws5o1F": ["Checked by: ", ["0"]],
+    "wsLj3t": [
+      "That folder already holds code Open Knowledge didn't write, which the same trust would let ",
+      ["0"],
+      " run: ",
+      ["otherExtensions"],
+      "."
+    ],
     "wtcxiD": ["Share this setup with your team?"],
     "wtd69q": ["No folders match."],
     "wvK7Ay": ["Your local copy of branch <0>", ["branch"], "</0> is behind."],

@@ -42,6 +42,21 @@ export interface OwnManagedMcpEntryHit {
 }
 
 /**
+ * Per-editor "does this entry run OK's own server" predicate. Two shapes exist
+ * because two config notations do: the chain-shape default and OpenCode's
+ * single-argv envelope.
+ *
+ * Pi needs no branch here. Its integration is a whole managed FILE rather than
+ * a config entry, and a Pi thread never reaches this probe — the thread manager
+ * settles Pi's bridge before it asks whether a harness config already carries
+ * OK's server.
+ */
+function ownServerMatcherFor(editorId: EditorId): (entry: unknown) => boolean {
+  if (editorId === 'opencode') return openCodeEntryRunsOwnManagedServer;
+  return entryRunsOwnManagedServer;
+}
+
+/**
  * Whether `editorId`'s project-local (probed first) or user-global MCP
  * config already carries OK's own canonical managed entry. Never throws —
  * unresolvable paths and unreadable configs count as misses.
@@ -52,8 +67,7 @@ export function probeOwnManagedEditorMcpEntry(
   home?: string,
 ): OwnManagedMcpEntryHit | null {
   const target = EDITOR_TARGETS[editorId];
-  const runsOwnServer =
-    editorId === 'opencode' ? openCodeEntryRunsOwnManagedServer : entryRunsOwnManagedServer;
+  const runsOwnServer = ownServerMatcherFor(editorId);
   const surfaces: Array<{ scope: 'project' | 'user'; configPath: string }> = [];
   const projectPath = target.projectConfigPath?.(cwd);
   if (projectPath !== undefined) surfaces.push({ scope: 'project', configPath: projectPath });

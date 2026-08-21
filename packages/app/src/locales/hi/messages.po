@@ -317,6 +317,12 @@ msgstr "{0} इस चैट को जारी नहीं रख सकत�
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} समायोजित करने के लिए कोई सेटिंग नहीं देता"
 
+#. placeholder {0}: prompt.agentName
+#. placeholder {1}: item.bridgePath
+#: src/components/acp/ThreadView.tsx
+msgid "{0} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to {1} and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+msgstr "{0} अपने आप आपके दस्तावेज़ पढ़ या संपादित नहीं कर सकता। स्वीकृति देने पर Open Knowledge एक्सटेंशन {1} में लिखा जाता है और वहीं बना रहता है, ताकि इस सत्र और इस प्रोजेक्ट के आगे के सत्रों में Open Knowledge टूल उपलब्ध रहें।"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} hasn't reported its settings yet"
@@ -1753,6 +1759,10 @@ msgstr "आपका बदलाव लागू किया जा रहा 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Applying…"
 msgstr "लागू किया जा रहा है…"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Approve"
+msgstr "स्वीकृति दें"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -3970,6 +3980,10 @@ msgstr "स्किल साझाकरण अपडेट नहीं क�
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "यह सत्यापित नहीं हो सका कि {displayName} ({bin}) उपलब्ध है, इसलिए यह एक सादा शेल है। आप फिर भी {bin} स्वयं चला सकते हैं।"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
+msgstr "Open Knowledge एक्सटेंशन नहीं लिखा जा सका। इस थ्रेड में Open Knowledge टूल नहीं हैं।"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "स्किल इंस्टॉल की गिनती सार्वजनिक रूप से करें"
@@ -5052,6 +5066,11 @@ msgstr "git स्वत: सिंक सक्षम करें?"
 msgid "Enable indexes"
 msgstr "अनुक्रमणिका सक्षम करें"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "Enable Open Knowledge tools for {0}?"
+msgstr "{0} के लिए Open Knowledge टूल सक्षम करें?"
+
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
 msgstr "प्लगइन सक्षम करें"
@@ -5083,6 +5102,10 @@ msgstr "थीम सक्षम करें"
 #: src/components/settings/LintingSection.tsx
 msgid "Enabling index generation"
 msgstr "सूचकांक निर्माण सक्षम करना"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Enabling Open Knowledge tools"
+msgstr "Open Knowledge टूल सक्षम किए जा रहे हैं"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -7009,6 +7032,12 @@ msgstr "साझा करने का URL अमान्य है।"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "अमान्य YAML"
+
+#. placeholder {0}: prompt.cwd
+#. placeholder {1}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "It also marks {0} as trusted, which is what makes the extension load. That trust covers the whole folder — {1} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
+msgstr "यह {0} को विश्वसनीय भी चिह्नित करता है, जिससे एक्सटेंशन लोड होता है। यह भरोसा पूरे फ़ोल्डर पर लागू होता है: {1} उसमें मौजूद हर एक्सटेंशन लोड करेगा, केवल Open Knowledge का नहीं, और जब तक आप इस प्रोजेक्ट से Open Knowledge नहीं हटाते, दोनों बने रहते हैं।"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -9000,6 +9029,18 @@ msgstr "Open Knowledge प्रत्येक फ़ोल्डर में 
 #: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
 msgstr "दस्तावेज़ बदलने पर Open Knowledge इन index.md फ़ाइलों को फिर से लिखता है, इसलिए उनमें मैन्युअल संपादन बदल दिए जाते हैं।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are available in this thread."
+msgstr "इस थ्रेड में Open Knowledge टूल उपलब्ध हैं।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
+msgstr "Open Knowledge टूल उपलब्ध नहीं हैं: {bridgePath} पर पहले से ऐसी फ़ाइल मौजूद है जिसे Open Knowledge ने नहीं लिखा।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: something is already at {bridgePath} but couldn't be read, so Open Knowledge left it alone."
+msgstr "Open Knowledge टूल उपलब्ध नहीं हैं: {bridgePath} पर पहले से कुछ मौजूद है, लेकिन उसे पढ़ा नहीं जा सका, इसलिए Open Knowledge ने उसे वैसा ही छोड़ दिया।"
 
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
@@ -11911,6 +11952,10 @@ msgstr "अभी छोड़ें"
 msgid "Skipped downloading {0}."
 msgstr "{0} डाउनलोड करना छोड़ दिया गया।"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Skipped enabling Open Knowledge tools. This thread runs without them."
+msgstr "Open Knowledge टूल सक्षम करना छोड़ दिया गया। यह थ्रेड उनके बिना चलता है।"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Slash command menu"
 msgstr "स्लैश कमांड मेन्यू"
@@ -12664,6 +12709,11 @@ msgstr "वह दस्तावेज़ समय पर नहीं खु�
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "वह एंडपॉइंट उपयोग नहीं किया जा सकता। कोई https:// URL डालें — http:// केवल localhost के लिए अनुमत है।"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "That folder already holds code Open Knowledge didn't write, which the same trust would let {0} run: {otherExtensions}."
+msgstr "उस फ़ोल्डर में पहले से ऐसा कोड है जिसे Open Knowledge ने नहीं लिखा और वही भरोसा {0} को उसे चलाने देगा: {otherExtensions}।"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "वह फ़ोल्डर अभी OpenKnowledge प्रोजेक्ट नहीं है। इसे आरंभ करके खोलें?"
@@ -12843,6 +12893,10 @@ msgstr "रिपॉज़िटरी हिलाई गई, उसका न�
 #: src/components/RecentProjectsMenu.tsx
 msgid "The repository's original clone directory"
 msgstr "रिपॉज़िटरी की मूल क्लोन डायरेक्टरी"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The request to enable Open Knowledge tools timed out. This thread runs without them."
+msgstr "Open Knowledge टूल सक्षम करने के अनुरोध का समय समाप्त हो गया। यह थ्रेड उनके बिना चलता है।"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
@@ -14407,6 +14461,10 @@ msgstr "इसमें एक प्रविष्टि लिखता ह�
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "लेखन"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
+msgstr "Open Knowledge एक्सटेंशन लिख दिया गया, लेकिन फ़ोल्डर को विश्वसनीय चिह्नित नहीं किया जा सका, इसलिए वह लोड नहीं होगा। इस थ्रेड में Open Knowledge टूल नहीं हैं।"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "YAML or JSON, in either base16 layout."

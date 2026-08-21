@@ -241,6 +241,50 @@ describe('parseThreadClientFrame', () => {
     ).toBeNull();
   });
 
+  // Its own op rather than a reuse of the runtime one: the two park different
+  // waits, and a shared frame would let either answer resolve the other.
+  test('pi_bridge_consent_response validates the granted/declined outcome', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'pi_bridge_consent_response',
+          threadId: 't',
+          requestId: 'p1',
+          outcome: { kind: 'granted' },
+        }),
+      ),
+    ).toMatchObject({ op: 'pi_bridge_consent_response', outcome: { kind: 'granted' } });
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'pi_bridge_consent_response',
+          threadId: 't',
+          requestId: 'p1',
+          outcome: { kind: 'declined' },
+        }),
+      ),
+    ).toMatchObject({ outcome: { kind: 'declined' } });
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'pi_bridge_consent_response',
+          threadId: 't',
+          requestId: 'p1',
+          outcome: { kind: 'maybe' },
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'pi_bridge_consent_response',
+          threadId: 't',
+          outcome: { kind: 'granted' },
+        }),
+      ),
+    ).toBeNull();
+  });
+
   test('subscribe accepts optional numeric sinceSeq only', () => {
     expect(
       parseThreadClientFrame(JSON.stringify({ op: 'subscribe', threadId: 't', sinceSeq: 4 })),

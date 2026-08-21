@@ -115,6 +115,23 @@ export function mergedEnv(overlay?: Record<string, string>): Record<string, stri
   return { ...base, ...overlay };
 }
 
+/**
+ * The PATH every ACP agent this host spawns is launched with — {@link mergedEnv}'s
+ * repaired base, exposed so anything OK hands the agent can declare a PATH that
+ * is never narrower than the agent's own.
+ *
+ * The narrowing this prevents is not hypothetical: OK injects a stdio MCP entry
+ * whose `env` several adapters spread LAST over the child's inherited env, so a
+ * declared PATH replaces rather than supplements. Declaring the server's raw
+ * `process.env.PATH` there would hand the MCP child launchd's minimal default
+ * under a Dock-launched Desktop — dropping exactly the package-manager global
+ * bins the spawn augmentation exists to restore. Reading it back off `mergedEnv`
+ * rather than re-augmenting keeps the two from drifting apart.
+ */
+export function agentSpawnPath(): string | undefined {
+  return envPath(mergedEnv());
+}
+
 /** True when `overlay` sets PATH under any spelling — see {@link ResolvedLaunch.pathFromOverlay}. */
 export function overlaySetsPath(overlay?: Record<string, string>): boolean {
   return overlay !== undefined && Object.keys(overlay).some((k) => k.toLowerCase() === 'path');
@@ -129,10 +146,15 @@ export function overlaySetsPath(overlay?: Record<string, string>): boolean {
  * agent. Applied AFTER the caller's overlay: whether OK is hosting this agent
  * is our fact about the launch, not a per-agent registry setting to override.
  *
- * The marker's reason for existing is the hop it survives: the agent we spawn
- * goes on to spawn its own `ok mcp` (from the harness's MCP config, which OK
- * does not control), and that process reads the marker to decide whether to
- * hand the agent a preview URL or steer it to `ok open`.
+ * The marker's reason for existing is the hop it tries to survive: the agent we
+ * spawn goes on to spawn its own `ok mcp` (from the harness's MCP config, which
+ * OK does not control), and that process reads the marker to decide whether to
+ * hand the agent a preview URL or steer it to `ok open`. That hop is best-effort
+ * and cannot be made deterministic from here — harnesses disagree about the env
+ * they give MCP children, and some sanitize or allowlist it down to a handful of
+ * standard variables. Entries OK injects itself carry the marker explicitly
+ * instead; `OkMcpHostedMarker` in the thread manager records which case a thread
+ * landed in.
  */
 export function withHostedAgentMarker(env: Record<string, string>): Record<string, string> {
   return { ...env, [OK_HOSTED_AGENT_ENV]: '1' };

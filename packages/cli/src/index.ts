@@ -77,6 +77,18 @@ export {
   // consumers should use `buildMcpConfigMigrateEvent` instead.
   truncatePriorEntry,
 } from './commands/mcp-migrate-event.ts';
+// Desktop's utility process wires these into `bootServer()` as the ACP thread
+// manager's Pi bridge seams (same wiring as `ok start`).
+export {
+  type EnsurePiBridgeResult,
+  ensurePiBridge,
+  type PiBridgeFileState,
+  type PiBridgeState,
+  type PiBridgeWriteAction,
+  type PiTrustState,
+  type PiTrustWriteAction,
+  probePiBridgeState,
+} from './commands/pi-acp-bridge.ts';
 // `runStop` is the path-addressable stop primitive (SIGTERM the server + ui
 // pids recorded in `<lockDir>/{server,ui}.lock`). Desktop's
 // `ok:fs:remove-git-folder` IPC reuses it to deterministically tear down a

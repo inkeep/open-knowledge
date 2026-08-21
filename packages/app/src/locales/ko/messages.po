@@ -317,6 +317,12 @@ msgstr "{0} 이 채팅을 계속할 수 없습니다. 대화 기록은 남아 �
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0}에서 조정할 설정을 제공하지 않습니다"
 
+#. placeholder {0}: prompt.agentName
+#. placeholder {1}: item.bridgePath
+#: src/components/acp/ThreadView.tsx
+msgid "{0} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to {1} and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+msgstr "{0}은(는) 스스로 문서를 읽거나 편집할 수 없습니다. 승인하면 Open Knowledge 확장이 {1}에 기록되어 그대로 남으므로, 이 세션과 이 프로젝트의 이후 세션에서도 Open Knowledge 도구를 사용할 수 있습니다."
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} hasn't reported its settings yet"
@@ -1757,6 +1763,10 @@ msgstr "변경사항 적용 중"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Applying…"
 msgstr "적용 중…"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Approve"
+msgstr "승인"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -3974,6 +3984,10 @@ msgstr "스킬 공유를 업데이트하지 못했습니다: {detail}."
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "{displayName}({bin})이(가) 사용 가능한지 확인할 수 없어 일반 셸이 열렸습니다. 직접 {bin}을(를) 실행할 수 있습니다."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
+msgstr "Open Knowledge 확장을 기록하지 못했습니다. 이 스레드에는 Open Knowledge 도구가 없습니다."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "스킬 설치 횟수를 공개적으로 집계"
@@ -5056,6 +5070,11 @@ msgstr "git 자동 동기화를 사용하시겠습니까?"
 msgid "Enable indexes"
 msgstr "인덱스 사용"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "Enable Open Knowledge tools for {0}?"
+msgstr "{0}에서 Open Knowledge 도구를 사용하도록 설정할까요?"
+
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
 msgstr "플러그인 활성화"
@@ -5087,6 +5106,10 @@ msgstr "테마 사용"
 #: src/components/settings/LintingSection.tsx
 msgid "Enabling index generation"
 msgstr "인덱스 생성 활성화 중"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Enabling Open Knowledge tools"
+msgstr "Open Knowledge 도구를 사용 설정하는 중"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -7013,6 +7036,12 @@ msgstr "잘못된 공유 URL입니다."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "잘못된 YAML"
+
+#. placeholder {0}: prompt.cwd
+#. placeholder {1}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "It also marks {0} as trusted, which is what makes the extension load. That trust covers the whole folder — {1} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
+msgstr "또한 {0}을(를) 신뢰하는 폴더로 표시하며, 그래야 확장이 로드됩니다. 이 신뢰는 폴더 전체에 적용됩니다. {1}은(는) Open Knowledge의 것뿐 아니라 그 폴더의 모든 확장을 로드하며, 이 프로젝트에서 Open Knowledge를 제거할 때까지 둘 다 유지됩니다."
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -9004,6 +9033,18 @@ msgstr "Open Knowledge는 Markdown이 있는 모든 폴더에 index.md라는 탐
 #: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
 msgstr "문서가 변경되면 Open Knowledge가 index.md 파일을 다시 작성하므로 직접 편집한 내용은 대체됩니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are available in this thread."
+msgstr "이 스레드에서 Open Knowledge 도구를 사용할 수 있습니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
+msgstr "Open Knowledge 도구를 사용할 수 없습니다. {bridgePath}에 Open Knowledge가 작성하지 않은 파일이 이미 있습니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: something is already at {bridgePath} but couldn't be read, so Open Knowledge left it alone."
+msgstr "Open Knowledge 도구를 사용할 수 없습니다. {bridgePath}에 이미 무언가 있지만 읽을 수 없어 Open Knowledge가 그대로 두었습니다."
 
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
@@ -11915,6 +11956,10 @@ msgstr "나중에 하기"
 msgid "Skipped downloading {0}."
 msgstr "{0} 다운로드 건너뜀."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Skipped enabling Open Knowledge tools. This thread runs without them."
+msgstr "Open Knowledge 도구 사용 설정을 건너뛰었습니다. 이 스레드는 도구 없이 실행됩니다."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Slash command menu"
 msgstr "슬래시 명령 메뉴"
@@ -12668,6 +12713,11 @@ msgstr "문서 열기 시간 초과. 동기화 후 다시 시도합니다."
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "이 엔드포인트는 사용할 수 없습니다. https:// URL을 입력합니다. http://는 localhost에만 사용할 수 있습니다."
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "That folder already holds code Open Knowledge didn't write, which the same trust would let {0} run: {otherExtensions}."
+msgstr "해당 폴더에는 Open Knowledge가 작성하지 않은 코드가 이미 있으며, 같은 신뢰로 {0}이(가) 이를 실행할 수 있게 됩니다: {otherExtensions}."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "해당 폴더는 아직 OpenKnowledge 프로젝트가 아닙니다. 초기화하고 여시겠습니까?"
@@ -12847,6 +12897,10 @@ msgstr "저장소가 이동, 이름 변경 또는 삭제됐습니다."
 #: src/components/RecentProjectsMenu.tsx
 msgid "The repository's original clone directory"
 msgstr "리포지토리의 원래 클론 디렉터리"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The request to enable Open Knowledge tools timed out. This thread runs without them."
+msgstr "Open Knowledge 도구 사용 설정 요청 시간이 초과되었습니다. 이 스레드는 도구 없이 실행됩니다."
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
@@ -14411,6 +14465,10 @@ msgstr "다음에 항목을 씁니다"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "작성 중"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
+msgstr "Open Knowledge 확장을 기록했지만 폴더를 신뢰할 수 있는 폴더로 표시하지 못해 로드되지 않습니다. 이 스레드에는 Open Knowledge 도구가 없습니다."
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "YAML or JSON, in either base16 layout."

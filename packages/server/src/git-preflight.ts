@@ -308,10 +308,41 @@ export function __seedResolveOnPathCacheForTests(name: string, resolvedPath: str
   resolveOnPathCache.set(name, resolvedPath);
 }
 
-export function resolveOnPath(name: string): string | null {
+/**
+ * Absolute path a command name resolves to, or null.
+ *
+ * `pathOverride` probes against a PATH other than the one this process was
+ * started with — the caller that needs it resolves a command it will hand to a
+ * child spawned with a WIDER PATH than the server's own, so probing the
+ * server's would report "missing" for something the child would find. It joins
+ * the cache key, since the same name legitimately resolves differently under a
+ * different PATH.
+ */
+/**
+ * `process.env` with PATH replaced under whatever spelling this process already
+ * uses (Windows spells it `Path`) — setting a second spelling alongside the
+ * existing one leaves the probe reading whichever the platform happens to pick.
+ */
+function withPath(path: string): NodeJS.ProcessEnv {
+  const next: NodeJS.ProcessEnv = {};
+  let key = 'PATH';
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k.toLowerCase() === 'path') {
+      key = k;
+      continue;
+    }
+    next[k] = v;
+  }
+  next[key] = path;
+  return next;
+}
+
+export function resolveOnPath(name: string, pathOverride?: string): string | null {
   if (!SAFE_COMMAND_NAME_RE.test(name)) return null;
-  const cached = resolveOnPathCache.get(name);
+  const cacheKey = pathOverride === undefined ? name : `${pathOverride}\u0000${name}`;
+  const cached = resolveOnPathCache.get(cacheKey);
   if (cached !== undefined) return cached;
+  const spawnEnv = pathOverride === undefined ? undefined : withPath(pathOverride);
   // `timeout` bounds the worst case for pathological PATH entries (stale NFS
   // mount, slow network filesystem) that would otherwise hang the boot
   // sequence indefinitely — the failure-path callers (`buildGuidance`,
@@ -323,7 +354,7 @@ export function resolveOnPath(name: string): string | null {
     const result = spawnSync(
       'where',
       [name],
-      withHiddenWindowsConsole({ encoding: 'utf-8', timeout: PROBE_TIMEOUT_MS }),
+      withHiddenWindowsConsole({ encoding: 'utf-8', timeout: PROBE_TIMEOUT_MS, env: spawnEnv }),
     );
     if (result.status !== 0) {
       resolved = null;
@@ -341,6 +372,7 @@ export function resolveOnPath(name: string): string | null {
       withHiddenWindowsConsole({
         encoding: 'utf-8',
         timeout: PROBE_TIMEOUT_MS,
+        env: spawnEnv,
       }),
     );
     if (result.status !== 0) {
@@ -353,7 +385,7 @@ export function resolveOnPath(name: string): string | null {
     }
   }
   if (resolved !== null) {
-    resolveOnPathCache.set(name, resolved);
+    resolveOnPathCache.set(cacheKey, resolved);
   }
   return resolved;
 }

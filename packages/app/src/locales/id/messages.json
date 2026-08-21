@@ -11,6 +11,7 @@
     "-K0AvT": ["Putuskan koneksi"],
     "-LHLx7": ["templat disunting"],
     "-QCLWk": ["Templat tersedia"],
+    "-QVER4": ["Mengaktifkan alat Open Knowledge"],
     "-Qw-1t": ["Autentikasi GitHub gagal. Coba masuk lagi."],
     "-VqsyR": ["Berpikir…"],
     "-WFFG2": ["Properti bawaan"],
@@ -699,6 +700,11 @@
     "8x6zk9": ["Sembunyikan penyunting ", ["0"]],
     "9-lMCF": ["Warna ", ["slot"], " — ", ["0"]],
     "90-wKT": ["OpenKnowledge membaca riwayat ", ["subject"]],
+    "92G3B2": [
+      "Alat Open Knowledge tidak tersedia: sudah ada sesuatu di ",
+      ["bridgePath"],
+      ", tetapi tidak dapat dibaca, jadi Open Knowledge membiarkannya."
+    ],
     "92rbk2": ["Cermin memuat <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Sembunyikan Agen"],
     "96G6Re": ["Folder baru"],
@@ -1171,6 +1177,7 @@
       "Pengaturan untuk proyek ini. Sebagian dibagikan ke setiap kolaborator lewat git; sisanya hanya berlaku di komputer ini."
     ],
     "FNTx6u": ["Cari \"", ["semanticSubmitQuery"], "\" berdasarkan makna"],
+    "FNsxBc": ["Alat Open Knowledge tersedia di utas ini."],
     "FOGD7m": ["Ciptakan sesuatu yang hebat."],
     "FQwhfM": [
       "URL publik yang dilayani tunnel Anda (misalnya alamat Tailscale https://…ts.net Anda). Server menerima permintaan untuk host ini dan mengiklankannya di URL yang diterbitkannya."
@@ -1483,6 +1490,12 @@
       "Terkirim, tetapi komentarnya tidak bisa ditandai selesai — semuanya masih menunggu dikirim."
     ],
     "JyW5aS": ["Menyaring…"],
+    "JznUmv": [
+      ["0"],
+      " tidak dapat membaca atau menyunting dokumen Anda sendiri. Menyetujui akan menulis ekstensi Open Knowledge ke ",
+      ["1"],
+      " dan membiarkannya di sana, sehingga sesi ini dan sesi berikutnya dalam proyek ini memiliki alat Open Knowledge."
+    ],
     "K-NcyU": ["Folder ini tidak berisi repositori git. Pilih folder lain?"],
     "K-a33w": ["Mulai menulis untuk membuat halaman ini"],
     "K-h9cT": ["Penyelesaian untuk ", ["filePath"], " tidak bisa disimpan."],
@@ -1754,6 +1767,7 @@
     "NRSLBe": [["diffMin"], " mnt lalu"],
     "NSnIUP": ["Dua halaman (genap)"],
     "NUr4kz": ["Titik awal yang bisa dipakai ulang untuk dokumen baru di folder ini."],
+    "NY0p7s": ["Pengaktifan alat Open Knowledge dilewati. Utas ini berjalan tanpa alat itu."],
     "NYUhy5": ["Nama subfolder"],
     "NYn1cR": ["Memuat penyunting"],
     "NYu2Pt": ["Proyek baru…"],
@@ -2127,6 +2141,7 @@
     "SItQRc": ["Bagaimana pendapat Anda tentang OpenKnowledge?"],
     "SOPwPh": ["Pulihkan hingga suntingan ini"],
     "SRBk2G": ["Komentar itu tidak bisa ditambahkan."],
+    "SRLcL7": ["Aktifkan alat Open Knowledge untuk ", ["0"], "?"],
     "STTOnz": ["Tipe ", ["keyName"], ": nilai kompleks (bersarang; hanya-baca)"],
     "SUOoXn": ["Gagal membuka proyek."],
     "SVLPt5": [["formatted"], " bintang GitHub"],
@@ -2640,6 +2655,7 @@
       "Belum ada berkas <0>.markdownlint.*</0> — setiap aturan berjalan dengan bawaan yang sama seperti ekstensi markdownlint VS Code: semuanya aktif, kecuali panjang baris."
     ],
     "Z79bnE": ["Lihat perbedaan untuk suntingan ", ["burstNumber"], " pada ", ["docName"]],
+    "Z7ZXbT": ["Setujui"],
     "Z7x_Zh": [
       "Git membutuhkan ",
       ["tool"],
@@ -2914,6 +2930,13 @@
     "c863eW": ["Tidak dapat berpindah ke ", ["shareBranch"], ". Coba berpindah secara manual."],
     "c8iK2Y": ["Tidak ada templat yang ditemukan."],
     "c8jBgX": ["Memeriksa pembaruan di GitHub"],
+    "c8wKUP": [
+      "Ini juga menandai ",
+      ["0"],
+      " sebagai tepercaya, yang membuat ekstensi itu dimuat. Kepercayaan itu mencakup seluruh folder: ",
+      ["1"],
+      " akan memuat setiap ekstensi di dalamnya, bukan hanya milik Open Knowledge, dan keduanya tetap ada sampai Anda menghapus Open Knowledge dari proyek ini."
+    ],
     "cCd8Bs": ["Potong"],
     "cD3aew": [
       "Embedding dihitung ulang seiring pencarian berjalan, jadi cakupannya dimulai lagi dari nol lalu terisi kembali."
@@ -3469,6 +3492,11 @@
       "Membuka sesi baru dengan AI pilihan Anda. Dengan teks terpilih, teks itu disiapkan di sana alih-alih dijalankan."
     ],
     "j5CWO4": ["Sudah mutakhir"],
+    "j6HvUO": [
+      "Alat Open Knowledge tidak tersedia: sudah ada berkas di ",
+      ["bridgePath"],
+      " yang tidak ditulis Open Knowledge."
+    ],
     "j9Vqvc": ["diwarisi"],
     "j9tqwO": ["Tidak ada di bilah sisi"],
     "jAMpHn": ["Apa itu paket awal?"],
@@ -3584,6 +3612,9 @@
       "</0> milik Anda punya perubahan yang belum ada di GitHub. ",
       ["targetNoun"],
       " akan muncul begitu cabangnya tersinkron."
+    ],
+    "kNG0s5": [
+      "Ekstensi Open Knowledge tidak bisa ditulis. Utas ini tidak memiliki alat Open Knowledge."
     ],
     "kNGLX6": ["Mencoba lagi…"],
     "kNqMMd": ["Folder"],
@@ -3749,6 +3780,9 @@
     "mGaZwZ": ["Lihat panduan pemasangan lengkap"],
     "mHVPm5": ["Perlu menyambung ulang"],
     "mHf8mp": ["Hapus berkas skema ", ["file"]],
+    "mHo0kp": [
+      "Permintaan untuk mengaktifkan alat Open Knowledge kedaluwarsa. Utas ini berjalan tanpa alat itu."
+    ],
     "mLAjyL": [
       "Beri alat AI yang Anda pakai akses untuk membaca dan memperbarui proyek Anda. Mencentang kotak langsung menyiapkannya; melepas centang menghapusnya."
     ],
@@ -3794,6 +3828,9 @@
     "mk2poV": ["mis. server.ts"],
     "mlA3HX": [
       "Pasang skill dan MCP OpenKnowledge secara global agar agen yang sudah Anda pakai dapat membaca dan memperbarui proyek Anda."
+    ],
+    "mlDKzr": [
+      "Ekstensi Open Knowledge sudah ditulis, tetapi folder tidak bisa ditandai tepercaya, jadi ekstensi itu tidak akan dimuat. Utas ini tidak memiliki alat Open Knowledge."
     ],
     "mlvM8g": ["Komentar itu tidak bisa ditempatkan ulang."],
     "mmpzAq": ["Membungkus baris panjang di penyunting sumber markdown."],
@@ -4534,6 +4571,13 @@
     "wndeIl": ["Halaman tingkat proyek yang tidak punya sisi graf masuk maupun keluar."],
     "wqD3pI": [["failed"], " dari ", ["0"], " komentar tidak dapat diperbarui."],
     "ws5o1F": ["Diperiksa oleh: ", ["0"]],
+    "wsLj3t": [
+      "Folder itu sudah berisi kode yang tidak ditulis Open Knowledge, dan kepercayaan yang sama akan mengizinkan ",
+      ["0"],
+      " menjalankannya: ",
+      ["otherExtensions"],
+      "."
+    ],
     "wtcxiD": ["Bagikan penyiapan ini dengan tim Anda?"],
     "wtd69q": ["Tidak ada folder yang cocok."],
     "wvK7Ay": ["Salinan lokal cabang <0>", ["branch"], "</0> milik Anda tertinggal."],

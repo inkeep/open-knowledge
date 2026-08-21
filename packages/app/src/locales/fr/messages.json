@@ -27,6 +27,7 @@
     "-K0AvT": ["Déconnecter"],
     "-LHLx7": ["modèle modifié"],
     "-QCLWk": ["Modèles disponibles"],
+    "-QVER4": ["Activation des outils Open Knowledge"],
     "-Qw-1t": ["L'authentification GitHub a échoué. Essayez de vous reconnecter."],
     "-VqsyR": ["Réflexion…"],
     "-WFFG2": ["Propriétés par défaut"],
@@ -837,6 +838,11 @@
     "8x6zk9": ["Masquer l’éditeur de ", ["0"]],
     "9-lMCF": ["Couleur ", ["slot"], " — ", ["0"]],
     "90-wKT": ["OpenKnowledge a lu l'historique de ", ["subject"]],
+    "92G3B2": [
+      "Les outils Open Knowledge ne sont pas disponibles : quelque chose se trouve déjà à ",
+      ["bridgePath"],
+      " mais n'a pas pu être lu, donc Open Knowledge l'a laissé intact."
+    ],
     "92rbk2": ["Chargement du miroir <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Masquer les agents"],
     "96G6Re": ["Nouveau dossier"],
@@ -1393,6 +1399,7 @@
       "Paramètres de ce projet. Certains sont partagés avec chaque collaborateur via git ; d'autres ne s'appliquent que sur cet ordinateur."
     ],
     "FNTx6u": ["Rechercher « ", ["semanticSubmitQuery"], " » par le sens"],
+    "FNsxBc": ["Les outils Open Knowledge sont disponibles dans ce fil."],
     "FOGD7m": ["Créez quelque chose de formidable."],
     "FQwhfM": [
       "L’URL publique servie par votre tunnel (par exemple votre adresse Tailscale https://…ts.net). Le serveur admet les requêtes pour cet hôte et l’annonce dans les URL qu’il émet."
@@ -1754,6 +1761,12 @@
       "Envoyé, mais les commentaires n'ont pas pu être marqués comme traités — ils attendent toujours d'être envoyés."
     ],
     "JyW5aS": ["Tamisage…"],
+    "JznUmv": [
+      ["0"],
+      " n'a aucun moyen de lire ou de modifier vos documents par lui-même. Approuver écrit l'extension Open Knowledge dans ",
+      ["1"],
+      " et l'y laisse, afin que cette session et les suivantes dans ce projet disposent des outils Open Knowledge."
+    ],
     "K-NcyU": ["Ce dossier ne contient pas de dépôt git. Choisir un autre dossier ?"],
     "K-a33w": ["Commencez à écrire pour créer cette page"],
     "K-h9cT": ["Impossible d'enregistrer la résolution pour ", ["filePath"], "."],
@@ -2065,6 +2078,7 @@
     "NRSLBe": ["il y a ", ["diffMin"], " min"],
     "NSnIUP": ["Deux pages (paires)"],
     "NUr4kz": ["Un point de départ réutilisable pour les nouveaux documents de ce dossier."],
+    "NY0p7s": ["Activation des outils Open Knowledge ignorée. Ce fil fonctionne sans eux."],
     "NYUhy5": ["Nom du sous-dossier"],
     "NYn1cR": ["Chargement de l'éditeur"],
     "NYu2Pt": ["Nouveau projet…"],
@@ -2467,6 +2481,7 @@
     "SItQRc": ["Que pensez-vous d'OpenKnowledge ?"],
     "SOPwPh": ["Restaurer à cette modification"],
     "SRBk2G": ["Impossible d'ajouter ce commentaire."],
+    "SRLcL7": ["Activer les outils Open Knowledge pour ", ["0"], " ?"],
     "STTOnz": ["Type de ", ["keyName"], " : valeur complexe (imbriquée ; lecture seule)"],
     "SUOoXn": ["Échec de l'ouverture du projet."],
     "SVLPt5": [["formatted"], " étoiles GitHub"],
@@ -3099,6 +3114,7 @@
       "Pas encore de fichier <0>.markdownlint.*</0> — chaque règle s'exécute avec les mêmes valeurs par défaut que l'extension markdownlint de VS Code : toutes activées, sauf la longueur de ligne."
     ],
     "Z79bnE": ["Voir les différences de la modification ", ["burstNumber"], " de ", ["docName"]],
+    "Z7ZXbT": ["Approuver"],
     "Z7x_Zh": [
       "Git a besoin de ",
       ["tool"],
@@ -3408,6 +3424,13 @@
     ],
     "c8iK2Y": ["Aucun modèle trouvé."],
     "c8jBgX": ["Recherche de mises à jour sur GitHub"],
+    "c8wKUP": [
+      "Cela marque aussi ",
+      ["0"],
+      " comme approuvé, ce qui permet à l'extension de se charger. Cette confiance couvre tout le dossier : ",
+      ["1"],
+      " chargera chaque extension qui s'y trouve, pas seulement celle d'Open Knowledge, et les deux subsistent jusqu'à ce que vous retiriez Open Knowledge de ce projet."
+    ],
     "cCd8Bs": ["Couper"],
     "cD3aew": [
       "Le recalcul des embeddings se fait au fil des recherches, donc la couverture repart de zéro et se remplit peu à peu."
@@ -4042,6 +4065,11 @@
       "Ouvre une nouvelle session avec l'IA de votre choix. Si du texte est sélectionné, il y est préparé au lieu d'être exécuté."
     ],
     "j5CWO4": ["À jour"],
+    "j6HvUO": [
+      "Les outils Open Knowledge ne sont pas disponibles : un fichier qu'Open Knowledge n'a pas écrit se trouve déjà à ",
+      ["bridgePath"],
+      "."
+    ],
     "j9Vqvc": ["hérité"],
     "j9tqwO": ["Pas dans la barre latérale"],
     "jAMpHn": ["Qu'est-ce qu'un pack de démarrage ?"],
@@ -4165,6 +4193,9 @@
       "</0> contient des modifications absentes de GitHub. ",
       ["targetNoun"],
       " apparaîtra une fois la branche synchronisée."
+    ],
+    "kNG0s5": [
+      "Impossible d'écrire l'extension Open Knowledge. Ce fil n'a pas les outils Open Knowledge."
     ],
     "kNGLX6": ["Nouvelle tentative…"],
     "kNqMMd": ["Dossier"],
@@ -4361,6 +4392,9 @@
     "mGaZwZ": ["Voir le guide d'installation complet"],
     "mHVPm5": ["Reconnexion nécessaire"],
     "mHf8mp": ["Supprimer le fichier de schéma ", ["file"]],
+    "mHo0kp": [
+      "La demande d'activation des outils Open Knowledge a expiré. Ce fil fonctionne sans eux."
+    ],
     "mLAjyL": [
       "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Cocher une case configure l'outil immédiatement ; décocher le retire."
     ],
@@ -4422,6 +4456,9 @@
     "mk2poV": ["par ex. server.ts"],
     "mlA3HX": [
       "Installez globalement les compétences et le MCP d'OpenKnowledge pour que les agents que vous utilisez déjà puissent lire et mettre à jour vos projets."
+    ],
+    "mlDKzr": [
+      "L'extension Open Knowledge a été écrite, mais le dossier n'a pas pu être marqué comme approuvé, donc elle ne se chargera pas. Ce fil n'a pas les outils Open Knowledge."
     ],
     "mlvM8g": ["Impossible de replacer ce commentaire."],
     "mmpzAq": ["Renvoie les lignes longues à la ligne dans l'éditeur de source markdown."],
@@ -5289,6 +5326,13 @@
     "wndeIl": ["Pages du projet sans arête entrante ni sortante dans le graphe."],
     "wqD3pI": [["failed"], " commentaires sur ", ["0"], " n'ont pas pu être mis à jour."],
     "ws5o1F": ["Vérifié par : ", ["0"]],
+    "wsLj3t": [
+      "Ce dossier contient déjà du code qu'Open Knowledge n'a pas écrit et que cette même confiance permettrait à ",
+      ["0"],
+      " d'exécuter : ",
+      ["otherExtensions"],
+      "."
+    ],
     "wtcxiD": ["Partager cette configuration avec votre équipe ?"],
     "wtd69q": ["Aucun dossier ne correspond."],
     "wvK7Ay": ["Votre copie locale de la branche <0>", ["branch"], "</0> est en retard."],

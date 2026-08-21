@@ -51,6 +51,9 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type {
   AttachmentPart,
+  PiBridgeThreadState,
+  PiBridgeWriteAction,
+  PiTrustWriteAction,
   QueuedMessage,
   SteerMessage,
   ThreadAgentInfo,
@@ -61,6 +64,7 @@ import type {
   ThreadServerFrame,
   ThreadStatus,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import {
@@ -70,6 +74,7 @@ import {
   snapshotBlocks,
 } from '../agent-sessions.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
+import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
@@ -77,6 +82,7 @@ import { buildPromptBlocks } from './attachment-blocks.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
+  agentSpawnPath,
   brokenInterpreterHint,
   declinedRepairHint,
   envPath,
@@ -131,8 +137,27 @@ const EVENT_LOG_LIMIT = 5_000;
 const DEFAULT_IDLE_REAP_MS = 60 * 60 * 1000;
 const REAP_SWEEP_MS = 5 * 60 * 1000;
 const PERMISSION_TIMEOUT_MS = 10 * 60 * 1000;
-/** How long a launch parks waiting for the user to allow/refuse a runtime download. */
-const RUNTIME_CONSENT_TIMEOUT_MS = 5 * 60 * 1000;
+/**
+ * How long a launch parks waiting for the user to allow/refuse a runtime
+ * download — and, on the same budget, to allow/refuse provisioning Pi's
+ * bridge extension. Both park session setup on one in-thread card, so the
+ * "walked away from the machine" ceiling is the same question twice.
+ */
+const CONSENT_TIMEOUT_MS = 5 * 60 * 1000;
+
+/**
+ * Ceiling on a consent park opened from a path a CLIENT REQUEST is already
+ * blocking on. Resume and retry both await the whole handshake before their
+ * response frame goes out, so the full {@link CONSENT_TIMEOUT_MS} budget there
+ * would produce a "resume timed out" error on a card that is still live and
+ * clickable, then flip the thread to ready behind an already-failed client.
+ *
+ * Derived from the client's own budget rather than guessed at, so the two
+ * cannot drift apart; the halving leaves the rest of the handshake room inside
+ * it. Thread creation has no blocked caller (it fires the launch and returns),
+ * so it keeps the full budget.
+ */
+const BLOCKING_CONSENT_TIMEOUT_MS = Math.floor(THREAD_REOPEN_OP_TIMEOUT_MS / 2);
 /** Trailing throttle for runtime-install progress events (bounds the retained log). */
 const RUNTIME_PROGRESS_THROTTLE_MS = 400;
 const KILL_GRACE_MS = 5_000;
@@ -259,6 +284,16 @@ function threadRestartedDuringSignIn(): ThreadOpError {
 
 type Subscriber = (frame: ThreadServerFrame) => void;
 
+/**
+ * A launch parked on an in-thread consent card. `closed` resolves the park
+ * during teardown so a thread the user closed mid-question doesn't leak its
+ * awaiting caller.
+ */
+interface PendingConsent {
+  resolve: (decision: 'granted' | 'declined' | 'timeout' | 'closed') => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 interface ThreadRecord {
   info: ThreadInfo;
   /** Extension-less doc the thread was launched from (context only). */
@@ -312,13 +347,29 @@ interface ThreadRecord {
     { resolve: (response: RequestPermissionResponse) => void; timer: ReturnType<typeof setTimeout> }
   >;
   /** In-flight runtime-download consent prompts blocking this thread's launch. */
-  pendingRuntimeConsent: Map<
-    string,
-    {
-      resolve: (decision: 'granted' | 'declined' | 'timeout' | 'closed') => void;
-      timer: ReturnType<typeof setTimeout>;
-    }
-  >;
+  pendingRuntimeConsent: Map<string, PendingConsent>;
+  /**
+   * In-flight Pi bridge-provisioning consent prompts blocking this thread's
+   * session setup. Separate from the runtime map so the two answer frames
+   * can't cross-resolve each other's park.
+   */
+  pendingPiBridgeConsent: Map<string, PendingConsent>;
+  /**
+   * True once the user has declined this thread's Pi bridge prompt. A resume
+   * or retry re-runs session setup, so without this the same thread re-asks on
+   * every reopen for an answer already given. Scoped to the record on purpose:
+   * a NEW Pi thread re-probes and asks again, since the decision is about this
+   * session, not a preference. A park that TIMED OUT is not a decline — nobody
+   * answered, so the next reopen is the first real chance to.
+   */
+  piBridgeDeclined: boolean;
+  /**
+   * Last Pi bridge state this thread reported with no prompt attached, so a
+   * standing limitation (a foreign file at the managed path) contributes one
+   * row instead of one per reopen. Keyed on the state rather than a flag so a
+   * genuine change still surfaces.
+   */
+  lastPiBridgeStatus: PiBridgeThreadState | null;
   stderrTail: string[];
   /**
    * Stderr written while an `authenticate` is in flight, or null outside one.
@@ -375,6 +426,55 @@ export interface HarnessManagedMcpEntryHit {
   editorId: EditorId;
   scope: 'project' | 'user';
   configPath: string;
+}
+
+/**
+ * Read-only report from the `probePiAcpBridge` seam: whether Pi would load
+ * OK's bridge extension for this cwd, and — when it wouldn't — which half is
+ * missing. Structurally the CLI probe's result; the boot wiring that supplies
+ * that probe is where the two shapes meet.
+ */
+export interface PiAcpBridgeProbe {
+  /** Absolute path of OK's managed bridge extension for this project. */
+  bridgePath: string;
+  bridge: 'absent' | 'own-current' | 'own-stale' | 'foreign' | 'unreadable';
+  trust: 'trusted' | 'untrusted' | 'unreadable';
+  /** True when Pi loads OK's bridge for this cwd as things stand. */
+  bridgeLoadable: boolean;
+  /**
+   * Extension filenames already beside the managed bridge that OK did not
+   * write. Empty when there are none OR when the folder could not be read, so
+   * it is safe to name what is listed and unsafe to claim the list is complete.
+   */
+  otherExtensions: readonly string[];
+}
+
+/** Outcome of the `ensurePiAcpBridge` seam — both halves reported separately. */
+export interface PiAcpBridgeEnsureResult {
+  /** True only when the bridge is OK's own AND the folder is trusted. */
+  ok: boolean;
+  bridgePath: string;
+  bridge: PiBridgeWriteAction;
+  trust: PiTrustWriteAction;
+  error?: string;
+}
+
+/**
+ * How a Pi thread's tool access settled, as the injection branch reads it.
+ * `unknown` is the honest answer when OK cannot see the bridge at all (no
+ * probe seam, or the probe failed) — the project may well have been wired by
+ * `ok init`, and claiming "no tools" would be a guess.
+ */
+type PiBridgeOutcome = 'loadable' | 'unavailable' | 'unknown';
+
+/**
+ * True for a registry agent whose OK wiring is Pi's managed bridge extension
+ * rather than an MCP config entry. Read off `ACP_AGENT_EDITOR_IDS` rather
+ * than matched on the agent id, so the registry map stays the one place the
+ * agent↔editor pairing is stated.
+ */
+function isPiBridgeAgent(agentRef: { source: 'registry' | 'custom'; id: string }): boolean {
+  return agentRef.source === 'registry' && ACP_AGENT_EDITOR_IDS[agentRef.id] === 'pi';
 }
 
 export interface AcpThreadManagerOptions {
@@ -439,6 +539,23 @@ export interface AcpThreadManagerOptions {
     cwd: string,
   ) => HarnessManagedMcpEntryHit | null | Promise<HarnessManagedMcpEntryHit | null>;
   /**
+   * Read-only check of whether Pi would load OK's bridge extension for a
+   * thread's cwd. Pi has no MCP client, so this — not injection — is how a Pi
+   * thread gets OK tools. Wired by `bootServer()` callers to the CLI's
+   * `probePiBridgeState`; unwired (the Vite dev server) means OK cannot see
+   * the bridge and never offers to provision it, so such a thread has OK
+   * tools only if `ok init` already wired the project.
+   */
+  probePiAcpBridge?: (cwd: string) => PiAcpBridgeProbe | Promise<PiAcpBridgeProbe>;
+  /**
+   * Write half of the same pair, run ONLY after the user approves the
+   * in-thread consent card: drop OK's bridge extension into the project and
+   * add the folder to Pi's trust store. Wired to the CLI's `ensurePiBridge`.
+   * Unwired suppresses the prompt entirely — asking for permission OK cannot
+   * act on is worse than staying quiet.
+   */
+  ensurePiAcpBridge?: (cwd: string) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
+  /**
    * Test seam for the managed-runtime download path — override the install
    * cache root and the download `fetch` so a test can drive the
    * consent/download flow without touching the real `~/.ok` or the network.
@@ -473,17 +590,81 @@ export interface AcpThreadManagerOptions {
  * Build the stdio command that launches the OK MCP shim (`ok mcp --port <n>`)
  * pinned to this server's HTTP MCP endpoint. `localOpCliArgs` is how the host
  * invokes the OK CLI in its runtime (`[execPath, entry]` under `ok start` / the
- * packaged app); it degrades to a bare `open-knowledge` on PATH when the host
- * can't resolve one (e.g. the Vite dev server).
+ * packaged app); it falls back to a globally installed `open-knowledge` when the
+ * host can't resolve one (e.g. the Vite dev server).
+ *
+ * A bare name never goes on the wire when it can be avoided: the harness — not
+ * OK — spawns this child, and several harnesses hand it whatever PATH launched
+ * the agent, which for a GUI-launched desktop app is launchd's minimal default
+ * with no OK CLI in it. Resolving to an absolute path here sidesteps that whole
+ * class. The lookup is memoized process-wide, so it costs one probe per name.
+ * An unresolvable name keeps the bare form (the harness may still have a PATH
+ * that finds it) and warns, since that is the shape that silently loses tools.
  */
 export function buildOkMcpStdioCommand(
   localOpCliArgs: readonly string[] | undefined,
   port: number,
+  deps?: {
+    /** PATH lookup override — tests only; production resolves against the agent's PATH. */
+    resolveCommand?: (name: string) => string | null;
+    log?: PinoLogger;
+  },
 ): { command: string; args: string[] } {
   const argv = localOpCliArgs && localOpCliArgs.length > 0 ? localOpCliArgs : ['open-knowledge'];
   const [command = 'open-knowledge', ...rest] = argv;
-  return { command, args: [...rest, 'mcp', '--port', String(port)] };
+  const args = [...rest, 'mcp', '--port', String(port)];
+  // Anything carrying a separator is already path-qualified (`[execPath, entry]`
+  // from the packaged app / `ok start`) and is left exactly as the host built it.
+  if (command.includes('/') || command.includes('\\')) return { command, args };
+  // Probed against the PATH the AGENT gets, not this process's: the server can
+  // be running under launchd's minimal default while the agent — and therefore
+  // the MCP child it spawns — is launched with the repaired one. Probing the
+  // narrow PATH would report "missing" for a command the child finds fine, and
+  // fall back to the bare name in exactly the case this resolution exists for.
+  const resolved = (deps?.resolveCommand ?? ((name) => resolveOnPath(name, agentSpawnPath())))(
+    command,
+  );
+  if (resolved === null) {
+    deps?.log?.warn(
+      { command },
+      '[acp-threads] OK MCP stdio command did not resolve on PATH — injecting the bare name, which fails for harnesses that spawn MCP children under a minimal PATH',
+    );
+    return { command, args };
+  }
+  return { command: resolved, args };
 }
+
+/**
+ * How the hosted-agent marker reaches the OK MCP server an agent connects to.
+ *
+ * The marker itself is what lets `preview_url` steer an in-app agent to
+ * `ok open` instead of handing it a URL to the app its user is already looking
+ * at. This classification is NOT that mechanism and nothing reads it to make
+ * that call — `preview_url` derives hosted-ness independently, from the header
+ * or env var actually present on the connection. This says only which delivery
+ * channel a thread's injection landed on, so the injection log can say whether
+ * the marker was guaranteed or left to inheritance. Nothing downstream
+ * branches on it; keep it that way or the two will disagree.
+ *
+ * OK can only guarantee delivery on entries it writes itself:
+ *
+ * - `http-header`, `stdio-entry-env` — deterministic: OK builds the entry, so
+ *   the marker rides on it.
+ * - `unknown` — OK's own managed wiring spawns the server rather than an entry
+ *   OK put on the wire: the agent's harness loads OK's managed editor-config
+ *   entry itself, or (Pi) OK's managed bridge extension in the project does.
+ *   That leaves the agent process env as the only channel; harnesses disagree
+ *   about handing that env to MCP children (some pass it whole, others
+ *   sanitize or allowlist it). Stamping
+ *   the marker into the managed config entry is not an alternative: that same
+ *   entry serves the user's ordinary, non-hosted use of the editor, which would
+ *   then be misclassified as hosted. Such a connection is treated as external —
+ *   the safe direction, since a plain URL is merely useless advice inside the
+ *   app while an `ok open` steer is wrong advice outside it.
+ * - `none` — no transport was available at all, so the agent starts with no OK
+ *   tools rather than with an unmarked connection.
+ */
+export type OkMcpHostedMarker = 'http-header' | 'stdio-entry-env' | 'unknown' | 'none';
 
 interface InterpreterProbeFailure {
   kind: 'unhealthy' | 'incompatible';
@@ -727,6 +908,9 @@ export class AcpThreadManager {
       subscribers: new Set(),
       pendingPermissions: new Map(),
       pendingRuntimeConsent: new Map(),
+      pendingPiBridgeConsent: new Map(),
+      piBridgeDeclined: false,
+      lastPiBridgeStatus: null,
       stderrTail: [],
       authStderr: null,
       terminals: null,
@@ -1415,7 +1599,7 @@ export class AcpThreadManager {
           ts: Date.now(),
         });
         resolvePromise('timeout');
-      }, RUNTIME_CONSENT_TIMEOUT_MS);
+      }, CONSENT_TIMEOUT_MS);
       timer.unref?.();
       record.pendingRuntimeConsent.set(requestId, { resolve: resolvePromise, timer });
     });
@@ -1469,49 +1653,110 @@ export class AcpThreadManager {
     });
   }
 
+  /**
+   * Decide what `mcpServers` this thread's session opens with — the one seam
+   * both `session/new` and resume pass through, and the last moment before
+   * either that can still change what the agent will see.
+   *
+   * For a Pi thread it can PARK on the user: Pi's answer to "what MCP do we
+   * inject" is inseparable from "was the bridge extension provisioned", and
+   * that provisioning needs consent. The park mirrors the runtime-download
+   * card's closed/timeout outcomes, but its budget is the caller's to set —
+   * see {@link BLOCKING_CONSENT_TIMEOUT_MS} for why a caller a client request
+   * is waiting on cannot hand out the full one.
+   */
   private async buildMcpServers(
     record: ThreadRecord,
     init: InitializeResponse,
-  ): Promise<McpServer[]> {
-    if ((await this.harnessAlreadyHasOkMcp(record)) !== null) return [];
-    const mcpServers: McpServer[] = [];
-    const serverUrl = this.opts.getServerUrl?.();
-    if (serverUrl !== undefined && init.agentCapabilities?.mcpCapabilities?.http === true) {
-      // Preferred: a direct HTTP MCP connection to this running server.
-      // The env marker the stdio branch uses cannot travel over HTTP, so the
-      // hosted-agent fact rides a header instead. It has to be per-connection:
-      // this same server also answers external clients that legitimately want
-      // a navigable URL, so the signal cannot live on the server process.
-      mcpServers.push({
-        type: 'http',
-        name: 'open-knowledge',
-        url: `${serverUrl}/mcp`,
-        headers: [{ name: MCP_HOSTED_AGENT_HEADER, value: '1' }],
-      });
+    consentBudgetMs: number = CONSENT_TIMEOUT_MS,
+  ): Promise<{ servers: McpServer[]; hostedMarker: OkMcpHostedMarker }> {
+    const servers: McpServer[] = [];
+    let hostedMarker: OkMcpHostedMarker;
+    if (isPiBridgeAgent(record.agentRef)) {
+      // Pi has no MCP client: it accepts the `mcpServers` array and silently
+      // drops it, so injecting anything here only hides the real question.
+      // Its tools ride OK's bridge extension in the project instead.
+      const outcome = await this.settlePiBridge(record, consentBudgetMs);
+      hostedMarker = outcome === 'unavailable' ? 'none' : 'unknown';
+    } else if ((await this.harnessAlreadyHasOkMcp(record)) !== null) {
+      hostedMarker = 'unknown';
     } else {
-      // Fallback for agents that don't advertise HTTP-MCP support (e.g. Claude
-      // Code's ACP adapter): a stdio MCP server. stdio needs no capability flag
-      // — every ACP agent accepts it — so this is what actually carries the OK
-      // tools to non-HTTP agents. Without it they connect with only their own
-      // personal MCP config and OK tools are silently absent (verified: Codex
-      // declares http and gets OK tools; Claude does not and got only its own).
-      const stdio = this.opts.getMcpStdioCommand?.();
-      if (stdio !== null && stdio !== undefined) {
-        mcpServers.push({
+      const serverUrl = this.opts.getServerUrl?.();
+      if (serverUrl !== undefined && init.agentCapabilities?.mcpCapabilities?.http === true) {
+        // Preferred: a direct HTTP MCP connection to this running server.
+        // The env marker the stdio branch uses cannot travel over HTTP, so the
+        // hosted-agent fact rides a header instead. It has to be per-connection:
+        // this same server also answers external clients that legitimately want
+        // a navigable URL, so the signal cannot live on the server process.
+        servers.push({
+          type: 'http',
           name: 'open-knowledge',
-          command: stdio.command,
-          args: [...stdio.args],
-          // Carry the hosted-agent marker explicitly rather than relying on
-          // the agent to pass its own env through to the MCP servers it
-          // spawns. On this branch we name the command, so we can make it
-          // deterministic; on the skip branch above the harness spawns its
-          // own entry and the marker has to arrive by inheritance from
-          // `withHostedAgentMarker` at the agent spawn.
-          env: [{ name: OK_HOSTED_AGENT_ENV, value: '1' }],
+          url: `${serverUrl}/mcp`,
+          headers: [{ name: MCP_HOSTED_AGENT_HEADER, value: '1' }],
         });
+        hostedMarker = 'http-header';
+      } else {
+        // Fallback for agents whose adapter doesn't advertise HTTP-MCP support
+        // (custom agents, registry agents that only speak stdio): a stdio MCP
+        // server, which is what actually carries OK tools to them — otherwise
+        // they connect with only their own personal MCP config and OK tools are
+        // silently absent.
+        //
+        // Nothing gates this branch on a capability flag and nothing may: ACP
+        // has no stdio flag to check, and adapters under-report — a capability
+        // object listing only http/sse is not evidence that stdio would be
+        // refused. The http check above is a preference, not a gate.
+        const stdio = this.opts.getMcpStdioCommand?.();
+        const entryPath = agentSpawnPath();
+        if (stdio !== null && stdio !== undefined) {
+          servers.push({
+            name: 'open-knowledge',
+            command: stdio.command,
+            args: [...stdio.args],
+            // Carry the hosted-agent marker on the entry rather than relying on
+            // the agent to pass its own env through to the MCP servers it
+            // spawns — a hop some harnesses sanitize. On this branch OK names
+            // the command, so the marker is deterministic; see
+            // `OkMcpHostedMarker` for the branch where it cannot be.
+            //
+            // PATH rides along for the same reason: an env-sanitizing harness
+            // may hand the child no PATH at all, and even an absolute command
+            // can be an `#!/usr/bin/env node` shim that then can't find node.
+            // Entry-declared env is the one channel every adapter delivers.
+            //
+            // It must be the AGENT's PATH, never this process's: adapters that
+            // deliver entry env spread it LAST over the child's inherited env
+            // (verified in opencode + codex-rs), so a declared PATH replaces
+            // rather than supplements. A Dock-launched Desktop runs its server
+            // under launchd's minimal PATH, so declaring that would strip the
+            // package-manager global bins the agent spawn deliberately restores
+            // — narrowing the child in the exact scenario this hardening
+            // targets.
+            env: [
+              { name: OK_HOSTED_AGENT_ENV, value: '1' },
+              ...(entryPath !== undefined && entryPath !== ''
+                ? [{ name: 'PATH', value: entryPath }]
+                : []),
+            ],
+          });
+          hostedMarker = 'stdio-entry-env';
+        } else {
+          hostedMarker = 'none';
+        }
       }
     }
-    return mcpServers;
+    if (hostedMarker === 'none') {
+      this.opts.log.warn(
+        { threadId: record.info.threadId, agentId: record.agentRef.id },
+        '[acp-threads] no OK MCP transport available for this agent — it starts without OK tools',
+      );
+    } else {
+      this.opts.log.info(
+        { threadId: record.info.threadId, agentId: record.agentRef.id, hostedMarker },
+        '[acp-threads] OK MCP injection outcome',
+      );
+    }
+    return { servers, hostedMarker };
   }
 
   /**
@@ -1553,6 +1798,250 @@ export class AcpThreadManager {
     return hit;
   }
 
+  /**
+   * Settle whether this Pi thread will have OK tools, provisioning the bridge
+   * extension with the user's consent when it won't.
+   *
+   * Runs at every session setup — fresh start and resume alike — because the
+   * refusal is deliberately remembered nowhere: the next Pi thread re-probes
+   * and asks again. A `foreign` file at OK's managed path is never offered as
+   * a prompt: consent would be for trusting a folder whose extension contents
+   * OK did not write, which is not ours to ask for (the write primitive
+   * refuses it too).
+   */
+  private async settlePiBridge(
+    record: ThreadRecord,
+    consentBudgetMs: number,
+  ): Promise<PiBridgeOutcome> {
+    const probe = this.opts.probePiAcpBridge;
+    const threadId = record.info.threadId;
+    if (probe === undefined) {
+      this.opts.log.debug(
+        { threadId, agentId: record.agentRef.id },
+        '[acp-threads] no Pi bridge probe wired — OK tools depend on whether the project was already wired',
+      );
+      return 'unknown';
+    }
+    let state: PiAcpBridgeProbe;
+    try {
+      state = await probe(record.cwd);
+    } catch (err) {
+      this.opts.log.warn({ err, threadId }, '[acp-threads] Pi bridge probe failed');
+      return 'unknown';
+    }
+    if (record.closed) return 'unknown';
+    if (state.bridgeLoadable) {
+      this.opts.log.info(
+        { threadId, bridge: state.bridge, bridgePath: state.bridgePath },
+        '[acp-threads] Pi already loads the OK bridge extension for this project',
+      );
+      return 'loadable';
+    }
+    if (state.bridge === 'foreign' || state.bridge === 'unreadable') {
+      this.opts.log.warn(
+        { threadId, bridge: state.bridge, bridgePath: state.bridgePath },
+        "[acp-threads] OK can't claim the Pi bridge path — leaving it alone; this thread has no OK tools",
+      );
+      // Two different problems with two different fixes: a file OK didn't
+      // write is a decision the user has to make about their own file, while
+      // an unreadable one is a permission/IO fault. Collapsing them sends half
+      // the users to the wrong remedy.
+      this.emitPiBridgeStatus(record, {
+        kind: 'pi_bridge_status',
+        state: state.bridge === 'foreign' ? 'foreign-file' : 'unreadable-file',
+        bridgePath: state.bridgePath,
+        ts: Date.now(),
+      });
+      return 'unavailable';
+    }
+    if (record.piBridgeDeclined) {
+      // Already asked, already answered. The declined card is still in the
+      // transcript, so re-emitting a status here would only add noise.
+      this.opts.log.debug(
+        { threadId },
+        '[acp-threads] Pi bridge prompt already declined for this thread — not re-asking',
+      );
+      return 'unavailable';
+    }
+    const ensure = this.opts.ensurePiAcpBridge;
+    if (ensure === undefined) {
+      this.opts.log.warn(
+        { threadId },
+        '[acp-threads] Pi bridge is not provisioned and no provisioning seam is wired — not prompting',
+      );
+      return 'unavailable';
+    }
+
+    const requestId = crypto.randomUUID();
+    const decision = await this.requestPiBridgeConsent(record, requestId, state, consentBudgetMs);
+    // Recorded before the closed gate: a user who declines and immediately
+    // closes has still answered, and reopening must not re-ask.
+    if (decision === 'declined') record.piBridgeDeclined = true;
+    if (record.closed) return 'unknown';
+    if (decision !== 'granted') {
+      this.opts.log.info(
+        { threadId, decision },
+        '[acp-threads] Pi bridge not provisioned — the thread continues without OK tools',
+      );
+      return 'unavailable';
+    }
+
+    let result: PiAcpBridgeEnsureResult;
+    try {
+      result = await ensure(record.cwd);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.opts.log.warn({ err, threadId }, '[acp-threads] Pi bridge provisioning threw');
+      this.appendPiBridgeFailure(record, requestId, 'bridge-failed', state.bridgePath, { detail });
+      return 'unavailable';
+    }
+    if (result.ok) {
+      this.opts.log.info(
+        { threadId, bridge: result.bridge, trust: result.trust, bridgePath: result.bridgePath },
+        '[acp-threads] provisioned the Pi bridge extension for this project',
+      );
+      if (record.closed) return 'unknown';
+      this.appendEvent(record, {
+        kind: 'pi_bridge_status',
+        requestId,
+        state: 'ready',
+        bridgePath: result.bridgePath,
+        bridge: result.bridge,
+        trust: result.trust,
+        ts: Date.now(),
+      });
+      return 'loadable';
+    }
+    // Half-landed outcomes are their own answer: a bridge file with no trust
+    // entry is inert, and the copy has to say which half is missing rather
+    // than claim the whole thing failed.
+    const bridgeLanded =
+      result.bridge === 'written' || result.bridge === 'refreshed' || result.bridge === 'unchanged';
+    const state2: PiBridgeThreadState =
+      result.bridge === 'refused-foreign'
+        ? 'foreign-file'
+        : result.bridge === 'refused-unreadable'
+          ? 'unreadable-file'
+          : bridgeLanded
+            ? 'trust-failed'
+            : 'bridge-failed';
+    // Logged before the closed gate below: a disk-full or permission failure
+    // during provisioning has to leave a trace whether or not anyone is still
+    // watching, and closing the thread is exactly what an impatient user does
+    // while a slow write is failing. `record.closed` gates the UI event, never
+    // the server-side record of what happened.
+    this.opts.log.warn(
+      {
+        threadId,
+        bridge: result.bridge,
+        trust: result.trust,
+        bridgePath: result.bridgePath,
+        err: result.error,
+      },
+      '[acp-threads] Pi bridge provisioning did not complete — the thread continues without OK tools',
+    );
+    this.appendPiBridgeFailure(record, requestId, state2, result.bridgePath, {
+      bridge: result.bridge,
+      trust: result.trust,
+      ...(result.error !== undefined ? { detail: result.error } : {}),
+    });
+    return 'unavailable';
+  }
+
+  private appendPiBridgeFailure(
+    record: ThreadRecord,
+    requestId: string,
+    state: PiBridgeThreadState,
+    bridgePath: string,
+    extra: { bridge?: PiBridgeWriteAction; trust?: PiTrustWriteAction; detail?: string },
+  ): void {
+    // The caller has already logged; this is the UI half, and a torn-down
+    // thread has nobody to show it to.
+    if (record.closed) return;
+    this.appendEvent(record, {
+      kind: 'pi_bridge_status',
+      requestId,
+      state,
+      bridgePath,
+      ...extra,
+      ts: Date.now(),
+    });
+  }
+
+  /**
+   * Emit a Pi bridge status that answers no prompt, collapsing an unchanged
+   * repeat. Session setup runs again on every resume, so a standing condition
+   * (someone else's file at the managed path) would otherwise stack one
+   * identical, unactionable row per reopen for the life of the transcript.
+   */
+  private emitPiBridgeStatus(
+    record: ThreadRecord,
+    event: Extract<ThreadEvent, { kind: 'pi_bridge_status' }>,
+  ): void {
+    if (record.lastPiBridgeStatus === event.state) return;
+    record.lastPiBridgeStatus = event.state;
+    this.appendEvent(record, event);
+  }
+
+  /**
+   * Emit a `pi_bridge_consent_request` (retained + replayed like a permission
+   * prompt) and park until the user answers via a
+   * `pi_bridge_consent_response` frame, the request times out, or the thread
+   * closes. Nothing about the answer is written to disk — the transcript is
+   * history, not a store anything consults.
+   */
+  private requestPiBridgeConsent(
+    record: ThreadRecord,
+    requestId: string,
+    state: PiAcpBridgeProbe,
+    budgetMs: number,
+  ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
+    this.appendEvent(record, {
+      kind: 'pi_bridge_consent_request',
+      requestId,
+      agentName: record.info.agent.name,
+      bridgePath: state.bridgePath,
+      cwd: record.cwd,
+      otherExtensions: state.otherExtensions,
+      ts: Date.now(),
+    });
+    return new Promise((resolvePromise) => {
+      const timer = setTimeout(() => {
+        record.pendingPiBridgeConsent.delete(requestId);
+        this.appendEvent(record, {
+          kind: 'pi_bridge_consent_resolved',
+          requestId,
+          decision: 'timeout',
+          ts: Date.now(),
+        });
+        resolvePromise('timeout');
+      }, budgetMs);
+      timer.unref?.();
+      record.pendingPiBridgeConsent.set(requestId, { resolve: resolvePromise, timer });
+    });
+  }
+
+  /** Answer a parked Pi bridge-provisioning prompt from the client. */
+  respondPiBridgeConsent(
+    threadId: string,
+    requestId: string,
+    outcome: { kind: 'granted' } | { kind: 'declined' },
+  ): void {
+    const t = this.mustGet(threadId);
+    const pending = t.pendingPiBridgeConsent.get(requestId);
+    if (pending === undefined) return;
+    t.pendingPiBridgeConsent.delete(requestId);
+    clearTimeout(pending.timer);
+    const decision = outcome.kind === 'granted' ? 'granted' : 'declined';
+    this.appendEvent(t, {
+      kind: 'pi_bridge_consent_resolved',
+      requestId,
+      decision,
+      ts: Date.now(),
+    });
+    pending.resolve(decision);
+  }
+
   private async startThread(
     record: ThreadRecord,
     params: {
@@ -1562,6 +2051,7 @@ export class AcpThreadManager {
       settings?: { config?: Record<string, string | boolean>; modeId?: string };
     },
     custom: CustomAgentEntry | null,
+    consentBudgetMs: number = CONSENT_TIMEOUT_MS,
   ): Promise<void> {
     let handshake: Awaited<ReturnType<AcpThreadManager['connectAgent']>>;
     try {
@@ -1583,7 +2073,12 @@ export class AcpThreadManager {
     if (handshake === null) return;
     const { conn, init, launch } = handshake;
 
-    if ((await this.openSession(record, conn, init, params.settings)) !== true) return;
+    if (
+      (await this.openSession(record, conn, init, params.settings, 'park', consentBudgetMs)) !==
+      true
+    ) {
+      return;
+    }
     // Startup latency is a known UX sore point (npx resolution + node boot +
     // handshake, serialized) — keep it measurable per launch kind.
     this.opts.log.info(
@@ -1629,12 +2124,13 @@ export class AcpThreadManager {
     init: InitializeResponse,
     settings?: { config?: Record<string, string | boolean>; modeId?: string },
     onAuthRequired: 'park' | 'report' = 'park',
+    consentBudgetMs: number = CONSENT_TIMEOUT_MS,
   ): Promise<boolean | 'auth-required'> {
     // A fresh session invalidates whatever a previous one advertised (retry
     // and post-authenticate reopen reach here with a dead session's list) —
     // back to "not yet known" until this session's update arrives.
     record.info.availableCommands = null;
-    const mcpServers = await this.buildMcpServers(record, init);
+    const { servers: mcpServers } = await this.buildMcpServers(record, init, consentBudgetMs);
     try {
       const session = await conn.agent.request(acpMethods.agent.session.new, {
         cwd: record.cwd,
@@ -1780,7 +2276,12 @@ export class AcpThreadManager {
           throw new ThreadOpError('not-ready', 'thread closed during resume');
         }
         const { conn, init } = handshake;
-        const mcpServers = await this.buildMcpServers(t, init);
+        // The client is blocked on this call — see BLOCKING_CONSENT_TIMEOUT_MS.
+        const { servers: mcpServers } = await this.buildMcpServers(
+          t,
+          init,
+          BLOCKING_CONSENT_TIMEOUT_MS,
+        );
         const caps = init.agentCapabilities;
         const viaResume = caps?.sessionCapabilities?.resume != null;
         let response: { modes?: unknown; configOptions?: unknown };
@@ -1907,7 +2408,12 @@ export class AcpThreadManager {
       t.turnActive = false;
       this.emitStatus(t, 'installing');
       try {
-        await this.startThread(t, { agent: t.agentRef, settings: t.launchSettings }, custom);
+        await this.startThread(
+          t,
+          { agent: t.agentRef, settings: t.launchSettings },
+          custom,
+          BLOCKING_CONSENT_TIMEOUT_MS,
+        );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         this.emitStatus(t, 'error', detail, { reason: 'connect', agentMessage: detail });
@@ -2000,7 +2506,14 @@ export class AcpThreadManager {
       // any failure but auth tears the process down here, exactly as at launch.
       // The create-time settings ride along so a session recovered through a
       // sign-in opens on the same model/mode a first launch would have.
-      const opened = await this.openSession(t, conn, init, t.launchSettings, 'report');
+      const opened = await this.openSession(
+        t,
+        conn,
+        init,
+        t.launchSettings,
+        'report',
+        BLOCKING_CONSENT_TIMEOUT_MS,
+      );
       if (opened === 'auth-required') {
         // The sign-in succeeded and the agent STILL won't open a session: it
         // read its credentials at startup and this process predates them. A
@@ -2076,7 +2589,7 @@ export class AcpThreadManager {
     t.closed = true;
     t.suppressUpdates = false;
     this.failPendingPermissions(t);
-    this.failPendingRuntimeConsent(t);
+    this.failPendingConsents(t);
     try {
       t.conn?.close();
     } catch {
@@ -2792,7 +3305,7 @@ export class AcpThreadManager {
     t.closed = true; // Suppress exit/conn status handlers during teardown.
     this.clearSteer(t);
     this.failPendingPermissions(t);
-    this.failPendingRuntimeConsent(t);
+    this.failPendingConsents(t);
     try {
       t.conn?.close();
     } catch {
@@ -3291,13 +3804,15 @@ export class AcpThreadManager {
     t.pendingPermissions.clear();
   }
 
-  /** Resolve any parked runtime-consent prompts as `closed` during teardown. */
-  private failPendingRuntimeConsent(t: ThreadRecord): void {
-    for (const pending of t.pendingRuntimeConsent.values()) {
-      clearTimeout(pending.timer);
-      pending.resolve('closed');
+  /** Resolve every parked consent prompt as `closed` during teardown. */
+  private failPendingConsents(t: ThreadRecord): void {
+    for (const map of [t.pendingRuntimeConsent, t.pendingPiBridgeConsent]) {
+      for (const pending of map.values()) {
+        clearTimeout(pending.timer);
+        pending.resolve('closed');
+      }
+      map.clear();
     }
-    t.pendingRuntimeConsent.clear();
   }
 
   /**
@@ -3465,6 +3980,9 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     subscribers: new Set(),
     pendingPermissions: new Map(),
     pendingRuntimeConsent: new Map(),
+    pendingPiBridgeConsent: new Map(),
+    piBridgeDeclined: false,
+    lastPiBridgeStatus: null,
     stderrTail: [],
     authStderr: null,
     terminals: null,

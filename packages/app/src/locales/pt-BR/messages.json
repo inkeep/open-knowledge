@@ -27,6 +27,7 @@
     "-K0AvT": ["Desconectar"],
     "-LHLx7": ["modelo editado"],
     "-QCLWk": ["Modelos disponíveis"],
+    "-QVER4": ["Ativando as ferramentas do Open Knowledge"],
     "-Qw-1t": ["Falha na autenticação com o GitHub. Tente entrar de novo."],
     "-VqsyR": ["Pensando…"],
     "-WFFG2": ["Propriedades padrão"],
@@ -801,6 +802,11 @@
     "8x6zk9": ["Ocultar editor de ", ["0"]],
     "9-lMCF": ["Cor de ", ["slot"], " — ", ["0"]],
     "90-wKT": ["OpenKnowledge leu o histórico de ", ["subject"]],
+    "92G3B2": [
+      "As ferramentas do Open Knowledge estão indisponíveis: já existe algo em ",
+      ["bridgePath"],
+      ", mas não foi possível ler, então o Open Knowledge o deixou intacto."
+    ],
     "92rbk2": ["O espelho está carregando <0>", ["mirrorRef"], "</0>"],
     "93LBnX": ["Ocultar Agentes"],
     "96G6Re": ["Nova pasta"],
@@ -1342,6 +1348,7 @@
       "Configurações deste projeto. Algumas são compartilhadas com cada colaborador pelo git; outras se aplicam somente neste computador."
     ],
     "FNTx6u": ["Buscar \"", ["semanticSubmitQuery"], "\" por significado"],
+    "FNsxBc": ["As ferramentas do Open Knowledge estão disponíveis nesta conversa."],
     "FOGD7m": ["Crie algo excelente."],
     "FQwhfM": [
       "A URL pública que seu túnel serve (por exemplo, seu endereço Tailscale https://…ts.net). O servidor aceita solicitações para este host e o anuncia nas URLs que emite."
@@ -1701,6 +1708,12 @@
       "Enviado, mas não foi possível marcar os comentários como concluídos — eles continuam aguardando envio."
     ],
     "JyW5aS": ["Peneirando…"],
+    "JznUmv": [
+      ["0"],
+      " não tem como ler ou editar seus documentos por conta própria. Aprovar grava a extensão do Open Knowledge em ",
+      ["1"],
+      " e a mantém lá, para que esta sessão e as seguintes neste projeto tenham as ferramentas do Open Knowledge."
+    ],
     "K-NcyU": ["Esta pasta não contém um repositório git. Escolher outra pasta?"],
     "K-a33w": ["Comece a escrever para criar esta página"],
     "K-h9cT": ["Não deu para salvar a resolução de ", ["filePath"], "."],
@@ -2006,6 +2019,9 @@
     "NRSLBe": ["há ", ["diffMin"], " min"],
     "NSnIUP": ["Duas páginas (pares)"],
     "NUr4kz": ["Um ponto de partida reutilizável para novos documentos nesta pasta."],
+    "NY0p7s": [
+      "A ativação das ferramentas do Open Knowledge foi ignorada. Esta conversa funciona sem elas."
+    ],
     "NYUhy5": ["Nome da subpasta"],
     "NYn1cR": ["Carregando o editor"],
     "NYu2Pt": ["Novo projeto…"],
@@ -2404,6 +2420,7 @@
     "SItQRc": ["O que você acha do OpenKnowledge?"],
     "SOPwPh": ["Restaurar até esta edição"],
     "SRBk2G": ["Não deu para adicionar esse comentário."],
+    "SRLcL7": ["Ativar as ferramentas do Open Knowledge para ", ["0"], "?"],
     "STTOnz": ["Tipo de ", ["keyName"], ": valor complexo (aninhado; somente leitura)"],
     "SUOoXn": ["Falha ao abrir o projeto."],
     "SVLPt5": [["formatted"], " estrelas no GitHub"],
@@ -3007,6 +3024,7 @@
       "Ainda não há arquivo <0>.markdownlint.*</0> — todas as regras rodam com os mesmos padrões da extensão markdownlint do VS Code: todas ligadas, exceto o comprimento da linha."
     ],
     "Z79bnE": ["Ver as diferenças da edição ", ["burstNumber"], " de ", ["docName"]],
+    "Z7ZXbT": ["Aprovar"],
     "Z7x_Zh": [
       "O git precisa de ",
       ["tool"],
@@ -3300,6 +3318,13 @@
     "c863eW": ["Não foi possível mudar para ", ["shareBranch"], ". Tente mudar manualmente."],
     "c8iK2Y": ["Nenhum modelo encontrado."],
     "c8jBgX": ["Buscando atualizações no GitHub"],
+    "c8wKUP": [
+      "Isso também marca ",
+      ["0"],
+      " como confiável, que é o que faz a extensão carregar. Essa confiança abrange a pasta inteira: ",
+      ["1"],
+      " carregará todas as extensões que houver nela, não apenas a do Open Knowledge, e ambas permanecem até você remover o Open Knowledge deste projeto."
+    ],
     "cCd8Bs": ["Recortar"],
     "cD3aew": [
       "Os embeddings são recalculados à medida que as buscas rodam, então a cobertura recomeça do zero e vai enchendo."
@@ -3930,6 +3955,11 @@
       "Abre uma nova sessão com a IA que você preferir. Com um texto selecionado, prepara-o lá em vez de executar."
     ],
     "j5CWO4": ["Atualizado"],
+    "j6HvUO": [
+      "As ferramentas do Open Knowledge estão indisponíveis: já existe em ",
+      ["bridgePath"],
+      " um arquivo que o Open Knowledge não escreveu."
+    ],
     "j9Vqvc": ["herdado"],
     "j9tqwO": ["Não está na barra lateral"],
     "jAMpHn": ["O que é um pacote inicial?"],
@@ -4049,6 +4079,9 @@
       "</0> tem alterações que não estão no GitHub. ",
       ["targetNoun"],
       " vai aparecer assim que o ramo sincronizar."
+    ],
+    "kNG0s5": [
+      "Não deu para gravar a extensão do Open Knowledge. Esta conversa não tem as ferramentas do Open Knowledge."
     ],
     "kNGLX6": ["Tentando novamente…"],
     "kNqMMd": ["Pasta"],
@@ -4235,6 +4268,9 @@
     "mGaZwZ": ["Ver o guia de instalação completo"],
     "mHVPm5": ["É preciso reconectar"],
     "mHf8mp": ["Excluir o arquivo de esquema ", ["file"]],
+    "mHo0kp": [
+      "O pedido para ativar as ferramentas do Open Knowledge expirou. Esta conversa funciona sem elas."
+    ],
     "mLAjyL": [
       "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Marcar uma caixa configura na hora; desmarcar remove."
     ],
@@ -4296,6 +4332,9 @@
     "mk2poV": ["ex.: server.ts"],
     "mlA3HX": [
       "Instale globalmente as habilidades e o MCP do OpenKnowledge para que os agentes que você já usa possam ler e atualizar seus projetos."
+    ],
+    "mlDKzr": [
+      "A extensão do Open Knowledge foi gravada, mas não deu para marcar a pasta como confiável, então ela não vai carregar. Esta conversa não tem as ferramentas do Open Knowledge."
     ],
     "mlvM8g": ["Não deu para reposicionar esse comentário."],
     "mmpzAq": ["Quebra as linhas longas no editor de código markdown."],
@@ -5118,6 +5157,13 @@
     "wndeIl": ["Páginas de todo o projeto sem arestas de entrada nem de saída no grafo."],
     "wqD3pI": ["Não foi possível atualizar ", ["failed"], " de ", ["0"], " comentários."],
     "ws5o1F": ["Verificado por: ", ["0"]],
+    "wsLj3t": [
+      "Essa pasta já contém código que o Open Knowledge não escreveu e que essa mesma confiança permitiria a ",
+      ["0"],
+      " executar: ",
+      ["otherExtensions"],
+      "."
+    ],
     "wtcxiD": ["Compartilhar esta configuração com sua equipe?"],
     "wtd69q": ["Nenhuma pasta corresponde."],
     "wvK7Ay": ["Sua cópia local do ramo <0>", ["branch"], "</0> está atrasada."],

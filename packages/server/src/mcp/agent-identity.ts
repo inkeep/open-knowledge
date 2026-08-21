@@ -54,9 +54,16 @@ export const MCP_CONNECTION_ID_HEADER = 'x-ok-connection-id';
  * over HTTP, and the signal has to stay per-connection rather than
  * per-process: one shared server answers both the in-app agent panel and
  * external clients (an outside Cursor/Codex, an `ok start` consumer), and
- * those external clients legitimately want a navigable URL. Only the entry OK
- * injects for an agent it hosts sets this header, so absent means "not
- * hosted" and the plain-URL behavior is preserved by default.
+ * those external clients legitimately want a navigable URL.
+ *
+ * Only an entry OK injects itself carries this header, and its absence is NOT
+ * proof that the caller is external. A hosted agent whose harness loads OK's
+ * own managed MCP entry from its editor config opens a connection OK never
+ * wrote, so no marker rides it, and the marker cannot be put in that config
+ * entry either — the same entry serves the user's ordinary, non-hosted use of
+ * that editor. Absent is therefore treated as external deliberately, not
+ * confidently: a plain URL is useless advice to an agent inside the app, but
+ * an `ok open` steer is wrong advice to one outside it.
  */
 export const MCP_HOSTED_AGENT_HEADER = 'x-ok-hosted-agent';
 

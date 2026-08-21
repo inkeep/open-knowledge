@@ -24,10 +24,12 @@ import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import {
   detectGh,
+  ensurePiBridge,
   getNativeTomlMcpEditor,
   loadConfig,
   makeLazyProbeTokenStore,
   probeOwnManagedEditorMcpEntry,
+  probePiBridgeState,
 } from '@inkeep/open-knowledge';
 import { resolveServerRuntimeConfig, type ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import {
@@ -379,6 +381,11 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         // (same wiring as `ok start`).
         probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
           probeOwnManagedEditorMcpEntry(editorId, agentCwd),
+        // Pi has no MCP client: its ACP threads get OK tools from the managed
+        // bridge extension in the project, probed at session setup and — with
+        // the user's consent — provisioned there and then (same as `ok start`).
+        probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
+        ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
         // The renderer page origin (Vite dev URL / `file://`) has no asset
         // middleware — serve content assets from this utility server so the
         // renderer can resolve `/<contentDir-relative>` srcs against `apiOrigin`.

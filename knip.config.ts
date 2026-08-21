@@ -59,6 +59,7 @@ export default {
     'scripts/build-slack-release-payload.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
     'scripts/assert-app-built.mjs': ['files'],
+    'scripts/acp-mcp-rig/*.mjs': ['files'],
     'docs/src/lib/share-splash.ts': ['exports', 'types'],
     'packages/app/src/components/PublishToGitHubDialog.tsx': ['types'],
     'packages/app/src/components/ShareButton.tsx': ['types'],

@@ -93,9 +93,13 @@ interface GetPreviewUrlDeps {
    * responses lead with a steer to run `ok open <target>` (which focuses the
    * target up for the user) rather than navigating the
    * returned URL — an agent living inside the app has no business handing its
-   * user a localhost link to the app they are looking at. Absent/false
-   * everywhere else (the shared collab server, an external Cursor/Codex with
-   * its own browser pane, plain CLI), so those paths are unchanged.
+   * user a localhost link to the app they are looking at. False for external
+   * clients (the shared collab server, an external Cursor/Codex with its own
+   * browser pane, plain CLI) — but false is not proof of external: a hosted
+   * agent whose harness spawns OK's server from its own editor config arrives
+   * unmarked when that harness strips the spawn env, and is deliberately
+   * treated as external here (a plain URL is useless advice inside the app;
+   * an `ok open` steer is wrong advice outside it).
    */
   isHostedAgent?: boolean;
   /**

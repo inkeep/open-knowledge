@@ -578,7 +578,38 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
       );
       switch (outcome.kind) {
         case 'removed':
-          return { op, status: 'removed' };
+          // Pi's integration is two artifacts, and the second one — the
+          // folder-trust grant that lets Pi auto-load anything in that
+          // directory — is the one worth reporting on. A grant left standing
+          // under a "✓ Removed" line is the failure this branch exists to
+          // prevent. `undefined` is every other editor: nothing to say.
+          switch (outcome.trust) {
+            case undefined:
+            case 'removed':
+            case 'not-present':
+              return { op, status: 'removed' };
+            case 'kept-shared':
+              return {
+                op,
+                status: 'removed',
+                detail: "kept Pi's folder trust — another extension there still needs it",
+              };
+            case 'kept-unverified':
+              return {
+                op,
+                status: 'removed',
+                detail:
+                  "kept Pi's folder trust — couldn't read the extensions folder to see what else needs it",
+              };
+            default:
+              return {
+                op,
+                status: 'failed',
+                detail: `removed the bridge file, but couldn't revoke Pi's folder trust (${outcome.trust})${
+                  outcome.trustError !== undefined ? `: ${outcome.trustError}` : ''
+                }`,
+              };
+          }
         case 'not-present':
           return { op, status: 'not-present' };
         case 'left-foreign':

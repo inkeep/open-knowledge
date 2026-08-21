@@ -1996,6 +1996,8 @@ function ThreadItem({
       );
     case 'runtime_consent':
       return <RuntimeConsentPrompt item={item} threadId={threadId} />;
+    case 'pi_bridge':
+      return <PiBridgeConsentPrompt item={item} threadId={threadId} />;
     case 'notice':
       return (
         <ThreadNotice
@@ -3439,6 +3441,155 @@ function RuntimeConsentPrompt({
             client.respondRuntimeConsent(threadId, item.requestId, { kind: 'declined' })
           }
           data-testid="agent-thread-runtime-consent-decline"
+        >
+          {t`Not now`}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * How a Pi bridge attempt settled. Each state names a different fix, so none
+ * of them share copy.
+ */
+function PiBridgeOutcomeRow({
+  outcome,
+  bridgePath,
+}: {
+  outcome: NonNullable<Extract<RenderedItem, { kind: 'pi_bridge' }>['outcome']>;
+  bridgePath: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const ready = outcome.state === 'ready';
+  return (
+    <div
+      className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-muted-foreground text-xs"
+      data-testid="agent-thread-pi-bridge"
+    >
+      <div className="flex items-start gap-1.5">
+        {ready ? (
+          <Check
+            className="mt-px size-3.5 shrink-0 text-green-600 dark:text-green-400"
+            aria-hidden="true"
+          />
+        ) : null}
+        <span>
+          {outcome.state === 'ready'
+            ? t`Open Knowledge tools are available in this thread.`
+            : outcome.state === 'foreign-file'
+              ? t`Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at ${bridgePath}.`
+              : outcome.state === 'unreadable-file'
+                ? t`Open Knowledge tools are unavailable: something is already at ${bridgePath} but couldn't be read, so Open Knowledge left it alone.`
+                : outcome.state === 'trust-failed'
+                  ? // The bridge is on disk but pi won't read it, so saying
+                    // "couldn't write it" would send the user to the wrong half.
+                    t`Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools.`
+                  : t`Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools.`}
+        </span>
+      </div>
+      {outcome.detail !== null ? (
+        <div className="mt-1 break-all font-mono text-[11px] opacity-80">{outcome.detail}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Prompt (and outcome) for provisioning Pi's bridge extension — the only way
+ * OK's tools reach a Pi thread, since Pi has no MCP client. Same retained-item
+ * shape as {@link RuntimeConsentPrompt}: it renders identically live and on
+ * replay. The folder-trust disclosure is load-bearing copy, not a footnote —
+ * approving lets Pi load every extension in that folder, not only OK's.
+ */
+function PiBridgeConsentPrompt({
+  item,
+  threadId,
+}: {
+  item: Extract<RenderedItem, { kind: 'pi_bridge' }>;
+  threadId: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const client = getAgentThreadClient();
+
+  // A notice is an outcome nobody was asked about; a prompted row that already
+  // has one is done being a prompt. Splitting on the tag first is what lets the
+  // rest of this function treat `item.prompt` as present.
+  if (item.row === 'notice') {
+    return <PiBridgeOutcomeRow outcome={item.outcome} bridgePath={item.bridgePath} />;
+  }
+  if (item.outcome !== null) {
+    return <PiBridgeOutcomeRow outcome={item.outcome} bridgePath={item.bridgePath} />;
+  }
+
+  if (item.decision === 'declined' || item.decision === 'timeout') {
+    return (
+      <div
+        className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-muted-foreground text-xs"
+        data-testid="agent-thread-pi-bridge"
+      >
+        {item.decision === 'declined'
+          ? t`Skipped enabling Open Knowledge tools. This thread runs without them.`
+          : t`The request to enable Open Knowledge tools timed out. This thread runs without them.`}
+      </div>
+    );
+  }
+
+  if (item.decision === 'granted') {
+    return (
+      <div
+        className="flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-muted-foreground text-xs"
+        data-testid="agent-thread-pi-bridge"
+      >
+        <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+        <span>{t`Enabling Open Knowledge tools`}</span>
+      </div>
+    );
+  }
+
+  const prompt = item.prompt;
+  const otherExtensions = prompt.otherExtensions.join(', ');
+  return (
+    <div
+      className="rounded-md border border-blue-500/40 bg-blue-500/5 px-2.5 py-2 text-sm"
+      data-testid="agent-thread-pi-bridge"
+    >
+      <div className="mb-1 flex items-center gap-1.5 font-medium">
+        <Wrench className="size-4 shrink-0" aria-hidden="true" />
+        <span>{t`Enable Open Knowledge tools for ${prompt.agentName}?`}</span>
+      </div>
+      <p className="mb-1.5 text-muted-foreground text-xs">
+        {t`${prompt.agentName} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to ${item.bridgePath} and leaves it there, so this session and later ones in this project have the Open Knowledge tools.`}
+      </p>
+      <p className="mb-2 text-muted-foreground text-xs">
+        {t`It also marks ${prompt.cwd} as trusted, which is what makes the extension load. That trust covers the whole folder — ${prompt.agentName} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project.`}
+      </p>
+      {otherExtensions !== '' ? (
+        <p className="mb-2 text-muted-foreground text-xs">
+          {t`That folder already holds code Open Knowledge didn't write, which the same trust would let ${prompt.agentName} run: ${otherExtensions}.`}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-1.5">
+        <Button
+          type="button"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() =>
+            client.respondPiBridgeConsent(threadId, prompt.requestId, { kind: 'granted' })
+          }
+          data-testid="agent-thread-pi-bridge-allow"
+        >
+          {t`Approve`}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          onClick={() =>
+            client.respondPiBridgeConsent(threadId, prompt.requestId, { kind: 'declined' })
+          }
+          data-testid="agent-thread-pi-bridge-decline"
         >
           {t`Not now`}
         </Button>

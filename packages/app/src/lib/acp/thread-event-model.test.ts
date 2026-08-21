@@ -446,6 +446,136 @@ describe('buildThreadRenderModel', () => {
       true,
     );
   });
+
+  const piBridgeRequest = (): ThreadEvent =>
+    ev({
+      kind: 'pi_bridge_consent_request',
+      requestId: 'p1',
+      agentName: 'Pi',
+      bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+      cwd: '/proj',
+      ts: 1,
+    });
+
+  const piCard = (events: ThreadEvent[]): Extract<RenderedItem, { kind: 'pi_bridge' }> => {
+    const card = buildThreadRenderModel(events).items.find((i) => i.kind === 'pi_bridge');
+    if (card?.kind !== 'pi_bridge') throw new Error('no pi_bridge card');
+    return card;
+  };
+
+  test('renders a pending pi-bridge card from the request event', () => {
+    expect(piCard([piBridgeRequest()])).toMatchObject({
+      prompt: { requestId: 'p1', agentName: 'Pi', cwd: '/proj' },
+      bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+      decision: null,
+      outcome: null,
+    });
+  });
+
+  test('approve → the outcome folds onto the same card, one row for both halves', () => {
+    const card = piCard([
+      piBridgeRequest(),
+      ev({ kind: 'pi_bridge_consent_resolved', requestId: 'p1', decision: 'granted', ts: 2 }),
+      ev({
+        kind: 'pi_bridge_status',
+        requestId: 'p1',
+        state: 'ready',
+        bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+        bridge: 'written',
+        trust: 'added',
+        ts: 3,
+      }),
+    ]);
+    expect(card.decision).toBe('granted');
+    expect(card.outcome).toEqual({ state: 'ready', detail: null });
+  });
+
+  test('a refusal settles the card and never grows an outcome', () => {
+    const card = piCard([
+      piBridgeRequest(),
+      ev({ kind: 'pi_bridge_consent_resolved', requestId: 'p1', decision: 'declined', ts: 2 }),
+    ]);
+    expect(card.decision).toBe('declined');
+    expect(card.outcome).toBeNull();
+  });
+
+  test('a timeout settles the card the same way a refusal does', () => {
+    expect(
+      piCard([
+        piBridgeRequest(),
+        ev({ kind: 'pi_bridge_consent_resolved', requestId: 'p1', decision: 'timeout', ts: 2 }),
+      ]).decision,
+    ).toBe('timeout');
+  });
+
+  test('a half-landed provisioning keeps its machine detail on the card', () => {
+    const card = piCard([
+      piBridgeRequest(),
+      ev({ kind: 'pi_bridge_consent_resolved', requestId: 'p1', decision: 'granted', ts: 2 }),
+      ev({
+        kind: 'pi_bridge_status',
+        requestId: 'p1',
+        state: 'trust-failed',
+        bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+        bridge: 'written',
+        trust: 'failed',
+        detail: 'EACCES',
+        ts: 3,
+      }),
+    ]);
+    expect(card.outcome).toEqual({ state: 'trust-failed', detail: 'EACCES' });
+  });
+
+  // A status with nothing to fold onto — the foreign-file case, where nobody
+  // was asked anything — still has to reach the transcript as its own row.
+  test('a prompt-less status stands alone as a limitation row', () => {
+    const model = buildThreadRenderModel([
+      ev({
+        kind: 'pi_bridge_status',
+        state: 'foreign-file',
+        bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+        ts: 1,
+      }),
+    ]);
+    const rows = model.items.filter((i) => i.kind === 'pi_bridge');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      prompt: null,
+      decision: null,
+      outcome: { state: 'foreign-file', detail: null },
+    });
+  });
+
+  // Same defense as the resolved-permission path: an answer whose question
+  // fell off the retained log must not retarget some other row.
+  test('an outcome for an unknown requestId becomes its own row', () => {
+    const model = buildThreadRenderModel([
+      piBridgeRequest(),
+      ev({
+        kind: 'pi_bridge_status',
+        requestId: 'gone',
+        state: 'ready',
+        bridgePath: '/other',
+        ts: 2,
+      }),
+    ]);
+    const rows = model.items.filter((i) => i.kind === 'pi_bridge');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ prompt: { requestId: 'p1' }, outcome: null });
+    expect(rows[1]).toMatchObject({ prompt: null, bridgePath: '/other' });
+  });
+
+  // Forward compatibility for the reverse skew: a transcript written by a
+  // NEWER server replays on this client without losing the events it does
+  // understand. `as never` is the only way past the union.
+  test('an event kind this client has never heard of is skipped, not fatal', () => {
+    const model = buildThreadRenderModel([
+      ev({ kind: 'user_message', content: 'hi', ts: 1 }),
+      { kind: 'pi_bridge_teleported', ts: 2 } as never,
+      piBridgeRequest(),
+    ]);
+    expect(model.items.map((i) => i.kind)).toEqual(['message', 'pi_bridge']);
+  });
 });
 
 describe('terminal folding', () => {

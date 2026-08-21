@@ -252,6 +252,15 @@ export interface BootServerOptions
    */
   probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
   /**
+   * Forwarded to the ACP thread manager — see
+   * `AcpThreadManagerOptions.probePiAcpBridge` / `ensurePiAcpBridge`. `ok
+   * start` and the Electron utility wire the CLI's Pi bridge primitives;
+   * unset means a Pi thread is never offered the bridge and has OK tools only
+   * where `ok init` already wired the project.
+   */
+  probePiAcpBridge?: AcpThreadManagerOptions['probePiAcpBridge'];
+  ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
+  /**
    * Idle-shutdown threshold in milliseconds. `null` disables idle-shutdown
    * entirely (Electron utility sets this to `null` — window lifecycle
    * owns utility lifetime). Default 30 * 60 * 1000.
@@ -956,8 +965,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         // the MCP-tools 401, that failure is SILENT (the agent just loses OK tools),
         // so do not repoint this at `externalUrl`.
         getServerUrl: () => internalBaseUrl(),
-        getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort),
+        getMcpStdioCommand: () => buildOkMcpStdioCommand(opts.localOpCliArgs, boundPort, { log }),
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
+        probePiAcpBridge: opts.probePiAcpBridge,
+        ensurePiAcpBridge: opts.ensurePiAcpBridge,
         log,
       });
   // Rehydrate archived threads (metadata-only scan) before the WS surface

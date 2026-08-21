@@ -55,6 +55,57 @@ export type ThreadStatus =
 export type ManagedRuntimeKind = 'node' | 'uv';
 
 /**
+ * What provisioning did to OK's managed Pi bridge extension file. Mirrors the
+ * action union the CLI provisioning primitive returns; the boot wiring that
+ * hands that primitive to the thread manager is where the two are checked
+ * against each other, so a rename on either side fails there.
+ */
+export type PiBridgeWriteAction =
+  | 'unchanged'
+  | 'written'
+  | 'refreshed'
+  | 'refused-foreign'
+  | 'refused-unreadable'
+  | 'failed';
+
+/** What provisioning did to Pi's folder-trust store (same mirroring). */
+export type PiTrustWriteAction =
+  | 'already-trusted'
+  | 'added'
+  | 'skipped'
+  | 'refused-unreadable'
+  | 'failed';
+
+/**
+ * How long the client waits for a session-reopening op (`resume`, `retry`)
+ * before it abandons the request and surfaces a timeout.
+ *
+ * Shared rather than client-private because the server has to stay INSIDE it:
+ * both ops answer only after the full agent respawn + session handshake, and
+ * anything the server parks on inside that window (a consent card, say) has to
+ * resolve with room to spare or the user gets a "timed out" error on a prompt
+ * that is still live — and then a thread that quietly goes ready behind an
+ * already-failed client.
+ */
+export const THREAD_REOPEN_OP_TIMEOUT_MS = 90_000;
+
+/**
+ * How a Pi thread's access to OK tools settled. `ready` is the only state
+ * where the agent has them; each of the rest wants its own copy, because each
+ * points at a different fix.
+ */
+export type PiBridgeThreadState =
+  | 'ready'
+  /** Something OK didn't write already sits at the managed bridge path. */
+  | 'foreign-file'
+  /** The managed bridge path exists but can't be read, so its provenance is unknown. */
+  | 'unreadable-file'
+  /** The write itself failed, so nothing landed. */
+  | 'bridge-failed'
+  /** The bridge landed but the folder-trust half didn't, so it stays unloadable. */
+  | 'trust-failed';
+
+/**
  * One auth method the agent advertised at `initialize`, trimmed to what the
  * client renders — and to the `id` that `authenticate` targets. Mirrors the
  * SDK's `AuthMethod` union minus per-variant launch mechanics.
@@ -356,6 +407,63 @@ export type ThreadEvent =
       ts: number;
     }
   | {
+      /**
+       * Pi has no MCP client — it drops the `mcpServers` an ACP session
+       * carries — so OK's tools reach a Pi thread only through OK's bridge
+       * extension inside the project's `.pi/extensions/`, which Pi loads only
+       * for folders listed in its own trust store. This project has neither
+       * yet, so session setup parks on the user's answer (a
+       * `pi_bridge_consent_response` frame, or a timeout). Retained + replayed
+       * like `permission_request`.
+       */
+      kind: 'pi_bridge_consent_request';
+      requestId: string;
+      /** The agent whose tools are blocked on this decision. */
+      agentName: string;
+      /** Absolute path of the bridge extension approving would write. */
+      bridgePath: string;
+      /**
+       * The folder approving would mark trusted. Disclosure-bearing: Pi's
+       * trust is folder-scoped, so the entry lets it load EVERY extension in
+       * that folder, not only OK's.
+       */
+      cwd: string;
+      /**
+       * Extension filenames already in that folder that OK did not write —
+       * the concrete code the trust grant would also turn on. Empty means
+       * either "none" or "OK could not read the folder", so copy must not
+       * present it as proof the folder is otherwise empty. Optional on the
+       * wire: events persisted before this field existed replay without it.
+       */
+      otherExtensions?: readonly string[];
+      ts: number;
+    }
+  | {
+      kind: 'pi_bridge_consent_resolved';
+      requestId: string;
+      /** `timeout` when nobody answered before session setup gave up. */
+      decision: 'granted' | 'declined' | 'timeout';
+      ts: number;
+    }
+  | {
+      /**
+       * How this thread's Pi bridge settled, once the answer is something the
+       * user should see: provisioning succeeded, or it could not. A healthy
+       * already-provisioned thread emits nothing.
+       */
+      kind: 'pi_bridge_status';
+      /** The consent prompt this answers; absent when nothing was asked. */
+      requestId?: string;
+      state: PiBridgeThreadState;
+      bridgePath: string;
+      /** What the provisioning attempt did, when one ran. */
+      bridge?: PiBridgeWriteAction;
+      trust?: PiTrustWriteAction;
+      /** Machine detail for the failure states — never headline copy. */
+      detail?: string;
+      ts: number;
+    }
+  | {
       /** Download/verify/extract progress while a consented runtime installs. */
       kind: 'runtime_install_progress';
       runtime: ManagedRuntimeKind;
@@ -510,6 +618,23 @@ export type ThreadClientFrame =
       requestId: string;
       outcome: { kind: 'granted' } | { kind: 'declined' };
     }
+  | {
+      /**
+       * Answer a `pi_bridge_consent_request`: allow (or refuse) OK to write
+       * its bridge extension into this project and mark the folder trusted in
+       * Pi.
+       *
+       * The two answers are not symmetric, and the copy says so. A refusal is
+       * remembered for this thread only — reopening it won't re-ask, but the
+       * next Pi thread will. An approval writes disk state that outlives the
+       * thread entirely: the bridge file stays, and so does the folder-trust
+       * entry, until the project is deinitialized.
+       */
+      op: 'pi_bridge_consent_response';
+      threadId: string;
+      requestId: string;
+      outcome: { kind: 'granted' } | { kind: 'declined' };
+    }
   | { op: 'set_mode'; threadId: string; modeId: string }
   | {
       op: 'set_config_option';
@@ -645,6 +770,7 @@ const CLIENT_OPS = new Set([
   'queue_remove',
   'permission_response',
   'runtime_consent_response',
+  'pi_bridge_consent_response',
   'cancel',
   'set_mode',
   'set_config_option',
@@ -796,6 +922,13 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       // A pre-removal client still sends `remember`; ignore it rather than
       // reject the frame. Rejecting would drop a skewed renderer's grant on
       // the floor — the user clicks Download and the launch just stays parked.
+      return frame as unknown as ThreadClientFrame;
+    }
+    case 'pi_bridge_consent_response': {
+      if (!str('threadId') || !str('requestId')) return null;
+      const outcome = frame.outcome as Record<string, unknown> | undefined;
+      if (typeof outcome !== 'object' || outcome === null) return null;
+      if (outcome.kind !== 'granted' && outcome.kind !== 'declined') return null;
       return frame as unknown as ThreadClientFrame;
     }
     case 'set_mode':

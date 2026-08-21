@@ -317,6 +317,12 @@ msgstr "{0} 無法繼續此對話 — 對話記錄已保留，但智慧代理的
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} 沒有可調整的設定"
 
+#. placeholder {0}: prompt.agentName
+#. placeholder {1}: item.bridgePath
+#: src/components/acp/ThreadView.tsx
+msgid "{0} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to {1} and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+msgstr "{0} 無法自行讀取或編輯你的文件。核准後會將 Open Knowledge 擴充功能寫入 {1} 並保留在該處，使本次工作階段以及此專案中後續的工作階段都能使用 Open Knowledge 工具。"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} hasn't reported its settings yet"
@@ -1757,6 +1763,10 @@ msgstr "正在套用你的變更"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Applying…"
 msgstr "套用中…"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Approve"
+msgstr "核准"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -3974,6 +3984,10 @@ msgstr "無法更新技能分享設定——{detail}。"
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "無法確認 {displayName}（{bin}）是否可用，因此這是一個一般 shell。你仍然可以自行執行 {bin}。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
+msgstr "無法寫入 Open Knowledge 擴充功能。此執行緒沒有 Open Knowledge 工具。"
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "公開統計技能安裝次數"
@@ -5056,6 +5070,11 @@ msgstr "要啟用 git 自動同步嗎？"
 msgid "Enable indexes"
 msgstr "啟用索引"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "Enable Open Knowledge tools for {0}?"
+msgstr "要為 {0} 啟用 Open Knowledge 工具嗎？"
+
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
 msgstr "啟用外掛"
@@ -5087,6 +5106,10 @@ msgstr "啟用主題"
 #: src/components/settings/LintingSection.tsx
 msgid "Enabling index generation"
 msgstr "啟用索引生成"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Enabling Open Knowledge tools"
+msgstr "正在啟用 Open Knowledge 工具"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -7013,6 +7036,12 @@ msgstr "分享網址無效。"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "無效的 YAML"
+
+#. placeholder {0}: prompt.cwd
+#. placeholder {1}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "It also marks {0} as trusted, which is what makes the extension load. That trust covers the whole folder — {1} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
+msgstr "這同時會將 {0} 標記為受信任，擴充功能正是因此才會載入。該信任涵蓋整個資料夾：{1} 會載入其中的每一個擴充功能，而不僅是 Open Knowledge 的；在你將 Open Knowledge 從此專案移除之前，兩者都會一直保留。"
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -9004,6 +9033,18 @@ msgstr "Open Knowledge 在包含 Markdown 的每個資料夾中維護一個名�
 #: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
 msgstr "當文件變更時，Open Knowledge 會重寫這些 index.md 文件，因此對它們的手動編輯將會被取代。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are available in this thread."
+msgstr "此執行緒中已可使用 Open Knowledge 工具。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
+msgstr "Open Knowledge 工具無法使用：{bridgePath} 已存在一個並非 Open Knowledge 寫入的檔案。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: something is already at {bridgePath} but couldn't be read, so Open Knowledge left it alone."
+msgstr "Open Knowledge 工具無法使用：{bridgePath} 已有內容，但無法讀取，因此 Open Knowledge 未做更動。"
 
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
@@ -11915,6 +11956,10 @@ msgstr "暫時略過"
 msgid "Skipped downloading {0}."
 msgstr "已略過下載 {0}。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Skipped enabling Open Knowledge tools. This thread runs without them."
+msgstr "已略過啟用 Open Knowledge 工具。此執行緒將在沒有這些工具的情況下運作。"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Slash command menu"
 msgstr "斜線指令選單"
@@ -12668,6 +12713,11 @@ msgstr "該文件未能及時開啟。請在同步完成後重試。"
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "無法使用那個端點。請輸入 https:// 的 URL——http:// 只允許用在 localhost。"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "That folder already holds code Open Knowledge didn't write, which the same trust would let {0} run: {otherExtensions}."
+msgstr "該資料夾中已有並非 Open Knowledge 寫入的程式碼，同一份信任會允許 {0} 執行它們：{otherExtensions}。"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "那個資料夾還不是 OpenKnowledge 專案。要初始化並開啟它嗎？"
@@ -12847,6 +12897,10 @@ msgstr "這個儲存庫被移動、重新命名或刪除了。"
 #: src/components/RecentProjectsMenu.tsx
 msgid "The repository's original clone directory"
 msgstr "儲存庫的原始複製目錄"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The request to enable Open Knowledge tools timed out. This thread runs without them."
+msgstr "啟用 Open Knowledge 工具的請求已逾時。此執行緒將在沒有這些工具的情況下運作。"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
@@ -14411,6 +14465,10 @@ msgstr "寫入項目到"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "寫作"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
+msgstr "已寫入 Open Knowledge 擴充功能，但無法將該資料夾標記為受信任，因此不會載入。此執行緒沒有 Open Knowledge 工具。"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "YAML or JSON, in either base16 layout."

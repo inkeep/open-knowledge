@@ -263,13 +263,15 @@ export function hocuspocusPlugin(): Plugin {
               const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
               return `http://localhost:${port}`;
             },
-            // Non-HTTP agents (e.g. Claude's ACP adapter) get a stdio `ok mcp`
-            // shim pinned to this dev port. Relies on `open-knowledge` being on
-            // PATH here (no CLI entrypoint to resolve in the Vite dev server).
+            // Agents without HTTP-MCP support get a stdio `ok mcp` shim pinned
+            // to this dev port. The Vite dev server has no CLI entrypoint to
+            // hand over, so this leans on a globally installed
+            // `open-knowledge`, which the builder resolves to an absolute path
+            // (and warns through this logger when it can't).
             getMcpStdioCommand: () => {
               const addr = server.httpServer?.address();
               const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
-              return buildOkMcpStdioCommand(undefined, port);
+              return buildOkMcpStdioCommand(undefined, port, { log: getLogger('acp-threads') });
             },
             log: getLogger('acp-threads'),
           });

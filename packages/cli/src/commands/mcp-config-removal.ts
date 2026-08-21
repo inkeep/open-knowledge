@@ -32,6 +32,7 @@ import { getTomlConfigEngine } from '../native/toml-config-engine.ts';
 import { type EditorMcpTarget, isEntryUpToDate, isOwnManagedEntry } from './editors.ts';
 import { classifyExistingMcpEntry, type McpDeclineReason, serverMapPath } from './init.ts';
 import { existingFileMode, isCrlfDominant, surgicalJsonDelete } from './jsonc-surgical.ts';
+import { type PiTrustRemoveAction, removePiTrustEntry } from './pi-acp-bridge.ts';
 
 /**
  * Outcome of a surgical MCP-entry removal.
@@ -48,7 +49,19 @@ import { existingFileMode, isCrlfDominant, surgicalJsonDelete } from './jsonc-su
  *   byte-unchanged.
  */
 export type McpRemoveOutcome =
-  | { kind: 'removed' }
+  | {
+      kind: 'removed';
+      /**
+       * Pi only: what removing the bridge did to Pi's folder-trust entry, the
+       * other half OK wrote. Absent for every editor whose integration is a
+       * config entry and nothing else. Callers must report anything but
+       * `removed`/`not-present` — the bridge file going away while the grant
+       * stays is a half-finished removal, and silence there reads as clean.
+       */
+      trust?: PiTrustRemoveAction;
+      /** Diagnostic detail for a trust outcome that failed or was refused. */
+      trustError?: string;
+    }
   | { kind: 'not-present' }
   | { kind: 'left-foreign' }
   | { kind: 'declined'; reason: McpDeclineReason };
@@ -142,7 +155,18 @@ export function removeOwnMcpEntry(
   // deleted (`left-foreign`).
   if (target.format === 'file') {
     rmSync(configPath, { force: true });
-    return { kind: 'removed' };
+    // Provisioning wrote TWO things — the bridge file and a folder-trust entry
+    // that lets Pi load it. Removing only the first leaves a standing grant to
+    // execute anything dropped into that folder later, which is the more
+    // sensitive of the two. Deletion order matters: the file has to be gone
+    // before the revocation decides whether the folder still holds someone
+    // else's extension.
+    const trust = removePiTrustEntry(cwd, home);
+    return {
+      kind: 'removed',
+      trust: trust.action,
+      ...(trust.error !== undefined ? { trustError: trust.error } : {}),
+    };
   }
 
   if (target.format === 'toml') return removeTomlEntry(configPath, serverName);

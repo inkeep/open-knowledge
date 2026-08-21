@@ -17,6 +17,9 @@ export function transcriptItemId(item: RenderedItem, index: number): string {
       return `perm:${item.requestId}`;
     case 'runtime_consent':
       return `consent:${item.requestId}`;
+    case 'pi_bridge':
+      // A prompt-less row (a limitation notice) has no domain id of its own.
+      return `pi-bridge:${item.prompt?.requestId ?? index}`;
     case 'notice':
       return `notice:${index}`;
   }

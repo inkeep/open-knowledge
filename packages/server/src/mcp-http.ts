@@ -237,10 +237,12 @@ export function createMcpHttpHandler(opts: McpHttpHandlerOptions): McpHttpHandle
         );
       }
 
-      // Only the HTTP MCP entry OK injects for an agent it hosts sets this;
-      // an external client (Cursor/Codex outside the app, an `ok start`
-      // consumer) never does and keeps the plain-URL behavior. Read per
-      // session rather than per process because one server answers both.
+      // Only an HTTP MCP entry OK injects itself sets this. Read per session
+      // rather than per process because one server answers both hosted and
+      // external clients. Absence is the safe default, not a proof of
+      // externality — a hosted agent whose harness spawns OK's own managed MCP
+      // entry connects unmarked (see MCP_HOSTED_AGENT_HEADER) and lands in the
+      // plain-URL behavior an external client wants.
       const isHostedAgent = firstHeader(req.headers[MCP_HOSTED_AGENT_HEADER]) === '1';
 
       const transport = new StreamableHTTPServerTransport({

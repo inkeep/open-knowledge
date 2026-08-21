@@ -317,6 +317,12 @@ msgstr "{0} tidak dapat melanjutkan obrolan ini — transkrip tetap tersimpan, t
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} tidak menawarkan pengaturan untuk disesuaikan"
 
+#. placeholder {0}: prompt.agentName
+#. placeholder {1}: item.bridgePath
+#: src/components/acp/ThreadView.tsx
+msgid "{0} has no way to read or edit your documents on its own. Approving writes the Open Knowledge extension to {1} and leaves it there, so this session and later ones in this project have the Open Knowledge tools."
+msgstr "{0} tidak dapat membaca atau menyunting dokumen Anda sendiri. Menyetujui akan menulis ekstensi Open Knowledge ke {1} dan membiarkannya di sana, sehingga sesi ini dan sesi berikutnya dalam proyek ini memiliki alat Open Knowledge."
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} hasn't reported its settings yet"
@@ -1753,6 +1759,10 @@ msgstr "Menerapkan perubahan Anda"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Applying…"
 msgstr "Menerapkan…"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Approve"
+msgstr "Setujui"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
@@ -3970,6 +3980,10 @@ msgstr "Berbagi keterampilan tidak bisa diperbarui — {detail}."
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
 msgstr "Tidak dapat memverifikasi bahwa {displayName} ({bin}) tersedia, jadi ini adalah shell biasa. Anda tetap dapat menjalankan {bin} sendiri."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools."
+msgstr "Ekstensi Open Knowledge tidak bisa ditulis. Utas ini tidak memiliki alat Open Knowledge."
+
 #: src/components/settings/settings-fields.ts
 msgid "Count skill installs publicly"
 msgstr "Hitung pemasangan keterampilan secara publik"
@@ -5052,6 +5066,11 @@ msgstr "Aktifkan sinkronisasi otomatis git?"
 msgid "Enable indexes"
 msgstr "Aktifkan indeks"
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "Enable Open Knowledge tools for {0}?"
+msgstr "Aktifkan alat Open Knowledge untuk {0}?"
+
 #: src/components/ProblemsPanel.tsx
 msgid "Enable plugins"
 msgstr "Aktifkan plugin"
@@ -5083,6 +5102,10 @@ msgstr "Aktifkan Tema"
 #: src/components/settings/LintingSection.tsx
 msgid "Enabling index generation"
 msgstr "Mengaktifkan pembuatan indeks"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Enabling Open Knowledge tools"
+msgstr "Mengaktifkan alat Open Knowledge"
 
 #: src/components/ActivityModeContent.tsx
 msgid "Ended"
@@ -7009,6 +7032,12 @@ msgstr "URL berbagi tidak valid."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid YAML"
 msgstr "YAML tidak valid"
+
+#. placeholder {0}: prompt.cwd
+#. placeholder {1}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "It also marks {0} as trusted, which is what makes the extension load. That trust covers the whole folder — {1} will load every extension in it, not only Open Knowledge's — and both stay until you remove Open Knowledge from this project."
+msgstr "Ini juga menandai {0} sebagai tepercaya, yang membuat ekstensi itu dimuat. Kepercayaan itu mencakup seluruh folder: {1} akan memuat setiap ekstensi di dalamnya, bukan hanya milik Open Knowledge, dan keduanya tetap ada sampai Anda menghapus Open Knowledge dari proyek ini."
 
 #: src/uninstall/UninstallSurveyScreen.tsx
 msgid "It didn't fit into my workflow"
@@ -9000,6 +9029,18 @@ msgstr "Open Knowledge menyimpan file navigasi bernama index.md di setiap folder
 #: src/components/settings/LintingSection.tsx
 msgid "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
 msgstr "Open Knowledge menulis ulang file index.md ini seiring perubahan dokumen, sehingga pengeditan manual pada file tersebut diganti."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are available in this thread."
+msgstr "Alat Open Knowledge tersedia di utas ini."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at {bridgePath}."
+msgstr "Alat Open Knowledge tidak tersedia: sudah ada berkas di {bridgePath} yang tidak ditulis Open Knowledge."
+
+#: src/components/acp/ThreadView.tsx
+msgid "Open Knowledge tools are unavailable: something is already at {bridgePath} but couldn't be read, so Open Knowledge left it alone."
+msgstr "Alat Open Knowledge tidak tersedia: sudah ada sesuatu di {bridgePath}, tetapi tidak dapat dibaca, jadi Open Knowledge membiarkannya."
 
 #. placeholder {0}: item.displayName
 #. placeholder {1}: item.displayName
@@ -11911,6 +11952,10 @@ msgstr "Lewati dulu"
 msgid "Skipped downloading {0}."
 msgstr "Unduhan {0} dilewati."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Skipped enabling Open Knowledge tools. This thread runs without them."
+msgstr "Pengaktifan alat Open Knowledge dilewati. Utas ini berjalan tanpa alat itu."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Slash command menu"
 msgstr "Menu perintah garis miring"
@@ -12664,6 +12709,11 @@ msgstr "Dokumen itu tidak terbuka tepat waktu. Coba lagi setelah tersinkronisasi
 msgid "That endpoint can't be used. Enter an https:// URL — http:// is only allowed for localhost."
 msgstr "Endpoint itu tidak bisa dipakai. Masukkan URL https:// — http:// hanya diizinkan untuk localhost."
 
+#. placeholder {0}: prompt.agentName
+#: src/components/acp/ThreadView.tsx
+msgid "That folder already holds code Open Knowledge didn't write, which the same trust would let {0} run: {otherExtensions}."
+msgstr "Folder itu sudah berisi kode yang tidak ditulis Open Knowledge, dan kepercayaan yang sama akan mengizinkan {0} menjalankannya: {otherExtensions}."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "Folder itu belum menjadi proyek OpenKnowledge. Inisialisasi lalu buka?"
@@ -12843,6 +12893,10 @@ msgstr "Repositorinya dipindahkan, diganti nama, atau dihapus."
 #: src/components/RecentProjectsMenu.tsx
 msgid "The repository's original clone directory"
 msgstr "Direktori klon asli repositori"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The request to enable Open Knowledge tools timed out. This thread runs without them."
+msgstr "Permintaan untuk mengaktifkan alat Open Knowledge kedaluwarsa. Utas ini berjalan tanpa alat itu."
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "The schema file does not exist or failed to load — adding a field creates it."
@@ -14407,6 +14461,10 @@ msgstr "Menulis entri ke"
 #: src/components/ActivityPanelFileRow.tsx
 msgid "writing"
 msgstr "menulis"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
+msgstr "Ekstensi Open Knowledge sudah ditulis, tetapi folder tidak bisa ditandai tepercaya, jadi ekstensi itu tidak akan dimuat. Utas ini tidak memiliki alat Open Knowledge."
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "YAML or JSON, in either base16 layout."

@@ -49,6 +49,14 @@ export function formatRemovalOutcome(outcome: RemovalOutcome): string {
   );
   if (notPresent > 0) lines.push(dim(`  ${notPresent} already absent.`));
 
+  // A removal that succeeded but left something behind on purpose still owes
+  // the user that sentence — otherwise "✓ Removed" reads as a clean sweep
+  // while, say, Pi's folder-trust grant is still standing.
+  for (const r of outcome.removed) {
+    if (r.detail === undefined) continue;
+    lines.push(`  ${warning('·')} ${r.op.label} — ${dim(r.detail)}`);
+  }
+
   for (const s of skipped) {
     lines.push(
       `  ${warning('·')} Left in place: ${s.op.label}${s.detail ? ` — ${dim(s.detail)}` : ''}`,
@@ -101,7 +109,11 @@ export function removalOutcomeToJson(
   return {
     scope,
     mode: 'applied',
-    removed: outcome.removed.map((r) => ({ kind: r.op.kind, label: r.op.label })),
+    removed: outcome.removed.map((r) => ({
+      kind: r.op.kind,
+      label: r.op.label,
+      detail: r.detail,
+    })),
     skipped: outcome.results
       .filter((r) => r.status === 'skipped')
       .map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
