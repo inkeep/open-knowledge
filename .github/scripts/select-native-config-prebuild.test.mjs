@@ -5,6 +5,7 @@ import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_CANDIDATE_LIMIT,
   describeNoSelection,
+  describeSelectionFailure,
   listPrebuildRuns,
   main,
   makeIsAncestor,
@@ -156,6 +157,30 @@ describe('describeNoSelection', () => {
   });
 });
 
+describe('describeSelectionFailure', () => {
+  test('names the release ref when its native-config tree is unreadable', () => {
+    const reason = describeSelectionFailure({
+      candidates: CANDIDATES_NEWEST_FIRST,
+      treeAt: () => null,
+      releaseRef: 'v9.9.9',
+    });
+    expect(reason).toContain('v9.9.9');
+    expect(reason).toContain('release ref');
+    // The whole point: it must NOT blame the prebuild runs, which is the
+    // misdirection this module exists to stop.
+    expect(reason).not.toContain('32317026296');
+  });
+
+  test('falls back to the prebuild account when the release ref reads fine', () => {
+    const reason = describeSelectionFailure({
+      candidates: CANDIDATES_NEWEST_FIRST,
+      treeAt: () => 'eb09e361',
+      releaseRef: 'HEAD',
+    });
+    expect(reason).toContain('32317026296');
+  });
+});
+
 describe('git boundary', () => {
   test('isAncestor reads a non-zero exit as "not an ancestor"', () => {
     const isAncestor = makeIsAncestor((_cmd, args) => ({
@@ -199,6 +224,16 @@ describe('listPrebuildRuns', () => {
     expect(DEFAULT_CANDIDATE_LIMIT).toBeGreaterThan(1);
   });
 
+  test('reports a spawn failure, which leaves stderr empty', () => {
+    // `gh` missing from PATH sets status null and stderr '', so keying only on
+    // stderr threw "…failed: " with nothing after the colon.
+    expect(() =>
+      listPrebuildRuns({
+        run: () => ({ status: null, stdout: '', stderr: '', error: new Error('spawn gh ENOENT') }),
+      }),
+    ).toThrow(/spawn gh ENOENT/);
+  });
+
   test('throws on an unreadable answer rather than reading it as "no runs"', () => {
     expect(() =>
       listPrebuildRuns({ run: () => ({ status: 1, stdout: '', stderr: 'rate limited' }) }),
@@ -223,6 +258,16 @@ describe('main', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('32317026296');
+  });
+
+  test('blames the release ref, not the prebuild runs, when its tree is unreadable', () => {
+    const result = main(['--release-ref', 'unknown-commit'], {
+      list: () => CANDIDATES_NEWEST_FIRST,
+      ...RELEASE_REGRESSION,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('unknown-commit');
+    expect(result.reason).not.toContain('32317026296');
   });
 
   test('defaults to HEAD when no ref is given', () => {
@@ -261,9 +306,32 @@ describe('workflow wiring', () => {
     });
 
     test(`${name} still splits beta degradation from stable refusal`, () => {
+      // Pin the BRANCH, not the token. `IS_STABLE` on its own also appears in
+      // the step's `env:` block, which sits inside this slice, so the original
+      // `toContain('IS_STABLE')` stayed green with the ENTIRE stable-refusal
+      // branch deleted — caught by mutation testing in review. The `::error::`
+      // wording differs between the two workflows (`stable release` vs
+      // `stable @latest release`), so match that loosely and pin the structure
+      // around it.
       const step = stagingStep(workflow(name));
       expect(step).toContain('degrade_or_fail');
-      expect(step).toContain('IS_STABLE');
+      expect(step).toMatch(
+        /if \[ "\$IS_STABLE" = "true" \]; then\n\s+echo "::error::[^\n]+\n\s+exit 1/,
+      );
+      expect(step).toMatch(/echo "::warning::[^\n]+\n\s+exit 0/);
+    });
+
+    test(`${name} asserts the selector's output shape, not just non-emptiness`, () => {
+      // Pin the guard as ONE contiguous block, the rejecting branch included.
+      // Asserting the shape pattern and the `if` separately leaves the
+      // `degrade_or_fail` deletable with this test still green — the identical
+      // hole the IS_STABLE ratchet had. Both were caught by mutation testing,
+      // which is the only thing that proves a ratchet of this shape works.
+      const step = stagingStep(workflow(name));
+      expect(step).toContain("selection_shape='^[0-9]+'$'\\t''[0-9a-f]{7,40}$'");
+      expect(step).toMatch(
+        /if \[\[ ! \$selection =~ \$selection_shape \]\]; then\n\s+flattened=[^\n]*\n\s+degrade_or_fail[^\n]*\n\s+fi/,
+      );
     });
   }
 });

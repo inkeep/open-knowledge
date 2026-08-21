@@ -1182,10 +1182,25 @@ function realIo() {
         // not an empty answer, and returning '' on an auth or rate-limit
         // failure would refuse the release naming native-config drift.
         const candidates = listPrebuildRuns();
+        const treeAt = makeTreeAt();
+        // An unreadable release ref is INFRA, not drift — the same line this
+        // lane already draws for an unreadable `gh` answer. Returning it as a
+        // reason would wrap it in guardNativeConfigProvenance's drift prose
+        // ("promote through the normal stable path so the release contains the
+        // native-config change its binaries were built from"), a remedy that
+        // does not apply, under a code whose documented causes it is not. The
+        // synthetic commit is local HEAD, so this means the working tree itself
+        // did not read.
+        if (treeAt(syntheticSha) === null) {
+          throw new Error(
+            `could not read packages/native-config at the synthetic commit (${syntheticSha}); ` +
+              'the working tree did not read, which is an infrastructure failure, not native-config drift',
+          );
+        }
         const selection = selectPrebuildRun({
           candidates,
           isAncestor: makeIsAncestor(),
-          treeAt: makeTreeAt(),
+          treeAt,
           releaseRef: syntheticSha,
         });
         return selection
@@ -1197,7 +1212,9 @@ function realIo() {
         if (draft) args.push('--draft');
         const res = spawnSync('gh', args, { encoding: 'utf8' });
         if (res.status !== 0) {
-          throw new Error(`gh release create ${tag} failed: ${String(res.stderr || '').trim()}`);
+          throw new Error(
+            `gh release create ${tag} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
+          );
         }
       },
       dispatch: ({ repo, eventType, clientPayload }) => {
@@ -1212,7 +1229,9 @@ function realIo() {
               : process.env,
         });
         if (res.status !== 0) {
-          throw new Error(`gh dispatch ${eventType} to ${repo} failed: ${String(res.stderr || '').trim()}`);
+          throw new Error(
+            `gh dispatch ${eventType} to ${repo} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
+          );
         }
       },
     },

@@ -103,6 +103,27 @@ export function describeNoSelection(candidates = []) {
 }
 
 /**
+ * Why no run was selected, distinguishing the two ways that happens.
+ *
+ * An unreadable release ref is NOT "no prebuild matches": it means we could not
+ * read `packages/native-config` at the commit being released, so nothing could
+ * have matched. Falling through to describeNoSelection there names the newest
+ * prebuild run as the thing that does not fit and sends the operator off to
+ * re-run a prebuild — the same confident-but-wrong diagnosis this module exists
+ * to stop, one layer down.
+ */
+export function describeSelectionFailure({ candidates = [], treeAt, releaseRef = 'HEAD' }) {
+  if (treeAt(releaseRef) === null) {
+    return (
+      `could not read ${NATIVE_CONFIG_PATH} at the release commit (${releaseRef}); ` +
+      `the release ref is what did not resolve, not the prebuild runs — ` +
+      `check that the ref exists and that the checkout reaches it (fetch-depth)`
+    );
+  }
+  return describeNoSelection(candidates);
+}
+
+/**
  * Green prebuild runs on `main`, newest first.
  *
  * `--event push` and `--branch main` are load-bearing, not cosmetic: the
@@ -135,7 +156,7 @@ export function listPrebuildRuns({ limit = DEFAULT_CANDIDATE_LIMIT, run = spawnS
   );
   if (res.status !== 0) {
     throw new Error(
-      `gh run list for ${PREBUILD_WORKFLOW} failed: ${String(res.stderr || '').trim()}`,
+      `gh run list for ${PREBUILD_WORKFLOW} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
     );
   }
   const parsed = JSON.parse(String(res.stdout || '[]').trim() || '[]');
@@ -176,7 +197,7 @@ export function main(argv = process.argv.slice(2), io = {}) {
   const candidates = list();
   const selection = selectPrebuildRun({ candidates, isAncestor, treeAt, releaseRef });
   if (!selection) {
-    return { ok: false, reason: describeNoSelection(candidates) };
+    return { ok: false, reason: describeSelectionFailure({ candidates, treeAt, releaseRef }) };
   }
   return { ok: true, line: `${selection.runId}\t${selection.headSha}` };
 }

@@ -264,11 +264,20 @@ jobs:
             reason=$(tr '\n' ' ' < "$nc_err" | sed 's/  *$//')
             degrade_or_fail "${reason:-could not select a native-config prebuild run}" "0/8"
           fi
+          # Assert the WHOLE shape, on ONE line. Testing for a tab anywhere is
+          # not enough: a stray line ahead of the real answer still contains a
+          # tab, so it passes and leaves that noise in run_id, which only
+          # surfaces later as a confusing `gh run download` failure. Anchoring
+          # the whole value is what actually rejects it. The message is flattened
+          # because ::error:: annotations are single-line — an interpolated
+          # multi-line value would truncate the page.
+          selection_shape='^[0-9]+'$'\t''[0-9a-f]{7,40}$'
+          if [[ ! $selection =~ $selection_shape ]]; then
+            flattened=$(printf '%s' "$selection" | tr '\n' ' ')
+            degrade_or_fail "native-config prebuild selector returned an unusable answer: $flattened" "0/8"
+          fi
           run_id="${selection%%$'\t'*}"
           head_sha="${selection##*$'\t'}"
-          if [ -z "$run_id" ] || [ -z "$head_sha" ]; then
-            degrade_or_fail "native-config prebuild selector returned an unusable answer" "0/8"
-          fi
 
           if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
             degrade_or_fail "could not download native-config-bindings-all from run $run_id" "0/8"
