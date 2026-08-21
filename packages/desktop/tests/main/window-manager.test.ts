@@ -1700,11 +1700,14 @@ describe('WindowManager', () => {
       });
 
       // The shipped path: no `OK_SPAWN_BIND_TIMEOUT_MS`, so the cap comes from
-      // the multiplier. Every other test that REACHES the graduation branch
-      // pins the cap explicitly, so without this one a regression in that
-      // expression (dropped factor, swapped operand) would ship green while
-      // reintroducing the exact failure for every user who has not set the
-      // env var.
+      // the multiplier. Other tests that reach the graduation branch either
+      // pin `spawnLockProgressDeadlineMs` explicitly (so the `??`
+      // short-circuits and the multiplier is never evaluated) or never
+      // produce a bindable lock (so the cap's value is irrelevant — they fail
+      // regardless). This is the only one where a derived cap has to carry a
+      // bind to success, making it the only place a regression in that
+      // expression (dropped factor, swapped operand) shows up rather than
+      // shipping green.
       test('with no progress override the cap is derived from the startup deadline', async () => {
         enableSyncTimers();
         const spawnedAt = Date.now();

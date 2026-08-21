@@ -7,7 +7,6 @@ import {
 import { BACKSLASH_GUARD_SUBSTITUTIONS, encodeBackslashEscapes } from './backslash-escape-guard.ts';
 import { ENTITY_REF_GUARD_SUBSTITUTIONS, encodeEntityRefs } from './entity-ref-guard.ts';
 
-
 export const ATTENTION_DELIMITERS = ['*', '_', '**', '~~', '=='] as const;
 
 export type FlankClass = 'whitespace' | 'punctuation' | 'other';
