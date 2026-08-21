@@ -429,8 +429,9 @@ export interface OnboardingConfirmRequest {
   readonly editorIds: readonly McpWiringEditorId[];
   /**
    * Sharing-mode posture. `shared` — commit
-   * OK config alongside content (default). `local-only` — append OK
-   * artifact paths to `.git/info/exclude` so they stay out of git.
+   * OK config alongside content. `local-only` — append OK
+   * artifact paths to `.git/info/exclude` so they stay out of git; this is
+   * what the consent dialog pre-selects.
    *
    * When the picked folder has no git repo (`gitState === 'absent' |
    * 'shell-only'` AND the user opts out of `initGit`), this field is still
@@ -1191,7 +1192,11 @@ export interface RequestChannels {
         parent: string;
         name: string;
         editors: readonly McpWiringEditorId[];
-        /** Defaults to 'shared' when omitted. */
+        /**
+         * Omitted resolves to 'shared' (the inert option — no git-exclude
+         * writes). The create-new dialog pre-selects 'local-only' and always
+         * sends an explicit value.
+         */
         sharing?: 'shared' | 'local-only';
         /**
          * Starter pack to seed into the newly-created project (first-run

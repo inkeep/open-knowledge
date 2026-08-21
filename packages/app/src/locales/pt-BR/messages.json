@@ -350,6 +350,11 @@
     "3l_cXP": ["Dê uma olhada se quiser. Este arquivo exato é o que recebemos."],
     "3m2GBo": ["Buscando documentos"],
     "3mFsc3": ["Restaurar com as alterações remotas"],
+    "3nICSW": [
+      "Adiciona uma entrada MCP do OpenKnowledge e a habilidade do projeto a <0>",
+      ["toolList"],
+      "</0> para que seus agentes possam ler e editar seus arquivos."
+    ],
     "3nnyi_": [
       [
         "0",
@@ -409,11 +414,6 @@
     ],
     "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
-    "4inh-4": [
-      "Instala o MCP do OpenKnowledge em ",
-      ["0"],
-      " para que seus agentes possam ler e editar seus arquivos."
-    ],
     "4ivBhl": [
       "Mostra ou oculta o painel direito de agentes, onde ficam as conversas com agentes."
     ],
@@ -1046,9 +1046,6 @@
     "C0cll5": ["Instalado em ", ["0"], " — clique para remover"],
     "C0hoX6": ["Sempre incluído"],
     "C3Zc44": ["Explorar habilidades"],
-    "C4HK3A": [
-      "Adiciona uma entrada MCP do OpenKnowledge e a habilidade do projeto, para que cada ferramenta possa ler e atualizar estes documentos."
-    ],
     "C62P6b": ["Seleção do editor"],
     "C7PKTv": ["Enviar os comentários marcados para o chat"],
     "C7waqI": [
@@ -1847,7 +1844,6 @@
     ],
     "LhWYpm": ["Há outros caminhos OK rastreados no remoto:"],
     "Li4U-T": ["Saiba mais sobre ", ["title"]],
-    "LiAw2k": ["O que isto muda"],
     "LlHqdU": ["Inicializando o projeto"],
     "LlJ8LD": [
       "O compartilhamento da configuração não mudou: ",
@@ -2375,6 +2371,11 @@
     "RqSvT0": ["Importando"],
     "RrAIZx": ["O que o compartilhamento de configuração abrange"],
     "Rsdhj9": ["Avisos de configuração"],
+    "RvbTzC": [
+      "Adiciona uma entrada MCP do OpenKnowledge a <0>",
+      ["connectToolList"],
+      "</0> para que seus agentes possam ler e editar seus arquivos."
+    ],
     "Rx5ReQ": ["Renomear ", ["keyName"]],
     "RxF-am": ["Duplicatas descartadas"],
     "RyIKxy": [
@@ -3928,7 +3929,6 @@
     "j2kt1j": [
       "Abre uma nova sessão com a IA que você preferir. Com um texto selecionado, prepara-o lá em vez de executar."
     ],
-    "j4SmVY": ["Conectar ", ["0"], " a este projeto"],
     "j5CWO4": ["Atualizado"],
     "j9Vqvc": ["herdado"],
     "j9tqwO": ["Não está na barra lateral"],
@@ -4651,6 +4651,7 @@
       ["repoName"],
       "</0>."
     ],
+    "rCDe1d": ["Saiba mais sobre compartilhamento de configuração"],
     "rDOuNw": ["Falha ao importar o modelo"],
     "rENNI6": ["URL de compartilhamento inválida."],
     "rFL-yb": ["Editar uma cópia"],
@@ -4903,6 +4904,7 @@
     "uFQbYd": ["Página inicial e ponto de entrada."],
     "uGaIIS": ["Extrair worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
+    "uIA8mX": ["Adiciona estes arquivos"],
     "uJfwF8": ["Já instalado — nada novo para importar."],
     "uK2peg": [
       "Verifica seu projeto em relação ao Open Knowledge Format. Desligue-o a qualquer momento nas Configurações."
@@ -5098,6 +5100,7 @@
     ],
     "wZPUJx": ["“", ["0"], "”"],
     "w_Sphq": ["Anexos"],
+    "waCGTy": ["Conectar suas ferramentas de IA a este projeto"],
     "wbMbiY": ["Cópia de ", ["selectedSlot"], " concluída"],
     "wbpoGe": ["Não foi possível instalar a habilidade do OpenKnowledge: ", ["message"]],
     "wbv9xO": ["Criar novo projeto"],

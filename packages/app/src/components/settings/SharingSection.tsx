@@ -241,22 +241,7 @@ function SharingSectionBody() {
           aria-labelledby={TITLE_ID}
           data-testid="settings-sharing-radiogroup"
         >
-          <label htmlFor="settings-sharing-shared" className="flex items-start gap-2 text-sm">
-            <RadioGroupItem
-              id="settings-sharing-shared"
-              value="shared"
-              data-testid="settings-sharing-shared"
-              className="mt-1"
-            />
-            <span>
-              <span className="font-medium">
-                <Trans>Shared</Trans>
-              </span>
-              <span className="block text-1sm text-muted-foreground">
-                <Trans>Saved with the project for your team.</Trans>
-              </span>
-            </span>
-          </label>
+          {/* "Only me" leads, matching the create/open dialogs' card order. */}
           <label htmlFor="settings-sharing-local-only" className="flex items-start gap-2 text-sm">
             <RadioGroupItem
               id="settings-sharing-local-only"
@@ -270,6 +255,22 @@ function SharingSectionBody() {
               </span>
               <span className="block text-1sm text-muted-foreground">
                 <Trans>Stays on this computer. Not committed to git.</Trans>
+              </span>
+            </span>
+          </label>
+          <label htmlFor="settings-sharing-shared" className="flex items-start gap-2 text-sm">
+            <RadioGroupItem
+              id="settings-sharing-shared"
+              value="shared"
+              data-testid="settings-sharing-shared"
+              className="mt-1"
+            />
+            <span>
+              <span className="font-medium">
+                <Trans>Shared</Trans>
+              </span>
+              <span className="block text-1sm text-muted-foreground">
+                <Trans>Saved with the project for your team.</Trans>
               </span>
             </span>
           </label>

@@ -28,7 +28,11 @@ import { ChevronRight } from 'lucide-react';
 import type React from 'react';
 import { useEffect, useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
-import { SharingModeField } from '@/components/SharingModeField';
+import {
+  DEFAULT_SHARING_MODE,
+  type SharingMode,
+  SharingModeField,
+} from '@/components/SharingModeField';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -112,8 +116,7 @@ function ConsentDialogForm({ payload, store, toast }: ConsentDialogFormProps) {
   const [editorIds, setEditorIds] = useState<ReadonlySet<OkMcpWiringEditorId>>(
     () => new Set(payload.editorOptions.map((e) => e.id)),
   );
-  // Sharing-mode posture. Default `'shared'`: encourages team adoption.
-  const [sharing, setSharing] = useState<'shared' | 'local-only'>('shared');
+  const [sharing, setSharing] = useState<SharingMode>(DEFAULT_SHARING_MODE);
   const [probe, setProbe] = useState<OkOnboardingProbeContentResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [browseError, setBrowseError] = useState<string | null>(null);

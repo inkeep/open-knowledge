@@ -1459,8 +1459,13 @@ msgstr "{0}에 관리 블록 추가"
 
 #. Subtext under the create-project AI-tools checkbox
 #: src/components/CreateProjectDialog.tsx
-msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
-msgstr "OpenKnowledge MCP 항목과 프로젝트 스킬을 추가하여 각 도구가 이 문서를 읽고 업데이트할 수 있게 합니다."
+msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
+msgstr "<0>{toolList}</0>에 OpenKnowledge MCP 항목과 프로젝트 스킬을 추가해 에이전트가 파일을 읽고 편집할 수 있게 합니다."
+
+#. Subtext under the AI-tools MCP checkbox
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
+msgstr "<0>{connectToolList}</0>에 OpenKnowledge MCP 항목을 추가해 에이전트가 파일을 읽고 편집할 수 있게 합니다."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1475,6 +1480,10 @@ msgstr "Chat과 Cowork 세션에서 사용할 수 있도록 <0>Claude Desktop Ap
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "스킬을 {rootRel}에 추가합니다. {0}에서도 읽습니다."
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Adds these files"
+msgstr "다음 파일을 추가합니다"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds these folders"
 msgstr "다음 폴더를 추가합니다"
@@ -1484,7 +1493,6 @@ msgid "Advanced"
 msgstr "고급"
 
 #: src/components/ConsentDialogBody.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "고급 설정"
 
@@ -2989,11 +2997,6 @@ msgstr "충돌"
 msgid "Connect"
 msgstr "연결"
 
-#. placeholder {0}: formatToolList( status.editors.map((id) => EDITOR_LABELS[id]), i18n.locale, )
-#: src/components/CreateProjectDialog.tsx
-msgid "Connect {0} to this project"
-msgstr "{0}을(를) 이 프로젝트에 연결"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Connect a GitHub account to browse and sync your repositories."
 msgstr "GitHub 계정을 연결하면 저장소를 찾아보고 동기화할 수 있습니다."
@@ -3046,6 +3049,11 @@ msgstr "도구 연결"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Connect your AI tools"
 msgstr "AI 도구 연결"
+
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
+#: src/components/CreateProjectDialog.tsx
+msgid "Connect your AI tools to this project"
+msgstr "AI 도구를 이 프로젝트에 연결"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -6302,9 +6310,7 @@ msgstr "고급 설정 숨기기"
 msgid "Hide Agents"
 msgstr "에이전트 가리기"
 
-#. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Hide details"
 msgstr "세부 정보 숨기기"
 
@@ -6962,12 +6968,6 @@ msgstr "설치 중"
 msgid "Installing {agentName}…"
 msgstr "{agentName} 설치 중…"
 
-#. Subtext under the AI-tools MCP checkbox
-#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
-#: src/components/McpConsentDialogBody.tsx
-msgid "Installs the OpenKnowledge MCP into {0} so your agents can read and edit your files."
-msgstr "{0}에 OpenKnowledge MCP를 설치해 에이전트가 파일을 읽고 편집할 수 있게 합니다."
-
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
@@ -7179,12 +7179,17 @@ msgid "Layout options"
 msgstr "레이아웃 옵션"
 
 #: src/components/settings/SettingsSectionHeader.tsx
+#: src/components/SharingModeField.tsx
 msgid "Learn more"
 msgstr "자세히 알아보기"
 
 #: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "{title} 자세히 알아보기"
+
+#: src/components/SharingModeField.tsx
+msgid "Learn more about config sharing"
+msgstr "설정 공유에 대해 자세히 알아보기"
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -14206,7 +14211,7 @@ msgid "Welcome to OpenKnowledge"
 msgstr "OpenKnowledge에 오신 것을 환영합니다"
 
 #. Button on each setup row that opens the list of files that row writes to
-#: src/components/McpConsentDialogBody.tsx
+#: src/components/RowDisclosure.tsx
 msgid "What changes?"
 msgstr "무엇이 바뀌나요?"
 
@@ -14249,11 +14254,6 @@ msgstr "AI 작업 내용? (선택 사항)"
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."
 msgstr "에이전트가 읽고, 쓰고, 표시할 수 있는 항목입니다."
-
-#. Expands the list of project files the AI-tool setup writes
-#: src/components/CreateProjectDialog.tsx
-msgid "What this changes"
-msgstr "변경 내용"
 
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx

@@ -3297,15 +3297,30 @@ describe('runInit — sharing mode', () => {
     expect(lines).toEqual([]);
   });
 
-  it('AC4: `ok init` (no flag, non-TTY) on a fresh repo preserves `shared` default — no exclude write', async () => {
+  it('`ok init` (no flag, non-TTY) on a fresh repo defaults to local-only, matching the desktop dialogs', async () => {
+    // Was `shared`. Both entry points now put a brand-new project in Only me
+    // so that sharing config with the team is an explicit choice rather than
+    // something that happens by omission.
+    const result = await runInitForTest();
+    expect(result.sharing.kind).toBe('applied');
+    if (result.sharing.kind !== 'applied') throw new Error('expected applied');
+    expect(result.sharing.mode).toBe('local-only');
+    // The exclude file (created by git init) carries the OK paths.
+    const exclude = readFileSync(join(testDir, '.git', 'info', 'exclude'), 'utf-8');
+    expect(exclude).toContain('.ok/');
+    expect(exclude).toContain('.mcp.json');
+  });
+
+  it('re-running `ok init` (no flag) on an initialized shared repo stays shared', async () => {
+    // The fresh-project seed must not fire on a re-run: `readSharingMode`
+    // cannot tell "chose shared" from "never chose", so re-seeding would
+    // silently un-share a team's repo on a scripted re-run.
+    await runInitForTest({ sharing: 'shared' });
     const result = await runInitForTest();
     expect(result.sharing.kind).toBe('applied');
     if (result.sharing.kind !== 'applied') throw new Error('expected applied');
     expect(result.sharing.mode).toBe('shared');
-    expect(result.sharing.action).toBe('noop');
-    // The exclude file (created by git init) must not have any OK paths.
     const exclude = readFileSync(join(testDir, '.git', 'info', 'exclude'), 'utf-8');
-    expect(exclude).not.toContain('.ok/');
     expect(exclude).not.toContain('.mcp.json');
   });
 
@@ -3422,9 +3437,21 @@ describe('resolveSharingMode', () => {
     expect(mode).toBe('local-only');
   });
 
-  it('non-TTY without flag → returns readSharingMode (shared for fresh repo)', async () => {
+  it('non-TTY without flag on an already-initialized project → preserves shared', async () => {
+    // A re-run is not a new decision. `readSharingMode` cannot tell "chose
+    // shared" from "never chose", so seeding local-only here would silently
+    // un-share a team's repo on a scripted re-run.
     const mode = await resolveSharingMode({ projectRoot: testDir, isTTY: false });
     expect(mode).toBe('shared');
+  });
+
+  it('non-TTY without flag on a fresh project → local-only, matching the dialogs', async () => {
+    const mode = await resolveSharingMode({
+      projectRoot: testDir,
+      isTTY: false,
+      freshProject: true,
+    });
+    expect(mode).toBe('local-only');
   });
 
   it('TTY without flag → invokes prompt with the readSharingMode seed', async () => {

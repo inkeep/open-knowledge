@@ -395,10 +395,13 @@ function validateConfirmRequest(
   const editorIds = request.editorIds.filter((id): id is McpWiringEditorId =>
     offeredIds.has(id as McpWiringEditorId),
   );
-  // Sharing-mode posture: validate against the closed set; default to
+  // Sharing-mode posture: validate against the closed set; fall back to
   // `shared` on any non-matching value (defensive: a renderer bypass would
-  // not be able to inject `'local-only'` without sending an exact string,
-  // but the safer default is the team-friendly one).
+  // not be able to inject `'local-only'` without sending an exact string).
+  // `shared` is the fallback because it is the inert one — it writes no
+  // `.git/info/exclude` entries — so a corrupt payload leaves the repo as it
+  // found it. It is NOT the posture the dialogs pre-select; they default to
+  // `local-only` and always send an explicit value.
   const sharing: 'shared' | 'local-only' =
     request.sharing === 'local-only' ? 'local-only' : 'shared';
   return {

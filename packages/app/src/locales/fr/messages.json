@@ -368,6 +368,11 @@
     ],
     "3m2GBo": ["Recherche dans les documents"],
     "3mFsc3": ["Restaurer avec les modifications distantes"],
+    "3nICSW": [
+      "Ajoute une entrée MCP OpenKnowledge et la compétence du projet à <0>",
+      ["toolList"],
+      "</0> pour que vos agents puissent lire et modifier vos fichiers."
+    ],
     "3nnyi_": [
       [
         "0",
@@ -427,11 +432,6 @@
     ],
     "4h3e0H": ["Impossible de mettre à jour le partage des compétences — ", ["detail"], "."],
     "4hJhzz": ["Tableau"],
-    "4inh-4": [
-      "Installe le MCP OpenKnowledge dans ",
-      ["0"],
-      " pour que vos agents puissent lire et modifier vos fichiers."
-    ],
     "4ivBhl": [
       "Affiche ou masque le panneau des agents, à droite, où résident les conversations d'agents."
     ],
@@ -1090,9 +1090,6 @@
     "C0cll5": ["Installé dans ", ["0"], " — cliquez pour retirer"],
     "C0hoX6": ["Toujours inclus"],
     "C3Zc44": ["Explorer les compétences"],
-    "C4HK3A": [
-      "Ajoute une entrée MCP OpenKnowledge et la compétence du projet, pour que chaque outil puisse lire et mettre à jour ces documents."
-    ],
     "C62P6b": ["Sélection de l'éditeur"],
     "C7PKTv": ["Envoyer les commentaires cochés dans la discussion"],
     "C7waqI": [
@@ -1906,7 +1903,6 @@
     ],
     "LhWYpm": ["D'autres chemins OK sont suivis en amont :"],
     "Li4U-T": ["En savoir plus sur ", ["title"]],
-    "LiAw2k": ["Ce que cela change"],
     "LlHqdU": ["Initialisation du projet"],
     "LlJ8LD": [
       "Partage de la configuration inchangé : ",
@@ -2438,6 +2434,11 @@
     "RqSvT0": ["Importation"],
     "RrAIZx": ["Ce que couvre le partage de la configuration"],
     "Rsdhj9": ["Avertissements de configuration"],
+    "RvbTzC": [
+      "Ajoute une entrée MCP OpenKnowledge à <0>",
+      ["connectToolList"],
+      "</0> pour que vos agents puissent lire et modifier vos fichiers."
+    ],
     "Rx5ReQ": ["Renommer ", ["keyName"]],
     "RxF-am": ["Doublons écartés"],
     "RyIKxy": [
@@ -4040,7 +4041,6 @@
     "j2kt1j": [
       "Ouvre une nouvelle session avec l'IA de votre choix. Si du texte est sélectionné, il y est préparé au lieu d'être exécuté."
     ],
-    "j4SmVY": ["Connecter ", ["0"], " à ce projet"],
     "j5CWO4": ["À jour"],
     "j9Vqvc": ["hérité"],
     "j9tqwO": ["Pas dans la barre latérale"],
@@ -4803,6 +4803,7 @@
       ["repoName"],
       "</0>."
     ],
+    "rCDe1d": ["En savoir plus sur le partage de la configuration"],
     "rDOuNw": ["Échec de l'importation du modèle"],
     "rENNI6": ["URL de partage non valide."],
     "rFL-yb": ["Modifier une copie"],
@@ -5055,6 +5056,7 @@
     "uFQbYd": ["Page d'accueil et point d'entrée."],
     "uGaIIS": ["Extraire le worktree"],
     "uH_S-u": [["loadErrorTitle"], " : ", ["message"]],
+    "uIA8mX": ["Ajoute ces fichiers"],
     "uJfwF8": ["Déjà installé — rien de nouveau à importer."],
     "uK2peg": [
       "Vérifie votre projet par rapport au Open Knowledge Format. Désactivez-le à tout moment dans Paramètres."
@@ -5264,6 +5266,7 @@
     "wXw19Y": ["« ", ["projectName"], " » retiré des projets récents. Son dossier n'existe plus."],
     "wZPUJx": ["« ", ["0"], " »"],
     "w_Sphq": ["Pièces jointes"],
+    "waCGTy": ["Connecter vos outils d'IA à ce projet"],
     "wbMbiY": ["Copie de ", ["selectedSlot"], " effectuée"],
     "wbpoGe": ["Impossible d'installer la compétence OpenKnowledge : ", ["message"]],
     "wbv9xO": ["Créer un projet"],

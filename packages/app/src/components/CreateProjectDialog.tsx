@@ -9,10 +9,11 @@
  * on open) followed by a Location field (read-only display + Browse button
  * that picks the PARENT directory). A live "Will be created at: …" caption
  * shows the resolved target before submit. Below that sits the AI-tool
- * decision (`ProjectAiToolsField`) — one pre-checked checkbox naming the
- * detected tools, always visible, because whether the project is reachable
- * from the user's agents is not an advanced concern. Only the config-sharing
- * posture (side-by-side radio cards) collapses under "Advanced settings".
+ * decision (`ProjectAiToolsField`) — one pre-checked checkbox whose subtext
+ * names the detected tools, always visible, because whether the project is
+ * reachable from the user's agents is not an advanced concern. The config-sharing
+ * posture (side-by-side radio cards) sits at the top level too, matching the
+ * open-folder consent dialog.
  * Cancel + Create footer. Create stays enabled with an empty name — a click then
  * surfaces an "Enter a project name" toast (see onSubmit) rather than sitting
  * disabled with no hint. The two fields (`location`, `name`) are the source of
@@ -79,16 +80,20 @@ import {
 import { i18n, type MessageDescriptor } from '@lingui/core';
 import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CreatedItemsList, CreatedItemsSkeleton } from '@/components/CreatedItemsList';
 import { PackCardGrid } from '@/components/PackCardGrid';
+import { RowDisclosure } from '@/components/RowDisclosure';
 import { type SeedRootChoice, SeedRootPicker } from '@/components/SeedRootPicker';
-import { SharingModeField } from '@/components/SharingModeField';
+import {
+  DEFAULT_SHARING_MODE,
+  type SharingMode,
+  SharingModeField,
+} from '@/components/SharingModeField';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogBody,
@@ -374,19 +379,11 @@ export function CreateProjectDialog({
   // with the probe — a late result changes the list the label names, never the
   // answer the user gave.
   const [connectEditors, setConnectEditors] = useState(true);
-  // Expands the exact list of files the connection writes.
-  const [showEditorDetails, setShowEditorDetails] = useState(false);
-  // OK config sharing mode. Defaults to `'shared'` (encourages team
-  // adoption). Rendered via SharingModeField inside "Advanced settings" — the
-  // greenfield dialog tucks the choice away (sensible default already set),
-  // unlike the open-folder consent dialog which surfaces it at the top level.
+  // OK config sharing mode, rendered via SharingModeField at the top level.
   // There is no `gitState === 'absent'` carve-out here because Create-new
   // always runs `ensureProjectGit` (step 6 of runCreateNew), so the gitdir is
   // guaranteed to exist by the time the sharing transition runs.
-  const [sharing, setSharing] = useState<'shared' | 'local-only'>('shared');
-  // The sharing posture collapses under "Advanced settings" so the dialog leads
-  // with just the name, location and AI-tool fields. Reset closed on each open.
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [sharing, setSharing] = useState<SharingMode>(DEFAULT_SHARING_MODE);
   // Starter-pack selection + where it scaffolds. `packId` starts at the
   // launcher's pick and can be changed in-dialog (step 'pick'); the root
   // defaults to the project root — same default the in-project seed dialog
@@ -450,9 +447,7 @@ export function CreateProjectDialog({
     setName('');
     setDetectedEditors(null);
     setConnectEditors(true);
-    setShowEditorDetails(false);
-    setSharing('shared');
-    setAdvancedOpen(false);
+    setSharing(DEFAULT_SHARING_MODE);
     setRemoveGitState({ kind: 'idle' });
     // Honor the caller's pack on every open — the Navigator clears it when the
     // dialog closes, so a blank create after a pack create must not inherit it.
@@ -1237,43 +1232,23 @@ export function CreateProjectDialog({
               {/* AI-tool setup, always visible: it decides whether the project is
                 usable from the user's agents at all, which is not an advanced
                 concern. Mirrors the first-launch consent dialog — one pre-checked
-                checkbox whose label names the write set, plus an expander with the
-                exact files. Per-tool control lives in Settings > This project. */}
+                checkbox whose subtext names the write set, plus a "What changes?"
+                popover with the exact files. Per-tool control lives in
+                Settings > This project. */}
               <ProjectAiToolsField
                 detectedEditors={detectedEditors}
                 checked={connectEditors}
                 onCheckedChange={setConnectEditors}
-                showDetails={showEditorDetails}
-                onShowDetailsChange={setShowEditorDetails}
                 disabled={busy}
               />
 
-              <Collapsible
-                open={advancedOpen}
-                onOpenChange={setAdvancedOpen}
-                className="rounded-md border border-border"
-                data-testid="create-advanced"
-              >
-                <CollapsibleTrigger
-                  className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
-                  data-testid="create-advanced-trigger"
-                >
-                  <Trans>Advanced settings</Trans>
-                  <ChevronRight
-                    className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
-                    aria-hidden
-                  />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="space-y-6 border-t border-border px-3 py-4">
-                  <SharingModeField
-                    idPrefix="create"
-                    testIdPrefix="create-sharing"
-                    value={sharing}
-                    onValueChange={setSharing}
-                    disabled={busy}
-                  />
-                </CollapsibleContent>
-              </Collapsible>
+              <SharingModeField
+                idPrefix="create"
+                testIdPrefix="create-sharing"
+                value={sharing}
+                onValueChange={setSharing}
+                disabled={busy}
+              />
 
               {submitError !== null ? (
                 <div
@@ -1333,14 +1308,13 @@ interface ProjectAiToolsFieldProps {
   detectedEditors: readonly OkMcpWiringEditorId[] | null;
   checked: boolean;
   onCheckedChange: (next: boolean) => void;
-  showDetails: boolean;
-  onShowDetailsChange: (next: boolean) => void;
   disabled: boolean;
 }
 
 /**
  * The project's AI-tool decision: one checkbox covering every detected tool,
- * with a read-only expander naming the exact project-relative files it writes.
+ * with a "What changes?" popover naming the exact project-relative files it
+ * writes — the same card shape and disclosure the first-launch setup rows use.
  *
  * The paths come from the same two core maps the project writer resolves its
  * targets from (`EDITOR_PROJECT_CONFIG_PATH`, `EDITOR_PROJECT_SKILL_ROOT`), so
@@ -1351,12 +1325,9 @@ function ProjectAiToolsField({
   detectedEditors,
   checked,
   onCheckedChange,
-  showDetails,
-  onShowDetailsChange,
   disabled,
 }: ProjectAiToolsFieldProps) {
   const { t } = useLingui();
-  const detailsId = useId();
   const checkboxId = useId();
 
   // The probe's two non-interactive outcomes share ONE live region that is
@@ -1394,106 +1365,91 @@ function ProjectAiToolsField({
 
   if (status.kind !== 'ready') return statusRegion;
 
+  // Named local so the `t` macro extracts `{toolList}` rather than a
+  // positional placeholder for the inline call expression.
+  const toolList = formatToolList(
+    status.editors.map((id) => EDITOR_LABELS[id]),
+    i18n.locale,
+  );
+
   return (
     <>
       {/* Stays mounted (visually hidden, empty) so the region survives every
         transition rather than being torn down when the checkbox appears. */}
       {statusRegion}
-      <div className="overflow-hidden rounded-md border border-border">
+      {/* Same card anatomy as the first-launch setup rows: checkbox + title on
+        the first line, subtext indented under the title (checkbox size-4 = 1rem
+        + gap-2.5 = 0.625rem), and the "What changes?" disclosure absolutely
+        placed on the first line (needs `relative` here; the title's `pe-28`
+        keeps long labels from running under it). */}
+      <div className="relative overflow-hidden rounded-lg border border-border bg-card/50 px-4 py-3 hover:bg-accent">
         <Label
           htmlFor={checkboxId}
-          className="flex cursor-pointer items-start gap-2.5 px-3 py-2.5 font-normal hover:bg-muted/50"
+          className="flex min-w-0 cursor-pointer flex-col items-start gap-1 font-normal"
         >
-          <Checkbox
-            id={checkboxId}
-            checked={checked}
-            onCheckedChange={() => onCheckedChange(!checked)}
-            disabled={disabled}
-            className="mt-0.5"
-            data-testid="create-editors-checkbox"
-          />
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="flex w-full items-center gap-2.5">
+            <Checkbox
+              id={checkboxId}
+              checked={checked}
+              onCheckedChange={() => onCheckedChange(!checked)}
+              disabled={disabled}
+              data-testid="create-editors-checkbox"
+            />
+            {/* Fixed-length title: the detected-tool list goes in the subtext
+              below instead, so a machine with many tools can't wrap this line
+              and push the "What changes?" button out of alignment. */}
             <span
-              className="text-sm font-medium text-foreground"
-              data-testid="create-editors-summary"
+              className="flex min-w-0 flex-1 items-center gap-1.5 pe-28 text-sm font-medium text-foreground"
+              data-testid="create-editors-title"
             >
-              {t`Connect ${formatToolList(
-                status.editors.map((id) => EDITOR_LABELS[id]),
-                i18n.locale,
-              )} to this project`}
-            </span>
-            <span className="text-1sm text-muted-foreground">
-              <Trans comment="Subtext under the create-project AI-tools checkbox">
-                Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and
-                update these notes.
+              <Trans comment="Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project">
+                Connect your AI tools to this project
               </Trans>
             </span>
           </span>
-        </Label>
-        <div className="border-t border-border">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-auto w-full justify-start gap-1 rounded-none px-3 py-2 text-xs font-normal text-muted-foreground hover:text-foreground"
-            onClick={() => onShowDetailsChange(!showDetails)}
-            aria-expanded={showDetails}
-            aria-controls={detailsId}
-            data-testid="create-editors-details-toggle"
+          {/* Consent integrity: the write set is named here, in always-visible
+            text — moving it off the title line must not move it behind the
+            "What changes?" disclosure. */}
+          <span
+            className="text-1sm leading-normal ps-6.5 text-muted-foreground"
+            data-testid="create-editors-summary"
           >
-            <ChevronRight
-              className={cn(
-                'size-3.5 transition-transform motion-reduce:transition-none',
-                showDetails && 'rotate-90',
-              )}
-              aria-hidden
-            />
-            {showDetails ? (
-              <Trans comment="Collapses the list of project files the AI-tool setup writes">
-                Hide details
-              </Trans>
-            ) : (
-              <Trans comment="Expands the list of project files the AI-tool setup writes">
-                What this changes
-              </Trans>
-            )}
-          </Button>
-          {/* The region element is always present so the toggle's `aria-controls`
-          never dangles — axe flags a reference to an id that isn't in the DOM,
-          which is what a conditionally-mounted target produces. */}
-          <div id={detailsId}>
-            {showDetails && (
-              <ul
-                className="flex flex-col gap-1.5 border-t border-border px-3 py-2.5"
-                data-testid="create-editors-details"
-              >
-                {status.editors.map((id) => {
-                  const configPath = EDITOR_PROJECT_CONFIG_PATH[id];
-                  const skillRoot = EDITOR_PROJECT_SKILL_ROOT[id];
-                  return (
-                    <li
-                      key={id}
-                      className="flex min-w-0 flex-col"
-                      data-testid={`create-editor-${id}`}
-                    >
-                      <span className="text-1sm text-foreground">{EDITOR_LABELS[id]}</span>
-                      {configPath !== null && (
-                        <code className="text-xs text-muted-foreground break-all">
-                          {configPath}
-                        </code>
-                      )}
-                      {skillRoot !== null && (
-                        <code className="text-xs text-muted-foreground break-all">
-                          {`${skillRoot}/${RESERVED_PROJECT_SKILL_NAME}/`}
-                        </code>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
+            {/* Tool names carry the emphasis: they are the part of this
+              sentence that differs per machine, and the rest is boilerplate.
+              Wording tracks the first-launch dialog's MCP row — same promise,
+              plus the project skill this surface also writes. */}
+            <Trans comment="Subtext under the create-project AI-tools checkbox">
+              Adds an OpenKnowledge MCP entry and the project skill to{' '}
+              <span className="font-medium text-foreground">{toolList}</span>, so your agents can
+              read and edit your files.
+            </Trans>
+          </span>
+        </Label>
+        <RowDisclosure title={t`Adds these files`} testId="create-editors-details-toggle">
+          {/* A real list: this is an enumeration of files per tool, and screen
+            readers announce item counts and offer list navigation for it. */}
+          <ul className="flex flex-col gap-2" data-testid="create-editors-details">
+            {status.editors.map((id) => {
+              const configPath = EDITOR_PROJECT_CONFIG_PATH[id];
+              const skillRoot = EDITOR_PROJECT_SKILL_ROOT[id];
+              return (
+                <li key={id} className="flex min-w-0 flex-col" data-testid={`create-editor-${id}`}>
+                  <span className="font-medium">{EDITOR_LABELS[id]}</span>
+                  {configPath !== null && (
+                    <span className="wrap-break-word opacity-75">
+                      <code className="break-all">{configPath}</code>
+                    </span>
+                  )}
+                  {skillRoot !== null && (
+                    <span className="wrap-break-word opacity-75">
+                      <code className="break-all">{`${skillRoot}/${RESERVED_PROJECT_SKILL_NAME}/`}</code>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </RowDisclosure>
       </div>
     </>
   );

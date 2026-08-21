@@ -639,11 +639,9 @@ export async function resolveMcpScope(opts: {
 
 /**
  * Prompt the user to pick between `shared` (commit OK config alongside
- * content) and `local-only` (kept out of git via .git/info/exclude). The
- * `defaultMode` argument seeds the pre-selected answer — fresh repos use
- * `shared`; previously-local-only repos preserve `local-only` so an
- * idempotent `ok init` re-run doesn't silently flip the user's prior
- * choice.
+ * content) and `local-only` (kept out of git via .git/info/exclude).
+ * `defaultMode` is the pre-selected answer, computed by `resolveSharingMode`
+ * — see that function for the seed rule.
  */
 async function promptSharingMode(
   defaultMode: 'shared' | 'local-only',
@@ -673,11 +671,17 @@ async function promptSharingMode(
  *
  * Order of precedence:
  *   1. explicit `sharing` flag — terminal answer; no prompt.
- *   2. TTY: prompt with `readSharingMode(projectRoot)` as the pre-selected
- *      default. The prompt's response overrides everything else.
- *   3. Non-TTY: use `readSharingMode(projectRoot)` silently. For a fresh
- *      repo this is `shared` (today's behavior preserved); for a previously
- *      local-only repo this is `local-only` (preserves prior posture).
+ *   2. TTY: prompt with the seed below as the pre-selected default. The
+ *      prompt's response overrides everything else.
+ *   3. Non-TTY: use the seed silently.
+ *
+ * The seed is `local-only` for a project being set up for the first time,
+ * matching what the desktop setup dialogs pre-select, so sharing config with
+ * the team is an explicit choice on every entry point. An already-initialized
+ * project keeps whatever posture it is in, because a re-run of `ok init` is
+ * not a new decision: `readSharingMode` cannot tell "chose shared" from "never
+ * chose" (shared IS the absence of exclude entries), so re-seeding off it
+ * would silently un-share a team's repo on a scripted re-run.
  *
  * The function is exported so unit tests can exercise the precedence
  * without round-tripping through `runInit`.
@@ -686,14 +690,14 @@ export async function resolveSharingMode(opts: {
   sharing?: 'shared' | 'local-only';
   projectRoot: string;
   isTTY?: boolean;
+  /** No `.ok/` on disk yet, so this run is the project's first setup. */
+  freshProject?: boolean;
   promptFn?: (defaultMode: 'shared' | 'local-only') => Promise<'shared' | 'local-only'>;
 }): Promise<'shared' | 'local-only'> {
   if (opts.sharing !== undefined) return opts.sharing;
   const current = readSharingMode(opts.projectRoot);
-  // `no-git` collapses to `shared` for the default — there's nothing to
-  // toggle yet, and the default presented to a TTY user is the safer
-  // share-with-team option.
-  const seed: 'shared' | 'local-only' = current === 'local-only' ? 'local-only' : 'shared';
+  const seed: 'shared' | 'local-only' =
+    current === 'local-only' || opts.freshProject === true ? 'local-only' : 'shared';
   const tty = opts.isTTY ?? process.stdout.isTTY;
   if (!tty) return seed;
   const prompt = opts.promptFn ?? promptSharingMode;
@@ -756,11 +760,9 @@ interface InitCommandOptions {
   /** Test hook: inject a custom promptFn for the interactive scope prompt. */
   promptFn?: () => Promise<McpScope | null>;
   /**
-   * Sharing-mode posture. Undefined means
-   * "no explicit flag" — the prompt fires when stdin is a TTY; otherwise
-   * the effective default is `readSharingMode(projectRoot)` (preserves
-   * a prior `local-only` choice on an idempotent re-run; fresh repos
-   * collapse to `shared`).
+   * Sharing-mode posture. Undefined means "no explicit flag" — the prompt
+   * fires when stdin is a TTY; otherwise `resolveSharingMode` decides (see
+   * its doc comment for the seed rule).
    */
   sharing?: 'shared' | 'local-only';
   /** Test hook: inject a custom prompt for the sharing-mode TTY prompt. */
@@ -2039,6 +2041,9 @@ export async function runInit(options: InitCommandOptions = {}): Promise<InitCom
     sharing: options.sharing,
     projectRoot,
     isTTY: options.isTTY,
+    // Captured before step 1 scaffolded `.ok/`, so it still reports whether
+    // this run is the project's first setup.
+    freshProject: willScaffold,
     promptFn: options.sharingPromptFn,
   });
   const sharing = await applySharingMode({
@@ -2836,8 +2841,8 @@ export function formatSharingOutcome(outcome: SharingOutcome, cwd: string): stri
           `  Run ${info('git init')} (or open this folder via OK Desktop, which can scaffold a repo) and then ${info('ok config-sharing unshare')}.`,
         );
       } else if (outcome.reason === 'no-git') {
-        // Silent for fresh repos with no flag — the default is `shared`
-        // and there's nothing to surface.
+        // Silent for fresh repos with no flag — with no git there is no
+        // exclude file to write either way, so there is nothing to surface.
         return [];
       } else {
         lines.push(warning(`Sharing mode unavailable: ${outcome.reason}.`));

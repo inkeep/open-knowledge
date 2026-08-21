@@ -103,10 +103,12 @@ describe('ConsentDialogBody runtime form behavior', () => {
   test('config sharing is shown at the top level, not inside Advanced settings', async () => {
     renderConsentDialog();
 
-    // Visible without expanding Advanced.
+    // Visible without expanding Advanced, defaulting to "Only me".
     expect(screen.getByTestId('consent-sharing')).not.toBeNull();
     expect(screen.getByTestId('consent-sharing-shared')).not.toBeNull();
-    expect(screen.getByTestId('consent-sharing-local-only')).not.toBeNull();
+    expect(screen.getByTestId('consent-sharing-local-only').getAttribute('data-state')).toBe(
+      'checked',
+    );
     // ...while the Advanced-only fields stay collapsed.
     expect(screen.queryByTestId('consent-content-dir')).toBeNull();
   });
@@ -125,16 +127,17 @@ describe('ConsentDialogBody runtime form behavior', () => {
     expect(screen.getByTestId('config-sharing-info')).not.toBe(document.activeElement);
   });
 
-  test('selecting Local only carries through to the confirm payload', async () => {
+  test('selecting Shared carries through to the confirm payload', async () => {
+    // "Only me" is the default, so exercise the non-default pick.
     const { confirmCalls } = renderConsentDialog();
 
-    await userEvent.click(screen.getByTestId('consent-sharing-local-only'));
+    await userEvent.click(screen.getByTestId('consent-sharing-shared'));
 
     fireEvent.submit(screen.getByTestId('consent-form') as HTMLFormElement);
     await waitFor(() => {
       expect(confirmCalls).toHaveLength(1);
     });
-    expect(confirmCalls[0]?.sharing).toBe('local-only');
+    expect(confirmCalls[0]?.sharing).toBe('shared');
   });
 
   test('an invalid default content dir force-opens Advanced settings and shows the error without expanding', () => {
@@ -180,7 +183,7 @@ describe('ConsentDialogBody runtime form behavior', () => {
       contentDir: 'docs',
       additionalIgnores: '',
       editorIds: ['claude-desktop', 'codex'],
-      sharing: 'shared',
+      sharing: 'local-only',
     });
   });
 

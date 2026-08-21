@@ -101,6 +101,8 @@ When you initialize or open a project, the app scaffolds the same project files 
 | `.ok/skills-lock.json` | Provenance for imported skills — source, selected skill, commit/ref when available, content hash, publisher, and import time | In-project, committed |
 | `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.codex/config.toml`, `~/.copilot/mcp-config.json`, `~/.config/opencode/opencode.json`, `~/.openclaw/openclaw.json`, `~/.gemini/config/mcp_config.json`, `~/.lmstudio/mcp.json`, `~/.hermes/config.yaml` | User-level `open-knowledge` MCP registration, one per detected editor, so it's available in every project (`~/.copilot/mcp-config.json` only when `~/.copilot/` exists; `~/.openclaw/openclaw.json` only when `~/.openclaw/` exists; `~/.gemini/config/mcp_config.json` is Antigravity's shared IDE + `agy` config, only when `~/.gemini/` exists; `~/.lmstudio/mcp.json` and `~/.hermes/config.yaml` only when those apps are installed) | Outside-project (editor config) |
 
+The **Scope** column assumes you share this setup with your team. New projects don't: they keep OpenKnowledge's config to yourself, adding every in-project path above to `.git/info/exclude`, so those files are written but stay out of git.
+
 ### While a project is open
 
 The app runs a collaboration server for the open project. It writes runtime state, gitignored under `.ok/local/`, plus a shadow git repo that powers the timeline and recovery features:
@@ -207,13 +209,13 @@ Pi is the exception: it has no user-level MCP config (it has no MCP support at a
 
 On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` and `%APPDATA%\opencode\`, and the MCP entry is a PowerShell launcher.
 
-`ok init` also installs `open-knowledge-discovery` (the same skill first launch sets up — pass `--skills discovery,write-skill` to add the authoring skill too), honoring any prior consent choice, and, if you choose **local-only** sharing, adds the OpenKnowledge paths to `.git/info/exclude` so `.ok/` stays off your remote. Switch modes later with `ok config-sharing share` / `unshare` (`unshare` refuses if an OK config file is already tracked); `ok config-sharing status` prints the current mode and the excluded paths.
+`ok init` also installs `open-knowledge-discovery` (the same skill first launch sets up — pass `--skills discovery,write-skill` to add the authoring skill too), honoring any prior consent choice, and, for a project it is setting up for the first time, adds the OpenKnowledge paths to `.git/info/exclude` so `.ok/` stays off your remote. Pass `--shared` to commit it instead. Re-running `ok init` on a project you already set up keeps that project's current choice. Switch modes later with `ok config-sharing share` / `unshare` (`unshare` refuses if an OK config file is already tracked); `ok config-sharing status` prints the current mode and the excluded paths.
 
 <Callout type="info" title="Controlling it">
   - `--no-mcp` — scaffold `.ok/` only; register nothing with any editor.
   - `--scope user | project | both` — where the MCP entry is written. In an interactive terminal, `ok init` prompts for this; scripted/CI runs default to `both`, so pass the flag to constrain them.
   - `--no-skills` — install no user-global skills on this run; `--skills discovery,write-skill` — install only the named bundles. **Default installs `discovery` only**, matching what the desktop's first launch sets up; `write-skill` is opt-in here and in **Settings → Skills Studio**. Installing is recorded and honored by the desktop app too; skipping is not recorded, so it never affects another project.
-  - `--local-only` (vs `--shared`) — keep `.ok/` out of git.
+  - `--shared` (vs `--local-only`) — commit `.ok/` rather than keeping it out of git.
 </Callout>
 
 ### `ok start`
@@ -277,7 +279,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | The shell-config `PATH` block (macOS app) | Uncheck "Add the `ok` command to your terminal" in the first-launch dialog |
 | All editor MCP registration in `ok init` | `ok init --no-mcp` |
 | User-level (vs project) MCP writes | `ok init --scope project` |
-| Committing `.ok/` to git | `ok init --local-only` (or choose "local only" when prompted) |
+| Committing `.ok/` to git | Off by default for a new project; `ok init --shared` commits it instead |
 | The repair sweeps and the desktop app's shell / `PATH` changes | `OK_RECLAIM_DISABLE=1` (also delete the managed block from your shell config to remove the `PATH` entry) |
 | Local diagnostic logs and telemetry | `telemetry.localSink.enabled: false` in config |
 | Auto-starting the MCP server | `OK_MCP_AUTOSTART=0` |

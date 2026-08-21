@@ -249,33 +249,47 @@ describe('CreateProjectDialog runtime wiring', () => {
 
     await waitForLocationHydrate();
 
-    // Config sharing still lives inside the collapsed "Advanced settings"
-    // section (Radix unmounts collapsed content), so it is not in the DOM until
-    // expanded. The AI-tools decision no longer does — it decides whether the
-    // project is reachable from the user's agents at all.
-    expect(screen.queryByTestId('create-sharing')).toBeNull();
+    // Config sharing sits at the top level — there is no "Advanced settings"
+    // section — and defaults to "Only me". The AI-tools decision is top-level
+    // too: it decides whether the project is reachable from the user's agents
+    // at all.
+    expect(screen.queryByTestId('create-advanced-trigger')).toBeNull();
+    expect(screen.getByTestId('create-sharing')).not.toBeNull();
+    expect(screen.getByTestId('create-sharing-local-only').getAttribute('data-state')).toBe(
+      'checked',
+    );
     await waitFor(() => {
       expect(screen.getByTestId('create-editors-checkbox').getAttribute('aria-checked')).toBe(
         'true',
       );
     });
-    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
-    expect(screen.getByTestId('create-sharing')).not.toBeNull();
 
-    // Consent integrity: collapsed, the label already names every tool that
-    // gets written to, and names no tool that doesn't.
+    // The title line is fixed-length — the tool list lives in the subtext, so
+    // a machine with many tools can't wrap it into the disclosure button.
+    expect(screen.getByTestId('create-editors-title').textContent).toBe(
+      'Connect your AI tools to this project',
+    );
+
+    // Consent integrity: without opening anything, the row already names every
+    // tool that gets written to, and names no tool that doesn't.
     const summary = screen.getByTestId('create-editors-summary').textContent ?? '';
     for (const id of DETECTED) expect(summary).toContain(EDITOR_LABELS[id]);
     expect(summary).not.toContain(EDITOR_LABELS[UNDETECTED]);
     // Undetected tools have no row anywhere — nothing is written for them.
     expect(screen.queryByTestId(`create-editor-${UNDETECTED}`)).toBeNull();
 
-    // The disclosure names the exact project-relative artifacts.
-    fireEvent.click(screen.getByTestId('create-editors-details-toggle'));
-    const details = screen.getByTestId('create-editors-details');
+    // The "What changes?" popover names the exact project-relative artifacts.
+    await userEvent.click(screen.getByTestId('create-editors-details-toggle'));
+    const details = await screen.findByTestId('create-editors-details');
+    // A real list, not styled spans: screen readers announce the item count
+    // and offer list navigation over this file enumeration.
+    expect(details.tagName).toBe('UL');
+    expect(details.querySelectorAll(':scope > li').length).toBe(DETECTED.length);
     expect(details.textContent).toContain('.mcp.json');
     expect(details.textContent).toContain('.claude/skills/open-knowledge/');
     expect(details.textContent).toContain('.cursor/mcp.json');
+    // Close it again so the popover doesn't sit over the footer buttons.
+    await userEvent.keyboard('{Escape}');
 
     fireEvent.click(cancel);
     expect(stub.onOpenChange).toHaveBeenCalledWith(false);
@@ -292,7 +306,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     const submitted = stub.createNewCalls[0];
     expect(submitted?.parent).toBe(PARENT);
     expect(submitted?.name).toBe(PROJECT_NAME);
-    expect(submitted?.sharing).toBe('shared');
+    expect(submitted?.sharing).toBe('local-only');
     expect([...(submitted?.editors ?? [])].sort()).toEqual([...DETECTED].sort());
     expect(stub.onOpenChange).toHaveBeenLastCalledWith(false);
   });
@@ -544,11 +558,11 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(stub.createNewCalls[0]?.editors).toEqual([]);
   });
 
-  test('reopening the dialog re-collapses Advanced so sharing is hidden again', async () => {
-    // Sharing now lives inside Advanced, so "the dialog leads with just name +
-    // location" depends on the on-open reset collapsing Advanced every time.
-    // Guard it: expand once, close, reopen, and assert the sharing control is
-    // gone again (not left mounted from the prior expand).
+  test('reopening the dialog resets sharing to the "Only me" default', async () => {
+    // Sharing sits at the top level and defaults to "Only me" — a prior open's
+    // explicit "Shared" pick must not leak into the next open. Guard the
+    // on-open reset: pick Shared, close, reopen, and assert Only me is checked
+    // again.
     const stub = makeBridge();
     const onOpenChange = vi.fn(() => {});
     const { rerender } = render(
@@ -557,17 +571,18 @@ describe('CreateProjectDialog runtime wiring', () => {
     await screen.findByTestId('create-project-dialog');
     await waitForLocationHydrate();
 
-    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
-    expect(screen.getByTestId('create-sharing')).not.toBeNull();
+    await userEvent.click(screen.getByTestId('create-sharing-shared'));
+    expect(screen.getByTestId('create-sharing-shared').getAttribute('data-state')).toBe('checked');
 
     rerender(<CreateProjectDialog open={false} onOpenChange={onOpenChange} bridge={stub.bridge} />);
     rerender(<CreateProjectDialog open={true} onOpenChange={onOpenChange} bridge={stub.bridge} />);
     await screen.findByTestId('create-project-dialog');
 
     await waitFor(() => {
-      expect(screen.queryByTestId('create-sharing')).toBeNull();
+      expect(screen.getByTestId('create-sharing-local-only').getAttribute('data-state')).toBe(
+        'checked',
+      );
     });
-    expect(screen.getByTestId('create-advanced-trigger')).not.toBeNull();
   });
 
   test('Location hydrates from defaultProjectsRoot and Browse picks a fresh parent', async () => {
@@ -637,24 +652,22 @@ describe('CreateProjectDialog runtime wiring', () => {
     expect(stub.onOpenChange).not.toHaveBeenCalled();
   });
 
-  test('selecting Local only carries through to the createNew payload', async () => {
+  test('selecting Shared carries through to the createNew payload', async () => {
     const stub = await renderDialog();
     await waitForLocationHydrate();
 
     await typeProjectName(PROJECT_NAME);
     await waitForSubmitEnabled();
 
-    // Sharing now lives inside "Advanced settings" — expand it before the radio
-    // is in the DOM.
-    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
-    await userEvent.click(screen.getByTestId('create-sharing-local-only'));
+    // "Only me" is the default, so exercise the non-default pick.
+    await userEvent.click(screen.getByTestId('create-sharing-shared'));
 
     fireEvent.click(screen.getByTestId('create-submit'));
 
     await waitFor(() => {
       expect(stub.createNewCalls).toHaveLength(1);
     });
-    expect(stub.createNewCalls[0]?.sharing).toBe('local-only');
+    expect(stub.createNewCalls[0]?.sharing).toBe('shared');
   });
 
   test('a pre-selected pack threads packId through to the createNew payload', async () => {
@@ -786,9 +799,7 @@ describe('CreateProjectDialog runtime wiring', () => {
     const stub = await renderDialog();
     await waitForLocationHydrate();
 
-    // The info trigger lives in the sharing field inside "Advanced settings" —
-    // expand the section first so it's in the DOM.
-    fireEvent.click(screen.getByTestId('create-advanced-trigger'));
+    // The info trigger lives in the sharing field, now at the top level.
     const info = screen.getByTestId('config-sharing-info') as HTMLButtonElement;
     // A trigger that renders a <button> inside a <form> defaults to
     // type="submit" — it MUST be type="button" or it fires the form.

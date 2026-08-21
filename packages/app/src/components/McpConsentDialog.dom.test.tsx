@@ -279,7 +279,7 @@ describe('McpConsentDialog AI-tools decision', () => {
     const subtextOf = (el: Element | null | undefined) =>
       [...(el?.querySelectorAll('span') ?? [])]
         .map((n) => n.textContent ?? '')
-        .find((text) => text.startsWith('Installs the OpenKnowledge MCP into'));
+        .find((text) => text.startsWith('Adds an OpenKnowledge MCP entry to'));
 
     const before = subtextOf(row());
     expect(before).toBeTruthy();

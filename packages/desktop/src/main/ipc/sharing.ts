@@ -105,8 +105,13 @@ export function handleSharingSetSkillsShared(
  * pre-formatted remediation for the renderer to render in a modal /
  * sticky toast. `shared` removes OK paths unconditionally.
  *
- * Robust against a malformed `mode` argument from the wire — defaults to
- * the safer `shared` write rather than refusing the call.
+ * Robust against a malformed `mode` argument from the wire — falls back to
+ * the `shared` write rather than refusing the call. Unlike the create-new and
+ * consent fallbacks, where `shared` is genuinely inert, this site's `shared`
+ * arm calls `removeOkPathsFromGitExclude`, which reverses a prior `local-only`
+ * choice. The renderer always sends an explicit value, so the fallback is only
+ * reachable via a renderer bypass. Not a statement about which posture the
+ * dialogs pre-select.
  */
 export function handleSharingSetMode(
   projectPath: string,

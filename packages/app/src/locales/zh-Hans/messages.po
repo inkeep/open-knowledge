@@ -1459,8 +1459,13 @@ msgstr "添加一个受管理的块到 {0}"
 
 #. Subtext under the create-project AI-tools checkbox
 #: src/components/CreateProjectDialog.tsx
-msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
-msgstr "添加 OpenKnowledge 的 MCP 条目和项目技能，让每个工具都能读取和更新这些文档。"
+msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
+msgstr "向 <0>{toolList}</0> 添加 OpenKnowledge 的 MCP 条目和项目技能，让你的智能体可以读取和编辑你的文件。"
+
+#. Subtext under the AI-tools MCP checkbox
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
+msgstr "向 <0>{connectToolList}</0> 添加 OpenKnowledge 的 MCP 条目，让你的智能体可以读取和编辑你的文件。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1475,6 +1480,10 @@ msgstr "把 OpenKnowledge 技能添加到 <0>Claude 桌面应用</0>，以便在
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "把技能添加到 {rootRel}——{0} 也会读取该处"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Adds these files"
+msgstr "添加这些文件"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds these folders"
 msgstr "添加这些文件夹"
@@ -1484,7 +1493,6 @@ msgid "Advanced"
 msgstr "高级"
 
 #: src/components/ConsentDialogBody.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "高级设置"
 
@@ -2989,11 +2997,6 @@ msgstr "冲突"
 msgid "Connect"
 msgstr "连接"
 
-#. placeholder {0}: formatToolList( status.editors.map((id) => EDITOR_LABELS[id]), i18n.locale, )
-#: src/components/CreateProjectDialog.tsx
-msgid "Connect {0} to this project"
-msgstr "将 {0} 连接到本项目"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Connect a GitHub account to browse and sync your repositories."
 msgstr "连接一个 GitHub 账户，以便浏览和同步你的仓库。"
@@ -3046,6 +3049,11 @@ msgstr "连接工具"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Connect your AI tools"
 msgstr "连接你的 AI 工具"
+
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
+#: src/components/CreateProjectDialog.tsx
+msgid "Connect your AI tools to this project"
+msgstr "将你的 AI 工具连接到本项目"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -6302,9 +6310,7 @@ msgstr "隐藏高级选项"
 msgid "Hide Agents"
 msgstr "隐藏「智能体」"
 
-#. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Hide details"
 msgstr "隐藏详情"
 
@@ -6962,12 +6968,6 @@ msgstr "正在安装"
 msgid "Installing {agentName}…"
 msgstr "正在安装 {agentName}…"
 
-#. Subtext under the AI-tools MCP checkbox
-#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
-#: src/components/McpConsentDialogBody.tsx
-msgid "Installs the OpenKnowledge MCP into {0} so your agents can read and edit your files."
-msgstr "将 OpenKnowledge MCP 安装到 {0}，让你的智能体可以读取和编辑你的文件。"
-
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
@@ -7179,12 +7179,17 @@ msgid "Layout options"
 msgstr "布局选项"
 
 #: src/components/settings/SettingsSectionHeader.tsx
+#: src/components/SharingModeField.tsx
 msgid "Learn more"
 msgstr "了解更多"
 
 #: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "了解更多关于 {title} 的信息"
+
+#: src/components/SharingModeField.tsx
+msgid "Learn more about config sharing"
+msgstr "了解更多关于配置共享的信息"
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -14206,7 +14211,7 @@ msgid "Welcome to OpenKnowledge"
 msgstr "欢迎使用 OpenKnowledge"
 
 #. Button on each setup row that opens the list of files that row writes to
-#: src/components/McpConsentDialogBody.tsx
+#: src/components/RowDisclosure.tsx
 msgid "What changes?"
 msgstr "会更改什么？"
 
@@ -14249,11 +14254,6 @@ msgstr "希望 AI 做什么？（可选）"
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."
 msgstr "智能体可以读取、写入和呈现的内容。"
-
-#. Expands the list of project files the AI-tool setup writes
-#: src/components/CreateProjectDialog.tsx
-msgid "What this changes"
-msgstr "这会改变什么"
 
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx

@@ -176,8 +176,10 @@ interface CreateNewProjectArgs {
   /**
    * Sharing posture chosen at create-time.
    * Optional in the type to keep callers that don't care backward-
-   * compatible; the runtime default is `'shared'` (the
-   * team-friendly default). Routed through `addOkPathsToGitExclude` after
+   * compatible; an omitted or malformed value resolves to `'shared'`, the
+   * inert option (it writes no git-exclude entries). The create-new dialog
+   * pre-selects `'local-only'` and always sends an explicit value, so this
+   * fallback covers non-dialog callers. Routed through `addOkPathsToGitExclude` after
    * `writeProjectAiIntegrations` so the create-new dialog and the
    * Pick-Existing consent dialog share one sharing-transition site.
    */

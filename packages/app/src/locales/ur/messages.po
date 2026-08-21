@@ -1459,8 +1459,13 @@ msgstr "{0} میں منظم بلاک شامل کرتا ہے"
 
 #. Subtext under the create-project AI-tools checkbox
 #: src/components/CreateProjectDialog.tsx
-msgid "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
-msgstr "OpenKnowledge کا MCP اندراج اور پروجیکٹ Skill شامل کرتا ہے، تاکہ ہر ٹول ان دستاویزات کو پڑھ اور اپ ڈیٹ کر سکے۔"
+msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
+msgstr "<0>{toolList}</0> میں OpenKnowledge کا MCP اندراج اور پروجیکٹ Skill شامل کرتا ہے تاکہ آپ کے ایجنٹس آپ کی فائلیں پڑھ اور ترمیم کر سکیں۔"
+
+#. Subtext under the AI-tools MCP checkbox
+#: src/components/McpConsentDialogBody.tsx
+msgid "Adds an OpenKnowledge MCP entry to <0>{connectToolList}</0>, so your agents can read and edit your files."
+msgstr "<0>{connectToolList}</0> میں OpenKnowledge کا MCP اندراج شامل کرتا ہے تاکہ آپ کے ایجنٹس آپ کی فائلیں پڑھ اور ترمیم کر سکیں۔"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
@@ -1475,6 +1480,10 @@ msgstr "OpenKnowledge مہارت کو <0>Claude Desktop App</0> میں شامل 
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "مہارت کو {rootRel} میں شامل کرتا ہے — اسے {0} بھی پڑھتا ہے"
 
+#: src/components/CreateProjectDialog.tsx
+msgid "Adds these files"
+msgstr "یہ فائلیں شامل کرتا ہے"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "Adds these folders"
 msgstr "یہ فولڈرز شامل کرتا ہے"
@@ -1484,7 +1493,6 @@ msgid "Advanced"
 msgstr "اعلیٰ"
 
 #: src/components/ConsentDialogBody.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Advanced settings"
 msgstr "اعلیٰ ترتیبات"
 
@@ -2989,11 +2997,6 @@ msgstr "تنازعات"
 msgid "Connect"
 msgstr "منسلک کریں"
 
-#. placeholder {0}: formatToolList( status.editors.map((id) => EDITOR_LABELS[id]), i18n.locale, )
-#: src/components/CreateProjectDialog.tsx
-msgid "Connect {0} to this project"
-msgstr "{0} کو اس پروجیکٹ سے جوڑیں"
-
 #: src/components/settings/AccountSection.tsx
 msgid "Connect a GitHub account to browse and sync your repositories."
 msgstr "اپنی ریپازٹریز براؤز اور مطابق کرنے کے لیے GitHub اکاؤنٹ منسلک کریں۔"
@@ -3046,6 +3049,11 @@ msgstr "ٹولز منسلک کریں"
 #: src/components/McpConsentDialogBody.tsx
 msgid "Connect your AI tools"
 msgstr "اپنے AI ٹولز منسلک کریں"
+
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
+#: src/components/CreateProjectDialog.tsx
+msgid "Connect your AI tools to this project"
+msgstr "اپنے AI ٹولز کو اس پروجیکٹ سے جوڑیں"
 
 #. placeholder {0}: response.dimensions
 #: src/components/settings/SearchSection.tsx
@@ -6302,9 +6310,7 @@ msgstr "اعلیٰ آپشنز چھپائیں"
 msgid "Hide Agents"
 msgstr "ایجنٹس چھپائیں"
 
-#. Collapses the list of project files the AI-tool setup writes
 #: src/components/acp/ThreadView.tsx
-#: src/components/CreateProjectDialog.tsx
 msgid "Hide details"
 msgstr "تفصیلات چھپائیں"
 
@@ -6962,12 +6968,6 @@ msgstr "نصب کیا جا رہا ہے"
 msgid "Installing {agentName}…"
 msgstr "{agentName} نصب کیا جا رہا ہے…"
 
-#. Subtext under the AI-tools MCP checkbox
-#. placeholder {0}: formatToolList( editors.map((e) => e.label), i18n.locale, )
-#: src/components/McpConsentDialogBody.tsx
-msgid "Installs the OpenKnowledge MCP into {0} so your agents can read and edit your files."
-msgstr "{0} میں OpenKnowledge MCP انسٹال کرتا ہے تاکہ آپ کے ایجنٹس آپ کی فائلیں پڑھ اور ترمیم کر سکیں۔"
-
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
@@ -7179,12 +7179,17 @@ msgid "Layout options"
 msgstr "خاکہ بندی کے آپشنز"
 
 #: src/components/settings/SettingsSectionHeader.tsx
+#: src/components/SharingModeField.tsx
 msgid "Learn more"
 msgstr "مزید جانیں"
 
 #: src/components/settings/SettingsSectionHeader.tsx
 msgid "Learn more about {title}"
 msgstr "{title} کے بارے میں مزید جانیں"
+
+#: src/components/SharingModeField.tsx
+msgid "Learn more about config sharing"
+msgstr "کنفیگ کے اشتراک کے بارے میں مزید جانیں"
 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
@@ -14206,7 +14211,7 @@ msgid "Welcome to OpenKnowledge"
 msgstr "OpenKnowledge میں خوش آمدید"
 
 #. Button on each setup row that opens the list of files that row writes to
-#: src/components/McpConsentDialogBody.tsx
+#: src/components/RowDisclosure.tsx
 msgid "What changes?"
 msgstr "کیا تبدیل ہوگا؟"
 
@@ -14249,11 +14254,6 @@ msgstr "AI کو کیا کرنا چاہیے؟ (اختیاری)"
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."
 msgstr "ایجنٹ کیا پڑھ، لکھ اور ظاہر کر سکتا ہے۔"
-
-#. Expands the list of project files the AI-tool setup writes
-#: src/components/CreateProjectDialog.tsx
-msgid "What this changes"
-msgstr "یہ کیا بدلتا ہے"
 
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx

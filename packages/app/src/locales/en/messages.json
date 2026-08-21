@@ -313,6 +313,11 @@
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
+    "3nICSW": [
+      "Adds an OpenKnowledge MCP entry and the project skill to <0>",
+      ["toolList"],
+      "</0>, so your agents can read and edit your files."
+    ],
     "3nnyi_": [["0", "plural", { "one": ["Delete"], "other": ["Delete ", "#", " items"] }]],
     "3o3tur": ["Starter content"],
     "3oh0nQ": ["Nested .okignore error in ", ["path"]],
@@ -358,11 +363,6 @@
     ],
     "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
-    "4inh-4": [
-      "Installs the OpenKnowledge MCP into ",
-      ["0"],
-      " so your agents can read and edit your files."
-    ],
     "4ivBhl": ["Toggle the right agents panel, where agent conversations live."],
     "4jDd0j": ["Anyone can see"],
     "4m-xuX": ["Auto-fix — nothing to fix"],
@@ -905,9 +905,6 @@
     "C0cll5": ["Installed at ", ["0"], " — click to remove"],
     "C0hoX6": ["Always included"],
     "C3Zc44": ["Explore skills"],
-    "C4HK3A": [
-      "Adds an OpenKnowledge MCP entry and the project skill, so each tool can read and update these notes."
-    ],
     "C62P6b": ["Editor selection"],
     "C7PKTv": ["Send checked comments to chat"],
     "C7waqI": [["0", "plural", { "one": ["#", " document"], "other": ["#", " documents"] }]],
@@ -1605,7 +1602,6 @@
     ],
     "LhWYpm": ["Other OK paths are tracked upstream:"],
     "Li4U-T": ["Learn more about ", ["title"]],
-    "LiAw2k": ["What this changes"],
     "LlHqdU": ["Initializing project"],
     "LlJ8LD": [
       "Config sharing unchanged: ",
@@ -2093,6 +2089,11 @@
     "RqSvT0": ["Importing"],
     "RrAIZx": ["What config sharing covers"],
     "Rsdhj9": ["Configuration warnings"],
+    "RvbTzC": [
+      "Adds an OpenKnowledge MCP entry to <0>",
+      ["connectToolList"],
+      "</0>, so your agents can read and edit your files."
+    ],
     "Rx5ReQ": ["Rename ", ["keyName"]],
     "RxF-am": ["Duplicates dropped"],
     "RyIKxy": [
@@ -3437,7 +3438,6 @@
     "j2kt1j": [
       "Open a new session with your preferred AI. With text selected, stage it there instead of running it."
     ],
-    "j4SmVY": ["Connect ", ["0"], " to this project"],
     "j5CWO4": ["Up to date"],
     "j9Vqvc": ["inherited"],
     "j9tqwO": ["Not in sidebar"],
@@ -4097,6 +4097,7 @@
       ["repoName"],
       "</0>."
     ],
+    "rCDe1d": ["Learn more about config sharing"],
     "rDOuNw": ["Failed to import template"],
     "rENNI6": ["Invalid share URL."],
     "rFL-yb": ["Edit a copy"],
@@ -4324,6 +4325,7 @@
     "uFQbYd": ["Home page and entry point."],
     "uGaIIS": ["Check out worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
+    "uIA8mX": ["Adds these files"],
     "uJfwF8": ["Already installed — nothing new to import."],
     "uK2peg": [
       "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -4503,6 +4505,7 @@
     ],
     "wZPUJx": ["\"", ["0"], "\""],
     "w_Sphq": ["Attachments"],
+    "waCGTy": ["Connect your AI tools to this project"],
     "wbMbiY": ["Copied ", ["selectedSlot"]],
     "wbpoGe": ["Couldn't install OpenKnowledge skill — ", ["message"]],
     "wbv9xO": ["Create new project"],

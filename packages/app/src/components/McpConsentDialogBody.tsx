@@ -46,10 +46,10 @@
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
-import type { ReactNode } from 'react';
 import { useId, useState } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { OkIcon } from '@/components/icons/ok';
+import { RowDisclosure } from '@/components/RowDisclosure';
 import { ThemePicker, type ThemePreference } from '@/components/ThemePicker';
 import {
   AlertDialog,
@@ -64,7 +64,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useConfigContextOptional } from '@/lib/config-context';
 import type { OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { type McpConsentStore, mcpConsentStore } from '@/lib/mcp-consent-store';
@@ -178,6 +177,12 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   // Every tool being written is also being overwritten — the neutral subtext and
   // the warning would name an identical list.
   const replacingAll = replacing.length > 0 && replacing.length === editors.length;
+  // Named local so the `<Trans>` placeholder extracts as `{connectToolList}`
+  // rather than a positional index for the inline call expression.
+  const connectToolList = formatToolList(
+    editors.map((e) => e.label),
+    i18n.locale,
+  );
   // Pre-checked (opt-out): the common answer is yes, and the label names
   // everything it covers so agreeing isn't agreeing blind.
   const [connectChecked, setConnectChecked] = useState(true);
@@ -482,12 +487,14 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
                         the box is toggled rather than swapping for another
                         sentence. */}
                         <span className={ROW_SUBTEXT}>
+                          {/* Tool names carry the emphasis: they are the part of
+                            this sentence that differs per machine. Wording
+                            tracks the create-project dialog's AI-tools row,
+                            minus the project skill: that row writes one and
+                            this screen, which sets up no project, does not. */}
                           <Trans comment="Subtext under the AI-tools MCP checkbox">
-                            Installs the OpenKnowledge MCP into{' '}
-                            {formatToolList(
-                              editors.map((e) => e.label),
-                              i18n.locale,
-                            )}{' '}
+                            Adds an OpenKnowledge MCP entry to{' '}
+                            <span className="font-medium text-foreground">{connectToolList}</span>,
                             so your agents can read and edit your files.
                           </Trans>
                         </span>
@@ -672,72 +679,6 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-/**
- * The "What changes?" disclosure shared by every row.
- *
- * A labelled button rather than a bare `i` glyph, and a click rather than a
- * hover. The overlay canon calls tooltips a last resort precisely because they
- * are "hidden by default, often with little visual indicator, and unavailable
- * on touch" — a named trigger fixes all three, and a text target clears the
- * 24x24 hit-target floor that a 14px icon did not.
- *
- * Focus is allowed to move into the panel (Radix's default). The stricter
- * toggletip pattern keeps focus on the trigger and announces through a live
- * region, but that relies on the region existing before its content does; here
- * the panel mounts already populated, so a screen reader can miss it entirely
- * and the button reads as broken. A dialog the user is moved into, and returns
- * from on Escape, is the more reliable shape — and it makes the panel
- * keyboard-scrollable, which matters because the dialog's scroll lock swallows
- * wheel events over anything portaled outside its own content.
- */
-function RowDisclosure({
-  title,
-  testId,
-  children,
-}: {
-  title: string;
-  testId: string;
-  children: ReactNode;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="link-muted"
-          size="sm"
-          // Dotted underline rather than the usual solid link rule: it reads as
-          // clickable without competing with the row's own text, and it stays put
-          // instead of appearing on hover, which a pointer-less user never sees.
-          // `decoration-dotted` needs an explicit `underline` to render at all.
-          // Absolutely placed on the row's first line, so the description below
-          // wraps the full width of the card instead of stopping short at a
-          // column this button would otherwise reserve down the whole row. The
-          // title span carries matching `pe-*` so long labels can't run under it.
-          // Requires the row container to be `relative`.
-          className="absolute end-3 top-2 px-1 text-1sm font-normal underline decoration-dotted decoration-muted-foreground/50 underline-offset-4 hover:decoration-foreground"
-          data-testid={testId}
-        >
-          <Trans comment="Button on each setup row that opens the list of files that row writes to">
-            What changes?
-          </Trans>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        aria-label={title}
-        className="max-h-(--radix-popover-content-available-height) w-80 overflow-y-auto p-3 subtle-scrollbar"
-      >
-        <span className="flex flex-col gap-2 text-xs leading-normal">
-          <span className="font-mono text-2xs text-muted-foreground uppercase tracking-wide">
-            {title}
-          </span>
-          {children}
-        </span>
-      </PopoverContent>
-    </Popover>
   );
 }
 

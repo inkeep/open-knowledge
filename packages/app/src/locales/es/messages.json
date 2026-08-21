@@ -354,6 +354,11 @@
     "3l_cXP": ["Échale un vistazo si quieres. Este archivo exacto es lo que recibimos."],
     "3m2GBo": ["Buscando documentos"],
     "3mFsc3": ["Restaurar con los cambios remotos"],
+    "3nICSW": [
+      "Añade una entrada MCP de OpenKnowledge y la habilidad del proyecto a <0>",
+      ["toolList"],
+      "</0> para que tus agentes puedan leer y editar tus archivos."
+    ],
     "3nnyi_": [
       [
         "0",
@@ -413,11 +418,6 @@
     ],
     "4h3e0H": ["No se pudo actualizar la compartición de habilidades: ", ["detail"], "."],
     "4hJhzz": ["Tabla"],
-    "4inh-4": [
-      "Instala el MCP de OpenKnowledge en ",
-      ["0"],
-      " para que tus agentes puedan leer y editar tus archivos."
-    ],
     "4ivBhl": [
       "Muestra u oculta el panel derecho de agentes, donde viven las conversaciones con agentes."
     ],
@@ -1064,9 +1064,6 @@
     "C0cll5": ["Instalado en ", ["0"], ": haz clic para quitarlo"],
     "C0hoX6": ["Siempre incluido"],
     "C3Zc44": ["Explorar habilidades"],
-    "C4HK3A": [
-      "Añade una entrada MCP de OpenKnowledge y la habilidad del proyecto, para que cada herramienta pueda leer y actualizar estos documentos."
-    ],
     "C62P6b": ["Selección del editor"],
     "C7PKTv": ["Enviar los comentarios marcados al chat"],
     "C7waqI": [
@@ -1877,7 +1874,6 @@
     ],
     "LhWYpm": ["Hay otras rutas OK seguidas en el remoto:"],
     "Li4U-T": ["Más información sobre ", ["title"]],
-    "LiAw2k": ["Qué cambia esto"],
     "LlHqdU": ["Inicializando el proyecto"],
     "LlJ8LD": [
       "El uso compartido de la configuración no cambió: ",
@@ -2409,6 +2405,11 @@
     "RqSvT0": ["Importando"],
     "RrAIZx": ["Qué abarca compartir la configuración"],
     "Rsdhj9": ["Advertencias de configuración"],
+    "RvbTzC": [
+      "Añade una entrada MCP de OpenKnowledge a <0>",
+      ["connectToolList"],
+      "</0> para que tus agentes puedan leer y editar tus archivos."
+    ],
     "Rx5ReQ": ["Renombrar ", ["keyName"]],
     "RxF-am": ["Duplicados descartados"],
     "RyIKxy": [
@@ -4014,7 +4015,6 @@
     "j2kt1j": [
       "Abre una sesión nueva con tu IA preferida. Con texto seleccionado, lo prepara ahí en lugar de ejecutarlo."
     ],
-    "j4SmVY": ["Conectar ", ["0"], " a este proyecto"],
     "j5CWO4": ["Al día"],
     "j9Vqvc": ["heredado"],
     "j9tqwO": ["No está en la barra lateral"],
@@ -4753,6 +4753,7 @@
       ["repoName"],
       "</0>."
     ],
+    "rCDe1d": ["Más información sobre compartir configuración"],
     "rDOuNw": ["No se pudo importar la plantilla"],
     "rENNI6": ["URL para compartir no válida."],
     "rFL-yb": ["Editar una copia"],
@@ -5004,6 +5005,7 @@
     "uFQbYd": ["Página de inicio y punto de entrada."],
     "uGaIIS": ["Extraer worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
+    "uIA8mX": ["Añade estos archivos"],
     "uJfwF8": ["Ya está instalado: no hay nada nuevo que importar."],
     "uK2peg": [
       "Comprueba tu proyecto con Open Knowledge Format. Puedes desactivarlo en cualquier momento en Configuración."
@@ -5213,6 +5215,7 @@
     ],
     "wZPUJx": ["«", ["0"], "»"],
     "w_Sphq": ["Adjuntos"],
+    "waCGTy": ["Conectar tus herramientas de IA a este proyecto"],
     "wbMbiY": ["Se copió ", ["selectedSlot"]],
     "wbpoGe": ["No se pudo instalar la habilidad de OpenKnowledge: ", ["message"]],
     "wbv9xO": ["Crear proyecto"],

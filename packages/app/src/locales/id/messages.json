@@ -314,6 +314,11 @@
     "3l_cXP": ["Silakan lihat kalau mau. Berkas persis inilah yang kami terima."],
     "3m2GBo": ["Mencari dokumen"],
     "3mFsc3": ["Pulihkan dengan perubahan remote"],
+    "3nICSW": [
+      "Menambahkan entri MCP OpenKnowledge dan keterampilan proyek ke <0>",
+      ["toolList"],
+      "</0> agar agen Anda dapat membaca dan mengedit berkas Anda."
+    ],
     "3nnyi_": [["0", "plural", { "other": ["Hapus ", "#", " item"] }]],
     "3o3tur": ["Isi awal"],
     "3oh0nQ": ["Galat .okignore bersarang di ", ["path"]],
@@ -361,11 +366,6 @@
     ],
     "4h3e0H": ["Berbagi keterampilan tidak bisa diperbarui — ", ["detail"], "."],
     "4hJhzz": ["Tabel"],
-    "4inh-4": [
-      "Memasang MCP OpenKnowledge di ",
-      ["0"],
-      " agar agen Anda dapat membaca dan mengedit berkas Anda."
-    ],
     "4ivBhl": [
       "Menampilkan atau menyembunyikan panel agen di kanan, tempat percakapan dengan agen berada."
     ],
@@ -894,9 +894,6 @@
     "C0cll5": ["Terpasang di ", ["0"], " — klik untuk menghapus"],
     "C0hoX6": ["Selalu disertakan"],
     "C3Zc44": ["Jelajahi keterampilan"],
-    "C4HK3A": [
-      "Menambahkan entri MCP OpenKnowledge dan keterampilan proyek, sehingga setiap alat bisa membaca dan memperbarui dokumen ini."
-    ],
     "C62P6b": ["Pilihan penyunting"],
     "C7PKTv": ["Kirim komentar yang dicentang ke obrolan"],
     "C7waqI": [["0", "plural", { "other": ["#", " dokumen"] }]],
@@ -1621,7 +1618,6 @@
     ],
     "LhWYpm": ["Ada jalur OK lain yang dilacak di remote:"],
     "Li4U-T": ["Pelajari lebih lanjut tentang ", ["title"]],
-    "LiAw2k": ["Apa yang berubah karena ini"],
     "LlHqdU": ["Menginisialisasi proyek"],
     "LlJ8LD": [
       "Berbagi konfigurasi tidak berubah: ",
@@ -2099,6 +2095,11 @@
     "RqSvT0": ["Mengimpor"],
     "RrAIZx": ["Apa saja yang dicakup berbagi konfigurasi"],
     "Rsdhj9": ["Peringatan konfigurasi"],
+    "RvbTzC": [
+      "Menambahkan entri MCP OpenKnowledge ke <0>",
+      ["connectToolList"],
+      "</0> agar agen Anda dapat membaca dan mengedit berkas Anda."
+    ],
     "Rx5ReQ": ["Ganti nama ", ["keyName"]],
     "RxF-am": ["Duplikat dibuang"],
     "RyIKxy": [
@@ -3467,7 +3468,6 @@
     "j2kt1j": [
       "Membuka sesi baru dengan AI pilihan Anda. Dengan teks terpilih, teks itu disiapkan di sana alih-alih dijalankan."
     ],
-    "j4SmVY": ["Hubungkan ", ["0"], " ke proyek ini"],
     "j5CWO4": ["Sudah mutakhir"],
     "j9Vqvc": ["diwarisi"],
     "j9tqwO": ["Tidak ada di bilah sisi"],
@@ -4111,6 +4111,7 @@
       ["repoName"],
       "</0>."
     ],
+    "rCDe1d": ["Pelajari lebih lanjut tentang berbagi konfigurasi"],
     "rDOuNw": ["Gagal mengimpor templat"],
     "rENNI6": ["URL berbagi tidak valid."],
     "rFL-yb": ["Sunting salinan"],
@@ -4342,6 +4343,7 @@
     "uFQbYd": ["Halaman utama dan titik masuk."],
     "uGaIIS": ["Ambil worktree"],
     "uH_S-u": [["loadErrorTitle"], ": ", ["message"]],
+    "uIA8mX": ["Menambahkan berkas ini"],
     "uJfwF8": ["Sudah terpasang — tidak ada yang baru untuk diimpor."],
     "uK2peg": [
       "Periksa proyek Anda terhadap Open Knowledge Format. Matikan kapan saja di Pengaturan."
@@ -4509,6 +4511,7 @@
     "wXw19Y": ["\"", ["projectName"], "\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."],
     "wZPUJx": ["“", ["0"], "”"],
     "w_Sphq": ["Lampiran"],
+    "waCGTy": ["Hubungkan alat AI Anda ke proyek ini"],
     "wbMbiY": [["selectedSlot"], " disalin"],
     "wbpoGe": ["Tidak dapat memasang keterampilan OpenKnowledge: ", ["message"]],
     "wbv9xO": ["Buat proyek baru"],

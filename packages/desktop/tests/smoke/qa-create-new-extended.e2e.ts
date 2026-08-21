@@ -58,17 +58,6 @@ const TARGET = resolveDesktopTarget();
 const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 
 /**
- * Only the config-sharing posture lives inside the collapsed "Advanced settings"
- * section now (Radix unmounts collapsed content) — expand it before driving or
- * asserting on that control. The AI-tool decision is top-level.
- */
-async function expandCreateAdvanced(page: Page): Promise<void> {
-  const trigger = page.locator('[data-testid="create-advanced-trigger"]');
-  await expect(trigger).toBeVisible({ timeout: 15_000 });
-  await trigger.click();
-}
-
-/**
  * Make `bin` resolve as an installed CLI for editor-presence detection.
  * `bin` must be the registry binary name (`TERMINAL_CLIS[<id>].bin` in
  * core/src/handoff/terminal-launch.ts) — the editor id and its binary differ
@@ -247,8 +236,9 @@ test.describe('QA extended create-new-project', () => {
     );
 
     // One pre-checked box covering the detected tools, top-level (no longer
-    // behind Advanced). Its label names the write set, so assert the label
-    // rather than per-editor checkboxes that no longer exist.
+    // behind Advanced). Its subtext names the write set (the title line is
+    // fixed copy), so assert that rather than per-editor checkboxes that no
+    // longer exist.
     const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
     await expect(connectBox).toBeVisible({ timeout: 15_000 });
     await expect(connectBox).toBeChecked();
@@ -311,8 +301,9 @@ test.describe('QA extended create-new-project', () => {
     const ariaLive = await caption.getAttribute('aria-live');
     expect(ariaLive).toBe('polite');
 
-    // The AI-tool decision is one top-level, pre-checked box naming the tools
-    // it covers — no longer a row per editor behind Advanced settings.
+    // The AI-tool decision is one top-level, pre-checked box whose subtext
+    // names the tools it covers — no longer a row per editor behind Advanced
+    // settings.
     const connectBox = navigator.locator('[data-testid="create-editors-checkbox"]');
     await expect(connectBox).toBeVisible({ timeout: 15_000 });
     await expect(connectBox).toBeChecked();
@@ -396,9 +387,8 @@ test.describe('QA extended create-new-project', () => {
       .poll(() => countWindowsByMode(app1, 'editor'), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
 
-    // Advanced settings is never opened here, so this submits the
-    // detection-seeded selection — empty, since nothing is installed under the
-    // seeded tmp HOME. That still creates a real project; it just wires no
+    // This submits the detection-seeded selection — empty, since nothing is
+    // installed under the seeded tmp HOME. That still creates a real project; it just wires no
     // editor integrations.
     const firstProject = join(parent, projectName);
     await expect
@@ -471,10 +461,13 @@ test.describe('QA extended create-new-project', () => {
       { timeout: 15_000 },
     );
     await expect(navigator2.locator('[data-testid="create-editors-checkbox"]')).toHaveCount(0);
-    // Advanced still collapses back to hidden on a fresh open.
-    await expect(navigator2.locator('[data-testid="create-sharing"]')).toHaveCount(0);
-    await expandCreateAdvanced(navigator2);
+    // Config sharing sits at the top level and resets to its "Only me"
+    // default on a fresh open.
     await expect(navigator2.locator('[data-testid="create-sharing"]')).toBeVisible();
+    await expect(navigator2.locator('[data-testid="create-sharing-local-only"]')).toHaveAttribute(
+      'data-state',
+      'checked',
+    );
   });
 
   // Create stays enabled even before the user types a name — a disabled
