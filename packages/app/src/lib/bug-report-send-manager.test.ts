@@ -158,7 +158,7 @@ describe('bug-report send manager', () => {
     await stub.settle(FAILED_RESULT);
   });
 
-  test('a history row sends without a note and with a readable bundle level', async () => {
+  test('a history row with no note sends no note key, and a readable bundle level', async () => {
     const stub = createDeferredBridge();
     const manager = createBugReportSendManager(() => stub.bridge);
 
@@ -168,6 +168,31 @@ describe('bug-report send manager', () => {
     expect(stub.calls[0]).toEqual({
       zipPath: ZIP_PATH,
       metadata: { level: 'standard', systemWide: true, projectSlug: null },
+    });
+    // `toEqual` treats an explicit `note: undefined` as absent, so the key
+    // itself is asserted separately: a row with no note must not send a
+    // synthesized stand-in, and must not send an empty slot either.
+    expect(stub.calls[0]?.metadata).not.toHaveProperty('note');
+    await stub.settle(FAILED_RESULT);
+  });
+
+  test('a history retry resends the note persisted with the report', async () => {
+    const stub = createDeferredBridge();
+    const manager = createBugReportSendManager(() => stub.bridge);
+
+    manager.startBugReportSend({
+      kind: 'history-row',
+      row: historyRow({ note: 'the editor froze after I pasted a large table' }),
+    });
+
+    expect(stub.calls[0]).toEqual({
+      zipPath: ZIP_PATH,
+      metadata: {
+        level: 'standard',
+        systemWide: true,
+        projectSlug: null,
+        note: 'the editor froze after I pasted a large table',
+      },
     });
     await stub.settle(FAILED_RESULT);
   });

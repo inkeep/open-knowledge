@@ -137,7 +137,7 @@ On each launch and project open, the app also runs **repair sweeps**: it rewrite
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/themes/` | Your saved color themes from the [Themes plugin](../plugins/themes.mdx), one Tinted Theming base16 YAML file per theme, written when you create or edit a theme | No |
 | `~/.ok/mcp-status.json` | First-launch MCP consent record | No |
-| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/logs/`, `~/.ok/bug-reports/` | Desktop and CLI logs, and bug-report bundles from `ok bug-report` and the app's **Help → Report a bug…** dialog (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`). Each report from the dialog also gets a small YAML record holding its send state and a secret-redacted copy of the note you wrote, so report history can still show what a report was about. The zip is deleted once the report is sent; the record is kept, and both go when you delete the report from report history | No |
 | `~/.ok/bin/`, `~/.ok/env.sh` | `PATH` shim (see [Shell and `PATH`](#shell-and-path) above) | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your OS credential store under the service name `open-knowledge` — the **Keychain** on macOS, **Credential Manager** on Windows, and the Secret Service keyring (libsecret) on Linux. The `~/.ok/auth.yml` file is only a fallback for headless environments where the credential store isn't reachable; when it becomes available, the token is migrated into it and the file copy is removed.
@@ -263,7 +263,7 @@ Disable all three with `OK_RECLAIM_DISABLE=1`.
 | `~/.ok/stats.jsonl` | Local "open with AI" handoff stats — local-only, no phone-home | No |
 | `~/.ok/themes/` | Your saved color themes from the [Themes plugin](../plugins/themes.mdx), one Tinted Theming base16 YAML file per theme, written when you create or edit a theme | No |
 | `~/.ok/logs/` | CLI logs (`cli.<date>.log`), size- and age-capped | No |
-| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`) | No |
+| `~/.ok/bug-reports/` | Bug-report bundles from `ok bug-report` — the desktop app's **Help → Report a bug…** dialog writes here too (`ok diagnose bundle` writes into the project, under `.ok/local/diagnostics/`). A report filed from the dialog also leaves a small YAML record beside its bundle, holding the report's send state and a secret-redacted copy of the note you wrote so report history can name it. That record outlives the bundle: the zip is deleted once the report is sent, and the record is kept until you delete the report from report history | No |
 
 **Auth tokens** (for GitHub sync, sharing, and cloning) are stored in your operating system's secure credential store when one is available — the macOS **Keychain** (service `open-knowledge`), or the platform equivalent (Windows Credential Manager, Linux Secret Service) — falling back to a `0600` `~/.ok/auth.yml` file on headless systems (a Linux server, CI) where none is reachable.
 

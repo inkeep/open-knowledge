@@ -10621,6 +10621,11 @@ msgstr "Report a bug"
 msgid "Report a bug…"
 msgstr "Report a bug…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "Report from {0}"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13877,6 +13882,10 @@ msgstr "Unresolvable file {identity}. Go to reference."
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "Unresolvable image {identity}. Go to reference."
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "Untitled report"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

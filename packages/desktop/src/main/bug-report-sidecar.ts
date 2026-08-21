@@ -214,6 +214,7 @@ function toListRow(dir: string, scanned: ScannedReport): OkBugReportListRow {
     projectSlug,
     ...(s?.reference !== undefined ? { reference: s.reference } : {}),
     ...(s?.lastError !== undefined ? { lastError: s.lastError } : {}),
+    ...(s?.note !== undefined ? { note: s.note } : {}),
     attemptsCount: s?.attempts?.length ?? 0,
     zipPath: zipPathForId(dir, scanned.id),
     retryable: scanned.zipExists && state !== 'sent' && state !== 'uploading',
@@ -577,6 +578,7 @@ export function createBugReportSidecarStore(opts: {
         state: 'generated',
         systemWide: meta.systemWide,
         projectSlug: meta.projectSlug,
+        ...(meta.note !== undefined ? { note: meta.note } : {}),
       };
       try {
         await writeReportSidecar(dir, sidecar);

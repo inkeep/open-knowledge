@@ -141,6 +141,45 @@ describe('writeReportSidecar / readReportSidecar', () => {
     const dir = makeTmpDir();
     expect(await readReportSidecar(sidecarPathForId(dir, rid(1)))).toBeNull();
   });
+
+  test('recordGenerated persists the note it was handed', async () => {
+    const dir = makeTmpDir();
+    const id = rid(1);
+    seedZip(dir, id);
+    const store = createBugReportSidecarStore({ dir });
+
+    await store.recordGenerated({
+      zipPath: zipPathForId(dir, id),
+      zipBytes: 128,
+      level: 'standard',
+      systemWide: false,
+      projectSlug: 'demo',
+      note: 'sync hung on a large repo',
+    });
+
+    expect((await readReportSidecar(sidecarPathForId(dir, id)))?.note).toBe(
+      'sync hung on a large repo',
+    );
+  });
+
+  test('recordGenerated without a note writes no note key at all', async () => {
+    const dir = makeTmpDir();
+    const id = rid(1);
+    seedZip(dir, id);
+    const store = createBugReportSidecarStore({ dir });
+
+    await store.recordGenerated({
+      zipPath: zipPathForId(dir, id),
+      zipBytes: 128,
+      level: 'standard',
+      systemWide: false,
+      projectSlug: 'demo',
+    });
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, id));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
 });
 
 describe('listReports — states and ordering', () => {
@@ -175,6 +214,19 @@ describe('listReports — states and ordering', () => {
     expect(failed?.state).toBe('upload-failed');
     expect(failed?.retryable).toBe(true);
     expect(failed?.lastError?.reason).toBe('offline');
+  });
+
+  test('a row carries the sidecar note, and omits it when the sidecar has none', async () => {
+    const dir = makeTmpDir();
+    await seedReport(dir, 1, { note: 'the editor froze after a paste' });
+    await seedReport(dir, 2);
+
+    const result = await listReports(dir);
+    if (!result.ok) throw new Error(`expected ok, got ${result.reason}`);
+
+    const [withoutNote, withNote] = result.reports;
+    expect(withNote?.note).toBe('the editor froze after a paste');
+    expect(withoutNote && 'note' in withoutNote).toBe(false);
   });
 });
 
@@ -280,9 +332,31 @@ describe('send hooks — state transitions and in-flight lock', () => {
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: false });
   });
 
+  test('a synthesized sidecar claims no project, so the row can never be titled by one', async () => {
+    const dir = makeTmpDir();
+    const id = rid(1);
+    // A sidecar-less bundle, as the CLI writes: the first retry synthesizes a
+    // record for it. That record asserts a bundle level and a system-wide flag
+    // nobody supplied, which is why the row title may lean on neither. The slug
+    // is the one identity signal synthesis cannot invent, and it must stay null
+    // or an untitled report starts claiming a project it never came from.
+    seedZip(dir, id);
+    const store = createBugReportSidecarStore({ dir });
+
+    expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
+
+    const synthesized = await readReportSidecar(sidecarPathForId(dir, id));
+    expect(synthesized).not.toBeNull();
+    expect(synthesized?.projectSlug ?? null).toBeNull();
+    expect(synthesized && 'note' in synthesized).toBe(false);
+  });
+
   test('a sent result records the reference, appends an attempt, and reclaims the zip', async () => {
     const dir = makeTmpDir();
-    const id = await seedReport(dir, 1, { state: 'generated' });
+    const id = await seedReport(dir, 1, {
+      state: 'generated',
+      note: 'the editor froze after a paste',
+    });
     const store = createBugReportSidecarStore({ dir });
 
     await store.sendHooks.onSendStart(id);
@@ -293,6 +367,7 @@ describe('send hooks — state transitions and in-flight lock', () => {
     expect(sidecar?.reference).toBe('OK-777');
     expect(sidecar?.zipDeleted).toBe(true);
     expect(sidecar?.attempts?.at(-1)).toMatchObject({ transport: 'upload', outcome: 'success' });
+    expect(sidecar?.note).toBe('the editor froze after a paste');
     // The confirmed-sent zip is reclaimed, its tombstone sidecar kept.
     expect(existsSync(zipPathForId(dir, id))).toBe(false);
     expect(existsSync(sidecarPathForId(dir, id))).toBe(true);
@@ -302,7 +377,10 @@ describe('send hooks — state transitions and in-flight lock', () => {
 
   test('an upload-failed result records the reason and stays retryable', async () => {
     const dir = makeTmpDir();
-    const id = await seedReport(dir, 1, { state: 'generated' });
+    const id = await seedReport(dir, 1, {
+      state: 'generated',
+      note: 'the editor froze after a paste',
+    });
     const store = createBugReportSidecarStore({ dir });
 
     await store.sendHooks.onSendStart(id);
@@ -315,12 +393,16 @@ describe('send hooks — state transitions and in-flight lock', () => {
     expect(sidecar?.state).toBe('upload-failed');
     expect(sidecar?.lastError?.reason).toBe('complete-rejected: 503');
     expect(sidecar?.attempts?.at(-1)).toMatchObject({ transport: 'upload', outcome: 'failed' });
+    expect(sidecar?.note).toBe('the editor froze after a paste');
     expect(existsSync(zipPathForId(dir, id))).toBe(true);
   });
 
   test('an email-drafted result records the email transport without touching the zip', async () => {
     const dir = makeTmpDir();
-    const id = await seedReport(dir, 1, { state: 'generated' });
+    const id = await seedReport(dir, 1, {
+      state: 'generated',
+      note: 'the editor froze after a paste',
+    });
     const store = createBugReportSidecarStore({ dir });
 
     await store.sendHooks.onSendResult(id, { kind: 'email-drafted' });
@@ -328,6 +410,7 @@ describe('send hooks — state transitions and in-flight lock', () => {
     const sidecar = await readReportSidecar(sidecarPathForId(dir, id));
     expect(sidecar?.state).toBe('email-drafted');
     expect(sidecar?.attempts?.at(-1)).toMatchObject({ transport: 'email' });
+    expect(sidecar?.note).toBe('the editor froze after a paste');
     expect(existsSync(zipPathForId(dir, id))).toBe(true);
   });
 });
@@ -341,6 +424,21 @@ describe('runRetentionSweep', () => {
 
     expect(existsSync(zipPathForId(dir, id))).toBe(false);
     expect((await readReportSidecar(sidecarPathForId(dir, id)))?.zipDeleted).toBe(true);
+  });
+
+  test('the tombstone write keeps the note after the zip is reclaimed', async () => {
+    const dir = makeTmpDir();
+    const note = 'the editor froze after I pasted a large table';
+    const id = await seedReport(dir, 1, { state: 'sent', reference: 'OK-1', note });
+
+    await runRetentionSweep(dir, createInFlightRegistry());
+
+    // The zip that held the reporter's words is gone, so the sidecar is now the
+    // only local copy. A tombstone that dropped it would leave the row that
+    // most needs a title permanently unable to have one.
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, id));
+    expect(sidecar?.zipDeleted).toBe(true);
+    expect(sidecar?.note).toBe(note);
   });
 
   test('evicts the oldest unsent over the count cap but never the newest', async () => {
@@ -490,7 +588,10 @@ describe('runRetentionSweep', () => {
 describe('reconcileStaleUploading', () => {
   test('demotes a stale uploading sidecar to upload-failed at boot', async () => {
     const dir = makeTmpDir();
-    const staleId = await seedReport(dir, 1, { state: 'uploading' });
+    const staleId = await seedReport(dir, 1, {
+      state: 'uploading',
+      note: 'the editor froze after a paste',
+    });
     const okId = await seedReport(dir, 2, { state: 'generated' });
 
     const reconciled = await reconcileStaleUploading(dir);
@@ -499,6 +600,7 @@ describe('reconcileStaleUploading', () => {
     const stale = await readReportSidecar(sidecarPathForId(dir, staleId));
     expect(stale?.state).toBe('upload-failed');
     expect(stale?.lastError?.reason).toBe('interrupted-by-restart');
+    expect(stale?.note).toBe('the editor froze after a paste');
     // A non-uploading sidecar is untouched.
     expect((await readReportSidecar(sidecarPathForId(dir, okId)))?.state).toBe('generated');
   });

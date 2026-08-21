@@ -10617,6 +10617,11 @@ msgstr "একটি বাগ জানান"
 msgid "Report a bug…"
 msgstr "একটি বাগ জানান…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "{0} থেকে রিপোর্ট"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13873,6 +13878,10 @@ msgstr "সমাধান করা যায় না এমন ফাইল 
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "সমাধান করা যায় না এমন ছবি {identity}। রেফারেন্সে যান।"
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "শিরোনামহীন রিপোর্ট"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

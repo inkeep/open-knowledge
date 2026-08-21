@@ -10621,6 +10621,11 @@ msgstr "버그 신고"
 msgid "Report a bug…"
 msgstr "버그 신고…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "{0}의 보고서"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13877,6 +13882,10 @@ msgstr "해결할 수 없는 파일 {identity}. 참조로 이동합니다."
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "해결할 수 없는 이미지 {identity}. 참조로 이동합니다."
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "제목 없는 보고서"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

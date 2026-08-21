@@ -29,6 +29,8 @@ import {
 } from '@inkeep/open-knowledge';
 import {
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  clampToCodeUnits,
+  isBlankNoteContent,
   isReportIdShape,
   type OkBugReportCrashAckResult,
   type OkBugReportCrashDumpAvailability,
@@ -214,6 +216,29 @@ const MAX_NOTE_LENGTH = 32_768;
 /** A note is valid when absent, or a string within the length ceiling. */
 function isValidNote(note: unknown): boolean {
   return note === undefined || (typeof note === 'string' && note.length <= MAX_NOTE_LENGTH);
+}
+
+/**
+ * Post-scrub copy of the create request's note for the durable sidecar record.
+ *
+ * Scrub before clamp, never the reverse: redaction can lengthen text (a URL
+ * credential expands to `://[REDACTED]@`), so a note that arrived at the
+ * ceiling can leave the scrub over it. The ceiling bites on the way back out
+ * too — `isSendRequest` re-runs {@link isValidNote} on a retry's metadata — so
+ * an unclamped copy would make every future retry of that report fail send
+ * validation. Clamping by UTF-16 code units matches what that check counts,
+ * and a cut landing between a surrogate pair drops the orphaned high half
+ * rather than storing a lone surrogate that renders as a replacement glyph.
+ */
+function scrubNoteForSidecar(note: string | undefined): string | undefined {
+  // Nothing visible counts as absent, using the same predicate the renderer
+  // titles rows with. The row would fall back correctly either way, but a
+  // stored blank is still a note as far as the row is concerned, so a later
+  // retry would put meaningless whitespace on the wire as the reporter's
+  // words. Whitespace alone is not the whole test: trim does not see
+  // zero-width or bidi-control characters.
+  if (note === undefined || isBlankNoteContent(note)) return undefined;
+  return clampToCodeUnits(redactContent(note).redacted, MAX_NOTE_LENGTH);
 }
 
 /**
@@ -475,13 +500,22 @@ export async function handleBugReportCreate(
     // and the call is guarded, so create still succeeds if the sidecar can't be
     // written.
     if (deps.onReportGenerated) {
-      await deps
-        .onReportGenerated({
-          zipPath,
-          zipBytes: zipSizeBytes,
-          level: request.level,
-          systemWide: summary.systemWide,
-          projectSlug: summary.projectSlug,
+      const persist = deps.onReportGenerated;
+      // The scrub runs INSIDE the guarded chain, not ahead of it. Called
+      // outside, a throw would escape to the handler's own catch and report the
+      // create as failed to someone whose zip is already on disk, which is the
+      // one outcome the guard exists to prevent.
+      await Promise.resolve()
+        .then(() => {
+          const sidecarNote = scrubNoteForSidecar(request.note);
+          return persist({
+            zipPath,
+            zipBytes: zipSizeBytes,
+            level: request.level,
+            systemWide: summary.systemWide,
+            projectSlug: summary.projectSlug,
+            ...(sidecarNote !== undefined ? { note: sidecarNote } : {}),
+          });
         })
         .catch((err: unknown) => {
           deps.logger?.warn(
@@ -846,6 +880,12 @@ export interface GeneratedReportMeta {
   level: ReportBundleLevel;
   systemWide: boolean;
   projectSlug: string | null;
+  /**
+   * The reporter's composed note, already scrubbed and clamped for durable
+   * storage — unlike the create request's raw note, which the bundle collector
+   * scrubs on its own way into the zip.
+   */
+  note?: string;
 }
 
 /**
@@ -1492,8 +1532,9 @@ export async function handleBugReportSend(
     };
   }
   // The compose UI promises automatic secret redaction. The note inside the
-  // zip is scrubbed by the bundle collector; these are the two copies that
-  // travel OUTSIDE the zip (upload metadata JSON, mailto body), so they get
+  // zip is scrubbed by the bundle collector; these are two of the three copies
+  // that travel OUTSIDE the zip (upload metadata JSON, mailto body — the third
+  // is the sidecar record, scrubbed at generation time), so they get
   // the same scrub. Only the note — the zipPath line must stay verbatim so
   // the user can find the file to attach.
   const scrubbedNote =

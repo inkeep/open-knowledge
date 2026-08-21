@@ -10617,6 +10617,11 @@ msgstr "बग की रिपोर्ट करें"
 msgid "Report a bug…"
 msgstr "बग की रिपोर्ट करें…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "{0} से रिपोर्ट"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13873,6 +13878,10 @@ msgstr "हल न की जा सकने वाली फ़ाइल {iden
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "हल न की जा सकने वाला चित्र {identity}। संदर्भ पर जाएँ।"
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "बिना शीर्षक रिपोर्ट"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

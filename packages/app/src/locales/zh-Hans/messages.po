@@ -10621,6 +10621,11 @@ msgstr "报告问题"
 msgid "Report a bug…"
 msgstr "报告问题…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "来自 {0} 的报告"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13877,6 +13882,10 @@ msgstr "无法解析文件 {identity}。转到引用位置。"
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "无法解析图片 {identity}。转到引用位置。"
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "未命名报告"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

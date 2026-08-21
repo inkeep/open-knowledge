@@ -10617,6 +10617,11 @@ msgstr "Laporkan bug"
 msgid "Report a bug…"
 msgstr "Laporkan bug…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "Laporan dari {0}"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13873,6 +13878,10 @@ msgstr "File {identity} tidak dapat ditentukan. Buka referensi."
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "Gambar {identity} tidak dapat ditentukan. Buka referensi."
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "Laporan tanpa judul"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

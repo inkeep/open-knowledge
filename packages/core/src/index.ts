@@ -1,6 +1,13 @@
 // Bug-report sidecar — the durable per-report YAML record backing the retry
 // list. Schema + open-state normalization; the writer/reader/retention live in
 // desktop main.
+
+export {
+  clampToCodeUnits,
+  isBlankNoteContent,
+  mapControlCharactersToSpace,
+  stripInvisibleCharacters,
+} from './bug-report-sidecar/note-content.ts';
 export {
   isKnownReportSidecarState,
   isReportIdShape,

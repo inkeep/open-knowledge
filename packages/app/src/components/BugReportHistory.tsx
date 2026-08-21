@@ -9,6 +9,15 @@
  *     inside the Report Bug dialog's compose step; renders nothing until there
  *     is at least one prior report, so it never clutters the compose flow.
  *
+ * A row is titled by the first useful line of the note that accompanied the
+ * report — the composed note, so a crash report filed with an empty box titles
+ * from its crash context rather than from nothing — falling back to the
+ * report's project and then to an untitled label. Reports generated before the
+ * sidecar started carrying a note have none to title them. For one already
+ * sent that is permanent, since retention unlinked the zip holding the only
+ * other copy; an unsent one still has its `note.txt` on disk, but nothing reads
+ * a zip on the list path.
+ *
  * State is shown as an inline status badge (modeless — no nested dialogs), and
  * per-row actions are Retry (hand the existing bundle to the background send
  * manager without regenerating), a support follow-up on a sent report that has
@@ -26,7 +35,7 @@ import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Spinner } from '@/components/ui/spinner';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
-import { formatBundleSize, supportMailtoUrl } from '@/lib/bug-report-support';
+import { bugReportNoteTitle, formatBundleSize, supportMailtoUrl } from '@/lib/bug-report-support';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 
 type PendingAction = 'retrying' | 'deleting';
@@ -219,6 +228,13 @@ function ReportRow({
 }) {
   const { t, i18n } = useLingui();
   const busy = pending !== undefined;
+  // `projectSlug` is the only identity on the row a synthesized sidecar cannot
+  // forge: `systemWide`, `bundleLevel` and `degraded` all take invented values
+  // once a retry writes a stand-in record, so a title built on any of them
+  // turns into a confident false claim after one press of Retry.
+  const title =
+    bugReportNoteTitle(row.note) ??
+    (row.projectSlug !== null ? t`Report from ${row.projectSlug}` : t`Untitled report`);
   const when =
     row.createdAt === ''
       ? t`Unknown date`
@@ -232,24 +248,51 @@ function ReportRow({
           timeStyle: 'short',
         }).format(new Date(row.createdAt));
   return (
-    <div className="flex items-start gap-2.5 rounded-md border px-3 py-2.5">
+    <li className="flex items-start gap-2.5 rounded-md border px-3 py-2.5">
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* `dir="auto"` on the truncating element itself, not on a nested
+              `<bdi>`: the ellipsis follows the containing block's direction, so
+              an Arabic note under an English interface would otherwise lose its
+              opening words rather than its closing ones. `min-w-0 flex-1` is
+              what lets the flex item shrink far enough for it to appear at all. */}
+          <p dir="auto" className="min-w-0 flex-1 truncate text-1sm" title={title}>
+            {title}
+          </p>
           <StateBadge state={row.state} />
-          {row.bundleLevel !== 'unknown' ? <Badge variant="gray">{row.bundleLevel}</Badge> : null}
-          <span className="truncate text-1sm text-muted-foreground">{when}</span>
         </div>
-        <p className="text-xs text-muted-foreground">
+        {/* Each datum is its own text node, with the separators held apart as
+            their own hidden spans. Folding them into one message instead would
+            need a msgid per reachable combination of level, size, state and
+            error, and would read a bare middle dot out to a screen reader
+            between every field. */}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+          {row.bundleLevel !== 'unknown' ? <Badge variant="gray">{row.bundleLevel}</Badge> : null}
+          <span className="whitespace-nowrap">{when}</span>
+          {/* Zero means neither a zip nor a recorded figure, so `0 B` would be a
+              claim about a file nobody has. */}
+          {row.zipBytes > 0 ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="whitespace-nowrap">{formatBundleSize(row.zipBytes)}</span>
+            </>
+          ) : null}
           {row.state === 'sent' && row.reference !== undefined ? (
-            <Trans>
-              Reference <span className="font-mono text-foreground">{row.reference}</span>
-            </Trans>
+            <>
+              <span aria-hidden>·</span>
+              <span>
+                <Trans>
+                  Reference <span className="font-mono text-foreground">{row.reference}</span>
+                </Trans>
+              </span>
+            </>
           ) : row.state === 'upload-failed' && row.lastError !== undefined ? (
-            <span className="text-destructive">{row.lastError.reason}</span>
-          ) : (
-            <span>{formatBundleSize(row.zipBytes)}</span>
-          )}
-        </p>
+            <>
+              <span aria-hidden>·</span>
+              <span className="text-destructive">{row.lastError.reason}</span>
+            </>
+          ) : null}
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {row.retryable ? (
@@ -300,7 +343,7 @@ function ReportRow({
           )}
         </Button>
       </div>
-    </div>
+    </li>
   );
 }
 
@@ -313,7 +356,7 @@ function ReportRows({
   contactSupport,
 }: ReturnType<typeof useReportHistory>) {
   return (
-    <div className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-2">
       {reports.map((row) => (
         <ReportRow
           key={row.id}
@@ -325,7 +368,7 @@ function ReportRows({
           onDelete={remove}
         />
       ))}
-    </div>
+    </ul>
   );
 }
 

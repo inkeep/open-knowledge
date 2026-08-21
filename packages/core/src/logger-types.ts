@@ -270,6 +270,14 @@ export interface OkBugReportListRow {
   /** State-coupled: present only when `state === 'upload-failed'`. */
   lastError?: { reason: string; at: string };
   attemptsCount: number;
+  /**
+   * The sidecar's scrubbed copy of the reporter's composed note, whole rather
+   * than an excerpt: the renderer derives the row title from its first useful
+   * line, and a history retry resends it as `metadata.note`. Absent whenever
+   * the reporter wrote nothing and no crash context was appended, which is the
+   * common case, and also for CLI bundles, unreadable sidecars, and reports
+   * generated before the note was persisted.
+   */
   note?: string;
   /** Main-derived absolute zip path; re-validated for containment on use. */
   zipPath: string;

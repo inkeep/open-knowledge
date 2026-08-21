@@ -75,6 +75,12 @@ interface CreatedReport {
  * Crash details ride inside the note string so they reach the bundle's note
  * file, the upload metadata, and the mailto fallback body through the existing
  * IPC contract. Team-facing diagnostic text, deliberately not localized.
+ *
+ * Line one is no longer team-facing only: it is what the reporter reads back as
+ * their own history row title, and what the intake names the ticket. Context
+ * lines are appended rather than prepended so a typed note keeps that line, and
+ * any originator that leads with context owes a first line naming the incident
+ * rather than the machine that reported it.
  */
 function composeNote(userNote: string, contextLines: string[] | undefined): string | undefined {
   const trimmed = userNote.trim();

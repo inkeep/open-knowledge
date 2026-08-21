@@ -10617,6 +10617,11 @@ msgstr "Relatar um erro"
 msgid "Report a bug…"
 msgstr "Relatar um erro…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "Relatório de {0}"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13873,6 +13878,10 @@ msgstr "Não foi possível resolver o arquivo {identity}. Ir para a referência.
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "Não foi possível resolver a imagem {identity}. Ir para a referência."
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "Relatório sem título"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

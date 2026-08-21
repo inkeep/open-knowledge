@@ -239,6 +239,9 @@ describe('BugReportHistoryList', () => {
 
     render(<BugReportHistoryList />);
     expect(await screen.findByText('Unknown')).toBeDefined();
+    // A sidecar that parsed but carries a state this build does not recognize
+    // still has a real project on it, so the fallback must not give up on it.
+    expect(screen.getByText('Report from demo')).toBeDefined();
   });
 
   test('Retry resends the existing bundle with reconstructed send metadata', async () => {
@@ -482,6 +485,232 @@ describe('BugReportHistoryList', () => {
   });
 });
 
+describe('report row titles', () => {
+  test('a row carrying a note is titled by the note first useful line', async () => {
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'n1-bugreport.zip',
+          note: 'The editor froze after I pasted a large table\nSteps: paste, wait',
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+
+    expect(await screen.findByText('The editor froze after I pasted a large table')).toBeDefined();
+    expect(screen.queryByText(/Steps: paste, wait/)).toBeNull();
+  });
+
+  test('a titled row still drafts support mail with a title-free subject', async () => {
+    const log = installBridge({
+      reports: [
+        makeRow({
+          id: 'n2-bugreport.zip',
+          note: 'Autosave stopped writing to disk',
+          state: 'sent',
+          reference: 'OK-54',
+          zipDeleted: true,
+          zipExists: false,
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+    expect(await screen.findByText('Autosave stopped writing to disk')).toBeDefined();
+
+    await userEvent.click(await screen.findByLabelText('Email support about this report'));
+
+    // The reference is the correlation key and support already holds the bundle,
+    // whose note.txt carries the note in full. A title in the subject would add
+    // length without adding anything the recipient lacks.
+    expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=Bug%20report%20OK-54']);
+  });
+});
+
+describe('report row list semantics', () => {
+  test('the reports render as a list, each item leading with its title', async () => {
+    installBridge({
+      reports: [
+        makeRow({ id: 's1-bugreport.zip', note: 'Sync hangs on a large vault' }),
+        makeRow({ id: 's2-bugreport.zip', note: 'Paste of a wide table locks the editor' }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+
+    const items = await screen.findAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    // The title has to come first inside the item: a screen reader walking the
+    // list reads the row's own content in DOM order.
+    expect(items[0]?.textContent?.startsWith('Sync hangs on a large vault')).toBe(true);
+    expect(items[1]?.textContent?.startsWith('Paste of a wide table locks the editor')).toBe(true);
+  });
+});
+
+describe('report row title fallbacks', () => {
+  test('a note-less row from a project is titled by the project', async () => {
+    installBridge({ reports: [makeRow({ id: 'f1-bugreport.zip' })] });
+
+    render(<BugReportHistoryList />);
+
+    expect(await screen.findByText('Report from demo')).toBeDefined();
+  });
+
+  test('a row with no project and no note is untitled, before and after a retry synthesizes a sidecar', async () => {
+    // An `ok bug-report` bundle: no sidecar, so main reports an unknown level
+    // and a system-wide claim nobody actually made.
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'f2-bugreport.zip',
+          projectSlug: null,
+          systemWide: true,
+          bundleLevel: 'unknown',
+        }),
+      ],
+    });
+
+    const { unmount } = render(<BugReportHistoryList />);
+    expect(await screen.findByText('Untitled report')).toBeDefined();
+    unmount();
+
+    // After one Retry, main has written a stand-in sidecar asserting a standard
+    // level and a system-wide report. Nothing on the row got truer, so the
+    // title must not start claiming more than it did a moment ago.
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'f2-bugreport.zip',
+          state: 'sent',
+          reference: 'OK-12',
+          projectSlug: null,
+          systemWide: true,
+          bundleLevel: 'standard',
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+    expect(await screen.findByText('Untitled report')).toBeDefined();
+  });
+
+  test('a project slug outranks a system-wide claim on the same row', async () => {
+    // `toListRow` reads `systemWide` and `projectSlug` off independently
+    // optional fields of a loose on-disk schema, so a partially written or
+    // hand-edited sidecar can assert both. Only the slug requires a project to
+    // have actually been recorded, which is why it is the one the title trusts.
+    installBridge({
+      reports: [makeRow({ id: 'f6-bugreport.zip', projectSlug: 'demo', systemWide: true })],
+    });
+
+    render(<BugReportHistoryList />);
+
+    expect(await screen.findByText('Report from demo')).toBeDefined();
+  });
+
+  test('a row whose send is in flight is still titled by its own note', async () => {
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'f3-bugreport.zip',
+          state: 'uploading',
+          note: 'Search returns nothing after a rename',
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+
+    // The badge carries the send state; the title carries the incident.
+    expect(await screen.findByText('Search returns nothing after a rename')).toBeDefined();
+    expect(screen.getByText('Sending')).toBeDefined();
+  });
+
+  test('the title exposes its full string as a tooltip and resolves its own direction', async () => {
+    const note =
+      'The editor froze after I pasted a large table and stayed frozen for about thirty seconds';
+    installBridge({ reports: [makeRow({ id: 'f4-bugreport.zip', note })] });
+
+    render(<BugReportHistoryList />);
+
+    // A title too long for the row truncates in CSS, so the tooltip is the only
+    // way the rest of it stays reachable. `dir="auto"` has to sit on the element
+    // that truncates: the ellipsis follows the containing block's direction, so
+    // without it a right-to-left note loses its opening words instead of its
+    // closing ones.
+    const title = await screen.findByText(note);
+    expect(title.getAttribute('title')).toBe(note);
+    expect(title.getAttribute('dir')).toBe('auto');
+  });
+
+  test('a fallback title carries a tooltip too', async () => {
+    installBridge({ reports: [makeRow({ id: 'f5-bugreport.zip' })] });
+
+    render(<BugReportHistoryList />);
+
+    expect((await screen.findByText('Report from demo')).getAttribute('title')).toBe(
+      'Report from demo',
+    );
+  });
+});
+
+describe('report row metadata line', () => {
+  test('a sent row with a reference still shows its bundle size', async () => {
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'm1-bugreport.zip',
+          state: 'sent',
+          reference: 'OK-42',
+          zipDeleted: true,
+          zipExists: false,
+          retryable: false,
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+
+    // Size used to be the fallback arm of a mutually exclusive ternary, so a row
+    // that had a reference to show never showed how big its bundle was.
+    expect(await screen.findByText('4 KB')).toBeDefined();
+    expect(screen.getByText('OK-42')).toBeDefined();
+  });
+
+  test('an upload-failed row shows its size alongside the failure reason', async () => {
+    installBridge({
+      reports: [
+        makeRow({
+          id: 'm2-bugreport.zip',
+          state: 'upload-failed',
+          lastError: { reason: 'complete-rejected: 503', at: 'x' },
+        }),
+      ],
+    });
+
+    render(<BugReportHistoryList />);
+
+    expect(await screen.findByText('4 KB')).toBeDefined();
+    expect(screen.getByText('complete-rejected: 503')).toBeDefined();
+  });
+
+  test('a row with no bundle size on record shows no size segment', async () => {
+    installBridge({
+      reports: [makeRow({ id: 'm3-bugreport.zip', zipBytes: 0, zipExists: false })],
+    });
+
+    render(<BugReportHistoryList />);
+
+    // `0 B` would be a claim about a file nobody has.
+    await screen.findByText('Report from demo');
+    expect(screen.queryByText('0 B')).toBeNull();
+  });
+});
+
 describe('BugReportPreviousReports', () => {
   test('renders nothing when there is no history to disclose', async () => {
     const log = installBridge({ reports: [] });
@@ -533,6 +762,21 @@ describe('BugReportPreviousReports', () => {
     await userEvent.click(await screen.findByLabelText('Email support about this report'));
 
     expect(log.opened).toEqual(['mailto:support@inkeep.com?subject=Bug%20report%20OK-31']);
+  });
+
+  test('the disclosure renders the same titled list rows as the standalone pane', async () => {
+    installBridge({
+      reports: [makeRow({ id: 'p1-bugreport.zip', note: 'Search returns stale results' })],
+    });
+
+    render(<BugReportPreviousReports />);
+    await userEvent.click(await screen.findByRole('button', { name: /Previous reports/ }));
+
+    // The two mounts share one row component and differ only in available
+    // width, so the disclosure gets the list semantics and the title ordering.
+    const items = await screen.findAllByRole('listitem');
+    expect(items).toHaveLength(1);
+    expect(items[0]?.textContent?.startsWith('Search returns stale results')).toBe(true);
   });
 
   test('renders nothing when the bridge is absent', async () => {

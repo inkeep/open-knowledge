@@ -2614,6 +2614,233 @@ describe('bug-report sidecar wiring — create writes the record, send tracks st
     expect(sidecar?.zipBytes).toBe(result.zipSizeBytes);
   });
 
+  test('a create with a note persists that note in the sidecar', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: 'The editor froze after I pasted a large table',
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.note).toBe('The editor froze after I pasted a large table');
+  });
+
+  test('a multi-line note is persisted whole, matching the copy inside the zip', async () => {
+    const { dir, createDeps, zipPath } = makeSidecarRig();
+    const note = 'Sync hung on a large repo\n\nSteps:\n1. open the project\n2. wait';
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note,
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.note).toBe(note);
+    expect(readZipEntry(zipPath, 'note.txt')).toContain(note);
+  });
+
+  test('a create with no note writes a sidecar carrying no note key', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
+
+  test('an empty note is stored as no note rather than an empty one', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    // The compose dialog collapses an untouched textarea to `undefined`, but
+    // the IPC boundary accepts `''` from any renderer, and an empty stored note
+    // would read as "has a note" to the list.
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: '',
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
+
+  test('a sidecar-persist failure never turns a successful create into a failure', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    // Every other test in this block passes the real recordGenerated, which
+    // swallows its own write errors, so nothing otherwise enters the guard that
+    // exists for this case: the zip is already on disk, and reporting the
+    // create as failed would send the user back to make a duplicate.
+    const result = await handleBugReportCreate(
+      { ...createDeps, onReportGenerated: () => Promise.reject(new Error('disk full')) },
+      { kind: 'create', level: 'standard', note: 'the editor froze' },
+    );
+
+    expect(result.ok).toBe(true);
+    // No sidecar landed, and that is the accepted cost — the report itself did.
+    expect(await readReportSidecar(sidecarPathForId(dir, REPORT_ID))).toBeNull();
+  });
+
+  test('a whitespace-only note is stored as no note', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: '   \n\t  ',
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    // The row would title itself by the fallback either way, but a stored blank
+    // still reads as "has a note", so a retry would send whitespace to the
+    // intake as the reporter's own words.
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
+
+  test('a note of only control characters is stored as no note', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: '\u0001\u0002\u0007',
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    // The renderer maps a control character to a space before deciding a line
+    // is empty, so it derives no title from this. If the writer disagreed and
+    // stored it, the row would fall back while the sidecar claimed a note and
+    // a retry would put the controls on the wire.
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
+
+  test('a note of only invisible characters is stored as no note', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: '\u200B\uFEFF\u202E',
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    // trim() does not see zero-width or bidi-control characters, so this is the
+    // case that made the writer and the renderer disagree: the row derived no
+    // title while the sidecar still claimed to hold a note, and a retry put it
+    // on the wire as the reporter's words.
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar).not.toBeNull();
+    expect(sidecar && 'note' in sidecar).toBe(false);
+  });
+
+  test('a clamp landing on a complete astral pair keeps the pair whole', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+    // Mirror of the orphaned-high-surrogate case: sized so the emoji ends
+    // exactly ON the cut rather than straddling it, which leaves a LOW
+    // surrogate as the final code unit. Widening the guard past 0xdbff would
+    // amputate this complete pair.
+    const filler = 'x'.repeat(32_768 - '://[REDACTED]@'.length - 2);
+    const note = `://a:b@${filler}\u{1F600}${'y'.repeat(7)}`;
+    expect(note.length).toBe(32_768);
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note,
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const stored = (await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.note;
+    expect(stored?.length).toBe(32_768);
+    expect(stored?.endsWith('\u{1F600}')).toBe(true);
+  });
+
+  test('a secret typed into the note is redacted in the persisted sidecar', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+    const secret = 'sk-ant-api03-abcdefghijklmnopqrstuvwx';
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note: `auth broke with ${secret} in the header`,
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.note).toBe('auth broke with [REDACTED-ANTHROPIC] in the header');
+    // Nothing on the durable path may carry the raw secret, YAML included.
+    const raw = readFileSync(sidecarPathForId(dir, REPORT_ID), 'utf-8');
+    expect(raw).not.toContain(secret);
+  });
+
+  test('a note that redaction lengthens but keeps under the ceiling is stored in full', async () => {
+    const { dir, createDeps } = makeSidecarRig();
+    // `://a:b@` expands to `://[REDACTED]@`, so the stored copy is LONGER than
+    // what create accepted — proof the clamp does not fire early.
+    const note = `db at postgres://a:b@localhost timed out`;
+
+    const result = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note,
+    });
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+
+    const sidecar = await readReportSidecar(sidecarPathForId(dir, REPORT_ID));
+    expect(sidecar?.note).toBe('db at postgres://[REDACTED]@localhost timed out');
+    expect(sidecar?.note?.length).toBeGreaterThan(note.length);
+  });
+
+  test('a ceiling-length note that redaction lengthens stays sendable on a later retry', async () => {
+    const { dir, store, createDeps, zipPath } = makeSidecarRig();
+    // Sized so the scrub pushes the note past the ceiling and the cut lands
+    // between the halves of an astral character: the credential grows by seven
+    // code units, and the emoji straddles index MAX_NOTE_LENGTH - 1.
+    const filler = 'x'.repeat(32_768 - '://a:b@'.length - 2 - 6);
+    const note = `://a:b@${filler}\u{1F600}${'y'.repeat(6)}`;
+    // Exactly at the ceiling create enforces, so create still accepts it.
+    expect(note.length).toBe(32_768);
+
+    const created = await handleBugReportCreate(createDeps, {
+      kind: 'create',
+      level: 'standard',
+      note,
+    });
+    if (!created.ok) throw new Error(`expected ok, got: ${created.error}`);
+
+    // Clamped at the ceiling with the orphaned high surrogate dropped, so the
+    // stored copy ends on the filler rather than half an emoji.
+    const stored = (await readReportSidecar(sidecarPathForId(dir, REPORT_ID)))?.note;
+    expect(stored).toBe(`://[REDACTED]@${filler}`);
+
+    // The property that matters: send re-validates the note against the same
+    // ceiling, so an over-long stored copy would make every retry unsendable.
+    const stub = await startIntakeStub();
+    const sent = await handleBugReportSend(
+      { ...makeSendDeps(stub.url, dir), sidecar: store.sendHooks },
+      {
+        kind: 'send',
+        zipPath,
+        metadata: { ...SEND_METADATA, note: stored },
+      },
+    );
+
+    expect(sent).toEqual({ ok: true, reference: 'OK-1042' });
+  });
+
   test('a successful send flips the sidecar to sent + reference and reclaims the zip', async () => {
     const { dir, store, createDeps, zipPath } = makeSidecarRig();
     await handleBugReportCreate(createDeps, { kind: 'create', level: 'standard' });

@@ -10621,6 +10621,11 @@ msgstr "بگ رپورٹ کریں"
 msgid "Report a bug…"
 msgstr "بگ رپورٹ کریں…"
 
+#. placeholder {0}: row.projectSlug
+#: src/components/BugReportHistory.tsx
+msgid "Report from {0}"
+msgstr "{0} سے رپورٹ"
+
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Report this error"
@@ -13877,6 +13882,10 @@ msgstr "ناقابلِ حل فائل {identity}۔ حوالہ پر جائیں۔"
 #: src/components/LinksPanel.tsx
 msgid "Unresolvable image {identity}. Go to reference."
 msgstr "ناقابلِ حل تصویر {identity}۔ حوالہ پر جائیں۔"
+
+#: src/components/BugReportHistory.tsx
+msgid "Untitled report"
+msgstr "بلا عنوان رپورٹ"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

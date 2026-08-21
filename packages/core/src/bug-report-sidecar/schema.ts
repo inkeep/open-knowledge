@@ -165,7 +165,7 @@ export const ReportSidecarSchema = z.looseObject({
   lastError: LastErrorSchema.optional(),
   /** Bounded attempt history (capped by the writer). */
   attempts: z.array(AttemptSchema).optional(),
-  /** Short redacted note carried for list context. */
+  /** Redacted note carried for list context. */
   note: z.string().optional(),
 });
 

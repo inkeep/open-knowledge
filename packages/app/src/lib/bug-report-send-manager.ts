@@ -98,7 +98,9 @@ export interface CreatedBugReport {
 /**
  * The two surfaces that start a send hold different things. The dialog holds a
  * freshly created bundle plus the note it composed; history holds a persisted
- * row with no note and a bundle level that may be unreadable.
+ * row whose note is the sidecar's copy of that same text — absent for reports
+ * generated before it was persisted — and a bundle level that may be
+ * unreadable.
  */
 export type BugReportSendRequest =
   | {
@@ -153,6 +155,10 @@ function toSendInput(request: BugReportSendRequest): SendInput {
         level: row.bundleLevel === 'unknown' ? 'standard' : row.bundleLevel,
         systemWide: row.systemWide,
         projectSlug: row.projectSlug,
+        // The sidecar's copy, so a retry puts the same words on the wire the
+        // original send did. Absence is data: a pre-change row or a CLI bundle
+        // has no note and retries without one rather than with a stand-in.
+        ...(row.note !== undefined ? { note: row.note } : {}),
       },
     };
   }
