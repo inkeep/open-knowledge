@@ -46,7 +46,7 @@
 import { i18n } from '@lingui/core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useTheme } from 'next-themes';
-import { useId, useState } from 'react';
+import { type ComponentType, type ReactNode, useId, useState, useSyncExternalStore } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { OkIcon } from '@/components/icons/ok';
 import { RowDisclosure } from '@/components/RowDisclosure';
@@ -63,6 +63,15 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { useConfigContextOptional } from '@/lib/config-context';
 import type { OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
@@ -106,6 +115,56 @@ export function connectableEditors(
 }
 
 /**
+ * The two shells this screen renders in. ONLY the shell differs — the heading,
+ * every row of the form, and the primary action are authored once below and
+ * mount into whichever is selected, so the two entry points cannot drift apart.
+ *
+ * first-run is the unsolicited showing, and the only one that earns a surface
+ * the user cannot wave away: Radix preventDefaults outside-pointer dismissal on
+ * an alert dialog and moves initial focus onto its cancel element, which is why
+ * the footer keeps an `AlertDialogCancel` in that mode specifically.
+ *
+ * Every other entry point is the user asking for this screen, and gets the
+ * ordinary dialog treatment — close X, click-outside, Escape — because a screen
+ * you deliberately opened should close the way every other one does. That shell
+ * is stock `Dialog`, with no per-call-site deviation: the whole point is that it
+ * behaves like every other dialog in the app.
+ */
+interface ConsentSurface {
+  Root: ComponentType<{
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    children: ReactNode;
+  }>;
+  Content: ComponentType<{ className?: string; 'aria-busy'?: boolean; children: ReactNode }>;
+  Header: ComponentType<{ children: ReactNode }>;
+  Title: ComponentType<{ className?: string; children: ReactNode }>;
+  Description: ComponentType<{ className?: string; children: ReactNode }>;
+  Body: ComponentType<{ className?: string; children: ReactNode }>;
+  Footer: ComponentType<{ className?: string; children: ReactNode }>;
+}
+
+const FIRST_RUN_SURFACE: ConsentSurface = {
+  Root: AlertDialog,
+  Content: AlertDialogContent,
+  Header: AlertDialogHeader,
+  Title: AlertDialogTitle,
+  Description: AlertDialogDescription,
+  Body: AlertDialogBody,
+  Footer: AlertDialogFooter,
+};
+
+const DISMISSIBLE_SURFACE: ConsentSurface = {
+  Root: Dialog,
+  Content: DialogContent,
+  Header: DialogHeader,
+  Title: DialogTitle,
+  Description: DialogDescription,
+  Body: DialogBody,
+  Footer: DialogFooter,
+};
+
+/**
  * Test-injectable store + toast — production consumers use the default
  * exports. Exposed as props so the tests don't need to reset module
  * singletons OR mock the global `sonner` import.
@@ -144,13 +203,44 @@ export function McpConsentDialogBody({
   toast = defaultToast,
   payload,
 }: McpConsentDialogBodyProps = {}) {
-  // In production the lazy wrapper only mounts us when the snapshot is non-
-  // null; we still read from the store here so React subscribes (and we
-  // unmount cleanly when clearCurrent fires on success). The `payload` prop
-  // override is test-only.
-  const snapshot = payload ?? store.getSnapshot();
+  // Subscribed, not a bare read. The lazy wrapper above subscribes with a
+  // derived boolean (`getSnapshot() !== null`), so a payload REPLACEMENT —
+  // non-null to non-null — bails out of its `Object.is` check and never
+  // re-renders. That was harmless while both payloads rendered the same shell;
+  // now that `origin` picks the shell, a 'reconfigure' arriving over an open
+  // first-run dialog would leave the locked one on screen. Reachable on macOS:
+  // the native File menu is OS-level and stays clickable behind a web modal.
+  // The `payload` prop override is test-only and skips the subscription.
+  const subscribed = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
+  const snapshot = payload ?? subscribed;
+
+  /**
+   * A replacement must REMOUNT the form, not reconcile it.
+   *
+   * Every piece of the form's answer lives in `useState` — `busy`, and the three
+   * checkboxes. Without a changing key React keeps all of it across a swap, so
+   * the incoming request inherits the outgoing one's state. The acute case is
+   * `busy`: a confirm in flight when a reconfigure arrives hands the user a
+   * freshly-opened dialog that is entirely disabled with no exit, and then
+   * unmounts it under them when the original confirm resolves and clears the
+   * store. Carrying checkbox answers across two different requests is wrong on
+   * its own — a new showing asks the question again.
+   *
+   * Counted rather than keyed off payload contents: two successive reconfigures
+   * can be structurally identical, and a content-derived key would collide on
+   * exactly the repeat case. This is React's documented "adjust state when a
+   * prop changes" shape — the extra render happens before children commit, so
+   * the stale form never paints.
+   */
+  const [seenSnapshot, setSeenSnapshot] = useState(snapshot);
+  const [requestKey, setRequestKey] = useState(0);
+  if (snapshot !== seenSnapshot) {
+    setSeenSnapshot(snapshot);
+    if (snapshot !== null) setRequestKey((n) => n + 1);
+  }
+
   if (!snapshot) return null;
-  return <McpConsentDialogForm payload={snapshot} store={store} toast={toast} />;
+  return <McpConsentDialogForm key={requestKey} payload={snapshot} store={store} toast={toast} />;
 }
 
 interface McpConsentDialogFormProps {
@@ -261,6 +351,30 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
     }
   }
 
+  // first-run is the only unsolicited showing; everything else is the user
+  // asking for this screen. See FIRST_RUN_SURFACE.
+  const firstRun = payload.origin === 'first-run';
+  const Surface = firstRun ? FIRST_RUN_SURFACE : DISMISSIBLE_SURFACE;
+
+  /**
+   * Leaving a screen you opened yourself must not rewrite what you already
+   * decided. `skip()` writes `{ configured: false, skippedAt }` unconditionally,
+   * so routing a reopen's exits there would downgrade a finished setup's
+   * `{ configured: true, configuredAt, editors }` marker to a skip and lose the
+   * real `configuredAt` — a control labelled Cancel writing state is the
+   * opposite of what the label promises. `dismiss()` closes the dialog and
+   * touches nothing, which is the whole meaning of cancelling here: the marker's
+   * only job is the first-launch gate, and a reopen cannot change that answer.
+   *
+   * No toast either. Skip's "configure this in Settings" pointer exists because
+   * a first-run user may never find the surface again; someone who just opened
+   * it from the palette or the menu bar knows exactly where it lives, and a
+   * toast after Cancel would imply something was recorded.
+   */
+  function onDismiss(): void {
+    store.dismiss();
+  }
+
   async function onSkip() {
     setBusy(true);
     const result = await store.skip();
@@ -275,16 +389,20 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   }
 
   function onOpenChange(open: boolean) {
-    // Two routes in: ESC, and the footer's Skip button (an `AlertDialogCancel`,
-    // which closes rather than calling `onSkip` itself). Outside-click is not one
-    // of them — `AlertDialog` preventDefaults it — and the content renders no X.
-    // Either way no decision was made, so this is a skip (marker only), not a
-    // decline.
-    if (!open && !busy) void onSkip();
+    // Every close route lands here, and none of them made a decision — but the
+    // two shells record that differently. First run (ESC, the footer's cancel
+    // element) writes the skip marker, which is what stops the dialog firing
+    // again next launch. A reopen (close X, outside-click, ESC) records nothing
+    // at all; see onDismiss. The dismissible footer's Cancel calls `onDismiss`
+    // directly instead — it is a plain Button, so nothing closes the dialog out
+    // from under it and this handler never sees that click.
+    if (open || busy) return;
+    if (firstRun) void onSkip();
+    else onDismiss();
   }
 
   return (
-    <AlertDialog open onOpenChange={onOpenChange}>
+    <Surface.Root open onOpenChange={onOpenChange}>
       {/*
        * Radix Dialog auto-wires `aria-labelledby` / `aria-describedby` on
        * `DialogContent` from `DialogTitle` / `DialogDescription` via context
@@ -295,9 +413,20 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
        * screen readers to either announce the label twice or drop the
        * association.
        */}
-      <AlertDialogContent className="sm:max-w-2xl md:max-w-3xl" aria-busy={busy}>
-        <AlertDialogHeader>
-          <AlertDialogTitle className="flex flex-col gap-8 text-2xl tracking-tighter">
+      <Surface.Content
+        className={cn(
+          'sm:max-w-2xl md:max-w-3xl',
+          // Every control in the form carries `disabled={busy}`; the close X
+          // belongs to DialogContent and cannot, so it would sit fully lit while
+          // `onOpenChange` silently no-ops on it. Match the others rather than
+          // leave the one control that lies about its state.
+          busy &&
+            '[&_[data-slot=dialog-close]]:pointer-events-none [&_[data-slot=dialog-close]]:opacity-50',
+        )}
+        aria-busy={busy}
+      >
+        <Surface.Header>
+          <Surface.Title className="flex flex-col gap-8 text-2xl tracking-tighter">
             {/* Brand mark, not an information-bearing image — the heading
                 below already names OpenKnowledge, so announcing the logo too
                 would just repeat it. `aria-hidden` overrides the icon's own
@@ -311,13 +440,13 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               </span>
               <Trans>Let's get set up.</Trans>
             </span>
-          </AlertDialogTitle>
-          <AlertDialogDescription className="sr-only">
+          </Surface.Title>
+          <Surface.Description className="sr-only">
             <Trans>Customize your OpenKnowledge experience.</Trans>
-          </AlertDialogDescription>
-        </AlertDialogHeader>
+          </Surface.Description>
+        </Surface.Header>
 
-        <AlertDialogBody className="flex flex-col gap-6 min-h-0">
+        <Surface.Body className="flex flex-col gap-6 min-h-0">
           {/*
            * Shell-PATH consent section — rendered first inside the scrollable
            * DialogBody, above the AI-tools row. Distinct from the AI-tools
@@ -633,39 +762,61 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               aria-label={t`Choose your theme`}
             />
           </div>
-        </AlertDialogBody>
-        <AlertDialogFooter className="sm:justify-between">
+        </Surface.Body>
+        <Surface.Footer className="sm:justify-between">
           {/* Skip and an all-unchecked Finish are NOT the same outcome, so both
             are offered: skip writes the marker and nothing else, while Finish
             records an explicit decline for every offered target. Skip stays
             visually quiet so it reads as "not now" rather than "no". ESC routes
             here too. */}
-          {/* An `AlertDialogCancel`, not a plain Button: Radix moves initial focus
-            onto the cancel element and suppresses its own auto-focus when there
-            isn't one, which would leave focus stranded on <body> with the trap
-            inert (see the header of `alert-dialog.tsx`). Skip IS the cancel
-            action, so the semantic element is also the right one.
+          {/* The one element that genuinely differs per shell, for two reasons.
+            Semantics: on first run this IS the cancel action, and Radix moves
+            initial focus onto `AlertDialogCancel` — with no such element in the
+            tree it suppresses its own auto-focus and strands focus on <body>
+            with the trap inert (see the header of `alert-dialog.tsx`). Wording:
+            "Skip for now" answers a question the user did not ask for, while a
+            screen they deliberately opened is one they cancel out of.
 
-            `variant` goes on the component rather than an inner `<Button asChild>`:
-            the component already renders a Button (defaulting to `outline`) around
-            the Radix Cancel, so wrapping one adds a third Slot and merges the
-            outline classes onto the final element. It also applies `font-mono
-            uppercase` itself. `-ms-2.5` offsets the size default's `px-2.5` so the
-            focus ring keeps even padding while the label stays on the content edge.
+            `variant` goes on `AlertDialogCancel` rather than an inner `<Button
+            asChild>`: it already renders a Button (defaulting to `outline`)
+            around the Radix Cancel, so wrapping one adds a third Slot and merges
+            the outline classes onto the final element. It also applies
+            `font-mono uppercase` itself, which the plain Button has to restate.
+            `-ms-2.5` offsets the size default's `px-2.5` so the focus ring keeps
+            even padding while the label stays on the content edge.
 
-            No `onClick` here on purpose: Cancel closes the dialog, which fires
-            `onOpenChange(false)`, which is already the skip path. Calling
-            `onSkip` from both ran it twice per click. */}
-          <AlertDialogCancel
-            variant="link-muted"
-            disabled={busy}
-            className="-ms-2.5 tracking-wide"
-            data-testid="mcp-consent-skip"
-          >
-            <Trans comment="Secondary footer action that dismisses first-launch setup without writing any config">
-              Skip for now
-            </Trans>
-          </AlertDialogCancel>
+            No `onClick` on the Cancel on purpose: it closes the dialog, which
+            fires `onOpenChange(false)`, which is already the skip path — calling
+            `onSkip` from both ran it twice per click. The plain Button is the
+            mirror image: nothing closes the dialog for it, so it must call
+            `onDismiss` itself. */}
+          {firstRun ? (
+            <AlertDialogCancel
+              variant="link-muted"
+              disabled={busy}
+              className="-ms-2.5 tracking-wide"
+              data-testid="mcp-consent-skip"
+            >
+              <Trans comment="Secondary footer action that dismisses first-launch setup without writing any config">
+                Skip for now
+              </Trans>
+            </AlertDialogCancel>
+          ) : (
+            <Button
+              variant="link-muted"
+              disabled={busy}
+              className="-ms-2.5 tracking-wide font-mono uppercase"
+              data-testid="mcp-consent-skip"
+              onClick={onDismiss}
+            >
+              {/* No `comment` here: this msgid is the shared "Cancel" that ~20
+                  other components resolve to, and an extracted note would attach
+                  setup-screen guidance to every one of their catalog entries.
+                  The "Skip for now" comment above is safe — that msgid is unique
+                  to this file. */}
+              <Trans>Cancel</Trans>
+            </Button>
+          )}
           {/* The default variant already carries `font-mono uppercase`. */}
           <Button onClick={() => void onContinue()} disabled={busy} data-testid="mcp-consent-add">
             {busy ? (
@@ -676,9 +827,9 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
               </Trans>
             )}
           </Button>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        </Surface.Footer>
+      </Surface.Content>
+    </Surface.Root>
   );
 }
 

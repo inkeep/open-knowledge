@@ -291,6 +291,39 @@ describe('AlertDialog surface classes', () => {
     ]);
   });
 
+  test('renders no drag strip off the desktop host', () => {
+    renderAlert();
+
+    expect(screen.queryByTestId('alert-dialog-drag-strip')).toBeNull();
+  });
+
+  test('restores the title-bar drag band, between the overlay and the dialog', () => {
+    vi.stubGlobal('okDesktop', {});
+    try {
+      renderAlert();
+
+      const strip = screen.getByTestId('alert-dialog-drag-strip');
+      const overlay = document.querySelector('[data-slot="alert-dialog-overlay"]');
+      const content = screen.getByRole('alertdialog');
+
+      expectVisualClassTokens(strip.getAttribute('class'), [
+        '[-webkit-app-region:drag]',
+        'pointer-events-none',
+        'z-50',
+      ]);
+      // The ordering IS the contract: after the overlay so it beats the no-drag
+      // blanket, before the content so a viewport-tall dialog's own close X and
+      // heading stay clickable rather than becoming drag region.
+      expect(overlay?.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(content.compareDocumentPosition(strip)).toBe(Node.DOCUMENT_POSITION_PRECEDING);
+      // Opts into the globals.css rule that suspends drag under an open popper.
+      expect(strip.hasAttribute('data-electron-drag')).toBe(true);
+      expect(strip.getAttribute('aria-hidden')).toBe('true');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('caller className composes with the base classes rather than replacing them', () => {
     render(
       <AlertDialog open>

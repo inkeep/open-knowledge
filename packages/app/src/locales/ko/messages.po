@@ -2280,6 +2280,7 @@ msgstr "이 경로는 공유할 수 없습니다."
 #: src/components/FrontmatterRow.tsx
 #: src/components/ImportSkillForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/MountStalledAffordance.tsx
 #: src/components/NewItemDialog.tsx
 #: src/components/NewSkillDialog.tsx

@@ -67,6 +67,7 @@ function makeBridge(
 }
 
 const sampleShowPayload: OkMcpWiringShowPayload = {
+  origin: 'first-run',
   detectedEditors: [
     {
       id: 'claude',

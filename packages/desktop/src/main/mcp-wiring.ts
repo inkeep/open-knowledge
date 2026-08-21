@@ -1148,6 +1148,10 @@ export function runMcpWiringOnFirstLaunch(opts: RunMcpWiringFirstLaunchOpts): Ru
   const dispatchShowAndBind = (target: McpWiringDispatchTarget): boolean => {
     try {
       sendToRenderer(target, 'ok:mcp-wiring:show', {
+        // `forceShow` is set by every user-initiated entry point and only by
+        // those, so it is exactly the first-run/reconfigure distinction the
+        // dialog needs to decide whether it may be dismissed.
+        origin: forceShow ? 'reconfigure' : 'first-run',
         detectedEditors: detections,
         pathInstall: pathDescriptor,
         globalSkills: skillDescriptors,

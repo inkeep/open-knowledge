@@ -170,6 +170,10 @@ export interface EventChannels {
    */
   'ok:mcp-wiring:show': {
     payload: {
+      /** `'first-run'` only when the app raised this itself; every user-initiated
+       *  entry point reports `'reconfigure'`. Drives whether the dialog renders
+       *  as a locked alert or a dismissible one. */
+      origin: 'first-run' | 'reconfigure';
       detectedEditors: readonly McpWiringEditorDetection[];
       pathInstall: McpWiringPathInstallDescriptor;
       globalSkills: readonly McpWiringGlobalSkillDescriptor[];

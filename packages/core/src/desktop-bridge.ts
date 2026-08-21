@@ -533,6 +533,16 @@ export type OkMcpWiringEditorId = EditorId;
  * would edit.
  */
 export interface OkMcpWiringShowPayload {
+  /**
+   * Which of the two situations this showing is. `'first-run'` is the
+   * unsolicited one — the app raised the dialog by itself because no decision
+   * has ever been recorded — and it is the only one that warrants a dialog the
+   * user cannot wave away. Every other entry point (command palette, in-app
+   * menu bar, native File menu, the Claude readiness banner's "Connect tools")
+   * is the user asking for this screen, and reports `'reconfigure'`, which the
+   * dialog renders as an ordinary dismissible surface.
+   */
+  readonly origin: 'first-run' | 'reconfigure';
   readonly detectedEditors: readonly {
     readonly id: OkMcpWiringEditorId;
     readonly label: string;

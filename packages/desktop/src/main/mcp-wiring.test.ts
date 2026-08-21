@@ -884,6 +884,7 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
       {
         channel: 'ok:mcp-wiring:show',
         payload: {
+          origin: 'first-run',
           detectedEditors: [
             {
               id: 'claude',
@@ -1083,6 +1084,32 @@ describe('runMcpWiringOnFirstLaunch — mid-session immediate dispatch', () => {
       configured: true,
       editors: ['claude'],
     });
+  });
+
+  test('forceShow marks the payload as user-initiated, the boot path as first-run', () => {
+    // The renderer decides whether the dialog may be dismissed off this single
+    // field, and `forceShow` is set by every user-initiated entry point and only
+    // by those — so the two must not drift.
+    const forced = fakeWebContents(31);
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({
+        ipcMain: stubIpcMain(),
+        fs: memoryFs(),
+        forceShow: true,
+        immediateDispatchTarget: forced,
+      }),
+    );
+    expect(forced.sent[0]?.payload).toMatchObject({ origin: 'reconfigure' });
+
+    const booted = fakeWebContents(32);
+    runMcpWiringOnFirstLaunch(
+      buildWiringOpts({
+        ipcMain: stubIpcMain(),
+        fs: memoryFs(),
+        immediateDispatchTarget: booted,
+      }),
+    );
+    expect(booted.sent[0]?.payload).toMatchObject({ origin: 'first-run' });
   });
 
   test('no immediate target preserves the boot-path mount-ack behavior', () => {

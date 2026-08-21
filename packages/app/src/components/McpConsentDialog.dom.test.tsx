@@ -1,5 +1,5 @@
 import * as actualLinguiMacro from '@lingui/react/macro';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -40,6 +40,7 @@ const DISCOVERY_SKILL = {
 };
 
 const payload: OkMcpWiringShowPayload = {
+  origin: 'first-run',
   detectedEditors: [
     {
       id: 'claude',
@@ -83,6 +84,7 @@ const payload: OkMcpWiringShowPayload = {
  * none created. No agent tool on the machine ⇒ nowhere to install.
  */
 const noneDetectedPayload: OkMcpWiringShowPayload = {
+  origin: 'first-run',
   detectedEditors: [
     {
       id: 'codex',
@@ -129,6 +131,7 @@ function makeHarness({
 } = {}) {
   const confirmCalls: RecordedConfirm[] = [];
   const skipCalls: string[] = [];
+  const dismissCalls: string[] = [];
   const toastErrors: string[] = [];
   const toastMessages: string[] = [];
   const store: McpConsentStore = {
@@ -140,7 +143,9 @@ function makeHarness({
       });
       return confirmResult(request.editorIds);
     },
-    dismiss: () => {},
+    dismiss: () => {
+      dismissCalls.push('dismiss');
+    },
     getSnapshot: () => snapshot,
     install: () => undefined,
     skip: async () => {
@@ -156,6 +161,7 @@ function makeHarness({
   return {
     confirmCalls,
     skipCalls,
+    dismissCalls,
     store,
     toast,
     toastErrors,
@@ -716,6 +722,293 @@ describe('McpConsentDialog dismissal', () => {
       skills: undefined,
     });
     expect(harness.skipCalls).toEqual([]);
+  });
+});
+
+describe('McpConsentDialog surface by origin', () => {
+  afterEach(() => cleanup());
+
+  const reconfigureHarness = () => makeHarness({ snapshot: { ...payload, origin: 'reconfigure' } });
+
+  /**
+   * Radix registers its outside-pointerdown listener inside a zero-delay
+   * timeout, so a gesture dispatched before that tick reaches no listener and
+   * every "did not dismiss" assertion downstream passes for the wrong reason.
+   */
+  async function armOutsideDismissal() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  /** `userEvent` refuses to click <body> — Radix sets `pointer-events: none` on
+   *  it while a modal is open — so the gesture is dispatched directly. */
+  function clickOutside() {
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+  }
+
+  test('first-run is an alertdialog that an outside click cannot dismiss', async () => {
+    const harness = await renderDialog();
+
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    // No close X: the footer's two choices are the whole decision surface.
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+
+    await armOutsideDismissal();
+    clickOutside();
+
+    // Asserted as "no decision recorded" rather than "still mounted": the store
+    // is what a dismissal would touch, and it stays untouched.
+    expect(harness.skipCalls).toEqual([]);
+    expect(harness.confirmCalls).toEqual([]);
+  });
+
+  test('a user-opened one is an ordinary dialog with a close X', async () => {
+    await renderDialog(reconfigureHarness());
+
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+  });
+
+  test('the footer action reads Cancel when the user opened it, Skip when it opened itself', async () => {
+    await renderDialog();
+    expect(screen.getByTestId('mcp-consent-skip').textContent).toBe('Skip for now');
+
+    cleanup();
+
+    await renderDialog(reconfigureHarness());
+    expect(screen.getByTestId('mcp-consent-skip').textContent).toBe('Cancel');
+  });
+
+  test.each([
+    ['the close X', async () => userEvent.click(screen.getByRole('button', { name: 'Close' }))],
+    [
+      'an outside click',
+      async () => {
+        await armOutsideDismissal();
+        clickOutside();
+      },
+    ],
+    ['the footer Cancel', async () => userEvent.click(screen.getByTestId('mcp-consent-skip'))],
+    ['Escape', async () => userEvent.keyboard('{Escape}')],
+  ])('%s leaves a finished setup untouched', async (_label, dismiss) => {
+    const harness = await renderDialog(reconfigureHarness());
+
+    await dismiss();
+
+    await waitFor(() => {
+      expect(harness.dismissCalls).toEqual(['dismiss']);
+    });
+    // The point of routing these to dismiss rather than skip: `skip` writes
+    // `{ configured: false, skippedAt }` unconditionally, so a user who already
+    // finished setup and then closed a screen they opened out of curiosity
+    // would have had that marker downgraded and their real `configuredAt` lost.
+    expect(harness.skipCalls).toEqual([]);
+    expect(harness.confirmCalls).toEqual([]);
+    // No toast either — a "configure this in Settings" pointer after Cancel
+    // implies something was recorded, and the user just came from that surface.
+    expect(harness.toastMessages).toEqual([]);
+  });
+
+  test('first-run still writes the skip marker — dismiss is the reopen path only', async () => {
+    // The control for the block above. Without it, "skip was not called" would
+    // pass just as happily if skip had stopped working everywhere.
+    const harness = await renderDialog();
+
+    await userEvent.click(screen.getByTestId('mcp-consent-skip'));
+
+    await waitFor(() => {
+      expect(harness.skipCalls).toEqual(['skip']);
+    });
+    expect(harness.dismissCalls).toEqual([]);
+  });
+
+  test('the footer Cancel dismisses once per click, not twice', async () => {
+    // The two shells close by opposite routes — the alert shell's Cancel closes
+    // the dialog and lets `onOpenChange` act, the plain Button calls the handler
+    // directly. Wiring both on one element double-fires.
+    const harness = await renderDialog(reconfigureHarness());
+
+    await userEvent.click(screen.getByTestId('mcp-consent-skip'));
+
+    await waitFor(() => {
+      expect(harness.dismissCalls).toEqual(['dismiss']);
+    });
+  });
+
+  test('no dismiss surface can fire while a request is in flight', async () => {
+    // The reopen shell adds two dismiss routes that did not exist before (close
+    // X, outside-click), which makes `onOpenChange`'s `busy` guard reachable in
+    // ways it was not. Without the guard a dismiss could race a pending
+    // confirm — both `store.confirm` and `store.dismiss` dispatching for one
+    // decision, and `busy` left stuck.
+    const pending = deferredResult();
+    const harness = await renderDialog(
+      makeHarness({
+        snapshot: { ...payload, origin: 'reconfigure' },
+        confirmResult: async () => pending.promise,
+      }),
+    );
+
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect((screen.getByTestId('mcp-consent-add') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    await userEvent.keyboard('{Escape}');
+    await armOutsideDismissal();
+    clickOutside();
+    await userEvent.click(screen.getByTestId('mcp-consent-skip'));
+
+    pending.resolve({ ok: true });
+    await waitFor(() => {
+      expect(harness.confirmCalls.length).toBe(1);
+    });
+    expect(harness.dismissCalls).toEqual([]);
+    expect(harness.skipCalls).toEqual([]);
+  });
+
+  test('the close X is visibly inert while a request is in flight', async () => {
+    // The guard above makes it a no-op; this makes it look like one. Every other
+    // control greys out via `disabled={busy}`, but the X belongs to DialogContent.
+    const pending = deferredResult();
+    await renderDialog(
+      makeHarness({
+        snapshot: { ...payload, origin: 'reconfigure' },
+        confirmResult: async () => pending.promise,
+      }),
+    );
+
+    const content = screen.getByRole('dialog');
+    expect(content.className).not.toContain('[&_[data-slot=dialog-close]]:pointer-events-none');
+
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+
+    await waitFor(() => {
+      expect(content.className).toContain('[&_[data-slot=dialog-close]]:pointer-events-none');
+    });
+    expect(content.className).toContain('[&_[data-slot=dialog-close]]:opacity-50');
+    pending.resolve({ ok: true });
+  });
+
+  test('a user-opened one still offers Finish setup', async () => {
+    // Dismissibility is the only difference; the decision itself is unchanged.
+    const harness = await renderDialog(reconfigureHarness());
+
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+
+    await waitFor(() => {
+      expect(harness.confirmCalls.length).toBe(1);
+    });
+    expect(harness.skipCalls).toEqual([]);
+  });
+});
+
+/**
+ * These drive a REAL `createMcpConsentStore()` rather than the harness stub, so
+ * the `useSyncExternalStore` subscription is actually exercised. Every other
+ * test passes `payload=` directly, which short-circuits that path — the very
+ * code that fixes the replacement race would be dead in the suite otherwise, and
+ * a revert to a bare `getSnapshot()` read would stay green.
+ */
+describe('McpConsentDialog payload replacement', () => {
+  afterEach(() => cleanup());
+
+  function makeStoreBridge() {
+    let handler: ((next: OkMcpWiringShowPayload) => void) | null = null;
+    const confirm = vi.fn(() => Promise.resolve({ ok: true as const }));
+    const bridge = {
+      mcpWiring: {
+        onShow: (cb: (next: OkMcpWiringShowPayload) => void) => {
+          handler = cb;
+          return () => {
+            handler = null;
+          };
+        },
+        signalReady: () => {},
+        confirm,
+        skip: () => Promise.resolve({ ok: true as const }),
+      },
+    };
+    return {
+      bridge,
+      confirm,
+      fireShow: (next: OkMcpWiringShowPayload) => handler?.(next),
+    };
+  }
+
+  async function renderAgainstStore(harnessBridge: ReturnType<typeof makeStoreBridge>) {
+    const { McpConsentDialogBody } = await import('./McpConsentDialogBody');
+    const { createMcpConsentStore } = await import('@/lib/mcp-consent-store');
+    const { TooltipProvider } = await import('@/components/ui/tooltip');
+    const store = createMcpConsentStore();
+    store.install({ bridge: harnessBridge.bridge as never });
+    const toastMessages: string[] = [];
+    render(
+      <TooltipProvider>
+        <McpConsentDialogBody
+          store={store}
+          toast={{ error: (m) => toastMessages.push(m), message: (m) => toastMessages.push(m) }}
+        />
+      </TooltipProvider>,
+    );
+    return { store, toastMessages };
+  }
+
+  test('a reconfigure arriving over an open first-run swaps the shell', async () => {
+    const b = makeStoreBridge();
+    await renderAgainstStore(b);
+
+    act(() => b.fireShow({ ...payload, origin: 'first-run' }));
+    await waitFor(() => {
+      expect(screen.getByRole('alertdialog')).toBeTruthy();
+    });
+
+    // Reachable on macOS: the native File menu stays clickable behind a web modal.
+    act(() => b.fireShow({ ...payload, origin: 'reconfigure' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeTruthy();
+    });
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByTestId('mcp-consent-skip').textContent).toBe('Cancel');
+  });
+
+  test('a replacement remounts the form rather than inheriting its state', async () => {
+    // The acute case: a confirm in flight when the replacement lands. Reconciled
+    // rather than remounted, the new dialog inherits `busy` and renders fully
+    // disabled with no exit, then unmounts under the user when the first confirm
+    // settles and clears the store.
+    const b = makeStoreBridge();
+    let releaseConfirm!: () => void;
+    b.confirm.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseConfirm = () => resolve({ ok: true });
+        }),
+    );
+    await renderAgainstStore(b);
+
+    act(() => b.fireShow({ ...payload, origin: 'first-run' }));
+    await waitFor(() => {
+      expect(screen.getByTestId('mcp-consent-add')).toBeTruthy();
+    });
+    await userEvent.click(screen.getByTestId('mcp-consent-add'));
+    await waitFor(() => {
+      expect((screen.getByTestId('mcp-consent-add') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    act(() => b.fireShow({ ...payload, origin: 'reconfigure' }));
+
+    // The freshly-opened dialog must be usable, not a disabled husk.
+    await waitFor(() => {
+      expect((screen.getByTestId('mcp-consent-add') as HTMLButtonElement).disabled).toBe(false);
+    });
+    expect((screen.getByTestId('mcp-consent-skip') as HTMLButtonElement).disabled).toBe(false);
+
+    releaseConfirm();
   });
 });
 

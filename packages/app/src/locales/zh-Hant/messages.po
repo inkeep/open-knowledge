@@ -2280,6 +2280,7 @@ msgstr "無法分享這個路徑。"
 #: src/components/FrontmatterRow.tsx
 #: src/components/ImportSkillForm.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/McpConsentDialogBody.tsx
 #: src/components/MountStalledAffordance.tsx
 #: src/components/NewItemDialog.tsx
 #: src/components/NewSkillDialog.tsx
