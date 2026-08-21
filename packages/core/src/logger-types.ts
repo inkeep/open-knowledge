@@ -296,11 +296,12 @@ export type OkBugReportListResult =
 
 /**
  * Result of the desktop `ok:bug-report:dispatch` delete operation. Removes a
- * report's zip and sidecar by `id` after a containment + id-shape check. Never
- * thrown across the IPC boundary.
+ * report's zip, sidecar and `sent` marker by `id` after a containment +
+ * id-shape check. Never thrown across the IPC boundary.
  *   - `id-invalid`  — the id failed the timestamp-basename shape / containment gate.
  *   - `in-flight`   — the report's own send is currently in progress in this process.
- *   - `not-found`   — no zip and no sidecar for the id.
+ *   - `not-found`   — none of the three files exists for the id. A marker can
+ *     outlive the other two, and deleting one is not a no-op.
  *   - `io-error`    — a filesystem removal failed.
  */
 export type OkBugReportDeleteResult =

@@ -17,6 +17,7 @@ import {
   collectUserLogFiles,
   DESKTOP_BUNDLE_ID,
   defaultBugReportZipPath,
+  MAX_BUNDLED_LEDGER_REPORTS,
   okBugReportsDir,
 } from './bug-report-bundle.ts';
 
@@ -778,7 +779,75 @@ describe('collectStandardBundle — bundle scope disclosure', () => {
     expect(readme.slice(readme.indexOf('## Privacy'))).not.toContain('Send history:');
     expect(listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'))).toEqual([]);
   });
+
+  // The `sent` marker's `.yaml` extension is load-bearing on THIS end: the
+  // desktop store names it that way precisely so this allowlist carries it
+  // without a second rule. For a report whose sidecar could not be read when
+  // its send landed, the marker is the ONLY readable send record in the
+  // bundle — narrowing the filter would drop exactly the evidence for the
+  // failure class it exists to make diagnosable, and nothing else would notice.
+  test('stages a sent marker alongside the sidecar it stands in for', async () => {
+    const reportsDir = makeTmpDir('ok-bugreport-ledger-');
+    const base = '2026-08-19T16-42-03-547Z-bugreport';
+    writeFileSync(join(reportsDir, `${base}.yaml`), 'id: [unreadable\n  : :');
+    writeFileSync(
+      join(reportsDir, `${base}.sent.yaml`),
+      `version: 1\nid: ${base}.zip\nsentAt: 2026-08-19T16:45:00.000Z\nreference: OK-4821\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    const { zipPath } = await collectStandardBundle({
+      projectDir: makeProjectDir('bundle-proj'),
+      redact: true,
+      outputPath,
+      userLogsDir: makeTmpDir(),
+      bugReportLedgerFiles: collectBugReportLedgerFiles(reportsDir),
+    });
+
+    const staged = listZipEntries(zipPath).filter((e) => e.startsWith('state/bug-reports/'));
+    expect(staged).toContain(`state/bug-reports/${base}.sent.yaml`);
+    expect(staged).toContain(`state/bug-reports/${base}.yaml`);
+    // And the reference survives staging, which is the point of carrying the
+    // marker rather than only the sidecar that could not record it.
+    expect(readZipEntry(zipPath, `state/bug-reports/${base}.sent.yaml`)).toContain('OK-4821');
+  });
+
+  // Slicing a sorted FILE list cuts at a fixed index, and nothing aligns that
+  // index to a report boundary — adjacency does not prevent a split. The half
+  // it would drop is the marker, which sorts first, so the bundle would ship
+  // the corrupt sidecar that proves nothing and drop the only readable record
+  // of the send, for exactly the population the marker exists to make
+  // diagnosable.
+  test('the ledger cap evicts whole reports, never half of a marker pair', () => {
+    const reportsDir = makeTmpDir('ok-bugreport-ledger-');
+    const bases: string[] = [];
+    // Two reports past the cap, every one carrying BOTH files, so a file-counting
+    // slice necessarily cuts between a marker and its own sidecar.
+    for (let i = 1; i <= MAX_BUNDLED_LEDGER_REPORTS + 2; i += 1) {
+      const base = `2026-08-19T16-42-${String(i).padStart(2, '0')}-000Z-bugreport`;
+      bases.push(base);
+      writeFileSync(join(reportsDir, `${base}.yaml`), `id: ${base}.zip\n`);
+      writeFileSync(join(reportsDir, `${base}.sent.yaml`), `id: ${base}.zip\nreference: OK-${i}\n`);
+    }
+
+    const listed = collectBugReportLedgerFiles(reportsDir).map((p) => basename(p));
+
+    for (const base of bases) {
+      expect(listed.includes(`${base}.sent.yaml`)).toBe(listed.includes(`${base}.yaml`));
+    }
+    // And the cap still bounds the bundle: the two oldest reports are gone whole.
+    expect(listed).toHaveLength(MAX_BUNDLED_LEDGER_REPORTS * 2);
+    expect(listed).not.toContain(`${nthBase(bases, 0)}.yaml`);
+    expect(listed).toContain(`${nthBase(bases, -1)}.yaml`);
+  });
 });
+
+/** Indexed access that asserts presence (the test controls the array). */
+function nthBase(bases: readonly string[], index: number): string {
+  const value = bases.at(index);
+  if (value === undefined) throw new Error(`no base at index ${index}`);
+  return value;
+}
 
 describe('collectStandardBundle — system-wide (no projectDir)', () => {
   test('captures user logs + sysinfo only, with a null slug', async () => {

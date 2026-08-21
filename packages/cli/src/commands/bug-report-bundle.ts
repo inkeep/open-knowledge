@@ -18,6 +18,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import {
   type BundleManifest,
   type BundleRedaction,
+  REPORT_SENT_MARKER_SUFFIX,
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
 } from '@inkeep/open-knowledge-core';
@@ -281,17 +282,33 @@ export function collectShipItLogFiles(
 }
 
 /**
- * How many sidecars a bundle carries. Retention keeps reports around, so this
- * directory grows without limit on a machine that files often, and a bundle
- * must not scale with a reporter's history. Each file is small and bounded by
- * construction (the writer caps the attempt list), so the count is the only
- * bound needed.
+ * How many REPORTS a bundle carries ledger records for. Retention keeps reports
+ * around, so this directory grows without limit on a machine that files often,
+ * and a bundle must not scale with a reporter's history. Each file is small and
+ * bounded by construction (the writer caps the attempt list), so the count is
+ * the only bound needed.
+ *
+ * Reports rather than files, because a report whose sidecar was unreadable at
+ * send time leaves two: the sidecar and a `sent` marker. Counting files would
+ * let the cut fall BETWEEN a pair, and adjacency in the sorted listing does not
+ * prevent that — nothing aligns a fixed index to a report boundary. The half it
+ * would drop is the marker, which for exactly that report is the only readable
+ * send record, while keeping the corrupt sidecar that proves nothing. So the
+ * unit of eviction is the report, and a pair is kept or dropped whole.
  */
-const MAX_BUNDLED_LEDGER_FILES = 25;
+export const MAX_BUNDLED_LEDGER_REPORTS = 25;
 
 /**
- * The per-report send ledger: one small YAML sidecar per report, recording
- * every send attempt with its outcome and reason.
+ * The per-report send ledger: a small YAML record per report, recording every
+ * send attempt with its outcome and reason.
+ *
+ * Usually that is one file, the report's sidecar. A report whose sidecar could
+ * not be read when its send landed leaves a second, `<base>-bugreport.sent.yaml`,
+ * holding the send time and the intake reference — for exactly that report the
+ * marker IS the send record, since the sidecar beside it is the unreadable one.
+ * The `.yaml` allowlist below is what carries it, which is why the marker is
+ * named with that extension rather than a bare `.sent`; a test pins the
+ * coupling, because narrowing the filter would drop it silently.
  *
  * This is the artifact that answers "did the send fail before, and how" — and
  * the only one that still answers it later, because `desktop.*.log` rotates on
@@ -299,21 +316,37 @@ const MAX_BUNDLED_LEDGER_FILES = 25;
  * report about a failed send carries no account of the failure unless the
  * reporter happens to file it the same day, on a machine we can read.
  *
- * Sidecars ONLY: `*.yaml` is an allowlist, not a filter, so the zips sitting
+ * Records ONLY: `*.yaml` is an allowlist, not a filter, so the zips sitting
  * beside them in the same directory cannot be swept in. That matters twice —
  * a bundle must not contain other bundles, and the zips are the bulk of the
  * directory.
  *
  * Newest kept, ranked by name: report ids are timestamp-prefixed, so
- * lexicographic order IS chronological order and no `stat` call is needed.
+ * lexicographic order IS chronological order and no `stat` call is needed. A
+ * marker shares its report's timestamp prefix, so grouping by that prefix
+ * collects each report's files without a second sort.
  */
 export function collectBugReportLedgerFiles(bugReportsDir: string): string[] {
   if (!existsSync(bugReportsDir)) return [];
   try {
-    return readdirSync(bugReportsDir)
+    const byReport = new Map<string, string[]>();
+    for (const name of readdirSync(bugReportsDir)
       .filter((name) => name.endsWith('.yaml'))
-      .sort()
-      .slice(-MAX_BUNDLED_LEDGER_FILES)
+      .sort()) {
+      // Both of a report's files reduce to the same key, so they group together
+      // and the slice below can never keep one without the other.
+      const base = name.endsWith(REPORT_SENT_MARKER_SUFFIX)
+        ? name.slice(0, -REPORT_SENT_MARKER_SUFFIX.length)
+        : name.slice(0, -'.yaml'.length);
+      const files = byReport.get(base);
+      if (files === undefined) byReport.set(base, [name]);
+      else files.push(name);
+    }
+    // Map preserves insertion order and the names arrived sorted, so the report
+    // keys are already oldest-first.
+    return [...byReport.values()]
+      .slice(-MAX_BUNDLED_LEDGER_REPORTS)
+      .flat()
       .map((name) => join(bugReportsDir, name));
   } catch {
     // An unreadable reports dir must cost the ledger, never the report the
@@ -654,7 +687,7 @@ export async function collectStandardBundle(
       : []),
     ...(ledgerEntries.length > 0
       ? [
-          'Send history: one small record per bug report previously generated',
+          'Send history: a small record for each bug report previously generated',
           'on this machine — when it was generated, whether sending it',
           'succeeded, and why it failed if it did. This is what makes a failed',
           'send diagnosable at all. It is machine-wide rather than scoped to',

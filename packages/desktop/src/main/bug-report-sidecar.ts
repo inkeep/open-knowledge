@@ -30,6 +30,18 @@
  * reporter's own prose, and a transient EACCES must not be allowed to erase it.
  * Retention is the deliberate exception — it still unlinks an unreadable
  * sidecar whose bundle is already gone, and one evicted by the unsent caps.
+ *
+ * That refusal costs nothing for a failed send, which stays retryable either
+ * way. For a CONFIRMED one it would: with nothing recording the send, the row
+ * keeps offering Retry (a second upload of a bundle the intake already took),
+ * has no reference to hand support, and never leaves the unsent pool, so the
+ * cap eviction above eventually unlinks the note the refusal was protecting.
+ * So a `sent` outcome the sidecar could not hold is written to a SIBLING
+ * marker instead (`<base>-bugreport.sent.yaml`) — a new file, so nothing has to
+ * be overwritten to record that the send happened. Its EXISTENCE is the record;
+ * its contents only add the reference. Every reader here therefore checks the
+ * marker before the sidecar's own `state`, and every path that removes a
+ * report removes the marker with it.
  */
 
 import { readdir, readFile, realpath, stat, unlink } from 'node:fs/promises';
@@ -40,8 +52,12 @@ import {
   type OkBugReportDeleteResult,
   type OkBugReportListResult,
   type OkBugReportListRow,
+  REPORT_SENT_MARKER_SCHEMA_VERSION,
+  REPORT_SENT_MARKER_SUFFIX,
   REPORT_SIDECAR_SCHEMA_VERSION,
   type ReportBundleLevel,
+  type ReportSentMarker,
+  ReportSentMarkerSchema,
   type ReportSidecar,
   ReportSidecarSchema,
   type ReportSidecarState,
@@ -90,6 +106,56 @@ export function createInFlightRegistry(): InFlightRegistry {
   };
 }
 
+/**
+ * Cap on remembered scan warnings. The live report set is bounded by the
+ * retention caps, but ids churn over a long-lived desktop process, so the set
+ * is cleared wholesale on overflow rather than growing forever — a coarse reset
+ * that at worst re-logs one warning.
+ */
+export const MAX_REMEMBERED_SCAN_WARNINGS = 256;
+
+/**
+ * Remembers which unreadable sidecars have already been warned about during a
+ * scan. The scan behind `listReports` runs on every history-dialog open and
+ * every retention sweep, so an undeduplicated warning would bury the log in
+ * repeats of one file — which is why the diagnostic was left out entirely
+ * rather than added as a line change. Per store instance, not module scope, for
+ * the same reason `InFlightRegistry` is: module state leaks between tests.
+ */
+export interface SidecarScanWarnRegistry {
+  /** True the first time this report's `kind` file is seen unusable for this reason. */
+  shouldWarn(id: string, kind: 'sidecar' | 'marker', reason: string): boolean;
+  /**
+   * Re-arm one report's warnings for ONE file kind, when that file reads
+   * cleanly again — a second degradation is a second event. Scoped to the kind
+   * because a report's two files fail independently: a sidecar recovering says
+   * nothing about the marker beside it, and clearing both would re-log the
+   * marker on every scan that read the sidecar.
+   */
+  clear(id: string, kind: 'sidecar' | 'marker'): void;
+}
+
+export function createSidecarScanWarnRegistry(): SidecarScanWarnRegistry {
+  const seen = new Set<string>();
+  // NUL cannot appear in a report id, a kind or a reason, so it cannot forge a key.
+  const prefixFor = (id: string, kind: string): string => `${id}\u0000${kind}\u0000`;
+  return {
+    shouldWarn: (id, kind, reason) => {
+      const key = `${prefixFor(id, kind)}${reason}`;
+      if (seen.has(key)) return false;
+      if (seen.size >= MAX_REMEMBERED_SCAN_WARNINGS) seen.clear();
+      seen.add(key);
+      return true;
+    },
+    clear: (id, kind) => {
+      const prefix = prefixFor(id, kind);
+      for (const key of seen) {
+        if (key.startsWith(prefix)) seen.delete(key);
+      }
+    },
+  };
+}
+
 /** The sidecar path for a report id (`<base>-bugreport.zip` → `<base>-bugreport.yaml`). */
 export function sidecarPathForId(dir: string, id: string): string {
   return join(dir, id.replace(/\.zip$/, '.yaml'));
@@ -98,6 +164,14 @@ export function sidecarPathForId(dir: string, id: string): string {
 /** The zip path for a report id. */
 export function zipPathForId(dir: string, id: string): string {
   return join(dir, id);
+}
+
+/**
+ * The `sent`-marker path for a report id
+ * (`<base>-bugreport.zip` → `<base>-bugreport.sent.yaml`).
+ */
+export function sentMarkerPathForId(dir: string, id: string): string {
+  return join(dir, id.replace(/\.zip$/, REPORT_SENT_MARKER_SUFFIX));
 }
 
 /**
@@ -120,6 +194,59 @@ export async function writeReportSidecar(dir: string, sidecar: ReportSidecar): P
   const doc = parseDocument('');
   doc.contents = doc.createNode(parsed.data) as ParsedNode;
   await atomicWriteFile(sidecarPathForId(dir, parsed.data.id), doc.toString());
+}
+
+/**
+ * Record a confirmed send in the sibling marker. Written ONLY when the sidecar
+ * itself could not be made to say `sent` — the marker is the fallback record
+ * for a file we must not rewrite, not a second copy of every send. Throws on a
+ * genuine write failure; its one caller logs that.
+ *
+ * No `safeParse` before the write, unlike `writeReportSidecar` above. That one
+ * validates because its input crosses a trust boundary — a sidecar read off
+ * disk and then mutated. This one builds its document from two typed parameters
+ * and a constant, so the shape below is already everything the schema would
+ * check, and a runtime guard that cannot fire is noise rather than safety.
+ */
+async function writeSentMarker(
+  dir: string,
+  id: string,
+  sentAt: string,
+  reference: string,
+): Promise<void> {
+  // Every field REQUIRED here, unlike the reader's schema where all but
+  // `version` are optional. The reader has to tolerate a half-written marker;
+  // the writer dropping `reference` would ship one with no handle for support,
+  // and nothing would fail. Naming the shape makes that a compile error.
+  const marker: Required<Pick<ReportSentMarker, 'version' | 'id' | 'sentAt' | 'reference'>> = {
+    version: REPORT_SENT_MARKER_SCHEMA_VERSION,
+    id,
+    sentAt,
+    reference,
+  };
+  const doc = parseDocument('');
+  doc.contents = doc.createNode(marker) as ParsedNode;
+  await atomicWriteFile(sentMarkerPathForId(dir, id), doc.toString());
+}
+
+/**
+ * Best-effort marker CONTENTS. `null` means "no detail", never "no marker": the
+ * caller already knows from the directory listing that the file is there, and
+ * that presence is the load-bearing fact. This only recovers the reference on
+ * top of it, so every failure arm — absent, locked, unparseable, alias bomb —
+ * collapses to `null` rather than being distinguished. Never throws, for the
+ * same reason `readReportSidecar` does not: `scanReports` no longer wraps its
+ * reads, so an escape here would take the whole history list with it.
+ */
+async function readSentMarkerDetail(markerPath: string): Promise<ReportSentMarker | null> {
+  try {
+    const doc = parseDocument(await readFile(markerPath, 'utf-8'));
+    if (doc.errors.length > 0) return null;
+    const parsed = ReportSentMarkerSchema.safeParse(doc.toJSON());
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -195,6 +322,16 @@ interface ScannedReport {
   sidecarRead: SidecarReadResult;
   /** A sidecar FILE was present (even if unreadable/corrupt). */
   sidecarPresent: boolean;
+  /**
+   * A `sent` marker FILE was present (even if unreadable). Its EXISTENCE is the
+   * record that the intake accepted this bundle, so it outranks whatever the
+   * sidecar's own `state` says — the marker is only ever written when that
+   * sidecar could not be updated, so the two only disagree when the sidecar is
+   * the stale one.
+   */
+  sentMarkerPresent: boolean;
+  /** Marker contents when they parsed — the reference and the send time. */
+  sentMarker: ReportSentMarker | null;
   zipExists: boolean;
   zipBytes: number;
   zipMtime: string | null;
@@ -205,13 +342,27 @@ interface ScannedReport {
  * with or without a sidecar, and a tombstone sidecar whose zip is gone. Scoped
  * to the report basename shape so an unrelated file in the directory is ignored.
  */
-async function scanReports(dir: string): Promise<ScannedReport[]> {
+async function scanReports(
+  dir: string,
+  logger?: SidecarLogger,
+  warned?: SidecarScanWarnRegistry,
+): Promise<ScannedReport[]> {
   const entries = await readdir(dir).catch(() => [] as string[]);
   const ids = new Set<string>();
   const sidecarIds = new Set<string>();
+  const markerIds = new Set<string>();
   for (const entry of entries) {
     if (entry.endsWith('.zip') && isReportIdShape(entry)) {
       ids.add(entry);
+    } else if (entry.endsWith(REPORT_SENT_MARKER_SUFFIX)) {
+      // Tested BEFORE the plain `.yaml` arm, which a marker also matches:
+      // stripping only `.yaml` would yield `<base>-bugreport.sent.zip`, which
+      // is not a report id, so the marker would be silently dropped.
+      const id = `${entry.slice(0, -REPORT_SENT_MARKER_SUFFIX.length)}.zip`;
+      if (isReportIdShape(id)) {
+        ids.add(id);
+        markerIds.add(id);
+      }
     } else if (entry.endsWith('.yaml')) {
       const id = entry.replace(/\.yaml$/, '.zip');
       if (isReportIdShape(id)) {
@@ -230,12 +381,47 @@ async function scanReports(dir: string): Promise<ScannedReport[]> {
       const read = sidecarPresent
         ? await readReportSidecar(sidecarPathForId(dir, id))
         : ({ kind: 'absent' } as const);
+      // This scan backs the list, the retention sweep and boot reconciliation,
+      // so it is the path an engineer asking "why is this row degraded?" hits
+      // first. Warn once per id+reason: the send path already logs its own
+      // refusal, but nothing spoke for the read that merely degraded a row.
+      if (read.kind === 'unreadable') {
+        if (warned === undefined || warned.shouldWarn(id, 'sidecar', read.reason)) {
+          logger?.warn(
+            { id, reason: read.reason, err: read.err },
+            'bug-report: sidecar unreadable during scan, row degraded',
+          );
+        }
+      } else if (read.kind === 'ok') {
+        warned?.clear(id, 'sidecar');
+      }
       const sidecar = read.kind === 'ok' ? read.sidecar : null;
+      const sentMarkerPresent = markerIds.has(id);
+      const sentMarker = sentMarkerPresent
+        ? await readSentMarkerDetail(sentMarkerPathForId(dir, id))
+        : null;
+      // A marker that is present but unusable costs more than it looks: the row
+      // keeps `sent` (so no duplicate upload) but loses the reference, which
+      // takes Contact support with it, and with no `sentAt` the record sorts to
+      // the front of the tombstone cap that unlinks it. Same trace as an
+      // unreadable sidecar gets, and deduplicated by the same registry.
+      if (sentMarkerPresent && sentMarker === null) {
+        if (warned === undefined || warned.shouldWarn(id, 'marker', 'unreadable')) {
+          logger?.warn(
+            { id },
+            'bug-report: sent marker unreadable during scan, send recorded without its reference',
+          );
+        }
+      } else if (sentMarker !== null) {
+        warned?.clear(id, 'marker');
+      }
       return {
         id,
         sidecar,
         sidecarRead: read,
         sidecarPresent,
+        sentMarkerPresent,
+        sentMarker,
         zipExists: zipStat !== null,
         zipBytes: zipStat?.size ?? sidecar?.zipBytes ?? 0,
         zipMtime: zipStat?.mtime.toISOString() ?? null,
@@ -252,21 +438,30 @@ function projectBundleLevel(raw: string | undefined): ReportBundleLevel | 'unkno
 /** Project a scanned report to the renderer-facing list row. */
 function toListRow(dir: string, scanned: ScannedReport): OkBugReportListRow {
   const s = scanned.sidecar;
-  // A sidecar file that was present but unreadable can't be trusted as
+  // The `sent` marker outranks the sidecar's own state: it is only ever written
+  // when that sidecar could not be updated, so it is the newer of the two. A
+  // sidecar file that was present but unreadable can't be trusted as
   // `generated` — it renders as a degraded `unknown` row. A plain
   // sidecar-less legacy zip is a normal, retryable `generated` report.
-  const state: ReportSidecarState = s
-    ? normalizeReportSidecarState(s.state)
-    : scanned.sidecarPresent
-      ? 'unknown'
-      : scanned.zipExists
-        ? 'generated'
-        : 'unknown';
+  const state: ReportSidecarState = scanned.sentMarkerPresent
+    ? 'sent'
+    : s
+      ? normalizeReportSidecarState(s.state)
+      : scanned.sidecarPresent
+        ? 'unknown'
+        : scanned.zipExists
+          ? 'generated'
+          : 'unknown';
   const degraded = (scanned.sidecarPresent && s === null) || state === 'unknown';
   const projectSlug = s?.projectSlug ?? null;
+  // The marker carries the reference precisely when the sidecar could not, so
+  // the row can still offer Contact support on a send it can prove happened.
+  const reference = s?.reference ?? scanned.sentMarker?.reference;
   return {
     id: scanned.id,
-    createdAt: s?.createdAt ?? scanned.zipMtime ?? '',
+    // A marker-only record has no other timestamp; its send time at least sorts
+    // it sensibly rather than dumping it at the bottom of the list.
+    createdAt: s?.createdAt ?? scanned.zipMtime ?? scanned.sentMarker?.sentAt ?? '',
     bundleLevel: projectBundleLevel(s?.bundleLevel),
     state,
     zipBytes: scanned.zipBytes,
@@ -274,7 +469,7 @@ function toListRow(dir: string, scanned: ScannedReport): OkBugReportListRow {
     zipExists: scanned.zipExists,
     systemWide: s?.systemWide ?? projectSlug === null,
     projectSlug,
-    ...(s?.reference !== undefined ? { reference: s.reference } : {}),
+    ...(reference !== undefined ? { reference } : {}),
     ...(s?.lastError !== undefined ? { lastError: s.lastError } : {}),
     ...(s?.note !== undefined ? { note: s.note } : {}),
     attemptsCount: s?.attempts?.length ?? 0,
@@ -285,9 +480,13 @@ function toListRow(dir: string, scanned: ScannedReport): OkBugReportListRow {
 }
 
 /** List persisted reports, newest first. Never throws — a scan failure resolves to `{ ok: false }`. */
-export async function listReports(dir: string): Promise<OkBugReportListResult> {
+export async function listReports(
+  dir: string,
+  logger?: SidecarLogger,
+  warned?: SidecarScanWarnRegistry,
+): Promise<OkBugReportListResult> {
   try {
-    const scanned = await scanReports(dir);
+    const scanned = await scanReports(dir, logger, warned);
     const reports = scanned
       .map((r) => toListRow(dir, r))
       // Newest first by createdAt; empty timestamps (unreadable, no zip mtime)
@@ -350,6 +549,7 @@ export async function deleteReport(
   if (zipPath === null) return { ok: false, reason: 'id-invalid' };
   if (inFlight.has(id)) return { ok: false, reason: 'in-flight' };
   const sidecarPath = sidecarPathForId(dir, id);
+  const markerPath = sentMarkerPathForId(dir, id);
   const zipExisted = await stat(zipPath).then(
     () => true,
     () => false,
@@ -358,10 +558,17 @@ export async function deleteReport(
     () => true,
     () => false,
   );
-  if (!zipExisted && !sidecarExisted) return { ok: false, reason: 'not-found' };
+  // A marker can outlive both: retention reclaims a corrupt sidecar whose
+  // bundle is gone, and the send record beside it is then the whole report.
+  const markerExisted = await stat(markerPath).then(
+    () => true,
+    () => false,
+  );
+  if (!zipExisted && !sidecarExisted && !markerExisted) return { ok: false, reason: 'not-found' };
   const zipOk = await unlinkIfPresent(zipPath);
   const sidecarOk = await unlinkIfPresent(sidecarPath);
-  return zipOk && sidecarOk ? { ok: true } : { ok: false, reason: 'io-error' };
+  const markerOk = await unlinkIfPresent(markerPath);
+  return zipOk && sidecarOk && markerOk ? { ok: true } : { ok: false, reason: 'io-error' };
 }
 
 /** Build a minimal `generated` sidecar for a report with no record at all (a retried legacy zip). */
@@ -443,6 +650,9 @@ async function markUploading(
  * confirmed send). Never throws. The state write is SKIPPED when the existing
  * sidecar could not be read — the outcome is logged instead of overwriting a
  * record whose contents are unknown, so the report stays retryable.
+ *
+ * A `sent` outcome is the one case where "stays retryable" has a cost, so it
+ * gets the sibling marker: see the write at the end of this function.
  */
 async function recordSendResult(
   dir: string,
@@ -450,8 +660,13 @@ async function recordSendResult(
   outcome: SidecarSendOutcome,
   inFlight: InFlightRegistry,
   logger?: SidecarLogger,
+  warned?: SidecarScanWarnRegistry,
 ): Promise<void> {
   const at = new Date().toISOString();
+  // Whether the send's terminal state actually landed IN the sidecar. Set only
+  // after a successful write, so a skipped write and a thrown one both fall
+  // through to the marker below.
+  let recorded = false;
   try {
     const base = await readSidecarForTransition(dir, id, logger);
     if (base === null) {
@@ -460,7 +675,13 @@ async function recordSendResult(
       // reporter's only handle on the report with support, so losing it
       // silently is worse than the missed state write. The row keeps its
       // prior state, which leaves the report retryable rather than stranded.
-      logger?.warn({ id, outcome }, 'bug-report: send outcome not recorded, sidecar unreadable');
+      // Scoped to the SIDECAR on purpose: a `sent` outcome still gets recorded,
+      // in the marker written below, so a message claiming the outcome was lost
+      // would send an engineer looking for a duplicate upload that is not there.
+      logger?.warn(
+        { id, outcome },
+        'bug-report: send outcome not written to the sidecar, it was unreadable',
+      );
     } else {
       const attempt =
         outcome.kind === 'sent'
@@ -494,13 +715,36 @@ async function recordSendResult(
         next = { ...next, state: 'email-drafted' };
       }
       await writeReportSidecar(dir, next);
+      recorded = true;
     }
   } catch (err) {
     // `outcome` rides along for the same reason the `base === null` branch logs
     // it: on a `sent` whose write failed, this is the only surviving copy of
     // the reference.
-    logger?.warn({ id, err, outcome }, 'bug-report: failed to record send result');
+    logger?.warn({ id, err, outcome }, 'bug-report: failed to write the send result sidecar');
   } finally {
+    // A send the INTAKE CONFIRMED is a fact the store must not lose, and for
+    // this one outcome the log is not enough. Left unrecorded, the row keeps
+    // offering Retry — re-uploading a bundle the intake already took — hides the
+    // reference support asks for, and never leaves the unsent pool, where the
+    // cap eviction below eventually unlinks the zip AND the sidecar, destroying
+    // the very note the skipped write exists to protect. The marker records the
+    // send in a NEW file, so nothing has to be overwritten to say it happened.
+    //
+    // INSIDE the `finally`, ahead of the lock release, for the same reason the
+    // sidecar write above sits inside the `try`: the in-flight lock is what
+    // holds `deleteReport` and the retention eviction off this report, and the
+    // marker is the send's only durable record on this path. Releasing first
+    // leaves a window in which a delete arriving on the event loop sees no
+    // marker, unlinks the zip and sidecar, and reports success — and then this
+    // write lands, resurrecting the report the user just deleted as a phantom
+    // `sent` tombstone. The `.catch` is what keeps a marker-write failure from
+    // stranding the lock.
+    if (outcome.kind === 'sent' && !recorded) {
+      await writeSentMarker(dir, id, at, outcome.reference).catch((err: unknown) => {
+        logger?.warn({ id, err, outcome }, 'bug-report: failed to write the sent marker');
+      });
+    }
     inFlight.delete(id);
   }
   // Retention runs after the terminal write so a just-`sent` report's zip is
@@ -508,7 +752,7 @@ async function recordSendResult(
   // The sweep logs its own per-file failures and is documented never to throw,
   // so anything caught here is a contract violation — log it rather than
   // discarding it, or a sweep that stops running becomes undiagnosable.
-  await runRetentionSweep(dir, inFlight, logger).catch((err: unknown) => {
+  await runRetentionSweep(dir, inFlight, logger, warned).catch((err: unknown) => {
     logger?.warn({ err }, 'bug-report: retention sweep failed unexpectedly');
   });
 }
@@ -522,14 +766,20 @@ async function recordSendResult(
 export async function reconcileStaleUploading(
   dir: string,
   logger?: SidecarLogger,
+  warned?: SidecarScanWarnRegistry,
 ): Promise<number> {
   let reconciled = 0;
   try {
-    const scanned = await scanReports(dir);
+    const scanned = await scanReports(dir, logger, warned);
     const at = new Date().toISOString();
     for (const report of scanned) {
       if (report.sidecar === null) continue;
       if (normalizeReportSidecarState(report.sidecar.state) !== 'uploading') continue;
+      // A marker beside it says the send LANDED and only the terminal write
+      // failed — not a crash mid-send. Demoting would stamp a false
+      // `interrupted-by-restart` into a record that ships inside the next
+      // diagnostic bundle and reads there as a failure that never happened.
+      if (report.sentMarkerPresent) continue;
       const next: ReportSidecar = {
         ...report.sidecar,
         state: 'upload-failed',
@@ -564,48 +814,61 @@ export async function runRetentionSweep(
   dir: string,
   inFlight: InFlightRegistry,
   logger?: SidecarLogger,
+  warned?: SidecarScanWarnRegistry,
 ): Promise<void> {
   let scanned: ScannedReport[];
   try {
-    scanned = await scanReports(dir);
+    scanned = await scanReports(dir, logger, warned);
   } catch (err) {
     logger?.warn({ err }, 'bug-report: retention scan failed');
     return;
   }
 
+  // Mirrors `toListRow`'s projection, marker first for the same reason.
   const stateOf = (r: ScannedReport): ReportSidecarState =>
-    r.sidecar
-      ? normalizeReportSidecarState(r.sidecar.state)
-      : r.zipExists
-        ? 'generated'
-        : 'unknown';
+    r.sentMarkerPresent
+      ? 'sent'
+      : r.sidecar
+        ? normalizeReportSidecarState(r.sidecar.state)
+        : r.zipExists
+          ? 'generated'
+          : 'unknown';
 
-  // Drop the zip on a confirmed send; keep the sidecar as a tombstone.
+  // Drop the zip on a confirmed send; keep the record as a tombstone.
   for (const r of scanned) {
-    if (stateOf(r) === 'sent' && r.zipExists && r.sidecar && !inFlight.has(r.id)) {
-      const removed = await unlinkIfPresent(zipPathForId(dir, r.id));
-      if (removed) {
-        r.zipExists = false;
-        await writeReportSidecar(dir, { ...r.sidecar, zipDeleted: true }).catch((err: unknown) => {
-          logger?.warn({ id: r.id, err }, 'bug-report: failed to tombstone a sent report');
-        });
-      }
+    if (stateOf(r) !== 'sent' || !r.zipExists || inFlight.has(r.id)) continue;
+    const removed = await unlinkIfPresent(zipPathForId(dir, r.id));
+    if (!removed) continue;
+    r.zipExists = false;
+    // The `zipDeleted` stamp is a convenience — the row already falls back to
+    // "no zip on disk". A send known only from its marker has no readable
+    // sidecar to stamp, and writing one is exactly what this store refuses.
+    if (r.sidecar) {
+      await writeReportSidecar(dir, { ...r.sidecar, zipDeleted: true }).catch((err: unknown) => {
+        logger?.warn({ id: r.id, err }, 'bug-report: failed to tombstone a sent report');
+      });
     }
   }
 
   const sortByCreatedAtAsc = (a: ScannedReport, b: ScannedReport): number => {
-    const at = a.sidecar?.createdAt ?? a.zipMtime ?? '';
-    const bt = b.sidecar?.createdAt ?? b.zipMtime ?? '';
+    // Send time is the last resort: a marker-only tombstone has no other
+    // timestamp, and ordering every one of them as `''` would make the
+    // oldest-first cap below evict by id instead of by age.
+    const at = a.sidecar?.createdAt ?? a.zipMtime ?? a.sentMarker?.sentAt ?? '';
+    const bt = b.sidecar?.createdAt ?? b.zipMtime ?? b.sentMarker?.sentAt ?? '';
     return at < bt ? -1 : at > bt ? 1 : a.id < b.id ? -1 : 1;
   };
 
-  // Sent-tombstone cap: oldest first, delete the sidecar (the zip is already gone).
+  // Sent-tombstone cap: oldest first, delete the record (the zip is already
+  // gone). Both files go — a marker left behind would be a `sent` row for a
+  // report with nothing else to show, and would bypass the cap forever.
   const tombstones = scanned
     .filter((r) => stateOf(r) === 'sent' && !r.zipExists)
     .sort(sortByCreatedAtAsc);
   const tombstoneOverflow = Math.max(0, tombstones.length - MAX_SENT_TOMBSTONE_COUNT);
   for (const tombstone of tombstones.slice(0, tombstoneOverflow)) {
     await unlinkIfPresent(sidecarPathForId(dir, tombstone.id));
+    await unlinkIfPresent(sentMarkerPathForId(dir, tombstone.id));
   }
 
   // Orphan sweep: an unparseable sidecar whose zip is already gone belongs to
@@ -622,10 +885,18 @@ export async function runRetentionSweep(
   // the reference and the reporter's note), so unlinking one that is merely
   // locked or momentarily unreadable would destroy the record outright — a
   // harder version of the overwrite this fix exists to prevent.
+  //
+  // A `sent` marker beside it takes it out of scope entirely: with the marker
+  // the report IS a tombstone, so it belongs to the cap above and this sweep's
+  // "belongs to neither cap" premise no longer holds. Skipping matters most
+  // right after the zip is reclaimed a few lines up — without it, marking a
+  // send would immediately expose the corrupt sidecar to this unlink and
+  // destroy the reporter's note, which is the erasure the skipped write exists
+  // to prevent.
   for (const r of scanned) {
     const durablyCorrupt =
       r.sidecarRead.kind === 'unreadable' && r.sidecarRead.reason !== 'io-error';
-    if (durablyCorrupt && !r.zipExists && !inFlight.has(r.id)) {
+    if (durablyCorrupt && !r.zipExists && !r.sentMarkerPresent && !inFlight.has(r.id)) {
       await unlinkIfPresent(sidecarPathForId(dir, r.id));
       logger?.warn(
         {
@@ -687,6 +958,10 @@ export function createBugReportSidecarStore(opts: {
 }): BugReportSidecarStore {
   const { dir, logger } = opts;
   const inFlight = createInFlightRegistry();
+  // One registry per store, shared by every scan the store runs, so a file that
+  // is unreadable warns once across the list, the sweep and boot reconciliation
+  // rather than once per each.
+  const scanWarned = createSidecarScanWarnRegistry();
   return {
     async recordGenerated(meta) {
       const sidecar: ReportSidecar = {
@@ -705,16 +980,17 @@ export function createBugReportSidecarStore(opts: {
       } catch (err) {
         logger?.warn({ id: sidecar.id, err }, 'bug-report: failed to write generated sidecar');
       }
-      await runRetentionSweep(dir, inFlight, logger).catch((err: unknown) => {
+      await runRetentionSweep(dir, inFlight, logger, scanWarned).catch((err: unknown) => {
         logger?.warn({ err }, 'bug-report: retention sweep failed unexpectedly');
       });
     },
     sendHooks: {
       onSendStart: (id) => markUploading(dir, id, inFlight, logger),
-      onSendResult: (id, outcome) => recordSendResult(dir, id, outcome, inFlight, logger),
+      onSendResult: (id, outcome) =>
+        recordSendResult(dir, id, outcome, inFlight, logger, scanWarned),
     },
-    list: () => listReports(dir),
+    list: () => listReports(dir, logger, scanWarned),
     remove: (id) => deleteReport(dir, id, inFlight),
-    reconcileStaleUploading: () => reconcileStaleUploading(dir, logger),
+    reconcileStaleUploading: () => reconcileStaleUploading(dir, logger, scanWarned),
   };
 }

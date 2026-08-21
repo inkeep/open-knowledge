@@ -971,8 +971,8 @@ export interface RequestChannels {
    *     A crash invitation already carries the answer on its event.
    *   - `{kind: 'list'}` → the persisted report history (newest first), read
    *     from the per-report sidecars in `~/.ok/bug-reports/`.
-   *   - `{kind: 'delete', id}` → remove a persisted report's zip + sidecar by
-   *     `id`, containment-checked.
+   *   - `{kind: 'delete', id}` → remove a persisted report's zip, sidecar and
+   *     `sent` marker by `id`, containment-checked.
    * Later report operations widen this payload rather than adding channels.
    * Never throws — every failure mode is discriminated so the dialog can
    * render it; each preload method casts the union result to its own arm.

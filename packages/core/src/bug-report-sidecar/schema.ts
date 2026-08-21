@@ -170,3 +170,48 @@ export const ReportSidecarSchema = z.looseObject({
 });
 
 export type ReportSidecar = z.infer<typeof ReportSidecarSchema>;
+
+/**
+ * Filename suffix of the sibling `sent` marker, replacing a report id's `.zip`.
+ *
+ * Deliberately still a `.yaml`: the diagnostic-bundle ledger collector stages
+ * `*.yaml` out of the reports directory, and for a report whose sidecar is
+ * unreadable the marker IS the send record a triager needs, so riding that rule
+ * costs nothing and a second rule could drift from it. It cannot collide with a
+ * sidecar path — `REPORT_ID_PATTERN` ends in `-bugreport[-N].zip`, so a sidecar
+ * is never named `*.sent.yaml`.
+ */
+export const REPORT_SENT_MARKER_SUFFIX = '.sent.yaml';
+
+/**
+ * The marker's own schema version, independent of the sidecar's. The two files
+ * are written by one module and deleted together, but their SHAPES evolve
+ * separately: a breaking change to the sidecar says nothing about a document
+ * that holds a send time and a reference. Sharing the sidecar's constant would
+ * silently restamp markers whose shape never changed.
+ */
+export const REPORT_SENT_MARKER_SCHEMA_VERSION = 1;
+
+/**
+ * The sibling `sent` marker: the record of a send the intake confirmed but the
+ * sidecar could not be made to hold, because it was unreadable and rewriting it
+ * would have erased the reporter's note.
+ *
+ * Read PRESENCE-FIRST. The file existing is the fact — "the intake accepted
+ * this bundle" — and its contents are best-effort detail on top. A marker that
+ * fails to parse still stops the row inviting a duplicate upload; it just
+ * cannot name the reference. Every field but the `.catch`-guarded `version` is
+ * therefore optional: a half-written marker must degrade to less detail, never
+ * to "no send".
+ */
+export const ReportSentMarkerSchema = z.looseObject({
+  version: z.number().int().catch(REPORT_SENT_MARKER_SCHEMA_VERSION),
+  /** The report's zip basename — self-describing, as the sidecar's `id` is. */
+  id: z.string().optional(),
+  /** ISO-8601 time the intake confirmed the send. */
+  sentAt: z.string().optional(),
+  /** Intake reference — the reporter's handle on the report with support. */
+  reference: z.string().optional(),
+});
+
+export type ReportSentMarker = z.infer<typeof ReportSentMarkerSchema>;
