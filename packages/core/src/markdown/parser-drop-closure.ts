@@ -1,4 +1,3 @@
-
 export type DroppedTokenAdjudication =
   | {
       kind: 'format-dof-axis';

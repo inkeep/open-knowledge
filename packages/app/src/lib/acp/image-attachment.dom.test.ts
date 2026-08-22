@@ -196,6 +196,29 @@ describe('collectImageFiles', () => {
     expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['a.png']);
   });
 
+  /** The fallback is all-or-nothing on purpose. A partial-null `items` does
+   *  NOT top up from `files`, because `files` mirrors the same payloads: a
+   *  per-entry fallback would re-read a payload `items` already yielded and
+   *  attach it twice, which is the bug this traversal exists to prevent.
+   *  Losing an unreadable entry is the correct trade against that. */
+  test('does not top up from files when only some items entries yield null', () => {
+    const good = makeFile(new Uint8Array([1]), 'good.png', 'image/png');
+    const mirrored = makeFile(new Uint8Array([2]), 'mirrored.png', 'image/png');
+    const dt = {
+      items: [
+        { kind: 'file' as const, type: 'image/png', getAsFile: () => good },
+        { kind: 'file' as const, type: 'image/png', getAsFile: () => null },
+      ],
+      files: {
+        length: 2,
+        item: (i: number) => [good, mirrored][i] ?? null,
+        0: good,
+        1: mirrored,
+      } as unknown as FileList,
+    } as unknown as DataTransfer;
+    expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['good.png']);
+  });
+
   test('null DataTransfer returns []', () => {
     expect(collectImageFiles(null)).toEqual([]);
   });

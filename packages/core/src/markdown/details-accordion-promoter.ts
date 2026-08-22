@@ -1,4 +1,3 @@
-
 import type { Nodes, Paragraph, Parent, Root, Text } from 'mdast';
 import type { MdxJsxAttribute, MdxJsxFlowElement } from 'mdast-util-mdx';
 import { visit } from 'unist-util-visit';
