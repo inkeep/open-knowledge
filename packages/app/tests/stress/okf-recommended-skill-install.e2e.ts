@@ -9,23 +9,23 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import {
+  expect,
+  openProjectPluginsPanel,
+  openSettingsSection,
+  setPluginEnabled,
+  test,
+  waitForSettingsPanel,
+} from './_helpers';
 
 test.use({
   workerServerEnv: { OK_TEST_OKF_RECOMMENDED_SKILL: 'isolated-content-v1' },
 });
 
 async function openOkfSettings(page: Page): Promise<void> {
-  await page.goto('/#settings/plugins-manage');
-  await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 30_000 });
-
-  const okfToggle = page.getByTestId('settings-plugin-toggle-okf');
-  await expect(okfToggle).toBeVisible();
-  if ((await okfToggle.getAttribute('aria-checked')) !== 'true') await okfToggle.click();
-  await expect(okfToggle).toHaveAttribute('aria-checked', 'true');
-
-  await page.goto('/#settings/plugin:okf');
-  await expect(page.getByTestId('settings-plugin-okf')).toBeVisible({ timeout: 30_000 });
+  await openProjectPluginsPanel(page);
+  await setPluginEnabled(page, 'okf', true);
+  await openSettingsSection(page, 'plugin:okf', 'settings-plugin-okf');
 }
 
 test('installs the recommended skill through the real endpoint and recognizes it after reload', async ({
@@ -63,7 +63,7 @@ test('installs the recommended skill through the real endpoint and recognizes it
   await expect(card).toContainText('Installed');
 
   await page.reload();
-  await expect(page.getByTestId('settings-plugin-okf')).toBeVisible({ timeout: 30_000 });
+  await waitForSettingsPanel(page, 'settings-plugin-okf');
   const reloadedCard = page.getByTestId('settings-okf-recommended-skill');
   await expect(reloadedCard).toContainText('Installed');
   await expect(reloadedCard.getByRole('button', { name: 'Open skill' })).toBeVisible();

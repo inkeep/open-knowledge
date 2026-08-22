@@ -21,7 +21,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, test } from './_helpers';
+import { expect, SETTINGS_PANEL_TIMEOUT_MS, test } from './_helpers';
 
 // The picker writes a USER-scope preference, which lands in `~/.ok/global.yml`.
 // Node resolves `homedir()` from `HOME` on POSIX, so pointing the dev server at
@@ -42,8 +42,13 @@ const SYSTEM_OPTION = /^(System|Sistema|跟随系统|시스템)$/;
 async function openLanguagePicker(page: Page) {
   await page.goto('/#settings');
   await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 10_000 });
+  // The trigger is body content: LanguageSelect renders inside field-controls,
+  // reached only through SettingsDialogBodyLazy behind the shell's single
+  // Suspense boundary. A worker's first open pays the cold chunk transform, so
+  // this takes the shared body budget. The `settings-dialog` wait above stays
+  // at 10s -- that one is shell, main-bundle, and paints immediately.
   const trigger = page.getByRole('combobox', { name: TRIGGER_NAME });
-  await expect(trigger).toBeVisible({ timeout: 10_000 });
+  await expect(trigger).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
   await trigger.click();
   await expect(page.getByRole('listbox')).toBeVisible();
   return trigger;

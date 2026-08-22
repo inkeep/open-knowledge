@@ -16,7 +16,7 @@
  * here would rewrite the developer's own theme. Poking the attribute drives the
  * identical cascade with no write and no dependence on incoming config.
  */
-import { expect, test } from './_helpers';
+import { expect, SETTINGS_PANEL_TIMEOUT_MS, test } from './_helpers';
 
 /** Dracula's `--background`, as the generated stylesheet sets it. */
 const DRACULA_BG = 'rgb(40, 42, 54)';
@@ -36,7 +36,11 @@ test('the Default tile does not inherit the applied palette', async ({ page }) =
       .first()
       .evaluate((el) => getComputedStyle(el).backgroundColor);
 
-  await expect(page.getByRole('group', { name: /Default/ })).toBeVisible({ timeout: 10_000 });
+  // The tile picker is the first panel-BODY render here: every wait above is
+  // shell (dialog frame, search box, results), which ships in the main bundle.
+  await expect(page.getByRole('group', { name: /Default/ })).toBeVisible({
+    timeout: SETTINGS_PANEL_TIMEOUT_MS,
+  });
   await page.evaluate(() => document.documentElement.setAttribute('data-color-theme', 'dracula'));
 
   // The palette really is cascading — the Dracula tile paints Dracula's canvas.

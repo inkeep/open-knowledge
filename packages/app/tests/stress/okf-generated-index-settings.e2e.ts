@@ -14,7 +14,13 @@ import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { parse } from 'yaml';
-import { expect, test } from './_helpers';
+import {
+  expect,
+  openProjectPluginsPanel,
+  openSettingsSection,
+  setPluginEnabled,
+  test,
+} from './_helpers';
 
 test.use({
   workerServerEnv: { OK_TEST_OKF_GENERATED_INDEX_SETTINGS: 'isolated-content-v1' },
@@ -35,18 +41,9 @@ function readProjectConfig(configPath: string): OkfProjectConfig {
 }
 
 async function openOkfSettings(page: Page): Promise<void> {
-  await page.goto('/#settings/plugins-manage');
-  await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 30_000 });
-
-  const okfToggle = page.getByTestId('settings-plugin-toggle-okf');
-  await expect(okfToggle).toBeVisible();
-  if ((await okfToggle.getAttribute('aria-checked')) !== 'true') {
-    await okfToggle.click();
-  }
-  await expect(okfToggle).toHaveAttribute('aria-checked', 'true');
-
-  await page.goto('/#settings/plugin:okf');
-  await expect(page.getByTestId('settings-plugin-okf')).toBeVisible({ timeout: 30_000 });
+  await openProjectPluginsPanel(page);
+  await setPluginEnabled(page, 'okf', true);
+  await openSettingsSection(page, 'plugin:okf', 'settings-plugin-okf');
 }
 
 async function expectDisclosureContrast(page: Page, theme: 'light' | 'dark'): Promise<void> {

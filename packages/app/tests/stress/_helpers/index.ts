@@ -56,6 +56,13 @@ export {
   tailServerLog,
   waitForHttpReady,
 } from './server-process.ts';
+export {
+  openProjectPluginsPanel,
+  openSettingsSection,
+  SETTINGS_PANEL_TIMEOUT_MS,
+  setPluginEnabled,
+  waitForSettingsPanel,
+} from './settings.ts';
 export { createFileViaSidebar, createFolderViaSidebar, sidebarFileButton } from './sidebar.ts';
 export {
   getSelectedItemSnapshot,

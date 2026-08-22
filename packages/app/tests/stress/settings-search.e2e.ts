@@ -18,8 +18,20 @@
  * wired into the CI `test:e2e` subset (packages/app/package.json).
  */
 
-import { expect, test } from './_helpers';
+import {
+  expect,
+  SETTINGS_PANEL_TIMEOUT_MS,
+  setPluginEnabled,
+  test,
+  waitForSettingsPanel,
+} from './_helpers';
 
+/**
+ * Open the dialog only. The frame and sidebar ship in the main bundle, so this
+ * wait is cheap and stays short — every wait BELOW that reaches panel-body
+ * content carries `SETTINGS_PANEL_TIMEOUT_MS` instead, because the body is one
+ * lazy chunk whose first resolve on a worker is an order of magnitude slower.
+ */
 async function openSettings(page: import('@playwright/test').Page) {
   await page.goto('/#settings');
   await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 10_000 });
@@ -57,7 +69,9 @@ test.describe('Settings search — navigation + pinned layout', () => {
 
     await result.click();
     // Real body swapped to the Hotkeys section; query cleared → group nav back.
-    await expect(page.getByTestId('settings-hotkeys')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('settings-hotkeys')).toBeVisible({
+      timeout: SETTINGS_PANEL_TIMEOUT_MS,
+    });
     await expect(page.getByTestId('settings-sidebar-item-preferences')).toBeVisible();
   });
 
@@ -76,7 +90,7 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await result.click();
 
     const field = page.locator('[data-field="editor.wordWrap"]');
-    await expect(field).toBeVisible({ timeout: 5_000 });
+    await expect(field).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
     // Rendered outcome: the field is scrolled into the viewport…
     await expect(field).toBeInViewport();
     // …and the real CSS flash keyframe is applied, then clears.
@@ -97,7 +111,7 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await result.click();
 
     const block = page.locator('[data-field="section:sharing"]');
-    await expect(block).toBeVisible({ timeout: 5_000 });
+    await expect(block).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
     await expect(block).toBeInViewport();
     await expect(block).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
   });
@@ -116,7 +130,7 @@ test.describe('Settings search — navigation + pinned layout', () => {
       await result.click();
 
       const field = page.locator('[data-field="editor.previewTabs"]');
-      await expect(field).toBeVisible({ timeout: 5_000 });
+      await expect(field).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
       await expect(field).toBeInViewport();
     }
   });
@@ -127,7 +141,9 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
     await openSettings(page);
     // Themes is a user-scope plugin, enabled by default.
     await page.getByTestId('settings-sidebar-item-plugin:theme').click();
-    await expect(page.getByTestId('settings-scope-badge-user')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('settings-scope-badge-user')).toBeVisible({
+      timeout: SETTINGS_PANEL_TIMEOUT_MS,
+    });
     await expect(page.getByTestId('settings-scope-badge-project')).toHaveCount(0);
   });
 
@@ -136,14 +152,13 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
   }) => {
     await openSettings(page);
 
-    // Ensure markdownlint is ENABLED via the real project-plugins toggle.
+    // Ensure markdownlint is ENABLED via the real project-plugins toggle. The
+    // panel wait is the caller's job: it is this page's first body render, so it
+    // pays the cold chunk, while the helper's own gate is budgeted only for the
+    // config binding that leaves the switch disabled.
     await page.getByTestId('settings-sidebar-item-plugins-manage').click();
-    const toggle = page.getByTestId('settings-plugin-toggle-markdownlint');
-    await expect(toggle).toBeVisible({ timeout: 5_000 });
-    if ((await toggle.getAttribute('aria-checked')) !== 'true') {
-      await toggle.click();
-    }
-    await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 5_000 });
+    await waitForSettingsPanel(page, 'settings-plugins-manage');
+    await setPluginEnabled(page, 'markdownlint', true);
 
     // A rule is now searchable from the sidebar search; the result opens the
     // panel pre-filtered to that rule, and the header shows the Project badge.
@@ -152,18 +167,17 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
     await expect(ruleResult).toBeVisible({ timeout: 5_000 });
     await ruleResult.click();
 
-    await expect(page.getByTestId('settings-plugin-markdownlint')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('settings-plugin-markdownlint')).toBeVisible();
     await expect(page.getByTestId('settings-scope-badge-project')).toBeVisible();
     await expect(page.getByTestId('markdownlint-rule-search')).toHaveValue('MD013');
     await expect(page.getByTestId('markdownlint-rule-row-MD013')).toBeVisible();
     await expect(page.getByTestId('markdownlint-rule-row-MD001')).toHaveCount(0);
 
-    // Now DISABLE markdownlint; its rules drop out of the search index.
+    // Now DISABLE markdownlint; its rules drop out of the search index. No
+    // panel wait here: the body chunk resolved above, so the helper's binding
+    // gate is the only readiness left to wait on.
     await page.getByTestId('settings-sidebar-item-plugins-manage').click();
-    const toggleAgain = page.getByTestId('settings-plugin-toggle-markdownlint');
-    await expect(toggleAgain).toBeVisible({ timeout: 5_000 });
-    await toggleAgain.click();
-    await expect(toggleAgain).toHaveAttribute('aria-checked', 'false', { timeout: 5_000 });
+    await setPluginEnabled(page, 'markdownlint', false);
 
     await page.getByTestId('settings-search-input').fill('MD013');
     await expect(page.getByTestId('settings-search-result-rule:MD013')).toHaveCount(0);

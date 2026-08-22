@@ -24,6 +24,8 @@ import {
   expect,
   filterCriticalErrors,
   type LogEntry,
+  openProjectPluginsPanel,
+  setPluginEnabled,
   test,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
@@ -303,6 +305,14 @@ test.describe('unified Problems — file-tree indicators', () => {
   });
 
   test('enabling the plugin from Settings lights up an UNOPENED doc row', async ({ page, api }) => {
+    // The settings panel now carries the shared cold-chunk budget, and this
+    // test already spends three 30s freshness polls around it, so the sum of
+    // its long budgets no longer fits the config's 120s slot. Sizing the slot
+    // keeps each of those assertions able to reach its own budget and fail by
+    // name; it cannot mask a regression, because whichever wait stalls still
+    // exhausts that budget first.
+    test.setTimeout(180_000);
+
     // The report's headline symptom: "you enable the plugin, nothing lights up."
     // Driven through the real Settings switch rather than an API call, because
     // the plugin toggle takes a DIFFERENT route to the freshness trigger than a
@@ -321,19 +331,22 @@ test.describe('unified Problems — file-tree indicators', () => {
 
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
 
-    // The same deep link the Problems panel's "Enable plugins" pointer uses.
-    await page.goto('/#settings/plugins-manage');
-    await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 10_000 });
-    const toggle = page.getByTestId('settings-plugin-toggle-markdownlint');
-    await expect(toggle).toBeVisible({ timeout: 10_000 });
+    // The same deep link the Problems panel's "Enable plugins" pointer uses,
+    // via the shared helper so the settings body's cold-chunk budget is stated
+    // once. The 10s it replaced was below the config's own CI expect budget, so
+    // it narrowed the margin rather than widening it.
+    await openProjectPluginsPanel(page);
 
-    // Off: the doc's only finding was MD010, so its row must go bare.
-    await toggle.click();
+    // Off: the doc's only finding was MD010, so its row must go bare. Driven to
+    // a known state rather than clicked blind, because the switch is disabled
+    // until the config binding syncs and a blind click would block on
+    // actionability and burn the whole slot as a bare click timeout.
+    await setPluginEnabled(page, 'markdownlint', false);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBeNull();
 
     // Back on — the reported scenario. The row must light up again with the doc
     // still never opened. Left ON so the file's config state matches beforeEach.
-    await toggle.click();
+    await setPluginEnabled(page, 'markdownlint', true);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
   });
 
@@ -342,6 +355,9 @@ test.describe('unified Problems — file-tree indicators', () => {
     api,
     workerServer,
   }) => {
+    // Same slot sizing as the markdownlint case above, for the same reason.
+    test.setTimeout(180_000);
+
     // The report's FIRST symptom names frontmatter specifically ("files with
     // frontmatter issues don't turn yellow until you click into them one at a
     // time"). markdownlint and frontmatter are separate plugins reaching the
@@ -392,11 +408,8 @@ test.describe('unified Problems — file-tree indicators', () => {
     // Plugin off: the row is bare even though the doc violates the schema.
     await expect.poll(problemAttr, { timeout: 20_000 }).toBeNull();
 
-    await page.goto('/#settings/plugins-manage');
-    await expect(page.getByTestId('settings-plugins-manage')).toBeVisible({ timeout: 10_000 });
-    const toggle = page.getByTestId('settings-plugin-toggle-frontmatter');
-    await expect(toggle).toBeVisible({ timeout: 10_000 });
-    await toggle.click();
+    await openProjectPluginsPanel(page);
+    await setPluginEnabled(page, 'frontmatter', true);
 
     // Enabling the plugin must light the row up with the doc never opened.
     await expect.poll(problemAttr, { timeout: 30_000 }).toBe('warning');
@@ -406,7 +419,7 @@ test.describe('unified Problems — file-tree indicators', () => {
     // down, so a sibling test could otherwise inherit frontmatter validation.
     // The schema mapping itself goes inert once the plugin is off (the audit
     // skips schema resolution and appliesTo checks entirely when disabled).
-    await toggle.click();
+    await setPluginEnabled(page, 'frontmatter', false);
     await expect.poll(problemAttr, { timeout: 30_000 }).toBeNull();
   });
 

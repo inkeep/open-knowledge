@@ -33,6 +33,7 @@ import {
   expect,
   filterCriticalErrors,
   type LogEntry,
+  SETTINGS_PANEL_TIMEOUT_MS,
   test,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
@@ -363,7 +364,10 @@ test.describe('markdown lint — settings rule browser', () => {
       await page.goto('/#settings');
       await page.getByTestId('settings-sidebar-item-plugin:markdownlint').click();
       const search = page.getByTestId('markdownlint-rule-search');
-      await expect(search).toBeVisible({ timeout: 10_000 });
+      // First render of the lazy settings body in this page, so it carries the
+      // shared cold-chunk budget. The 10s it replaced was below the config's own
+      // CI expect budget, i.e. a narrowing rather than a margin.
+      await expect(search).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
       await search.fill('MD001');
       const toggle = page.getByTestId('markdownlint-rule-toggle-MD001');
       await expect(toggle).toHaveAttribute('aria-checked', 'true');
@@ -407,7 +411,10 @@ test.describe('markdown lint — settings rule browser', () => {
       await page.goto('/#settings');
       await page.getByTestId('settings-sidebar-item-plugin:markdownlint').click();
       const search = page.getByTestId('markdownlint-rule-search');
-      await expect(search).toBeVisible({ timeout: 10_000 });
+      // First render of the lazy settings body in this page, so it carries the
+      // shared cold-chunk budget. The 10s it replaced was below the config's own
+      // CI expect budget, i.e. a narrowing rather than a margin.
+      await expect(search).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
       await search.fill('MD013');
       await page.getByTestId('markdownlint-rule-expand-MD013').click();
 
