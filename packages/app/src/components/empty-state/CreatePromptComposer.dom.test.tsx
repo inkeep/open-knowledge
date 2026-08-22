@@ -72,10 +72,15 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       {children}
     </div>
   ),
-  // Transparent passthrough — the real role="group" semantics are exercised
-  // against real Radix in OpenInAgentMenu/OpenInAgentTerminalRow .dom tests;
-  // here the dropdown is fully mocked, so asserting the role would test the mock.
-  DropdownMenuGroup: ({ children }: MenuChild) => <>{children}</>,
+  // Mirrors Radix `Menu.Group` (`<Primitive.div role="group" {...props} />`).
+  // A bare fragment would erase the role and swallow `aria-label`, so the
+  // section's accessible name could not be asserted at all.
+  DropdownMenuGroup: ({ children, ...props }: MenuChild) => (
+    // biome-ignore lint/a11y/useSemanticElements: must mirror Radix's `<div role="group">`
+    <div role="group" {...props}>
+      {children}
+    </div>
+  ),
   DropdownMenuItem: ({ children, disabled, onSelect, ...props }: MenuChild) => (
     <button type="button" role="menuitem" disabled={disabled} onClick={onSelect} {...props}>
       {children}
@@ -256,6 +261,19 @@ describe('CreatePromptComposer External apps / Terminal sections', () => {
     });
     // Selecting thread mode does not launch the terminal.
     expect(launchCalls).toEqual([]);
+  });
+
+  // This menu hand-duplicates AgentSplitButton's three-section structure rather
+  // than reusing it, so the In-app section is asserted here independently.
+  test('names the In-app section "In app" and carries no maturity badge', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    states = { ...installedAll };
+    workspaceValue = { contentDir: '/tmp/project', pathSeparator: '/' };
+    await renderComposer({ withTerminal: true });
+
+    const inApp = screen.getByRole('group', { name: 'In app' });
+    expect(inApp.textContent).toContain('In app');
+    expect(inApp.textContent).not.toContain('Beta');
   });
 
   test('Enter in thread mode starts the in-app agent — not an app-agent dispatch', async () => {

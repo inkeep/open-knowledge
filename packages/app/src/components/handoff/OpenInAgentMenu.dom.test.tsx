@@ -247,6 +247,21 @@ describe('OpenInAgentMenu runtime behavior', () => {
     expect(screen.queryByTestId('open-in-agent-claude-web-fallback')).toBeNull();
   });
 
+  // This surface is a <fieldset> named by its <legend> (not a Radix group, and
+  // never an `aria-label` — the "In app (beta)" name lived on the five Radix
+  // group surfaces; here the badge was simply the legend's second child). So
+  // the name and the heading are one node: `getByRole` pins that the fieldset
+  // still exposes role="group" and that the legend still names it, and the
+  // badge's absence is the separate thing worth asserting.
+  test('names the In-app section "In app" and carries no maturity badge', async () => {
+    registerAgent({ source: 'registry', id: 'claude-acp', name: 'Claude Agent' });
+    await renderMenu();
+    await openMenu();
+
+    const inApp = screen.getByRole('group', { name: 'In app' });
+    expect(inApp.textContent).not.toContain('Beta');
+  });
+
   test('hides the In-app section when no agent is enabled, keeping Configure agents', async () => {
     states = {
       'claude-cowork': { installed: null },

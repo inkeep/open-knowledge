@@ -1,9 +1,14 @@
 import { useSyncExternalStore } from 'react';
 /**
- * ONE sticky-agent store shared by every "Ask AI" composer placement (the bottom
- * docked field and the create/empty-screen hero). It carries the docked-terminal
- * CLI sentinel (`terminal-cli:<cli>`) alongside the installed-app `HandoffTarget`
- * ids, so a default chosen in one placement is the default the other reads back.
+ * ONE sticky-agent store behind "the agent you chose last is your agent". Every
+ * surface that lets the user pick an agent writes it — the bottom docked Ask AI
+ * field, the create/empty-screen hero, the Agents and terminal tab strips
+ * (`SessionsHost`), and the Comments panel's send control — and every surface
+ * that launches one reads it back, including the file sidebar's Open with AI
+ * rows. It carries the docked-terminal CLI sentinel (`terminal-cli:<cli>`)
+ * alongside the installed-app `HandoffTarget` ids, so a pick made anywhere is
+ * the default everywhere. Adding a picker means writing here too; that is the
+ * contract, not an incidental coupling.
  *
  * Before this consolidation the two surfaces wrote to two divergent localStorage
  * keys — the bottom composer to `ok-ask-ai-default-agent-v1` (with the CLI
@@ -27,7 +32,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 
-/** The unified key both placements read and write. */
+/** The unified key every agent-picker surface reads and writes. */
 export const UNIFIED_AGENT_KEY = 'ok-ask-ai-agent-v2';
 
 /**

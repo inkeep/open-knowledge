@@ -6,7 +6,8 @@
  * Enablement = the user's explicit override (from `enabled-agents.ts`) when
  * present, else the category default computed from the runtime signal the
  * caller supplies:
- *   - In app   → registered (enabling registers; nothing installs to detect)
+ *   - In app   → registered, and callers fold harness detection into that
+ *                input (`isHarnessDetected`), so a detected agent counts
  *   - Terminal → fail-open: shown unless positively absent on PATH
  *                (`installed[cli] === false`); an unresolved probe still shows
  *   - Desktop  → detected: shown when the OS-level probe reports the app

@@ -10,9 +10,10 @@
  * `DropdownMenuSub` inside `ContextMenuContent`) detaches keyboard navigation
  * because Radix submenus inherit roving focus from their parent root primitive.
  *
- * Detected desktop apps sit under an "External apps" section label; the docked
- * terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`: CLIs the
- * probe hasn't ruled out) — sit under a "Terminal" section label.
+ * Three section labels, in render order: "In app" over the enabled in-app
+ * agents, "Terminal" over the docked terminal launchers — one row per enabled
+ * CLI (`isTerminalCliEnabled`: CLIs the probe hasn't ruled out), gated on a
+ * desktop terminal bridge — and "External apps" over the enabled app targets.
  *
  * The submenu always renders with at least the Configure-agents item; when no
  * agent section has rows, that item is all that remains (no section labels).
@@ -128,7 +129,7 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
             hidden. Enablement is managed in Configure agents (footer). */}
         {showThreadSection ? (
           <ContextMenuGroup aria-label={t`In app`}>
-            <ContextMenuLabel className="flex items-center gap-1.5">
+            <ContextMenuLabel>
               <Trans>In app</Trans>
             </ContextMenuLabel>
             {enabledRegisteredAgents.map((agent) => {
@@ -166,7 +167,8 @@ export function OpenInAgentEmptySpaceSubmenu(props: OpenInAgentEmptySpaceSubmenu
           <ContextMenuSeparator />
         ) : null}
         {showTerminalSection ? (
-          // Terminal section leads (the in-app terminal is the first-class path).
+          // Terminal sits between In app and External apps (the docked terminal
+          // is the first-class of the two external-handoff routes).
           // Labeled `role="group"` so assistive tech announces the section the
           // visual header conveys (the label alone is skipped by arrow-key nav).
           <ContextMenuGroup aria-label={t`Terminal`}>

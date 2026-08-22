@@ -19,8 +19,8 @@
  * Submitting dispatches the typed instruction to the resolved default agent
  * (first installed, or the user's sticky pick) scoped to the current doc or
  * folder, via the shared handoff plumbing (`useHandoffDispatch` -> ask-scope
- * input -> `composeAskPrompt`). Picking a Terminal CLI (Claude / Codex /
- * OpenCode / Cursor) hands the composed prompt to the docked terminal instead
+ * input -> `composeAskPrompt`). Picking a Terminal CLI (any `TerminalCli`)
+ * hands the composed prompt to the docked terminal instead
  * of a deep-link dispatch — always in a new terminal tab (reusing a live
  * shell is exclusively the selection-bubble path).
  */
@@ -773,9 +773,10 @@ export function BottomComposer({
     return outcome.ok;
   };
 
-  // Compose the current draft (instruction + chips + pinned selection) into a
-  // handoff input — shared by `submit` (which dispatches it) and the picker's
-  // "Choose another agent…" row (which carries it into the catalog).
+  // Collect the current draft — typed instruction, `@`-mention chips, and any
+  // pinned selection passage — into one handoff input. `submit` is the only
+  // caller; the picker's Configure agents row takes no input and just opens
+  // Settings.
   const composeCurrentInput = () => {
     const { instruction, mentions } = inputRef.current?.getContent() ?? {
       instruction: '',

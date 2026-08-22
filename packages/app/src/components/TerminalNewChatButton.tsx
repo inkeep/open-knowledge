@@ -69,8 +69,9 @@ interface TerminalNewChatButtonProps {
  * launch of the current pick with a dropdown to switch it across all three
  * families. The primary opens whatever is currently selected: a bare terminal, a
  * CLI chat, or an in-app agent thread. The menu mirrors the Ask-AI surfaces: an
- * "In this app" group (enabled agents), then — on the desktop host — a "Terminal"
- * group (every CLI plus a bare "Terminal" shell), then a "Configure agents" footer last.
+ * "In app" group (enabled agents), then — on the desktop host — a "Terminal"
+ * group (the CLIs the host admits via `visibleClis`, plus a bare "Terminal"
+ * shell), then a "Configure agents" footer last.
  *
  * The pick sticks: agent + CLI picks via the shared Ask-AI store, the bare-terminal
  * pick via a terminal-only flag. The brand icon / agent avatar mirrors the Ask-AI
@@ -160,14 +161,14 @@ export function TerminalNewChatButton({
           </DropdownMenuTrigger>
         ) : null}
         <DropdownMenuContent align="start" className="max-h-80 min-w-[200px]">
-          {/* Same section structure as the Ask-AI menus — an "In this app" group
+          {/* Same section structure as the Ask-AI menus — an "In app" group
               over the agent rows, a "Terminal" group over the CLIs, and a
               "Configure agents" footer last — so the dock picker reads consistently. The
               bare "Terminal" (plain shell) is the last row of the Terminal group,
               where it belongs alongside the CLIs. */}
           {showAgents && registeredAgents.length > 0 ? (
             <DropdownMenuGroup aria-label={t`In app`}>
-              <DropdownMenuLabel className="flex items-center gap-1.5">
+              <DropdownMenuLabel>
                 <Trans>In app</Trans>
               </DropdownMenuLabel>
               {registeredAgents.map((agent) => {

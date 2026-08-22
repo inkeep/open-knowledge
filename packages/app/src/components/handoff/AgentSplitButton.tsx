@@ -19,28 +19,9 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 /**
- * Presentational split button that pairs a primary action with an agent picker:
- * `[ primary ▸ | ⌄ ]`. Shared by the empty-state create composer and the footer
- * "Ask <agent>" composer so the two surfaces can't drift.
- *
- * It owns only the view — the joined `ButtonGroup`, the primary button, and the
- * chevron menu listing the detected desktop apps ("External apps") plus the
- * optional docked-terminal Claude CLI ("Terminal"). Everything stateful (which agent is
- * selected, where that preference is stored, what the primary button does, the
- * pending/disabled affordance, the label verb) stays in the parent and arrives
- * as props. The parent composes `primary` (icon + label + any spinner) and the
- * caller decides whether to render this at all (e.g. the empty-state swaps in a
- * disabled standalone button until an agent resolves).
- *
- * Uses a non-modal DropdownMenu (not a Popover): these are menu actions, but
- * "Choose another agent" hands directly to a modal dialog. A modal dropdown
- * would leave Radix's body pointer lock active during that handoff and make the
- * catalog appear frozen.
- */
-/**
  * One CLI row in the "Terminal" section — a docked-terminal launcher for a
- * single CLI agent (Claude / Codex / Cursor). The parent supplies the visible
- * label + accessible name; the row reports its own selected check.
+ * single agent CLI. The parent supplies the visible label + accessible name;
+ * the row reports its own selected check.
  */
 export interface TerminalCliRow {
   /** Which CLI this row launches — drives the per-CLI sticky id + testid. */
@@ -54,10 +35,10 @@ export interface TerminalCliRow {
 }
 
 /**
- * One registered in-app agent in the "In this app" section — selecting it
- * makes that agent the thread target (the parent owns registration/default
- * bumping). When any of these exist, they replace the single generic
- * "Start an agent" row so the first registration never locks the choice in.
+ * One registered in-app agent in the "In app" section — selecting it makes
+ * that agent the thread target (the parent owns registration/default bumping).
+ * One row per enabled agent, so the first registration never locks the choice
+ * in; when none are enabled the whole section is hidden.
  */
 export interface ThreadAgentRow {
   /** Stable row key (`<source>:<id>`). */
@@ -92,6 +73,31 @@ export interface AgentSplitButtonTestIds {
   settings?: string;
 }
 
+/**
+ * Presentational split button that pairs a primary action with an agent picker:
+ * `[ primary ▸ | ⌄ ]`. Shared by the footer "Ask <agent>" composer
+ * (`BottomComposer`) and the Comments panel's send control
+ * (`CommentSendFooter`) so those two surfaces can't drift. The empty-state
+ * create composer is NOT a consumer — it renders the same three sections from
+ * its own menu, so a change to the section structure here has to be made there
+ * too.
+ *
+ * It owns only the view — the joined `ButtonGroup`, the primary button, and the
+ * chevron menu: any caller-supplied `menuLeading` rows first, then the enabled
+ * in-app agents ("In app"), the docked-terminal CLI rows ("Terminal"), the
+ * enabled app targets ("External apps"), and a "Configure agents" row last.
+ * Everything stateful (which agent is
+ * selected, where that preference is stored, what the primary button does, the
+ * pending/disabled affordance, the label verb) stays in the parent and arrives
+ * as props. The parent composes `primary` (icon + label + any spinner) and the
+ * caller decides whether to render this at all (e.g. the empty-state swaps in a
+ * disabled standalone button until an agent resolves).
+ *
+ * Uses a non-modal DropdownMenu (not a Popover): these are menu actions, but the
+ * "Configure agents" row hands directly to the modal Settings dialog. A modal
+ * dropdown would leave Radix's body pointer lock active during that handoff and
+ * make that dialog appear frozen.
+ */
 export function AgentSplitButton({
   primary,
   onPrimary,
@@ -127,7 +133,7 @@ export function AgentSplitButton({
    */
   terminal?: { selected: boolean; onSelect: () => void };
   /**
-   * Docked-terminal CLI rows — one per launchable CLI (Claude / Codex / Cursor).
+   * Docked-terminal CLI rows — one per launchable CLI.
    * Omit (or pass empty) on the web host. When non-empty, the "Terminal" section
    * renders these rows instead of the legacy single {@link terminal} slot.
    */
@@ -215,7 +221,7 @@ export function AgentSplitButton({
             // section (all disabled) is hidden entirely.
             <>
               <DropdownMenuGroup aria-label={t`In app`}>
-                <DropdownMenuLabel className="flex items-center gap-1.5">
+                <DropdownMenuLabel>
                   <Trans>In app</Trans>
                 </DropdownMenuLabel>
                 {threadAgents?.map((row) => (
@@ -242,8 +248,9 @@ export function AgentSplitButton({
           {hasOptions ? (
             <>
               {showTerminal ? (
-                // Terminal section leads (the in-app terminal is the first-class
-                // path). Labeled `role="group"` so assistive tech announces the
+                // Terminal sits between In app and External apps (the docked
+                // terminal is the first-class of the two external-handoff
+                // routes). Labeled `role="group"` so assistive tech announces the
                 // section the visual header conveys (the label alone is skipped by
                 // arrow-key menu navigation).
                 <DropdownMenuGroup aria-label={t`Terminal`}>

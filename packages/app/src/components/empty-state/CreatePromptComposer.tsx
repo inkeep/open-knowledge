@@ -87,15 +87,14 @@ interface CreatePromptComposerProps {
  * composes the create-scope prompt — brief + the explicit `@path` mentions — so
  * the agent scaffolds the project to match.
  *
- * The chevron menu has two sections. "External apps" lists the desktop apps
- * detected on this machine (an app that can't be launched is never offered —
- * mirrors the "Open with AI" menu); picking one sets the default the primary
- * button creates with. "Terminal" (desktop only) adds a row per agent CLI
- * (Claude, Codex, Cursor) that launches the docked-terminal CLI with the same
- * create-scope input. The two differ on purpose: every row selects the create
- * target — an external-app row picks an installed desktop app, a Terminal row
- * picks the docked-terminal CLI — and the button performs the selected target
- * (app deep-link or terminal launch).
+ * The chevron menu has three sections, in render order. "In app" lists the
+ * enabled in-app agents; picking one makes that agent the create target.
+ * "Terminal" (desktop only) adds a row per enabled agent CLI, which launches
+ * the docked-terminal CLI with the same create-scope input. "External apps"
+ * lists the desktop apps detected on this machine (an app that can't be
+ * launched is never offered — mirrors the "Open with AI" menu). Every row
+ * selects the create target rather than acting on it; the button performs the
+ * selected target (thread start, terminal launch, or app deep-link).
  * When nothing is installed, Create is disabled and the footer shows a "no
  * agents" hint.
  *
@@ -522,7 +521,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                       an empty section (all disabled) is hidden entirely. */}
                   {showThreadSection ? (
                     <DropdownMenuGroup aria-label={t`In app`}>
-                      <DropdownMenuLabel className="flex items-center gap-1.5">
+                      <DropdownMenuLabel>
                         <Trans>In app</Trans>
                       </DropdownMenuLabel>
                       {enabledThreadAgents.map((agent) => (
@@ -551,8 +550,9 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                     <DropdownMenuSeparator />
                   ) : null}
                   {showTerminalSection ? (
-                    // Terminal section leads (the in-app terminal is the
-                    // first-class path). Labeled `role="group"` so assistive tech
+                    // Terminal sits between In app and External apps (the
+                    // docked terminal is the first-class of the two
+                    // external-handoff routes). Labeled `role="group"` so assistive tech
                     // announces the section the visual header conveys (the label
                     // alone is skipped by arrow-key menu navigation).
                     <DropdownMenuGroup aria-label={t`Terminal`}>

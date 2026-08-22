@@ -93,6 +93,21 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     expect(screen.getByRole('menuitem', { name: 'Terminal' })).toBeDefined();
   });
 
+  // Real Radix, no menu double. Arrow-key menu navigation skips the visible
+  // `DropdownMenuLabel`, so the group's `aria-label` is the only section context
+  // an AT user gets while stepping through rows — an unnamed group is an a11y
+  // regression the `menuitem` assertions above cannot see.
+  test('names the In app group "In app" and carries no maturity badge', async () => {
+    const user = userEvent.setup();
+    renderButton();
+
+    await user.click(screen.getByRole('button', { name: 'Choose what a new tab starts' }));
+
+    const inApp = await screen.findByRole('group', { name: 'In app' });
+    expect(inApp.textContent).toContain('In app');
+    expect(inApp.textContent).not.toContain('Beta');
+  });
+
   test('lists only the CLIs in visibleClis (Claude + detected), hiding the rest', async () => {
     const user = userEvent.setup();
     // The host passes the already-gated list (via `isTerminalCliEnabled`): here

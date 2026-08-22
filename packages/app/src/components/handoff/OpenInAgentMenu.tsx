@@ -16,13 +16,16 @@
  *     `VISIBLE_TARGETS`: the ones the probe reports installed, plus any the
  *     user explicitly enabled in Settings (those route to their installer),
  *     minus any they turned off.
- *   - Detected app launchers sit under an "External apps" section label; the docked
- *     terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`:
- *     CLIs the probe hasn't ruled out), each with a "<Brand> CLI"
- *     accessible name — sit under a "Terminal" section label. The terminal
- *     section is absent on the web host (`useTerminalLaunch()` is null — no shell).
- *   - Empty state: when no section has rows, only the Configure-agents item
- *     remains visible — no section labels, no hint text.
+ *   - Three section labels, in render order: "In app" over the enabled in-app
+ *     agents, "Terminal" over the docked-terminal launchers — one row per
+ *     enabled CLI (`isTerminalCliEnabled`: CLIs the probe hasn't ruled out),
+ *     each with a "<Brand> CLI" accessible name — and "External apps" over the
+ *     enabled app targets. Each renders only when it has rows, so an empty
+ *     section header never shows, and the terminal section is absent on the
+ *     web host (`useTerminalLaunch()` is null — no shell).
+ *   - Empty state: when no section has rows, the instruction input (which
+ *     renders unconditionally) and the Configure-agents item remain — no
+ *     section labels, no hint text.
  *
  * The `input` prop is supplied by the surface (EditorHeader). When `null` (no
  * active doc / workspace not loaded), the trigger is disabled.
@@ -85,8 +88,13 @@ interface OpenWithAiPanelProps {
    *  (no active doc / workspace not loaded). The trigger is also disabled in
    *  that state, so this is a defensive guard for the controlled-open path. */
   readonly disabled: boolean;
-  /** Registered in-app agents — one launch row each. Empty before the first
-   *  catalog registration, where the single "Start an agent" row renders. */
+  /** Registered in-app agents — the unfiltered list; this panel applies
+   *  `isInAppAgentEnabled` itself. Empty until an agent is registered or the
+   *  server reports a detected harness — `useRegisteredAgents` merges both
+   *  upstream, before this prop is passed.
+   *  When it is empty, or every registered agent is disabled in Configure
+   *  agents, the whole "In app" section is hidden; there is no generic
+   *  fallback row. */
   readonly registeredAgents: readonly RegisteredAgent[];
   /** Fired when the user picks an agent; carries the typed instruction — the
    *  empty string when the user dispatched without typing one. */
@@ -103,8 +111,8 @@ interface OpenWithAiPanelProps {
 }
 
 /**
- * Popover body — the instruction input and the External apps / Terminal row
- * sections. Pure: install state, the launcher, and the pick handlers are
+ * Popover body — the instruction input and the In app / Terminal / External apps
+ * row sections. Pure: install state, the launcher, and the pick handlers are
  * injected, so it renders deterministically in tests without the dispatch /
  * install-probe hooks. Instruction state is local and resets on each open
  * because the popover unmounts its content when closed.
@@ -129,18 +137,17 @@ function OpenWithAiPanel({
   const enabledTargets = VISIBLE_TARGETS.filter((target) =>
     isDesktopTargetEnabled(overrides, target.id, installStates[target.id]?.installed),
   );
-  // Only the in-app agents the user has enabled appear as rows.
+  // Registered in-app agents — explicit picks plus harness-detected suggestions
+  // (`useRegisteredAgents` merges both) — minus anything turned off in Configure
+  // agents, and minus anything the catalog reports unsupported here, which
+  // `isInAppAgentEnabled` force-hides ahead of any override. The `true` is the
+  // default it resolves against: being on the merged list is what shows a row.
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
     isInAppAgentEnabled(overrides, agent.source, agent.id, true, agent.supported),
   );
 
-  // Three labeled sections orient the user: "In this app" over the server-
-  // hosted agent-thread launcher (always present — threads work on every
-  // host), "External apps" over the detected desktop apps, "Terminal" over the
-  // docked-terminal CLI rows. The Agents row always shows, so the empty state
-  // never appears while it is present.
-  // The Terminal CLIs the user ENABLED in Configure agents. Each section renders
-  // only when it has rows, so an empty section header never shows.
+  // Terminal CLIs the probe hasn't ruled out, minus anything turned off in
+  // Configure agents (fail-open — see `isTerminalCliEnabled`).
   const terminalClis = terminalLaunch
     ? TERMINAL_CLI_IDS.filter((cli) =>
         isTerminalCliEnabled(overrides, cli, terminalLaunch.installedClis),
@@ -169,7 +176,7 @@ function OpenWithAiPanel({
         {showThreadSection ? (
           <fieldset className="m-0 flex min-w-0 flex-col gap-0.5 border-0 p-0">
             <legend
-              className="flex items-center gap-1.5 px-1.5 py-1 font-medium text-muted-foreground text-xs"
+              className="px-1.5 py-1 font-medium text-muted-foreground text-xs"
               data-testid="open-in-agent-thread-label"
             >
               <Trans>In app</Trans>

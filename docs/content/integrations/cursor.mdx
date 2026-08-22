@@ -16,11 +16,11 @@ Cursor prompts you to approve a new MCP server when you next open the project. A
 
 ## Open with AI
 
-From the editor, **Open with AI ▸ Cursor** dispatches the current file, folder, or project to Cursor. Entry points: the sidebar's right-click menu (file / folder / empty space), the command palette, and the **File → Open with AI** menu. You can also hand the current doc to Cursor from the bottom **Ask AI** composer.
+From the editor, **Open with AI ▸ Cursor Desktop** dispatches the current file, folder, or project to Cursor. Entry points: the sidebar's right-click menu (file / folder / empty space), the command palette, and the **File → Open with AI** menu. You can also hand the current doc to Cursor from the bottom **Ask AI** composer.
 
 Cursor uses a two-step handoff: OpenKnowledge spawns `cursor <projectDir>` to open the workspace first, then fires the `cursor://` URL with a short prompt asking Cursor to open the target in OpenKnowledge's web preview. The agent then grounds the rest of the conversation through MCP. See [Editor → Open with AI](/docs/features/editor#open-with-ai) for the full UX.
 
-Both steps run through the local server's `POST /api/handoff`, the same path in the web app and the desktop app — so the **Open with AI ▸ Cursor** row works in both.
+Both steps run through the local server's `POST /api/handoff`, the same path in the web app and the desktop app — so the **Open with AI ▸ Cursor Desktop** row works in both.
 
 ## Verify
 

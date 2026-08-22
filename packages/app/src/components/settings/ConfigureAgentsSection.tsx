@@ -107,9 +107,13 @@ function AgentGroup({
   children,
   labelId,
 }: {
-  label: ReactNode;
+  /** Plain heading text. The `<h4>` is the `<section>`'s `aria-labelledby`
+   *  target, so this string IS the region's accessible name. */
+  label: string;
   /** Decorative mark beside the heading — the external-action arrow on the
-   *  external-apps group, matching that section's launcher headers. */
+   *  external-apps group, matching that section's launcher headers. It renders
+   *  inside that same `<h4>`, so it must carry its own `aria-hidden`; anything
+   *  that should be announced belongs in `label`. */
   labelIcon?: ReactNode;
   labelId: string;
   children: ReactNode;

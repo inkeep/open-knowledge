@@ -6,10 +6,11 @@
  *   - Render the targets `isDesktopTargetEnabled` admits: probed-installed,
  *     plus any explicitly enabled in Settings (those route to their
  *     installer), minus any turned off.
- *   - Detected desktop apps sit under an "External apps" section label; the docked
- *     terminal launchers — one row per enabled CLI (`isTerminalCliEnabled`:
- *     CLIs the probe hasn't ruled out) — sit under a "Terminal"
- *     section label, gated on a desktop terminal bridge.
+ *   - Three section labels, in render order: "In app" over the enabled in-app
+ *     agents, "Terminal" over the docked terminal launchers — one row per
+ *     enabled CLI (`isTerminalCliEnabled`: CLIs the probe hasn't ruled out),
+ *     gated on a desktop terminal bridge — and "External apps" over the
+ *     enabled app targets.
  *   - Empty state: when no section has rows, only the Configure-agents item
  *     remains visible — no section labels, no hint text.
  *   - Status-hint code path remains for the `inputMissing` case (right-click
@@ -148,7 +149,7 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
             hidden. Enablement is managed in Configure agents (footer). */}
         {showThreadSection ? (
           <DropdownMenuGroup aria-label={t`In app`}>
-            <DropdownMenuLabel className="flex items-center gap-1.5">
+            <DropdownMenuLabel>
               <Trans>In app</Trans>
             </DropdownMenuLabel>
             {enabledRegisteredAgents.map((agent) => {
@@ -187,7 +188,8 @@ export function OpenInAgentContextSubmenu(props: OpenInAgentContextSubmenuProps)
           <DropdownMenuSeparator />
         ) : null}
         {showTerminalSection ? (
-          // Terminal section leads (the in-app terminal is the first-class path).
+          // Terminal sits between In app and External apps (the docked terminal
+          // is the first-class of the two external-handoff routes).
           // Labeled `role="group"` so assistive tech announces the section the
           // visual header conveys (the label alone is skipped by arrow-key nav).
           <DropdownMenuGroup aria-label={t`Terminal`}>

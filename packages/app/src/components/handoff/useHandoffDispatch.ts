@@ -877,8 +877,8 @@ export function selectScopedPrompt(
  *     surface, load the OK contract, read the open file if there is one, then
  *     stop. It does NOT invite open-ended work — the user drives the next turn
  *     from the terminal themselves. CLI-agnostic: the load + read + stop wording
- *     is identical across Claude / Codex / Cursor (no `@`-mention encoding to
- *     vary per target).
+ *     is identical for every `TerminalCli` (no `@`-mention encoding to vary per
+ *     target), which is why the bare branch takes no `cli` argument at all.
  *   - **Instruction / create launch** — the unified "Ask AI" composer (carries
  *     its intent in `input.compose`: instruction + `@`-mentions + optional
  *     selection passage), the toolbar "Open with AI" popover (top-level
