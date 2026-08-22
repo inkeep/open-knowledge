@@ -221,7 +221,21 @@ export async function enumerateWipChains(
  * worktree on its first boot post-upgrade will not see the legacy dir at the
  * common-dir location until the user next boots OK in the main worktree.
  */
-export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle> {
+export async function initShadowRepo(
+  projectRoot: string,
+  opts?: {
+    /**
+     * Skip the every-boot `configureShadowGc` call so the caller can run it
+     * off the readiness-critical path. Each config write is one git spawn;
+     * on hosts where process spawn is expensive (Windows AV scanning ~1s per
+     * spawn), these four spawns are pure added latency to a boot sequence
+     * that gates the HTTP API. Callers that pass this MUST schedule
+     * `configureShadowGc` themselves — the gc config is what keeps a
+     * long-lived shadow repo from degrading.
+     */
+    deferGcConfig?: boolean;
+  },
+): Promise<ShadowHandle> {
   // Path resolution lives in @inkeep/open-knowledge-core so the CLI read path
   // and this server write path use exactly the same rule.
   const shadowDir = resolveShadowDir(projectRoot);
@@ -259,10 +273,12 @@ export async function initShadowRepo(projectRoot: string): Promise<ShadowHandle>
   // Write gc config on every boot (idempotent) so an existing degraded repo
   // picks it up post-upgrade, not only freshly-initialized ones.
   // Best-effort: a config failure must never block boot or the writer lock.
-  try {
-    await configureShadowGc(handle);
-  } catch (e) {
-    log.warn({ err: e }, 'failed to write gc config (non-fatal)');
+  if (!opts?.deferGcConfig) {
+    try {
+      await configureShadowGc(handle);
+    } catch (e) {
+      log.warn({ err: e }, 'failed to write gc config (non-fatal)');
+    }
   }
 
   // Allowlist-based sweep of legacy WIP refs on every start.

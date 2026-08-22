@@ -1168,6 +1168,14 @@ interface RenameLogGcResult {
   dropped: number;
   retained: number;
   rebuilt: number;
+  /**
+   * True when this invocation was dropped by the per-gitDir dedup because
+   * another GC pass owned the slot. Distinguishable from a real all-zero run
+   * so a caller whose options MATTER (the boot `{rebuild: true}` pass — the
+   * only reconstruction opportunity of the session) can retry instead of
+   * mistaking the drop for success.
+   */
+  skipped?: boolean;
 }
 
 export async function gcRenameLog(
@@ -1183,7 +1191,7 @@ export async function gcRenameLog(
   // is never legitimate contention — skipping the second invocation is
   // always safe; the first pass's reachability set is at least as fresh.
   if (gcPending.has(shadow.gitDir)) {
-    return result;
+    return { ...result, skipped: true };
   }
   gcPending.add(shadow.gitDir);
   try {

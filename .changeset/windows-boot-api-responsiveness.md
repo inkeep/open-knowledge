@@ -1,0 +1,5 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+The server now answers API requests as soon as it starts instead of staying silent for up to a minute or more on some Windows machines. Boot-time git housekeeping (history-repo gc configuration, rename-log garbage collection, shadow maintenance) used to run before the server declared itself ready, and every API endpoint waited on that; on hosts where antivirus scanning makes each git subprocess launch slow — a common Windows Defender configuration — the housekeeping burst serialized into a 60-90 second window where `ok status` reported the server alive but every request timed out, and MCP clients such as Claude Desktop repeatedly reported the server unreachable right after a restart. The same window also produced spurious "block timeout reached" git errors in the server log. Housekeeping now runs in the background after the server is ready, so requests are served immediately and the housekeeping still completes; shutdown waits for any in-flight housekeeping so it can never race a project teardown.

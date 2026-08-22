@@ -98,7 +98,13 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  async function until(predicate: () => boolean, timeoutMs = 4000): Promise<boolean> {
+  // The ceiling only bounds failure detection — `until` returns the moment the
+  // predicate holds, so a healthy run never waits it out. It needs headroom
+  // for a fully loaded runner: with every package's test workers plus the
+  // servers' post-ready background git housekeeping sharing the machine,
+  // chokidar's dispatch latency can blow well past a few seconds while the
+  // watcher itself is working correctly.
+  async function until(predicate: () => boolean, timeoutMs = 15_000): Promise<boolean> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       if (predicate()) return true;

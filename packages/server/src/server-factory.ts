@@ -236,6 +236,7 @@ import {
 import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
   commitUpstreamImport,
+  configureShadowGc,
   destroyShadowRepo,
   initShadowRepo,
   OK_GENERATOR_WRITER,
@@ -1424,6 +1425,151 @@ export function createServer(options: ServerOptions): ServerInstance {
       indexRegenerationImmediate = undefined;
       kickIndexRegeneration();
     });
+  }
+
+  // ── Deferred boot-time shadow housekeeping ────────────────────────────────
+  // gc-config writes, the rename-log GC/rebuild, and shadow maintenance are
+  // git-subprocess bursts with no data the readiness gate needs. They used to
+  // run inside initAsync, which holds `ready` — and every `/api/*` handler
+  // gated on it — hostage: on hosts where each git spawn costs ~1s (Windows
+  // with AV scanning taxing CreateProcess), the serialized burst kept the API
+  // unresponsive for 60-90s after every start, and the per-phase Promise.race
+  // caps could not save it because spawn cost lands on the event-loop thread,
+  // so the cap timers themselves fire late. Housekeeping now runs after
+  // `resolveReady()`, mirroring `deferBootIndexSweep`. Ordering within the
+  // run is load-bearing: rename-log GC before maintenance (they share the
+  // shadow; maintenance gc packs what the rename GC may rewrite), matching
+  // the old in-boot order. Runtime-safety of running post-ready: gcRenameLog
+  // serializes per gitDir and preserves in-flight (empty-commitSha) entries,
+  // and the maintenance coordinator skips-if-busy and checks `destroyed`.
+  let shadowHousekeepingImmediate: NodeJS.Immediate | undefined;
+  let shadowHousekeepingInFlight: Promise<void> | undefined;
+  let shadowHousekeepingClosed = false;
+  let bootRenameLogIndex: ReturnType<typeof loadRenameLogIndex> | null = null;
+
+  async function runShadowHousekeeping(): Promise<void> {
+    const shadow = shadowRef.current;
+    if (!shadow || shadowHousekeepingClosed) return;
+    // Start/finish marks: this is the burst whose serialized latency used to
+    // gate readiness, so its post-ready duration is the number that answers
+    // "why was the API sluggish for the first N seconds after start".
+    const startedAtMono = performance.now();
+    log.info({ gitDir: shadow.gitDir }, '[shadow-housekeeping] deferred boot housekeeping started');
+    try {
+      await configureShadowGc(shadow);
+    } catch (e) {
+      log.warn({ err: e }, 'failed to write gc config (non-fatal)');
+    }
+    if (shadowHousekeepingClosed) return;
+    if (bootRenameLogIndex) {
+      // Reachability GC + rebuild from `OkActorEntry.previous_paths` is
+      // best-effort repair — a failure must not undo the already-published
+      // index. Until this completes, entries lost from the JSONL are absent
+      // from rename history; runtime lookups fall through to lazy disk reads.
+      //
+      // Retry on `skipped`: now that this runs post-ready, a live-traffic GC
+      // pass (Save Version, hard-cap GC, session close) can own the per-gitDir
+      // dedup slot when we arrive — and only THIS call carries
+      // `{rebuild: true}`, so treating the drop as success would silently
+      // skip the session's one reconstruction pass. Bounded: an exhausted
+      // retry budget just defers the rebuild to the next boot.
+      try {
+        const RETRY_BUDGET = 30;
+        // Env override exists so a test can force retry exhaustion without
+        // 29 seconds of real sleeps; production uses the 1s default.
+        const retryIntervalMs =
+          Number.parseInt(process.env.OK_BOOT_RENAME_GC_RETRY_INTERVAL_MS ?? '', 10) || 1_000;
+        let rebuilt = false;
+        for (let attempt = 0; attempt < RETRY_BUDGET; attempt++) {
+          const gc = await gcRenameLog(shadow, bootRenameLogIndex, { rebuild: true });
+          if (!gc.skipped) {
+            rebuilt = true;
+            break;
+          }
+          if (attempt === RETRY_BUDGET - 1) break;
+          await new Promise((r) => {
+            setTimeout(r, retryIntervalMs).unref?.();
+          });
+          if (shadowHousekeepingClosed) return;
+        }
+        if (!rebuilt) {
+          log.warn(
+            { gitDir: shadow.gitDir },
+            '[rename-log] deferred boot GC/rebuild retry budget exhausted (persistent GC contention); rebuild deferred to next boot',
+          );
+        }
+      } catch (e) {
+        log.warn(
+          { err: e, gitDir: shadow.gitDir },
+          '[rename-log] deferred boot GC/rebuild failed; index loaded without GC',
+        );
+      }
+    }
+    if (shadowHousekeepingClosed) return;
+    try {
+      await maintenanceCoordinator?.runBootMaintenance();
+    } catch (e) {
+      log.warn({ err: e }, '[shadow-maintenance] boot maintenance failed (non-fatal)');
+    }
+    log.info(
+      { gitDir: shadow.gitDir, durationMs: Math.round(performance.now() - startedAtMono) },
+      '[shadow-housekeeping] deferred boot housekeeping complete',
+    );
+  }
+
+  function deferShadowHousekeeping(): void {
+    if (shadowHousekeepingClosed) return;
+    shadowHousekeepingImmediate = setImmediate(() => {
+      shadowHousekeepingImmediate = undefined;
+      // Defensive .catch(): every leg catches its own errors, but that
+      // guarantee is convention across the runner's body, not type-level —
+      // and a late rejection on a drain-abandoned promise would surface as
+      // an unhandled rejection mid-shutdown.
+      shadowHousekeepingInFlight = runShadowHousekeeping().catch((err) => {
+        log.error({ err }, '[shadow-housekeeping] unexpected uncaught failure');
+      });
+    });
+  }
+
+  /**
+   * Cancel queued housekeeping and DRAIN the in-flight run. The drain is the
+   * load-bearing half: configureShadowGc and gcRenameLog spawn git against
+   * the shadow gitDir outside the shadow op gate, so a destroy that returned
+   * while a leg was mid-subprocess would race the caller's content-dir
+   * removal — the subprocess re-creates `.git/ok` inside the tree being
+   * removed and the walk fails ENOTEMPTY. Completeness depends on every leg
+   * being awaited to completion inside runShadowHousekeeping — a leg that
+   * settles while its work continues in the background re-opens the race
+   * (which is why runBootMaintenance is uncapped). The closed flag plus the
+   * coordinator's own leg-boundary destroyed-checks keep the await short:
+   * the current leg finishes, everything after it is skipped.
+   */
+  async function closeShadowHousekeeping(): Promise<void> {
+    shadowHousekeepingClosed = true;
+    if (shadowHousekeepingImmediate !== undefined) {
+      clearImmediate(shadowHousekeepingImmediate);
+      shadowHousekeepingImmediate = undefined;
+    }
+    if (!shadowHousekeepingInFlight) return;
+    // Bounded to destroyTimeoutMs like every sibling drain in destroy(): a
+    // wedged git subprocess must not hang shutdown. On timeout the drain is
+    // abandoned (accepting the same narrow teardown-race window the sibling
+    // drains accept) and this REJECTS, so the caller records it in the
+    // shutdown phaseErrors summary instead of it passing silently.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<'timeout'>((r) => {
+      timer = setTimeout(() => r('timeout'), destroyTimeoutMs);
+    });
+    try {
+      const outcome = await Promise.race([shadowHousekeepingInFlight, timedOut]);
+      if (outcome === 'timeout') {
+        throw new Error(
+          `shadow housekeeping drain timed out after ${destroyTimeoutMs}ms — abandoning in-flight housekeeping`,
+        );
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
   }
 
   function kickIndexRegeneration(): void {
@@ -3732,6 +3878,29 @@ export function createServer(options: ServerOptions): ServerInstance {
         log.warn({ err }, '[server] failed to mark server.lock draining');
       }
 
+      // Flip the maintenance gate BEFORE draining housekeeping: the drain may
+      // be awaiting `runBootMaintenance`, whose compound run only stops at the
+      // next leg boundary once the coordinator observes `destroyed`. Flipping
+      // it after the drain (where the flush-phase comment used to live) left
+      // those leg-boundary checks dead for the entire drain, so it awaited
+      // all three legs instead of at most the current one. The gate also
+      // keeps any later flush-counter / session-close trigger from starting
+      // a NEW maintenance op during the flush phases below. Runs AFTER the
+      // draining announcement above so a slow drain (bounded at
+      // destroyTimeoutMs) never delays readers learning we're going down.
+      maintenanceCoordinator?.destroy();
+
+      // Cancel queued deferred shadow housekeeping and drain the in-flight
+      // run before any teardown that removes or releases the shadow. A
+      // drain timeout rejects so it lands in the shutdown phaseErrors
+      // summary rather than passing silently.
+      try {
+        await closeShadowHousekeeping();
+      } catch (err) {
+        log.warn({ err }, '[shadow-housekeeping] shutdown drain failed');
+        phaseErrors.push({ phase: 'shadow-housekeeping-drain', error: String(err) });
+      }
+
       // Flush the removal journal synchronously — a tombstone recorded just
       // before shutdown must survive the restart or a reconnecting stale
       // client resurrects the doc. Failure feeds `phaseErrors`: this flush is
@@ -3778,13 +3947,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       // Capture after ready so the count reflects documents loaded during init
       const documentCount = hocuspocus.documents.size;
 
-      // Stop the maintenance coordinator FIRST, before any flush phase. A
-      // background gc/consolidation — fired by the flush-counter during the L1/L2
-      // drains, or by a session-close during the agent-session drain — would
-      // otherwise race the final commit flush against the same shadow repo.
-      // `destroy()` flips the gate so no NEW maintenance op starts; combined with
-      // the single-op gate, the shutdown flush then has the repo to itself.
-      maintenanceCoordinator?.destroy();
+      // The maintenance coordinator was already destroyed in the prologue
+      // above (before the housekeeping drain), so no background
+      // gc/consolidation can race the flush phases below against the shadow.
 
       try {
         try {
@@ -4066,10 +4231,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       );
     }
 
-    // Auto-initialize shadow repo if not provided
+    // Auto-initialize shadow repo if not provided. gc-config writes are
+    // deferred into `runShadowHousekeeping` (post-ready) — they are per-boot
+    // idempotent housekeeping, not something readiness depends on.
     if (!shadowRef.current) {
       try {
-        shadowRef.current = await initShadowRepo(projectDir);
+        shadowRef.current = await initShadowRepo(projectDir, { deferGcConfig: true });
         log.info(
           { gitDir: shadowRef.current.gitDir },
           `[server] history repo initialized at ${shadowRef.current.gitDir}`,
@@ -4084,17 +4251,20 @@ export function createServer(options: ServerOptions): ServerInstance {
     //   1) load the JSONL into the in-memory index (load failure → no index
     //      published; runtime calls fall through to lazy disk reads);
     //   2) sweep mid-rename-crash orphans (load+sweep are critical — they
-    //      prepare the index for runtime use);
+    //      prepare the index for runtime use, and the GC's preserve-in-flight
+    //      rule assumes this boot-time sweep already ran);
     //   3) publish the index (setRenameLogIndex) BEFORE GC so a GC failure
-    //      doesn't leave the cache empty;
-    //   4) run reachability GC + rebuild from `OkActorEntry.previous_paths`
-    //      as best-effort — its failure must not undo the loaded index.
+    //      doesn't leave the cache empty.
+    // The git-heavy tail — reachability GC + rebuild, then shadow
+    // maintenance — runs in `runShadowHousekeeping` after `ready` settles,
+    // never here: it is exactly the git-spawn burst that made boot gate the
+    // HTTP API for 60-90s on slow-spawn hosts.
     if (shadowRef.current) {
-      let renameLogIndex: ReturnType<typeof loadRenameLogIndex> | null = null;
       try {
-        renameLogIndex = loadRenameLogIndex(shadowRef.current.gitDir);
+        const renameLogIndex = loadRenameLogIndex(shadowRef.current.gitDir);
         sweepLazyPopOrphans(shadowRef.current.gitDir, renameLogIndex);
         setRenameLogIndex(shadowRef.current.gitDir, renameLogIndex);
+        bootRenameLogIndex = renameLogIndex;
         log.info(
           { entries: renameLogIndex.byTo.size },
           `[server] rename log loaded (${renameLogIndex.byTo.size} entries)`,
@@ -4104,38 +4274,6 @@ export function createServer(options: ServerOptions): ServerInstance {
           { err: e },
           '[rename-log] boot-time load/sweep failed; rename history unavailable',
         );
-      }
-      if (renameLogIndex) {
-        // Wall-clock cap on boot-time GC. The internal git invocations have
-        // their own per-call timeouts (`OK_GIT_TIMEOUT_MS`), but a corrupt or
-        // lock-contended shadow repo could still chain timeouts and stall the
-        // server boot for tens of seconds. Boot must remain bounded — a slow
-        // GC defers to the next iteration's GC trigger rather than blocking
-        // the editor from coming online.
-        const BOOT_GC_TIMEOUT_MS = 10_000;
-        try {
-          await Promise.race([
-            gcRenameLog(shadowRef.current, renameLogIndex, { rebuild: true }),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error(`boot-time GC exceeded ${BOOT_GC_TIMEOUT_MS}ms`)),
-                BOOT_GC_TIMEOUT_MS,
-              ),
-            ),
-          ]);
-        } catch (e) {
-          log.warn({ err: e }, '[rename-log] boot-time GC/rebuild failed; index loaded without GC');
-        }
-      }
-
-      // Shadow-repo maintenance at boot. Time-capped to ≤ ~1s of
-      // boot blocking; a large backlog packs in the background after the cap so
-      // existing degraded repos heal on first boot post-upgrade. Runs after the
-      // rename-log GC (shares the shadow); gated + off the write path.
-      try {
-        await maintenanceCoordinator?.runBootMaintenance();
-      } catch (e) {
-        log.warn({ err: e }, '[shadow-maintenance] boot maintenance failed (non-fatal)');
       }
     }
 
@@ -4149,7 +4287,9 @@ export function createServer(options: ServerOptions): ServerInstance {
         if (msg.includes('not a git repository') || msg.includes('invalid object')) {
           log.warn({}, '[server] history repo appears corrupted — reinitializing');
           try {
-            shadowRef.current = await initShadowRepo(projectDir);
+            // Same deferral as the primary init above: the deferred
+            // housekeeping runner owns the gc-config write for the new handle.
+            shadowRef.current = await initShadowRepo(projectDir, { deferGcConfig: true });
           } catch (e2) {
             log.error({ err: e2 }, '[server] history repo reinit failed');
             shadowRef.current = undefined;
@@ -5519,6 +5659,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       // observe readiness without paying synchronous planner cost.
       resolveReady();
       deferBootIndexSweep();
+      deferShadowHousekeeping();
     },
     (err) => {
       indexRegenerationClosed = true;

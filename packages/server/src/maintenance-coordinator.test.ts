@@ -301,21 +301,33 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
     expect(coord.isRunning).toBe(false);
   });
 
-  test('runBootMaintenance returns within the cap when gc is slow (background continuation)', async () => {
-    const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
-    let resolveMaintenance: () => void = () => {};
-    spyScheduledMaintenance(coord).mockImplementation(
-      () =>
-        new Promise<void>((res) => {
-          resolveMaintenance = () => res();
-        }),
-    );
-    const start = performance.now();
-    await coord.runBootMaintenance(50); // 50ms cap
-    const elapsed = performance.now() - start;
-    // Returned at the cap, not after the (still-pending) maintenance run.
-    expect(elapsed).toBeLessThan(2000);
-    resolveMaintenance(); // let the background run settle so it does not dangle
+  test('runBootMaintenance settles only after the whole maintenance run', async () => {
+    // The settlement IS the shutdown-drain guarantee: destroy() awaits this
+    // promise before content-dir teardown, so settling while work continued
+    // in the background (the old capped behavior) would let a maintenance git
+    // subprocess race the removal of `.git/ok`.
+    vi.useFakeTimers();
+    try {
+      const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
+      let resolveMaintenance: () => void = () => {};
+      spyScheduledMaintenance(coord).mockImplementation(
+        () =>
+          new Promise<void>((res) => {
+            resolveMaintenance = () => res();
+          }),
+      );
+      let settled = false;
+      const run = coord.runBootMaintenance().then(() => {
+        settled = true;
+      });
+      await vi.advanceTimersByTimeAsync(1_200);
+      expect(settled).toBe(false);
+      resolveMaintenance();
+      await run;
+      expect(settled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('runBootMaintenance no-ops when maintenance is disabled', async () => {
@@ -324,11 +336,47 @@ describe('MaintenanceCoordinator triggers (PRD-6972 FR4 / D8 / D12)', () => {
     try {
       const coord = createMaintenanceCoordinator({ getShadow: () => shadow });
       const spy = spyScheduledMaintenance(coord);
-      await coord.runBootMaintenance(50);
+      await coord.runBootMaintenance();
       expect(spy).toHaveBeenCalledTimes(0);
     } finally {
       if (prev === undefined) delete process.env.OK_SHADOW_MAINTENANCE_DISABLED;
       else process.env.OK_SHADOW_MAINTENANCE_DISABLED = prev;
     }
+  });
+
+  test('a destroy() mid-run stops the compound run at the next leg boundary', async () => {
+    const coord = createMaintenanceCoordinator({
+      getShadow: () => shadow,
+      projectGitDir: resolve(projectRoot, '.git'),
+    });
+    // Hold the FIRST leg (consolidation) open, destroy while it runs, then
+    // release — the reap and gc legs must not start.
+    let releaseConsolidate: () => void = () => {};
+    const consolidateSpy = vi
+      .spyOn(
+        coord as unknown as { consolidateInner: (trigger: string) => Promise<void> },
+        'consolidateInner',
+      )
+      .mockImplementation(
+        () =>
+          new Promise<void>((res) => {
+            releaseConsolidate = () => res();
+          }),
+      );
+    const reapSpy = vi
+      .spyOn(coord as unknown as { reapInner: (trigger: string) => Promise<void> }, 'reapInner')
+      .mockResolvedValue(undefined);
+    const gcSpy = vi
+      .spyOn(coord as unknown as { gcInner: (trigger: string) => Promise<void> }, 'gcInner')
+      .mockResolvedValue(undefined);
+
+    const run = coord.runBootMaintenance();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(consolidateSpy).toHaveBeenCalledTimes(1);
+    coord.destroy();
+    releaseConsolidate();
+    await run;
+    expect(reapSpy).not.toHaveBeenCalled();
+    expect(gcSpy).not.toHaveBeenCalled();
   });
 });

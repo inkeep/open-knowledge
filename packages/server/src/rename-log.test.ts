@@ -1714,5 +1714,10 @@ describe('gcRenameLog concurrency dedup (Finding 4)', () => {
     expect(skipped.scanned).toBe(0);
     expect(skipped.dropped).toBe(0);
     expect(skipped.retained).toBe(0);
+    // The dropped invocation self-identifies, so a caller whose options
+    // matter (the boot rebuild pass) can retry instead of mistaking the
+    // drop for a real all-zero run.
+    expect(skipped.skipped).toBe(true);
+    expect(real.skipped).toBeUndefined();
   });
 });

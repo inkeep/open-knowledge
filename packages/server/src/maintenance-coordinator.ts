@@ -167,27 +167,18 @@ export class MaintenanceCoordinator {
   }
 
   /**
-   * Boot maintenance: time-capped (default ≤ 1s of boot blocking) with
-   * background continuation for a large backlog, mirroring the existing boot-GC
-   * `Promise.race` precedent. The op keeps running after the cap; we only stop
-   * AWAITING it so boot proceeds.
+   * Boot maintenance. Awaits the WHOLE compound run — no time cap, no
+   * background continuation. The caller (the server's deferred shadow
+   * housekeeping) already runs off the readiness path, and its shutdown drain
+   * awaits this promise; a capped variant that let work continue past its
+   * settlement made that drain a false guarantee, so the destroy → content-dir
+   * removal path could race a still-running maintenance git subprocess
+   * (ENOTEMPTY on `.git/ok`). A run interrupted by `destroy()` stops at the
+   * next leg boundary (see `runScheduledMaintenance`).
    */
-  async runBootMaintenance(capMs = 1000): Promise<void> {
+  async runBootMaintenance(): Promise<void> {
     if (isMaintenanceDisabled() || this.destroyed) return;
-    const work = this.runScheduledMaintenance('boot');
-    let capTimer: ReturnType<typeof setTimeout> | undefined;
-    const cap = new Promise<void>((r) => {
-      capTimer = setTimeout(r, capMs);
-    });
-    await Promise.race([work.then(() => undefined), cap]);
-    if (capTimer) clearTimeout(capTimer);
-    // Background continuation — the inner legs each catch their own errors, so a
-    // rejection here is an unexpected path. Log it (rather than swallowing) so a
-    // rare late failure after boot moved on stays diagnosable, while still
-    // preventing it from surfacing as an unhandled rejection.
-    void work.catch((err) => {
-      log.warn({ err }, '[shadow-maintenance] boot maintenance background continuation failed');
-    });
+    await this.runScheduledMaintenance('boot');
   }
 
   /**
@@ -213,8 +204,12 @@ export class MaintenanceCoordinator {
     if (this.running) return;
     this.running = true;
     try {
+      // Re-check destroyed at each leg boundary: a shutdown drain awaiting
+      // this run should wait out at most the current leg, not all three.
       await this.consolidateInner(trigger);
+      if (this.destroyed) return;
       await this.reapInner(trigger);
+      if (this.destroyed) return;
       await this.gcInner(trigger);
     } finally {
       this.running = false;
