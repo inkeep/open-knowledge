@@ -159,7 +159,6 @@ import {
   INITIAL_FOLLOW_NAV_STATE,
   latestFollowTarget,
   loadFollowFilePref,
-  pageListFollowOptions,
   saveFollowFilePref,
 } from './follow-file';
 import { PlanChecklist } from './PlanChecklist';
@@ -542,18 +541,12 @@ export function ThreadView({
   // Mid-turn sends don't reject anymore — the server queues them behind the
   // active turn and drains FIFO (`ThreadInfo.queue`).
   const canQueue = !archived && turnActive;
-  // Read-shaped follow targets (exec `cat foo.md`, or a non-`edit` call's
-  // newest location) only navigate to docs that exist — a read of a missing
-  // file would open a blank create-on-open tab. `pageListFollowOptions`
-  // arms the predicate only when the page-list snapshot is authoritative;
-  // the exact loading/error rules live at the helper (unit-tested there).
-  // Extract `pageList` once and drive both follow-file (page-existence
-  // check) and the doc-path-link resolver from the same snapshot — avoids
-  // two independent `useOptionalPageList` sites racing to consume it, and
-  // avoids per-message `useWorkspace` calls that would each fire a
+  // Extract `pageList` once for the doc-path-link resolver. Follow-the-file
+  // reads nothing from it any more — only write-shaped tool calls drive
+  // navigation, so there is no "does the doc exist" gate left to arm. Kept
+  // here to avoid per-message `useWorkspace` calls that would each fire a
   // `/api/workspace` fetch on web hosts.
   const pageList = useOptionalPageList();
-  const followOptions = pageListFollowOptions(pageList);
   // Trust the last-known `pages` set even when the provider surfaces an
   // `error` from a background refetch: `PageListProvider.refetch` fires on
   // window focus / visibilitychange / CC1 `files` push and, on failure, sets
@@ -571,8 +564,7 @@ export function ThreadView({
   // ThreadView derives from the same workspace + page list).
   setDocPathResolver(docPathResolver);
   const resolverReady = docPathResolver !== null;
-  const transcriptFollowTarget =
-    model !== null ? latestFollowTarget(model.items, workspace, followOptions) : null;
+  const transcriptFollowTarget = model !== null ? latestFollowTarget(model.items, workspace) : null;
 
   // Presence-derived write stream — the fallback when the transcript is
   // informationally empty (some adapters send rawInput {} and no locations

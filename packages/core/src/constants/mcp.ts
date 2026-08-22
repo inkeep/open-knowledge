@@ -61,6 +61,26 @@ export const OPEN_KNOWLEDGE_MCP_TOOLS = [
 export type OpenKnowledgeMcpTool = (typeof OPEN_KNOWLEDGE_MCP_TOOLS)[number];
 
 /**
+ * Subset of {@link OPEN_KNOWLEDGE_MCP_TOOLS} whose calls MUTATE a document.
+ * Consumers that need to distinguish reads from writes without probing the
+ * argument shape read this set directly — e.g. follow-the-file uses it to
+ * refuse navigation on a read that happens to carry a `docName` field.
+ * Must stay a subset of the flat list above; the `satisfies` clause below
+ * enforces this at compile time.
+ */
+export const OPEN_KNOWLEDGE_MCP_WRITE_TOOLS = [
+  'write',
+  'edit',
+  'delete',
+  'move',
+  'install',
+  'import',
+  'checkpoint',
+  'restore_version',
+  'resolve_conflict',
+] as const satisfies ReadonlyArray<OpenKnowledgeMcpTool>;
+
+/**
  * Env marker stamped on every agent OpenKnowledge launches itself — today the
  * in-app agent panel. An `ok mcp` process spawned by such an agent inherits
  * it, which is how `preview_url` distinguishes "this agent is hosted by an

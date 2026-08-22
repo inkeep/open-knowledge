@@ -3,8 +3,7 @@
  * the docs they name. The resolver classifies a candidate string against
  * three shapes, in order, and only returns a docName the workspace's page
  * list actually contains — an unresolvable path stays plain text so we
- * never route the user to a create-on-open blank tab (the same trap the
- * follow-the-file predicate arms against).
+ * never route the user to a create-on-open blank tab.
  *
  * The three shapes agents write:
  *
