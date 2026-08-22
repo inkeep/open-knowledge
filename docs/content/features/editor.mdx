@@ -218,6 +218,8 @@ In the browser, `Cmd+P` is normally the print shortcut; OpenKnowledge takes it f
 
 Remove a recent project from the list by hovering its row and clicking the ×, or right-clicking for a **Remove from recent projects** menu — the same controls are on the sidebar's **Switch project** dropdown and in the Project Navigator. A recent whose folder was deleted or moved off disk isn't greyed out; it's cleared automatically the next time you open it, with a brief notice, instead of opening a broken window.
 
+Every word you type has to appear somewhere in a command's name or its search terms, but the order does not matter and the words do not have to sit next to each other: `branch switch` and `switch branch` both reach **Switch worktree**. Commands also carry the words people search by rather than only the words in their names, so `delete file` reaches **Move to Trash** and `open settings` reaches **Settings**. Because commands are listed above file results, a query that matches both will highlight the command — arrow down to reach the file, or keep typing to narrow.
+
 A `tag:` prefix searches by tag: `tag:` alone lists every tag, `tag:fr` narrows the tag list, and `tag:frontend` lists the docs tagged `#frontend` (including its hierarchy children). When semantic search is configured for the project, a **By meaning** pill switches the palette to meaning-based search — press Enter to run it; typing alone never fires a query.
 
 ## Sidebars and window width
