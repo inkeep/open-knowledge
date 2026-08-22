@@ -3,11 +3,14 @@
  * file-scoped e2e fixtures.
  *
  * Replaces previously file-private copies that drifted slightly:
- *   - `killGracefully` here is the ESRCH-safe variant. `proc.kill()` can
+ *   - `killGracefully` here is the errno-safe variant. `proc.kill()` can
  *     race a process exit between the `exitCode` check and the actual
  *     kill syscall — the unwrapped variant in earlier copies would throw
  *     `ESRCH` from cleanup teardown and replace the real test failure
- *     with a misleading post-test error.
+ *     with a misleading post-test error. `EPERM` is the same race one step
+ *     further along (the pgid was released and re-taken) and gets the same
+ *     treatment; see `tolerateDuringTeardown` for why that is safe HERE and
+ *     nowhere a supervisor lives.
  *   - `waitForHttpReady` requires an explicit `timeoutMs` so each fixture
  *     names its tolerance at the call site (worker-scoped fixtures pick
  *     ~30s for shared cached server; per-test fixtures pick ~60s for
@@ -190,18 +193,59 @@ export async function waitForHttpReady(baseURL: string, timeoutMs: number): Prom
 }
 
 /**
- * Group-kill half of the tree contract: `kill(-pid)` + ESRCH-swallow, the one
- * place that discipline lives. While any member lives, POSIX reserves the
- * pgid, so this cannot hit a recycled pid; with no members it reports ESRCH
- * and does nothing. Returns false when the group no longer exists.
+ * The two signal errnos teardown reads as "nothing of ours is left to
+ * signal". Anything else rethrows.
+ *
+ *   ESRCH — no process matched. The tree is already gone; the common case.
+ *   EPERM — a process matched but is not ours to signal. `kill(2)` reports
+ *     this for a whole group when no member could be signalled, so during
+ *     teardown it means the pid being held is no longer the group that was
+ *     spawned: the leader exited, the kernel released the pgid, and an
+ *     unrelated process — on macOS often a hardened system one — now holds
+ *     it. Either way nothing of ours survives, and throwing turns a finished,
+ *     fully-passing run into a failed one.
+ *
+ * The tolerance is scoped to teardown, and the scoping is structural rather
+ * than a convention someone has to remember: `killGracefully` is the only
+ * caller of `killGroup`/`signalTree`, and every caller of `killGracefully` is
+ * a fixture cleanup path. No live-supervision caller exists whose "is my child
+ * still running?" answer this could corrupt. (`killGroup` and `signalTree` are
+ * exported only so `tests/integration/kill-gracefully-errno.test.ts` can drive
+ * this policy directly; a production caller appearing in that list is the
+ * signal that this reasoning needs redoing.) Code that has to KEEP a child
+ * alive must not copy this — there EPERM is real news (the pid was recycled
+ * out from under it) and swallowing it would hide the bug.
+ *
+ * EPERM warns rather than passing silently. The residual risk is a tree that
+ * really is still ours, still alive, and unsignalable, which leaks a dev
+ * server; this line is the only trace such a leak would leave.
  */
-function killGroup(pid: number, signal: NodeJS.Signals): boolean {
+function tolerateDuringTeardown(err: unknown, attempt: string): false {
+  const code = (err as NodeJS.ErrnoException).code;
+  if (code === 'ESRCH') return false;
+  if (code === 'EPERM') {
+    console.warn(`[e2e teardown] ${attempt} reported EPERM; treating the group as already gone`);
+    return false;
+  }
+  throw err;
+}
+
+/**
+ * Group-kill half of the tree contract: `kill(-pid)`, the one place that
+ * discipline lives. Returns false when nothing of ours was signalled.
+ */
+export function killGroup(pid: number, signal: NodeJS.Signals): boolean {
+  // `kill(-pid)` only addresses a process group for a genuine pgid. `-0`
+  // collapses to `kill(0, …)`, which signals OUR OWN group — the whole
+  // Playwright run — and `-1` broadcasts to every process this user owns.
+  // Node never yields pid 0 or 1 for a child, but the blast radius if it ever
+  // did is the entire run, so refuse rather than trust the caller.
+  if (!Number.isInteger(pid) || pid <= 1) return false;
   try {
     process.kill(-pid, signal);
     return true;
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
-    return false;
+    return tolerateDuringTeardown(err, `kill(-${pid}, ${signal})`);
   }
 }
 
@@ -218,17 +262,46 @@ function killGroup(pid: number, signal: NodeJS.Signals): boolean {
  *
  * Returns false when nothing was signalled (tree already gone).
  */
-function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean {
+export function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean {
   const pid = proc.pid;
   if (pid === undefined) return false;
   if (killGroup(pid, signal)) return true;
+
+  // `ChildProcess.kill()` does not report failure the way `process.kill()`
+  // does. It returns false on ESRCH without throwing, throws only for
+  // EINVAL/ENOSYS (a bad signal name — a programming error, so let it out),
+  // and routes every other errno, in practice EPERM, to an 'error' EVENT on
+  // `proc`.
+  //
+  // Every spawn site does register an 'error' listener, but not one of them
+  // routes the event through the policy above, and each fails differently:
+  //   - `fixtures.ts` / `global-warm-cache.ts` hold a permanent `on('error')`
+  //     that only logs, so a teardown EPERM prints as a `spawn error:` line
+  //     blaming a spawn that in fact succeeded.
+  //   - the two `.private.e2e.ts` fixtures arm `once('error', reject)` inside
+  //     their readiness race. Reached from teardown that listener is either
+  //     already spent (a pre-readiness spawn failure fired it, so the
+  //     catch-path kill has no listener at all and an 'error' event with no
+  //     listener is an uncaught throw), or still armed but pointed at a
+  //     settled promise, where `reject` is a silent no-op.
+  // So: crash on one path, misattributed log on the second, total silence on
+  // the third. Capturing the event for the duration of this call is what
+  // makes all three land on one policy. The boolean result is the honest
+  // answer about whether a signal landed; the earlier shape discarded it and
+  // reported success unconditionally.
+  let emitted: Error | undefined;
+  const capture = (err: Error) => {
+    emitted = err;
+  };
+  proc.on('error', capture);
+  let signalled: boolean;
   try {
-    proc.kill(signal);
-    return true;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'ESRCH') throw err;
-    return false;
+    signalled = proc.kill(signal);
+  } finally {
+    proc.off('error', capture);
   }
+  if (emitted !== undefined) return tolerateDuringTeardown(emitted, `child.kill(${signal})`);
+  return signalled;
 }
 
 export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Promise<void> {
@@ -239,9 +312,10 @@ export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Prom
     return;
   }
   const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
-  // ESRCH races: the process can exit between the exitCode check above and
-  // either kill() call. Swallow ESRCH so cleanup teardown does not replace
-  // the real test result (and the post-use rmSync still runs).
+  // Exit races: the process can exit between the exitCode check above and
+  // either kill() call. `signalTree` absorbs the errnos that mean the tree is
+  // already gone, so cleanup teardown does not replace the real test result
+  // (and the post-use rmSync still runs).
   if (!signalTree(proc, 'SIGTERM')) return;
   await Promise.race([exited, wait(timeoutMs)]);
   if (proc.exitCode === null && proc.signalCode === null) {

@@ -159,8 +159,9 @@ async function buildSeedOnce(key: string): Promise<void> {
     // Kill BEFORE any buildDir cleanup: the server writes into buildDir (its
     // Vite cacheDir) until it exits, and the optimizer recreates a deleted
     // dir mid-write — orphaning it under node_modules/ with nothing to reap it.
-    // Cleanup still runs if the kill throws a non-ESRCH error (same guard
-    // shape as the worker-fixture teardown in fixtures.ts).
+    // Cleanup still runs if the kill throws; which errnos it absorbs is
+    // `tolerateDuringTeardown` in server-process.ts (same guard shape as the
+    // worker-fixture teardown in fixtures.ts).
     try {
       await killGracefully(proc);
     } finally {

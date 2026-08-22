@@ -476,8 +476,9 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         // Same guard shape as the teardown below: cleanup must run even if
-        // the kill throws a non-ESRCH error. The log file is deliberately
-        // NOT removed here — the thrown message cites its path for triage.
+        // the kill throws. Which errnos it absorbs is `tolerateDuringTeardown`
+        // in server-process.ts, not a set restated here. The log file is
+        // deliberately NOT removed — the thrown message cites its path.
         try {
           await killGracefully(proc);
         } finally {
@@ -492,9 +493,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
 
       await use({ port, baseURL, contentDir });
 
-      // Cleanup must run even if killGracefully throws a non-ESRCH error —
-      // a leaked viteCacheDir under node_modules accumulates prebundled
-      // chunks with no reaper. Mirrors the per-test fixtures' teardown shape.
+      // Cleanup must run even if killGracefully throws — a leaked
+      // viteCacheDir under node_modules accumulates prebundled chunks with no
+      // reaper. Which errnos it absorbs is `tolerateDuringTeardown` in
+      // server-process.ts. Mirrors the per-test fixtures' teardown shape.
       try {
         await killGracefully(proc);
       } finally {
