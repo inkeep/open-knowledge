@@ -55,6 +55,7 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
+import { electronDragBandClearance } from '@/components/ui/electron-drag-strip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useConfigContext } from '@/lib/config-provider';
@@ -368,7 +369,13 @@ export function SettingsDialogShell({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex h-[700px] max-h-[calc(100dvh-4rem)] w-[900px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[220px_1fr] sm:max-w-[min(900px,calc(100%-2rem))]"
+        // Own max-h, so DialogContent's drag-band clearance loses to it by
+        // cn() precedence — re-applied here, last, to win back on the desktop
+        // host. In the browser it is a no-op and the 4rem cap stands.
+        className={cn(
+          'flex h-[700px] max-h-[calc(100dvh-4rem)] w-[900px] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:grid sm:grid-cols-[220px_1fr] sm:max-w-[min(900px,calc(100%-2rem))]',
+          electronDragBandClearance(),
+        )}
         data-testid="settings-dialog"
       >
         <DialogTitle className="sr-only">

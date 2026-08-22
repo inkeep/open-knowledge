@@ -243,3 +243,25 @@ describe('AppMenubar View terminal toggle', () => {
     expect(screen.queryByRole('menuitem', { name: /Hide Terminal/ })).toBeNull();
   });
 });
+
+describe('AppMenubar drag-suspension attributes', () => {
+  afterEach(() => {
+    cleanup();
+    (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
+  });
+
+  test('open menu content matches the globals.css drag-suspension selector', async () => {
+    // `globals.css` suspends the Electron drag band while a floater is open by
+    // matching `[data-slot="menubar-content"][data-state="open"]`. AppMenubar
+    // renders INTO a chrome row that is itself a drag region, so if either
+    // attribute stops being emitted the selector goes inert and the menu
+    // cannot be dismissed by clicking the row it hangs from. jsdom cannot
+    // evaluate `:has()`, but it can pin the attributes it keys off.
+    installBridge('win32');
+    await openMenu('View');
+
+    const content = document.querySelector('[data-slot="menubar-content"]');
+    expect(content).toBeTruthy();
+    expect(content?.getAttribute('data-state')).toBe('open');
+  });
+});

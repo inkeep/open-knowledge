@@ -5911,13 +5911,27 @@ html.electron-mode [data-slot="sidebar-inner"] {
 
    macOS hijacks pointer events in drag regions at the OS chrome level — the
    DOM never sees the `pointerdown`, so Radix's document-level outside-click
-   listener cannot fire. Dialogs are already exempt because `DialogOverlay`
-   renders with `[-webkit-app-region:no-drag]` covering the viewport; Popper-
-   based components do not render an overlay and would otherwise be
-   undismissable by clicking the chrome rows (EditorHeader, EditorTabs,
-   FileSidebar header, the wrapper-strip in `App.tsx`, NavigatorApp's chrome
-   row). Each drag-region site carries a stable `data-electron-drag`
-   attribute that this selector targets. Tooltip / HoverCard are excluded
+   listener cannot fire. Popper-based components render no overlay and would
+   otherwise be undismissable by clicking the chrome rows (EditorHeader,
+   EditorTabs, FileSidebar header, the wrapper-strip in `App.tsx`,
+   NavigatorApp's chrome row). Each drag-region site carries a stable
+   `data-electron-drag` attribute that this selector targets.
+
+   Dialogs used to be exempt: `DialogOverlay`'s viewport-wide
+   `[-webkit-app-region:no-drag]` suppressed every drag region beneath it. They
+   are not any more — `ElectronDragStrip` paints a `drag` band back over the
+   title bar so the window stays movable while a dialog is open, and that band
+   carries `data-electron-drag` to opt into this rule. So the list has to cover
+   floaters that open INSIDE a dialog, not just those that open from the
+   chrome. `select-content` is here for that reason: Settings renders `Select`
+   controls in its Attachments and Content-rules sections and for the language
+   field under Preferences, all inside the Settings `Dialog`.
+
+   The `menubar-*` entries are unrelated to dialogs. `AppMenubar` renders only
+   into the two chrome rows (`EditorHeader`, `NavigatorApp`), so a menubar
+   opened from a chrome row could never be dismissed by clicking that same
+   row — a gap that predates the dialog work and is fixed here because the
+   audit that found the `Select` case surfaced it. Tooltip / HoverCard are excluded
    intentionally — they dismiss on `pointerleave`, not pointerdown, and
    keeping drag live during a hover preserves the window-drag affordance.
 
@@ -5930,7 +5944,10 @@ html.electron-mode [data-slot="sidebar-inner"] {
       [data-slot="dropdown-menu-content"][data-state="open"],
       [data-slot="dropdown-menu-sub-content"][data-state="open"],
       [data-slot="context-menu-content"][data-state="open"],
-      [data-slot="context-menu-sub-content"][data-state="open"]
+      [data-slot="context-menu-sub-content"][data-state="open"],
+      [data-slot="select-content"][data-state="open"],
+      [data-slot="menubar-content"][data-state="open"],
+      [data-slot="menubar-sub-content"][data-state="open"]
     )
     [data-electron-drag] {
     -webkit-app-region: no-drag;

@@ -35,7 +35,7 @@ describe('globals.css drag-region neutralization (Popper outside-click in Electr
   });
 
   test('the rule fires for every Popper-based slot that needs outside-click dismissal', () => {
-    // The three Popper-based primitives are the bug's surface area. Tooltips
+    // Tooltips
     // and HoverCards are intentionally excluded — they dismiss on
     // pointerleave (not pointerdown), and keeping drag live during hover
     // preserves the window-drag affordance.
@@ -45,6 +45,14 @@ describe('globals.css drag-region neutralization (Popper outside-click in Electr
       'dropdown-menu-sub-content',
       'context-menu-content',
       'context-menu-sub-content',
+      // Opens inside a Dialog, whose overlay no longer suppresses the drag
+      // band beneath it — see ElectronDragStrip.
+      'select-content',
+      // Chrome-row only (AppMenubar renders into EditorHeader / NavigatorApp,
+      // never into a dialog): without these, a menubar opened from a chrome
+      // row cannot be dismissed by clicking that same row.
+      'menubar-content',
+      'menubar-sub-content',
     ];
     for (const slot of requiredSlots) {
       expect(src).toContain(`[data-slot="${slot}"][data-state="open"]`);

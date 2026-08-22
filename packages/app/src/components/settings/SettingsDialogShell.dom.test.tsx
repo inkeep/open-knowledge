@@ -24,6 +24,10 @@ import type { ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core
 import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 
 // Radix UI primitives (used by shadcn `Dialog`) reach for DOM globals at
 // mount time that `tests/dom/jsdom-preload.ts` does not expose. Hoist the
@@ -395,5 +399,31 @@ describe('SettingsDialogShell userBinding gating (Tier-3 mount)', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('Settings failed to load');
     expect(screen.getByTestId('settings-dialog')).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Settings sections' })).toBeTruthy();
+  });
+
+  test('keeps its own 4rem height cap in the browser', () => {
+    render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+    const className = screen.getByTestId('settings-dialog').getAttribute('class');
+    expectVisualClassTokens(className, ['max-h-[calc(100dvh-4rem)]']);
+    expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-6rem)]']);
+    expect(screen.queryByTestId('dialog-drag-strip')).toBeNull();
+  });
+
+  test('yields to the drag-band clearance on the desktop host', () => {
+    // The shell reads `okDesktop.config` during render, so the host stub needs
+    // more shape than the drag-band gate itself looks at.
+    vi.stubGlobal('okDesktop', { config: { ptyAvailable: false } });
+    try {
+      render(<SettingsDialogShell open={true} onOpenChange={() => {}} />);
+
+      // Its own 4rem cap would leave the dialog 16px under the 3rem band.
+      const className = screen.getByTestId('settings-dialog').getAttribute('class');
+      expectVisualClassTokens(className, ['max-h-[calc(100dvh-6rem)]']);
+      expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-4rem)]']);
+      expect(screen.getByTestId('dialog-drag-strip')).toBeTruthy();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

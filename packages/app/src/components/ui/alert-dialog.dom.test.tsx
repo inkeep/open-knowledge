@@ -14,7 +14,10 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { expectVisualClassTokens } from '@/test-utils/visual-contract';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -319,6 +322,20 @@ describe('AlertDialog surface classes', () => {
       // Opts into the globals.css rule that suspends drag under an open popper.
       expect(strip.hasAttribute('data-electron-drag')).toBe(true);
       expect(strip.getAttribute('aria-hidden')).toBe('true');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('clamps the dialog clear of the band on the desktop host', () => {
+    vi.stubGlobal('okDesktop', {});
+    try {
+      renderAlert();
+
+      const className = screen.getByRole('alertdialog').getAttribute('class') ?? '';
+      // Twice the 3rem band, because the dialog is vertically centered.
+      expectVisualClassTokens(className, ['max-h-[calc(100dvh-6rem)]']);
+      expectVisualClassTokensAbsent(className, ['max-h-[calc(100dvh-2rem)]']);
     } finally {
       vi.unstubAllGlobals();
     }

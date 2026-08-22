@@ -1,6 +1,7 @@
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';
 import type * as React from 'react';
 import { Button } from '@/components/ui/button';
+import { ElectronDragStrip, electronDragBandClearance } from '@/components/ui/electron-drag-strip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -25,6 +26,10 @@ import { cn } from '@/lib/utils';
  *     pointer events over the OS titlebar drag region are swallowed by the
  *     window-drag handler, so a dialog anchored near the top of the Electron
  *     window becomes unclickable. Same reasoning as `dialog.tsx`.
+ *   - The registry component has no title-bar drag affordance, so an open
+ *     dialog would leave the window immovable. `ElectronDragStrip` and
+ *     `electronDragBandClearance` are shared with `dialog.tsx` — behavior with
+ *     a DOM-position invariant, not styling, so it lives in one place.
  *   - The registry component omits the `motion-reduce:*` opt-outs, so it
  *     animates through `prefers-reduced-motion`.
  *   - The registry title uses a `cn-font-heading` token that does not exist in
@@ -70,46 +75,6 @@ function AlertDialogOverlay({
   );
 }
 
-/**
- * Hands the title-bar band back to the window while an alert dialog is open.
- *
- * `AlertDialogOverlay` blankets the viewport with `-webkit-app-region: no-drag`,
- * which also neutralizes the chrome-row drag regions underneath it — so an open
- * alert dialog leaves an Electron window immovable until it is answered.
- * Painting a `drag` strip over that band restores it.
- *
- * MUST stay between the overlay and the content, at the same z-index as both.
- * App-region resolves topmost-first and equal-z positioned elements paint in DOM
- * order, so that one position is what lets the strip beat the overlay while
- * still losing to the dialog itself. Moved above the content, it would turn the
- * top of a viewport-tall dialog — its heading, any header control — into a drag
- * region and swallow those clicks, which is the exact failure `no-drag` on the
- * content exists to prevent.
- *
- * `pointer-events-none` keeps the strip out of DOM hit-testing while
- * `-webkit-app-region` still resolves at the compositor — the same pairing the
- * editor-window chrome strip uses. `data-electron-drag` opts it into the
- * `globals.css` rule that suspends drag while a popper floater is open, so a
- * menu opened from inside the dialog stays dismissable by clicking the band.
- *
- * Deliberately not offered on plain `Dialog`, which dismisses on outside click:
- * a drag region swallows that gesture for the pixels it covers, and dialogs that
- * dismiss differently depending on which one you opened is a worse trade than a
- * window you cannot move. An alert dialog has no outside-click dismissal to lose
- * (Radix preventDefaults it), so the strip costs it nothing.
- */
-function AlertDialogDragStrip() {
-  if (typeof window === 'undefined' || window.okDesktop == null) return null;
-  return (
-    <div
-      aria-hidden="true"
-      data-testid="alert-dialog-drag-strip"
-      data-electron-drag=""
-      className="pointer-events-none fixed inset-x-0 top-0 z-50 h-12 [-webkit-app-region:drag]"
-    />
-  );
-}
-
 function AlertDialogContent({
   className,
   ...props
@@ -117,8 +82,8 @@ function AlertDialogContent({
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
-      {/* Between overlay and content, deliberately — see AlertDialogDragStrip. */}
-      <AlertDialogDragStrip />
+      {/* Between overlay and content, deliberately — see ElectronDragStrip. */}
+      <ElectronDragStrip testId="alert-dialog-drag-strip" />
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         // No close affordance in the corner, by design: an alert dialog offers
@@ -127,6 +92,7 @@ function AlertDialogContent({
         // scrolling lives in AlertDialogBody, the footer stays pinned.
         className={cn(
           'fixed top-1/2 left-1/2 z-50 flex w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-hidden rounded-xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm [-webkit-app-region:no-drag] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:data-open:animate-none motion-reduce:data-closed:animate-none motion-reduce:duration-0',
+          electronDragBandClearance(),
           className,
         )}
         {...props}
