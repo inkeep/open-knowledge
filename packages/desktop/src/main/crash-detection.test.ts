@@ -789,6 +789,42 @@ describe('machine-level death suppression', () => {
     expect(breadcrumb?.osShutdownReasons).toBeNull();
   });
 
+  test('a non-array from the native boundary still records the marker', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+
+    // The parameter type is a compile-time claim about a value that arrives
+    // from Electron's win32 event, not a runtime guarantee. If this threw, it
+    // would take `writeSentinel` with it and lose the marker entirely — the
+    // one thing this path exists to write.
+    expect(() => sessionA.noteOsShutdown(null as unknown as readonly string[])).not.toThrow();
+
+    expect(readSentinel(rig).pendingOsShutdownAt).toBeTruthy();
+    expect(readSentinel(rig).osShutdownReasons).toBeUndefined();
+
+    // And the marker still does its job.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(armed).toBeNull();
+  });
+
+  test('junk elements are filtered on the way IN, not just on the way out', () => {
+    const rig = makeRig();
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+
+    sessionA.noteOsShutdown(['shutdown', '', 42, 'logoff'] as unknown as readonly string[]);
+
+    // Asserted against the sentinel rather than the breadcrumb on purpose: the
+    // read path filters again on every boot, so reading through a second
+    // session would pass even if this write had persisted the junk. Only the
+    // file says whether the write side did its job.
+    expect((readSentinel(rig) as Record<string, unknown>).osShutdownReasons).toEqual([
+      'shutdown',
+      'logoff',
+    ]);
+  });
+
   test('a malformed reasons array degrades to null rather than throwing', () => {
     const rig = makeRig();
     const warnLines: Array<Record<string, unknown>> = [];

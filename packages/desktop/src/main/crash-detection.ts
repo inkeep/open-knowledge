@@ -972,10 +972,22 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     noteOsShutdown(reasons?: readonly string[]): void {
       if (sentinel === null || cleanQuitMarked) return;
       sentinel.pendingOsShutdownAt = deps.now().toISOString();
-      // Absent rather than empty when the caller had nothing to say, so the
-      // next boot can tell "the OS did not name a cause" from "it named none".
-      if (reasons !== undefined && reasons.length > 0) {
-        sentinel.osShutdownReasons = [...reasons];
+      // No cause and an empty cause both collapse to an absent field: the next
+      // boot reads them identically ("the OS named no cause"), so writing an
+      // empty array would only add a second spelling of the same state.
+      //
+      // Validated on the way in, mirroring the read path, because these values
+      // cross a native boundary out of Electron's win32 event rather than
+      // coming from our own code — and the parameter type is a compile-time
+      // claim about that, not a runtime guarantee. Getting it wrong is not a
+      // cosmetic failure: an exception here would skip `writeSentinel` below
+      // and lose the marker entirely, defeating the suppression this whole
+      // path exists to provide.
+      const usable = Array.isArray(reasons)
+        ? reasons.filter((value): value is string => typeof value === 'string' && value !== '')
+        : [];
+      if (usable.length > 0) {
+        sentinel.osShutdownReasons = usable;
       } else {
         delete sentinel.osShutdownReasons;
       }
