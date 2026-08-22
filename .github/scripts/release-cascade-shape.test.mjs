@@ -25,6 +25,11 @@ const desktopRelease = read('desktop-release.yml');
 const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 const bugLane = read('bug-lane.yml');
+// The lane is two workflows: bug-lane.yml evaluates and hands off,
+// bug-lane-verify.yml picks, verifies, pages and dispatches. Assertions name
+// the half that actually RUNS the step, so a step drifting across the boundary
+// fails here rather than passing against a concatenation of the two.
+const bugLaneVerify = read('bug-lane-verify.yml');
 
 /**
  * One workflow step's body, bounded at the NEXT step.
@@ -36,10 +41,10 @@ const bugLane = read('bug-lane.yml');
  * same. Both holes were shipped and caught by mutation testing rather than by
  * review, which is why this is the only way these files slice a step.
  */
-const bugLaneStep = (name) => {
-  const start = bugLane.indexOf(`- name: ${name}`);
-  if (start === -1) throw new Error(`bug-lane.yml has no step named ${name}`);
-  const rest = bugLane.slice(start);
+const bugLaneVerifyStep = (name) => {
+  const start = bugLaneVerify.indexOf(`- name: ${name}`);
+  if (start === -1) throw new Error(`bug-lane-verify.yml has no step named ${name}`);
+  const rest = bugLaneVerify.slice(start);
   const end = rest.indexOf('\n      - name: ');
   return end === -1 ? rest : rest.slice(0, end);
 };
@@ -472,10 +477,67 @@ describe('the stable gate does not touch the beta cadence', () => {
   });
 });
 
+describe('the bug lane hands off instead of verifying in the evaluator', () => {
+  // The split exists so the evaluator stays SHORT. It runs under a
+  // cancel-on-supersede group on a 20-minute cron plus every push, and a
+  // cancelled run's check is welded to whatever commit was HEAD at the time,
+  // which GitHub's rollup scores as a FAILURE on that commit. A slow step
+  // creeping back in here would resume painting red X's on unrelated commits
+  // of the public repo — the exact regression these tests exist to catch.
+  test('the evaluator dispatches the verify workflow rather than running it', () => {
+    expect(bugLane).toContain('gh workflow run bug-lane-verify.yml');
+    expect(bugLane).not.toContain('- name: Verify the synthetic tree');
+    expect(bugLane).not.toContain('git cherry-pick');
+    expect(bugLane).not.toContain('turbo run typecheck test');
+  });
+
+  test('the evaluator will not queue a second verify behind a running one', () => {
+    // First of the two guards that replaced the single global group; the
+    // verify workflow's own queueing group is the backstop. Without this the
+    // lane would request a fresh verify every tick for the ~15 minutes one
+    // takes, re-deriving a batch already in progress.
+    const inflight = bugLane.slice(
+      bugLane.indexOf('- name: Skip while a release'),
+      bugLane.indexOf('- name: Hand the batch to the verify workflow'),
+    );
+    expect(inflight.length).toBeGreaterThan(0);
+    expect(inflight).toMatch(/for wf in [^\n]*bug-lane-verify\.yml/);
+  });
+
+  test('the verify half queues rather than cancelling a run mid-pick', () => {
+    // Cancelling a verify is what discarded ~11 minutes of work per
+    // supersession before the split. There is nothing to supersede for: the
+    // batch it holds was already qualified by the evaluator.
+    const concurrency = bugLaneVerify.slice(
+      bugLaneVerify.indexOf('concurrency:'),
+      bugLaneVerify.indexOf('env:'),
+    );
+    expect(concurrency).toContain('cancel-in-progress: false');
+  });
+
+  test('the verify half runs only on dispatch, so it cannot colour a commit', () => {
+    // workflow_dispatch checks attach to the commit but are excluded from the
+    // status-check rollup that draws the icon. A `push:` or `schedule:`
+    // trigger here would put this long job back on the commit list.
+    const triggers = bugLaneVerify.slice(
+      bugLaneVerify.indexOf('\non:'),
+      bugLaneVerify.indexOf('\npermissions:'),
+    );
+    expect(triggers).toContain('workflow_dispatch:');
+    expect(triggers).not.toContain('schedule:');
+    expect(triggers).not.toMatch(/^\s*push:/m);
+  });
+
+  test('the arming switch moved with the steps that read it', () => {
+    expect(bugLaneVerify).toContain('BUG_LANE_ARMED: "true"');
+    expect(bugLane).not.toContain('BUG_LANE_ARMED:');
+  });
+});
+
 describe('the bug lane verifies the synthetic tree at the same bar as main', () => {
-  const verify = bugLane.slice(
-    bugLane.indexOf('- name: Verify the synthetic tree'),
-    bugLane.indexOf('- name: Dispatch the point release'),
+  const verify = bugLaneVerify.slice(
+    bugLaneVerify.indexOf('- name: Verify the synthetic tree'),
+    bugLaneVerify.indexOf('- name: Dispatch the point release'),
   );
 
   test('a red tier gets one retry before the tick is refused', () => {
@@ -530,13 +592,13 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // the cycle consumes it — five identical pages in two hours on 2026-08-05.
     // The gate is the cache lookup; losing it restores the flood silently,
     // because every individual page is still "correct".
-    const page = bugLane.slice(
-      bugLane.indexOf('- name: Page on a refusal'),
-      bugLane.indexOf('- name: Record that this refusal was paged'),
+    const page = bugLaneVerify.slice(
+      bugLaneVerify.indexOf('- name: Page on a refusal'),
+      bugLaneVerify.indexOf('- name: Record that this refusal was paged'),
     );
     expect(page).toContain("steps.paged_before.outputs.cache-hit != 'true'");
-    expect(bugLane).toContain('actions/cache/save@');
-    expect(bugLane).toContain('actions/cache/restore@');
+    expect(bugLaneVerify).toContain('actions/cache/save@');
+    expect(bugLaneVerify).toContain('actions/cache/restore@');
   });
 
   test('the marker is gated on DELIVERY, not on the page step succeeding', () => {
@@ -553,11 +615,11 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // step added alongside it, so a whole-file assertion would let either
     // step's copy satisfy the other's test — the sibling-coverage hole that
     // has bitten every ratchet in this block.
-    const refusalPage = bugLaneStep('Page on a refusal (armed only)');
+    const refusalPage = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(refusalPage).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
     expect(refusalPage).toContain('delivered=true');
     for (const step of ['Record that this refusal was paged', 'Remember the refusal across ticks']) {
-      expect(bugLaneStep(step), `${step} must gate on delivery`).toContain(
+      expect(bugLaneVerifyStep(step), `${step} must gate on delivery`).toContain(
         "if: steps.page.outputs.delivered == 'true'",
       );
     }
@@ -571,14 +633,14 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // accompanied could never land (anchor-drift) and so the candidate set
     // never moved. verdict is `pass` on this path, which is exactly why the
     // refusal's own gate does not cover it.
-    expect(bugLaneStep('Notify on a partial drop (armed only)')).toContain(
+    expect(bugLaneVerifyStep('Notify on a partial drop (armed only)')).toContain(
       "steps.drop_paged_before.outputs.cache-hit != 'true'",
     );
     // Both cache steps, each bounded to itself. A restore key that stops
     // tracking the signature is the per-tick flood this test is named for; if
     // BOTH go constant it is permanent silence for every later drop.
     for (const step of ['Has this drop already been paged?', 'Remember the drop across ticks']) {
-      expect(bugLaneStep(step), `${step} must key on the drop signature`).toContain(
+      expect(bugLaneVerifyStep(step), `${step} must key on the drop signature`).toContain(
         'key: bug-lane-drop-${{ steps.drop.outputs.sig }}',
       );
     }
@@ -590,7 +652,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // keying the marker on its conclusion would cache the signature even when
     // nothing reached anyone and silence that drop permanently.
     for (const step of ['Record that this drop was paged', 'Remember the drop across ticks']) {
-      expect(bugLaneStep(step), `${step} must gate on delivery`).toContain(
+      expect(bugLaneVerifyStep(step), `${step} must gate on delivery`).toContain(
         "if: steps.drop_page.outputs.delivered == 'true'",
       );
     }
@@ -602,7 +664,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // several times a day — including it would restore most of the flood for a
     // fact already reported. A different surviving subset IS new news, so it
     // stays in.
-    const sig = bugLaneStep('Drop signature');
+    const sig = bugLaneVerifyStep('Drop signature');
     expect(sig).toContain('"$DROPPED_REFS" "$SURVIVING_REFS"');
     expect(sig).not.toContain('$STABLE');
   });
@@ -614,7 +676,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // cache hit to infer it from. The gate is the COMPLEMENT of the notify
     // step's; inverting it makes the note fire alongside the page and never on
     // the tick it exists for.
-    const suppress = bugLaneStep('Note a suppressed drop');
+    const suppress = bugLaneVerifyStep('Note a suppressed drop');
     expect(suppress).toContain("if: steps.drop_paged_before.outputs.cache-hit == 'true'");
     expect(suppress).toContain('>> "$GITHUB_STEP_SUMMARY"');
   });
@@ -625,7 +687,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // it unset — inert today, since unset and 'false' both fail the gate, but
     // it makes the marker contract depend on a GHA default rather than on a
     // value this step always states.
-    const notify = bugLaneStep('Notify on a partial drop (armed only)');
+    const notify = bugLaneVerifyStep('Notify on a partial drop (armed only)');
     expect(notify).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
     expect(notify).not.toContain('exit 0');
   });
@@ -636,7 +698,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // ONE place — and it is the only thing keeping a log-only lane from posting
     // to Slack. Losing it there is silent: every other assertion here stays
     // green while a disarmed lane starts paging.
-    expect(bugLaneStep('Drop signature')).toContain("env.BUG_LANE_ARMED == 'true'");
+    expect(bugLaneVerifyStep('Drop signature')).toContain("env.BUG_LANE_ARMED == 'true'");
   });
 
   test('the one page it does send says the following silence is deliberate', () => {
@@ -645,9 +707,9 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // Bounded to the Page step: an open-ended slice would also match the
     // phrase in a later step or comment and pass while the message itself
     // had lost it.
-    const page = bugLane.slice(
-      bugLane.indexOf('- name: Page on a refusal'),
-      bugLane.indexOf('- name: Record that this refusal was paged'),
+    const page = bugLaneVerify.slice(
+      bugLaneVerify.indexOf('- name: Page on a refusal'),
+      bugLaneVerify.indexOf('- name: Record that this refusal was paged'),
     );
     // The sentence lives in the payload builder the step shells out to, so the
     // contract is "the step composes a body that carries it" rather than "the
@@ -665,9 +727,9 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // step's, which is the regression worth pinning — swapping it to
     // `!= 'true'` makes it fire alongside the page and never on the tick it
     // exists for, and every other test here stays green.
-    const suppress = bugLane.slice(
-      bugLane.indexOf('- name: Note a suppressed refusal'),
-      bugLane.indexOf('- name: Page on a refusal'),
+    const suppress = bugLaneVerify.slice(
+      bugLaneVerify.indexOf('- name: Note a suppressed refusal'),
+      bugLaneVerify.indexOf('- name: Page on a refusal'),
     );
     expect(suppress).toContain("if: steps.paged_before.outputs.cache-hit == 'true'");
     expect(suppress).toContain('>> "$GITHUB_STEP_SUMMARY"');
@@ -677,7 +739,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // The prior text asserted "the fix passes on main but not on the stable it
     // would ship against" off a single red run, sending operators hunting for
     // an incompatibility that was really a flake.
-    const page = bugLane.slice(bugLane.indexOf('- name: Page on a refusal'));
+    const page = bugLaneVerify.slice(bugLaneVerify.indexOf('- name: Page on a refusal'));
     expect(page).not.toContain('the fix passes on main but not on the stable');
   });
 });
@@ -742,11 +804,11 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   for (const { label, step } of [
     {
       label: "the bug lane's refusal page",
-      step: () => stepAfter(bugLane, 'Page on a refusal'),
+      step: () => stepAfter(bugLaneVerify, 'Page on a refusal'),
     },
     {
       label: "the bug lane's partial-drop notice",
-      step: () => stepAfter(bugLane, 'Notify on a partial drop', 'Page on a refusal'),
+      step: () => stepAfter(bugLaneVerify, 'Notify on a partial drop', 'Page on a refusal'),
     },
     {
       label: 'the fast-tier refusal',

@@ -15,6 +15,15 @@ import {
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const bugLane = readFileSync(join(REPO_ROOT, '.github', 'workflows', 'bug-lane.yml'), 'utf8');
+// The lane is two workflows since the 2026-08-21 split: bug-lane.yml evaluates
+// and hands off, bug-lane-verify.yml does the picking, paging and dispatching.
+// Every step this file asserts on lives in the verify half — assert against the
+// file that actually RUNS the step, so a step drifting back across the boundary
+// fails here rather than passing on a concatenation.
+const bugLaneVerify = readFileSync(
+  join(REPO_ROOT, '.github', 'workflows', 'bug-lane-verify.yml'),
+  'utf8',
+);
 
 /** A private manifest whose only fix-side change is the Playwright subset. */
 const appManifest = (e2e) =>
@@ -324,7 +333,7 @@ describe('parseArgs', () => {
 describe('workflow wiring', () => {
   /** Exact bounds of a step: its `- name:` up to the next sibling step. */
   const step = (name) => {
-    const rest = bugLane.slice(bugLane.indexOf(`- name: ${name}`));
+    const rest = bugLaneVerify.slice(bugLaneVerify.indexOf(`- name: ${name}`));
     const end = rest.indexOf('\n      - name: ');
     return end === -1 ? rest : rest.slice(0, end);
   };
@@ -410,6 +419,11 @@ describe('workflow wiring', () => {
   });
 
   test('the lane still never authorizes conflict resolution when dispatching', () => {
+    // Both halves: the dispatch lives in the verify workflow, but this is a
+    // fail-closed assertion about the LANE, and the evaluator gained its own
+    // `gh workflow run` in the split. Checking only one half would let the
+    // other acquire the flag silently.
     expect(bugLane).not.toContain('resolve_paths');
+    expect(bugLaneVerify).not.toContain('resolve_paths');
   });
 });
