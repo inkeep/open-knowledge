@@ -15,12 +15,18 @@
  */
 
 import { type ChildProcess, spawn } from 'node:child_process';
-import { constants, statSync } from 'node:fs';
+import { constants, existsSync, statSync } from 'node:fs';
 import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
-import { tracedMkdir, tracedRm, tracedWriteFile } from '../fs-traced.ts';
+import {
+  tracedMkdir,
+  tracedMkdirSync,
+  tracedRm,
+  tracedWriteFile,
+  tracedWriteFileSync,
+} from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
 import { mergeLoginShellPath, preferLoginShellPath } from './login-shell-path.ts';
@@ -933,6 +939,36 @@ export function windowsCmdWrap(cmd: string, args: string[]): { cmd: string; args
 }
 
 /**
+ * `npx exec` runs npm arborist, which walks up from cwd looking for a
+ * `package.json` to treat as the project root — and rejects pnpm's flat
+ * `parent>child` `overrides` keys as `Override without name: ...`. Spawn
+ * from an OK-owned dir under the user's home and plant a private marker
+ * `package.json` in it so the arborist walk terminates AT the isolated dir
+ * — no ancestor is reached, no pnpm-format overrides are ever parsed. The
+ * agent's real workspace still arrives via the ACP `session/new` cwd.
+ *
+ * Under `~/.ok/` (sibling of `~/.ok/acp-agents/`) rather than `os.tmpdir()`
+ * so another local user can't squat the path (on Linux `tmpdir()` is
+ * world-writable `/tmp`; npm reads the spawn cwd as its project root and
+ * would honor a planted `.npmrc` there). `mode: 0o700` matches the
+ * secrets-store precedent under the same dotdir. The marker manifest
+ * carries `private: true` so no publish path could ever run against it,
+ * and no `overrides` key so its OWN parse can't fail.
+ */
+function acpNpxIsolatedCwd(): string {
+  const dir = join(homedir(), OK_DIR, 'acp-npx-cwd');
+  tracedMkdirSync(dir, { recursive: true, mode: 0o700 });
+  const marker = join(dir, 'package.json');
+  if (!existsSync(marker)) {
+    tracedWriteFileSync(
+      marker,
+      `${JSON.stringify({ name: 'openknowledge-acp-npx-isolated', version: '0.0.0', private: true }, null, 2)}\n`,
+    );
+  }
+  return dir;
+}
+
+/**
  * Spawn the resolved agent. Its lifetime is owned by its thread (killed on
  * thread close and on server shutdown), the opposite of the fire-and-forget
  * `spawn-detached.ts` handoff path.
@@ -960,8 +996,9 @@ export function spawnAcpAgent(launch: ResolvedLaunch, cwd: string): ChildProcess
   const { cmd, args } = wrap
     ? windowsCmdWrap(resolved, launch.args)
     : { cmd: resolved, args: launch.args };
+  const spawnCwd = launch.kind === 'npx' ? acpNpxIsolatedCwd() : cwd;
   return spawn(cmd, args, {
-    cwd,
+    cwd: spawnCwd,
     env: withHostedAgentMarker(launch.env),
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false,

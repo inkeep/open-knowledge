@@ -20,7 +20,7 @@ import {
   utimesSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -732,6 +732,93 @@ describe('hosted-agent marker', () => {
     if (child.pid !== undefined) strayPids.push(child.pid);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its env');
     expect(readFileSync(`${script}.out`, 'utf8')).toBe('1');
+  });
+});
+
+describe('spawnAcpAgent — cwd isolation for npx launches', () => {
+  // The spawned script writes its own `process.cwd()` to a file we can read
+  // back — that is the ground truth for what cwd the child ended up in.
+  function makeEchoCwdScript(dir: string): string {
+    const script = join(dir, 'echo-cwd.js');
+    writeFileSync(
+      script,
+      [
+        "const fs = require('node:fs');",
+        "fs.writeFileSync(process.argv[1] + '.tmp', process.cwd());",
+        "fs.renameSync(process.argv[1] + '.tmp', process.argv[1] + '.out');",
+      ].join('\n'),
+    );
+    return script;
+  }
+
+  test('npx-kind spawns run from an OK-owned isolated cwd, not the record cwd', async () => {
+    // A pnpm-format `overrides` block in an ancestor package.json of the
+    // record cwd trips npm's arborist during `npx exec` — the exact bug
+    // this fix exists for. Isolating the spawn cwd sidesteps the
+    // walk-up entirely; the ACP handshake still tells the agent which
+    // workspace it is on.
+    const dir = tmp();
+    const script = makeEchoCwdScript(dir);
+    const launch: ResolvedLaunch = {
+      cmd: 'node',
+      args: [script],
+      env: plainEnv(),
+      kind: 'npx',
+      pathFromOverlay: false,
+    };
+    const child = spawnAcpAgent(launch, dir);
+    if (child.pid !== undefined) strayPids.push(child.pid);
+    await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
+    const observed = readFileSync(`${script}.out`, 'utf8');
+    // The isolated cwd is an OK-owned dir under the user's home, not the
+    // record cwd we passed in. `~/.ok/acp-npx-cwd` — same shape as the
+    // sibling `~/.ok/acp-agents/` binary cache.
+    expect(observed).not.toBe(dir);
+    expect(observed.endsWith('/.ok/acp-npx-cwd')).toBe(true);
+  });
+
+  test('the isolated cwd carries a private marker package.json so arborist walk terminates there', () => {
+    // Without a marker, npm's `loadLocalPrefix` walks up from ~/.ok/acp-npx-cwd
+    // through ~/.ok → $HOME — and a $HOME package.json with pnpm-format flat
+    // overrides would reopen the same `Override without name` failure. The
+    // marker is `private: true` and carries no `overrides` field of its own,
+    // so its OWN parse can't fail.
+    const dir =
+      spawnAcpAgent(
+        { cmd: 'node', args: ['-e', ''], env: plainEnv(), kind: 'npx', pathFromOverlay: false },
+        tmp(),
+      ).spawnargs === undefined
+        ? '' // unreachable, keeps ts happy
+        : '';
+    // Direct-read the marker OK just wrote as a side effect of the spawn above.
+    const markerPath = join(process.env.HOME ?? homedir(), '.ok', 'acp-npx-cwd', 'package.json');
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+    expect(marker.private).toBe(true);
+    expect(marker.overrides).toBeUndefined();
+    // Silence the unused-var lint if strict.
+    void dir;
+  });
+
+  test.each([
+    'uvx',
+    'binary',
+    'custom',
+  ] as const)('%s-kind spawns still run from the record cwd (agent contract)', async (kind) => {
+    const dir = tmp();
+    const script = makeEchoCwdScript(dir);
+    const launch: ResolvedLaunch = {
+      cmd: 'node',
+      args: [script],
+      env: plainEnv(),
+      kind,
+      pathFromOverlay: false,
+    };
+    const child = spawnAcpAgent(launch, dir);
+    if (child.pid !== undefined) strayPids.push(child.pid);
+    await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
+    const observed = readFileSync(`${script}.out`, 'utf8');
+    // realpath equivalence (macOS /var/folders/... vs /private/var/folders/...).
+    expect(observed.endsWith(dir) || dir.endsWith(observed)).toBe(true);
   });
 });
 
