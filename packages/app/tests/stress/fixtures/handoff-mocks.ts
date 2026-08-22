@@ -363,6 +363,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         onMenuAction: () => () => {},
         onUpdateDownloaded: () => () => {},
         onUpdateRelaunching: () => () => {},
+        onUpdateFetchingLatest: () => () => {},
         onUpdateRelaunchFailed: () => () => {},
         onWhatsNew: () => () => {},
         onWhatsNewDismissed: () => () => {},

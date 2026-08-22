@@ -222,6 +222,7 @@ async function installDelayedDesktopSessionBridge(
         onMenuAction: () => unsubscribe,
         onUpdateDownloaded: () => unsubscribe,
         onUpdateRelaunching: () => unsubscribe,
+        onUpdateFetchingLatest: () => unsubscribe,
         onUpdateRelaunchFailed: () => unsubscribe,
         onWhatsNew: () => unsubscribe,
         onWhatsNewDismissed: () => unsubscribe,

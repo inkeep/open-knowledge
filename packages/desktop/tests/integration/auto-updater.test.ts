@@ -30,6 +30,9 @@ import {
   type IpcMainLike,
   installReached,
   isClassifiedUpdaterError,
+  POST_UPDATE_QUIET_MS,
+  RELAUNCH_REFRESH_CHECK_MS,
+  RELAUNCH_REFRESH_DOWNLOAD_MS,
   RELAUNCH_WATCHDOG_MS,
   releaseUrlFor,
   STUCK_HINT_DOWNLOAD_URL,
@@ -176,6 +179,8 @@ interface TestRig {
    */
   windows: CapturedSend[][];
   state: AppState;
+  /** Set true to make the next (and every) `writeState` throw. */
+  failNextPersist: boolean;
   dispatches: DispatchKind[];
   now: Date;
   logger: {
@@ -285,6 +290,7 @@ function makeRig(
     // lastSeenVersion to the fixture appVersion so the new first-launch
     // version notice only appears in tests that opt into that branch.
     state: { ...emptyState(), lastSeenVersion: appVersion, ...stateOverrides },
+    failNextPersist: false,
     dispatches: [],
     now: nowAt ?? new Date('2026-04-21T12:00:00.000Z'),
     logger: {
@@ -307,6 +313,10 @@ function makeRig(
     ipcMain: rig.ipc,
     readState: () => rig.state,
     writeState: (next) => {
+      // Flippable mid-test so a persist failure and the retry that follows it
+      // can be exercised against one live updater, the way the user meets them
+      // (full disk, click, free some space, click again).
+      if (rig.failNextPersist) throw new Error('disk full');
       rig.state = next;
     },
     getPrimaryWindow: () => primaryWindow,
@@ -401,12 +411,12 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.state.attemptedInstall).toBeNull();
   });
 
-  test('linux: relaunch-now is the install-commit point — it arms attemptedInstall', () => {
+  test('linux: relaunch-now is the install-commit point — it arms attemptedInstall', async () => {
     // The click is Linux's commitment; arming here keeps the boot-time
     // silent-failure detection working for the path the user actually took.
     const { rig } = makeRig({ platform: 'linux' });
     rig.updater.emit('update-downloaded', { version: '0.3.2' });
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(rig.state.attemptedInstall).toBe('0.3.2');
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
@@ -709,14 +719,14 @@ describe('staging age — how long the update sat before the install was request
     expect(rig.state.versionPendingInstallStagedAt).toBe(Date.parse('2026-04-21T12:00:00.000Z'));
   });
 
-  test('relaunch-now records the staging age and logs it', () => {
+  test('relaunch-now records the staging age and logs it', async () => {
     const { rig } = makeRig({ platform: 'darwin' });
     rig.now = new Date('2026-04-21T12:00:00.000Z');
     rig.updater.emit('update-downloaded', { version: '0.3.2' });
     // A couple of seconds: the reported shape is a click landing moments after
     // a newer build re-staged underneath an already-open notification.
     rig.now = new Date('2026-04-21T12:00:02.060Z');
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
 
     expect(rig.state.attemptedInstallStagingAgeMs).toBe(2060);
     expect(rig.logger.info).toHaveBeenCalledWith(
@@ -733,12 +743,12 @@ describe('staging age — how long the update sat before the install was request
   // `Date.now()` is wall-clock, not monotonic. An NTP correction between
   // staging and the click makes the delta negative, and there is no age to
   // report — same "unknown" the no-click path yields, not an instant install.
-  test('reports null rather than zero when the clock moved backwards while staged', () => {
+  test('reports null rather than zero when the clock moved backwards while staged', async () => {
     const { rig } = makeRig({ platform: 'darwin' });
     rig.now = new Date('2026-04-21T12:00:00.000Z');
     rig.updater.emit('update-downloaded', { version: '0.3.2' });
     rig.now = new Date('2026-04-21T11:59:57.000Z');
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
 
     expect(rig.state.attemptedInstallStagingAgeMs).toBeNull();
   });
@@ -776,12 +786,12 @@ describe('staging age — how long the update sat before the install was request
   // NEW version starts a fresh measurement, so a leftover age from an earlier
   // click must not travel with it — a stale non-null number reads as real
   // signal to a triager and is worse than the age simply being absent.
-  test('a newly armed version does not inherit an earlier version staging age', () => {
+  test('a newly armed version does not inherit an earlier version staging age', async () => {
     const { rig: session } = makeRig({ platform: 'darwin' });
     session.now = new Date('2026-04-21T12:00:00.000Z');
     session.updater.emit('update-downloaded', { version: '0.3.2' });
     session.now = new Date('2026-04-21T12:00:02.060Z');
-    session.ipc.invoke('ok:update:relaunch-now');
+    await session.ipc.invoke('ok:update:relaunch-now');
     expect(session.state.attemptedInstallStagingAgeMs).toBe(2060);
 
     // A newer build lands and is committed by a plain quit — no click, so the
@@ -1907,10 +1917,10 @@ describe('boot-time failed-install detection — install still in flight', () =>
    * `overrides` moves the version pair and the commit moment off the defaults —
    * the two dimensions that change which route through boot the fixture takes.
    */
-  function stageAndCommit(
+  async function stageAndCommit(
     via: 'relaunch-click' | 'plain-quit' | 'unobserved-quit',
     overrides: { running?: string; attempted?: string; committedAt?: Date } = {},
-  ): AppState {
+  ): Promise<AppState> {
     const { rig, handle } = makeRig({
       appVersion: overrides.running ?? RUNNING,
       platform: 'darwin',
@@ -1918,7 +1928,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     rig.now = STAGED_AT;
     rig.updater.emit('update-downloaded', { version: overrides.attempted ?? ATTEMPTED });
     rig.now = overrides.committedAt ?? HANDED_OFF_AT;
-    if (via === 'relaunch-click') rig.ipc.invoke('ok:update:relaunch-now');
+    if (via === 'relaunch-click') await rig.ipc.invoke('ok:update:relaunch-now');
     else if (via === 'plain-quit') handle.recordInstallHandoffOnQuit();
     return rig.state;
   }
@@ -1958,11 +1968,11 @@ describe('boot-time failed-install detection — install still in flight', () =>
     return rig;
   }
 
-  test('reopened while the handed-off install may still be running → no failure verdict', () => {
+  test('reopened while the handed-off install may still be running → no failure verdict', async () => {
     // The canonical shape the deferral exists for: a reopen a minute after the
     // click, well inside the tolerance, while the swap is still running.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 62 * SECOND),
     );
 
@@ -1982,12 +1992,12 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
   });
 
-  test('reopened deep in the observed install-duration range → still no failure verdict', () => {
+  test('reopened deep in the observed install-duration range → still no failure verdict', async () => {
     // Field installs have run to ~4.5 minutes, and the slow tail is exactly the
     // population with time to get impatient and reopen, so the deferral has to
     // cover the tail rather than the median.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 4 * MINUTE),
     );
 
@@ -1997,11 +2007,11 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
   });
 
-  test('reopened long after the handoff → the failure notice still fires', () => {
+  test('reopened long after the handoff → the failure notice still fires', async () => {
     // The detector's whole purpose, preserved. A day on, nothing is installing,
     // so a still-old running version is a genuinely failed install.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 24 * HOUR),
     );
 
@@ -2015,12 +2025,12 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstallSurfacedCount).toBe(1);
   });
 
-  test('reopened moments after a plain quit committed the install → no failure verdict', () => {
+  test('reopened moments after a plain quit committed the install → no failure verdict', async () => {
     // Install-on-quit commits without a click, so the quit itself is the
     // handoff — the last moment a live process can record before the swap moves
     // into a process no later boot can see.
     const rig = reopenAt(
-      stageAndCommit('plain-quit'),
+      await stageAndCommit('plain-quit'),
       new Date(HANDED_OFF_AT.getTime() + 45 * SECOND),
     );
 
@@ -2031,14 +2041,14 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
   });
 
-  test('a session between the staging and the plain quit is not charged against the install', () => {
+  test('a session between the staging and the plain quit is not charged against the install', async () => {
     // The dominant commit path: an update downloads quietly in the background,
     // the user works on for hours, then quits and reopens a minute later.
     // Reasoning from the staging moment would have spent the whole tolerance on
     // the working session and condemned an install that was one minute old.
     const QUIT_AT = new Date(STAGED_AT.getTime() + 3 * HOUR);
     const rig = reopenAt(
-      stageAndCommit('plain-quit', { committedAt: QUIT_AT }),
+      await stageAndCommit('plain-quit', { committedAt: QUIT_AT }),
       new Date(QUIT_AT.getTime() + 1 * MINUTE),
     );
 
@@ -2049,9 +2059,9 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
   });
 
-  test('reopened a day after a plain quit committed the install → the failure notice still fires', () => {
+  test('reopened a day after a plain quit committed the install → the failure notice still fires', async () => {
     const rig = reopenAt(
-      stageAndCommit('plain-quit'),
+      await stageAndCommit('plain-quit'),
       new Date(HANDED_OFF_AT.getTime() + 24 * HOUR),
     );
 
@@ -2059,13 +2069,13 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('a commit no live process observed falls back to the staging moment', () => {
+  test('a commit no live process observed falls back to the staging moment', async () => {
     // Nothing recorded the handoff, so the only bound left is that the install
     // cannot have begun before the artifact existed. Sound, just not tight: the
     // tolerance now runs from the download, so it is whatever remains of the
     // window after however long the artifact sat staged.
     const rig = reopenAt(
-      stageAndCommit('unobserved-quit'),
+      await stageAndCommit('unobserved-quit'),
       new Date(STAGED_AT.getTime() + 45 * SECOND),
     );
 
@@ -2082,9 +2092,9 @@ describe('boot-time failed-install detection — install still in flight', () =>
     );
   });
 
-  test('an unobserved commit long after the staging still fires the notice', () => {
+  test('an unobserved commit long after the staging still fires the notice', async () => {
     const rig = reopenAt(
-      stageAndCommit('unobserved-quit'),
+      await stageAndCommit('unobserved-quit'),
       new Date(STAGED_AT.getTime() + 24 * HOUR),
     );
 
@@ -2092,7 +2102,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('the uninstall quit claims no handoff', () => {
+  test('the uninstall quit claims no handoff', async () => {
     // The uninstall path turns install-on-quit off so Squirrel cannot swap the
     // bundle out from under the helper trying to trash it. That quit installs
     // nothing, so it must not record a handoff — and a boot that then reads the
@@ -2108,13 +2118,13 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstallStagingAgeMs).toBeNull();
   });
 
-  test('a quit re-handing off an attempt does not buy it a fresh window', () => {
+  test('a quit re-handing off an attempt does not buy it a fresh window', async () => {
     // The tolerance has to terminate, or a broken installer plus a user who
     // reopens promptly after every quit would defer forever and the notice
     // would never arrive. The moment is stamped once per staging, so the second
     // quit measures from the first handoff — and by then the first attempt has
     // demonstrably not landed, which is what the notice says.
-    const state = stageAndCommit('plain-quit');
+    const state = await stageAndCommit('plain-quit');
     const { rig, handle } = makeRig({ ...state, appVersion: RUNNING, platform: 'darwin' });
     rig.now = new Date(HANDED_OFF_AT.getTime() + 25 * MINUTE);
     handle.recordInstallHandoffOnQuit();
@@ -2129,12 +2139,12 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(later.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('deferring does not spend the surfacing budget', () => {
+  test('deferring does not spend the surfacing budget', async () => {
     // Two impatient reopens during the install window, then a boot long after.
     // If a deferral spent budget the real failure would arrive part-spent, and
     // at the cap it would never arrive at all — the notice would be silenced by
     // the very impatience that triggered the abort.
-    let state = stageAndCommit('relaunch-click');
+    let state = await stageAndCommit('relaunch-click');
     const first = reopenAt(state, new Date(HANDED_OFF_AT.getTime() + 20 * SECOND));
     expect(failureCards(first)).toHaveLength(0);
     state = first.state;
@@ -2148,7 +2158,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(later.state.attemptedInstallSurfacedCount).toBe(1);
   });
 
-  test('an install that never lands is reported even when every reopen looks fresh', () => {
+  test('an install that never lands is reported even when every reopen looks fresh', async () => {
     // Elapsed time alone cannot end the hold, because nothing about the timing
     // ages across a reopen: electron-updater re-fires the cached
     // `update-downloaded` on every launch check, the re-arm clears the recorded
@@ -2165,7 +2175,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     const ATTEMPTED_BETA = '0.54.0-beta.1';
     const versions = { running: RUNNING_BETA, attempted: ATTEMPTED_BETA };
 
-    let state = stageAndCommit('relaunch-click', versions);
+    let state = await stageAndCommit('relaunch-click', versions);
     let reopenedAt = new Date(HANDED_OFF_AT.getTime() + 45 * SECOND);
     // Three reopens, each one inside the tolerance and each one leaving behind
     // a handoff moment seconds old. On the timing they are indistinguishable
@@ -2204,13 +2214,13 @@ describe('boot-time failed-install detection — install still in flight', () =>
     );
   });
 
-  test('a boot that cannot record the hold still holds', () => {
+  test('a boot that cannot record the hold still holds', async () => {
     // The deferral is the only branch here that persists without deciding
     // anything, so a failed write has to leave the boot where it started rather
     // than promote it to a verdict: an install that may be seconds from landing
     // must not be condemned because the disk was full. The cost is that the
     // bound does not advance on this boot, which the deferral log carries.
-    const state = stageAndCommit('relaunch-click');
+    const state = await stageAndCommit('relaunch-click');
     const captured: CapturedSend[] = [];
     const dispatches: DispatchKind[] = [];
     startAutoUpdater({
@@ -2241,7 +2251,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(state.attemptedInstallDeferredBoots).toBe(0);
   });
 
-  test('a newly attempted version gets its own hold, a re-armed one keeps the old', () => {
+  test('a newly attempted version gets its own hold, a re-armed one keeps the old', async () => {
     // The hold is spent per attempt. A re-arm of the version already being
     // attempted is the same install being committed again, so it inherits what
     // its predecessors spent — that inheritance IS the bound, since the re-arm
@@ -2252,7 +2262,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     const ATTEMPTED_BETA = '0.54.0-beta.1';
     const versions = { running: RUNNING_BETA, attempted: ATTEMPTED_BETA };
 
-    let state = stageAndCommit('relaunch-click', versions);
+    let state = await stageAndCommit('relaunch-click', versions);
     let reopenedAt = new Date(HANDED_OFF_AT.getTime() + 45 * SECOND);
     for (let cycle = 1; cycle <= 3; cycle++) {
       const rig = reopenAndQuit(state, reopenedAt, versions);
@@ -2289,14 +2299,14 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(fresh.state.attemptedInstall).toBe(NEXT);
   });
 
-  test('a handoff the clock cannot make sense of → fail closed, the notice fires', () => {
+  test('a handoff the clock cannot make sense of → fail closed, the notice fires', async () => {
     // `Date.now()` is wall-clock, not monotonic: an NTP correction or a VM
     // resume between the handoff and the boot can leave the recorded moment in
     // the future. A negative elapsed time is unknown timing rather than a fresh
     // install, and unknown must not silence the detector — the same coercion
     // the staging age already makes on the write side.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() - 1 * HOUR),
     );
 
@@ -2304,7 +2314,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('same-MMP beta bump committed by a plain quit → no failure verdict', () => {
+  test('same-MMP beta bump committed by a plain quit → no failure verdict', async () => {
     // A beta-to-beta bump inside one major.minor.patch is the dominant shape an
     // OK update takes, and it reaches the verdict by a different route than the
     // fixtures above. The boot's stale-pending reconciliation compares
@@ -2317,7 +2327,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     const RUNNING_BETA = '0.54.0-beta.0';
     const ATTEMPTED_BETA = '0.54.0-beta.1';
     const rig = reopenAt(
-      stageAndCommit('plain-quit', { running: RUNNING_BETA, attempted: ATTEMPTED_BETA }),
+      await stageAndCommit('plain-quit', { running: RUNNING_BETA, attempted: ATTEMPTED_BETA }),
       new Date(HANDED_OFF_AT.getTime() + 45 * SECOND),
       RUNNING_BETA,
     );
@@ -2334,7 +2344,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED_BETA);
   });
 
-  test('a same-MMP beta bump survives a SECOND reopen inside the window', () => {
+  test('a same-MMP beta bump survives a SECOND reopen inside the window', async () => {
     // The same-MMP shape reaches the verdict having just lost a field: the
     // stale-pending reconciliation fires on an MMP-only compare and persists the
     // staging stamp as null, so every boot after the first one reads a state
@@ -2344,7 +2354,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     const RUNNING_BETA = '0.54.0-beta.0';
     const ATTEMPTED_BETA = '0.54.0-beta.1';
     const first = reopenAt(
-      stageAndCommit('plain-quit', { running: RUNNING_BETA, attempted: ATTEMPTED_BETA }),
+      await stageAndCommit('plain-quit', { running: RUNNING_BETA, attempted: ATTEMPTED_BETA }),
       new Date(HANDED_OFF_AT.getTime() + 45 * SECOND),
       RUNNING_BETA,
     );
@@ -2363,7 +2373,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(second.state.attemptedInstallSurfacedCount).toBe(0);
   });
 
-  test('a long wait before the click is measured from the click, not from the staging', () => {
+  test('a long wait before the click is measured from the click, not from the staging', async () => {
     // The artifact sits staged for however long the user leaves the notice
     // alone — three hours here, unbounded in general. Reasoning from the staging
     // moment makes the tolerance a function of the user's patience rather than
@@ -2371,7 +2381,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     // condemned because the download happened this morning.
     const CLICKED_AT = new Date(STAGED_AT.getTime() + 3 * HOUR);
     const rig = reopenAt(
-      stageAndCommit('relaunch-click', { committedAt: CLICKED_AT }),
+      await stageAndCommit('relaunch-click', { committedAt: CLICKED_AT }),
       new Date(CLICKED_AT.getTime() + 1 * MINUTE),
     );
 
@@ -2382,7 +2392,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
   });
 
-  test('a deferred boot records how long ago the install was handed off, and from what', () => {
+  test('a deferred boot records how long ago the install was handed off, and from what', async () => {
     // A deferred boot is silent to the user by design, so this line is the only
     // place an operator reading a "my update never installed" report can see
     // that the boot considered the attempt and how long ago the handoff was —
@@ -2391,7 +2401,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     // came from have to travel with it, or a verdict held off a handoff that was
     // never observed is indistinguishable from one held off a real handoff.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 62 * SECOND),
     );
 
@@ -2407,14 +2417,14 @@ describe('boot-time failed-install detection — install still in flight', () =>
     );
   });
 
-  test('a boot ten minutes after the handoff still defers', () => {
+  test('a boot ten minutes after the handoff still defers', async () => {
     // The tolerance has to clear the observed install tail with real margin
     // rather than just cover the median: measured installs have run to about
     // four and a half minutes on one machine, and the slow tail — a large bundle
     // competing for I/O, or being scanned on first launch — is exactly the
     // population that both runs long and gets reopened impatiently.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 10 * MINUTE),
     );
 
@@ -2423,7 +2433,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
   });
 
-  test('a boot two hours after the handoff fires the notice', () => {
+  test('a boot two hours after the handoff fires the notice', async () => {
     // The other side of the same calibration. Nothing is still installing two
     // hours on, and a tolerance wide enough to swallow a working session would
     // defeat the detector for the people it exists for: someone who quits to
@@ -2431,7 +2441,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     // all day. Brackets the tolerance from above without pinning its value, so
     // it can be recalibrated from field reports within the bracket.
     const rig = reopenAt(
-      stageAndCommit('relaunch-click'),
+      await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 2 * HOUR),
     );
 
@@ -2439,7 +2449,7 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('a re-armed artifact records its own handoff instead of inheriting the last one', () => {
+  test('a re-armed artifact records its own handoff instead of inheriting the last one', async () => {
     // A handoff moment dates one artifact's install. When a second artifact
     // arrives, the moment recorded for the first has to go with the staging it
     // belonged to: left in place, the once-per-attempt guard reads it as "this
@@ -2821,9 +2831,9 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(rig.ipc.handlers.has('ok:update:relaunch-now')).toBe(true);
   });
 
-  test('handler invocation WITH versionPendingInstall calls autoUpdater.quitAndInstall', () => {
+  test('handler invocation WITH versionPendingInstall calls autoUpdater.quitAndInstall', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(rig.dispatches).toContain('relaunch-now' as DispatchKind);
   });
@@ -2836,14 +2846,14 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(rig.logger.warn).toHaveBeenCalled();
   });
 
-  test('broadcasts ok:update:relaunching to EVERY open window so all swap in lockstep', () => {
+  test('broadcasts ok:update:relaunching to EVERY open window so all swap in lockstep', async () => {
     // The screenshot bug: clicking Relaunch in one window left the others
     // showing a stale "…ready to install [Relaunch]" banner. The commit fans a
     // relaunching signal to every window so they all swap to the in-progress
     // card. Delivery-only fan-out: one dispatch, not N.
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
     expect(rig.windows).toHaveLength(3);
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
     for (const win of rig.windows) {
       const relaunching = win.filter((c) => c.channel === 'ok:update:relaunching');
       expect(relaunching).toHaveLength(1);
@@ -2987,12 +2997,12 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  test('prepareForRelaunch throw does NOT block quitAndInstall', () => {
+  test('prepareForRelaunch throw does NOT block quitAndInstall', async () => {
     const prepareForRelaunch = vi.fn(() => {
       throw new Error('teardown bug');
     });
     const { rig } = makeRig({ versionPendingInstall: '0.3.2', prepareForRelaunch });
-    rig.ipc.invoke('ok:update:relaunch-now');
+    await rig.ipc.invoke('ok:update:relaunch-now');
     expect(prepareForRelaunch).toHaveBeenCalledTimes(1);
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(rig.logger.warn).toHaveBeenCalled();
@@ -3889,13 +3899,20 @@ describe('Toast B persist-before-emit + whenRendererReady (Major #1)', () => {
 // ————————————————————————————————————————————————————————
 
 describe('relaunch-now idempotency (Major #2)', () => {
-  test('second invocation sees cleared versionPendingInstall → no second quitAndInstall', () => {
+  test('second invocation sees the committed install → no second quitAndInstall', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
-    rig.ipc.invoke('ok:update:relaunch-now');
-    // Simulate rapid double-click — sonner does not debounce action buttons.
-    rig.ipc.invoke('ok:update:relaunch-now');
+    // Rapid double-click: BOTH invocations are fired before either resolves,
+    // which is the shape the freshness check made possible. The state gate
+    // alone no longer covers it — `versionPendingInstall` is not cleared until
+    // after the pre-install check awaits, so the second click would otherwise
+    // find the state still armed and fire a second, non-idempotent
+    // `quitAndInstall()`. The in-memory commit flag is what blocks it.
+    const first = rig.ipc.invoke('ok:update:relaunch-now');
+    const second = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.all([first, second]);
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
-    // State is cleared after first invocation.
+    expect(rig.dispatches).toContain('relaunch-double-invoke-blocked' as DispatchKind);
+    // State is cleared by the invocation that committed.
     expect(rig.state.versionPendingInstall).toBeNull();
   });
 
@@ -4458,5 +4475,269 @@ describe('linux manual-install fallback', () => {
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
     rig.updater.emit('error', new Error('Command pkexec exited with code 127'));
     expect(fallback).not.toHaveBeenCalled();
+  });
+});
+
+// ————————————————————————————————————————————————————————
+// Update freshness at the moment the user asks to install
+// ————————————————————————————————————————————————————————
+
+/**
+ * Fire the timer registered for exactly `ms`, newest first.
+ *
+ * `clock.lastCallback` is not usable here: the fixture remembers only the most
+ * recent timer, and the periodic-check timer re-arms itself from a microtask
+ * that lands in the middle of these tests, so `lastCallback` routinely points
+ * at the periodic check rather than the timer under test.
+ */
+function fireTimerFor(clock: FakeClock, ms: number): void {
+  const call = [...clock.setTimeout.mock.calls].reverse().find((c) => c[1] === ms);
+  if (!call) throw new Error(`no timer registered for ${ms}ms`);
+  (call[0] as () => void)();
+}
+
+describe('same-version download guard', () => {
+  test('an offer for the already-staged version does not re-download', () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
+  });
+
+  test('the skipped offer still counts as a successful check', () => {
+    // The pipeline reached a parsed manifest; only the download was declined.
+    // Treating it as a failure would march the 7-day stuck-hint toward firing
+    // on a healthy updater that simply has nothing new to fetch.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.emit('update-available', { version: '0.3.2' });
+    expect(rig.dispatches).toContain('check-success' as DispatchKind);
+  });
+
+  test('a genuinely newer offer still downloads', () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(rig.dispatches).not.toContain('download-skipped-already-staged' as DispatchKind);
+  });
+
+  test('a retry after a failed download is not mistaken for an already-staged build', () => {
+    // A download that never completed left `versionPendingInstall` unset, so
+    // the guard must not latch on the version alone.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    rig.updater.emit('update-available', { version: '0.3.2' });
+    rig.updater.emit('error', new Error('network died'));
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('click-gated freshness check', () => {
+  test('nothing newer → installs the staged build', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.checkForUpdates).toHaveBeenCalled();
+    expect(rig.dispatches).toContain('relaunch-refresh-up-to-date' as DispatchKind);
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('every window is told the click is fetching before the wait begins', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    for (const win of rig.windows) {
+      const fetching = win.filter((c) => c.channel === 'ok:update:fetching-latest');
+      expect(fetching).toHaveLength(1);
+      expect(fetching[0]?.payload).toEqual({ version: '0.3.2' });
+    }
+  });
+
+  test('a newer build found at click time is installed instead of the staged one', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    // The check the click fires turns up a newer build. The download it starts
+    // is left in flight so the wait is the one under test; the test completes
+    // it below.
+    rig.updater.checkForUpdates.mockImplementation(() => {
+      rig.updater.emit('update-available', { version: '0.3.3' });
+      return Promise.resolve(undefined);
+    });
+
+    const pending = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.resolve();
+    expect(rig.dispatches).toContain('relaunch-refresh-found-newer' as DispatchKind);
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+
+    rig.updater.emit('update-downloaded', { version: '0.3.3' });
+    await pending;
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    // The handoff record names the build actually installed, not the one the
+    // banner happened to be showing when it was clicked.
+    expect(rig.state.attemptedInstall).toBe('0.3.3');
+  });
+
+  test('a click landing mid-stage waits instead of installing over the write', async () => {
+    // The install-failure shape this guards: electron-updater keeps its
+    // "already staged" flag set from the previous stage, so quitAndInstall
+    // during a re-stage fires at a half-written bundle.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    const pending = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.resolve();
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('relaunch-awaited-in-flight-staging' as DispatchKind);
+
+    rig.updater.emit('update-downloaded', { version: '0.3.3' });
+    await pending;
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('a stage that errors out releases the click rather than stranding it', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    const pending = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.resolve();
+    rig.updater.emit('error', new Error('download died'));
+    await pending;
+
+    // The newer build never staged, so the one still on disk is installed.
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('a newer build that never finishes downloading falls through on the timeout', async () => {
+    // Falling through is safe: an unfinished re-download has not disturbed the
+    // previously-staged bundle, so the user still gets an install rather than
+    // a click that did nothing.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    const pending = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.resolve();
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+
+    fireTimerFor(rig.clock, RELAUNCH_REFRESH_DOWNLOAD_MS);
+    await pending;
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    // The install went ahead against the build that was already staged, not
+    // the one whose download never finished.
+    const relaunching = rig.captured.filter((c) => c.channel === 'ok:update:relaunching');
+    expect(relaunching).toHaveLength(1);
+    expect(relaunching[0]?.payload).toEqual({ version: '0.3.2' });
+    expect(rig.state.versionPendingInstall).toBeNull();
+  });
+
+  test('a check that never reports back falls through on the timeout', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.checkForUpdates.mockImplementation(() => new Promise(() => {}));
+
+    const pending = rig.ipc.invoke('ok:update:relaunch-now');
+    await Promise.resolve();
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+
+    fireTimerFor(rig.clock, RELAUNCH_REFRESH_CHECK_MS);
+    await pending;
+
+    expect(rig.dispatches).toContain('relaunch-refresh-timed-out' as DispatchKind);
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('the commit flag releases on every path that re-offers the click', () => {
+  // The flag exists to stop a rapid double-click firing a non-idempotent
+  // install twice. Every path that declines to install has to hand it back, or
+  // the banner it re-arms would be dead to the next click for the rest of the
+  // session.
+  test('a persist failure leaves the banner clickable again', async () => {
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.failNextPersist = true;
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+
+    rig.failNextPersist = false;
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('the linux no-graphical-auth preflight leaves the banner clickable again', async () => {
+    const hasGraphicalAuth = vi.fn(() => false);
+    const { rig } = makeRig({
+      platform: 'linux',
+      versionPendingInstall: '0.3.2',
+      linuxInstallSupport: {
+        hasGraphicalAuth,
+        showManualInstallFallback: vi.fn(() => Promise.resolve()),
+      },
+    });
+    rig.updater.emit('update-downloaded', {
+      version: '0.3.2',
+      downloadedFile: '/home/u/.cache/ok-updater/pending/ok_0.3.2_arm64.deb',
+    });
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+
+    // The user installs a polkit agent and clicks the re-armed banner again.
+    hasGraphicalAuth.mockReturnValue(true);
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('post-update quiet window', () => {
+  test('a banner arriving right after an update is held, not dropped', () => {
+    const { rig, handle } = makeRig({ lastSeenVersion: '0.3.0', appVersion: '0.3.1' });
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(true);
+
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+
+    expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(0);
+    expect(rig.dispatches).toContain('toast-a-deferred-post-update-quiet' as DispatchKind);
+    // Held, not lost: the update is fully staged and still installs on quit.
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+
+    fireTimerFor(rig.clock, POST_UPDATE_QUIET_MS);
+
+    expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
+    expect(rig.dispatches).toContain('toast-a-quiet-window-elapsed' as DispatchKind);
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+  });
+
+  test('a fresh install does not arm it', () => {
+    // Nobody sat through an update, and the installer is often already a
+    // release or two behind, so suppressing here would only delay a wanted
+    // update.
+    const { handle } = makeRig({ lastSeenVersion: null, appVersion: '0.3.1' });
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+  });
+
+  test('a plain relaunch on the same version does not arm it', () => {
+    const { handle } = makeRig({ lastSeenVersion: '0.3.1', appVersion: '0.3.1' });
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+  });
+
+  test('outside the window the banner fires immediately, as before', () => {
+    const { rig, handle } = makeRig({ lastSeenVersion: '0.3.1', appVersion: '0.3.1' });
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+
+    expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
+    expect(rig.dispatches).toContain('update-downloaded-toast-a' as DispatchKind);
   });
 });

@@ -8228,7 +8228,12 @@ function bootPrimaryInstance(): void {
           // window resurfaces the staged-update banner the boot path withheld).
           if (!(app.isPackaged || process.env.OK_UPDATER_FORCE_DEV === '1')) return;
           const pending = appState.versionPendingInstall;
-          if (pending) {
+          // Hold the re-send while the post-update quiet window runs, for the
+          // same reason the updater holds the original broadcast: a user who
+          // just updated and then opened a project should not be met by a
+          // fresh update demand. The updater fires the held banner to every
+          // window once the window elapses, so nothing is lost here.
+          if (pending && !autoUpdaterHandle?.isWithinPostUpdateQuietWindow()) {
             sendToRenderer(win.webContents, 'ok:update:downloaded', { version: pending });
           }
           // Late-window release-notes delivery: a project opened while the

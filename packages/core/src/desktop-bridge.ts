@@ -364,6 +364,17 @@ export interface OkUpdateRelaunchingInfo {
 }
 
 /**
+ * Payload delivered to `onUpdateFetchingLatest` subscribers. Fires when a
+ * "Relaunch" click is re-checking the feed before installing, and stays the
+ * active state while a newer build found by that check downloads. `version` is
+ * the build that was staged when the click landed — the one the user saw — and
+ * a newer one may replace it before the install completes.
+ */
+export interface OkUpdateFetchingLatestInfo {
+  readonly version: string;
+}
+
+/**
  * Payload delivered to `onUpdateRelaunchFailed` subscribers. Fires when a
  * committed relaunch fails after the fact — the updater's `error` event
  * landed while the relaunch was in flight, the no-quit watchdog elapsed, or
@@ -1313,6 +1324,14 @@ export interface OkDesktopBridge {
    * Returns unsubscribe.
    */
   onUpdateRelaunching(cb: (info: OkUpdateRelaunchingInfo) => void): OkUnsubscribe;
+  /**
+   * Subscribe to `ok:update:fetching-latest` — a "Relaunch" click is checking
+   * for a newer build before installing, and may then be downloading one. Swap
+   * this window's card to the button-less "Getting the latest version…" state.
+   * Distinct from `onUpdateRelaunching` because this wait can span a full
+   * update download rather than a few seconds of teardown. Returns unsubscribe.
+   */
+  onUpdateFetchingLatest(cb: (info: OkUpdateFetchingLatestInfo) => void): OkUnsubscribe;
   /**
    * Subscribe to `ok:update:relaunch-failed` — a committed relaunch failed
    * (async updater error, no-quit watchdog, or sync throw). Surface the

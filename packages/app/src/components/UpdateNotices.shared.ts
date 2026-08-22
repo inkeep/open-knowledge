@@ -29,6 +29,18 @@ export const TOAST_E_ACTION_RESET = 'Reset to defaults';
 export const TOAST_A_PROGRESS_BODY = 'Relaunching to install the update…';
 
 /**
+ * In-progress body shown while a "Relaunch" click re-checks the feed, and for
+ * as long as a newer build found by that check is downloading.
+ *
+ * Separate from `TOAST_A_PROGRESS_BODY` because the two waits differ by orders
+ * of magnitude: the relaunch teardown is seconds, whereas fetching a newer
+ * build can take minutes on a slow connection, and "Relaunching…" held for
+ * minutes reads as a hang. This wording also tells the user why the extra wait
+ * is happening, which is the point of doing it at all.
+ */
+export const TOAST_A_FETCHING_LATEST_BODY = 'Getting the latest version…';
+
+/**
  * Fallback notice shown when `bridge.update.relaunchNow()` IPC rejects —
  * wrong packaging, missing staging dir, Squirrel.Mac throwing. Without
  * this, the "Relaunch now" click would do nothing visible. Give the
@@ -347,6 +359,25 @@ export function attachUpdateSubscribers(
       addNotice({
         id: downloadedNoticeId,
         body: TOAST_A_PROGRESS_BODY,
+        priority: PRIORITY_UPDATE_DOWNLOADED,
+        dismissible: false,
+      });
+    }),
+  );
+
+  unsubscribers.push(
+    bridge.onUpdateFetchingLatest(() => {
+      // A "Relaunch" click is checking whether the staged build is still the
+      // newest one, and will fetch a newer one if it is not. Same shared id and
+      // button-less, non-dismissible shape as the relaunching card, so the
+      // three in-progress states replace each other in place rather than
+      // stacking: fetching, then relaunching, then (on failure) the re-armed
+      // banner. The payload version is unused for the same reason it is unused
+      // there — the body is static, and which version ends up installed is
+      // decided in main after this card is already showing.
+      addNotice({
+        id: downloadedNoticeId,
+        body: TOAST_A_FETCHING_LATEST_BODY,
         priority: PRIORITY_UPDATE_DOWNLOADED,
         dismissible: false,
       });

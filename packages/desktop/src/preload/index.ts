@@ -58,6 +58,7 @@ import type {
   OkShareReceivedPayload,
   OkThemeSource,
   OkUpdateDownloadedInfo,
+  OkUpdateFetchingLatestInfo,
   OkUpdateRelaunchFailedInfo,
   OkUpdateRelaunchingInfo,
   OkUpdateStuckHintInfo,
@@ -330,6 +331,13 @@ const bridge: OkDesktopBridge = {
     // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
     ipcRenderer.on('ok:update:relaunching', listener);
     return () => ipcRenderer.removeListener('ok:update:relaunching', listener);
+  },
+
+  onUpdateFetchingLatest(cb: (info: OkUpdateFetchingLatestInfo) => void) {
+    const listener = (_event: IpcRendererEvent, info: OkUpdateFetchingLatestInfo) => cb(info);
+    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+    ipcRenderer.on('ok:update:fetching-latest', listener);
+    return () => ipcRenderer.removeListener('ok:update:fetching-latest', listener);
   },
 
   onUpdateRelaunchFailed(cb: (info: OkUpdateRelaunchFailedInfo) => void) {

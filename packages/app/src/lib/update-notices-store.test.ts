@@ -27,6 +27,7 @@ describe('update-notices-store install-time runtime wiring', () => {
     );
     const downloadedUnsub = vi.fn(() => {});
     const relaunchingUnsub = vi.fn(() => {});
+    const fetchingLatestUnsub = vi.fn(() => {});
     const relaunchFailedUnsub = vi.fn(() => {});
     const whatsNewUnsub = vi.fn(() => {});
     const whatsNewDismissedUnsub = vi.fn(() => {});
@@ -34,6 +35,7 @@ describe('update-notices-store install-time runtime wiring', () => {
     const bridge = {
       onUpdateDownloaded: vi.fn(() => downloadedUnsub),
       onUpdateRelaunching: vi.fn(() => relaunchingUnsub),
+      onUpdateFetchingLatest: vi.fn(() => fetchingLatestUnsub),
       onUpdateRelaunchFailed: vi.fn(() => relaunchFailedUnsub),
       onWhatsNew: vi.fn(() => whatsNewUnsub),
       onWhatsNewDismissed: vi.fn(() => whatsNewDismissedUnsub),
@@ -62,6 +64,7 @@ describe('update-notices-store install-time runtime wiring', () => {
 
     expect(bridge.onUpdateDownloaded).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onUpdateRelaunching).toHaveBeenCalledWith(expect.any(Function));
+    expect(bridge.onUpdateFetchingLatest).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onUpdateRelaunchFailed).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onWhatsNew).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onWhatsNewDismissed).toHaveBeenCalledWith(expect.any(Function));

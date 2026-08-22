@@ -151,7 +151,15 @@ export type DispatchKind =
   | 'cross-channel-blocked'
   | 'staged-cache-reclaimed'
   | 'linux-manual-fallback-no-auth'
-  | 'linux-manual-fallback-after-error';
+  | 'linux-manual-fallback-after-error'
+  | 'download-skipped-already-staged'
+  | 'relaunch-refresh-found-newer'
+  | 'relaunch-refresh-up-to-date'
+  | 'relaunch-refresh-timed-out'
+  | 'relaunch-awaited-in-flight-staging'
+  | 'relaunch-double-invoke-blocked'
+  | 'toast-a-deferred-post-update-quiet'
+  | 'toast-a-quiet-window-elapsed';
 
 interface StartAutoUpdaterOpts {
   updater: UpdaterLike;
@@ -355,6 +363,16 @@ export interface StartAutoUpdaterHandle {
    */
   getActiveWhatsNew(): { version: string; releaseUrl: string } | null;
   /**
+   * True while the post-update quiet window is running, i.e. the user reached
+   * this build recently enough that a fresh "ready to install" banner would
+   * land on top of their update rather than after it.
+   *
+   * `main/index.ts` consults this before re-sending a pending banner to a
+   * newly-opened window: without it, opening a project during the window would
+   * surface the very notice the updater is holding back.
+   */
+  isWithinPostUpdateQuietWindow(): boolean;
+  /**
    * Uninstall path: prevent a staged update from auto-installing on the quit
    * that hands control to the detached uninstall helper. Otherwise Squirrel.Mac
    * can swap/relaunch the bundle while the helper is trying to trash it.
@@ -513,6 +531,60 @@ const INSTALL_DEFER_MAX_BOOTS = 3;
  * itself 404.
  */
 export const STUCK_HINT_DOWNLOAD_URL = 'https://github.com/inkeep/open-knowledge/releases';
+
+/**
+ * How long the click-gated freshness check waits for the manifest poll to
+ * resolve before giving up and installing what is already staged.
+ *
+ * The user has already clicked "Relaunch" and the window is showing an
+ * in-progress card, so this is dead time they are watching. A manifest poll is
+ * a single small GET (CDN-cached at the update proxy), so a few seconds covers
+ * a healthy round trip with slack; past that, a stale-but-working install
+ * beats an app that appears hung. Timing out is not an error — it falls
+ * through to the existing staged version.
+ */
+export const RELAUNCH_REFRESH_CHECK_MS = 4_000;
+
+/**
+ * How long the click-gated refresh waits for a newer build to finish
+ * downloading and staging before falling back.
+ *
+ * Two distinct jobs, which is why it is minutes rather than seconds. It bounds
+ * the wait for a download the refresh itself started, AND the wait for a
+ * download that was already in flight when the click landed. The second is the
+ * safety-critical one: `quitAndInstall()` during a re-stage hands Squirrel a
+ * half-written staging directory, so waiting here is what keeps the install
+ * from failing.
+ *
+ * Sized for a full update zip on a slow connection. On expiry the click falls
+ * through and installs whatever was already staged, which stays safe for the
+ * whole download: electron-updater writes to a temp file and only hands the
+ * result to Squirrel once the download completes, so an unfinished re-download
+ * has not disturbed the previous bundle or the proxy server still serving it.
+ * The dangerous window is the handoff itself, and that is covered by treating
+ * download and stage as one in-flight unit.
+ */
+export const RELAUNCH_REFRESH_DOWNLOAD_MS = 120_000;
+
+/**
+ * How long after arriving on a new version the "ready to install" banner stays
+ * suppressed.
+ *
+ * At the release cadence this app ships, the newest build is often superseded
+ * inside a single check interval, so the boot check that runs on an update
+ * relaunch routinely finds another version and re-arms the banner within
+ * seconds of the user finishing an update. Worse, that banner outranks the
+ * "Updated to Version X" confirmation in the notice priority order, so the
+ * acknowledgement is not merely followed by another demand, it is replaced by
+ * one.
+ *
+ * Suppression costs nothing: the update still downloads, still stages, and
+ * still installs at the next natural quit via `autoInstallOnAppQuit`. Only the
+ * interruption is deferred, and only until the user has had a stretch of
+ * uninterrupted use. If the app is still running when the window elapses, the
+ * banner appears then.
+ */
+export const POST_UPDATE_QUIET_MS = 10 * 60 * 1000;
 
 /**
  * How long the release-notes (what's-new) notice stays "live" for late-opened
@@ -1015,6 +1087,64 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     watchdog: ReturnType<typeof setTimeout>;
   } | null = null;
 
+  // Armed just before `downloadUpdate()` and cleared by whichever of
+  // `update-downloaded` / `error` lands. Non-null means Squirrel may be
+  // mid-swap of the staging directory, which is the one state in which
+  // `quitAndInstall()` must not be called: electron-updater's MacUpdater sets
+  // its internal `squirrelDownloadedUpdate` flag on the FIRST successful stage
+  // and never clears it, so a re-download re-points Squirrel at a fresh proxy
+  // server while that flag still reads true. `quitAndInstall()` then takes the
+  // "already staged, install now" branch and fires at a half-written bundle,
+  // which surfaces to the user as an install that failed and worked on retry.
+  // We cannot fix the upstream flag, so we refuse to call into it while a
+  // stage is running.
+  let stagingInFlight: { version: string } | null = null;
+
+  /** Accessor form, so a read after an `await` is not stale-narrowed. */
+  const currentStaging = (): { version: string } | null => stagingInFlight;
+
+  // One-shot resolvers for the click-gated freshness check. Registered before
+  // the triggering call so an event that lands synchronously is never missed,
+  // and drained (not filtered) on every settle so a timed-out waiter cannot
+  // leak into the next click.
+  let checkOutcomeWaiters: Array<(outcome: 'available' | 'settled') => void> = [];
+  let stagingWaiters: Array<(ok: boolean) => void> = [];
+
+  const settleCheckWaiters = (outcome: 'available' | 'settled'): void => {
+    const waiters = checkOutcomeWaiters;
+    checkOutcomeWaiters = [];
+    for (const resolve of waiters) resolve(outcome);
+  };
+
+  const settleStagingWaiters = (ok: boolean): void => {
+    const waiters = stagingWaiters;
+    stagingWaiters = [];
+    for (const resolve of waiters) resolve(ok);
+  };
+
+  // Wall-clock instant after which the "ready to install" banner may surface
+  // again. Set at boot when the running version differs from the last one seen,
+  // so it covers every route onto a new build (an update relaunch, an
+  // install-on-quit, a hand-replaced bundle) rather than only the click path.
+  // Null means no suppression is active.
+  let postUpdateQuietUntil: number | null = null;
+
+  // Pending deferred Toast A broadcast, held while the quiet window runs.
+  // Cleared by `destroy()` so a teardown mid-window cannot fire into
+  // destroyed windows.
+  let quietWindowTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const withinPostUpdateQuietWindow = (): boolean =>
+    postUpdateQuietUntil !== null && now().getTime() < postUpdateQuietUntil;
+
+  // Set synchronously on the first accepted "Relaunch" click, cleared only by
+  // `failRelaunch` (or the lost-staged-build path). The pre-existing
+  // double-invoke guard relied on `versionPendingInstall` being cleared
+  // synchronously before `quitAndInstall()`; the freshness check now awaits in
+  // front of that persist, so a second click during the await would otherwise
+  // pass the state gate and fire a non-idempotent Squirrel call twice.
+  let installRequested = false;
+
   // Absolute path of the staged installer. Captured in-session from
   // electron-updater's `update-downloaded` payload (`downloadedFile`) and
   // persisted alongside `versionPendingInstall`, then re-seeded from state at
@@ -1101,6 +1231,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       clock.clearTimeout(relaunchInFlight.watchdog);
       relaunchInFlight = null;
     }
+    // The install is no longer committed, so a fresh click must be accepted —
+    // the re-armed banner below is the user's retry affordance and would be
+    // inert without this.
+    installRequested = false;
     if (
       persistSafely({ ...readState(), versionPendingInstall: version }, 'relaunch-failed-restore')
     ) {
@@ -1213,10 +1347,30 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // 7-day stuck-hint gate doesn't fire on a healthy updater serving a
       // long stable-only window to a beta cohort (or vice versa).
       markCheckSucceeded();
+      settleCheckWaiters('settled');
       onDispatch?.('cross-channel-blocked');
       return;
     }
     markCheckSucceeded();
+    // Already staged, and staged bundles are not re-fetched. electron-updater
+    // emits `update-available` on every check for as long as the remote build
+    // is newer than the RUNNING one, so a pending update re-offers itself on
+    // each poll. Re-downloading it is not a no-op even when the file is
+    // already in the cache: the cached path still runs the post-download
+    // handoff, which tears down the Squirrel proxy server and re-stages the
+    // identical bytes. Every one of those re-stages is a window in which a
+    // "Relaunch" click hits a half-written staging directory (see
+    // `stagingInFlight`), so an hourly re-stage of a build we already hold is
+    // pure downside. A version CHANGE still re-downloads, and a download that
+    // failed left `versionPendingInstall` unset, so retries are unaffected.
+    if (offeredVersion && readState().versionPendingInstall === offeredVersion) {
+      logger.debug('update-available for the already-staged version — skipping re-download', {
+        version: offeredVersion,
+      });
+      settleCheckWaiters('settled');
+      onDispatch?.('download-skipped-already-staged');
+      return;
+    }
     // Tag the artifact fetch with the version being installed. The Windows and
     // Linux installers carry version-less names and stable resolves them
     // through GitHub's `latest` alias, so the proxy has nothing to parse and
@@ -1240,6 +1394,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // mid-flight) would only show up in this log line. Match
     // `runMenuDrivenCheck`'s classified/unclassified discipline so
     // classified codes land at `warn` with code + stack + timestamp.
+    // Arm BEFORE the call: `downloadUpdate()` can reject synchronously, and a
+    // gate armed after the fact would leave a rejection with nothing to clear.
+    stagingInFlight = { version: offeredVersion ?? 'unknown' };
+    settleCheckWaiters('available');
     void updater.downloadUpdate().catch((err: unknown) => {
       const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
       const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
@@ -1248,6 +1406,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         err,
         timestamp: now().toISOString(),
       });
+      // Rejections also reach `onError`, which clears the gate — but a
+      // provider-construction failure rejects without ever engaging the event
+      // bus, and a gate left armed there would block every later relaunch.
+      if (stagingInFlight) {
+        stagingInFlight = null;
+        settleStagingWaiters(false);
+      }
     });
   };
 
@@ -1275,6 +1440,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   const onUpdateNotAvailable = (info: { version?: string }): void => {
     logger.info('update-not-available', { version: info.version });
     markCheckSucceeded();
+    settleCheckWaiters('settled');
     if (menuCheckPending) {
       menuCheckPending = false;
       showCheckNowResult?.({
@@ -1295,6 +1461,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   const onUpdateDownloaded = (info: { version?: string; downloadedFile?: string }): void => {
     logger.info('update-downloaded', { version: info.version });
+    // Release the relaunch gate first, ahead of every early return below: the
+    // stage is finished whether or not this event goes on to dispatch a
+    // banner, and a gate left armed on a deduped or empty-version event would
+    // block relaunches for the rest of the session.
+    stagingInFlight = null;
+    settleStagingWaiters(true);
     // Track the staged file even when the dispatch below dedupes or skips —
     // the file exists on disk regardless, and the Linux fallback needs it.
     if (typeof info.downloadedFile === 'string' && info.downloadedFile !== '') {
@@ -1402,6 +1574,36 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       logger.info('update-downloaded dispatched Toast A (all windows)', { version });
       onDispatch?.('update-downloaded-toast-a');
     };
+    // Hold the banner while the post-update quiet window runs. The state gate
+    // above is already armed, so the update is fully staged and still installs
+    // at the next quit — the only thing deferred is the interruption. Deferring
+    // rather than dropping matters because the dedupe gate above would never
+    // let this version dispatch again: a dropped banner would be gone for the
+    // rest of the session, and a user who keeps the app open past the window
+    // would never learn the update was waiting.
+    if (withinPostUpdateQuietWindow()) {
+      const remainingMs = (postUpdateQuietUntil ?? 0) - now().getTime();
+      logger.info('update-downloaded within post-update quiet window — deferring Toast A', {
+        version,
+        remainingMs,
+      });
+      onDispatch?.('toast-a-deferred-post-update-quiet');
+      if (quietWindowTimer) clock.clearTimeout(quietWindowTimer);
+      quietWindowTimer = clock.setTimeout(
+        () => {
+          quietWindowTimer = null;
+          // The window has elapsed, so a late-opened window may surface the
+          // banner too — clearing here keeps `withinPostUpdateQuietWindow` and
+          // the deferred fire from disagreeing.
+          postUpdateQuietUntil = null;
+          onDispatch?.('toast-a-quiet-window-elapsed');
+          if (whenRendererReady) whenRendererReady(fireToastA);
+          else fireToastA();
+        },
+        Math.max(0, remainingMs),
+      );
+      return;
+    }
     if (whenRendererReady) whenRendererReady(fireToastA);
     else fireToastA();
   };
@@ -1420,6 +1622,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         timestamp: now().toISOString(),
       });
       onDispatch?.('error-unclassified');
+    }
+    // Any updater error ends whatever check or stage was running. Release both
+    // gates before the routing below, which can quit the app: a waiter left
+    // unresolved would hold a "Relaunch" click until its timeout for no reason,
+    // and a `stagingInFlight` left armed would block every later one.
+    settleCheckWaiters('settled');
+    if (stagingInFlight) {
+      stagingInFlight = null;
+      settleStagingWaiters(false);
     }
     // electron-updater surfaces feed/manifest failures primarily through this
     // event, not as a checkForUpdates() rejection. If the proxy feed is the
@@ -1502,6 +1713,125 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   updater.on('error', onError);
 
   // ————————————————————————————————————————————————————————
+  // Click-gated freshness check
+  // ————————————————————————————————————————————————————————
+
+  /**
+   * Resolve on the first of any number of signals, with a timeout backstop.
+   *
+   * `register` receives a `finish` callback it may wire to as many sources as
+   * it likes; the first call wins and every later one is ignored. Deliberately
+   * not a `Promise.race` over separately-timed promises: the timer lives here
+   * and is cleared on whichever path settles, so a wait that ends early cannot
+   * strand a timer that later fires into a torn-down updater.
+   */
+  const firstOf = <T>(
+    register: (finish: (value: T) => void) => void,
+    timeoutMs: number,
+    onTimeout: T,
+  ): Promise<T> =>
+    new Promise<T>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const finish = (value: T): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== null) clock.clearTimeout(timer);
+        resolve(value);
+      };
+      timer = clock.setTimeout(() => finish(onTimeout), timeoutMs);
+      register(finish);
+    });
+
+  /**
+   * Bring the staged build up to date before installing it, and never hand
+   * `quitAndInstall()` a staging directory that is still being written.
+   *
+   * Two things make this necessary at click time rather than on the periodic
+   * cadence. The release cadence outruns the check interval, so the staged
+   * build is routinely superseded before the user acts on it — the click is
+   * the first moment we know an install is actually wanted, and the last
+   * moment we can still change which version it lands on. And a stage that is
+   * in flight when the click arrives is exactly the state that breaks the
+   * install, so the wait is a correctness requirement, not just a freshness
+   * nicety.
+   *
+   * Deliberately gated on the click and not on hover: a hover precedes a click
+   * by a few hundred milliseconds, which is nowhere near enough to fetch an
+   * update, so hover could only ever discover staleness, never resolve it.
+   *
+   * Never throws. Every failure and timeout falls through to installing
+   * whatever is currently staged, because a stale install still beats a
+   * refusal to relaunch.
+   */
+  const refreshBeforeInstall = async (): Promise<void> => {
+    // A stage already running is the dangerous case, and it is also the case
+    // where a fresh check would tell us nothing new. Wait it out.
+    if (stagingInFlight) {
+      logger.info('relaunch-now waiting on in-flight staging before install', {
+        version: stagingInFlight.version,
+      });
+      onDispatch?.('relaunch-awaited-in-flight-staging');
+      await firstOf<boolean>(
+        (finish) => stagingWaiters.push(finish),
+        RELAUNCH_REFRESH_DOWNLOAD_MS,
+        false,
+      );
+      return;
+    }
+    const result = await firstOf<'available' | 'settled' | 'timeout'>(
+      (finish) => {
+        // Register the event waiter BEFORE the check so an `update-available`
+        // emitted synchronously from inside it still lands here.
+        checkOutcomeWaiters.push(finish);
+        // The check promise settling is a terminal signal in its own right,
+        // and wiring it alongside the event closes a hole: electron-updater
+        // emits its outcome event from inside the check and only then
+        // resolves, so a promise that resolves with no event means a path
+        // that reported nothing (a disabled updater short-circuits without
+        // emitting). Waiting on the event alone would stall such a click for
+        // the full timeout. The event still wins whenever it fires, because
+        // it fires first.
+        void updater.checkForUpdates().then(
+          () => finish('settled'),
+          (err: unknown) => {
+            // Rejections reach `onError`, which settles the waiter too.
+            logger.debug('relaunch-now refresh checkForUpdates rejected', { err });
+            finish('settled');
+          },
+        );
+      },
+      RELAUNCH_REFRESH_CHECK_MS,
+      'timeout',
+    );
+    if (result === 'timeout') {
+      logger.info('relaunch-now refresh check timed out — installing the staged build');
+      onDispatch?.('relaunch-refresh-timed-out');
+      return;
+    }
+    // Read through the accessor: the early return above narrowed
+    // `stagingInFlight` to null for the rest of this body, and the handler
+    // that re-arms it ran during the await, which control-flow analysis does
+    // not model.
+    const staging = currentStaging();
+    if (result !== 'available' || !staging) {
+      // Either nothing newer exists, or the offer was vetoed or already
+      // staged. Both mean the staged build is the one to install.
+      onDispatch?.('relaunch-refresh-up-to-date');
+      return;
+    }
+    logger.info('relaunch-now found a newer build — fetching it before installing', {
+      version: staging.version,
+    });
+    onDispatch?.('relaunch-refresh-found-newer');
+    await firstOf<boolean>(
+      (finish) => stagingWaiters.push(finish),
+      RELAUNCH_REFRESH_DOWNLOAD_MS,
+      false,
+    );
+  };
+
+  // ————————————————————————————————————————————————————————
   // IPC handler — Toast A's "Relaunch now"
   // ————————————————————————————————————————————————————————
 
@@ -1518,9 +1848,39 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // persist spread — Electron's main process is single-threaded so no
     // TOCTOU risk exists, and the dedup is cleaner than two reads with
     // identical results.
+    if (installRequested) {
+      logger.warn('relaunch-now invoked while an install is already committed — ignoring');
+      onDispatch?.('relaunch-double-invoke-blocked');
+      return undefined;
+    }
+    const preRefresh = readState();
+    if (!preRefresh.versionPendingInstall) {
+      logger.warn('relaunch-now invoked without versionPendingInstall — ignoring');
+      return undefined;
+    }
+    installRequested = true;
+    // Tell every window we are working before the await: the freshness check
+    // can take seconds, and a newer build found by it can take minutes more.
+    // Without this the clicked window sits on its local in-progress swap while
+    // the others keep showing a stale, clickable banner.
+    broadcastToAllWindows('ok:update:fetching-latest', {
+      version: preRefresh.versionPendingInstall,
+    });
+    await refreshBeforeInstall();
+    // Re-read: the refresh may have staged a newer version, which rewrites
+    // `versionPendingInstall`. Installing `preRefresh`'s value here would name
+    // the superseded build in the persist and in every log line downstream.
     const snapshot = readState();
     if (!snapshot.versionPendingInstall) {
-      logger.warn('relaunch-now invoked without versionPendingInstall — ignoring');
+      // The refresh cleared the gate rather than advancing it, which means the
+      // staged build stopped being installable while we waited. Recover the
+      // windows instead of calling into Squirrel with nothing staged.
+      logger.warn('relaunch-now lost its staged build during the freshness check — ignoring');
+      installRequested = false;
+      broadcastToAllWindows('ok:update:relaunch-failed', {
+        version: preRefresh.versionPendingInstall,
+        message: 'the update stopped being available',
+      });
       return undefined;
     }
     const pending = snapshot.versionPendingInstall;
@@ -1540,6 +1900,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       manualInstallPlanFor(usableStagedInstallerPath()) !== null &&
       !linuxInstallSupport.hasGraphicalAuth()
     ) {
+      // Nothing was committed, and the banner is being re-armed right above —
+      // release the commit flag so that re-armed banner is clickable again.
+      installRequested = false;
       broadcastToAllWindows('ok:update:downloaded', { version: pending });
       offerManualInstallFallback(pending, 'linux-manual-fallback-no-auth');
       return undefined;
@@ -1601,8 +1964,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         },
         'relaunch-now',
       )
-    )
+    ) {
+      // The whole point of bailing here is that the user can click again once
+      // the disk is healthy, so the commit flag has to come back off with it.
+      installRequested = false;
       return undefined;
+    }
     // Tell EVERY window the relaunch is underway BEFORE the teardown await:
     // each renderer swaps its "…ready to install [Relaunch]" banner to the
     // button-less "Relaunching…" in-progress card. The clicked window already
@@ -2001,6 +2368,21 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     state.lastSeenVersion !== null && state.lastSeenVersion !== currentVersion;
   const needsStateAdvance = state.lastSeenVersion !== currentVersion;
 
+  // Arriving on a new build starts the quiet window. Armed off the same
+  // condition as the what's-new notice so the two agree by construction:
+  // whenever we tell the user "Updated to Version X", we also stop asking them
+  // to update again for a while. A fresh install (`lastSeenVersion === null`)
+  // is deliberately excluded — nobody just sat through an update, and the
+  // installer is often already a release or two behind.
+  if (shouldShowVersionNotice) {
+    postUpdateQuietUntil = now().getTime() + POST_UPDATE_QUIET_MS;
+    logger.info('post-update quiet window armed', {
+      from: state.lastSeenVersion,
+      to: currentVersion,
+      untilMs: postUpdateQuietUntil,
+    });
+  }
+
   // Persist-before-emit — advance
   // `lastSeenVersion` BEFORE any broadcast so a disk-write failure cannot
   // leave Toast B un-armed-with-broadcast-already-sent (which would re-fire
@@ -2182,6 +2564,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       }
       return { version: activeWhatsNew.version, releaseUrl: activeWhatsNew.releaseUrl };
     },
+    isWithinPostUpdateQuietWindow(): boolean {
+      return withinPostUpdateQuietWindow();
+    },
     suppressAutoInstallOnQuit(): void {
       updater.autoInstallOnAppQuit = false;
       logger.info('autoInstallOnAppQuit suppressed for uninstall');
@@ -2242,6 +2627,16 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         clock.clearTimeout(relaunchInFlight.watchdog);
         relaunchInFlight = null;
       }
+      if (quietWindowTimer) {
+        clock.clearTimeout(quietWindowTimer);
+        quietWindowTimer = null;
+      }
+      // Release anything still awaiting the freshness check so a relaunch
+      // click that raced teardown resolves now instead of sitting out its
+      // full timeout against a torn-down updater.
+      settleCheckWaiters('settled');
+      stagingInFlight = null;
+      settleStagingWaiters(false);
       // Note: listeners detached per-event below.
       // Detach each listener under its own try/catch — a single `updater.off`
       // throw must not leave the remaining subscribers wired. electron-

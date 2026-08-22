@@ -24,6 +24,7 @@ import {
   pickActiveNotice,
   TOAST_A_ACTION,
   TOAST_A_ERROR_BODY,
+  TOAST_A_FETCHING_LATEST_BODY,
   TOAST_A_PROGRESS_BODY,
   TOAST_B_ACTION,
   TOAST_C_ACTION,
@@ -39,6 +40,7 @@ import {
 
 type UpdateDownloadedCb = (info: { version: string }) => void;
 type RelaunchingCb = (info: { version: string }) => void;
+type FetchingLatestCb = (info: { version: string }) => void;
 type RelaunchFailedCb = (info: { version: string; message?: string; downloadUrl?: string }) => void;
 type WhatsNewCb = (info: { version: string; releaseUrl: string }) => void;
 type WhatsNewDismissedCb = (info: { version: string }) => void;
@@ -47,6 +49,7 @@ type StuckHintCb = (info: { downloadUrl: string }) => void;
 interface FakeBridge {
   onUpdateDownloaded: ReturnType<typeof vi.fn>;
   onUpdateRelaunching: ReturnType<typeof vi.fn>;
+  onUpdateFetchingLatest: ReturnType<typeof vi.fn>;
   onUpdateRelaunchFailed: ReturnType<typeof vi.fn>;
   onWhatsNew: ReturnType<typeof vi.fn>;
   onWhatsNewDismissed: ReturnType<typeof vi.fn>;
@@ -63,12 +66,14 @@ interface FakeBridge {
   /** Test-side handles — set by the `on*` mocks so tests can drive dispatches. */
   _downloaded?: UpdateDownloadedCb;
   _relaunching?: RelaunchingCb;
+  _fetchingLatest?: FetchingLatestCb;
   _relaunchFailed?: RelaunchFailedCb;
   _whatsNew?: WhatsNewCb;
   _whatsNewDismissed?: WhatsNewDismissedCb;
   _stuckHint?: StuckHintCb;
   _downloadedUnsub: ReturnType<typeof vi.fn>;
   _relaunchingUnsub: ReturnType<typeof vi.fn>;
+  _fetchingLatestUnsub: ReturnType<typeof vi.fn>;
   _relaunchFailedUnsub: ReturnType<typeof vi.fn>;
   _whatsNewUnsub: ReturnType<typeof vi.fn>;
   _whatsNewDismissedUnsub: ReturnType<typeof vi.fn>;
@@ -79,12 +84,14 @@ function makeFakeBridge(): FakeBridge {
   const b: FakeBridge = {
     _downloadedUnsub: vi.fn(() => {}),
     _relaunchingUnsub: vi.fn(() => {}),
+    _fetchingLatestUnsub: vi.fn(() => {}),
     _relaunchFailedUnsub: vi.fn(() => {}),
     _whatsNewUnsub: vi.fn(() => {}),
     _whatsNewDismissedUnsub: vi.fn(() => {}),
     _stuckHintUnsub: vi.fn(() => {}),
     onUpdateDownloaded: vi.fn(() => {}),
     onUpdateRelaunching: vi.fn(() => {}),
+    onUpdateFetchingLatest: vi.fn(() => {}),
     onUpdateRelaunchFailed: vi.fn(() => {}),
     onWhatsNew: vi.fn(() => {}),
     onWhatsNewDismissed: vi.fn(() => {}),
@@ -106,6 +113,10 @@ function makeFakeBridge(): FakeBridge {
   b.onUpdateRelaunching = vi.fn((cb: RelaunchingCb) => {
     b._relaunching = cb;
     return b._relaunchingUnsub;
+  });
+  b.onUpdateFetchingLatest = vi.fn((cb: FetchingLatestCb) => {
+    b._fetchingLatest = cb;
+    return b._fetchingLatestUnsub;
   });
   b.onUpdateRelaunchFailed = vi.fn((cb: RelaunchFailedCb) => {
     b._relaunchFailed = cb;
@@ -252,6 +263,47 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     expect(inProgress.action).toBeUndefined();
     expect(inProgress.priority).toBe(2);
     expect(inProgress.dismissible).toBe(false);
+  });
+
+  test('onUpdateFetchingLatest → the fetching card, same id and shape as relaunching', () => {
+    // The click is checking whether the staged build is still the newest one.
+    // Same stable id as the relaunching card so the in-progress states replace
+    // each other in place rather than stacking, and equally button-less: the
+    // relaunch is already committed, so there is nothing to click and nothing
+    // to dismiss.
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    attachUpdateSubscribers(castBridge(bridge), addNotice);
+
+    bridge._fetchingLatest?.({ version: '0.1.1' });
+    expect(addNotice).toHaveBeenCalledTimes(1);
+    const fetching = addNotice.mock.calls[0]?.[0] as UpdateNotice;
+    expect(fetching.id).toBe('update-downloaded');
+    expect(fetching.body).toBe(TOAST_A_FETCHING_LATEST_BODY);
+    expect(fetching.action).toBeUndefined();
+    expect(fetching.priority).toBe(2);
+    expect(fetching.dismissible).toBe(false);
+  });
+
+  test('the fetching card is worded apart from the relaunching one', () => {
+    // The two waits differ by orders of magnitude — teardown is seconds,
+    // fetching a newer build can be minutes — so they must not share copy.
+    expect(TOAST_A_FETCHING_LATEST_BODY).toBe('Getting the latest version…');
+    expect(TOAST_A_FETCHING_LATEST_BODY).not.toBe(TOAST_A_PROGRESS_BODY);
+  });
+
+  test('the fetching card gives way to the relaunching card in place', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    attachUpdateSubscribers(castBridge(bridge), addNotice);
+
+    bridge._fetchingLatest?.({ version: '0.1.1' });
+    bridge._relaunching?.({ version: '0.1.1' });
+
+    const [first, second] = addNotice.mock.calls.map((c) => c[0] as UpdateNotice);
+    expect(first?.id).toBe(second?.id);
+    expect(first?.body).toBe(TOAST_A_FETCHING_LATEST_BODY);
+    expect(second?.body).toBe(TOAST_A_PROGRESS_BODY);
   });
 
   test('does NOT invoke relaunchNow — it is the echo, not the trigger (no loop)', () => {

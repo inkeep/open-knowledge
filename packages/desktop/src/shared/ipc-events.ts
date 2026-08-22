@@ -74,6 +74,19 @@ export interface EventChannels {
    */
   'ok:update:relaunching': { payload: { version: string } };
   /**
+   * Main → every window when a "Relaunch" click is re-checking the feed before
+   * installing, and again for as long as a newer build found by that check is
+   * downloading. Renderers swap the card to a button-less "Getting the latest
+   * version…" state.
+   *
+   * Distinct from `ok:update:relaunching` because the two describe different
+   * waits and only one of them is bounded by seconds: this one can span a full
+   * update download, and labelling that "Relaunching…" would read as a hang.
+   * `version` names the build staged when the click landed, which is the one
+   * the user saw — a newer one may replace it before the install.
+   */
+  'ok:update:fetching-latest': { payload: { version: string } };
+  /**
    * Main → every window when a committed relaunch fails ASYNCHRONOUSLY — the
    * updater's `error` event fired while the relaunch was in flight, or the
    * no-quit watchdog elapsed with the process still alive. (A synchronous
