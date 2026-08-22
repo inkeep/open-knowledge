@@ -1138,10 +1138,18 @@ function EditorAreaInner({
     // threshold and immediately invokes the toggle before React commits the
     // new partition.
     const partition = rightPartitionRef.current;
+    // Same reason `partition` is read from a ref just above, one hop worse: a
+    // second chord arriving before the effect re-subscribes runs the previous
+    // closure, and branching on render-bound state made it repeat the collapse
+    // it had just done — a no-op leaving the panel shut, `aria-expanded` stuck
+    // at "false", and a spurious 'collapsed' pin persisted.
+    // `assertRightRailLayout` writes this ref synchronously so the live value
+    // survives that gap. Pinned in EditorArea.dom.test.tsx.
+    const collapsed = isCollapsedRef.current;
     // The permanent rail columns remain adjacent at zero width while hidden.
     // A per-panel expand/collapse would exchange with that zero-width neighbor
     // and no-op, so every transition must route through the editor residual.
-    if (isCollapsed) {
+    if (collapsed) {
       applyToggle('right', partition, 'open');
       assertRightRailLayout(false);
     } else {

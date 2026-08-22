@@ -291,5 +291,17 @@ test('a legacy __template__ bookmark redirects to the content doc and opens it',
   await page.evaluate((name) => {
     window.location.hash = `#/__template__/${name}`;
   }, templateName);
-  await expect(page.getByText(bodyMarker)).toBeVisible({ timeout: 15_000 });
+  // Anchor on the rendered heading, not on bare text. The outline panel lists
+  // every heading in the open doc as a button whose label and `title` are the
+  // heading text verbatim, so this marker necessarily exists on two surfaces
+  // once the outline has derived from the body — and an unscoped getByText
+  // matches both and trips Playwright strict mode. Both surfaces come from the
+  // same heading, so this is a race over which one renders first, not a slow
+  // assertion; raising the timeout would only give the outline entry more time
+  // to appear. (The file tree is not the second match: it labels its rows by
+  // filename, which is why `fileRow` above matches on `.md` names.) The outline
+  // entry is a button, so scoping to the heading role stays unique, and the
+  // template body is written as `# ${bodyMarker}` above — making the heading
+  // exactly the "its body renders" signal this test means to assert.
+  await expect(page.getByRole('heading', { name: bodyMarker })).toBeVisible({ timeout: 15_000 });
 });

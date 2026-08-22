@@ -44,6 +44,30 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
   const markers = ['USER-E2E-MARK-1', 'USER-E2E-MARK-2', 'USER-E2E-MARK-3'];
 
   for (const marker of markers) {
+    // Y.Text length BEFORE this turn's write. The propagation wait below is
+    // RELATIVE to it because the writes append: each turn adds roughly another
+    // fixture's worth of content, so an absolute `>= FIXTURE.length - 200`
+    // threshold is already satisfied by the PREVIOUS turn's content and
+    // returned without waiting at all on turns 2 and 3. Those turns never
+    // verified their own append, and the test went on to type its marker into a
+    // document with a full fixture still in flight. Waiting per-turn removes
+    // that overlap. It does NOT on its own make the marker wait below reliable
+    // — that still times out under load and is tracked separately — so read
+    // this as closing a guard that was doing nothing, not as the flake's cure.
+    // `grewFrom` in the turn log below records the baseline, so a run shows
+    // directly whether each turn's guard had anything to wait for.
+    // No `?? 0` fallback here: defaulting a missing provider to 0 would put the
+    // threshold back at exactly the absolute `FIXTURE.length - 200` this guard
+    // exists to replace, silently restoring the vacuous behaviour on a degraded
+    // path. Fail loudly instead — the provider is already awaited above.
+    const lengthBeforeWrite = await page.evaluate(() => {
+      const len = window.__activeProvider?.document?.getText('source')?.toString()?.length;
+      if (typeof len !== 'number') {
+        throw new Error('no live provider Y.Text before the agent write');
+      }
+      return len;
+    });
+
     // Inject large content via agent API. Default `position: append` (omitted)
     // so each turn stacks onto the previous — testing coexistence of agent
     // writes + accumulated user typing across turns.
@@ -54,11 +78,11 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
     });
     expect(writeRes.ok).toBe(true);
 
-    // Wait for content to propagate to Y.Text
+    // Wait for THIS turn's append to propagate to Y.Text.
     await page.waitForFunction(
       (expected: number) =>
-        window.__activeProvider?.document?.getText('source')?.toString()?.length >= expected,
-      FIXTURE.length - 200, // tolerance for whitespace normalization
+        (window.__activeProvider?.document?.getText('source')?.toString()?.length ?? 0) >= expected,
+      lengthBeforeWrite + FIXTURE.length - 200, // tolerance for whitespace normalization
       { timeout: 30_000 },
     );
 
@@ -71,10 +95,17 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
     // above, so it carries the same 30s budget. The marker round-trips client
     // keystroke → XmlFragment → server Observer A → Y.Text; across the 3 turns the
     // doc accumulates to ~3× the fixture, so by the later turns Observer A re-derives
-    // Y.Text from a much larger fragment and that round-trip can exceed 10s under
-    // workers=4 contention. The marker always lands (it is never dropped — the final
-    // assertion below confirms all three survive), just slowly under accumulating
-    // load, so a 10s budget cut a still-in-flight sync off mid-turn.
+    // Y.Text from a much larger fragment and that round-trip grows with it. The
+    // marker always lands (it is never dropped — the final assertion below confirms
+    // all three survive), just slowly under accumulating load.
+    //
+    // This budget was once raised from 10s to 30s on the theory that it was merely
+    // ungenerous. That turned out not to be the whole story, so do not read the
+    // current number as a solved problem: this wait STILL times out under load, and
+    // it is the open residual the comment at the top of the loop refers to. The
+    // suspected cost is Observer A re-deriving Y.Text per keystroke against a
+    // fragment that keeps growing, which is a server-side cost no client-side budget
+    // fixes. Measure that re-derive before considering another bump.
     await page.waitForFunction(
       (m: string) => window.__activeProvider?.document?.getText('source')?.toString()?.includes(m),
       marker,
@@ -92,7 +123,8 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
       };
     });
     console.log(
-      `[Layer C] Turn complete: ytext=${turnState.ytextLen}, fragment=${turnState.fragChildren}`,
+      `[Layer C] Turn complete: ytext=${turnState.ytextLen}, fragment=${turnState.fragChildren}, ` +
+        `grewFrom=${lengthBeforeWrite}`,
     );
   }
 

@@ -760,6 +760,44 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(corrected?.['editor-main']).toBeCloseTo(100 - pctOf(320), 3);
   });
 
+  test('a second toggle re-opens the doc panel the first toggle collapsed', () => {
+    // `togglePanel` is re-bound on every render, and the ⌥⌘B keydown listener
+    // that calls it only re-installs when the passive effect phase flushes. A
+    // second invocation landing before that flush therefore runs the PREVIOUS
+    // closure — one that still sees the pre-collapse `isCollapsed`. Branching
+    // on that render-bound value made the second press repeat the collapse it
+    // had just done: a silent no-op leaving the panel shut, `aria-expanded`
+    // pinned at "false", and a spurious 'collapsed' pin persisted.
+    //
+    // This harness holds that stale condition open for the whole test rather
+    // than for one frame: the mocked group handle records `setLayout` without
+    // updating `groupLayout`, and nothing fires `onResize`, so `setIsCollapsed`
+    // never runs. That makes it the right rung for this invariant: the
+    // equivalent browser test has to land its second press inside a single
+    // frame, so it caught this in only 1 of 6 CI runs. The invariant is that
+    // `togglePanel` must not depend on React state having caught up, so it
+    // reads the ref `assertRightRailLayout` writes synchronously.
+    setViewportWidth(1400);
+    docCtx = DOC_LIVE_CTX;
+    render(<EditorArea {...baseProps} />);
+    // 1400px is above the collapse threshold, so the panel starts open; mirror
+    // the live layout the library would be holding for it.
+    groupLayout = {
+      'editor-main': 75,
+      'doc-panel': 25,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBe(0);
+
+    // The round-trip. Against the render-bound read this stayed 0.
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+    expect(groupSetLayoutCalls.at(-1)?.['doc-panel']).toBeCloseTo(pctOf(320), 3);
+  });
+
   test('hiding the agents panel re-asserts the collapsed doc panel over the stale panel-set restore', async () => {
     // Below 1280px the doc panel starts collapsed (no pin), so the intended
     // post-hide state is "collapsed" even though the cached two-panel layout

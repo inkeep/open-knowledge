@@ -133,7 +133,19 @@ function SidebarProvider({
   const open = openProp ?? _open;
 
   const setOpen: OpenHandler = (value) => {
-    const openState = typeof value === 'function' ? value(open) : value;
+    // Resolve the updater against the live ref, not the render-bound `open`.
+    // This is typed `Dispatch<SetStateAction<boolean>>` and handed to consumers
+    // through context, so the functional form owes them React's own contract:
+    // the updater receives the LATEST value. Resolving against the captured
+    // `open` breaks that for any caller holding a stale closure, including the
+    // ⌥⌘S listener below, which only re-subscribes once the passive effect
+    // phase flushes. The window is far narrower than the doc-panel toggle's
+    // equivalent, because this writes React state directly instead of
+    // round-tripping through the panel library's `onResize` — narrow enough
+    // that a jsdom test cannot observe it at all, so there is no pin here. The
+    // ref is safe to read regardless: its layout effect runs before any passive
+    // effect, so it is never staler than `open`.
+    const openState = typeof value === 'function' ? value(openRef.current) : value;
     if (setOpenProp) {
       setOpenProp(openState);
     } else {
