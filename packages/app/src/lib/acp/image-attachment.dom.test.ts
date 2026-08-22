@@ -196,24 +196,37 @@ describe('collectImageFiles', () => {
     expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['a.png']);
   });
 
-  /** The fallback is all-or-nothing on purpose. A partial-null `items` does
-   *  NOT top up from `files`, because `files` mirrors the same payloads: a
-   *  per-entry fallback would re-read a payload `items` already yielded and
-   *  attach it twice, which is the bug this traversal exists to prevent.
-   *  Losing an unreadable entry is the correct trade against that. */
+  /** A partial null among file-kind entries is not reachable in a conformant
+   *  host: `getAsFile()` returns null only for a non-file item — already
+   *  filtered by the `kind` check — or when the whole data store is in a
+   *  disallowed mode, which takes every entry down together. So this pins a
+   *  design decision rather than arbitrating a state that occurs: the
+   *  fallback stays all-or-nothing and is never reopened per entry.
+   *
+   *  The shape that invites reopening is indexing `files` by the `items`
+   *  index, and the fixture shows why it is wrong. `items` carries
+   *  `kind: 'string'` entries — a pasted image usually arrives beside a
+   *  text/html flavor — while `files` holds only the file-kind ones, so the
+   *  two shift out of step: `files[1]` below is `good`, the payload
+   *  `items[2]` already yielded, and topping up at the null `items[1]` would
+   *  attach it twice. That is the duplicate-attachment bug this traversal
+   *  exists to prevent. */
   test('does not top up from files when only some items entries yield null', () => {
     const good = makeFile(new Uint8Array([1]), 'good.png', 'image/png');
     const mirrored = makeFile(new Uint8Array([2]), 'mirrored.png', 'image/png');
+    // `files` is the file-kind subset in order, so the leading string item
+    // shifts it one place left of `items`.
     const dt = {
       items: [
-        { kind: 'file' as const, type: 'image/png', getAsFile: () => good },
+        { kind: 'string' as const, type: 'text/html', getAsFile: () => null },
         { kind: 'file' as const, type: 'image/png', getAsFile: () => null },
+        { kind: 'file' as const, type: 'image/png', getAsFile: () => good },
       ],
       files: {
         length: 2,
-        item: (i: number) => [good, mirrored][i] ?? null,
-        0: good,
-        1: mirrored,
+        item: (i: number) => [mirrored, good][i] ?? null,
+        0: mirrored,
+        1: good,
       } as unknown as FileList,
     } as unknown as DataTransfer;
     expect(collectImageFiles(dt).map((f) => f.name)).toEqual(['good.png']);

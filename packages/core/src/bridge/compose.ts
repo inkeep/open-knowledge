@@ -1,4 +1,3 @@
-
 import { prependFrontmatter, stripFrontmatter } from '../extensions/frontmatter.ts';
 
 export type ComposeAdjustment = 'none' | 'body' | 'frontmatter' | 'unresolved';
