@@ -314,11 +314,63 @@ jobs:
             -f mode=cherry-pick -f fix_refs="$FIX_REFS" -f dry_run=false -f dispatched_by="$SELF_URL"
           echo "::notice::bug-lane: dispatched point-release (cherry-pick) of ${FIX_REFS} over ${STABLE}."
 
+      # A partial drop is a STANDING ANSWER too, exactly like the refusal below:
+      # the same ref conflicts with the same stable on every tick, so the
+      # notification re-derives an unchanged fact every ~20 minutes. Observed
+      # 2026-08-21: four identical overnight pages while a point-release
+      # dispatch that could never land (anchor-drift) kept the candidate set
+      # frozen, so nothing about the message could change on its own.
+      #
+      # The stable is deliberately OUT of the signature, matching the refusal's
+      # reasoning one step down: the operator's move — "investigate whether any
+      # needs a manual point release" — does not change when the stable rolls.
+      # The surviving set IS in it, because a different dispatched subset is
+      # genuinely new news rather than the same fact restated.
+      - name: Drop signature
+        id: drop
+        if: env.BUG_LANE_ARMED == 'true' && steps.verify.outputs.verdict == 'pass' && steps.verify.outputs.dropped_refs != ''
+        env:
+          DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
+          SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
+        run: |
+          set -euo pipefail
+          sig="$(printf '%s|%s' "$DROPPED_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
+          echo "sig=${sig}" >> "$GITHUB_OUTPUT"
+          echo "marker=${RUNNER_TEMP}/bug-lane-drop-marker" >> "$GITHUB_OUTPUT"
+
+      - name: Has this drop already been paged?
+        id: drop_paged_before
+        if: steps.drop.outputs.sig != ''
+        uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.drop.outputs.marker }}
+          key: bug-lane-drop-${{ steps.drop.outputs.sig }}
+          lookup-only: true
+
+      # Same reason the refusal notes its suppression: a tick that goes quiet
+      # otherwise finishes green with no trace, leaving an operator asking "is
+      # that drop still standing?" with only an invisible cache hit to infer it
+      # from. The run summary costs no notification and answers it in place.
+      - name: Note a suppressed drop
+        if: steps.drop_paged_before.outputs.cache-hit == 'true'
+        env:
+          SIG: ${{ steps.drop.outputs.sig }}
+          DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Bug lane — drop still standing, page suppressed"
+            echo "Dropped \`${DROPPED_REFS}\`, signature \`${SIG}\`, already paged on an earlier tick."
+            echo "The channel stays quiet by design; this re-pages only if the dropped or dispatched set changes."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice::bug-lane: drop ${SIG} already paged; suppressing the duplicate page."
+
       - name: Notify on a partial drop (armed only)
+        id: drop_page
         # A drop with a surviving batch is verdict=pass, so the refusal page
         # never fires — yet a bug fix silently deferred to the 24h path is the
         # lane's most common non-trivial outcome and must not be log-only.
-        if: env.BUG_LANE_ARMED == 'true' && steps.verify.outputs.verdict == 'pass' && steps.verify.outputs.dropped_refs != ''
+        if: steps.drop.outputs.sig != '' && steps.drop_paged_before.outputs.cache-hit != 'true'
         env:
           SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -327,16 +379,43 @@ jobs:
           STABLE: ${{ steps.evaluate.outputs.stable }}
         run: |
           set -uo pipefail
+          # `delivered` is the ONLY thing the markers may key on, so it is
+          # written on EVERY path — no early exit. An unset output and an
+          # explicit 'false' both fail the `== 'true'` gate today, so this is
+          # inert either way; it is written out because the contract is what
+          # the markers depend on, and an implicit GHA default is a thinner
+          # thing to depend on than a value this step always states. Same shape
+          # as the refusal step below, deliberately.
+          delivered=false
           WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
           if [[ -z "$WEBHOOK_URL" ]]; then
             echo "::notice::No Slack webhook secret set — drop notification skipped."
-            exit 0
+          else
+            RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            TEXT="⚠️ Bug lane dropped ${DROPPED_REFS} (cherry-pick conflict with ${STABLE}); they ride their cycle's 24h path — investigate whether any needs a manual point release. Dispatched the self-contained subset ${SURVIVING_REFS}. ${RUN_URL}"
+            payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
+            if curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL"; then
+              delivered=true
+            else
+              echo "::warning::bug-lane drop notification failed to POST — the dispatch itself is unaffected, and the drop stays un-marked so the next tick pages it again."
+            fi
           fi
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          TEXT="⚠️ Bug lane dropped ${DROPPED_REFS} (cherry-pick conflict with ${STABLE}); they ride their cycle's 24h path — investigate whether any needs a manual point release. Dispatched the self-contained subset ${SURVIVING_REFS}. ${RUN_URL}"
-          payload="$(jq -nc --arg t "$TEXT" '{text: $t}')"
-          curl -sS --fail -X POST -H 'Content-type: application/json' --data "$payload" "$WEBHOOK_URL" \
-            || echo "::warning::bug-lane drop notification failed to POST — the dispatch itself is unaffected."
+          echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"
+
+      # Gated on DELIVERY, not on the step's conclusion — same contract as the
+      # refusal marker below. Writing it after a failed POST would turn a
+      # transient Slack outage into permanent silence for that drop, which is
+      # strictly worse than the per-tick flood this replaces.
+      - name: Record that this drop was paged
+        if: steps.drop_page.outputs.delivered == 'true'
+        run: printf '%s\n' "${{ steps.drop.outputs.sig }}" > "${{ steps.drop.outputs.marker }}"
+
+      - name: Remember the drop across ticks
+        if: steps.drop_page.outputs.delivered == 'true'
+        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: ${{ steps.drop.outputs.marker }}
+          key: bug-lane-drop-${{ steps.drop.outputs.sig }}
 
       # A refusal is a STANDING ANSWER, not an event. The refused ref stays in
       # the pending pile and re-qualifies and re-conflicts on every tick, so a

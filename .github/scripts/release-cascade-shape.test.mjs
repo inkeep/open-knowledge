@@ -25,6 +25,24 @@ const desktopRelease = read('desktop-release.yml');
 const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 const bugLane = read('bug-lane.yml');
+
+/**
+ * One workflow step's body, bounded at the NEXT step.
+ *
+ * Assertions about a step have to be scoped to that step. A whole-file
+ * `toContain` passes on any occurrence, so a string that appears in two steps
+ * lets either one be mutated while the other keeps the test green; a
+ * fixed-width slice runs past a short step into its neighbour and does the
+ * same. Both holes were shipped and caught by mutation testing rather than by
+ * review, which is why this is the only way these files slice a step.
+ */
+const bugLaneStep = (name) => {
+  const start = bugLane.indexOf(`- name: ${name}`);
+  if (start === -1) throw new Error(`bug-lane.yml has no step named ${name}`);
+  const rest = bugLane.slice(start);
+  const end = rest.indexOf('\n      - name: ');
+  return end === -1 ? rest : rest.slice(0, end);
+};
 const selectBeta = read('select-beta-to-promote.yml');
 
 /**
@@ -531,17 +549,94 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     //
     // Step ORDER is not the property: `Record` sits after `Page` either way,
     // so an ordering assertion stays green while the guarantee is gone.
-    expect(bugLane).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
-    expect(bugLane).toContain('delivered=true');
+    // Scoped to the refusal step. Both strings now also appear in the drop
+    // step added alongside it, so a whole-file assertion would let either
+    // step's copy satisfy the other's test — the sibling-coverage hole that
+    // has bitten every ratchet in this block.
+    const refusalPage = bugLaneStep('Page on a refusal (armed only)');
+    expect(refusalPage).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
+    expect(refusalPage).toContain('delivered=true');
     for (const step of ['Record that this refusal was paged', 'Remember the refusal across ticks']) {
-      const body = bugLane.slice(
-        bugLane.indexOf(`- name: ${step}`),
-        bugLane.indexOf(`- name: ${step}`) + 400,
-      );
-      expect(body, `${step} must gate on delivery`).toContain(
+      expect(bugLaneStep(step), `${step} must gate on delivery`).toContain(
         "if: steps.page.outputs.delivered == 'true'",
       );
     }
+  });
+
+  test('an unchanged partial drop is paged once, not once per tick', () => {
+    // The drop page is a STANDING ANSWER on the same terms as the refusal
+    // above: the ref conflicts with the stable on every tick, so without a
+    // gate it re-sends an unchanged message every ~20 minutes. Observed
+    // 2026-08-21: four identical overnight pages, because the dispatch they
+    // accompanied could never land (anchor-drift) and so the candidate set
+    // never moved. verdict is `pass` on this path, which is exactly why the
+    // refusal's own gate does not cover it.
+    expect(bugLaneStep('Notify on a partial drop (armed only)')).toContain(
+      "steps.drop_paged_before.outputs.cache-hit != 'true'",
+    );
+    // Both cache steps, each bounded to itself. A restore key that stops
+    // tracking the signature is the per-tick flood this test is named for; if
+    // BOTH go constant it is permanent silence for every later drop.
+    for (const step of ['Has this drop already been paged?', 'Remember the drop across ticks']) {
+      expect(bugLaneStep(step), `${step} must key on the drop signature`).toContain(
+        'key: bug-lane-drop-${{ steps.drop.outputs.sig }}',
+      );
+    }
+  });
+
+  test('the drop marker is gated on DELIVERY, not on the notify step succeeding', () => {
+    // Same contract as the refusal marker: the notify step cannot fail (an
+    // unset secret returns early, a dead webhook downgrades to a warning), so
+    // keying the marker on its conclusion would cache the signature even when
+    // nothing reached anyone and silence that drop permanently.
+    for (const step of ['Record that this drop was paged', 'Remember the drop across ticks']) {
+      expect(bugLaneStep(step), `${step} must gate on delivery`).toContain(
+        "if: steps.drop_page.outputs.delivered == 'true'",
+      );
+    }
+  });
+
+  test('the drop signature ignores the stable but tracks the dispatched subset', () => {
+    // Deliberate asymmetry, inherited from the refusal signature. The
+    // operator's move does not change when the stable rolls, and stables roll
+    // several times a day — including it would restore most of the flood for a
+    // fact already reported. A different surviving subset IS new news, so it
+    // stays in.
+    const sig = bugLaneStep('Drop signature');
+    expect(sig).toContain('"$DROPPED_REFS" "$SURVIVING_REFS"');
+    expect(sig).not.toContain('$STABLE');
+  });
+
+  test('a suppressed drop still leaves a trace in the run', () => {
+    // Same property the refusal path already pins: the suppressing tick has
+    // nothing else to show — no page, no marker write, green check — so an
+    // operator asking "is that drop still standing?" has only an invisible
+    // cache hit to infer it from. The gate is the COMPLEMENT of the notify
+    // step's; inverting it makes the note fire alongside the page and never on
+    // the tick it exists for.
+    const suppress = bugLaneStep('Note a suppressed drop');
+    expect(suppress).toContain("if: steps.drop_paged_before.outputs.cache-hit == 'true'");
+    expect(suppress).toContain('>> "$GITHUB_STEP_SUMMARY"');
+  });
+
+  test('the drop page states its delivery on every path', () => {
+    // The markers key on `delivered`, so the step has to write it whether or
+    // not a webhook exists. An early `exit 0` on the no-webhook branch leaves
+    // it unset — inert today, since unset and 'false' both fail the gate, but
+    // it makes the marker contract depend on a GHA default rather than on a
+    // value this step always states.
+    const notify = bugLaneStep('Notify on a partial drop (armed only)');
+    expect(notify).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
+    expect(notify).not.toContain('exit 0');
+  });
+
+  test('a disarmed lane cannot post the drop page', () => {
+    // The notify step used to carry `BUG_LANE_ARMED` in its own `if:`. Now that
+    // it gates on the signature instead, the armed check survives in exactly
+    // ONE place — and it is the only thing keeping a log-only lane from posting
+    // to Slack. Losing it there is silent: every other assertion here stays
+    // green while a disarmed lane starts paging.
+    expect(bugLaneStep('Drop signature')).toContain("env.BUG_LANE_ARMED == 'true'");
   });
 
   test('the one page it does send says the following silence is deliberate', () => {
