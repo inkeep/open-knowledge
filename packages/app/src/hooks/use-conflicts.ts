@@ -6,10 +6,14 @@
  * `ch:'sync-status'` CC1 signal (the same trigger {@link useGitSyncStatus}
  * subscribes to). Backs the sidebar Conflicts section + acts as the single
  * source of truth that converges with the topbar `SyncStatusBadge`'s
- * `conflictCount` field (both come from the same server state — the
- * `/api/sync/status` endpoint computes its `conflictCount` from
- * `<contentDir>/.ok/conflicts.json` and `/api/sync/conflicts` reads the same
- * file; CC1 `sync-status` invalidates both in lockstep).
+ * `conflictCount` field. The two converge but are NOT backed identically:
+ * `/api/sync/conflicts` reads the ConflictStore live (persisted at
+ * `<projectDir>/.ok/local/conflicts.json`), while `/api/sync/status` returns a
+ * cached `conflictCount` scalar that the engine refreshes from that store at
+ * discrete points and seeds from `<projectDir>/.ok/local/sync-state.json` on
+ * load. CC1 `sync-status` invalidates both in lockstep, so they agree in
+ * steady state; a momentary disagreement is a refresh-ordering artifact, not
+ * two readings of one value.
  *
  * Tab-badge counts come from per-doc `useLifecycleStatus(tab.docName)`
  * readings (live CRDT state). The CRDT lifecycle gets pushed by the server's

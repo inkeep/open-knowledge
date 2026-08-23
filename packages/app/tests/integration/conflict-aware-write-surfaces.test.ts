@@ -75,6 +75,16 @@ async function setupServerWithDoc(
  * `ConflictStore.load()` admits these entries on construction. The file
  * paths must exist on disk for any later `git add` to succeed (the
  * `content`-strategy resolution path writes-then-adds).
+ *
+ * Entries written here carry no `variant`, i.e. they are merge-native, and
+ * merge-native entries with no MERGE_HEAD are stale by definition. Call
+ * `seedRealMergeConflict()` FIRST unless the test wants them pruned — three
+ * separate paths act on that definition: `SyncEngine.start()`'s reconcile
+ * (only when sync is enabled AND a remote exists, so never under
+ * `createTestServer`), `restoreLifecycleFromConflictsJson` (wired at boot, but
+ * also invoked directly by tests in this file), and the HEAD watcher's batch-end
+ * `reconcileConflictsFromGit()`, which is live in every harness and can
+ * land mid-test.
  */
 function seedConflictsJson(
   projectDir: string,
@@ -115,10 +125,11 @@ function seedSyncStateConflicts(projectDir: string, files: string[]): void {
 
 /**
  * Stage a real in-progress git merge with conflicts on the given files so
- * the reconcile-on-restore path in `restoreLifecycleFromConflictsJson`
- * (and the SyncEngine.start() reconcile) sees a present MERGE_HEAD and
- * the files in `git diff --diff-filter=U`. Without this, both reconciles
- * correctly prune the seeded conflicts.json as stale.
+ * every reconcile path — the HEAD watcher's batch-end
+ * `reconcileConflictsFromGit()`, `restoreLifecycleFromConflictsJson`, and
+ * `SyncEngine.start()` — sees a present MERGE_HEAD and the files in
+ * `git diff --diff-filter=U`. Without this, they correctly prune the
+ * seeded conflicts.json as stale.
  *
  * Caller is expected to write conflicts.json AFTER this returns (the
  * merge attempt leaves files marker-laden on disk; the conflicts.json
@@ -145,6 +156,32 @@ async function seedRealMergeConflict(projectDir: string, files: string[]): Promi
   await execFileAsync('git', ['merge', 'theirs-branch'], opts).catch(() => {
     /* expected: non-zero exit on conflict */
   });
+  // The whole point of this helper is the MERGE_HEAD it leaves behind; a
+  // caller's conflicts.json entries are pruned as stale without it. Assert
+  // rather than let a clean auto-merge degrade the fixture silently.
+  if (!existsSync(join(projectDir, '.git', 'MERGE_HEAD'))) {
+    throw new Error(
+      `seedRealMergeConflict: no MERGE_HEAD in ${projectDir} — the merge did not conflict, ` +
+        'so conflicts.json entries seeded after this call would be pruned as stale',
+    );
+  }
+  // MERGE_HEAD alone is not enough: a partially auto-merged file leaves the
+  // merge in progress while that file is already resolved, so the reconcile
+  // prunes its conflicts.json entry as no-longer-unmerged. Assert every
+  // requested file is actually unmerged.
+  const { stdout: unmergedOut } = await execFileAsync(
+    'git',
+    ['diff', '--name-only', '--diff-filter=U'],
+    opts,
+  );
+  const unmerged = new Set(unmergedOut.split('\n').filter(Boolean));
+  const missing = files.filter((f) => !unmerged.has(f));
+  if (missing.length > 0) {
+    throw new Error(
+      `seedRealMergeConflict: ${missing.join(', ')} auto-merged cleanly in ${projectDir} — ` +
+        'conflicts.json entries seeded for them would be pruned as resolved',
+    );
+  }
 }
 
 describe('FR1 + FR2: lifecycle swap-in / swap-out (server-observable contract)', () => {
@@ -353,19 +390,25 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
   /**
    * The in-browser per-tab badge count derives from per-doc Y.Map
    * `lifecycle.status` (DOM tests cover that). The sidebar
-   * Conflicts section count + the topbar sync-status badge count both flow
-   * from `.ok/local/conflicts.json` → SyncEngine.{getConflicts, getStatus}
-   * → `/api/sync/conflicts` + `/api/sync/status`. This test pins the
-   * server source of truth those two surfaces consume: seed 2 conflicts,
-   * assert both endpoints report 2; resolve 1, assert both report 1.
+   * Conflicts section count + the topbar sync-status badge count flow from
+   * SyncEngine.{getConflicts, getStatus} → `/api/sync/conflicts` +
+   * `/api/sync/status`. Those two reads have SEPARATE backing state:
+   * `getConflicts()` lists the live ConflictStore, while `getStatus()`
+   * returns a cached `conflictCount` scalar persisted in sync-state.json.
+   * This test pins that the two agree: seed 2 conflicts, assert both
+   * endpoints report 2; resolve 1, assert both report 1.
    *
    * Test-env note: with no remote configured the SyncEngine boots into
-   * dormant state but the underlying ConflictStore loads conflicts.json
-   * on construction, so getConflicts() returns the seeded entries
-   * regardless. `conflictCount` is populated from sync-state.json's
-   * `inflightConflicts` list during `loadState()`. Resolution uses
-   * `strategy: 'content'` because resolving fewer than ALL conflicts
-   * skips the `git commit --no-edit` step that requires a real merge.
+   * dormant state, and the underlying ConflictStore loads conflicts.json on
+   * construction — but the seeded entries survive only while a real
+   * MERGE_HEAD is present (see the fixture comment below). The scalar is
+   * seeded here in parallel, from sync-state.json's `inflightConflicts`
+   * during `loadState()`; this fixture supplies that alignment rather than
+   * exercising a derivation. Resolution uses `strategy: 'content'` because
+   * resolving fewer than ALL conflicts leaves one tracked, which
+   * short-circuits the final `git commit --no-edit` step in
+   * ConflictStore.resolveConflict — the all-resolved branch is out of scope
+   * here and uncovered.
    *
    */
   test('seeded 2 conflicts: /api/sync/conflicts length === 2, /api/sync/status conflictCount === 2; resolve 1 → both drop to 1', async () => {
@@ -384,16 +427,22 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
       mkdirSync(join(tmpDir, '.ok'), { recursive: true });
       writeFileSync(join(tmpDir, '.ok', 'config.yml'), '', 'utf-8');
       await execFileAsync('git', ['init', '--initial-branch=main', tmpDir]);
-      await execFileAsync('git', ['-C', tmpDir, 'config', 'user.name', 'Test']);
-      await execFileAsync('git', ['-C', tmpDir, 'config', 'user.email', 'test@test.com']);
 
       // Two conflicted files on disk + tracked in git + seeded as conflicts.
       const fileA = `fr12-a-${crypto.randomUUID()}.md`;
       const fileB = `fr12-b-${crypto.randomUUID()}.md`;
-      writeFileSync(join(tmpDir, fileA), '# A\n', 'utf-8');
-      writeFileSync(join(tmpDir, fileB), '# B\n', 'utf-8');
-      await execFileAsync('git', ['-C', tmpDir, 'add', '.']);
-      await execFileAsync('git', ['-C', tmpDir, 'commit', '-m', 'base']);
+      // Stage a REAL two-file merge conflict before seeding conflicts.json.
+      // Merge-native entries (no `variant`) with no MERGE_HEAD are stale by
+      // definition, and the trigger that acts on that definition here is the
+      // HEAD watcher's batch-end `reconcileConflictsFromGit()`: it fires one
+      // QUIET_WINDOW_MS (`server/src/head-watcher.ts`) after the
+      // resolve's own `git add` touches `.git/index.lock`, and would clear
+      // every seeded entry mid-test. `SyncEngine.start()` reconciles the same
+      // way but cannot reach it under `createTestServer` — it returns early on
+      // `mode === 'off'` and again on no-remote. With a real MERGE_HEAD
+      // present, the reconcile prunes only what git no longer reports
+      // unmerged, so the post-resolve count is stable by construction.
+      await seedRealMergeConflict(tmpDir, [fileA, fileB]);
 
       seedConflictsJson(tmpDir, [{ file: fileA }, { file: fileB }]);
       seedSyncStateConflicts(tmpDir, [fileA, fileB]);
@@ -955,9 +1004,10 @@ describe('FR17: Conflicts list HTTP shape (data feed the sidebar section consume
 
       const fileA = `fr17-a-${crypto.randomUUID()}.md`;
       const fileB = `fr17-b-${crypto.randomUUID()}.md`;
-      // Stage a real two-file merge conflict so the sync-engine's
-      // start() reconcile (which clears conflicts.json when no
-      // MERGE_HEAD is present) keeps the seeded entries.
+      // Stage a real two-file merge conflict so the seeded entries survive.
+      // The live pruner under `createTestServer` is the HEAD watcher's
+      // batch-end reconcile; `SyncEngine.start()`'s identical reconcile
+      // returns early here on `mode === 'off'` and again on no-remote.
       await seedRealMergeConflict(tmpDir, [fileA, fileB]);
 
       // Seed TWO conflicts so resolving the first short-circuits the
