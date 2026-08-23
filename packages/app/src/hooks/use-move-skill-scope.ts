@@ -29,7 +29,7 @@ export function useMoveSkillScope(): (
   const { t } = useLingui();
   const scopeLabels = useSkillScopeLabels();
   const retarget = useManagedArtifactRetarget();
-  const { setSkillsSidebar, openTabs } = useDocumentContext();
+  const { openTabs } = useDocumentContext();
   const skillsState = useSkills();
   return async (skill, toScope) => {
     if (toScope === skill.scope) return false;
@@ -129,13 +129,6 @@ export function useMoveSkillScope(): (
     // Pin the sidebar to Skills, like every other skill mutation (delete, file
     // delete, rename retarget). A project skill's doc is ordinary project
     // CONTENT (`.claude/skills/<name>/SKILL`), so retargeting onto it lets the
-    // surface autofollow to Files — the user asks to move a skill and lands in
-    // the file tree instead of on the skill they just moved.
-    //
-    // OUTSIDE the guard: the move already succeeded, so the surface belongs on
-    // Skills whether or not the tab repoint threw. Inside, a throwing retarget
-    // dropped the user into Files on a move that worked.
-    setSkillsSidebar(true);
     // Released only now: the tab has been repointed and the surface pinned, so
     // an absent reading after this really is an absence.
     endSkillWrite(skill.scope, skill.name);

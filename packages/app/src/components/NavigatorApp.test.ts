@@ -38,7 +38,6 @@ function makeBridge(overrides: Partial<MockBridge> = {}): MockBridge {
       removeRecent: vi.fn(() => Promise.resolve()),
       getSessionState: vi.fn(() =>
         Promise.resolve({
-          activeTabByMode: { files: null, skills: null },
           updatedAt: null,
           panes: [
             {
@@ -88,7 +87,6 @@ describe('NavigatorApp bridge contract', () => {
         removeRecent: vi.fn(() => Promise.resolve()),
         getSessionState: vi.fn(() =>
           Promise.resolve({
-            activeTabByMode: { files: null, skills: null },
             updatedAt: null,
             panes: [
               {
@@ -152,7 +150,6 @@ describe('NavigatorApp bridge contract', () => {
         removeRecent: vi.fn(() => Promise.resolve()),
         getSessionState: vi.fn(() =>
           Promise.resolve({
-            activeTabByMode: { files: null, skills: null },
             updatedAt: null,
             panes: [
               {

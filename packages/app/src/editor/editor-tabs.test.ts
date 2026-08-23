@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { hashFromSkillPreview, skillPreviewFromHash } from '@/lib/doc-hash';
 import {
   __resetKnownProjectSkillDirsForTests,
   setKnownProjectSkillDirs,
@@ -16,7 +17,6 @@ import {
   folderTabId,
   isSkillBundleShapedPath,
   isSkillDocName,
-  isSkillTabId,
   localTabSessionKeyForMode,
   localTabSessionStorageKey,
   nextActiveTabAfterClose,
@@ -55,7 +55,6 @@ function persistedWorkspace(
   activeTabId: string | null,
 ) {
   return {
-    activeTabByMode: { files: null, skills: null },
     panes: [
       {
         id: 'pane-main',
@@ -595,7 +594,6 @@ describe('editor tab state', () => {
         updatedAt: '2026-05-06T00:00:00Z',
       }),
     ).toEqual({
-      activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
       panes: [
         {
@@ -620,7 +618,6 @@ describe('editor tab state', () => {
   test('createEditorTabSessionState timestamps serializable state', () => {
     const state = createEditorTabSessionState(
       editorWorkspace(['a', 'b'], ['a'], 'b'),
-      { files: null, skills: null },
       () => new Date('2026-05-06T00:00:00Z'),
     );
     expect(state).toEqual({
@@ -684,7 +681,6 @@ describe('editor tab state', () => {
 
       expect(() =>
         writeLocalTabSessionState(storage, 'key', {
-          activeTabByMode: { files: null, skills: null },
           updatedAt: '2026-05-06T00:00:00.000Z',
           ...persistedWorkspace(['docs/a'], [], 'docs/a'),
         }),
@@ -707,7 +703,6 @@ describe('editor tab state', () => {
   test('writeLocalTabSessionState is a silent no-op when storage is null', () => {
     expect(() =>
       writeLocalTabSessionState(null, 'key', {
-        activeTabByMode: { files: null, skills: null },
         updatedAt: '2026-05-06T00:00:00.000Z',
         ...persistedWorkspace(['docs/a'], [], 'docs/a'),
       }),
@@ -716,20 +711,6 @@ describe('editor tab state', () => {
 });
 
 describe('preview-tab integration', () => {
-  test('skill preview ids round-trip and classify as Skills tabs', () => {
-    const target = {
-      flavor: 'detected' as const,
-      source: '/Users/me/.ok/skills/1on1',
-      name: '1on1',
-      subtitle: 'claude',
-      level: 'project' as const,
-    };
-    const tabId = skillPreviewTabId(target);
-
-    expect(parseEditorTabId(tabId)).toEqual({ kind: 'skill-preview', ...target });
-    expect(isSkillTabId(tabId)).toBe(true);
-  });
-
   test('local skill previews deduplicate across source-path drift', () => {
     const first = skillPreviewTabId({
       flavor: 'builtin',
@@ -746,9 +727,13 @@ describe('preview-tab integration', () => {
       level: 'global',
     });
 
-    expect(findLocalSkillPreviewTabId([first, second], 'builtin', 'write-skill', 'global')).toBe(
-      first,
-    );
+    expect(
+      findLocalSkillPreviewTabId([first, second], 'builtin', 'write-skill', '', 'global'),
+    ).toBe(first);
+    // A different host subtitle is a different copy — never reused across.
+    expect(
+      findLocalSkillPreviewTabId([first, second], 'builtin', 'write-skill', 'claude', 'global'),
+    ).toBeNull();
   });
 
   test('session persistence waits after a failed empty restore but resumes after a tab opens', () => {
@@ -764,60 +749,6 @@ describe('preview-tab integration', () => {
     expect(shouldPersistTabSession('suppressed', 0)).toBe(false);
     expect(shouldPersistTabSession('suppressed', 1)).toBe(false);
     expect(shouldPersistTabSession('suppressed', 12)).toBe(false);
-  });
-
-  test('workspace sessions preserve the active tab for each surface', () => {
-    const fileTab = docTabId('docs/a');
-    const skillTab = skillPreviewTabId({
-      flavor: 'explore',
-      source: 'owner/repo',
-      name: 'review',
-      subtitle: 'owner/repo',
-      level: 'project',
-    });
-    const state = createEditorTabSessionState(
-      editorWorkspace([fileTab, skillTab], [], skillTab),
-      { files: fileTab, skills: skillTab },
-      () => new Date('2026-05-06T00:00:00Z'),
-    );
-
-    expect(parseEditorTabSessionState(state).activeTabByMode).toEqual({
-      files: fileTab,
-      skills: skillTab,
-    });
-  });
-
-  test('a skills tab known only from /api/skills survives a parse that runs before the list', () => {
-    // The session is read synchronously from localStorage on first paint; the
-    // skills list is a network round trip away. For a bundle whose ONLY evidence
-    // is that list — a symlinked or custom-rooted one, at a non-dot path — the
-    // pre-list answer is "not a skill", and dropping the slot here would persist
-    // that guess: the parse feeds `activeTabByModeRef`, the persist effect writes
-    // the ref straight back out, and the Skills toggle then opens its empty home
-    // instead of the doc the user left open.
-    //
-    // So the parse must be LOSSLESS while classification is still unanswerable,
-    // and strict again once the list has settled.
-    const fileTab = docTabId('docs/a');
-    const aliasedSkillTab = docTabId('plugins/ok/skills/bake-lume-golden/SKILL');
-    const state = createEditorTabSessionState(
-      editorWorkspace([fileTab, aliasedSkillTab], [], aliasedSkillTab),
-      { files: fileTab, skills: aliasedSkillTab },
-      () => new Date('2026-05-06T00:00:00Z'),
-    );
-
-    // List not yet loaded: keep it rather than guess.
-    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBe(aliasedSkillTab);
-
-    // List settled and it IS a skill dir: still kept, now on the evidence.
-    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
-    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBe(aliasedSkillTab);
-
-    // List settled and it is NOT a skill dir: the stale-state guard applies again.
-    setKnownProjectSkillDirs(new Set(['.claude/skills/other']));
-    expect(parseEditorTabSessionState(state).activeTabByMode.skills).toBeNull();
-
-    __resetKnownProjectSkillDirsForTests();
   });
 });
 
@@ -956,10 +887,6 @@ describe('skill discriminators reject template content shapes', () => {
     for (const doc of templateDocs) expect(isSkillBundleShapedPath(doc)).toBe(false);
   });
 
-  test('isSkillTabId is false for a template content doc tab', () => {
-    expect(isSkillTabId(docTabId('docs/.ok/templates/note'))).toBe(false);
-  });
-
   // Bundles are free to ship companion markdown beside SKILL.md — `tdd` on
   // skills.sh carries `tests.md` + `mocking.md` at its root. Those are ordinary
   // content docs, so the surface decision is the only thing keeping the sidebar
@@ -975,7 +902,6 @@ describe('skill discriminators reject template content shapes', () => {
   // A bundle reached by a path no host root names — the symlink-alias case: a
   // repo keeping bundles in `plugins/<x>/skills/` and linking them into
   // `.agents/`. Shape cannot see this; only `/api/skills` (`canonicalPath`) can.
-  const aliasedCompanionDoc = 'plugins/ok/skills/demo/notes/deep';
 
   afterEach(() => {
     __resetKnownProjectSkillDirsForTests();
@@ -985,20 +911,6 @@ describe('skill discriminators reject template content shapes', () => {
     for (const doc of dotRootedCompanionDocs) expect(isSkillBundleShapedPath(doc)).toBe(true);
   });
 
-  test('isSkillTabId keeps a dot-rooted bundle companion doc on the Skills surface', () => {
-    for (const doc of dotRootedCompanionDocs) expect(isSkillTabId(docTabId(doc))).toBe(true);
-  });
-
-  test('an aliased bundle needs the skills list, and gets the surface once it lands', () => {
-    // Before `/api/skills` answers, shape is all there is — and a non-dot path
-    // is indistinguishable from ordinary repo content, so it reads as Files.
-    expect(isSkillBundleShapedPath(aliasedCompanionDoc)).toBe(false);
-
-    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/demo']));
-    expect(isSkillBundleShapedPath(aliasedCompanionDoc)).toBe(true);
-    expect(isSkillTabId(docTabId(aliasedCompanionDoc))).toBe(true);
-  });
-
   test('isSkillBundleShapedPath is false for the bundle dir itself', () => {
     expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
     // Also when the list names it: a doc AT the bundle dir is not a file inside one.
@@ -1006,30 +918,28 @@ describe('skill discriminators reject template content shapes', () => {
     expect(isSkillBundleShapedPath('.claude/skills/tdd')).toBe(false);
     expect(isSkillBundleShapedPath('plugins/ok/skills/demo')).toBe(false);
   });
-
-  // A repo that authors skills keeps bundles at an ordinary path and
-  // installs copies into the host roots. Those authored files are content: the
-  // reporter browsed them in Files and the sidebar kept pulling him to Skills,
-  // where the tree has no row for them. Nothing about the path shape can tell
-  // them apart from a real skill — only whether OK knows the dir.
-  test('ordinary repo content under a non-dot skills/ dir stays on the Files surface', () => {
-    const authoredContent = [
-      'packages/design-ai/skills/ooui/references/layout-and-interaction',
-      'packages/design-ai/skills/ooui/SKILL',
-      'packages/design-ai/skills/animate/RECIPES',
-      'skills/README',
-      'docs/skills/overview/index',
-    ];
-    for (const doc of authoredContent) {
-      expect(isSkillBundleShapedPath(doc)).toBe(false);
-      expect(isSkillTabId(docTabId(doc))).toBe(false);
-    }
-
-    // Registering one of them as a skill root is the ONLY thing that changes it.
-    setKnownProjectSkillDirs(new Set(['packages/design-ai/skills/ooui']));
-    expect(
-      isSkillBundleShapedPath('packages/design-ai/skills/ooui/references/layout-and-interaction'),
-    ).toBe(true);
-    expect(isSkillBundleShapedPath('packages/design-ai/skills/animate/RECIPES')).toBe(false);
+});
+// The twin-tab bug's root cause was the hash side dropping `level`: a tab id
+// that round-trips its level through parse must ALSO keep it through the hash,
+// or clicking a global-level preview navigates to the project-level route and
+// re-mints the twin the dedup just closed.
+test('a global-level skill-preview tab id round-trips its level through the hash', () => {
+  const tabId = skillPreviewTabId({
+    flavor: 'detected',
+    source: '/cache/eng/1.2.725/skills/ai-sdk',
+    name: 'ai-sdk',
+    subtitle: 'claude',
+    level: 'global',
   });
+  const tab = parseEditorTabId(tabId);
+  if (tab.kind !== 'skill-preview') throw new Error('expected skill-preview');
+  expect(tab.level).toBe('global');
+  const hash = hashFromSkillPreview({
+    flavor: tab.flavor,
+    source: tab.source,
+    name: tab.name,
+    subtitle: tab.subtitle,
+    level: tab.level,
+  });
+  expect(skillPreviewFromHash(hash)?.level).toBe('global');
 });

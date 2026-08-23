@@ -1,6 +1,18 @@
-import { type Dirent, existsSync, readdirSync } from 'node:fs';
+import { type Dirent, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PluginCapabilities } from './types.ts';
+
+/** A path that resolves to a regular file — the Agent Plugins standard says a
+ *  skill dir is one holding a `SKILL.md` that "resolves to a regular file", and
+ *  `existsSync` answers yes for a DIRECTORY of that name. Symlinks resolve, so
+ *  a linked SKILL.md still counts. */
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
 
 /** A dir counts as present-and-active when it exists and holds ≥1 entry. */
 function nonEmptyDir(path: string): boolean {
@@ -38,7 +50,7 @@ export function enumerateBundledSkills(dir: string): string[] {
     }
     // This dir IS a skill dir when it holds a SKILL.md — record its basename and
     // don't descend further (references/scripts under it aren't sub-skills).
-    if (existsSync(join(current, 'SKILL.md')) || existsSync(join(current, 'SKILL.mdx'))) {
+    if (isRegularFile(join(current, 'SKILL.md')) || isRegularFile(join(current, 'SKILL.mdx'))) {
       names.add(current.split('/').pop() ?? current);
       return;
     }
@@ -56,12 +68,17 @@ export function enumerateBundledSkills(dir: string): string[] {
  * hold across the plugin harnesses: `commands/`, `hooks/` or a `hooks.json`,
  * `.mcp.json` (or an inline `mcpServers` manifest field, checked by the caller),
  * `agents/`.
+ *
+ * MCP is checked under BOTH names. Claude's convention is the dotted
+ * `.mcp.json`; the vendor-neutral Agent Plugins standard puts `mcp.json` at the
+ * plugin root, and a plugin following that standard would otherwise report no
+ * MCP servers while shipping a manifest full of them.
  */
 export function inspectBundleCapabilities(dir: string): PluginCapabilities {
   return {
     commands: nonEmptyDir(join(dir, 'commands')),
     hooks: nonEmptyDir(join(dir, 'hooks')) || existsSync(join(dir, 'hooks.json')),
-    mcp: existsSync(join(dir, '.mcp.json')),
+    mcp: existsSync(join(dir, '.mcp.json')) || existsSync(join(dir, 'mcp.json')),
     agents: nonEmptyDir(join(dir, 'agents')),
   };
 }

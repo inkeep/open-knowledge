@@ -28,9 +28,15 @@ const KEY_ATTR = 'data-ok-cluster-key';
 const PILL_ATTR = 'data-ok-install-pill';
 const PILL_PATH_ATTR = 'data-ok-install-path';
 const POOL_KEY_ATTR = 'data-ok-host-pool-key';
-/** The marks' description, mirrored onto `aria-label`. Deliberately NOT a native
- *  `title`: the row already owns the tooltip that explains where a skill lives,
- *  and a second bubble on the marks read as a rendering glitch. */
+/** The marks' description, mirrored onto `title` + `aria-label`.
+ *
+ *  It carries the host paths a skill is installed into ("Installed in
+ *  .claude/skills, .cursor/skills"), which is the one thing the icons cannot say
+ *  on their own — they are brand glyphs with their own `<title>` stripped a few
+ *  lines below, precisely so this cluster can own the bubble. It has to actually
+ *  own it: written only to this attribute and `aria-label`, the text rendered
+ *  nowhere (no `content: attr()` rule, and `aria-label` is not a tooltip), so
+ *  hovering the marks said nothing at all. */
 const HINT_ATTR = 'data-ok-cluster-hint';
 
 /**
@@ -156,6 +162,7 @@ function upsertCluster(
     // different skill while the key (kind+version) matches — keep it in sync.
     if (decor.kind === 'install') existing.setAttribute(PILL_PATH_ATTR, treePath);
     existing.setAttribute(HINT_ATTR, decor.title);
+    existing.setAttribute('title', decor.title);
     existing.setAttribute('aria-label', decor.title);
     return;
   }
@@ -165,6 +172,7 @@ function upsertCluster(
   container.setAttribute(CLUSTER_ATTR, '');
   container.setAttribute(KEY_ATTR, key);
   container.setAttribute(HINT_ATTR, decor.title);
+  container.setAttribute('title', decor.title);
   // `aria-label` on a bare span (role=generic) is ignored by assistive tech, so
   // the row's only install-state disclosure was silently invisible. `role="img"`
   // makes the label the element's accessible name; the children are aria-hidden.

@@ -4,19 +4,16 @@ import { ListPlus, MoreVertical } from 'lucide-react';
 import { AddPropertiesButton } from '@/components/AddPropertiesButton';
 import { SkillEditorActions } from '@/components/SkillEditorActions';
 import { SkillLevelSelect } from '@/components/SkillLevelSelect';
+import { SkillScopeSegment } from '@/components/SkillScopeSegment';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useSkillScopeMove } from '@/hooks/use-skill-scope-move';
-import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
 
 /**
  * The skill-specific toolbar cluster (level + install + add-properties), with a
@@ -48,7 +45,6 @@ export function SkillToolbarControls({
   problemMessages?: readonly string[];
 }) {
   const { t } = useLingui();
-  const scopeLabels = useSkillScopeLabels();
   const move = useSkillScopeMove({ scope, name });
 
   return (
@@ -84,19 +80,7 @@ export function SkillToolbarControls({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
-          <DropdownMenuLabel>
-            <Trans>Level</Trans>
-          </DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={scope}
-            onValueChange={(v) => move.requestMove(v as SkillScope)}
-          >
-            {SKILL_SCOPE_ORDER.map((s) => (
-              <DropdownMenuRadioItem key={s} value={s}>
-                {scopeLabels[s]}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
+          <SkillScopeSegment value={scope} onSelect={(next) => move.requestMove(next)} />
           {showAddPropertyButton ? (
             <>
               <DropdownMenuSeparator />

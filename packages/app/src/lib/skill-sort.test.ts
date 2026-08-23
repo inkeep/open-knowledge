@@ -23,9 +23,21 @@ function entry(path: string): FileTreeSortEntry {
   };
 }
 
-/** Sort a list of tree paths with the comparator and return them re-ordered. */
-function sortPaths(paths: string[], detected: ReadonlySet<string> = new Set()): string[] {
-  const cmp = createSkillSortComparator(labelToScope, detected);
+/**
+ * Sort a list of tree paths with the comparator and return them re-ordered.
+ *
+ * `skills` names the prefixes that ARE skill folders. The comparator asks rather
+ * than infers from depth, because grouping made depth ambiguous — so a caller
+ * (here and in the sidebar) has to say.
+ */
+function sortPaths(
+  paths: string[],
+  detected: ReadonlySet<string> = new Set(),
+  skills: ReadonlySet<string> = new Set(),
+  groups: ReadonlySet<string> = new Set(),
+  pinned: ReadonlySet<string> = new Set(),
+): string[] {
+  const cmp = createSkillSortComparator(labelToScope, detected, groups, skills, pinned);
   return [...paths].sort((a, b) => cmp(entry(a), entry(b)));
 }
 
@@ -60,34 +72,116 @@ describe('createSkillSortComparator', () => {
   test('within a scope, managed skills sort above detected ones', () => {
     // `zeta` is managed, `alpha` is detected — managed wins despite alpha < zeta alphabetically.
     const detected = new Set(['Project/alpha']);
-    expect(sortPaths(['Project/alpha/', 'Project/zeta/'], detected)).toEqual([
-      'Project/zeta/',
-      'Project/alpha/',
+    expect(
+      sortPaths(['Project/alpha/', 'Project/zeta/'], detected, new Set(['Project/zeta'])),
+    ).toEqual(['Project/zeta/', 'Project/alpha/']);
+  });
+
+  test('authored skills lead their scope, ahead of anything grouped', () => {
+    // LEAF paths on purpose. Pierre only ever hands the comparator leaves and
+    // synthesizes the directory rows above them, so a test built from directory
+    // paths passes against a rule that does nothing in the real tree — which is
+    // exactly what happened on the first cut of this.
+    const groups = new Set(['Global/anthropics-skills']);
+    const skills = new Set([
+      'Global/alpha',
+      'Global/zeta',
+      'Global/anthropics-skills/deep-research',
     ]);
+    const sorted = sortPaths(
+      [
+        `Global/alpha/${SKILL_MD_PATH}`,
+        `Global/zeta/${SKILL_MD_PATH}`,
+        `Global/anthropics-skills/deep-research/${SKILL_MD_PATH}`,
+      ],
+      new Set(),
+      skills,
+      groups,
+    );
+    // Your own skills first; the grouped leaf sorts last regardless of basename.
+    expect(sorted[0]).toBe(`Global/alpha/${SKILL_MD_PATH}`);
+    expect(sorted[sorted.length - 1]).toBe(
+      `Global/anthropics-skills/deep-research/${SKILL_MD_PATH}`,
+    );
   });
 
   test('within a scope, same-managed-status skills sort alphabetically (numeric)', () => {
-    expect(sortPaths(['Project/skill-10/', 'Project/skill-2/'])).toEqual([
+    const skills = new Set(['Project/skill-10', 'Project/skill-2']);
+    expect(sortPaths(['Project/skill-10/', 'Project/skill-2/'], new Set(), skills)).toEqual([
       'Project/skill-2/',
       'Project/skill-10/',
     ]);
   });
 
-  test('SKILL.md sorts first among a skill’s files (depth 3)', () => {
+  test('SKILL.md sorts first among a skill’s files', () => {
     // Alphabetically "SKILL.md" would sort after "aaa.md"; it must lead its siblings.
-    expect(sortPaths([`Project/foo/${SKILL_MD_PATH}`, 'Project/foo/aaa.md'])).toEqual([
-      `Project/foo/${SKILL_MD_PATH}`,
-      'Project/foo/aaa.md',
-    ]);
+    const skills = new Set(['Project/foo']);
+    expect(
+      sortPaths([`Project/foo/${SKILL_MD_PATH}`, 'Project/foo/aaa.md'], new Set(), skills),
+    ).toEqual([`Project/foo/${SKILL_MD_PATH}`, 'Project/foo/aaa.md']);
   });
 
   test('a SKILL.md nested deeper than the skill root does not jump its siblings', () => {
     // Depth-4 SKILL.md (inside a subfolder) has no first-sort privilege.
     const paths = ['Project/foo/sub/aaa.md', `Project/foo/sub/${SKILL_MD_PATH}`];
     // Falls through to alphabetical: "SKILL.md" > "aaa.md" (case-insensitive base).
-    expect(sortPaths(paths)).toEqual([
+    expect(sortPaths(paths, new Set(), new Set(['Project/foo']))).toEqual([
       'Project/foo/sub/aaa.md',
       `Project/foo/sub/${SKILL_MD_PATH}`,
+    ]);
+  });
+
+  test('the PINNED section leads its scope, ahead of authored skills', () => {
+    // Pinned is the one part of the tree the user built by hand, so it outranks
+    // even their own authored skills — which otherwise lead the scope.
+    const pinned = new Set(['Global/PINNED']);
+    const skills = new Set(['Global/PINNED/ponytail', 'Global/mine', 'Global/eng/browser']);
+    const groups = new Set(['Global/eng']);
+    expect(
+      sortPaths(
+        [
+          `Global/mine/${SKILL_MD_PATH}`,
+          `Global/eng/browser/${SKILL_MD_PATH}`,
+          `Global/PINNED/ponytail/${SKILL_MD_PATH}`,
+        ],
+        new Set(),
+        skills,
+        groups,
+        pinned,
+      ),
+    ).toEqual([
+      `Global/PINNED/ponytail/${SKILL_MD_PATH}`,
+      `Global/mine/${SKILL_MD_PATH}`,
+      `Global/eng/browser/${SKILL_MD_PATH}`,
+    ]);
+  });
+
+  test('groups order alphabetically among themselves', () => {
+    // Two leaves in DIFFERENT groups share every later comparison — same
+    // `SKILL.md` basename, same depth, both grouped — so without an explicit
+    // group-segment rule the comparator returned 0 and the group rows kept
+    // whatever order the skills endpoint answered in.
+    const groups = new Set(['Global/ponytail', 'Global/eng', 'Global/open-knowledge-skills']);
+    const skills = new Set([
+      'Global/ponytail/audit',
+      'Global/eng/browser',
+      'Global/open-knowledge-skills/discovery',
+    ]);
+    expect(
+      sortPaths(
+        [
+          `Global/ponytail/audit/${SKILL_MD_PATH}`,
+          `Global/open-knowledge-skills/discovery/${SKILL_MD_PATH}`,
+          `Global/eng/browser/${SKILL_MD_PATH}`,
+        ],
+        new Set(),
+        skills,
+        groups,
+      ),
+    ).toEqual([
+      `Global/eng/browser/${SKILL_MD_PATH}`,
+      `Global/open-knowledge-skills/discovery/${SKILL_MD_PATH}`,
+      `Global/ponytail/audit/${SKILL_MD_PATH}`,
     ]);
   });
 

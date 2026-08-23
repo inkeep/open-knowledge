@@ -2322,11 +2322,18 @@ export class ProviderPool {
           }
         });
       const reason = event?.reason ?? '<unknown>';
+      // `code` tells intentional closes apart from transport drops in a
+      // diagnostic bundle: the server NEVER sends an empty reason (its
+      // CloseMessage defaults to "Server closed the connection", and
+      // closeConnections sends 4205 "Reset Connection") — so reason '' means
+      // the raw WebSocket dropped (1006 abnormal, 1001 going-away) and the
+      // close was never a server decision at all.
       console.info(
         JSON.stringify({
           event: 'ok-provider-server-driven-close-reauth',
           docName,
           reason,
+          code: event?.code ?? null,
         }),
       );
     };

@@ -157,9 +157,12 @@ describe('SkillPreviewTab plugin copy', () => {
 
     await user.click(screen.getByTestId('skill-preview-edit-a-copy'));
 
-    expect(await screen.findByText('Level')).toBeTruthy();
-    expect(screen.getByText('Project')).toBeTruthy();
-    expect(screen.getByText('Global')).toBeTruthy();
+    expect(await screen.findByText('Where')).toBeTruthy();
+    // The scope switch answers the user's actual question in their own words;
+    // the consequence line says what the choice changes.
+    expect(screen.getByText('This project')).toBeTruthy();
+    expect(screen.getByText('This machine')).toBeTruthy();
+    expect(screen.getByTestId('skill-scope-consequence').textContent).toContain('home folder');
     expect(screen.getByTestId('destination-choices')).toBeTruthy();
   });
 });

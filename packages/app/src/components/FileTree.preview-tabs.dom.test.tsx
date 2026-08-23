@@ -172,7 +172,6 @@ vi.doMock('@/editor/DocumentContext', () => ({
     prewarm: () => {},
     reconcileLocalRemoval: vi.fn(async () => {}),
     reconcileLocalRename: vi.fn(async () => {}),
-    setSkillsSidebar: vi.fn(() => {}),
   }),
 }));
 vi.doMock('@/components/PageListContext', () => ({

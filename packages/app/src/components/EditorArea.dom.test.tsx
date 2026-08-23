@@ -132,9 +132,6 @@ let docCtx:
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => docCtx,
   useDocumentTransition: () => ({ openDocumentTransition: null }),
-  // EditorArea imports isSkillsNewTabId; keep it in the partial mock so the
-  // module link can't detonate on load-order (see mock-module-completeness).
-  isSkillsNewTabId: () => false,
   isBlobRunnerNewTabId: () => false,
 }));
 

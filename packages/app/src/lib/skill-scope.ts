@@ -5,7 +5,7 @@ import {
   PACK_SKILL_PREFIX,
   type SkillScope,
   type SkillsListEntry,
-  SkillTargetEditorSchema,
+  SkillUserTargetEditorSchema,
 } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 
@@ -99,6 +99,31 @@ export function useSkillScopeDescriptions(): Record<SkillScope, string> {
     project: t`Lives in this project (wherever the skill's folder is) and is shared with collaborators through git.`,
     global: t`Available in every project on this machine. Not shared through git.`,
   };
+}
+
+/**
+ * The editor that ALREADY loads this skill from a plugin, with the plugin's
+ * name — or null when no plugin is involved.
+ *
+ * Two shapes: a skill that IS a plugin's skill carries `plugin` (identity);
+ * a copy synced OUT of a plugin records the plugin-cache dir as its origin
+ * source, and that path names both the harness that owns the cache
+ * (`~/.claude/plugins/…` → claude) and the plugin. Verified behaviour, not a
+ * guess: a project copy under the editor's own skills dir OVERRIDES the
+ * plugin's skill of the same name.
+ */
+const PLUGIN_PROVIDER_RE = /\/\.([a-z][a-z-]*)\/plugins\/(?:cache|marketplaces)\/[^/]+\/([^/]+)\//;
+export function pluginCoverageOf(
+  skill: (Pick<SkillsListEntry, 'plugin' | 'origin'> & Partial<SkillsListEntry>) | undefined,
+): { editor: string; plugin: string } | null {
+  if (skill?.plugin) return { editor: skill.plugin.provider, plugin: skill.plugin.name };
+  const source = skill?.origin?.source;
+  if (!source) return null;
+  const m = PLUGIN_PROVIDER_RE.exec(source);
+  if (!m) return null;
+  const [, provider, plugin] = m;
+  if (!provider || !plugin) return null;
+  return { editor: provider, plugin };
 }
 
 /**
@@ -205,11 +230,19 @@ export function skillClusterHosts(
   skill: SkillsListEntry,
   hosts: readonly string[] = skill.hosts,
 ): string[] {
-  const editors: readonly string[] = SkillTargetEditorSchema.options;
+  // The SUPERSET vocabulary: a global entry can hold a copy at a user-only
+  // host (antigravity), and ordering through the project list dropped it.
+  const editors: readonly string[] = SkillUserTargetEditorSchema.options;
   const viewers = skillAliasViewers(skill);
+  // The provider that loads this skill via a PLUGIN genuinely loads it, with
+  // no location of its own — whether the skill IS the plugin's skill or a copy
+  // synced out of one (the origin's cache path names the provider). Same
+  // standing an alias VIEWER has (reads the skill, owns no row), so it rides
+  // the cluster the same way: brand icon, never a removable location.
+  const pluginProvider = pluginCoverageOf(skill)?.editor;
   return [
     ...(hosts.includes('agents') ? ['agents'] : []),
-    ...editors.filter((e) => hosts.includes(e) || viewers.includes(e)),
+    ...editors.filter((e) => hosts.includes(e) || viewers.includes(e) || e === pluginProvider),
     ...(skill.customPlacements ?? []).map((cp) => customPlacementRoot(cp)),
   ];
 }

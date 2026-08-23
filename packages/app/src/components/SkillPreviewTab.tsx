@@ -8,17 +8,19 @@ import {
 import { Trans } from '@lingui/react/macro';
 import { ArrowUpRightIcon, ChevronDown } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { requestFilesSectionReveal } from '@/components/files-section-reveal-store';
 import { SkillBundlePreview } from '@/components/SkillBundlePreview';
+import { SkillEditorActions } from '@/components/SkillEditorActions';
 import { SKILL_INSTALL_MENU_WIDTH, SkillInstallMenuItems } from '@/components/SkillInstallMenu';
 import { SkillPluginBundleBanner } from '@/components/SkillPluginBundleBanner';
 import type { SkillBundleDisclosure } from '@/components/SkillPluginBundleDialog';
+import { SkillScopeSegment } from '@/components/SkillScopeSegment';
+import { writeSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -29,6 +31,8 @@ import { useOpenSkill } from '@/hooks/use-open-skill';
 import { useSkillOrigin } from '@/hooks/use-skill-origin';
 import { useSkills } from '@/hooks/use-skills';
 import { hashFromSkillFile, hashFromSkillPreview, type SkillPreviewFlavor } from '@/lib/doc-hash';
+import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
+import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
 import { discoverSkillsInSource, fetchSkillDetail } from '@/lib/skills-api';
 
@@ -80,9 +84,14 @@ export function BuiltinHeaderActions({ scope, name }: { scope: SkillScope; name:
     scope,
     name,
   });
-  if (!origin) return null;
+  // The install control renders even without an origin. Read-only bars edits,
+  // not lifecycle — choosing which agents load a built-in is the one thing this
+  // tab could not do, and the sidebar row is a poor place to hunt for it while
+  // you are reading the skill.
+  const install = <SkillEditorActions scope={scope} name={name} showNewFile={false} />;
+  if (!origin) return <div className="flex gap-1">{install}</div>;
   return (
-    <div className="flex gap-1">
+    <div className="flex items-center gap-1">
       {github ? (
         <Button variant="ghost" size="sm" className="px-2" asChild>
           <a href={github} target="_blank" rel="noreferrer">
@@ -96,6 +105,7 @@ export function BuiltinHeaderActions({ scope, name }: { scope: SkillScope; name:
           {reimporting ? <Trans>Updating</Trans> : <Trans>Update</Trans>}
         </Button>
       ) : null}
+      {install}
     </div>
   );
 }
@@ -176,6 +186,13 @@ export function SkillPreviewTab({
       : null;
   const detected = flavor === 'detected';
   const builtin = flavor === 'builtin';
+  // A skill whose bundle is a SYMLINK into the content tree (a repo keeping its
+  // plugin sources in `plugins/<x>/skills/` and linking them into
+  // `.agents/skills/`). The FILE is the editable source of truth and opens as a
+  // plain document from the Files tree; this skill-shaped view is read-only and
+  // says so — the same edit-gate/lifecycle split built-ins have, for the same
+  // reason: another owner holds the pen on the content.
+  const linked = flavor === 'linked';
   // Lives outside the open project (parent checkout of a linked worktree, or any
   // other tree): read-only here, and the action copies it IN rather than editing
   // a file this project does not own.
@@ -222,6 +239,16 @@ export function SkillPreviewTab({
   // already exists locally does not bounce you straight out of the preview.
   const { openTabs, closeTab } = useDocumentContext();
   const allSkills = useSkills();
+  // While the destination menu is open the redirect HOLDS: the first toggle
+  // imports and would otherwise replace this tab, unmounting the menu the user
+  // is still picking editors in ("I wanted to click claude and stuff") — the
+  // remaining choices become unreachable and the install reads as .agents-only.
+  // The redirect fires when the menu closes; the fire-once ref still guards it.
+  const [installMenuOpen, setInstallMenuOpen] = useState(false);
+  const linkedEntry =
+    linked && allSkills.status === 'ready'
+      ? allSkills.data.find((sk) => sk.scope === targetScope && sk.name === name)
+      : undefined;
   const landedEntry =
     landedName !== null && allSkills.status === 'ready'
       ? allSkills.data.find((sk) => sk.name === landedName && sk.scope === landedScope)
@@ -229,7 +256,7 @@ export function SkillPreviewTab({
   const importedNow =
     (flavor === 'explore' || foreign || pluginInfo !== null) && landedEntry !== undefined;
   useEffect(() => {
-    if (!importedNow || redirectedRef.current) return;
+    if (!importedNow || redirectedRef.current || installMenuOpen) return;
     redirectedRef.current = true;
     // Capture THIS preview's tab id(s) before opening, then close them after.
     // `replaceActive` only opens with preview DISPOSITION — it swaps whatever
@@ -249,7 +276,7 @@ export function SkillPreviewTab({
     });
     // After the open, so a failure to resolve can never leave zero tabs.
     for (const id of stalePreviewTabIds) closeTab(id);
-  }, [importedNow, landedScope, landedName, openSkill, openTabs, name, closeTab]);
+  }, [importedNow, installMenuOpen, landedScope, landedName, openSkill, openTabs, name, closeTab]);
   // Capitalized harness for the header copy ("detected in Claude"), matching
   // the "From Claude" provenance chip.
   const harnessLabel = subtitle ? subtitle.charAt(0).toUpperCase() + subtitle.slice(1) : subtitle;
@@ -264,7 +291,14 @@ export function SkillPreviewTab({
   const boldLevel = <strong className="font-medium text-foreground">{levelLabel}</strong>;
   const boldHarness = <strong className="font-medium text-foreground">{harnessLabel}</strong>;
   const pluginVersion = pluginInfo?.version ? ` (v${pluginInfo.version})` : '';
-  const headerLine = builtin ? (
+  const linkedFile = linkedEntry?.canonicalPath ?? linkedEntry?.path ?? null;
+  const headerLine = linked ? (
+    <Trans>
+      {boldName} is a symlink — its editable source is{' '}
+      <strong className="font-medium text-foreground">{linkedFile ?? source}</strong>. Edit the file
+      there; this skill view is read-only.
+    </Trans>
+  ) : builtin ? (
     <Trans>
       This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's
       read-only.
@@ -291,12 +325,52 @@ export function SkillPreviewTab({
     <Trans>
       This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level.
     </Trans>
+  ) : bundleDisclosure && bundleDisclosure.names.length > 1 ? (
+    // The source carries siblings: state the scope of Install up front — one
+    // skill, not the set — so the bundle banner below never reads as "Install
+    // takes all N".
+    sourceKind === 'site' ? (
+      <Trans>
+        This is a preview of {boldName} — one of {bundleDisclosure.names.length} skills at this
+        source. Install it into your agents.
+      </Trans>
+    ) : (
+      <Trans>
+        This is a preview of {boldName} — one of {bundleDisclosure.names.length} skills in this
+        repo. Install it into your agents.
+      </Trans>
+    )
   ) : (
     // Import is implied — the action is "Install"; scope is chosen in the menu.
     <Trans>This is a preview of {boldName}. Install it into your agents.</Trans>
   );
 
-  const headerActions = builtin ? (
+  const headerActions = linked ? (
+    <div className="flex items-center gap-1">
+      {linkedEntry ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="px-2"
+          data-testid="skill-preview-open-source-file"
+          onClick={() => {
+            // "Open file" means "show me the real file": open the source doc
+            // AND land the sidebar on the file browser with it revealed —
+            // opening the tab alone left the sidebar parked on Skills Studio,
+            // which reads as nothing happening.
+            openManagedArtifactTab(skillEntryLiveDocName(linkedEntry));
+            writeSkillsDockExpanded(false);
+            requestFilesSectionReveal();
+          }}
+        >
+          <Trans>Open file</Trans>
+        </Button>
+      ) : null}
+      {/* Lifecycle is ordinary for a linked skill — read-only gates the EDIT,
+          not which agents load it. */}
+      <SkillEditorActions scope={targetScope} name={name} showNewFile={false} />
+    </div>
+  ) : builtin ? (
     <BuiltinHeaderActions scope={targetScope} name={name} />
   ) : (
     <>
@@ -322,11 +396,11 @@ export function SkillPreviewTab({
           </Button>
         ) : null}
       </div>
-      {pluginInfo || !detected ? (
+      {!linked && (pluginInfo || !detected) ? (
         // Explore installs and plugin copies go through the SAME destination
         // menu. The first destination choice performs the import, so "Edit a
         // copy" never silently defaults to `.agents` or any other root.
-        <DropdownMenu>
+        <DropdownMenu onOpenChange={setInstallMenuOpen}>
           <DropdownMenuTrigger asChild>
             <Button
               size="sm"
@@ -351,6 +425,11 @@ export function SkillPreviewTab({
                     <Trans>Edit a copy</Trans>
                   ) : foreign ? (
                     <Trans>Copy in</Trans>
+                  ) : bundleDisclosure && bundleDisclosure.names.length > 1 ? (
+                    // Scoped label: beside the bundle banner, a bare "Install"
+                    // reads as possibly-all-N. Only the bundle case pays the
+                    // longer label.
+                    <Trans>Install this skill</Trans>
                   ) : (
                     <Trans>Install</Trans>
                   )}
@@ -360,28 +439,27 @@ export function SkillPreviewTab({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className={SKILL_INSTALL_MENU_WIDTH}>
-            <DropdownMenuLabel>
-              <Trans>Level</Trans>
-            </DropdownMenuLabel>
-            <DropdownMenuRadioGroup
+            {/* Says what the menu DOES, for the two buttons that promise a copy.
+                Both open straight onto "Level" and a list of agent destinations,
+                which reads as an install picker — so the person who clicked
+                "Edit a copy" expecting a copy got a menu about somewhere else
+                and stopped ("i thought clicking edit a copy would create a copy
+                for me to edit?"). The destination choice IS the copy; that was
+                only ever written in a code comment. Install needs no such line:
+                the button already names what the menu does. */}
+            {pluginInfo || foreign ? (
+              <>
+                <DropdownMenuLabel className="font-normal text-muted-foreground text-xs leading-snug whitespace-normal">
+                  <Trans>Pick where your copy goes. Choosing a destination creates it.</Trans>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+              </>
+            ) : null}
+            <SkillScopeSegment
               value={previewInstall.scope}
-              onValueChange={(v) => previewInstall.setScope(v as SkillScope)}
-            >
-              <DropdownMenuRadioItem
-                value="project"
-                disabled={previewInstall.scopeLocked}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {scopeLabels.project}
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem
-                value="global"
-                disabled={previewInstall.scopeLocked}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {scopeLabels.global}
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
+              onSelect={previewInstall.setScope}
+              disabled={previewInstall.scopeLocked}
+            />
             <DropdownMenuSeparator />
             <SkillInstallMenuItems
               toggles={previewInstall.toggles}
@@ -455,6 +533,7 @@ export function SkillPreviewTab({
             bundle={bundleDisclosure}
             source={source}
             scope={previewInstall.scope}
+            previewedName={name}
             onInstalled={(landed) => {
               // The bulk import runs inside the banner, so `previewInstall`
               // never learns about it and the redirect effect below stays

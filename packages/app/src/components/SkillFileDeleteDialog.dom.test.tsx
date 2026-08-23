@@ -17,7 +17,6 @@ vi.doMock('@lingui/react/macro', () => linguiShim);
 
 const deleteSkillFile = vi.fn();
 const closeTabs = vi.fn();
-const setSkillsSidebar = vi.fn();
 const onOpenChange = vi.fn();
 const toastError = vi.fn();
 const toastSuccess = vi.fn();
@@ -26,7 +25,6 @@ vi.doMock('@/lib/skills-api', () => ({ deleteSkillFile }));
 vi.doMock('sonner', () => ({ toast: { error: toastError, success: toastSuccess } }));
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
-    setSkillsSidebar,
     closeTabs,
     // The script tab for the file under test, plus an unrelated tab that must
     // survive every branch. Built through the real id helper — the literal form
@@ -77,7 +75,6 @@ describe('SkillFileDeleteDialog outcome branches', () => {
       path: 'scripts/run.sh',
     });
     expect(closeTabs).toHaveBeenCalledWith([scriptTabId], { force: true });
-    expect(setSkillsSidebar).toHaveBeenCalledWith(true);
     expect(toastSuccess).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });

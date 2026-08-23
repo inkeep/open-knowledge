@@ -3,8 +3,9 @@ import { applyInstallClusters } from './skill-install-cluster';
 
 /**
  * The sidebar rows live in a style-isolated shadow root, so their install marks
- * cannot use Radix and must not use the native `title` attribute (which does not
- * render while the window is unfocused). These cover the replacement.
+ * cannot use Radix. They carry the hint on the native `title` attribute (plus a
+ * data attribute and `aria-label`) — imperfect while the window is unfocused,
+ * but the only hover surface that exists inside the shadow root.
  */
 function buildTree(): { host: HTMLElement; shadow: ShadowRoot } {
   const host = document.createElement('div');
@@ -24,7 +25,7 @@ describe('install cluster hints', () => {
     document.body.replaceChildren();
   });
 
-  test('the cluster carries its hint as data, never as a native title', () => {
+  test('the cluster names its install paths on hover and to assistive tech', () => {
     const { shadow } = buildTree();
     applyInstallClusters(shadow, {
       decorFor: () => decor as never,
@@ -34,10 +35,15 @@ describe('install cluster hints', () => {
     });
     const cluster = shadow.querySelector<HTMLElement>('[data-ok-install-cluster]');
     expect(cluster).not.toBeNull();
-    // A native title would be the regression: invisible on an unfocused window.
-    expect(cluster?.getAttribute('title')).toBeNull();
+    // This assertion used to be its opposite — no native title, on the grounds
+    // that one is invisible while the window is unfocused and that something
+    // else would render the hint. Nothing ever did: the attribute below has no
+    // reader and no `content: attr()` rule, and `aria-label` is not a tooltip,
+    // so hovering the marks said NOTHING. A tooltip that is missing when the
+    // window is unfocused beats one that never exists.
+    expect(cluster?.getAttribute('title')).toBe(decor.title);
     expect(cluster?.getAttribute('data-ok-cluster-hint')).toBe(decor.title);
-    // Still announced — the hint is the only place the marks are named.
+    // Still announced — the marks themselves are aria-hidden brand glyphs.
     expect(cluster?.getAttribute('aria-label')).toBe(decor.title);
   });
 

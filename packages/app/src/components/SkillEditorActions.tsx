@@ -42,15 +42,34 @@ import { cn } from '@/lib/utils';
  * + per-editor checkmarks reflect the new on-disk state without local mirroring.
  */
 
-export function SkillEditorActions({ scope, name }: { scope: SkillScope; name: string }) {
+export function SkillEditorActions({
+  scope,
+  name,
+  showNewFile = true,
+}: {
+  scope: SkillScope;
+  name: string;
+  /** Off for a read-only skill: a built-in's bundle cannot be added to, so the
+   *  button would open a dialog whose write the server refuses. The install
+   *  control beside it stays — read-only is an EDIT gate, and choosing where a
+   *  skill loads is not an edit. */
+  showNewFile?: boolean;
+}) {
   const { t } = useLingui();
   const skillsState = useSkills();
   const actions = useSkillActions();
 
-  const entry =
-    skillsState.status === 'ready'
-      ? skillsState.data.find((s) => s.scope === scope && s.name === name)
-      : undefined;
+  const listed = skillsState.status === 'ready' ? skillsState.data : undefined;
+  // (scope, name) first; then a UNIQUE name across scopes. The surface's scope
+  // comes from a tab/hash identity that can go stale — a built-in previewed at
+  // the wrong level (the global-strays era minted project rows for user-global
+  // bundles), or a skill moved scopes while its tab stayed open. A miss on a
+  // settled list is not "still checking", it is unanswerable — and the pill
+  // read "Checking" forever. When exactly one skill has this name, that is the
+  // skill this surface is showing; resolve to it, scope and all.
+  const exact = listed?.find((s) => s.scope === scope && s.name === name);
+  const byName = exact === undefined ? listed?.filter((s) => s.name === name) : undefined;
+  const entry = exact ?? (byName?.length === 1 ? byName[0] : undefined);
   // Until the list resolves, fall back to a minimal Draft entry so the controls
   // render (install is still valid against scope+name).
   const skill: SkillsListEntry = entry ?? {
@@ -90,17 +109,19 @@ export function SkillEditorActions({ scope, name }: { scope: SkillScope; name: s
       {/* Add a reference / script / subfolder to the open skill without hunting
           for the sidebar right-click. The shared dialog seeds
           `references/` and mkdirs any nested folders on write. */}
-      <Button
-        variant="outline"
-        size="icon-sm"
-        className="shrink-0 text-muted-foreground"
-        onClick={() => actions.requestFileCreate(skill)}
-        title={t`New file in this skill`}
-        aria-label={t`New file in this skill`}
-        data-testid="skill-editor-new-file"
-      >
-        <FilePlus className="size-4" aria-hidden />
-      </Button>
+      {showNewFile ? (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0 text-muted-foreground"
+          onClick={() => actions.requestFileCreate(skill)}
+          title={t`New file in this skill`}
+          aria-label={t`New file in this skill`}
+          data-testid="skill-editor-new-file"
+        >
+          <FilePlus className="size-4" aria-hidden />
+        </Button>
+      ) : null}
       {/* Controlled so a convert can close it: the rows read from a disk scan
           that refetches while folders are being rewritten, so a menu left open
           shows a half-converted state settling. It also cannot be reopened

@@ -1,85 +1,14 @@
 import { DOCUMENT_OPEN_BYTE_LIMIT } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
-import {
-  __resetKnownProjectSkillDirsForTests,
-  setKnownProjectSkillDirs,
-} from '@/lib/known-skill-dirs';
+import { describe, expect, test } from 'vitest';
 import {
   deriveKnownFolderPaths,
   docNameForNavigationTarget,
   downgradeFolderIndexForHashNav,
-  isSkillFocusedTarget,
   largeFileNavigationTarget,
   okContentNavigationTarget,
-  type ResolvedNavigationTarget,
   resolveNavigationTarget,
   withLargeFileOpenGuard,
 } from './navigation-targets';
-
-describe('isSkillFocusedTarget', () => {
-  afterEach(() => {
-    __resetKnownProjectSkillDirsForTests();
-  });
-
-  const doc = (docName: string): ResolvedNavigationTarget => ({
-    kind: 'doc',
-    target: docName,
-    docName,
-  });
-
-  test('true for the Skills hub, a bundle-file viewer, and skill docs (project + global)', () => {
-    expect(isSkillFocusedTarget({ kind: 'skills', target: 'skills' })).toBe(true);
-    expect(
-      isSkillFocusedTarget({
-        kind: 'skill-file',
-        target: 'x',
-        scope: 'global',
-        name: 'demo',
-        path: 'references/notes.md',
-      }),
-    ).toBe(true);
-    expect(isSkillFocusedTarget(doc('.ok/skills/my-skill/SKILL'))).toBe(true);
-    expect(isSkillFocusedTarget(doc('__skill__/global/demo'))).toBe(true);
-  });
-
-  test('true for a bundle reached through a symlinked skill dir, once the list names it', () => {
-    // A skill dir can be a symlink to somewhere else inside the content dir, so
-    // the same bytes also index under the real path. Following a `references/…`
-    // link out of the skill can land on that name — same file, no dot-dir — and
-    // dropping to Files there looked like the Skills surface had broken.
-    //
-    // Nothing in that path distinguishes it from ordinary repo content, so the
-    // real location is what settles it: `/api/skills` reports the alias as
-    // `path` and this location as `canonicalPath`.
-    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
-    expect(
-      isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/references/version-pinning')),
-    ).toBe(true);
-    expect(isSkillFocusedTarget(doc('plugins/ok/skills/bake-lume-golden/SKILL'))).toBe(true);
-  });
-
-  test('false for an unregistered bundle-shaped path', () => {
-    // A repo that AUTHORS skills keeps bundles at an ordinary path and installs
-    // copies into the host roots. The authored files are content — classifying
-    // them as skill work pulled the sidebar off Files on nearly every click,
-    // onto a surface whose tree has no row for them.
-    expect(
-      isSkillFocusedTarget(doc('packages/design-ai/skills/ooui/references/layout-and-interaction')),
-    ).toBe(false);
-    expect(isSkillFocusedTarget(doc('packages/design-ai/skills/ooui/SKILL'))).toBe(false);
-  });
-
-  test('false for plain docs, folders, assets, and no target', () => {
-    expect(isSkillFocusedTarget(doc('notes/daily'))).toBe(false);
-    expect(isSkillFocusedTarget({ kind: 'folder', target: 'docs', folderPath: 'docs' })).toBe(
-      false,
-    );
-    expect(
-      isSkillFocusedTarget({ kind: 'asset', target: 'a.png', assetPath: 'a.png', mediaKind: null }),
-    ).toBe(false);
-    expect(isSkillFocusedTarget(null)).toBe(false);
-  });
-});
 
 describe('deriveKnownFolderPaths', () => {
   test('derives ancestor folders from admitted doc names', () => {
@@ -127,16 +56,14 @@ describe('resolveNavigationTarget', () => {
 
   test('resolves a PROJECT skill content doc without page-index membership', () => {
     // A freshly created/imported project skill lags the page index by the async
-    // files refetch; it must still resolve to the skill DOC (not the read-only
-    // asset viewer), else it strands the editor + flips the sidebar to Files.
+    // files refetch; it must still resolve to the skill DOC rather than the
+    // read-only asset viewer, which would strand the editor on a dead surface.
     const target = '.ok/skills/new-skill/SKILL';
     expect(resolveNavigationTarget(target, { pages: new Set() })).toEqual({
       kind: 'doc',
       target,
       docName: target,
     });
-    // isSkillFocusedTarget on that result keeps the sidebar on Skills.
-    expect(isSkillFocusedTarget(resolveNavigationTarget(target, { pages: new Set() }))).toBe(true);
   });
 
   test('resolves a GLOBAL skill bundle .md reference to an EDITABLE doc target', () => {

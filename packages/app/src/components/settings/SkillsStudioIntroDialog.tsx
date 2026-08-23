@@ -9,9 +9,8 @@
  *
  * The offer is a real consent surface, not a teaser: it names the skill, what
  * it does, which tools it reaches, what it costs in context, and every path it
- * writes — the same disclosures `SkillInstallConfirmDialog` makes, so
- * confirming here is not a weaker decision than confirming there. That is why
- * Install acts directly rather than opening a second modal on top of this one.
+ * writes. That is a full disclosure, which is why Install acts directly rather
+ * than opening a second modal on top of this one.
  *
  * Dismissal is recorded on either exit — the row underneath carries the same
  * offer permanently, so "Not now" costs the user nothing.
@@ -90,7 +89,6 @@ export function SkillsStudioIntroDialog({
                 name={offer.name}
                 description={blurbFor(offer.id) ?? offer.description}
                 hosts={offer.resolvedHosts.map((h) => h.editor)}
-                size={offer.size}
               />
             </div>
             {canInstall && (

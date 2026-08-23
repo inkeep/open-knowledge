@@ -92,7 +92,6 @@ let activeTarget: { kind: 'folder'; folderPath: string } | null = {
   kind: 'folder',
   folderPath: 'docs',
 };
-let skillFocused = false;
 let folderState: FolderState = { folderCount: 2, expandedCount: 1 };
 let hasTemplates = true;
 let mergedConfig: {
@@ -194,15 +193,6 @@ vi.doMock('@/components/ConflictsSection', () => ({
 // sidebar's own behavior tests don't depend on the skills subtree's deep graph.
 vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => <div data-testid="skills-sidebar-section" />,
-}));
-
-// The Files/Skills switch shares the chrome row with search but is exercised in
-// its own tests; stub it so this suite's `getByText('Files')` keeps resolving to
-// the header label alone (the real toggle would also render "Files"/"Skills").
-vi.doMock('@/components/FilesSkillsToggle', () => ({
-  FilesSkillsToggle: ({ active }: { active: string }) => (
-    <div data-testid="files-skills-toggle" data-active={active} />
-  ),
 }));
 
 vi.doMock('@/components/ProjectSwitcher', () => ({
@@ -393,11 +383,7 @@ vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
     activeDocName,
     activeTarget,
-    skillFocused,
   }),
-  // FileSidebar imports isSkillsNewTabId; the partial mock must keep that
-  // export or the module link fails (activeNewTabId is unset here → false).
-  isSkillsNewTabId: () => false,
   isBlobRunnerNewTabId: () => false,
 }));
 
@@ -477,7 +463,6 @@ describe('FileSidebar runtime behavior', () => {
     workspace = { contentDir: '/tmp/open-knowledge', pathSeparator: '/' };
     activeDocName = 'docs/current';
     activeTarget = { kind: 'folder', folderPath: 'docs' };
-    skillFocused = false;
     folderState = { folderCount: 2, expandedCount: 1 };
     hasTemplates = true;
     mergedConfig = { appearance: { sidebar: { showHiddenFiles: false } } };
@@ -522,14 +507,19 @@ describe('FileSidebar runtime behavior', () => {
     });
   });
 
-  test('web mode keeps only the Files label in the header and omits navigation history', async () => {
+  test('web mode header holds only search and omits navigation history', async () => {
     await renderSidebar();
 
     const header = screen.getByTestId('sidebar-header');
-    expect(screen.getByText('Files')).toBeTruthy();
-    // The label alone: the project actions sit on the project-root row, with the
-    // folder they act on, not in the window chrome.
+    // The "Files" label is gone with the surface it named: this sidebar holds
+    // files AND skills now, so labelling the whole thing "Files" was a leftover
+    // that contradicted the tree beneath it. Project actions sit on the
+    // project-root row, with the folder they act on, not in the window chrome.
+    // Search is global navigation, so it lives in the header (with back/forward
+    // on desktop) rather than in a row of its own.
+    expect(screen.queryByText('Files')).toBeNull();
     expect(header.children).toHaveLength(1);
+    expect(header.contains(screen.getByTestId('sidebar-search'))).toBe(true);
     expect(header.contains(screen.getByTestId('sidebar-toolbar'))).toBe(false);
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
     expectVisualClassTokens(header.className, ['justify-between']);
@@ -546,14 +536,16 @@ describe('FileSidebar runtime behavior', () => {
     expect(onOpenSearch).toHaveBeenCalledTimes(1);
   });
 
-  test('expanded Electron header contains only the traffic-light reserve and one navigation pair', async () => {
+  test('expanded Electron header contains the traffic-light reserve, one navigation pair, and search', async () => {
     const user = userEvent.setup();
     installBridge();
     await renderSidebar();
 
     const header = screen.getByTestId('sidebar-header');
     const toolbar = screen.getByTestId('sidebar-toolbar');
-    const pillRow = screen.getByTestId('sidebar-search').parentElement as HTMLElement;
+    // Direct-child no-drag opt-out: the cluster's buttons must keep firing
+    // instead of initiating a window drag inside the draggable header.
+    const searchCluster = screen.getByTestId('sidebar-search').parentElement as HTMLElement;
 
     expect(screen.queryByText('Files')).toBeNull();
     expect(screen.getByText('Project switcher')).toBeTruthy();
@@ -575,16 +567,17 @@ describe('FileSidebar runtime behavior', () => {
       'self-stretch',
     ]);
     expectVisualClassTokens(toolbar.className, ['[&>*]:[-webkit-app-region:no-drag]']);
-    expectVisualClassTokens(pillRow.className, ['[-webkit-app-region:no-drag]']);
+    expectVisualClassTokens(searchCluster.className, ['[&>*]:[-webkit-app-region:no-drag]']);
     expect(screen.getByTestId('sidebar-rail').getAttribute('data-enable-toggle')).toBe('false');
 
-    // Reserve, then the navigation pair — and nothing else. Back/forward are
-    // global, so they stay in the chrome; the project actions moved onto the
-    // project-root row beside the folder they act on.
+    // Reserve, then the global-navigation cluster (back/forward + search) — and
+    // nothing else. The project actions moved onto the project-root row beside
+    // the folder they act on.
     const navigation = screen.getByTestId('navigation-history-controls');
     expect(header.children).toHaveLength(2);
     expect(header.children.item(0)).toBe(reserve);
-    expect(header.children.item(1)).toBe(navigation);
+    expect(header.children.item(1)).toBe(searchCluster);
+    expect(searchCluster.contains(navigation)).toBe(true);
     expect(header.contains(toolbar)).toBe(false);
     expect(within(header).getByRole('button', { name: 'Back' })).toBeTruthy();
     expect(within(header).getByRole('button', { name: 'Forward' })).toBeTruthy();
@@ -598,25 +591,22 @@ describe('FileSidebar runtime behavior', () => {
     );
   });
 
-  test('collapsed Electron sidebar removes navigation and fades the header and search pill in lockstep', async () => {
+  test('collapsed Electron sidebar removes navigation and fades the header, search included', async () => {
     installBridge();
     sidebarState = 'collapsed';
     await renderSidebar();
 
     expect(screen.queryByTestId('navigation-history-controls')).toBeNull();
-    expectVisualClassTokens(screen.getByTestId('sidebar-header').className, [
+    const header = screen.getByTestId('sidebar-header');
+    expectVisualClassTokens(header.className, [
       'opacity-0',
       'motion-safe:transition-opacity',
       'motion-safe:duration-100',
       'motion-safe:ease-out',
     ]);
-    const pillRow = screen.getByTestId('sidebar-search').parentElement as HTMLElement;
-    expectVisualClassTokens(pillRow.className, [
-      'opacity-0',
-      'motion-safe:transition-opacity',
-      'motion-safe:duration-100',
-      'motion-safe:ease-out',
-    ]);
+    // Search lives inside the header now, so the header's fade IS its fade —
+    // no second opacity rule to fall out of lockstep.
+    expect(header.contains(screen.getByTestId('sidebar-search'))).toBe(true);
   });
 
   test('toolbar buttons name their shortcut as a keycap in the tooltip', async () => {
@@ -707,7 +697,9 @@ describe('FileSidebar runtime behavior', () => {
     // Mixed expansion state from beforeEach keeps both command items visible.
     expect(within(menu).getByRole('button', { name: 'Expand all' })).toBeTruthy();
     const collapseAll = within(menu).getByRole('button', { name: 'Collapse all' });
-    expect(within(menu).getByTestId('dropdown-menu-separator')).toBeTruthy();
+    // TWO separators now: one after the commands, one before the grouping
+    // switch that trails the Show group.
+    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(2);
 
     const group = within(menu).getByRole('group', { name: 'Show' });
     const checkboxes = within(group).getAllByRole('menuitemcheckbox');
@@ -715,15 +707,22 @@ describe('FileSidebar runtime behavior', () => {
       'Hidden files',
       '.ok folders',
       'Only markdown files',
-      'Skills',
+      'Skills Studio',
     ]);
     // Commands lead; the Show group follows.
     expect(
       collapseAll.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    // The grouping switch sits OUTSIDE that group and after it: the group's
+    // label supplies the "Show" its items read against, and this one arranges
+    // the Skills tree rather than revealing anything.
+    const grouping = within(menu).getByTestId('tree-options-group-skills');
+    expect(within(group).queryByTestId('tree-options-group-skills')).toBeNull();
+    expect(group.compareDocumentPosition(grouping) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  test('tree-options trigger stays visible with zero folders and the popover collapses to just the Show group', async () => {
+  test('tree-options trigger stays visible with zero folders and the popover keeps its state-independent items', async () => {
     folderState = { folderCount: 0, expandedCount: 0 };
     await renderSidebar();
     await waitFor(() => expect(treeListeners.size).toBe(1));
@@ -731,11 +730,13 @@ describe('FileSidebar runtime behavior', () => {
     expect(screen.getByRole('button', { name: 'Tree view options' })).toBeTruthy();
     const menu = screen.getByTestId('tree-options-menu');
     // Both commands would no-op without folders, so they and their trailing
-    // separator smart-hide; the Show group is state-independent and remains.
+    // separator smart-hide. The Show group is state-independent and remains, as
+    // does the grouping switch below it — with ITS separator, which is tied to
+    // the Skills section being shown rather than to folder state.
     expect(within(menu).queryByRole('button', { name: 'Expand all' })).toBeNull();
     expect(within(menu).queryByRole('button', { name: 'Collapse all' })).toBeNull();
-    expect(within(menu).queryByTestId('dropdown-menu-separator')).toBeNull();
-    expect(within(menu).getAllByRole('menuitemcheckbox')).toHaveLength(4);
+    expect(within(menu).getAllByTestId('dropdown-menu-separator')).toHaveLength(1);
+    expect(within(menu).getAllByRole('menuitemcheckbox')).toHaveLength(5);
   });
 
   test('each Show checkbox reflects its config leaf and writes it through the project-local binding', async () => {
@@ -968,52 +969,52 @@ describe('FileSidebar runtime behavior', () => {
     mergedConfig = { appearance: { sidebar: { showSkillsSection: false } } };
     await renderSidebar();
 
-    expect(screen.queryByTestId('skills-sidebar-section')).toBeNull();
-    // The Files/Skills toggle is gated on the same preference — hiding Skills
-    // also hides the way to reach it, so the chrome-row toggle must be absent.
-    expect(screen.queryByTestId('files-skills-toggle')).toBeNull();
+    expect(screen.queryByTestId('skills-dock')).toBeNull();
     // The rest of the sidebar is unaffected by the section gate.
     expect(screen.getByTestId('file-tree-stub')).toBeTruthy();
   });
 
-  test('Skills section renders when showSkillsSection is unset and when config is absent', async () => {
+  test('Skills dock renders when showSkillsSection is unset and when config is absent', async () => {
+    // The dock ships COLLAPSED, so what is always present is its header row —
+    // the section body mounts only once expanded, which is what keeps the
+    // detected-skills scan and the per-skill bundle fetches off by default.
     // beforeEach config carries no showSkillsSection key — the default is ON.
     const rendered = await renderSidebar();
-    expect(screen.getByTestId('skills-sidebar-section')).toBeTruthy();
+    expect(screen.getByTestId('skills-dock')).toBeTruthy();
+    expect(screen.queryByTestId('skills-sidebar-section')).toBeNull();
 
-    // No merged config at all (early load) must also leave the section on.
+    // No merged config at all (early load) must also leave the dock on.
     mergedConfig = null;
     const { FileSidebar } = await import('./FileSidebar');
     rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
-    expect(screen.getByTestId('skills-sidebar-section')).toBeTruthy();
+    expect(screen.getByTestId('skills-dock')).toBeTruthy();
   });
 
   test('a prior showSkillsSection:false keeps the section hidden on reload before config syncs (no flash, PRD-7605)', async () => {
     // A session that resolved the section OFF caches that value…
     mergedConfig = { appearance: { sidebar: { showSkillsSection: false } } };
     const rendered = await renderSidebar();
-    expect(screen.queryByTestId('skills-sidebar-section')).toBeNull();
+    expect(screen.queryByTestId('skills-dock')).toBeNull();
 
     // …so a reload where the config hasn't synced yet (undefined) must NOT flash
     // the section on before hiding it — the cache serves `false` on first paint.
     mergedConfig = null;
     const { FileSidebar } = await import('./FileSidebar');
     rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
-    expect(screen.queryByTestId('skills-sidebar-section')).toBeNull();
+    expect(screen.queryByTestId('skills-dock')).toBeNull();
   });
 
-  test('hidden Skills section + a skill-focused surface falls back to Files (not a blank sidebar)', async () => {
-    // the section is hidden by preference AND a skill is the
-    // active surface (skillFocused). The gate must not render neither branch —
-    // Files falls back so the sidebar is never blank, and hiding the section
-    // still means no auto-reveal.
+  test('hiding the Skills dock leaves the file tree untouched, even on a skill doc', async () => {
+    // The preference is a pure removal now: there is no surface to fall back
+    // FROM, so the file tree is present either way. Asserted with a skill as the
+    // active doc because that is the case the old two-surface gate got wrong,
+    // rendering neither branch and blanking the sidebar.
     mergedConfig = { appearance: { sidebar: { showSkillsSection: false } } };
     activeDocName = '.ok/skills/test-skill/SKILL';
     activeTarget = null;
-    skillFocused = true;
     await renderSidebar();
 
-    expect(screen.queryByTestId('skills-sidebar-section')).toBeNull();
+    expect(screen.queryByTestId('skills-dock')).toBeNull();
     // Not blank: the Files tree is the fallback.
     expect(screen.getByTestId('file-tree-stub')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'New file' }).length).toBeGreaterThan(0);

@@ -31,7 +31,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BUNDLE_IDS, type BundleId } from '../src/skill-bundles.ts';
+import { BUNDLE_IDS, BUNDLE_SKILL_NAME, type BundleId } from '../src/skill-bundles.ts';
 import { enumeratePackSkills } from '../src/skill-pack-sources.ts';
 
 // Re-export the canonical bundle-id list (single source: `skill-bundles.ts`) so
@@ -177,6 +177,36 @@ export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): strin
   return built;
 }
 
+/**
+ * Compose the Agent Plugins (agent-plugins.org) view of the built-ins: a
+ * conformant plugin directory derived from the SAME composed dist bundles —
+ * `dist/assets/agent-plugin/{plugin.json, skills/<real skill name>/…}`.
+ *
+ * Derived, not a second source: the internal `assets/skills/<id>` layout stays
+ * the single source of truth (its id→name indirection and probe chain are
+ * load-bearing across installed apps), and this artifact re-materializes from
+ * it on every build, so it cannot drift. The `skills/` children carry the
+ * skills' REAL names, per the standard's install convention.
+ */
+export function buildAgentPluginArtifact(paths: SkillBundlePaths = defaultPaths()): string {
+  const outRoot = join(paths.distDir, '..', 'agent-plugin');
+  rmSync(outRoot, { recursive: true, force: true });
+  for (const bundle of BUNDLE_IDS) {
+    const composedDir = join(paths.distDir, bundle);
+    cpSync(composedDir, join(outRoot, 'skills', BUNDLE_SKILL_NAME[bundle]), { recursive: true });
+  }
+  const manifest = {
+    $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+    name: 'open-knowledge',
+    description: 'OpenKnowledge built-in skills: project workflow, discovery, and skill authoring',
+    author: { name: 'Inkeep' },
+    repository: 'https://github.com/inkeep/open-knowledge',
+    keywords: ['openknowledge', 'knowledge-base'],
+  };
+  writeFileSync(join(outRoot, 'plugin.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
+  return outRoot;
+}
+
 interface ByteEqualityResult {
   readonly ok: boolean;
   readonly violations: string[];
@@ -271,5 +301,7 @@ if (import.meta.main) {
         `[build-skill-bundles] composed ${packs.length} pack skill(s): ${packs.join(', ')}`,
       );
     }
+    const pluginRoot = buildAgentPluginArtifact();
+    console.log(`[build-skill-bundles] composed Agent Plugins artifact → ${pluginRoot}`);
   }
 }

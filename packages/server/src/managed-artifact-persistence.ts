@@ -52,6 +52,7 @@ import { externalSkillAbsPath } from './external-skill-registry.ts';
 import { tracedAtomicFs, tracedMkdir, tracedUnlinkSync } from './fs-traced.ts';
 import {
   globalSkillGraphRoots,
+  knownSkillRootsFor,
   resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
 } from './in-place-skills.ts';
@@ -235,10 +236,14 @@ function managedSkillBundleDir(
   scope: ManagedArtifactScope,
   name: string,
   ctx: ManagedArtifactLocation,
+  host: string | null = null,
 ): string | null {
   // Guard 1: slug grammar (rejects `..`, slashes, dots, uppercase, empty).
   if (!SKILL_NAME_REGEX.test(name) || name.length > 64) {
     throw new Error(`managedSkillBundleDir: invalid skill name: ${JSON.stringify(name)}`);
+  }
+  if (host !== null && (!SKILL_NAME_REGEX.test(host) || host.length > 64)) {
+    throw new Error(`managedSkillBundleDir: invalid host qualifier: ${JSON.stringify(host)}`);
   }
   const base = scope === 'global' ? homeFor(ctx) : ctx.projectDir;
   if (scope !== 'global') {
@@ -246,6 +251,14 @@ function managedSkillBundleDir(
     // project skills open as content docs, so this branch is effectively dead
     // and the project store drains via the boot migration.
     return resolve(base, '.ok', 'skills', name);
+  }
+  // Host-qualified doc (`__skill__/global/<name>@<host>`): a NON-default
+  // same-named bundle. Resolve inside that host's root specifically — never
+  // fall through to the precedence probe, which is exactly the collapse the
+  // qualifier exists to avoid.
+  if (host !== null) {
+    const root = knownSkillRootsFor(base, 'global').find((r) => r.editor === host);
+    return root === undefined ? null : resolve(base, root.root, name);
   }
   // Store retirement: in-place ALWAYS wins. Resolve the native editor-dir
   // canonical (`~/.agents/skills/<name>`, `~/.claude/skills/<name>`, …) first;
@@ -298,7 +311,7 @@ function managedArtifactContainerDir(
   }
   const parsed = parseManagedArtifactName(documentName);
   if (parsed === null || parsed.kind !== 'skill') return null;
-  return managedSkillBundleDir(parsed.scope, parsed.name, ctx);
+  return managedSkillBundleDir(parsed.scope, parsed.name, ctx, parsed.host);
 }
 
 export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifactLocation): string {
@@ -321,7 +334,7 @@ export function managedArtifactAbsPath(documentName: string, ctx: ManagedArtifac
   if (parsed === null || parsed.kind !== 'skill') {
     throw new Error(`managedArtifactAbsPath: not a managed skill doc name: ${documentName}`);
   }
-  const skillDir = managedSkillBundleDir(parsed.scope, parsed.name, ctx);
+  const skillDir = managedSkillBundleDir(parsed.scope, parsed.name, ctx, parsed.host);
   if (skillDir === null) {
     throw new Error(`managedArtifactAbsPath: no usable skill home for ${documentName}`);
   }
@@ -363,31 +376,47 @@ export function managedArtifactDocNameForPath(
   ctx: ManagedArtifactCtx,
 ): string | null {
   const norm = resolve(absPath);
+  const home = homeFor(ctx);
   // Skill bundle files under ANY global skill root — the legacy `~/.ok/skills`
   // store AND every native user root (`~/.agents/skills`, `~/.claude/skills`,
   // …): global skills live in-place now, and the skills watcher watches all of
   // these roots, so the reverse mapping must cover them all or native-root
   // events are silently dropped (an open-but-empty `__skill__/global/...` doc
-  // then never seeds when its file lands). Doc names are name-keyed, so every
-  // root maps to the same doc. Project skills are content docs, reconciled by
-  // the content watcher, never mapped to a `__skill__/project/...` name here.
-  for (const root of globalSkillGraphRoots(homeFor(ctx))) {
+  // then never seeds when its file lands). The by-name DEFAULT bundle maps to
+  // the unqualified doc; a same-named bundle in a NON-default root maps to the
+  // host-qualified doc (`@<host>`) — otherwise both files feed one CRDT doc
+  // while persistence writes back only to the default, so the other bundle's
+  // edits silently land in the wrong file. Project skills are content docs,
+  // reconciled by the content watcher, never mapped to a `__skill__/project/…`
+  // name here.
+  const hostRoots = knownSkillRootsFor(home, 'global');
+  for (const root of globalSkillGraphRoots(home)) {
     const globalSkillsRoot = resolve(root);
     if (!norm.startsWith(globalSkillsRoot + sep)) continue;
     const rel = norm.slice(globalSkillsRoot.length + 1).split(sep);
     const name = rel[0];
     if (name && SKILL_NAME_REGEX.test(name) && name.length <= 64 && rel.length >= 2) {
+      const bundleDir = resolve(globalSkillsRoot, name);
+      const defaultDir = resolveGlobalNativeSkillDir(home, name);
+      let qualifier = '';
+      if (defaultDir !== null && resolve(defaultDir) !== bundleDir) {
+        const editor = hostRoots.find((r) => resolve(home, r.root) === globalSkillsRoot)?.editor;
+        // The legacy store has no host id; its resident stays unqualified (it
+        // is only ever read when no native bundle exists, so it cannot collide
+        // with a live default here).
+        if (editor !== undefined) qualifier = `@${editor}`;
+      }
       const tail = rel.slice(1);
       // `<name>/SKILL.md` → the skill's SKILL doc.
       if (tail.length === 1 && tail[0] === 'SKILL.md') {
-        return `${MANAGED_ARTIFACT_PREFIX_SKILL}global/${name}`;
+        return `${MANAGED_ARTIFACT_PREFIX_SKILL}global/${name}${qualifier}`;
       }
       // A `.md`/`.mdx` bundle file → its per-file live doc (ext-less). Other
       // files (scripts, binary) are not editable live docs → no doc mapping.
       const last = tail[tail.length - 1] ?? '';
       if (/\.mdx?$/i.test(last) && !tail.includes('..')) {
         const relNoExt = tail.join('/').replace(/\.mdx?$/i, '');
-        return `${MANAGED_ARTIFACT_PREFIX_SKILL}global/${name}/${relNoExt}`;
+        return `${MANAGED_ARTIFACT_PREFIX_SKILL}global/${name}${qualifier}/${relNoExt}`;
       }
     }
     return null; // under a global skills root but not an editable md doc

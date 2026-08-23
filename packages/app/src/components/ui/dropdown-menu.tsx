@@ -1,4 +1,4 @@
-import { CheckIcon, ChevronRightIcon } from 'lucide-react';
+import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react';
 import { DropdownMenu as DropdownMenuPrimitive } from 'radix-ui';
 import type * as React from 'react';
 import { cn } from '@/lib/utils';
@@ -130,7 +130,12 @@ function DropdownMenuRadioItem({
         data-slot="dropdown-menu-radio-item-indicator"
       >
         <DropdownMenuPrimitive.ItemIndicator>
-          <CheckIcon />
+          {/* A DOT, not a check — upstream shadcn's radio indicator. A radio
+              row answers "which option is selected"; a check answers "this
+              exists/succeeded". The skill menus stack a Level radio group
+              directly above install checkboxes, and with both drawn as checks
+              people read "Project ✓" as "already installed at project level". */}
+          <CircleIcon className="size-2 fill-current" />
         </DropdownMenuPrimitive.ItemIndicator>
       </span>
       {children}

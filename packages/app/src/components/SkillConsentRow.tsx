@@ -2,9 +2,10 @@
  * The one truthful row for a built-in skill offered for install, shared by
  * Settings → Skills Studio (both scopes) and the first-launch consent dialog
  * (near-duplicate markup before this). It renders what the skill is (name + its own frontmatter
- * description, replacing the hand-written subtext), where it reaches (the
- * existing agent-icon cluster, including custom roots), and what it costs (the
- * compact always-on + on-trigger subset — never a sum).
+ * description, replacing the hand-written subtext) and where it reaches (the
+ * existing agent-icon cluster, including custom roots). Token cost is
+ * deliberately NOT shown here — it belongs to the pre-install preview and the
+ * skill's own Properties, not a settings row.
  *
  * Presentational only: the surface-specific control (Settings' Install/Uninstall
  * button, first launch's staged checkbox) arrives as `control`, and the body's
@@ -13,11 +14,9 @@
  * `AgentIconCluster`'s own contract and stays decoupled from the bridge status.
  */
 
-import type { SkillCostTiers } from '@inkeep/open-knowledge-core';
 import { Trans } from '@lingui/react/macro';
 import type { ReactNode } from 'react';
 import { AgentIconCluster } from '@/components/AgentIconCluster';
-import { SkillCostValue } from '@/components/SkillCostValue';
 import { Button } from '@/components/ui/button';
 
 export interface SkillConsentRowProps {
@@ -27,9 +26,6 @@ export interface SkillConsentRowProps {
   /** Reach: static editor ids plus custom-root paths (rendered verbatim). Empty
    *  ⇒ the cluster is replaced by explanatory copy. */
   hosts: readonly string[];
-  /** Three-tier cost; the row shows only the always-on + on-trigger subset.
-   *  Absent ⇒ no cost line (older data / cost not yet resolved). */
-  size?: SkillCostTiers;
   /** Preview affordance: Settings opens the preview tab, first launch expands
    *  inline. Absent ⇒ the body is static. */
   onActivate?: () => void;
@@ -46,7 +42,6 @@ export function SkillConsentRow({
   name,
   description,
   hosts,
-  size,
   onActivate,
   ariaExpanded,
   control,
@@ -86,7 +81,6 @@ export function SkillConsentRow({
               <Trans>No AI tools detected. Install one to use this skill.</Trans>
             </span>
           )}
-          {size ? <SkillCostValue size={size} omitOnDemand /> : null}
         </span>
       </span>
       {control ? <span className="shrink-0">{control}</span> : null}

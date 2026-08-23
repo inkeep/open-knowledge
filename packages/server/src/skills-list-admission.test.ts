@@ -8,7 +8,7 @@ import {
 } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import { bootCompositionRig } from './composition-rig.test-helper.ts';
@@ -168,11 +168,16 @@ test('a skill dir written after boot becomes servable via the list, with no rest
 test('the skills a list call reports are all still on disk afterwards', async () => {
   // Blast-radius check for the read-side heal: every listed project bundle must
   // survive being listed, including one mounted through a symlink.
+  // An UNINSTALLED built-in's row points at the shipped bundle OUTSIDE the
+  // project (an absolute path under the server's assets) — the row exists so
+  // it can be installed back, not because the project holds a copy. The
+  // blast-radius contract here is about the project's own files, so those
+  // rows assert against their absolute path directly.
   const before = (await listSkills()).filter((s) => s.scope === 'project');
   await listSkills();
   await listSkills();
   for (const s of before) {
-    expect(existsSync(join(contentDir, s.path))).toBe(true);
+    expect(existsSync(isAbsolute(s.path) ? s.path : join(contentDir, s.path))).toBe(true);
   }
   const after = (await listSkills()).filter((s) => s.scope === 'project').map((s) => s.name);
   expect(after.sort()).toEqual(before.map((s) => s.name).sort());

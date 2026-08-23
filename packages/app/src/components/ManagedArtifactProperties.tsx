@@ -13,7 +13,7 @@ import { PropertyPanel } from '@/components/PropertyPanel';
 import { SkillProperties } from '@/components/SkillProperties';
 import { TemplateProperties } from '@/components/TemplateProperties';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { docNameForTabId, isSkillDocName } from '@/editor/editor-tabs';
+import { docNameForTabId } from '@/editor/editor-tabs';
 import { hashFromDocName, replaceHashWithoutNavigation } from '@/lib/doc-hash';
 import { moveTemplate } from '@/lib/folder-config-api';
 import { parseProjectSkillContentDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
@@ -87,16 +87,9 @@ export function ManagedArtifactProperties({
  * closing the old tab, so there's no flash of empty editor in between.
  */
 export function useManagedArtifactRetarget(): (fromDocName: string, toDocName: string) => void {
-  const { openTarget, closeDocument, setSkillsSidebar, activeDocName, openTabs } =
-    useDocumentContext();
+  const { openTarget, closeDocument, activeDocName, openTabs } = useDocumentContext();
   return (fromDocName, toDocName) => {
     if (fromDocName === toDocName) return;
-    // Pin the sidebar to Skills first: opening the new doc activates it async-ish
-    // while a close synchronously nulls the active target, so for a frame
-    // `skillFocused` would drop to Files. The pin bridges that frame and
-    // auto-releases on the next navigation. Gated on `isSkillDocName` so a template
-    // retarget (also uses this helper) is untouched.
-    if (isSkillDocName(toDocName)) setSkillsSidebar(true);
     // Open the destination DIRECTLY, not via the hash → resolveNavigationTarget
     // path: a project skill content doc (`.ok/skills/<name>/SKILL`) resolves through
     // the page index, which lags a rename/scope-move by the async `files` refetch, so

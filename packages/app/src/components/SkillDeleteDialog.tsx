@@ -25,17 +25,12 @@ interface Props {
  */
 export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
   const { t } = useLingui();
-  const { setSkillsSidebar, closeTabs, openTabs } = useDocumentContext();
+  const { closeTabs, openTabs } = useDocumentContext();
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete(target: SkillsListEntry) {
-    // Deleting from the Skills sidebar means we're on the Skills surface; pin it
-    // up front so the downstream tab eviction (which clears the active skill
-    // target) can't let autofollow drop us back to Files. Robust across the
-    // project-doc and global managed-artifact deletion paths alike.
-    setSkillsSidebar(true);
     setDeleting(true);
-    const result = await deleteSkill(target.scope, target.name);
+    const result = await deleteSkill(target.scope, target.name, target.hostQualifier);
     setDeleting(false);
     if (!result.ok) {
       const { error } = result;

@@ -23,7 +23,12 @@ const FOOTER = '[data-slot="sidebar-footer"]';
  * the bare attribute matches whichever tree is mounted. Skills renders no
  * Collapsible, which makes this ancestor the file list's unique handle.
  */
-const TREE_SCROLL = '[data-slot="collapsible-content"] [data-file-tree-virtualized-scroll]';
+// Scoped to the FILES group, not any collapsible: the Skills dock is a stacked
+// section in the same content column and its own tree carries an identical
+// virtualized-scroll marker, so an unscoped selector matches two elements the
+// moment the dock is expanded.
+const TREE_SCROLL =
+  '[data-slot="sidebar-group"] [data-slot="collapsible-content"] [data-file-tree-virtualized-scroll]';
 
 /**
  * The grid every row is placed on, read from the source rather than copied, so
@@ -72,12 +77,18 @@ test.describe('sidebar file list fills the body', () => {
     // The spacer that used to own this gesture is gone.
     await expect(page.locator('[data-sidebar-empty-deselect]')).toHaveCount(0);
 
-    // The pane reaches the footer: whatever room is left over sits INSIDE the
-    // scroll region (clickable) rather than as a gap beneath it. One row of
+    // The pane reaches whatever sits below it: leftover room is INSIDE the
+    // scroll region (clickable) rather than a dead gap beneath it. One row of
     // tolerance absorbs the sidebar's own padding.
+    //
+    // Below it is the Skills dock, not the footer — Skills is a stacked section
+    // in the same content column now, so measuring to the footer would count the
+    // dock's own header as slack the file list failed to claim. The footer is
+    // still the floor when the dock is hidden by preference.
     const scroll = await boxOf(page, TREE_SCROLL);
-    const footer = await boxOf(page, FOOTER);
-    expect(footer.y - (scroll.y + scroll.height)).toBeLessThan(ROW_HEIGHT);
+    const dockCount = await page.getByTestId('skills-dock').count();
+    const below = await boxOf(page, dockCount > 0 ? '[data-testid="skills-dock"]' : FOOTER);
+    expect(below.y - (scroll.y + scroll.height)).toBeLessThan(ROW_HEIGHT);
 
     // And that leftover room is real — this is what the deselect click aims at.
     const slack = scroll.y + scroll.height - (await lowestRowBottom(page));
@@ -174,10 +185,18 @@ test.describe('sidebar file list fills the body', () => {
     });
     const before = await boxOf(page, TREE_SCROLL);
 
-    // Skills replaces the file list entirely, then hands the body back.
-    await page.getByTestId('sidebar-skills-toggle').click();
-    await expect(page.locator(TREE_SCROLL)).toHaveCount(0, { timeout: 10_000 });
-    await page.getByTestId('sidebar-files-toggle').click();
+    // Skills no longer replaces the file list — it docks beneath it. Expanding
+    // the dock takes a slice of the body and collapsing hands it back, so the
+    // tree must survive the round trip at its original height. The old shape of
+    // this test asserted the file list disappeared entirely, which is exactly
+    // the behaviour this sidebar stopped having.
+    // `exact` matters: the dock's toolbar holds an "Explore skills" button, and a
+    // substring match (the default) claims both it and the section trigger.
+    const dock = page.getByTestId('skills-dock');
+    const dockTrigger = dock.getByRole('button', { name: 'Skills Studio', exact: true });
+    await dockTrigger.click();
+    await expect(page.locator(TREE_SCROLL)).toHaveCount(1, { timeout: 10_000 });
+    await dockTrigger.click();
 
     await expect(page.locator(SIDEBAR).getByRole('treeitem', { name: 'note.md' })).toBeVisible({
       timeout: 20_000,

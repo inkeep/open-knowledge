@@ -2248,6 +2248,30 @@ describe('ContentFilter', () => {
   });
 
   describe('rebuildIgnorePatterns', () => {
+    test('concurrent rebuild calls coalesce into one flight plus one trailing run', async () => {
+      let scans = 0;
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        rescanInPlaceSkillDirs: () => {
+          scans += 1;
+          return new Set<string>();
+        },
+      });
+      // The factory itself runs the initial scan(s); count only what the
+      // concurrent burst adds.
+      const baseline = scans;
+      await Promise.all(Array.from({ length: 6 }, () => filter.rebuildIgnorePatterns()));
+      // One in-flight run plus at most one trailing run for the whole burst -
+      // per-call full rebuilds are the storm that froze big repos.
+      expect(scans - baseline).toBeLessThanOrEqual(2);
+      expect(scans - baseline).toBeGreaterThanOrEqual(1);
+      // The coalescer must not wedge: a later call runs fresh.
+      const afterBurst = scans;
+      await filter.rebuildIgnorePatterns();
+      expect(scans).toBe(afterBurst + 1);
+    });
+
     test('reflects new patterns after .okignore is created on disk', async () => {
       // Filter built with no ignore files — `drafts/foo.md` admitted.
       const filter = createContentFilter({ projectDir, contentDir: projectDir });

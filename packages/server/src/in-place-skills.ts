@@ -18,7 +18,7 @@
  */
 
 import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
   EDITOR_PROJECT_SKILL_ROOT,
@@ -26,6 +26,7 @@ import {
   type EditorId,
   estimateSkillCost,
   LEGACY_SKILL_STORE_ROOT,
+  parseFrontmatterRecord,
   type SkillCostTiers,
   type SkillScope,
   skillRootActivationPath,
@@ -34,11 +35,12 @@ import {
   buildSkillRegistry,
   groupSkillsByIdentity,
   type LocatedSkillOccurrence,
+  packMarkerOf,
   parseSkillDir,
   SKILL_CANONICAL_PRECEDENCE,
   type SkillHostId,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import { isInternalBundleSkillName } from './skill-bundles.ts';
+import { isInternalBundleSkillName, isUserGlobalBundleSkillName } from './skill-bundles.ts';
 import {
   readKnownSkillPlacementRoots as readPlacementRoots,
   readSkillSourceHostPreferences as readSourceHostPrefs,
@@ -86,6 +88,9 @@ export interface InPlaceSkill {
    *  copy relationships the forward re-sync records (a symlink is live and
    *  needs no re-sync). */
   readonly copyDirs: readonly string[];
+  /** The skill's `metadata.pack` marker — its pack/plugin identity, when it
+   *  carries one. Drives the pack-level grouping under the source repo. */
+  readonly pack?: string;
   /** `parseSkillDir` bundle hash of the canonical — the dedup/Modified identity. */
   readonly contentHash: string;
   /** Three-tier context cost of the canonical bundle (always-on / on-trigger /
@@ -97,6 +102,7 @@ export interface InPlaceSkill {
 interface ScanOccurrence extends LocatedSkillOccurrence {
   readonly description: string;
   readonly size: SkillCostTiers;
+  readonly pack?: string;
   readonly viaLink: boolean;
   /** The occurrence lives under an ALIASED root (the folder or a parent is a
    *  symlink) — a VIEW of another location. Never electable as canonical
@@ -134,8 +140,16 @@ export function scanHostRootAliases(base: string, scope: SkillScope): Record<str
       continue; // absent — a real (creatable) location, not an alias
     }
     if (real === join(baseReal, root)) continue;
-    if (!real.startsWith(`${baseReal}/`)) continue;
-    out[editor] = real.slice(baseReal.length + 1);
+    // Platform-native containment + separator normalization. The old
+    // `startsWith(baseReal + '/')` never matched on Windows (realpath returns
+    // backslashes), so an app-created folder link (`~/.claude/skills` →
+    // `..\.agents\skills`) was invisible as an alias — the linked dir then
+    // scanned as a drifted real root and rendered as "→ ? / CHANGED OUTSIDE".
+    // Alias values are '/'-normalized: every consumer compares them against
+    // '/'-joined base-relative roots.
+    const rel = relative(baseReal, real);
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) continue;
+    out[editor] = rel.split(sep).join('/');
   }
   return out;
 }
@@ -372,7 +386,7 @@ const parseCache = new Map<
 
 function parseSkillDirCached(
   absDir: string,
-): { contentHash: string; description: string; size: SkillCostTiers } | null {
+): { contentHash: string; description: string; size: SkillCostTiers; pack?: string } | null {
   const stamp = bundleStamp(absDir);
   if (stamp === null) return null;
   const hit = parseCache.get(absDir);
@@ -383,11 +397,13 @@ function parseSkillDirCached(
   // cost estimate is a pure pass over it — the size rides the parse, never a
   // second read of the tree. Cached under the same stamp, so a byte change on
   // disk invalidates the size alongside the hash.
+  const pack = packMarkerOf(parseFrontmatterRecord(parsed.skillMd) ?? {});
   const entry = {
     stamp,
     contentHash: parsed.contentHash,
     description: parsed.description,
     size: estimateSkillCost(parsed),
+    ...(pack !== undefined ? { pack } : {}),
   };
   parseCache.set(absDir, entry);
   return entry;
@@ -436,6 +452,7 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
           dir: `${root}/${entry}`,
           description: parsed.description,
           size: parsed.size,
+          ...(parsed.pack !== undefined ? { pack: parsed.pack } : {}),
           viaLink: rootAliased || lstatSync(absDir).isSymbolicLink(),
           ...(rootAliased ? { aliasRooted: true } : {}),
           ...(sourcePrefs[entry] === editor ? { preferredSource: true } : {}),
@@ -492,9 +509,18 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
         const realCopies = g.copies.filter(
           (c) => c.aliasRooted !== true && (c.viaLink || !isSameInode(c.dir)),
         );
-        const conflictHosts = occurrences
-          .filter((o) => o.name === g.canonical.name && o.contentHash !== g.contentHash)
-          .map((o) => o.editor);
+        // A built-in has no forks, by the same rule that collapses it to one row
+        // above: OK ships its bytes and nothing here may edit them, so a drifted
+        // projection is a STALE copy of this skill, not a second one. Reporting
+        // it as a conflict is what put an unresolvable badge on the install
+        // picker — it told the user a different skill lived there and to "rename
+        // or delete one of the two", for a directory OK wrote itself and is
+        // entitled to replace.
+        const conflictHosts = isInternalBundleSkillName(g.canonical.name)
+          ? []
+          : occurrences
+              .filter((o) => o.name === g.canonical.name && o.contentHash !== g.contentHash)
+              .map((o) => o.editor);
         // `hosts` = PHYSICAL locations only (canonical + independent copies).
         // Alias-covered viewers are NOT locations — they surface as audience
         // icons via `scanHostRootAliases`, never as installed-location counts.
@@ -508,6 +534,7 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
           copyDirs: realCopies.filter((c) => !c.viaLink).map((c) => c.dir),
           contentHash: g.contentHash,
           size: g.canonical.size,
+          ...(g.canonical.pack !== undefined ? { pack: g.canonical.pack } : {}),
         };
       })
   );
@@ -519,7 +546,15 @@ function scanBase(base: string, scope: SkillScope): InPlaceSkill[] {
  * excluded). Missing dirs / unreadable bundles are skipped, never thrown.
  */
 export function scanInPlaceSkills(contentDir: string): InPlaceSkill[] {
-  return scanBase(contentDir, 'project');
+  // A user-global built-in is global BY DEFINITION, so a same-named directory
+  // inside a PROJECT's harness root is a stray copy — never a project skill.
+  // Dropping it here rather than at the writer is deliberate: the copies arrive
+  // by routes no write guard can see. A teammate's auto-save commits the ones
+  // sitting in THEIR `.claude/skills/`, everyone who syncs the repo pulls them,
+  // and the skill then lists twice — once under PROJECT from this scan and once
+  // under GLOBAL where it actually lives. The bytes on disk are not ours to
+  // delete; listing them as a second skill is what we control.
+  return scanBase(contentDir, 'project').filter((s) => !isUserGlobalBundleSkillName(s.name));
 }
 
 /**

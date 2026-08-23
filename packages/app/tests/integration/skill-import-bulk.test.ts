@@ -1,4 +1,13 @@
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
@@ -27,12 +36,55 @@ beforeAll(() => {
   for (const name of ['alpha-skill', 'beta-skill', 'gamma-skill']) {
     writeSkillDir(join(srcRoot, 'bundle', name), name, `Does ${name} things`);
   }
+  // A starter-pack-shaped bundle: same as the others but carrying the upstream
+  // `metadata.pack` identity a published pack ships with.
+  mkdirSync(join(srcRoot, 'bundle', 'note-taking'), { recursive: true });
+  writeFileSync(
+    join(srcRoot, 'bundle', 'note-taking', 'SKILL.md'),
+    '---\nname: note-taking\ndescription: Plain notes.\nmetadata:\n  pack: "plain-notes"\n  author: "Inkeep"\n---\n\nBody.\n',
+  );
 }, HARNESS_BOOT_TIMEOUT_MS);
 afterAll(() => {
   rmSync(srcRoot, { recursive: true, force: true });
 });
 
 describe('POST /api/skills/import-bulk', () => {
+  test('an imported pack keeps the identity marker, and nothing else upstream', async () => {
+    // The write canonicalizes frontmatter, and `metadata.pack` is the one key
+    // that must survive it: it is the only proof a generically-named skill is a
+    // starter pack of ours, and the provenance retrofit refuses to synthesize a
+    // source without it. Dropping it meant an imported pack whose lock entry
+    // went missing — routine, the lockfile is gitignored — could never be
+    // recognised again, so it showed no source and sat outside its group.
+    const server = await createTestServer();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/skills/import-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'project',
+          source: join(srcRoot, 'bundle'),
+          skills: ['note-taking'],
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      // Located rather than assumed: the install root depends on the scope's
+      // host layout, and this assertion is about the BYTES, not the path.
+      const candidates = ['.agents/skills', '.ok/skills', '.claude/skills'].map((root) =>
+        join(server.contentDir, ...root.split('/'), 'note-taking', 'SKILL.md'),
+      );
+      const found = candidates.find((c) => existsSync(c));
+      expect(found, `note-taking not written to any of ${candidates.join(', ')}`).toBeDefined();
+      const written = readFileSync(found as string, 'utf-8');
+      expect(written).toContain('pack: plain-notes');
+      // Still canonicalized otherwise: the upstream's other metadata is dropped.
+      expect(written).not.toContain('Inkeep');
+    } finally {
+      await server.cleanup();
+    }
+  });
+
   let server: TestServer;
   beforeEach(async () => {
     server = await createTestServer();

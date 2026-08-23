@@ -66,7 +66,7 @@ describe('SkillDirectoryResult context cost', () => {
     fireEvent.mouseEnter(screen.getByRole('listitem'));
     const figure = await screen.findByTestId('skill-card-always-on');
     // name (6) + description (200) = 206 chars -> ~52 tokens at chars/4.
-    expect(figure.textContent).toContain('~52');
+    expect(figure.textContent).toContain('52');
     expect(fetchSkillPreview).toHaveBeenCalledTimes(1);
   });
 

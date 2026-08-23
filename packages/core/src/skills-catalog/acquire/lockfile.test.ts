@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { OPENKNOWLEDGE_SKILLS_REPO, PACK_SKILL_PREFIX } from '../../constants/skills.ts';
-import { retrofitPackLockEntry } from './lockfile.ts';
+import { packMarkerOf, retrofitPackLockEntry } from './lockfile.ts';
 
 describe('retrofitPackLockEntry', () => {
   test('synthesizes a deterministic entry for a pack-prefixed skill with no lock entry', () => {
@@ -74,5 +74,27 @@ describe('retrofitPackLockEntry', () => {
     expect(
       retrofitPackLockEntry('my-own-skill', 'a'.repeat(64), '2026-08-04T00:00:00.000Z'),
     ).toBeNull();
+  });
+});
+
+describe('packMarkerOf', () => {
+  test('reads the upstream pack identity a starter-pack bundle ships', () => {
+    expect(packMarkerOf({ name: 'note-taking', metadata: { pack: 'plain-notes' } })).toBe(
+      'plain-notes',
+    );
+  });
+
+  test('is undefined for a bundle that claims nothing', () => {
+    // The witness has to be absent for a user's own `write-a-spec`, or the
+    // retrofit would hand them our provenance and offer to overwrite their work.
+    expect(packMarkerOf({ name: 'write-a-spec', description: 'mine' })).toBeUndefined();
+    expect(packMarkerOf({ metadata: {} })).toBeUndefined();
+    expect(packMarkerOf({ metadata: { pack: '   ' } })).toBeUndefined();
+    expect(packMarkerOf(null)).toBeUndefined();
+    expect(packMarkerOf('not an object')).toBeUndefined();
+  });
+
+  test('a non-string marker is not a claim', () => {
+    expect(packMarkerOf({ metadata: { pack: 42 } })).toBeUndefined();
   });
 });

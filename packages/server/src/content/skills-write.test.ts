@@ -81,15 +81,17 @@ describe('applySkillWrite', () => {
     }
   });
 
-  test('rejects reserved words in name', () => {
+  test('vendor words in name warn but never block — the marketplace is full of claude-* skills', () => {
     const result = applySkillWrite({
       skillsRoot,
       name: 'claude-helper',
       body: 'b',
       frontmatter: fm('claude-helper'),
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe('RESERVED_NAME');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.warnings.some((w) => w.includes('"claude"'))).toBe(true);
+    }
   });
 
   test('allows empty description (draft) and rejects over-long description', () => {
@@ -389,5 +391,22 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(noop.ok).toBe(true);
     if (noop.ok) expect(noop.existed).toBe(false);
+  });
+
+  test('deletes a bundle FOLDER recursively, leaving the skill intact', () => {
+    seedSkill();
+    for (const rel of ['references/deep/a.md', 'references/deep/nested/b.md', 'references/keep.md'])
+      applySkillBundleFileWrite({ skillsRoot, name: 'trip-log', relPath: rel, content: 'x' });
+    const del = applySkillBundleFileDelete({
+      skillsRoot,
+      name: 'trip-log',
+      relPath: 'references/deep',
+    });
+    expect(del.ok).toBe(true);
+    if (del.ok) expect(del.existed).toBe(true);
+    expect(existsSync(join(skillsRoot, 'trip-log', 'references', 'deep'))).toBe(false);
+    // Siblings and the skill itself survive.
+    expect(existsSync(join(skillsRoot, 'trip-log', 'references', 'keep.md'))).toBe(true);
+    expect(existsSync(join(skillsRoot, 'trip-log', 'SKILL.md'))).toBe(true);
   });
 });

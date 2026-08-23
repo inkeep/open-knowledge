@@ -122,14 +122,17 @@ describe('SkillProperties tokens row', () => {
     );
     const row = screen.getByTestId('skill-cost-value');
     const text = row.textContent ?? '';
-    // Each tier reads as its own figure — never a summed total. Over a thousand
-    // reads abbreviated (`~3.2k`); below stays bare.
-    expect(text).toContain('~40');
-    expect(text).toContain('~3.2k');
-    expect(text).toContain('~916');
-    expect(text).toContain('always-on');
-    expect(text).toContain('on trigger');
-    expect(text).toContain('on demand');
+    // Each tier reads as its own line plus the sum. Over a thousand reads
+    // abbreviated (`3.2k`); below stays bare, with no approximation squiggle.
+    expect(text).toContain('40');
+    expect(text).toContain('3.2k');
+    expect(text).toContain('916');
+    expect(text).toContain('description');
+    expect(text).toContain('SKILL.md');
+    expect(text).toContain('other');
+    expect(text).toContain('total');
+    // 40 + 3218 + 916 = 4174 → the summed line.
+    expect(text).toContain('4.2k');
     // Every one is under its budget here, so nothing is marked.
     expect(screen.queryAllByRole('img')).toHaveLength(0);
   });
@@ -162,6 +165,6 @@ describe('SkillProperties tokens row', () => {
     for (const mark of marks) {
       expect(mark.getAttribute('aria-label')).toMatch(/over the .* token budget/);
     }
-    expect(screen.getByTestId('skill-cost-value').textContent).toContain('~40k');
+    expect(screen.getByTestId('skill-cost-value').textContent).toContain('40k');
   });
 });

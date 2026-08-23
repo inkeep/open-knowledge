@@ -9,6 +9,7 @@ import { describe, expect, test } from 'vitest';
 import {
   buildOkFileTreeOptions,
   FILE_TREE_USER_NAME_DIRECTION_CSS,
+  lucideMaskDataUri,
   MARKDOWN_FILE_ICON_ID,
   MARKDOWN_FILE_ICON_SYMBOL,
   OK_FILE_TREE_READONLY_UNSAFE_CSS,
@@ -71,5 +72,19 @@ describe('buildOkFileTreeOptions', () => {
       buildOkFileTreeOptions({ paths: [], enableContextMenu: true }).composition?.contextMenu
         ?.enabled,
     ).toBe(true);
+  });
+});
+
+describe('lucideMaskDataUri', () => {
+  test('emits a CSS-safe percent-encoded SVG mask with the stroke baked in', () => {
+    const uri = lucideMaskDataUri([['path', { d: 'M4 4h16' }]]);
+    expect(uri.startsWith('data:image/svg+xml,')).toBe(true);
+    // A mask has no currentColor, so the stroke must be baked into the SVG.
+    const svg = decodeURIComponent(uri.slice('data:image/svg+xml,'.length));
+    expect(svg).toContain('stroke="black"');
+    expect(svg).toContain('<path d="M4 4h16" />');
+    // The characters a CSS url() minds must not survive raw.
+    expect(uri).not.toContain('"');
+    expect(uri).not.toContain('<');
   });
 });

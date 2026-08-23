@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "open-knowledge",
+  "version": "0.1.0",
+  "description": "CRDT knowledge base with real-time collaboration and AI agent tools",
+  "author": { "name": "Inkeep" },
+  "repository": "https://github.com/inkeep/open-knowledge",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["knowledge-base", "mcp", "markdown", "crdt"]
+}

@@ -103,6 +103,24 @@ describe('estimateSkillCost', () => {
     expect(estimateSkillCost({ ...emptyInput, name: 'abcd' }).alwaysOn).toBe(1);
   });
 
+  test('an overlay-vendored upstream/ mirror is excluded from on-demand', () => {
+    // The overlay.yaml + upstream/ pair is a regeneration COPY of prose the
+    // bundle already carries — counting it doubled the figure.
+    const files = [
+      { relPath: 'references/a.md', content: 'a'.repeat(400) },
+      { relPath: 'upstream/SKILL.md', content: 'b'.repeat(400) },
+      { relPath: 'upstream/references/a.md', content: 'c'.repeat(400) },
+    ];
+    const vendored = estimateSkillCost({
+      ...emptyInput,
+      files: [...files, { relPath: 'overlay.yaml', content: 'x: 1' }],
+    });
+    expect(vendored.onDemand).toBe(100);
+    // WITHOUT the overlay marker, upstream/ is ordinary authored content.
+    const plain = estimateSkillCost({ ...emptyInput, files });
+    expect(plain.onDemand).toBe(300);
+  });
+
   test('exports the readable-extension set and the published budget constants', () => {
     expect(READABLE_SKILL_EXTENSIONS).toEqual(['.md', '.mdx', '.txt']);
     expect(ALWAYS_ON_TOKEN_BUDGET).toBe(100);

@@ -292,6 +292,7 @@ const EXEMPT_HANDLERS = new Set([
   // per-doc conflict gate doesn't apply.
   'handleSkillEditExternal',
   'handleSkillReimport',
+  'handleSkillsReimportBulk',
   'handleSkillUpload',
   // Cross-scope skill move: copies the bundle dir + removes the source
   // fs-direct (like import/delete), not a Y.Doc body write, so the per-doc

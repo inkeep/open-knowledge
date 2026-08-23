@@ -254,6 +254,11 @@ msgstr "{0, plural, one {ফাইল} other {ফাইল}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {ফোল্ডার} other {ফোল্ডার}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, one {# স্কিল ইনস্টল করুন} other {# স্কিল ইনস্টল করুন}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, one {স্কিল} other {স্কিল}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · ডিফল্ট"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0} (নতুন ট্যাবে খোলে)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "{1}টির মধ্যে {0}টি প্রকল্প নির্বাচিত"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "{1}টির মধ্যে {0}টি নির্বাচিত"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "এই প্রকাশকের আরও {0}টি স্কিল"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "{0} প্লাগইন"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "{0} প্লাগইন · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0} এই স্কিলটি {poolRootRel}-এর মাধ্যম
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0} এই ফোল্ডারটি ভাগ করে।"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "{0}টি স্কিল নির্বাচিত"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "{behind} পিছিয়ে"
 msgid "{behind} behind origin"
 msgstr "origin থেকে {behind} পিছিয়ে"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName} একটি symlink — এর সম্পাদনযোগ্য উৎস <0>{0}</0>। ফাইলটি সেখানে সম্পাদনা করুন; এই skill ভিউটি কেবল-পড়ার জন্য।"
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, one {যে # সমস্যার পরিচিত �
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, one {# ফাইলের সঙ্গে মেলে} other {# ফাইলের সঙ্গে মেলে}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "এই উৎসে {count}টি স্কিল"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "{count}টি স্কিল"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "{keyName} মান"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label} ইতিমধ্যে \"{0}\" {1} প্লাগইন থেকে লোড করে। এখানে ইনস্টল করলে {2}-এ একটি অনুলিপি তৈরি হয় যা {label} প্লাগইনের বদলে ব্যবহার করে — সেটি আর প্লাগইনের আপডেট অনুসরণ করে না।"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} সক্রিয়"
@@ -845,6 +888,11 @@ msgstr "{pick} এবং {keep} দুটোতেই {0}-এর আলাদা
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick}-এ এমন এন্ট্রি আছে যা স্কিল নয়: {0}। সেগুলো ফোল্ডার থেকে সরান বা অন্যত্র নিন, তারপর আবার চেষ্টা করুন।"
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin}-এ আরও {0}টি স্কিল আছে"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, one {প্লাগইন} other {প্লাগইন}}"
@@ -901,9 +949,21 @@ msgstr "{slot} রং — {0}"
 msgid "{slot} hex value"
 msgstr "{slot} হেক্স মান"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source} {count}টি স্কিল প্রকাশ করে। এগুলোর যেকোনোটি একসঙ্গে ইনস্টল করুন।"
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · আমদানি করা উৎস"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · skills.sh উৎস"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}: {updated}টি আপডেট হয়েছে, {upToDate}টি ইতিমধ্যে আপ টু ডেট"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}: {updated}টি আপডেট হয়েছে, {upToDate}টি ইতিমধ্যে আপ টু ডেট, {failed}টি ব্যর্থ — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1195,6 +1255,10 @@ msgstr "এই ফোল্ডারে নতুন নথির জন্য �
 msgid "A saved theme already uses this name."
 msgstr "এই নামে ইতিমধ্যেই একটি সংরক্ষিত থিম আছে।"
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "এই নামে দ্বিতীয় একটি স্কিল আছে — সম্পূর্ণ পরিচালনার জন্য এর নাম বদলান (বা একটি মুছুন)।"
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "টেমপ্লেট তালিকায় শিরোনামের নিচে দেখানো একটি ছোট লাইন।"
@@ -1316,6 +1380,10 @@ msgstr "যোগ করুন"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "একটি মন্তব্য যোগ করুন"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "একটি ফাইলের নাম যোগ করুন (যেমন notes.md)"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1656,15 +1724,6 @@ msgstr "আগে থেকেই সাইন ইন করা আছে?"
 msgid "Always included"
 msgstr "সবসময় অন্তর্ভুক্ত"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "সর্বদা সক্রিয়"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "সর্বদা সক্রিয় টোকেন"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1991,6 +2050,10 @@ msgstr "স্বয়ংক্রিয় প্রতিবার চাল�
 msgid "Available"
 msgstr "উপলব্ধ"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "যেখানে উপলব্ধ"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "এই মেশিনের প্রতিটি প্রকল্পে পাওয়া যায়। git-এর মাধ্যমে ভাগ করা হয় না।"
@@ -2165,10 +2228,6 @@ msgstr "ভাঙা লিংক"
 msgid "Browse"
 msgstr "ব্রাউজ করুন"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "সব ব্রাউজ করুন"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "ফোল্ডার ব্রাউজ করুন"
@@ -2180,10 +2239,6 @@ msgstr "শত শত থিম দেখুন"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "এই প্রকল্পের জন্য কোনো স্কিল ব্রাউজ বা আপলোড করুন।"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "skills.sh ব্রাউজ করুন"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2222,10 +2277,6 @@ msgstr "আপনার গল্পের পেছনের জগৎ গড�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> তৈরি করে Claude Desktop App খোলা হচ্ছে"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "অন্তর্নির্মিত (শুধু পড়ার জন্য)"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2305,7 +2356,6 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2340,6 +2390,10 @@ msgstr "যেসব ফাইলের দ্বন্দ্ব এখনও �
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "আপলোড করা যাচ্ছে না: কোনো নথি খোলা নেই"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "পরিবর্তন করুন"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2563,6 +2617,10 @@ msgstr "রং সরান"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "মেনু মুছুন"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "নির্বাচন মুছুন"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3151,10 +3209,6 @@ msgstr "বিষয়বস্তুর নিয়ম"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "বিষয়বস্তুর নিয়ম এখনও লোড হয়নি — একটু পরে আবার চেষ্টা করুন"
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "কনটেক্সট খরচ"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "প্রসঙ্গ জানালা:"
@@ -3216,6 +3270,7 @@ msgid "Copied full path"
 msgstr "পূর্ণ পথ কপি হয়েছে"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "পথ কপি হয়েছে"
 
@@ -3229,11 +3284,6 @@ msgstr "আপেক্ষিক পথ কপি হয়েছে"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "কপি হয়েছে!"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "স্কিলটি {0}-এ কপি করে"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3304,6 +3354,7 @@ msgid "Copy path"
 msgstr "পথ কপি করুন"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "পথ কপি করুন"
 
@@ -3496,7 +3547,6 @@ msgstr "ওই মন্তব্যটি যোগ করা যায়ন�
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "পরিবর্তনটি প্রয়োগ করা যায়নি: {0}"
 
@@ -3517,10 +3567,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "শেয়ার URL তৈরি করা যায়নি। Done চেপে আবার শেয়ার করুন।"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "পথ কপি করা যায়নি"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "কপি করা যায়নি: {detail}"
 
@@ -3530,9 +3582,10 @@ msgstr "কপি করা যায়নি। হাতে কপি কর�
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "{trimmed} তৈরি করা যায়নি: {0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "{effective} তৈরি করা যায়নি: {0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3553,6 +3606,11 @@ msgstr "ওয়ার্কট্রি তৈরি করা যায়ন
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "এই থিম তৈরি করা যায়নি। আবার চেষ্টা করুন।"
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "{0} মুছে ফেলা যায়নি: {error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3624,6 +3682,11 @@ msgstr "OpenKnowledge স্কিল ইনস্টল করা যায়�
 msgid "Couldn't install skill: {0}"
 msgstr "স্কিল ইনস্টল করা যায়নি: {0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "প্রকল্পের স্কিল ইনস্টল করা যায়নি: {0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3673,6 +3736,12 @@ msgstr "আপনার বাগ রিপোর্ট লোড করা য�
 msgid "Couldn't mark that comment to send."
 msgstr "ওই মন্তব্যটি পাঠানোর জন্য চিহ্নিত করা যায়নি।"
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "{0} সরানো যায়নি: {1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3717,6 +3786,15 @@ msgstr "ওয়ার্কট্রি খোলা যায়নি। আ
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "এই নথিটি Slidev-এ খোলা যায়নি।"
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "{name} পিন করা যায়নি"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "{skillName}-কে {root}-এ রাখা যায়নি: {0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3969,6 +4047,10 @@ msgstr "শুধু আমার-এ যাওয়া যায়নি"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "ওই মন্তব্যের চিহ্ন সরানো যায়নি — সেটি এখনও পাঠানোর অপেক্ষায়।"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "{name} থেকে পিন সরানো যায়নি"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3978,6 +4060,12 @@ msgstr "{gitignorePath} আপডেট করা যায়নি: {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "{subRoot} হালনাগাদ করা যায়নি: {0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "{0} থেকে আপডেট করা যায়নি: {1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4060,10 +4148,6 @@ msgstr "একটি ব্যক্তিগত স্কিল তৈরি �
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "এই প্রকল্পের জন্য একটি স্কিল তৈরি করুন।"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "একটি স্কিল তৈরি করুন।"
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4277,6 +4361,11 @@ msgstr "মুছুন"
 msgid "Delete {0}"
 msgstr "{0} মুছুন"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "{0}টি স্কিল মুছুন"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "{deleteDescriptorLabel} মুছুন"
@@ -4358,6 +4447,10 @@ msgstr "এই মন্তব্যটি মুছুন"
 msgid "Deleted {0}."
 msgstr "{0} মুছে ফেলা হয়েছে।"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "{deleted}টি স্কিল মুছে ফেলা হয়েছে"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "{file} মুছে ফেলা হয়েছে"
@@ -4399,10 +4492,6 @@ msgstr "আপনি যে প্রকল্পটি তৈরি করত�
 msgid "Describe the skill you want to create"
 msgstr "আপনি যে স্কিলটি তৈরি করতে চান তার বর্ণনা দিন"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "এটি কী করবে তার বর্ণনা দিন, নয়তো নিজেই একটি যোগ করুন। OpenKnowledge আপনার স্কিলগুলো এক জায়গায় রাখে, সেগুলোর সংস্করণ রাখে, এবং Claude, Codex ও Cursor-এর মতো এজেন্টে ইনস্টল করে।"
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "আপনি কী বানাতে চান তার বর্ণনা দিন, একটি খালি ফাইল শুরু করুন, বা কোনো টেমপ্লেট থেকে কাঠামো গড়ুন।"
@@ -4415,7 +4504,9 @@ msgstr "চালিয়ে যেতে আপনি কী তৈরি ক�
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "আপনি কী নিয়ে কাজ করছেন তার বর্ণনা দিন, এজেন্ট আপনার জন্য সেটি সাজিয়ে দেবে।"
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "বিবরণ"
@@ -4432,6 +4523,11 @@ msgstr "বিবরণ (ঐচ্ছিক)"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "{field}-এর বিবরণ"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "বিবরণ টোকেন"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4560,6 +4656,7 @@ msgstr "সংযোগ বিচ্ছিন্ন করুন"
 msgid "Disconnecting"
 msgstr "সংযোগ বিচ্ছিন্ন করা হচ্ছে"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4838,6 +4935,7 @@ msgid "Edit {tag}"
 msgstr "{tag} সম্পাদনা করুন"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "একটি অনুলিপি সম্পাদনা করুন"
 
@@ -5017,6 +5115,10 @@ msgstr "খালি"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "খালি চিত্র"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "খালি ফোল্ডারের নাম অনুমোদিত নয় (//)"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5206,6 +5308,10 @@ msgstr "প্রতিটি ধারণা নথি একটি অ-খা�
 msgid "every doc"
 msgstr "প্রতিটি নথি"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "{source} থেকে সবকিছু ইতিমধ্যে আপ টু ডেট"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5289,6 +5395,7 @@ msgstr "আপনার কোডবেস কীভাবে কাজ কর�
 msgid "Explore"
 msgstr "ঘুরে দেখুন"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "স্কিল ঘুরে দেখুন"
@@ -5755,7 +5862,6 @@ msgid "Filename"
 msgstr "ফাইলের নাম"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "ফাইল"
 
@@ -6016,6 +6122,10 @@ msgstr "টেমপ্লেট থেকে"
 msgid "From the {0} plugin"
 msgstr "{0} প্লাগইন থেকে"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "{residentPlugin} প্লাগইন থেকে — শুধুমাত্র-পঠনযোগ্য; প্লাগইন আপডেট এই ফাইলগুলো প্রতিস্থাপন করে।"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "frontmatter"
@@ -6147,6 +6257,7 @@ msgstr "আপনি যে AI টুলগুলো ব্যবহার ক�
 msgid "Glob patterns this schema applies to"
 msgstr "এই স্কিমা যে গ্লোব প্যাটার্নগুলোর ক্ষেত্রে প্রযোজ্য"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6202,6 +6313,10 @@ msgstr "নথির লিংকের গ্রাফ চিত্রায়
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "একটি শিরোনাম সারিসহ সারি ও কলামের জাল।"
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "উৎস অনুসারে স্কিল গোষ্ঠীবদ্ধ করুন"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6671,6 +6786,14 @@ msgstr "Git প্রকল্পে, Open Knowledge একটি স্কো�
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App-এ"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "এই রিপোজিটরিতে — সহযোগীরা git-এর মাধ্যমে কপি পাবেন।"
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "আপনার হোম ফোল্ডারে — এই মেশিনের প্রতিটি প্রজেক্টে, শুধু আপনার জন্য।"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "তালিকা আইটেম ভেতরে বা বাইরে নিন"
@@ -6829,12 +6952,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror-এর ডিফল্ট কীম্যাপ দিয়ে সোর্স সম্পাদকের লাইন ঢোকান, মুছুন, সরান, কপি করুন ও ভেতরে নিন।"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6850,11 +6972,6 @@ msgstr "{0} ইনস্টল করুন"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} ইনস্টল করুন →"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "{name} ইনস্টল করুন"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6911,17 +7028,9 @@ msgstr "সব এজেন্টে ইনস্টল করুন"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "আপনার AI টুলে OpenKnowledge ইনস্টল করুন"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "নির্বাচিতগুলো ইনস্টল করুন"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
 msgstr "দক্ষতা ইনস্টল করুন"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
-msgstr "স্কিল ইনস্টল করুন"
 
 #. Checkbox that installs the user-global discovery skill bundle
 #: src/components/McpConsentDialogBody.tsx
@@ -6932,10 +7041,15 @@ msgstr "<0>open-knowledge-discovery</0> স্কিল ইনস্টল ক�
 msgid "Install the gh CLI"
 msgstr "gh CLI ইনস্টল করুন"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "এই স্কিলটি ইনস্টল করুন"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "ইনস্টল করা আছে"
 
@@ -6972,11 +7086,6 @@ msgstr "{0} থেকে {imported}টি স্কিল ইনস্টল ক
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "{imported}টি ইনস্টল হয়েছে, কিন্তু {failed}টি ব্যর্থ: {failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "{0}-এ ইনস্টল করা — সরাতে ক্লিক করুন"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "{path}-এ ইনস্টল করা — সরাতে ক্লিক করুন"
@@ -6991,6 +7100,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "{label}-এ ইনস্টল করা — সরাতে ক্লিক করুন"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7000,8 +7110,19 @@ msgstr "ইনস্টল করা হচ্ছে"
 msgid "Installing {agentName}…"
 msgstr "{agentName} ইনস্টল করা হচ্ছে…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "আপনার সব প্রকল্পের জন্য ইনস্টল হবে"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "এই প্রকল্পে ইনস্টল হবে"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "স্কিলটি {path}-এ ইনস্টল করে — প্রথম অবস্থানটি এর নিজস্ব কপি রাখে"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "যেখানে ইনস্টল হবে"
 
@@ -7250,9 +7371,6 @@ msgid "Let's get set up."
 msgstr "চলুন সেটআপ করি।"
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "স্তর"
 
@@ -7368,6 +7486,10 @@ msgstr "তালিকা"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "এই প্রকল্পেই থাকে (স্কিলের ফোল্ডার যেখানেই হোক) এবং git-এর মাধ্যমে সহযোগীদের সঙ্গে ভাগ করা হয়।"
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "এই প্রকল্পের বাইরে অবস্থিত — এখানে শুধুমাত্র-পঠনযোগ্য।"
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7465,7 +7587,6 @@ msgid "Loading PDF"
 msgstr "PDF লোড হচ্ছে"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "জনপ্রিয় স্কিল লোড হচ্ছে"
 
@@ -7610,6 +7731,11 @@ msgstr "listPacks প্রতিক্রিয়ার গঠন ত্রু
 msgid "Malformed plan response"
 msgstr "প্ল্যান প্রতিক্রিয়ার গঠন ত্রুটিপূর্ণ"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "পরিচালনা করুন"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7630,10 +7756,6 @@ msgstr "এই বিল্ডে AI টুল সামলানো যায�
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "এই বিল্ডে প্রকল্পের AI টুল সামলানো যায় না।"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "এই বিল্ডে স্কিল ব্যবস্থাপনা উপলব্ধ নয়।"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7833,6 +7955,16 @@ msgstr "সবচেয়ে বেশি ইনস্টল হওয়া"
 msgid "Move"
 msgstr "সরান"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "{0}টি স্কিল গ্লোবালে সরান"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "{0}টি স্কিল প্রকল্পে সরান"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "সরে যাবে"
@@ -7963,6 +8095,14 @@ msgstr "{label}-কে বাঁ পাশের নতুন প্যানে
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label}-কে ডান পাশের নতুন প্যানে সরানো হয়েছে।"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "{moved}টি স্কিল গ্লোবালে সরানো হয়েছে"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "{moved}টি স্কিল প্রকল্পে সরানো হয়েছে"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8143,10 +8283,6 @@ msgstr "এই স্কিলে নতুন ফাইল"
 msgid "New folder"
 msgstr "নতুন ফোল্ডার"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "একেবারে গোড়া থেকে নতুন"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8188,6 +8324,7 @@ msgstr "নতুন সেশন"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "নতুন স্কিল"
@@ -8266,6 +8403,10 @@ msgstr "এখনও কোনো এজেন্ট সেট আপ করা 
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "এখনও কোনো এজেন্ট সেট আপ করা নেই — পাঠানোর মেনু থেকে একটি বাছুন।"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "কোনো এজেন্ট নেই — সংরক্ষিত, কোথাও ইনস্টল হয়নি"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "কোনো এজেন্ট নেই।"
@@ -8278,10 +8419,6 @@ msgstr "কোনো এজেন্ট চালু নেই"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "আপনার অনুসন্ধানের সঙ্গে কোনো এজেন্ট মেলে না।"
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "কোনো এজেন্ট নির্বাচিত হয়নি — স্কিলগুলো সংরক্ষিত হয়েছে কিন্তু কোথাও ইনস্টল হয়নি।"
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8666,6 +8803,10 @@ msgstr "সাইডবারে নেই"
 msgid "Not installed"
 msgstr "ইনস্টল করা নেই"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "এই প্রকল্পে এখনো ইনস্টল হয়নি।"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8775,10 +8916,6 @@ msgstr "চালু — আপনার অনুসন্ধানের প�
 msgid "On <0>{address}</0>"
 msgstr "<0>{address}</0>-এ"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "চাহিদা অনুযায়ী"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপর"
@@ -8786,10 +8923,6 @@ msgstr "<0>{address}</0>-এ নির্বাচিত লেখার উপ�
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "রুট ইনডেক্সে, okf_version একটি উদ্ধৃত স্ট্রিং হিসাবে লেখা হয় যেমন \"0.2\"। উদ্ধৃতিহীন, YAML এটিকে একটি সংখ্যা হিসাবে পড়ে এবং 0.10 নিঃশব্দে 0.1 হয়ে যায়।"
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "ট্রিগার হলে"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8968,6 +9101,7 @@ msgstr "{keyName}-এর জন্য ইমোজি নির্বাচক �
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9464,6 +9598,11 @@ msgstr "অনাথ মোড"
 msgid "Orphans"
 msgstr "অনাথ"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "অন্যান্য"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "অন্যান্য"
@@ -9492,6 +9631,10 @@ msgstr "রূপরেখা"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "{budgetLabel} টোকেন বাজেটের বেশি"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "{budgetLabel} টোকেন নির্দেশিকার বেশি। স্কিল ব্যবহারের সময় এসব এজেন্টের কনটেক্সটে লোড হয় — এটি হালকা রাখুন, বা বিস্তারিত references/ ফাইলে সরান যা কেবল প্রয়োজনে লোড হয়।"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9597,7 +9740,7 @@ msgstr "পার্স ব্যর্থ"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "{0} প্লাগইনের অংশ — শুধু পড়ার জন্য; একটি অনুলিপি সম্পাদনা করতে এটি খুলুন"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "{plugin} প্লাগইনের অংশ"
 
@@ -9775,6 +9918,11 @@ msgstr "ইনস্টল করার জন্য স্কিলগুলো
 msgid "Pick up where you left off"
 msgstr "যেখানে ছেড়েছিলেন সেখান থেকেই শুরু করুন"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "আপনার অনুলিপি কোথায় যাবে তা বেছে নিন। একটি গন্তব্য বেছে নিলে সেটি তৈরি হয়।"
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9784,6 +9932,14 @@ msgstr "{1} থেকে {0} তোলা হয়েছে।"
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "ট্যাব পিন করুন"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "উপরে পিন করুন"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "পিন করা"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9830,10 +9986,6 @@ msgstr "ভেবে দেখা হচ্ছে…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "জনপ্রিয়"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "skills.sh-এ জনপ্রিয়"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9968,6 +10120,7 @@ msgstr "প্রকল্প"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "প্রকল্প"
@@ -10069,6 +10222,10 @@ msgstr "GitHub-এ প্রকাশ করুন"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "প্রকাশিত"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "{publisher} প্রকাশ করেছে"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10328,6 +10485,7 @@ msgid "Relevance"
 msgstr "প্রাসঙ্গিকতা"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10456,10 +10614,6 @@ msgstr "\"{0}\"-কে অন্য প্রতিটি জায়গা থ
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\"-কে সাম্প্রতিক প্রকল্প থেকে সরানো হয়েছে। এর ফোল্ডারটি আর নেই।"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "যেখান থেকে সরানো হবে"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10722,6 +10876,10 @@ msgstr "দৃশ্যের ছাঁকনি রিসেট করুন"
 msgid "Resize {handleKey}"
 msgstr "{handleKey}-এর আকার বদলান"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "স্কিল প্যানেলের আকার পরিবর্তন করুন"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "আপনার টার্মিনালে দ্বন্দ্ব মীমাংসা করুন"
@@ -10750,6 +10908,7 @@ msgstr "ডেল্টা মীমাংসা করা হচ্ছে"
 msgid "Resources"
 msgstr "সম্পদ"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10768,6 +10927,7 @@ msgstr "এই অ্যাপের সংস্করণ দিয়ে প�
 msgid "Restarted — now running v{appRuntime}."
 msgstr "পুনরায় চালু হয়েছে — এখন v{appRuntime} চলছে।"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "পুনরায় চালু করা হচ্ছে"
@@ -11256,6 +11416,10 @@ msgstr "সিস্টেমের সংক্ষিপ্তসারের �
 msgid "See all {0} starter packs"
 msgstr "সব {0}টি স্টার্টার প্যাক দেখুন"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "সব {count}টি স্কিল দেখুন"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "পূর্ণ ইনস্টল নির্দেশিকা দেখুন"
@@ -11453,6 +11617,10 @@ msgid "Server returned a malformed response."
 msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের প্রতিক্রিয়া ফেরত দিয়েছে।"
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "সার্ভার একটি ত্রুটিপূর্ণ আপডেট প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "সার্ভার একটি ত্রুটিপূর্ণ গঠনের আপলোড প্রতিক্রিয়া ফেরত দিয়েছে।"
 
@@ -11471,6 +11639,10 @@ msgstr "সার্ভার একটি অসম্পূর্ণ স্ক
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "সার্ভার অসম্পূর্ণ টেমপ্লেট প্রতিক্রিয়া ফেরত দিয়েছে।"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "সার্ভার <0>{branch}</0> ব্রাঞ্চে চলে গেছে — কনটেন্ট পুনরায় লোড হচ্ছে"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11903,15 +12075,28 @@ msgstr "ইতিমধ্যে প্রকল্পে দক্ষতা"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "স্কিল খোঁজা <0>skills.sh</0> দ্বারা চালিত"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md স্কিল নিজেই পরিচালনা করে — অন্য একটি নাম বেছে নিন"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "স্কিল"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "স্কিল এখন ভাগ করা। আপনার দলের সঙ্গে ভাগ করতে .ok/skills কমিট করুন।"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "{0} থেকে স্কিল।"
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "{0}/{1} থেকে স্কিল।"
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11935,9 +12120,11 @@ msgstr "স্কিলগুলো পুনরায় নির্ধার�
 msgid "Skills section"
 msgstr "স্কিল বিভাগ"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "স্কিল স্টুডিও"
 
@@ -11953,6 +12140,10 @@ msgstr "স্কিল আপনার AI টুলকে পুনরাবৃ
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "এই প্রকল্পের সঙ্গে আসা স্কিল, এবং যে ফোল্ডারগুলি থেকে এর AI টুল সেগুলি পড়ে।"
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "স্কিল টুলবার"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12135,6 +12326,10 @@ msgstr "সোর্সে পূর্বাবস্থা বা পুনর
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "লাফাতে স্পেস, নিচু হতে নিচের তির। খেলাটা এটুকুই।"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "পাথে স্পেস অনুমোদিত নয়"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12341,10 +12536,6 @@ msgstr "এই সপ্তাহে আমি যা যা বদলেছি 
 msgid "Switch and update branch"
 msgstr "ব্রাঞ্চ বদলে হালনাগাদ করুন"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "Files ও Skills-এর মধ্যে বদলান"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "নিজের জায়গা ধরে রেখে দৃশ্য ও সোর্স সম্পাদকের মধ্যে বদলান।"
@@ -12402,11 +12593,6 @@ msgstr "{targetPath}-এর সিমলিংক"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "মূলের মাধ্যমে সিমলিংক করা"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "স্কিলটি {0}-এ সিমলিংক করে"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12750,6 +12936,11 @@ msgstr "সেই বার্তাটি ইতিমধ্যে চলে �
 msgid "The {0} download request timed out."
 msgstr "{0}-এর ডাউনলোড অনুরোধের সময় শেষ হয়ে গেছে।"
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "{0} প্লাগইন এই স্কিলগুলো তার ক্যাশ থেকে সরবরাহ করে — OK কখনো এগুলো সম্পাদনা বা আপডেট করে না।"
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "{editor} ফোল্ডারে এই স্কিলের একটি ভিন্ন সংস্করণ আছে। কোনটি থাকবে তা বাছুন, নয়তো দুটোই আলাদা নামে রাখুন। আপনি যা-ই বদলান, তার আগে ব্যাকআপ নেওয়া হয়।"
@@ -12801,10 +12992,6 @@ msgstr "ডিফল্ট স্কিল ফোল্ডার (সংরক�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "ডেস্কটপ অ্যাপ সাড়া দিচ্ছে না। সতেজ করে আবার চেষ্টা করুন।"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "গন্তব্য বদলে গেছে। তালিকা দেখে নিশ্চিত করুন।"
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12872,9 +13059,22 @@ msgstr "খোলা এজেন্ট"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "মূল লেখাটি মুছে ফেলা হয়েছে। আপনি এই মন্তব্যটি নির্বাচিত লেখার উপর আবার বসাতে পারেন।"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "পাথ স্কিলের বাইরে যেতে পারে না (. বা .. নয়)"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "প্লাগইনে {0}-ও রয়েছে — এখানে শুধু নাম দেওয়া হয়েছে, OK কখনো এগুলো ইনস্টল করে না।"
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "প্রাকদর্শন সেসব সম্পদ আটকে দেয় যেগুলো তার নিরাপত্তা নিয়ম মানে না (উদাহরণস্বরূপ সাধারণ http:// URL, বা eval ব্যবহার করা কোড)। উপরের বিষয়বস্তু অসম্পূর্ণভাবে রেন্ডার হতে পারে।"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "এই প্রজেক্টের সার্ভার এই উইন্ডো থেকে ভিন্ন ব্রাঞ্চে আছে — কনটেন্ট লোড করা যাচ্ছে না।"
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13241,6 +13441,16 @@ msgstr "এই GitHub URL শেয়ার করা যাবে না।"
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "এটি {boldName}-এর একটি প্রাকদর্শন — Open Knowledge-এর সঙ্গে আসা একটি অন্তর্নির্মিত স্কিল। এটি শুধু পড়ার জন্য।"
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "এটি {boldName}-এর একটি প্রাকদর্শন — এই উৎসের {0}টি স্কিলের একটি। এটি আপনার এজেন্টগুলোতে ইনস্টল করুন।"
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "এটি {boldName}-এর একটি প্রাকদর্শন — এই রিপোজিটরির {0}টি স্কিলের একটি। এটি আপনার এজেন্টগুলোতে ইনস্টল করুন।"
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "এটি {boldName}-এর একটি প্রাকদর্শন, যা {boldHarness}-এ {boldLevel} স্তরে শনাক্ত হয়েছে।"
@@ -13266,6 +13476,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "এটি একটি ড্রাইভের রুট মনে হচ্ছে (যেমন C:\\)। এখানে কাঠামো গড়লে পুরো ড্রাইভ স্ক্যান হবে।"
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "এই যন্ত্র"
 
@@ -13330,12 +13541,17 @@ msgstr "এটি {0}-কে স্থায়ীভাবে সরিয়�
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "এটি “{2}” স্কিল থেকে {0}/{1} স্থায়ীভাবে সরিয়ে দেয়। SKILL.md-এ যা কিছু সেটির দিকে নির্দেশ করে, তা পুনরায় তৈরি না করা পর্যন্ত কাজ করবে না।"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "এটি {names} স্থায়ীভাবে মুছে ফেলে। নাম ধরে এই স্কিলগুলো ব্যবহারকারী এজেন্টরা এগুলো পুনরায় তৈরি না হওয়া পর্যন্ত ব্যর্থ হবে।"
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "এটি {path}-কে স্থায়ীভাবে সরিয়ে দেয়। যেসব এজেন্ট এই টেমপ্লেটটি নাম ধরে উল্লেখ করে সেগুলো এটি আবার তৈরি না হওয়া বা কোনো মূল ফোল্ডারের টেমপ্লেট এর জায়গা না নেওয়া পর্যন্ত ব্যর্থ হবে।"
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "এই প্রকল্প"
 
@@ -13394,15 +13610,6 @@ msgstr "এই প্রকল্পের স্কিল স্কিল স�
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "এটি আপনার Mac থেকে এবং নিচে আপনার নির্বাচিত যেকোনো প্রকল্প থেকে OpenKnowledge-এর সেটিং ও সংযুক্তি সরিয়ে দেয়, তবে আপনার markdown বিষয়বস্তু ও লেখা স্কিলগুলো রেখে দেয়।"
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "এই রিপোজিটরিতে {count}টি স্কিল আছে, সঙ্গে {0}। এগুলোর যেকোনোটি প্লাগইন থেকে ইনস্টল করুন।"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "এই রিপোজিটরিতে {count}টি স্কিল আছে। এগুলোর যেকোনোটি প্লাগইন থেকে ইনস্টল করুন।"
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13619,6 +13826,11 @@ msgstr "টুল কল"
 msgid "Top linked pages"
 msgstr "সবচেয়ে বেশি লিংক করা পাতা"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "মোট"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "git-এ হিসাবভুক্ত — হালনাগাদ আপনার রিপোজিটরির মাধ্যমে আসে (pull বা CI), স্বয়ংক্রিয় হালনাগাদে নয়"
@@ -13799,17 +14011,6 @@ msgstr "এই সম্পাদনা পর্যন্ত পূর্বা
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Edit source প্যানেলে বা কোড-ধাঁচের কোনো প্রপার্টি ফিল্ডে নির্বাচনের পরিবর্তন পূর্বাবস্থায় ফেরান, পুনরায় করুন, বা এক এক করে দেখুন।"
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "আনইনস্টল করুন"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "{name} আনইনস্টল করুন"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13876,6 +14077,10 @@ msgstr "{0}-এর সব মন্তব্যের চিহ্ন সরা�
 msgid "Unordered list of items."
 msgstr "আইটেমের অক্রমিক তালিকা।"
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "পিন সরান"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "{accessibleLabel} আনপিন করুন"
@@ -13920,6 +14125,10 @@ msgstr "হালনাগাদ করুন"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "আপনার সম্পাদনার উপরে \"{skillName}\" হালনাগাদ করবেন?"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "এই উৎস থেকে সবকিছু আপডেট করুন"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13985,10 +14194,6 @@ msgstr "আপলোড করুন"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "{keyName} আপলোড করুন"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "একটি স্কিল আপলোড করুন"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14088,6 +14293,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr "ছোট হাতের .yaml বা .yml এক্সটেনশন ব্যবহার করুন"
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "স্কিলের ভিতরে একটি আপেক্ষিক পাথ ব্যবহার করুন"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "স্কিলের ভেতরে একটি আপেক্ষিক পথ ব্যবহার করুন (কোনো .. নয়, কোনো ফাঁকা জায়গা নয়; SKILL.md পরিচালিত)।"
@@ -14171,8 +14379,13 @@ msgstr "{viaTags}-এর মাধ্যমে"
 msgid "via parent"
 msgstr "মূলের মাধ্যমে"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "প্লাগইন থেকে"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "দেখুন"
@@ -14180,6 +14393,10 @@ msgstr "দেখুন"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "{name} দেখুন"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "skills.sh-এ {publisher} দেখুন"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14206,8 +14423,17 @@ msgid "View in Source Markdown"
 msgstr "উৎস Markdown-এ দেখুন"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "প্লাগইন দেখুন"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "উৎস দেখুন"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "{plugin} প্লাগইনের রিপোজিটরি দেখুন"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14385,6 +14611,10 @@ msgstr "আপনি কোনো বাইরের লিংকের উপ�
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "আপনি কোনো প্রকাশিত স্কিল ইনস্টল করলে স্কিল ডিরেক্টরিকে (skills.sh) জানান যাতে তার ইনস্টল সংখ্যা সঠিক থাকে। এটি স্কিলের নাম, তার উৎস রিপোজিটরি, এবং সেটি কোন এজেন্ট টুলে গেছে তা পাঠায় — ফাইলের বিষয়বস্তু কখনও নয়, এবং কোনো ব্যক্তিগত, স্থানীয় বা হাতে লেখা উৎসের স্কিলের জন্য কখনও নয়। প্রতি মেশিনে প্রতি স্কিলের জন্য একবার।"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "কোথায়"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "নতুন যোগ করা সংযুক্তি কোথায় রাখা হয়।"
@@ -14420,6 +14650,10 @@ msgstr "উইকি লিংকের পরামর্শ"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "উইকি-লিঙ্ক যেমন [[Page]] — এখানে লিঙ্ক করার একটি সমর্থিত উপায়, কিন্তু একজন বহিরাগত পাঠক কিছুই সমাধান করে না এবং বন্ধনী দেখায়।"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "<0>{effective}</0> হিসেবে তৈরি হবে"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

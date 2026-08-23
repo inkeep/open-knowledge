@@ -20,7 +20,7 @@ const retarget = vi.fn(() => {});
 // `useMoveSkillScope` reads DocumentContext to pin the Skills sidebar across a
 // move and to resolve the open tab it must repoint. No provider here, so stub it.
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ setSkillsSidebar: vi.fn(), openTabs: [] }),
+  useDocumentContext: () => ({ openTabs: [] }),
 }));
 vi.doMock('@/lib/skills-api', () => ({ moveSkillScope }));
 vi.doMock('@/components/ManagedArtifactProperties', () => ({

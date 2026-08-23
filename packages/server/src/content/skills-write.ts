@@ -46,8 +46,13 @@ import {
 // ── Schema constants (Agent Skills standard) ──────────────────────────────
 const NAME_MAX = 64;
 const DESCRIPTION_MAX = 1024;
-/** Reserved word the skill loader rejects in `name` (cross-vendor). */
-const RESERVED_NAME_WORDS = ['anthropic', 'claude'];
+/** Anthropic's authoring guidance discourages these in `name` — but real
+ *  loaders (Claude Code included) accept them, and the marketplace is full of
+ *  `claude-*` skills, so this is a WARNING, never a hard block: a hard block
+ *  made every such downloaded skill fail import with nothing to open, and
+ *  also broke rename / scope-move / duplicate for any skill already named
+ *  that way (every write path funnels through validateName). */
+const DISCOURAGED_NAME_WORDS = ['anthropic', 'claude'];
 /** Soft body-length guidance (warning, not error) — progressive disclosure. */
 const BODY_SOFT_MAX_LINES = 500;
 /** SKILL.md entrypoint filename (load-bearing for editor discovery). */
@@ -122,6 +127,12 @@ export function composeSkillContent(input: {
   const content = `---\n${fmYaml}---\n${input.body}`;
 
   const warnings: string[] = [];
+  const discouraged = DISCOURAGED_NAME_WORDS.filter((w) => input.name.includes(w));
+  if (discouraged.length > 0) {
+    warnings.push(
+      `Skill name contains ${discouraged.map((w) => `"${w}"`).join(', ')} — Anthropic's authoring guidance discourages vendor words in skill names.`,
+    );
+  }
   const lineCount = input.body.split('\n').length;
   if (lineCount > BODY_SOFT_MAX_LINES) {
     warnings.push(
@@ -473,7 +484,10 @@ export function applySkillBundleFileDelete(input: BundleFileInput): BundleFileDe
   const existed = existsSync(abs);
   if (existed) {
     try {
-      tracedUnlinkSync(abs);
+      // A directory row deletes like any other folder — recursively. The
+      // caller owns closing any live docs beneath it first.
+      if (statSync(abs).isDirectory()) tracedRmSync(abs, { recursive: true, force: true });
+      else tracedUnlinkSync(abs);
     } catch (err) {
       return {
         ok: false,
@@ -624,15 +638,6 @@ function validateName(
       },
     };
   }
-  if (RESERVED_NAME_WORDS.some((w) => name.includes(w))) {
-    return {
-      ok: false,
-      error: {
-        code: 'RESERVED_NAME',
-        message: `Skill name may not contain reserved words (${RESERVED_NAME_WORDS.join(', ')}).`,
-      },
-    };
-  }
   return { ok: true };
 }
 
@@ -756,8 +761,17 @@ function relPathOf(base: string, abs: string): string {
 }
 
 function serializeFrontmatter(fm: SkillFrontmatter): string {
-  // Order: name then description (schema canonical order). No other keys.
-  return stringifyYaml({ name: fm.name, description: fm.description });
+  // Order: name, description, then the one upstream-owned key OK carries rather
+  // than authors — `metadata.pack`, a starter pack's identity. It is the witness
+  // the provenance retrofit needs to tell our `write-a-spec` from the user's, and
+  // writing it back is the difference between a re-importable pack and one that
+  // can never be recognised again. Nothing else upstream survives: version lives
+  // in the lockfile, and OK still injects no descriptive frontmatter of its own.
+  return stringifyYaml({
+    name: fm.name,
+    description: fm.description,
+    ...(fm.metadata !== undefined ? { metadata: fm.metadata } : {}),
+  });
 }
 
 function isEmpty(absDir: string): boolean {

@@ -1,13 +1,9 @@
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import type {
-  OkProjectIntegrationsSetRequest,
-  OkProjectIntegrationsSetResult,
-  OkProjectIntegrationsStatus,
-} from '@/lib/desktop-bridge-types';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -16,10 +12,14 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
-const toastError = vi.fn(() => {});
-vi.doMock('sonner', () => ({
-  toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
-}));
+// The row is fed by `/api/skills` — the same list every other skills surface
+// reads — so the harness controls the hook rather than a desktop bridge. The
+// bridge is not mocked at all here, which is itself part of the contract: this
+// block used to render nothing without it.
+let skillsState: { status: string; data?: readonly SkillsListEntry[]; message?: string } = {
+  status: 'loading',
+};
+vi.doMock('@/hooks/use-skills', () => ({ useSkills: () => skillsState }));
 
 const { ProjectSkillSection } = await import('./ProjectSkillSection');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
@@ -32,73 +32,89 @@ function renderSection() {
   );
 }
 
-/** `editors` is required by the status contract but belongs to the AI tools
- *  page; this section reads only `skill`, `hasProject` and `available`. */
-const baseStatus: OkProjectIntegrationsStatus = {
-  available: true,
-  hasProject: true,
-  projectDir: '~/proj',
-  editors: [],
-  skill: {
-    installed: true,
-    paths: ['.claude/skills/open-knowledge/SKILL.md', '.codex/skills/open-knowledge/SKILL.md'],
-    description:
-      'Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP.',
-    hosts: ['claude', 'codex'],
-    size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
-    sourceDir: '/bundled/project',
-  },
+const projectSkill: SkillsListEntry = {
+  name: 'open-knowledge',
+  description:
+    'Authoritative agent-runtime contract for working inside an OpenKnowledge project — a markdown-CRDT knowledge base exposed over MCP.',
+  scope: 'project',
+  path: '.claude/skills/open-knowledge/SKILL.md',
+  absolutePath: '/proj/.claude/skills/open-knowledge/SKILL.md',
+  installed: true,
+  hosts: ['claude', 'codex'],
+  managed: true,
+  size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
 };
 
-/** Non-null narrowing once, so the tests below don't each assert it. */
-const uninstallableSkill = baseStatus.skill ?? {
-  installed: false,
-  paths: [],
-  description: '',
-  blurb: '',
-  hosts: [],
+/** An ordinary authored skill, present to prove the filter is scope + managed
+ *  rather than "the first project entry". */
+const authored: SkillsListEntry = {
+  name: 'grill-me',
+  scope: 'project',
+  path: '.claude/skills/grill-me/SKILL.md',
+  absolutePath: '/proj/.claude/skills/grill-me/SKILL.md',
+  installed: true,
+  hosts: ['claude'],
 };
 
-interface HarnessOpts {
-  status?: OkProjectIntegrationsStatus;
-  setResult?: (request: OkProjectIntegrationsSetRequest) => OkProjectIntegrationsSetResult;
-}
-
-function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
-  const setCalls: OkProjectIntegrationsSetRequest[] = [];
-  const bridge = {
-    projectIntegrations: {
-      status: async () => status,
-      setComponent: async (request: OkProjectIntegrationsSetRequest) => {
-        setCalls.push(request);
-        return setResult ? setResult(request) : { ok: true as const, status };
-      },
-    },
-  };
-  Object.defineProperty(window, 'okDesktop', { value: bridge, configurable: true, writable: true });
-  return { setCalls };
-}
+beforeEach(() => {
+  skillsState = { status: 'ready', data: [authored, projectSkill] };
+});
 
 afterEach(() => {
   cleanup();
-  toastError.mockClear();
-  // biome-ignore lint/suspicious/noExplicitAny: test-only global teardown.
-  (window as any).okDesktop = undefined;
+  window.location.hash = '';
 });
 
 describe('ProjectSkillSection', () => {
   test('renders the project skill row with its human blurb, not the frontmatter description', async () => {
-    installBridge();
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('project-skill-uninstall')).toBeTruthy();
+      expect(screen.getByTestId('settings-project-skill')).toBeTruthy();
     });
     expect(screen.getByText('How to use OpenKnowledge and its MCP tools.')).toBeTruthy();
     expect(screen.queryByText(/markdown-CRDT knowledge base/)).toBeNull();
+    // One row: the authored project skill belongs to the manager below, not here.
+    expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(1);
+    expect(screen.queryByText('grill-me')).toBeNull();
+  });
+
+  test('the row is the control — there is no separate button to write from', async () => {
+    // Settings owning a second write of the same state is what let one surface
+    // say "installed" while the skill's own page said which agents. The row
+    // hands off; it does not act.
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-project-skill')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('project-skill-install')).toBeNull();
+    expect(screen.queryByTestId('project-skill-uninstall')).toBeNull();
+  });
+
+  test('clicking the row opens the built-in preview addressed by its bundle dir', async () => {
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-consent-row-preview')).toBeTruthy();
+    });
+    // Settings is a hash-driven dialog (#settings); navigating to a preview hash
+    // is exactly what dismisses it.
+    window.location.hash = '#settings';
+
+    await userEvent.click(screen.getByTestId('skill-consent-row-preview'));
+
+    expect(window.location.hash.startsWith('#/__skill-preview__/')).toBe(true);
+    // The bundle DIR, not the SKILL.md the list reports — a preview addressed at
+    // the file resolves nothing.
+    expect(decodeURIComponent(window.location.hash)).toContain(
+      '/proj/.claude/skills/open-knowledge',
+    );
+    expect(decodeURIComponent(window.location.hash)).not.toContain('SKILL.md');
+    // `level` is part of the preview tab's identity — a slip to 'global' here
+    // still produces a working tab, but a SECOND one whenever the same skill is
+    // also opened from a global surface.
+    expect(decodeURIComponent(window.location.hash)).toMatch(/\/project$/);
   });
 
   test('leads with what the skill is for, then that it is committed to the repo', async () => {
-    installBridge();
     renderSection();
     await waitFor(() => {
       expect(screen.getByTestId('settings-project-skill')).toBeTruthy();
@@ -112,108 +128,42 @@ describe('ProjectSkillSection', () => {
   });
 
   test('no project open → renders nothing, leaving the folders block below', async () => {
-    installBridge({
-      status: { available: true, hasProject: false, projectDir: null, editors: [], skill: null },
-    });
+    skillsState = { status: 'ready', data: [authored] };
     const { container } = renderSection();
     await waitFor(() => {
       expect(container.querySelector('[data-testid="settings-project-skill"]')).toBeNull();
     });
   });
 
-  test('an uninstalled skill with no capable editor disables Install', async () => {
-    installBridge({
-      status: {
-        ...baseStatus,
-        skill: { ...uninstallableSkill, installed: false, hosts: [] },
-      },
-    });
-    renderSection();
+  test('a global built-in never lands in the project block', async () => {
+    // Both blocks filter the SAME list, so a scope slip shows one skill twice on
+    // one page.
+    skillsState = {
+      status: 'ready',
+      data: [{ ...projectSkill, name: 'open-knowledge-discovery', scope: 'global' }],
+    };
+    const { container } = renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('project-skill-install')).toBeTruthy();
+      expect(container.querySelector('[data-testid="settings-project-skill"]')).toBeNull();
     });
-    expect(screen.getByTestId('project-skill-install').hasAttribute('disabled')).toBe(true);
   });
 
-  test('read-only build disables the control', async () => {
-    installBridge({ status: { ...baseStatus, available: false } });
+  test('a failed list keeps the heading and says what could not be read', async () => {
+    skillsState = { status: 'error', message: 'boom' };
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('project-skill-uninstall')).toBeTruthy();
+      expect(screen.getByTestId('project-skill-unavailable')).toBeTruthy();
     });
-    expect(screen.getByTestId('project-skill-uninstall').hasAttribute('disabled')).toBe(true);
-  });
-
-  test('the skill row confirms before uninstalling, then fans out via one component ref', async () => {
-    const { setCalls } = installBridge();
-    renderSection();
-    const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-skill-uninstall')).toBeTruthy();
-    });
-
-    // The control alone writes nothing — it opens the consent screen. This is
-    // the whole point of the change: the project skill lands in the repo for
-    // everyone, so it must not move on a single click.
-    await user.click(screen.getByTestId('project-skill-uninstall'));
-    expect(setCalls.length).toBe(0);
-
-    // The confirm names every project-relative destination before acting.
-    const destinations = await screen.findByTestId('skill-destination-list');
-    expect(destinations.textContent).toContain('.claude/skills/open-knowledge/SKILL.md');
-    expect(destinations.textContent).toContain('.codex/skills/open-knowledge/SKILL.md');
-
-    await user.click(screen.getByTestId('skill-confirm-primary'));
-    await waitFor(() => expect(setCalls.length).toBe(1));
-    expect(setCalls[0]).toEqual({ component: { kind: 'skill' }, enabled: false });
-  });
-
-  test('a refused uninstall surfaces the error and leaves the control truthful', async () => {
-    // The spy was wired but never asserted: if the `!result.ok` branch is
-    // inverted or the catch is dropped, a failed write goes silent and the row
-    // still reads as though it worked.
-    installBridge({
-      setResult: () => ({
-        ok: false as const,
-        error: 'read-only project — left unchanged',
-        status: baseStatus,
-      }),
-    });
-    renderSection();
-    const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-skill-uninstall')).toBeTruthy();
-    });
-
-    await user.click(screen.getByTestId('project-skill-uninstall'));
-    await user.click(await screen.findByTestId('skill-confirm-primary'));
-
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith('read-only project — left unchanged'),
+    expect(screen.getByTestId('settings-project-skill').textContent).toContain(
+      'Skills from OpenKnowledge',
     );
-    // No silent flip: the skill is still installed, so the control still offers
-    // Uninstall.
-    expect(screen.getByTestId('project-skill-uninstall')).toBeTruthy();
-    expect(screen.queryByTestId('project-skill-install')).toBeNull();
   });
 
-  test('installing an absent project skill confirms, then writes enabled: true', async () => {
-    // The sibling covers Install and this file covered only Uninstall, so the
-    // enabled:true direction of the shared applyToggle was unverified here.
-    const { setCalls } = installBridge({
-      status: { ...baseStatus, skill: { ...uninstallableSkill, installed: false } },
-    });
+  test('the loading state announces itself rather than showing a silent skeleton', async () => {
+    skillsState = { status: 'loading' };
     renderSection();
-    const user = userEvent.setup();
-    await waitFor(() => {
-      expect(screen.getByTestId('project-skill-install')).toBeTruthy();
-    });
-
-    await user.click(screen.getByTestId('project-skill-install'));
-    expect(setCalls.length).toBe(0);
-    await user.click(await screen.findByTestId('skill-confirm-primary'));
-
-    await waitFor(() => expect(setCalls.length).toBe(1));
-    expect(setCalls[0]).toEqual({ component: { kind: 'skill' }, enabled: true });
+    const loading = await screen.findByTestId('project-skill-loading');
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    expect(loading.textContent).toContain('Loading skills');
   });
 });

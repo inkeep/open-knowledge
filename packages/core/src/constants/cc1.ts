@@ -347,20 +347,22 @@ export function parseProjectSkillBundleDoc(docName: string): ParsedProjectSkillB
  * global store qualifies. Returns null for anything else.
  */
 export type ParsedGlobalSkillBundleDoc =
-  | { name: string; kind: 'skill'; rel: null }
-  | { name: string; kind: 'reference'; rel: string };
+  | { name: string; kind: 'skill'; rel: null; host: string | null }
+  | { name: string; kind: 'reference'; rel: string; host: string | null };
 
 const GLOBAL_SKILL_BUNDLE_DOC_RE = /^__skill__\/global\/([^/]+)(?:\/(references\/.+))?$/;
 
 export function parseGlobalSkillBundleDoc(docName: string): ParsedGlobalSkillBundleDoc | null {
   const match = GLOBAL_SKILL_BUNDLE_DOC_RE.exec(docName);
   if (!match) return null;
-  const name = match[1] as string;
+  // A `@<host>` qualifier (non-default same-named bundle) splits off so every
+  // consumer matches the SKILL's real name; `host` says which bundle it is.
+  const { name, host } = splitSkillHostQualifier(match[1] as string);
   const tail = match[2];
-  if (tail === undefined) return { name, kind: 'skill', rel: null };
+  if (tail === undefined) return { name, kind: 'skill', rel: null, host };
   // `references/<rel>` — `rel` is the bundle-relative ext-less path; the regex
   // `.+` already guarantees it is non-empty.
-  return { name, kind: 'reference', rel: tail.slice('references/'.length) };
+  return { name, kind: 'reference', rel: tail.slice('references/'.length), host };
 }
 
 /**
@@ -372,10 +374,30 @@ export function parseGlobalSkillBundleDoc(docName: string): ParsedGlobalSkillBun
  * to the bare `__skill__/project/<name>` opens a phantom empty doc and desyncs
  * delete / move, so this distinction is load-bearing.
  */
-export function skillLiveDocName(scope: ManagedArtifactScope, name: string): string {
+export function skillLiveDocName(scope: ManagedArtifactScope, name: string, host?: string): string {
   return scope === 'project'
     ? projectSkillContentDocName(name)
-    : `${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${name}`;
+    : `${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${name}${host ? `@${host}` : ''}`;
+}
+
+/**
+ * Optional HOST qualifier on a GLOBAL managed skill doc name:
+ * `__skill__/global/<name>@<host>` addresses the same-named bundle living in
+ * that host's user root (`~/.cursor/skills/<name>`, …) rather than the by-name
+ * default. Without it, two distinct-content global bundles sharing a name
+ * collapsed onto ONE doc: both sidebar rows opened one tab, the watcher fed
+ * both files into it, and persistence wrote back only to the precedence
+ * winner — edits made on the other row silently landed in the wrong bundle.
+ * The by-name default bundle keeps its unqualified name, so single-bundle
+ * skills (the overwhelming case) keep a stable identity. `@` cannot appear in
+ * a skill name (`SKILL_NAME_REGEX` is `[a-z0-9-]+`), so the split is
+ * unambiguous.
+ */
+export function splitSkillHostQualifier(segment: string): { name: string; host: string | null } {
+  const at = segment.indexOf('@');
+  if (at < 0) return { name: segment, host: null };
+  const host = segment.slice(at + 1);
+  return { name: segment.slice(0, at), host: host === '' ? null : host };
 }
 
 /**
@@ -392,11 +414,12 @@ export function skillFileLiveDocName(
   scope: ManagedArtifactScope,
   name: string,
   rel: string,
+  host?: string,
 ): string {
   const relNoExt = stripMdExt(rel);
   return scope === 'project'
     ? `${LEGACY_SKILL_STORE_ROOT}/${name}/${relNoExt}`
-    : `${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${name}/${relNoExt}`;
+    : `${MANAGED_ARTIFACT_PREFIX_SKILL}${scope}/${name}${host ? `@${host}` : ''}/${relNoExt}`;
 }
 
 /**
@@ -415,6 +438,9 @@ export type ParsedManagedArtifactName = {
   kind: 'skill';
   scope: ManagedArtifactScope;
   name: string;
+  /** Host qualifier for a non-default same-named GLOBAL bundle (see
+   *  {@link splitSkillHostQualifier}); null for the ordinary unqualified doc. */
+  host: string | null;
   rel: string | null;
 };
 
@@ -456,10 +482,12 @@ export function parseManagedArtifactName(name: string): ParsedManagedArtifactNam
     // (`__skill__/<scope>/<name>`), so existing callers are unchanged.
     const decoded = decodeManagedSegments(encoded);
     const nameEnd = decoded.indexOf('/');
-    const skillName = nameEnd < 0 ? decoded : decoded.slice(0, nameEnd);
-    if (!skillName) return null;
+    const segment = nameEnd < 0 ? decoded : decoded.slice(0, nameEnd);
+    if (!segment) return null;
     const rel = nameEnd < 0 ? null : decoded.slice(nameEnd + 1);
-    return { kind: 'skill', scope, name: skillName, rel };
+    const { name: skillName, host } = splitSkillHostQualifier(segment);
+    if (!skillName) return null;
+    return { kind: 'skill', scope, name: skillName, host, rel };
   }
   return null;
 }

@@ -403,7 +403,6 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           // mutations. Both must resolve cleanly or the editor tree never
           // installs the __activeProvider getter the e2e helper polls.
           getSessionState: async () => ({
-            activeTabByMode: { files: null, skills: null },
             updatedAt: null,
             panes: [
               {

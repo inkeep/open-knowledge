@@ -47,8 +47,8 @@ import type { ComponentType } from 'react';
 import { requestDocPanelTab } from '@/components/doc-panel-events';
 import { GithubIcon } from '@/components/icons/github';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
+import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
 import type { OkDesktopBridge, OkMenuAction } from '@/lib/desktop-bridge-types';
-import { hashFromSkills } from '@/lib/doc-hash';
 import { i18n } from '@/lib/i18n';
 import type { KeyboardShortcutId } from '@/lib/keyboard-shortcuts';
 import { openDocInNoteWindow } from '@/lib/open-note-window';
@@ -381,7 +381,9 @@ const COMMAND_DISPATCH: Record<string, (ctx: PaletteCommandContext) => void> = {
   },
   'open-skills': (ctx) => {
     ctx.closePalette();
-    window.location.hash = hashFromSkills();
+    // Skills live in the sidebar dock now, not behind a route — reveal it
+    // rather than navigate to a page that no longer exists.
+    requestSkillsDockExpanded();
   },
   settings: (ctx) => {
     ctx.closePalette();

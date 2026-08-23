@@ -1,6 +1,10 @@
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
-import { deriveSkillInstallRows, type SkillInstallMenuSkill } from './skill-install-rows';
+import {
+  deriveSkillInstallRows,
+  pluginCoverageOf,
+  type SkillInstallMenuSkill,
+} from './skill-install-rows';
 
 /** A listed skill with only the fields the derivation reads set. */
 function entry(over: Partial<SkillsListEntry> & Pick<SkillsListEntry, 'name'>): SkillsListEntry {
@@ -227,5 +231,82 @@ describe('no skill', () => {
     expect(r.customRootRows).toEqual([]);
     expect(r.sourceRow).toBeNull();
     expect(r.pathFor('claude')).toBeNull();
+  });
+});
+
+describe('pluginCoverageOf', () => {
+  const base = { scope: 'project' as const, name: 'write-skill' };
+
+  it('names the editor and plugin from a plugin-cache origin', () => {
+    expect(
+      pluginCoverageOf({
+        ...base,
+        origin: {
+          source:
+            '/Users/x/.claude/plugins/cache/inkeep-team-skills/shared/1.2.725/skills/write-skill',
+          importedAt: '2026-08-19T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({ editor: 'claude', plugin: 'shared' });
+  });
+
+  it('a marketplace-dir origin resolves the same way', () => {
+    expect(
+      pluginCoverageOf({
+        ...base,
+        origin: {
+          source: '/Users/x/.claude/plugins/marketplaces/inkeep-agents-private/agents/skills/x',
+          importedAt: '2026-08-19T00:00:00.000Z',
+        },
+      }),
+    ).toEqual({ editor: 'claude', plugin: 'agents' });
+  });
+
+  it('a skills.sh origin is not plugin coverage', () => {
+    expect(
+      pluginCoverageOf({
+        ...base,
+        origin: { source: 'vercel/skills', importedAt: '2026-08-19T00:00:00.000Z' },
+      }),
+    ).toBeNull();
+  });
+
+  it('no origin, no coverage', () => {
+    expect(pluginCoverageOf(base)).toBeNull();
+    expect(pluginCoverageOf(undefined)).toBeNull();
+  });
+});
+
+describe('pluginCoverageOf — plugin identity', () => {
+  it('a skill that IS a plugin skill covers its provider', () => {
+    // Served in place from a directory marketplace: the provider harness loads
+    // it via the plugin even though no cache path exists anywhere.
+    expect(
+      pluginCoverageOf({
+        scope: 'project',
+        name: 'linux-vm',
+        plugin: { name: 'ok', marketplace: 'inkeep-agents-private', provider: 'claude' },
+      }),
+    ).toEqual({ editor: 'claude', plugin: 'ok' });
+  });
+});
+
+describe('global-scope vocabulary', () => {
+  it('a global skill offers the user-only hosts a global install can write', () => {
+    // Antigravity reads ~/.gemini/skills — the fan-out writes it and the
+    // enumerator counts it, so the menu must be able to show and uncheck it.
+    const rows = derive({
+      scope: 'global',
+      name: 'open-knowledge-discovery',
+      hosts: ['agents', 'claude', 'antigravity'],
+      path: '.agents/skills/open-knowledge-discovery/SKILL.md',
+      installableEditors: ['claude', 'cursor', 'antigravity'],
+    }).rows;
+    expect(rows).toContain('antigravity');
+  });
+
+  it('a project skill never offers a user-only host — it has no project surface', () => {
+    const rows = derive({ ...base, installableEditors: undefined }).rows;
+    expect(rows).not.toContain('antigravity');
   });
 });

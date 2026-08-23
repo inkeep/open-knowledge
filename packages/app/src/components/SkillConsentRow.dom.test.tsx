@@ -1,13 +1,12 @@
 /**
  * RTL tests for the shared built-in-skill row (Settings + first launch). They
- * assert the truthful trio: the skill's own description, its reach through the
- * existing agent-icon cluster (including a custom-root path shown verbatim, and
- * the zero-hosts copy that replaces the cluster), and the compact cost subset
- * (always-on + on-trigger only, never a sum). The reach cluster runs for real —
- * only the Lingui macros are shimmed to their English passthrough.
+ * assert the truthful pair: the skill's own description, and its reach through
+ * the existing agent-icon cluster (including a custom-root path shown verbatim,
+ * and the zero-hosts copy that replaces the cluster). Token cost is deliberately
+ * absent from this row. The reach cluster runs for real — only the Lingui
+ * macros are shimmed to their English passthrough.
  */
-import type { SkillCostTiers } from '@inkeep/open-knowledge-core';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as linguiShim from '../../tests/lingui-macro-shim';
@@ -59,35 +58,9 @@ describe('SkillConsentRow', () => {
     expect(screen.queryByLabelText('Claude')).toBeNull();
   });
 
-  test('the cost line shows the always-on and on-trigger subset, never on-demand or a sum', () => {
-    const size: SkillCostTiers = { alwaysOn: 156, onTrigger: 3218, onDemand: 916 };
-    renderRow({ size });
-    const cost = screen.getByTestId('skill-cost-value');
-    const text = cost.textContent ?? '';
-    expect(text).toContain('~156');
-    expect(text).toContain('always-on');
-    expect(text).toContain('~3.2k');
-    expect(text).toContain('on trigger');
-    // On-demand is omitted from the compact row — not folded into another tier.
-    expect(text).not.toContain('on demand');
-    expect(text).not.toContain('~916');
-  });
-
-  test('no cost line when size is absent', () => {
-    renderRow({ size: undefined });
+  test('never renders a token-cost line', () => {
+    renderRow();
     expect(screen.queryByTestId('skill-cost-value')).toBeNull();
-  });
-
-  test('marks a tier over its published budget without touching the reach marks', () => {
-    const size: SkillCostTiers = { alwaysOn: 250, onTrigger: 6000, onDemand: 0 };
-    renderRow({ size });
-    // Both shown tiers are over budget; each carries an accessible over-budget
-    // reason. Scoped to the cost value so cluster icons can't skew the count.
-    const marks = within(screen.getByTestId('skill-cost-value')).getAllByRole('img');
-    expect(marks).toHaveLength(2);
-    for (const mark of marks) {
-      expect(mark.getAttribute('aria-label')).toMatch(/over the .* token budget/);
-    }
   });
 
   test('the body is a preview affordance that fires onActivate', () => {

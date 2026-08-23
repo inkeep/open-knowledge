@@ -30,6 +30,10 @@ declare module 'lucide-react/dist/esm/icons/package' {
   export const __iconNode: [string, Record<string, string>][];
 }
 
+declare module 'lucide-react/dist/esm/icons/pin' {
+  export const __iconNode: [string, Record<string, string>][];
+}
+
 declare namespace globalThis {
   import type { HocuspocusProvider } from '@hocuspocus/provider';
   import type { Editor } from '@tiptap/core';

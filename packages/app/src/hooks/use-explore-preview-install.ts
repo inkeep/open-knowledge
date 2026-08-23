@@ -7,6 +7,7 @@ import { useLingui } from '@lingui/react/macro';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { INSTALL_EDITORS, type SkillHostToggles } from '@/components/SkillInstallMenu';
+import { useSkills } from '@/hooks/use-skills';
 import { importSkill, installSkill, placeSkill } from '@/lib/skills-api';
 
 /**
@@ -53,6 +54,14 @@ export function useExplorePreviewInstall({
 } {
   const { t } = useLingui();
   const [scope, setScope] = useState<SkillScope>(initialScope);
+  // Machine-level editor detection, read off any same-scope entry (every list
+  // entry carries it) — same fallback `skill-install-rows` uses.
+  const allSkills = useSkills();
+  const installableEditorsForScope = (): Set<string> | null => {
+    if (allSkills.status !== 'ready') return null;
+    const list = allSkills.data.find((s) => s.scope === scope)?.installableEditors;
+    return list ? new Set<string>(list) : null;
+  };
   const [importedName, setImportedName] = useState<string | null>(null);
   // Mirrors `importedScopeRef` into render state so the caller's redirect can
   // read it; the ref alone is invisible to React.
@@ -172,7 +181,18 @@ export function useExplorePreviewInstall({
       void commit([...next]);
     },
     installAll() {
-      void commit([...INSTALL_EDITORS]);
+      // Same rule as the entry-backed menu: "All" reaches only editors
+      // installable on THIS machine (any same-scope entry carries the
+      // machine-level detection). Installing into an undetected editor
+      // no-ops server-side and the checkmark reverts — Omar's "clicking all
+      // put it in a bunch of random ones". Null = no data -> offer
+      // everything, never over-hide.
+      const installable = installableEditorsForScope();
+      void commit(
+        installable === null
+          ? [...INSTALL_EDITORS]
+          : INSTALL_EDITORS.filter((e) => installable.has(e)),
+      );
     },
     linkMode: true,
     // A preview has no installed location, so the location verbs are OMITTED

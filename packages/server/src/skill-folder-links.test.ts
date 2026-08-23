@@ -37,6 +37,32 @@ afterEach(() => {
 });
 
 describe('linkEditorSkillFolder (merge-then-swap)', () => {
+  test('a dangling per-skill symlink never blocks the link', () => {
+    // An uninstall / scope move deletes a delivery link's target and can leave
+    // the dead link behind. It holds no bytes a link could strand, so it must
+    // classify as removable (disclosed in the plan), never as a stray.
+    writeSkill(base, '.codex/skills/real', '# A');
+    symlinkSync(join(base, 'gone-away'), join(base, '.codex/skills/open-knowledge-discovery'));
+
+    const preview = previewEditorFolderLink({
+      base,
+      folderRel: '.codex/skills',
+      targetRootRel: '.agents/skills',
+    });
+    expect(preview.kind).toBe('plan');
+    if (preview.kind !== 'plan') return;
+    expect(preview.plan.removes).toEqual(['open-knowledge-discovery']);
+
+    const r = linkEditorSkillFolder({
+      base,
+      folderRel: '.codex/skills',
+      targetRootRel: '.agents/skills',
+    });
+    expect(r.ok).toBe(true);
+    expect(lstatSync(join(base, '.codex/skills')).isSymbolicLink()).toBe(true);
+    expect(existsSync(join(base, '.agents/skills/real/SKILL.md'))).toBe(true);
+  });
+
   test('moves own-only bundles, drops same-hash ones, links the folder', () => {
     writeSkill(base, '.codex/skills/only-here', '# A');
     writeSkill(base, '.codex/skills/both', '# Same');

@@ -35,6 +35,7 @@ import {
   type PersistedLinterConfig,
   type Principal,
   parseGlobalSkillBundleDoc,
+  parseManagedArtifactName,
   resolveLocalAutoSyncMode,
   type SyncMode,
   type SyncModeChangeSource,
@@ -235,6 +236,7 @@ import {
 } from './server-workload-telemetry.ts';
 import { shadowOpGateFor } from './shadow-op-gate.ts';
 import {
+  buildWipTree,
   commitUpstreamImport,
   configureShadowGc,
   destroyShadowRepo,
@@ -2292,6 +2294,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         })
       : undefined;
 
+    let globalCopyResyncTimer: ReturnType<typeof setTimeout> | null = null;
     const persistenceOpts: PersistenceOptions = {
       contentDir,
       projectDir,
@@ -2344,6 +2347,28 @@ export function createServer(options: ServerOptions): ServerInstance {
       // Closure-deferred: `syncEngine`/`semanticSearch` resolve at call time,
       // always after their assignment.
       onConfigPersisted: applyPersistedConfigToConsumers,
+      // GLOBAL-tier copy re-sync after an edit persists. Global skill copies
+      // otherwise refresh at boot only ("no watcher" tier), so editing a skill
+      // that was converted to copies left every copy stale until restart —
+      // and, with same-name bundles now keeping distinct doc identities, the
+      // stale copies would surface as phantom collision rows. Debounced
+      // trailing-edge: stores arrive per debounce flush while typing, and the
+      // resync walks every recorded copy pair (hash-gated, lossless).
+      onManagedSkillPersisted: (docName) => {
+        const parsed = parseManagedArtifactName(docName);
+        if (parsed?.kind !== 'skill' || parsed.scope !== 'global') return;
+        if (globalCopyResyncTimer !== null) clearTimeout(globalCopyResyncTimer);
+        globalCopyResyncTimer = setTimeout(() => {
+          globalCopyResyncTimer = null;
+          const home = configHomedirOverride ?? homedir();
+          void resyncRecordedSkillCopies(home, home, scanGlobalInPlaceSkills(home))
+            .then((n) => {
+              if (n > 0) log.info({ refreshed: n }, '[in-place-skills] post-edit copy re-sync');
+            })
+            .catch((err) => log.warn({ err }, '[in-place-skills] post-edit copy re-sync failed'));
+        }, 2000);
+        globalCopyResyncTimer.unref?.();
+      },
       // Diagnostic-only probe: surfaces any store that writes a doc the
       // removal cache still records as removed (a resurrection would
       // otherwise register as a benign self-write and be invisible).
@@ -4301,6 +4326,24 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
+    // Warm the shadow fan-out index in the background. The FIRST buildWipTree
+    // after a fresh shadow init (or a dropped/invalidated index) hashes the
+    // whole non-ignored corpus — ~16s measured on a 48k-file project — and
+    // without this warm-up that cost lands inside the first user mutation
+    // (skill rename / scope move / template write) instead of here. Delayed +
+    // fire-and-forget: the shadow op gate serializes it against any real
+    // flush, and a failure only forfeits the warm-up. `unref` so a short-lived
+    // process (tests, CLI one-shots) never waits on it.
+    if (shadowRef.current) {
+      const warmShadow = shadowRef.current;
+      const warmContentRoot = toPosix(relative(projectDir, contentDir)) || '.';
+      setTimeout(() => {
+        void buildWipTree(warmShadow, warmContentRoot).catch((e) => {
+          log.debug({ err: e }, '[shadow] fan-out index warm-up failed (non-fatal)');
+        });
+      }, 3000).unref();
+    }
+
     // HEAD-drift check: detect git operations that occurred while offline.
     // Compare stored last-known-head against current HEAD SHA and import if diverged.
     if (shadowRef.current) {
@@ -4533,6 +4576,20 @@ export function createServer(options: ServerOptions): ServerInstance {
       // import disk bytes into the open doc (if any) via the LKG-guarded path
       // the onLoad/onStore hooks share. A doc that isn't open is a no-op (its
       // next open re-reads disk fresh).
+      // One watcher leaf event per file means a skill move/install lands as a
+      // BURST of events, and a full global-bundle graph re-ingest per event
+      // multiplied into seconds of repeated work. Trailing debounce: the burst
+      // costs one re-ingest.
+      let globalSkillNodesTimer: NodeJS.Timeout | null = null;
+      const scheduleGlobalSkillNodesRefresh = (docName: string): void => {
+        if (globalSkillNodesTimer !== null) clearTimeout(globalSkillNodesTimer);
+        globalSkillNodesTimer = setTimeout(() => {
+          globalSkillNodesTimer = null;
+          void derivedDocumentIndex.refreshGlobalSkillNodes().catch((err) => {
+            log.warn({ err, docName }, '[backlinks] global skill bundle re-ingest failed');
+          });
+        }, 300);
+      };
       const reconcileManagedArtifactDisk = (absPath: string, content: string): void => {
         const docName = managedArtifactDocNameForPath(absPath, persistence.managedArtifactCtx);
         if (!docName) return;
@@ -4559,9 +4616,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         // so reference-only edits ride the next SKILL.md touch / restart; a SKILL.md
         // unlink does NOT fire onChange, so a deleted skill is pruned on restart.
         if (parseGlobalSkillBundleDoc(docName)) {
-          void derivedDocumentIndex.refreshGlobalSkillNodes().catch((err) => {
-            log.warn({ err, docName }, '[backlinks] global skill bundle re-ingest failed');
-          });
+          scheduleGlobalSkillNodesRefresh(docName);
         }
       };
 
@@ -4576,9 +4631,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         if (docName && parseGlobalSkillBundleDoc(docName)) {
           // Same re-ingest the change handler above runs; here it PRUNES the
           // vanished skill from the graph.
-          void derivedDocumentIndex.refreshGlobalSkillNodes().catch((err) => {
-            log.warn({ err, docName }, '[backlinks] global skill bundle prune failed');
-          });
+          scheduleGlobalSkillNodesRefresh(docName);
         }
       };
 

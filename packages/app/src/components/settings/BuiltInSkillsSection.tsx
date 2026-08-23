@@ -7,66 +7,81 @@
  * skills"). Skills now sit on the page named after them and AI tools keeps the
  * connections; this is the half that moved, unchanged in behaviour.
  *
- * Install/Uninstall stays an explicit button behind a confirm modal — a single
- * click never writes — routed through the same bridge path the
- * editor and PATH rows use (`setComponent` → reclaim), never the skills HTTP
- * API.
+ * This section WRITES NOTHING for a skill any more. Each row hands off to the
+ * skill's own page, where the per-agent install picker lives; settings owning a
+ * second write of the same state is what let one surface say "installed" while
+ * the other said which agents.
  *
- * Desktop-only, but its PAGE is not: Skills Studio renders in the browser too,
- * where the folders block below still works. So a missing bridge renders
- * NOTHING here, rather than the whole-page "desktop app only" fallback that AI
- * tools & CLI can afford as a desktop-gated sidebar item.
+ * The rows come from `/api/skills` — the same list the sidebar, the tree and
+ * the skill's own page read. They used to come from the desktop bridge, which
+ * is a second answer to a question that already had one: the bridge enumerates
+ * the bundles the app SHIPS, the endpoint reports what is on disk. Nothing kept
+ * them in step, so changing a skill's agents from its own page left this page
+ * showing the set from before. Reading the endpoint also means these rows now
+ * render in the browser, where the rest of Skills Studio already did.
+ *
+ * The one exception is the first-run intro, which is onboarding rather than
+ * management: which bundles first-launch setup already asked about
+ * (`onboarding`) is bridge-only knowledge, and the offer installs through the
+ * bridge's reclaim path. It is desktop-only and reads the bridge lazily, so a
+ * user who has seen it never pays for that call.
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { SkillConsentRow } from '@/components/SkillConsentRow';
-import { SkillInstallConfirmDialog } from '@/components/SkillInstallConfirmDialog';
 import { SkillsStudioIntroDialog } from '@/components/settings/SkillsStudioIntroDialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useSkills } from '@/hooks/use-skills';
 import type { OkIntegrationsStatus } from '@/lib/desktop-bridge-types';
 import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
 import { mark } from '@/lib/perf';
+import { skillClusterHosts } from '@/lib/skill-scope';
 import {
   hasSeenSkillsStudioIntro,
   markSkillsStudioIntroSeen,
 } from '@/lib/skills-studio-intro-store';
-import { useBuiltinSkillBlurb } from './builtin-skill-copy';
+import { builtinBundleDir, useBuiltinSkillBlurb } from './builtin-skill-copy';
 
 export function BuiltInSkillsSection() {
   const { t } = useLingui();
   const blurbFor = useBuiltinSkillBlurb();
+  const skills = useSkills();
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
-  const [status, setStatus] = useState<OkIntegrationsStatus | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [introStatus, setIntroStatus] = useState<OkIntegrationsStatus | null>(null);
   const [pending, setPending] = useState(false);
-  const [confirm, setConfirm] = useState<{
-    skillId: string;
-    mode: 'install' | 'uninstall';
-  } | null>(null);
   // Read once at mount, before any dismissal this session writes the flag —
   // reading it live would close the dialog mid-interaction the moment the user
   // clicked Install.
   const [introSeen] = useState(() => hasSeenSkillsStudioIntro());
   const [introDismissed, setIntroDismissed] = useState(false);
+  const showIntro = !introSeen && !introDismissed;
 
+  // Bridge read for the INTRO ONLY, and only on the one visit that shows it.
+  // The rows below no longer depend on it, so a failure here costs the offer,
+  // not the section.
   useEffect(() => {
-    if (!bridge) return;
+    if (!bridge || !showIntro) return;
     let cancelled = false;
     bridge.integrations
       .status()
       .then((snapshot) => {
-        if (!cancelled) setStatus(snapshot);
+        if (!cancelled) setIntroStatus(snapshot);
       })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
+      .catch((err) => {
+        // The intro is a nicety; the permanent rows carry the same offer. But
+        // an IPC failure should not vanish — it is the only signal that the
+        // bridge is broken, and the section no longer has a visible error state
+        // to carry it.
+        console.warn('[skills-studio] bridge integrations.status failed; intro skipped:', err);
+        if (!cancelled) setIntroDismissed(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [bridge]);
+  }, [bridge, showIntro]);
 
   // No `finally` — the React Compiler can't lower TryStatement finalizers
   // (BuildHIR::lowerStatement Todo); the catch swallows, so the trailing
@@ -79,7 +94,7 @@ export function BuiltInSkillsSection() {
         component: { kind: 'skill', id: skillId },
         enabled,
       });
-      setStatus(result.status);
+      setIntroStatus(result.status);
       if (!result.ok) toast.error(result.error);
     } catch (err) {
       toast.error(
@@ -89,28 +104,10 @@ export function BuiltInSkillsSection() {
     setPending(false);
   }
 
-  // The modal fires this only once the user has acknowledged the destination
-  // set it currently shows; mark the attempt with its surface + reach first.
-  async function onConfirmSkill(): Promise<void> {
-    if (!confirm) return;
-    const target = status?.skills.find((s) => s.id === confirm.skillId);
-    mark('ok/skill/install', {
-      surface: 'settings',
-      mode: confirm.mode,
-      skill: confirm.skillId,
-      hostCount: target?.resolvedHosts.length ?? 0,
-    });
-    const { skillId, mode } = confirm;
-    setConfirm(null);
-    await applyToggle(skillId, mode === 'install');
-  }
-
   function dismissIntro(): void {
     markSkillsStudioIntroSeen();
     setIntroDismissed(true);
   }
-
-  if (!bridge) return null;
 
   const heading = (
     <div>
@@ -128,7 +125,7 @@ export function BuiltInSkillsSection() {
     </div>
   );
 
-  if (loadFailed) {
+  if (skills.status === 'error') {
     return (
       <section
         className="space-y-2 rounded-lg border bg-card p-3"
@@ -142,7 +139,7 @@ export function BuiltInSkillsSection() {
     );
   }
 
-  if (status === null) {
+  if (skills.status !== 'ready') {
     return (
       <section
         className="space-y-2 rounded-lg border bg-card p-3"
@@ -168,16 +165,11 @@ export function BuiltInSkillsSection() {
     );
   }
 
-  if (status.skills.length === 0) return null;
+  // The user-global built-ins, in the endpoint's own order.
+  const rows = skills.data.filter((s) => s.managed === true && s.scope === 'global');
+  if (rows.length === 0) return null;
 
-  const busy = pending || !status.available;
-  // Re-resolved from live status each render, so the modal always discloses the
-  // destinations currently on the status snapshot — it re-confirms on its own
-  // if they drift while it is open.
-  const confirmSkill = confirm
-    ? (status.skills.find((s) => s.id === confirm.skillId) ?? null)
-    : null;
-
+  const busy = pending;
   // First visit offers what SETUP does not install — the non-onboarding
   // bundles — not merely whatever is uninstalled. Those differ in the case that
   // matters: a user who unchecked `open-knowledge-discovery` during first-launch
@@ -188,8 +180,7 @@ export function BuiltInSkillsSection() {
   // ponytail: offers the FIRST eligible bundle, not all of them. A second
   // optional bundle would need a list + per-row controls here; one row is the
   // shape the offer actually has today.
-  const introOffer = status.skills.find((sk) => !sk.installed && !sk.onboarding) ?? null;
-  const showIntro = !introSeen && !introDismissed && !confirm;
+  const introOffer = introStatus?.skills.find((sk) => !sk.installed && !sk.onboarding) ?? null;
 
   return (
     <section
@@ -198,41 +189,29 @@ export function BuiltInSkillsSection() {
     >
       {heading}
 
-      {!status.available && (
-        <p
-          className="text-1sm text-amber-600 dark:text-amber-400"
-          data-testid="builtin-skills-read-only"
-        >
-          <Trans>Managing skills is unavailable in this build.</Trans>
-        </p>
-      )}
-
       <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-background/50">
-        {status.skills.map((skill) => {
-          const hosts = skill.resolvedHosts.map((h) => h.editor);
-          const canInstall = hosts.length > 0;
-          // Bound as `name` so the accessible names reuse the catalog's existing
-          // `Install {name}` / `Uninstall {name}` msgids rather than minting
-          // `Install {0}` variants needing fresh translation in every locale.
-          const name = skill.name;
+        {rows.map((skill) => {
+          const source = builtinBundleDir(skill.absolutePath);
           return (
-            <li key={skill.id} className="hover:bg-accent">
+            <li key={skill.name} className="hover:bg-accent">
               <SkillConsentRow
                 name={skill.name}
                 // The human line, not the frontmatter description: that field
                 // is the AGENT's trigger text (discovery's is 600 characters
-                // and ends in a `Do NOT load` clause aimed at a model). It
-                // still backs the confirm modal and the preview tab.
-                description={blurbFor(skill.id) ?? skill.description}
-                hosts={hosts}
-                size={skill.size}
+                // and ends in a `Do NOT load` clause aimed at a model), which
+                // the preview tab still shows in full.
+                description={blurbFor(skill.name) ?? skill.description ?? ''}
+                hosts={skillClusterHosts(skill)}
                 onActivate={
-                  skill.sourceDir
+                  source
                     ? () => {
-                        mark('ok/skill/preview-open', { surface: 'settings', skill: skill.id });
+                        mark('ok/skill/preview-open', {
+                          surface: 'settings',
+                          skill: skill.name,
+                        });
                         openSkillPreviewTab({
                           flavor: 'builtin',
-                          source: skill.sourceDir,
+                          source,
                           name: skill.name,
                           subtitle: '',
                           level: 'global',
@@ -241,28 +220,30 @@ export function BuiltInSkillsSection() {
                     : undefined
                 }
                 control={
-                  skill.installed ? (
+                  // An explicit verb beside the row: the body-click preview was
+                  // the only way in, and nothing said the row was interactive.
+                  source ? (
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={busy}
-                      onClick={() => setConfirm({ skillId: skill.id, mode: 'uninstall' })}
-                      aria-label={t`Uninstall ${name}`}
-                      data-testid={`skills-studio-skill-uninstall-${skill.id}`}
+                      data-testid={`builtin-skill-manage-${skill.name}`}
+                      onClick={() => {
+                        mark('ok/skill/preview-open', {
+                          surface: 'settings',
+                          skill: skill.name,
+                        });
+                        openSkillPreviewTab({
+                          flavor: 'builtin',
+                          source,
+                          name: skill.name,
+                          subtitle: '',
+                          level: 'global',
+                        });
+                      }}
                     >
-                      <Trans>Uninstall</Trans>
+                      <Trans>Manage</Trans>
                     </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      disabled={busy || !canInstall}
-                      onClick={() => setConfirm({ skillId: skill.id, mode: 'install' })}
-                      aria-label={t`Install ${name}`}
-                      data-testid={`skills-studio-skill-install-${skill.id}`}
-                    >
-                      <Trans>Install</Trans>
-                    </Button>
-                  )
+                  ) : undefined
                 }
               />
             </li>
@@ -270,7 +251,7 @@ export function BuiltInSkillsSection() {
         })}
       </ul>
 
-      {showIntro && (
+      {showIntro && introStatus !== null && (
         <SkillsStudioIntroDialog
           open
           offer={introOffer}
@@ -287,21 +268,6 @@ export function BuiltInSkillsSection() {
             dismissIntro();
             void applyToggle(introOffer.id, true);
           }}
-        />
-      )}
-
-      {confirmSkill && confirm && (
-        <SkillInstallConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setConfirm(null);
-          }}
-          mode={confirm.mode}
-          name={confirmSkill.name}
-          description={confirmSkill.description}
-          paths={confirmSkill.paths}
-          size={confirmSkill.size}
-          onConfirm={() => void onConfirmSkill()}
         />
       )}
     </section>

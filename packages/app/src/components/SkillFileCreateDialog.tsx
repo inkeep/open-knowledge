@@ -1,4 +1,5 @@
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
@@ -32,6 +33,21 @@ export interface SkillFileCreateTarget {
  * live editable doc and opens immediately; anything else (scripts, text
  * fixtures) is written fs-direct.
  */
+/** The one thing wrong with a non-empty, non-trailing-slash path — or null.
+ *  Specific over exhaustive: the red text names the actual problem instead of
+ *  reciting every rule at once. */
+function bundlePathProblem(trimmed: string): string | null {
+  if (/\s/.test(trimmed)) return t`Spaces aren't allowed in the path`;
+  const segments = trimmed.split('/');
+  if (segments.some((seg) => seg === '.' || seg === '..'))
+    return t`The path can't leave the skill (no . or ..)`;
+  if (segments.some((seg) => seg === '')) return t`Empty folder names aren't allowed (//)`;
+  if (segments.length === 1 && trimmed.toLowerCase() === 'skill.md')
+    return t`SKILL.md is managed by the skill itself — pick another name`;
+  if (!isValidBundleFilePath(trimmed)) return t`Use a relative path inside the skill`;
+  return null;
+}
+
 export function SkillFileCreateDialog({
   target,
   onOpenChange,
@@ -53,23 +69,34 @@ export function SkillFileCreateDialog({
   if (!target) return null;
 
   const trimmed = path.trim();
-  const invalid = trimmed === '' || !isValidBundleFilePath(trimmed);
+  // Mid-typing states are incomplete, not wrong: an empty field or a trailing
+  // slash is on its way to a valid path and gets a quiet hint, never a red
+  // error. Only input that can't become valid by typing more turns red.
+  const incomplete = trimmed === '' || trimmed.endsWith('/');
+  const problem = incomplete ? null : bundlePathProblem(trimmed);
+  const invalid = incomplete || problem !== null;
   const canSave = !invalid && !saving;
   // When the path nests, name the folder(s) that'll be created so the implicit
   // mkdir is honest rather than a surprise.
   const folderPart = trimmed.includes('/') ? trimmed.split('/').slice(0, -1).join('/') : null;
 
+  // An extensionless basename becomes markdown: `references/notes` means
+  // notes.md to a person, and a bare file would only open in the read-only
+  // viewer. Explicit extensions (`run.sh`, `data.json`) are kept as typed.
+  const basename = trimmed.split('/').pop() ?? '';
+  const effective = basename !== '' && !basename.includes('.') ? `${trimmed}.md` : trimmed;
+
   async function submit() {
     if (!target || !canSave) return;
     setSaving(true);
-    const isMd = /\.mdx?$/i.test(trimmed);
+    const isMd = /\.mdx?$/i.test(effective);
     const result = await writeSkillFile({
       scope: target.skill.scope,
       name: target.skill.name,
-      path: trimmed,
+      path: effective,
       content: isMd
         ? `# ${
-            trimmed
+            effective
               .split('/')
               .pop()
               ?.replace(/\.mdx?$/i, '') ?? ''
@@ -78,13 +105,13 @@ export function SkillFileCreateDialog({
     });
     setSaving(false);
     if (!result.ok) {
-      toast.error(t`Couldn't create ${trimmed}: ${result.error}`);
+      toast.error(t`Couldn't create ${effective}: ${result.error}`);
       return;
     }
     toast.success(t`Created ${result.path}`);
     // Markdown references open as live editable docs right away.
     if (isMd) {
-      const docName = skillEntryFileLiveDocName(target.skill, trimmed);
+      const docName = skillEntryFileLiveDocName(target.skill, effective);
       openTarget({ kind: 'doc', target: docName, docName });
     }
     onOpenChange(false);
@@ -118,15 +145,21 @@ export function SkillFileCreateDialog({
             value={path}
             onChange={(e) => setPath(e.target.value)}
             placeholder="references/notes.md"
-            aria-invalid={invalid && trimmed !== ''}
+            aria-invalid={problem !== null}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void submit();
             }}
           />
-          {invalid && trimmed !== '' ? (
-            <p className="text-destructive text-xs">
+          {problem !== null ? (
+            <p className="text-destructive text-xs">{problem}</p>
+          ) : incomplete && trimmed !== '' ? (
+            <p className="text-muted-foreground text-xs">
+              <Trans>Add a file name (e.g. notes.md)</Trans>
+            </p>
+          ) : effective !== trimmed ? (
+            <p className="text-muted-foreground text-xs">
               <Trans>
-                Use a relative path inside the skill (no .., no spaces; SKILL.md is managed).
+                Will be created as <span className="font-mono text-foreground/80">{effective}</span>
               </Trans>
             </p>
           ) : folderPart ? (

@@ -107,6 +107,26 @@ export const MAINTENANCE_GIT_TIMEOUT_MS = (() => {
 })();
 
 /**
+ * Dedicated timeout for the corpus-staging `git add` calls (WIP tree build /
+ * per-writer commit). simple-git's `block` watchdog kills a child that stays
+ * SILENT for the window — and `git add` prints nothing until it finishes, so
+ * the 30s default is a hard cap on total staging time. A COLD stage of a big
+ * project (first flush after init, or an invalidated stat cache) legitimately
+ * hashes the whole non-ignored corpus and can outlive 30s, especially while
+ * boot-time scans compete for I/O; killing it then falls back to a throwaway
+ * index and the persistent stat cache never establishes — every later skill
+ * rename/move re-pays the full hash. These calls are gated + serialized off
+ * the hot doc path, so a long ceiling stalls nothing else. Override via
+ * `OK_SHADOW_STAGE_TIMEOUT_MS`.
+ */
+const CORPUS_STAGE_GIT_TIMEOUT_MS = (() => {
+  const raw = process.env.OK_SHADOW_STAGE_TIMEOUT_MS;
+  if (!raw) return 300_000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+})();
+
+/**
  * `gc.auto` threshold for the shadow repo. git only packs once
  * loose objects exceed this on an explicit `git gc --auto`. Shadow writes use
  * plumbing (commit-tree/update-ref), which never triggers git's built-in
@@ -446,7 +466,10 @@ async function commitWipInner(
 ): Promise<string> {
   const tmpIndex = resolve(shadow.gitDir, `index-wip-${writer.id}`);
   const ref = `refs/wip/${branch}/${writer.id}`;
-  const sg = shadowGit(shadow);
+  // Staging timeout, not the 30s op watchdog: the index here is seeded by
+  // `read-tree` (no stat info), so the `git add` below re-hashes everything in
+  // the pathspec and is silent throughout — see CORPUS_STAGE_GIT_TIMEOUT_MS.
+  const sg = shadowGit(shadow, { timeoutMs: CORPUS_STAGE_GIT_TIMEOUT_MS });
   const gitPathspec = contentRoot || '.';
 
   try {
@@ -584,7 +607,9 @@ async function buildWipTreeWithIndex(
   contentRoot: string,
   indexFile: string,
 ): Promise<string> {
-  const sg = shadowGit(shadow);
+  // Staging timeout, not the 30s op watchdog: a cold `git add` is silent for
+  // its whole (possibly long) runtime — see CORPUS_STAGE_GIT_TIMEOUT_MS.
+  const sg = shadowGit(shadow, { timeoutMs: CORPUS_STAGE_GIT_TIMEOUT_MS });
   const gitPathspec = contentRoot || '.';
   await sg
     .env({
@@ -622,7 +647,15 @@ async function buildWipTreeInner(shadow: ShadowHandle, contentRoot: string): Pro
       { err: e },
       '[shadow-repo] persistent fan-out index failed — rebuilding from a fresh index',
     );
-    for (const stale of [persistentIndex, `${persistentIndex}.lock`]) {
+    // A TIMEOUT leaves a valid (if partial) stat cache — deleting it on that
+    // class guaranteed the next build started cold again, so a repo whose cold
+    // stage ever outlived the watchdog could never establish the cache. Drop
+    // the index only on real failures (corruption); the stale `.lock` from the
+    // killed `git add` must go either way or git refuses the next use.
+    const isTimeout = e instanceof Error && e.message.includes('block timeout');
+    for (const stale of isTimeout
+      ? [`${persistentIndex}.lock`]
+      : [persistentIndex, `${persistentIndex}.lock`]) {
       try {
         rmSync(stale);
       } catch {

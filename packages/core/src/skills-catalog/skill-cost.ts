@@ -79,10 +79,19 @@ export function estimateSkillCost(input: SkillCostInput): SkillCostTiers {
   const alwaysOn = estimateTokens((input.name ?? '').length + (input.description ?? '').length);
   const onTrigger = estimateTokens(stripFrontmatter(input.skillMd).body.length);
 
+  // The overlay-vendoring convention (an `overlay.yaml` beside an `upstream/`
+  // mirror of the source bundle) keeps a full prose COPY for regeneration —
+  // counting it roughly doubles the on-demand figure with bytes the agent
+  // already gets through SKILL.md + references. Excluded only when the
+  // pairing `overlay.yaml` identifies the convention, so a skill whose
+  // upstream/ folder is genuinely authored content keeps its count.
+  const hasOverlayMirror = input.files.some((f) => f.relPath === 'overlay.yaml');
+
   let onDemandChars = 0;
   for (const file of input.files) {
     if (file.content === null) continue;
     if (file.relPath === 'SKILL.md') continue;
+    if (hasOverlayMirror && file.relPath.startsWith('upstream/')) continue;
     if (!isReadableBundleFile(file.relPath)) continue;
     onDemandChars += file.content.length;
   }

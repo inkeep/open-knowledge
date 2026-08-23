@@ -130,6 +130,16 @@ function bundleNames(rootAbs: string): { bundles: string[]; strays: string[]; ig
       bundles.push(e.name);
       continue;
     }
+    // A DANGLING symlink is a dead delivery pointer — an uninstall or scope
+    // move deleted its target and left the link behind. It holds no bytes a
+    // link could strand, but it fails the SKILL.md probe and is not a
+    // directory, so without this branch it classified as a stray and
+    // permanently blocked LINK on exactly the folders OK itself had touched.
+    // Disclosed via `ignored` (it goes away with the folder), never a blocker.
+    if (e.isSymbolicLink() && !existsSync(p)) {
+      ignored.push(e.name);
+      continue;
+    }
     // An EMPTY directory holds nothing a link could strand (harness leftovers
     // like `codex-primary-runtime`). A directory with contents but no SKILL.md
     // is real content and still blocks.

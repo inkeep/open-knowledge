@@ -47,9 +47,9 @@ test('installs the recommended skill through the real endpoint and recognizes it
 
   const dialog = page.getByRole('dialog', { name: 'Install from OKF' });
   await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText('Project');
+  await expect(dialog).toContainText('Installs into this project');
   await expect(dialog).toContainText('okf-knowledge-base');
-  await dialog.getByRole('button', { name: 'Install selected' }).click();
+  await dialog.getByRole('button', { name: 'Install 1 skill' }).click();
 
   const installedSkill = join(
     workerServer.contentDir,

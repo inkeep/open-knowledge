@@ -42,13 +42,6 @@ async function expectAsset(page: Page, hash: string, assetName: string): Promise
   });
 }
 
-async function expectSkillsHome(page: Page): Promise<void> {
-  await expectHash(page, '#/__skills__');
-  await expect(page.getByRole('heading', { name: 'Create a skill.', exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-}
-
 async function expectSkillFile(
   page: Page,
   hash: string,
@@ -171,11 +164,16 @@ test('browser history traverses every user-facing navigation target and truncate
     await expectAsset(page, assetHash, assetName);
 
     const sidebar = page.locator('[data-slot="sidebar-container"]');
-    // The surface switch is an icon-first ToggleGroup (Radix radios, not
-    // buttons), so address it by test id rather than by role+name.
-    // The Skills base page has its own canonical route and history entry.
-    await sidebar.getByTestId('sidebar-skills-toggle').click();
-    await expectSkillsHome(page);
+    // Skills dock beneath the file tree now rather than replacing it, so there is
+    // no surface switch and no Skills home to land on — expanding the dock is a
+    // pure view change and contributes no history entry. That absence is the
+    // point: the back/forward chain below no longer has a Skills-home hop.
+    // `exact` matters: the dock's toolbar holds an "Explore skills" button, and a
+    // substring match (the default) claims both it and the section trigger.
+    await sidebar
+      .getByTestId('skills-dock')
+      .getByRole('button', { name: 'Skills Studio', exact: true })
+      .click();
     // Pierre's tree renders each label twice (a visible copy and an
     // aria-hidden overflow measurement copy), so take the first match.
     const projectGroup = sidebar.getByText('Project', { exact: true }).first();
@@ -194,8 +192,6 @@ test('browser history traverses every user-facing navigation target and truncate
 
     await page.goBack();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
-    await page.goBack();
-    await expectSkillsHome(page);
     await page.goBack();
     await expectAsset(page, assetHash, assetName);
     await page.goBack();
@@ -216,8 +212,6 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goForward();
     await expectAsset(page, assetHash, assetName);
     await page.goForward();
-    await expectSkillsHome(page);
-    await page.goForward();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goForward();
     await expectSkillFile(page, skillFileHash, bundleFile, bundleMarker);
@@ -225,12 +219,8 @@ test('browser history traverses every user-facing navigation target and truncate
     await page.goBack();
     await expectDocument(page, skillDocHash, `Navigation Skill ${id}`);
     await page.goBack();
-    await expectSkillsHome(page);
-    await page.goBack();
     await expectAsset(page, assetHash, assetName);
-    // Back on the asset, the sidebar is still showing Skills — switch to Files
-    // so the tree row below is the one being clicked.
-    await sidebar.getByTestId('sidebar-files-toggle').click();
+    // No surface to switch back from: the file tree was visible the whole time.
     await sidebarTreeItem(page, `${baselineDoc}.md`).click();
     await expectDocument(page, baselineHash, `Navigation Baseline ${id}`);
     await page.goForward();

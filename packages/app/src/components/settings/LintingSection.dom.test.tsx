@@ -638,12 +638,12 @@ describe('OkfPluginSection', () => {
     await user.click(screen.getByRole('button', { name: 'Install skill' }));
     const dialog = await screen.findByRole('dialog', { name: 'Install from OKF' });
     expect(within(dialog).getByTestId('plugin-bundle-install')).toBeDefined();
-    expect(within(dialog).getByText('Project')).toBeDefined();
+    expect(within(dialog).getByText('Installs into this project')).toBeDefined();
     expect(dialog.textContent).not.toContain('Install into');
     expect(dialog.textContent).toContain('okf-knowledge-base');
     expect(installPackSkillCalls).toEqual([]);
 
-    await user.click(within(dialog).getByRole('button', { name: 'Install selected' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Install 1 skill' }));
 
     await waitFor(() => expect(installPackSkillCalls).toEqual(['okf']));
     expect(successToasts.at(-1)?.message).toContain('OKF agent skill installed');
@@ -686,7 +686,7 @@ describe('OkfPluginSection', () => {
 
     await user.click(screen.getByRole('button', { name: 'Install skill' }));
     await user.click(
-      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Install selected' }),
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Install 1 skill' }),
     );
 
     await waitFor(() => expect(errorToasts).toContain('Skill source could not be authored.'));

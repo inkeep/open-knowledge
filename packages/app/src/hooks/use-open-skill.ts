@@ -9,6 +9,7 @@ import {
   replaceHashWithoutNavigation,
 } from '@/lib/doc-hash';
 import { skillEntryLiveDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
+import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
 import { requestSkillTrackPrompt } from '@/lib/skill-track-prompt-store';
 import { listSkills } from '@/lib/skills-api';
 
@@ -35,9 +36,14 @@ export function useOpenSkill(): (
      *  SUPERSEDES what the user is looking at (the preview tab becoming the
      *  real skill after an install), not merely one that reuses the tab. */
     replaceHistory?: boolean;
+    /** Host qualifier of a NON-default same-named GLOBAL bundle (the clicked
+     *  entry's `hostQualifier`). Without it the by-name lookup below lands on
+     *  the FIRST list entry — the default bundle — so both collided sidebar
+     *  rows opened one tab and edits went to the wrong file. */
+    host?: string;
   },
 ) => void {
-  const { openTarget, setSkillsSidebar } = useDocumentContext();
+  const { openTarget } = useDocumentContext();
   const skillsState = useSkills();
   return (scope, name, opts) => {
     const open = (docName: string) => {
@@ -48,14 +54,6 @@ export function useOpenSkill(): (
         { kind: 'doc', target: docName, docName },
         opts?.replaceActive ? { tabBehavior: 'replace-active' } : undefined,
       );
-      // Pin the surface to Skills AFTER the open, never before: committing a tab
-      // re-arms autofollow, so a pin set first is simply overwritten. A PROJECT
-      // skill's doc is ordinary project content (`.claude/skills/<name>/SKILL`),
-      // so autofollow drops the user into the file tree after they asked for a
-      // skill. This is the shared entry point every open-a-skill surface routes
-      // through — sidebar click, create, import, detected-adopt, and the
-      // post-install redirect — so pinning here covers all of them.
-      setSkillsSidebar(true);
       // PUSH for a user-initiated open; REPLACE only when this open supersedes
       // the entry the user is standing on.
       //
@@ -74,7 +72,14 @@ export function useOpenSkill(): (
     // in the list yet — its server-reported `path` bridges the gap.
     const entry =
       skillsState.status === 'ready'
-        ? skillsState.data.find((sk) => sk.scope === scope && sk.name === name)
+        ? skillsState.data.find(
+            (sk) =>
+              sk.scope === scope &&
+              sk.name === name &&
+              (opts?.host === undefined
+                ? sk.hostQualifier === undefined
+                : sk.hostQualifier === opts.host),
+          )
         : undefined;
     // A gitignored bundle is listed but never indexed, so there is no doc to
     // open — every surface that routes through here would otherwise hand the
@@ -86,14 +91,87 @@ export function useOpenSkill(): (
     // two were computed from different paths once, and that combination refused
     // to open a skill that opened fine.
     if (entry?.ignored === true && entry.managed !== true) {
-      requestSkillTrackPrompt({ scope: entry.scope, name: entry.name });
+      // The flag can be STALE: a list fetch that raced a create/import computed
+      // `ignored` before the server admitted the new bundle, and stranding on
+      // that snapshot makes the just-created skill silently unopenable (the row
+      // stays selected, so even re-clicks are swallowed). Re-verify against a
+      // fresh list and only surface the track prompt when the skill is still
+      // ignored there.
+      const stale = entry;
+      void (async () => {
+        try {
+          const res = await listSkills(scope);
+          const fresh = res.ok
+            ? res.skills.find(
+                (sk) =>
+                  sk.scope === scope &&
+                  sk.name === name &&
+                  (opts?.host === undefined
+                    ? sk.hostQualifier === undefined
+                    : sk.hostQualifier === opts.host),
+              )
+            : undefined;
+          if (fresh && fresh.ignored !== true) {
+            open(skillEntryLiveDocName(fresh));
+            return;
+          }
+        } catch {
+          // Unreachable list — fall through to the honest prompt.
+        }
+        requestSkillTrackPrompt({ scope: stale.scope, name: stale.name });
+      })();
+      return;
+    }
+    // A SYMLINKED bundle's canonical doc is a plain file wherever the symlink
+    // points (e.g. an in-repo plugin source tree). Opening that doc from a
+    // SKILLS surface dumped the user into the source tree with no skill chrome
+    // and no explanation — "it's a file here, not a skill". The skill-shaped
+    // face of these is the read-only linked preview: the file stays the
+    // editable source of truth (and still opens as a plain doc from Files),
+    // the preview carries the skill identity, the symlink disclosure, and the
+    // lifecycle controls. Managed built-ins keep their own preview flavor.
+    // Both separators: `absolutePath` is a server-native path, and on
+    // Windows `lastIndexOf('/')` is -1 — slice(0, -1) would trim one char
+    // off the FILENAME instead of extracting the directory.
+    const bundleDirOf = (absolutePath: string): string => {
+      const cut = Math.max(absolutePath.lastIndexOf('/'), absolutePath.lastIndexOf('\\'));
+      return cut > 0 ? absolutePath.slice(0, cut) : absolutePath;
+    };
+    // A managed BUILT-IN is read-only everywhere: every surface that opens it
+    // by name gets the preview, not the live doc. The sidebar routed managed
+    // rows itself, but this shared opener (skill-ref chips, the palette, deep
+    // links) fell through to the editable doc — an editable built-in.
+    if (entry?.managed === true && entry.absolutePath !== undefined) {
+      openSkillPreviewTab({
+        flavor: 'builtin',
+        source: bundleDirOf(entry.absolutePath),
+        name: entry.name,
+        subtitle: '',
+        level: entry.scope,
+      });
+      return;
+    }
+    if (
+      entry &&
+      entry.scope === 'project' &&
+      entry.managed !== true &&
+      entry.canonicalPath !== undefined &&
+      entry.absolutePath !== undefined
+    ) {
+      openSkillPreviewTab({
+        flavor: 'linked',
+        source: bundleDirOf(entry.absolutePath),
+        name: entry.name,
+        subtitle: '',
+        level: entry.scope,
+      });
       return;
     }
     if (entry) return open(skillEntryLiveDocName(entry));
     if (scope === 'project' && opts?.path) return open(opts.path.replace(/\.mdx?$/i, ''));
     // Global: the managed `__skill__/global/<name>` doc resolves store-or-native
     // server-side, so it is always safe to open directly.
-    if (scope === 'global') return open(skillLiveDocName(scope, name));
+    if (scope === 'global') return open(skillLiveDocName(scope, name, opts?.host));
     // PROJECT with no entry and no path: NEVER mint the store-shaped fallback —
     // opening `.ok/skills/<name>/SKILL` creates a PHANTOM doc that persistence
     // materializes and the sweeper deletes in a loop. Resolve the real path

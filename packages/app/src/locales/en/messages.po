@@ -254,6 +254,11 @@ msgstr "{0, plural, one {File} other {Files}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {Folder} other {Folders}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, one {Install # skill} other {Install # skills}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, one {Skill} other {Skills}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · default"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0} (opens in a new tab)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "{0} of {1} projects selected"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "{0} of {1} selected"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "{0} other skills by this publisher"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "{0} plugin"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "{0} plugin · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0} reads this skill via {poolRootRel}. Click to stop {1} getting \"{2}\
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0} share this folder."
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "{0} skills selected"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "{behind} behind"
 msgid "{behind} behind origin"
 msgstr "{behind} behind origin"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, one {Instantly fixes the # problem that has a known auto
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, one {matches # file} other {matches # files}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "{count} skills at this source"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "{count} skills"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "{keyName} value"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} enabled"
@@ -845,6 +888,11 @@ msgstr "{pick} and {keep} both hold a different version of: {0}. Resolve those f
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin} ships {0} other skills"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, one {plugin} other {plugins}}"
@@ -901,9 +949,21 @@ msgstr "{slot} color — {0}"
 msgid "{slot} hex value"
 msgstr "{slot} hex value"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source} publishes {count} skills. Install any of them together."
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · imported source"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · skills.sh source"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}: {updated} updated, {upToDate} already up to date"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1199,6 +1259,10 @@ msgstr "A reusable starting point for new documents in this folder."
 msgid "A saved theme already uses this name."
 msgstr "A saved theme already uses this name."
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "A second skill with this name — rename it (or delete one) to manage it fully."
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "A short line shown under the title in the template list."
@@ -1320,6 +1384,10 @@ msgstr "Add"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "Add a comment"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "Add a file name (e.g. notes.md)"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1660,15 +1728,6 @@ msgstr "Already signed in?"
 msgid "Always included"
 msgstr "Always included"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "always-on"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "always-on tokens"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1995,6 +2054,10 @@ msgstr "Automatic picks a free port each start. Choose a fixed port to keep the 
 msgid "Available"
 msgstr "Available"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "Available in"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "Available in every project on this machine. Not shared through git."
@@ -2169,10 +2232,6 @@ msgstr "Broken link"
 msgid "Browse"
 msgstr "Browse"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "Browse all"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "Browse folder"
@@ -2184,10 +2243,6 @@ msgstr "Browse hundreds of themes"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "Browse or upload a skill for this project."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "Browse skills.sh"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2226,10 +2281,6 @@ msgstr "Build and keep track of the world behind your story. A home for your cha
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "Built-in (read-only)"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2309,7 +2360,6 @@ msgstr "Can't share this path."
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2344,6 +2394,10 @@ msgstr "Cannot delete files with unresolved conflicts"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "Cannot upload: no document is open"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "Change"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2567,6 +2621,10 @@ msgstr "Clear color"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "Clear menu"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "Clear selection"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3155,10 +3213,6 @@ msgstr "Content rules"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Content rules not yet loaded — try again in a moment"
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "Context cost"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "Context window:"
@@ -3220,6 +3274,7 @@ msgid "Copied full path"
 msgstr "Copied full path"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "Copied path"
 
@@ -3233,11 +3288,6 @@ msgstr "Copied relative path"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "Copied!"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "Copies the skill to {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3308,6 +3358,7 @@ msgid "Copy path"
 msgstr "Copy path"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "Copy Path"
 
@@ -3500,7 +3551,6 @@ msgstr "Couldn't add that comment."
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Couldn't apply the change: {0}"
 
@@ -3521,10 +3571,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "Couldn't construct the share URL. Try Done and re-share."
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "Couldn't copy path"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "Couldn't copy: {detail}"
 
@@ -3534,9 +3586,10 @@ msgstr "Couldn't copy. Select the URL above to copy it manually."
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "Couldn't create {trimmed}: {0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "Couldn't create {effective}: {0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3557,6 +3610,11 @@ msgstr "Couldn't create the worktree. Try a different name."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "Couldn’t create this theme. Try again."
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "Couldn't delete {0}: {error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3628,6 +3686,11 @@ msgstr "Couldn't install OpenKnowledge skill — {message}"
 msgid "Couldn't install skill: {0}"
 msgstr "Couldn't install skill: {0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "Couldn't install the project skill: {0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3677,6 +3740,12 @@ msgstr "Couldn't load your bug reports."
 msgid "Couldn't mark that comment to send."
 msgstr "Couldn't mark that comment to send."
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "Couldn't move {0}: {1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3721,6 +3790,15 @@ msgstr "Couldn't open the worktree. Try again."
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "Couldn't open this document in Slidev."
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "Couldn't pin {name}"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "Couldn't place {skillName} in {root}: {0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3973,6 +4051,10 @@ msgstr "Couldn't switch to Only me"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "Couldn't unmark that comment — it's still waiting to send."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "Couldn't unpin {name}"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3982,6 +4064,12 @@ msgstr "Couldn't update {gitignorePath}: {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "Couldn't update {subRoot}: {0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "Couldn't update from {0}: {1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4064,10 +4152,6 @@ msgstr "Create a personal skill, available across every project."
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "Create a skill for this project."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "Create a skill."
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4281,6 +4365,11 @@ msgstr "Delete"
 msgid "Delete {0}"
 msgstr "Delete {0}"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "Delete {0} skills"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "Delete {deleteDescriptorLabel}"
@@ -4362,6 +4451,10 @@ msgstr "Delete this comment"
 msgid "Deleted {0}."
 msgstr "Deleted {0}."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "Deleted {deleted} skills"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "Deleted {file}"
@@ -4403,10 +4496,6 @@ msgstr "Describe the project you want to create"
 msgid "Describe the skill you want to create"
 msgstr "Describe the skill you want to create"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "Describe what you want to build, start a blank file, or scaffold from a template."
@@ -4419,7 +4508,9 @@ msgstr "Describe what you want to create to continue"
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "Describe what you're working on and the agent sets it up for you."
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "description"
@@ -4436,6 +4527,11 @@ msgstr "Description (optional)"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "Description for {field}"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "description tokens"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4564,6 +4660,7 @@ msgstr "Disconnect"
 msgid "Disconnecting"
 msgstr "Disconnecting"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4842,6 +4939,7 @@ msgid "Edit {tag}"
 msgstr "Edit {tag}"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "Edit a copy"
 
@@ -5021,6 +5119,10 @@ msgstr "Empty"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "Empty diagram"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "Empty folder names aren't allowed (//)"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5210,6 +5312,10 @@ msgstr "Every concept document carries a non-empty type. This is the whole of OK
 msgid "every doc"
 msgstr "every doc"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "Everything from {source} is already up to date"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5293,6 +5399,7 @@ msgstr "Explain how your codebase works so teammates and AI agents can find thei
 msgid "Explore"
 msgstr "Explore"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "Explore skills"
@@ -5759,7 +5866,6 @@ msgid "Filename"
 msgstr "Filename"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "Files"
 
@@ -6020,6 +6126,10 @@ msgstr "From template"
 msgid "From the {0} plugin"
 msgstr "From the {0} plugin"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "Frontmatter"
@@ -6151,6 +6261,7 @@ msgstr "Give the AI tools you use access to read and update your projects. Check
 msgid "Glob patterns this schema applies to"
 msgstr "Glob patterns this schema applies to"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6206,6 +6317,10 @@ msgstr "Graph visualization of document links"
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "Grid of rows and columns with a header row."
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "Group skills by source"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6675,6 +6790,14 @@ msgstr "In Git projects, Open Knowledge also adds a scoped .gitattributes rule s
 msgid "In the Claude Desktop App"
 msgstr "In the Claude Desktop App"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "In this repo — collaborators get copies via git."
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "In your home folder — every project on this machine, just you."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "Indent or outdent list item"
@@ -6833,12 +6956,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6854,11 +6976,6 @@ msgstr "Install {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "Install {brand} →"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "Install {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6915,17 +7032,9 @@ msgstr "Install on all agents"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "Install OpenKnowledge in your AI tools"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "Install selected"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
 msgstr "Install skill"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
-msgstr "Install skills"
 
 #. Checkbox that installs the user-global discovery skill bundle
 #: src/components/McpConsentDialogBody.tsx
@@ -6936,10 +7045,15 @@ msgstr "Install the <0>open-knowledge-discovery</0> skill"
 msgid "Install the gh CLI"
 msgstr "Install the gh CLI"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "Install this skill"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "Installed"
 
@@ -6976,11 +7090,6 @@ msgstr "Installed {imported} skills from {0}"
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "Installed {imported}, but {failed} failed: {failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "Installed at {0} — click to remove"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "Installed at {path} — click to remove"
@@ -6995,6 +7104,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "Installed in {label} — click to remove"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7004,8 +7114,19 @@ msgstr "Installing"
 msgid "Installing {agentName}…"
 msgstr "Installing {agentName}…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "Installs for all your projects"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "Installs into this project"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "Installs the skill to {path} — the first location holds its own copy"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "Installs to"
 
@@ -7254,9 +7375,6 @@ msgid "Let's get set up."
 msgstr "Let's get set up."
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "Level"
 
@@ -7372,6 +7490,10 @@ msgstr "Lists"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "Lives outside this project — read-only here."
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7469,7 +7591,6 @@ msgid "Loading PDF"
 msgstr "Loading PDF"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "Loading popular skills"
 
@@ -7614,6 +7735,11 @@ msgstr "Malformed listPacks response"
 msgid "Malformed plan response"
 msgstr "Malformed plan response"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "Manage"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7634,10 +7760,6 @@ msgstr "Managing AI tools is unavailable in this build."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "Managing project AI tools is unavailable in this build."
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "Managing skills is unavailable in this build."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7837,6 +7959,16 @@ msgstr "Most installed"
 msgid "Move"
 msgstr "Move"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "Move {0} to Global"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "Move {0} to Project"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "Move across"
@@ -7967,6 +8099,14 @@ msgstr "Moved {label} to a new pane on the left."
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "Moved {label} to a new pane on the right."
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "Moved {moved} skills to Global"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "Moved {moved} skills to Project"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8147,10 +8287,6 @@ msgstr "New file in this skill"
 msgid "New folder"
 msgstr "New folder"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "New from scratch"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8192,6 +8328,7 @@ msgstr "New session"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "New skill"
@@ -8270,6 +8407,10 @@ msgstr "No agent is set up yet — opening Configure agents."
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "No agent is set up yet — pick one from the send menu."
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "no agents — saved, not installed anywhere"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "No agents available."
@@ -8282,10 +8423,6 @@ msgstr "No agents enabled"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "No agents match your search."
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "No agents selected — the skills are saved but not installed anywhere."
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8670,6 +8807,10 @@ msgstr "Not in sidebar"
 msgid "Not installed"
 msgstr "Not installed"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "Not installed in this project yet."
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8779,10 +8920,6 @@ msgstr "On — your search queries and the text of matching pages are sent to yo
 msgid "On <0>{address}</0>"
 msgstr "On <0>{address}</0>"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "on demand"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "On selected text in <0>{address}</0>"
@@ -8790,10 +8927,6 @@ msgstr "On selected text in <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "on trigger"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8972,6 +9105,7 @@ msgstr "Open emoji picker for {keyName}"
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9468,6 +9602,11 @@ msgstr "Orphan mode"
 msgid "Orphans"
 msgstr "Orphans"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "other"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "Other"
@@ -9496,6 +9635,10 @@ msgstr "Outline"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "over the {budgetLabel} token budget"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9601,7 +9744,7 @@ msgstr "Parse failed"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "Part of the {0} plugin — read-only; open it to edit a copy"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "Part of the {plugin} plugin"
 
@@ -9779,6 +9922,11 @@ msgstr "Pick the skills to install. Each one lands as an editable skill you own.
 msgid "Pick up where you left off"
 msgstr "Pick up where you left off"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "Pick where your copy goes. Choosing a destination creates it."
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9788,6 +9936,14 @@ msgstr "Picked up {0} from {1}."
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "Pin tab"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "Pin to top"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "Pinned"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9834,10 +9990,6 @@ msgstr "Pondering…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "Popular"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "Popular on skills.sh"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9972,6 +10124,7 @@ msgstr "project"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "Project"
@@ -10073,6 +10226,10 @@ msgstr "Publish to GitHub"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "Published"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "Published by {publisher}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10332,6 +10489,7 @@ msgid "Relevance"
 msgstr "Relevance"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10460,10 +10618,6 @@ msgstr "Removed \"{0}\" from every other location — its source folder still lo
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "Removes from"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10726,6 +10880,10 @@ msgstr "Reset view filters"
 msgid "Resize {handleKey}"
 msgstr "Resize {handleKey}"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "Resize skills panel"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "Resolve conflict in your terminal"
@@ -10754,6 +10912,7 @@ msgstr "Resolving deltas"
 msgid "Resources"
 msgstr "Resources"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10772,6 +10931,7 @@ msgstr "Restart with this app's version"
 msgid "Restarted — now running v{appRuntime}."
 msgstr "Restarted — now running v{appRuntime}."
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "Restarting"
@@ -11260,6 +11420,10 @@ msgstr "See <0>Architecture</0> for the system overview."
 msgid "See all {0} starter packs"
 msgstr "See all {0} starter packs"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "See all {count} skills"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "See the full install guide"
@@ -11457,6 +11621,10 @@ msgid "Server returned a malformed response."
 msgstr "Server returned a malformed response."
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "Server returned a malformed update response."
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "Server returned a malformed upload response."
 
@@ -11475,6 +11643,10 @@ msgstr "Server returned an incomplete skills response."
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "Server returned an incomplete templates response."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "Server switched to branch <0>{branch}</0> — reloading content"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11907,15 +12079,28 @@ msgstr "Skill already in project"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "Skill discovery powered by <0>skills.sh</0>"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md is managed by the skill itself — pick another name"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "Skills"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Skills are now shared. Commit .ok/skills to share them with your team."
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "Skills from {0}."
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "Skills from {0}/{1}."
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11939,9 +12124,11 @@ msgstr "Skills reassigned"
 msgid "Skills section"
 msgstr "Skills section"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "Skills Studio"
 
@@ -11957,6 +12144,10 @@ msgstr "Skills teach your AI tools repeatable tasks. Write your own in the edito
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "Skills that come with this project, and the folders its AI tools read them from."
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "Skills toolbar"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12139,6 +12330,10 @@ msgstr "Source undo or redo"
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "Space to jump, down arrow to duck. That is the whole game."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "Spaces aren't allowed in the path"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12345,10 +12540,6 @@ msgstr "Summarize everything I changed this week"
 msgid "Switch and update branch"
 msgstr "Switch and update branch"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "Switch between Files and Skills"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "Switch between the visual and source editors, keeping your place."
@@ -12406,11 +12597,6 @@ msgstr "Symlink to {targetPath}"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "symlinked via parent"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "Symlinks the skill to {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12754,6 +12940,11 @@ msgstr "That message already went out — your edit wasn't applied."
 msgid "The {0} download request timed out."
 msgstr "The {0} download request timed out."
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
@@ -12805,10 +12996,6 @@ msgstr "the default skills folder (the exact path appears once saved)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "The desktop app isn't responding. Refresh and try again."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "The destinations changed. Review the list, then confirm."
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12876,9 +13063,22 @@ msgstr "the open agent"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "The original text was deleted. You can re-place this comment on selected text."
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "The path can't leave the skill (no . or ..)"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "The plugin also ships {0} — named here, never installed by OK."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "The project's server is on a different branch than this window — content can't load."
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13245,6 +13445,16 @@ msgstr "This GitHub URL can't be shared."
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
@@ -13270,6 +13480,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "This machine"
 
@@ -13334,12 +13545,17 @@ msgstr "This permanently removes {0}. The plugin it was copied from is untouched
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "This project"
 
@@ -13398,15 +13614,6 @@ msgstr "This project's skill moved to Skills Studio."
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "This repo bundles {count} skills. Install any of them from the plugin."
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13623,6 +13830,11 @@ msgstr "Tool call"
 msgid "Top linked pages"
 msgstr "Top linked pages"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "total"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
@@ -13803,17 +14015,6 @@ msgstr "Undo to this edit?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "Uninstall"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "Uninstall {name}"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13880,6 +14081,10 @@ msgstr "Unmark every comment in {0}"
 msgid "Unordered list of items."
 msgstr "Unordered list of items."
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "Unpin"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "Unpin {accessibleLabel}"
@@ -13924,6 +14129,10 @@ msgstr "Update"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "Update \"{skillName}\" over your edits?"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "Update all from this source"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13989,10 +14198,6 @@ msgstr "Upload"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "Upload {keyName}"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "Upload a skill"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14092,6 +14297,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr "Use a lowercase .yaml or .yml extension"
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "Use a relative path inside the skill"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
@@ -14175,8 +14383,13 @@ msgstr "via {viaTags}"
 msgid "via parent"
 msgstr "via parent"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "via plugin"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "View"
@@ -14184,6 +14397,10 @@ msgstr "View"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "View {name}"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "View {publisher} on skills.sh"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14210,8 +14427,17 @@ msgid "View in Source Markdown"
 msgstr "View in Source Markdown"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "View plugin"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "View source"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "View the {plugin} plugin repo"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14389,6 +14615,10 @@ msgstr "When you hover an external link, its URL is sent to the destination site
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "Where"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "Where newly added attachments are placed."
@@ -14424,6 +14654,10 @@ msgstr "Wiki link suggestions"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "Will be created as <0>{effective}</0>"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

@@ -177,6 +177,18 @@ export const PROJECT_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
 );
 
 /**
+ * Editor ids with a USER-GLOBAL skill root — the valid targets of a global
+ * install. A strict superset of `PROJECT_SKILL_EDITOR_IDS`: Antigravity has a
+ * user root (`~/.gemini/skills`) but no project surface, so it is a global
+ * target only. Global surfaces (install menu, host-arg validation, cluster
+ * ordering) draw from THIS list; using the project list there is the
+ * vocabulary gap that let installs write a host the menu could never show.
+ */
+export const USER_SKILL_EDITOR_IDS = ALL_EDITOR_IDS.filter(
+  (id) => EDITOR_USER_SKILL_ROOT[id] !== null,
+);
+
+/**
  * Reserved name of OpenKnowledge's built-in project-skill bundle — the ONE skill
  * OK ships and re-projects into every wired editor's host dir on every project
  * open (`.{host}/skills/open-knowledge/`). Mirrors `RESERVED_SKILL_PREFIX` in

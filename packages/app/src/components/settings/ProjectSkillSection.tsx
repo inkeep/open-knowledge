@@ -10,67 +10,33 @@
  *
  * Unlike the user-global bundles this one is committed to the repo, so the
  * block says so — installing it installs it for everyone on the project.
+ *
+ * Sourced from `/api/skills`, the same list the sidebar, the tree and the
+ * skill's own page read. It used to read the desktop bridge instead, which is a
+ * second answer to a question that already had one: the bridge enumerates the
+ * bundles the app SHIPS, the endpoint reports what is on disk. They disagreed
+ * the moment anything changed from the skill's own page, and this row went on
+ * showing the install set from before.
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { SkillConsentRow } from '@/components/SkillConsentRow';
-import { SkillInstallConfirmDialog } from '@/components/SkillInstallConfirmDialog';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { OkProjectIntegrationsStatus } from '@/lib/desktop-bridge-types';
+import { useSkills } from '@/hooks/use-skills';
+import { emitSkillsChanged } from '@/lib/documents-events';
 import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
-import { useBuiltinSkillBlurb } from './builtin-skill-copy';
+import { skillClusterHosts } from '@/lib/skill-scope';
+import { builtinBundleDir, useBuiltinSkillBlurb } from './builtin-skill-copy';
 
 export function ProjectSkillSection() {
   const { t } = useLingui();
   const blurbFor = useBuiltinSkillBlurb();
-  const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
-  const [status, setStatus] = useState<OkProjectIntegrationsStatus | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [pending, setPending] = useState(false);
-  // One row, so the confirm state is just its mode — no per-row id like the
-  // user-global section needs.
-  const [confirmMode, setConfirmMode] = useState<'install' | 'uninstall' | null>(null);
-
-  useEffect(() => {
-    if (!bridge) return;
-    let cancelled = false;
-    bridge.projectIntegrations
-      .status()
-      .then((snapshot) => {
-        if (!cancelled) setStatus(snapshot);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [bridge]);
-
-  // No `finally` — the React Compiler can't lower TryStatement finalizers; the
-  // catch swallows, so the trailing setPending(false) runs on both paths.
-  async function applyToggle(enabled: boolean): Promise<void> {
-    if (!bridge) return;
-    setPending(true);
-    try {
-      const result = await bridge.projectIntegrations.setComponent({
-        component: { kind: 'skill' },
-        enabled,
-      });
-      setStatus(result.status);
-      if (!result.ok) toast.error(result.error);
-    } catch (err) {
-      toast.error(
-        t`Couldn't apply the change: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    setPending(false);
-  }
-
-  if (!bridge) return null;
+  const skills = useSkills();
+  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
+  const [installing, setInstalling] = useState(false);
 
   const heading = (
     <div>
@@ -92,7 +58,7 @@ export function ProjectSkillSection() {
     </div>
   );
 
-  if (loadFailed) {
+  if (skills.status === 'error') {
     return (
       <section
         className="space-y-2 rounded-lg border bg-card p-3"
@@ -106,7 +72,7 @@ export function ProjectSkillSection() {
     );
   }
 
-  if (status === null) {
+  if (skills.status !== 'ready') {
     return (
       <section
         className="space-y-2 rounded-lg border bg-card p-3"
@@ -131,19 +97,66 @@ export function ProjectSkillSection() {
     );
   }
 
-  // No project resolved from this window, or a main process that reports no
-  // bundle: nothing truthful to render, and the folders block below still is.
-  const skill = status.hasProject ? status.skill : null;
-  if (skill === null) return null;
-
-  const busy = pending || !status.available;
-  // Defensive: a main process older than this renderer sends no hosts. An empty
-  // set renders the row's own no-destination copy rather than crashing.
-  const hosts = skill.hosts ?? [];
+  const skill = skills.data.find((s) => s.managed === true && s.scope === 'project') ?? null;
+  if (skill === null) {
+    // Not installed. The row used to vanish entirely, which read as "there is
+    // no such skill" — instead say so and offer the install (desktop only: the
+    // bridge owns the project-skill seeding path).
+    if (!bridge) return null;
+    return (
+      <section
+        className="space-y-2 rounded-lg border bg-card p-3"
+        data-testid="settings-project-skill"
+      >
+        {heading}
+        <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-background/50 p-3">
+          <p className="text-1sm text-muted-foreground">
+            <Trans>Not installed in this project yet.</Trans>
+          </p>
+          <Button
+            size="sm"
+            disabled={installing}
+            data-testid="project-skill-install"
+            onClick={() => {
+              setInstalling(true);
+              void bridge.projectIntegrations
+                .setComponent({
+                  component: { kind: 'skill' },
+                  enabled: true,
+                })
+                .then((result) => {
+                  if (!result.ok) toast.error(result.error);
+                  else emitSkillsChanged();
+                })
+                .catch((err: unknown) => {
+                  toast.error(
+                    t`Couldn't install the project skill: ${err instanceof Error ? err.message : String(err)}`,
+                  );
+                })
+                .then(() => setInstalling(false));
+            }}
+          >
+            {installing ? <Trans>Installing</Trans> : <Trans>Install</Trans>}
+          </Button>
+        </div>
+      </section>
+    );
+  }
+  const source = builtinBundleDir(skill.absolutePath);
   // Falls back to the frontmatter description only if the copy module does not
-  // know this bundle id (a newer main process shipping a bundle we have no
-  // localized line for).
-  const rowDescription = blurbFor('project') ?? skill.description;
+  // know this bundle (a newer server shipping one we have no localized line
+  // for).
+  const rowDescription = blurbFor('project') ?? skill.description ?? '';
+  const openPreview = source
+    ? () =>
+        openSkillPreviewTab({
+          flavor: 'builtin',
+          source,
+          name: skill.name,
+          subtitle: '',
+          level: 'project',
+        })
+    : undefined;
 
   return (
     <section
@@ -155,71 +168,27 @@ export function ProjectSkillSection() {
       <ul className="overflow-hidden rounded-md border border-border bg-background/50">
         <li className="hover:bg-accent">
           <SkillConsentRow
-            name="open-knowledge"
+            name={skill.name}
             description={rowDescription}
-            hosts={hosts}
-            size={skill.size}
-            onActivate={
-              skill.sourceDir
-                ? () => {
-                    const source = skill.sourceDir;
-                    if (!source) return;
-                    openSkillPreviewTab({
-                      flavor: 'builtin',
-                      source,
-                      name: 'open-knowledge',
-                      subtitle: '',
-                      level: 'project',
-                    });
-                  }
-                : undefined
-            }
+            hosts={skillClusterHosts(skill)}
+            onActivate={openPreview}
             control={
-              skill.installed ? (
+              // An explicit verb beside the row: the body-click preview was the
+              // only way in, and nothing said the row was interactive at all.
+              openPreview ? (
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={busy}
-                  onClick={() => setConfirmMode('uninstall')}
-                  data-testid="project-skill-uninstall"
+                  onClick={openPreview}
+                  data-testid="project-skill-manage"
                 >
-                  <Trans>Uninstall</Trans>
+                  <Trans>Manage</Trans>
                 </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  disabled={busy || hosts.length === 0}
-                  onClick={() => setConfirmMode('install')}
-                  data-testid="project-skill-install"
-                >
-                  <Trans>Install</Trans>
-                </Button>
-              )
+              ) : undefined
             }
           />
         </li>
       </ul>
-
-      {confirmMode && (
-        <SkillInstallConfirmDialog
-          open
-          onOpenChange={(next) => {
-            if (!next) setConfirmMode(null);
-          }}
-          mode={confirmMode}
-          name="open-knowledge"
-          // The modal is the disclosure surface, so it quotes the skill's own
-          // frontmatter rather than the row's short line.
-          description={skill.description || rowDescription}
-          paths={skill.paths}
-          size={skill.size}
-          onConfirm={() => {
-            const next = confirmMode === 'install';
-            setConfirmMode(null);
-            void applyToggle(next);
-          }}
-        />
-      )}
     </section>
   );
 }

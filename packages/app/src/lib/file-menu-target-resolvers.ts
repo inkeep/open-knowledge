@@ -28,6 +28,7 @@ import {
   buildFolderHandoffInput,
   buildHandoffInput,
   buildProjectScopedHandoffInput,
+  buildSkillHandoffInput,
 } from '@/components/handoff/useHandoffDispatch';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
 import { docNameToRelativePath, joinWorkspacePath, type Workspace } from './workspace-paths';
@@ -114,6 +115,26 @@ export function buildSendToAiInputForActiveTarget(
   }
   if (activeTarget.kind === 'doc' || activeTarget.kind === 'folder-index') {
     return buildHandoffInput({ docName: activeTarget.docName, workspace });
+  }
+  // A skill surface hands off the SKILL, not a file path: the skill payload
+  // composes the author-with-AI prompt (skill name + scope + the write-skill
+  // directive). Falling through to null here is what made "send to AI for a
+  // specific skill" dispatch nothing — the pane then showed only the dock
+  // session's standing bootstrap, "a message that had nothing to do with the
+  // specific skill".
+  if (activeTarget.kind === 'skill-preview') {
+    return buildSkillHandoffInput({
+      skillName: activeTarget.name,
+      scope: activeTarget.level ?? 'project',
+      workspace,
+    });
+  }
+  if (activeTarget.kind === 'skill-file') {
+    return buildSkillHandoffInput({
+      skillName: activeTarget.name,
+      scope: activeTarget.scope,
+      workspace,
+    });
   }
   return null;
 }

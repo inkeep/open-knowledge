@@ -36,11 +36,14 @@ export { skillLiveDocName };
  * `skillLiveDocName`. Global entries keep the managed-artifact scheme.
  */
 export function skillEntryLiveDocName(
-  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath'>,
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath' | 'hostQualifier'>,
 ): string {
   return skill.scope === 'project'
     ? stripMdExt(skillEntryDocPath(skill))
-    : skillLiveDocName(skill.scope, skill.name);
+    : // `hostQualifier` = a non-default same-named GLOBAL bundle: its doc is
+      // `__skill__/global/<name>@<host>`, so the two bundles keep separate
+      // tabs and separate write-back paths instead of collapsing onto one doc.
+      skillLiveDocName(skill.scope, skill.name, skill.hostQualifier);
 }
 
 /**
@@ -59,10 +62,11 @@ function skillEntryDocPath(skill: Pick<SkillsListEntry, 'path' | 'canonicalPath'
 /** Per-bundle-file analogue of {@link skillEntryLiveDocName}: the live doc name
  *  for `rel` (e.g. `references/patterns.md`) inside the entry's real dir. */
 export function skillEntryFileLiveDocName(
-  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath'>,
+  skill: Pick<SkillsListEntry, 'scope' | 'name' | 'path' | 'canonicalPath' | 'hostQualifier'>,
   rel: string,
 ): string {
-  if (skill.scope !== 'project') return skillFileLiveDocName(skill.scope, skill.name, rel);
+  if (skill.scope !== 'project')
+    return skillFileLiveDocName(skill.scope, skill.name, rel, skill.hostQualifier);
   const dir = skillEntryDocPath(skill).replace(/\/SKILL\.mdx?$/i, '');
   return `${dir}/${stripMdExt(rel)}`;
 }

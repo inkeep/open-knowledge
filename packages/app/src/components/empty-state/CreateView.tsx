@@ -44,7 +44,7 @@ export function CreateView({ celebrateSignal, onAddStarterPack, onRageStreak }: 
   const templatesError = templatesState.status === 'error';
 
   return (
-    <div className="flex w-full flex-col gap-8 py-12 max-w-5xl my-auto">
+    <div className="flex w-full flex-col gap-8 py-12 max-w-5xl my-auto" data-testid="create-view">
       <EmptyStateHeader
         title={t(title)}
         subtitle={t(subtitle)}

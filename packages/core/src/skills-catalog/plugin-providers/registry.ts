@@ -2,6 +2,7 @@ import type { SkillBundle } from '../adapters/shared.ts';
 import { enumerateBundledSkills, inspectBundleCapabilities } from './bundle-inspect.ts';
 import { claudePluginProvider } from './claude.ts';
 import {
+  agentPluginsProvider,
   codexPluginProvider,
   copilotPluginProvider,
   geminiPluginProvider,
@@ -19,6 +20,7 @@ import type {
 // should resolve to the provider OK can actually drive setup for.
 const PROVIDERS = [
   claudePluginProvider,
+  agentPluginsProvider,
   codexPluginProvider,
   geminiPluginProvider,
   copilotPluginProvider,

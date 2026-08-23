@@ -2,9 +2,10 @@ import type {
   SkillInstallTarget,
   SkillsListEntry,
   SkillTargetEditor,
+  SkillUserTargetEditor,
 } from '@inkeep/open-knowledge-core';
-import { SkillTargetEditorSchema } from '@inkeep/open-knowledge-core';
-import { customPlacementRoot, skillHostRootDir } from '@/lib/skill-scope';
+import { SkillTargetEditorSchema, SkillUserTargetEditorSchema } from '@inkeep/open-knowledge-core';
+import { customPlacementRoot, pluginCoverageOf, skillHostRootDir } from '@/lib/skill-scope';
 
 /**
  * The install menu's row derivation — which locations are offered, which are
@@ -21,6 +22,11 @@ import { customPlacementRoot, skillHostRootDir } from '@/lib/skill-scope';
 /** The editors a project skill can install into — the narrowed `.options` of the
  *  canonical schema, so this can never drift from the install verb + picker. */
 export const INSTALL_EDITORS: readonly SkillTargetEditor[] = SkillTargetEditorSchema.options;
+/** Global menus speak the wider user-global vocabulary — it adds the editors
+ *  with a user root but no project surface (antigravity → `~/.gemini/skills`),
+ *  so a host the installer can write is a host the menu can show. */
+export const GLOBAL_INSTALL_EDITORS: readonly SkillUserTargetEditor[] =
+  SkillUserTargetEditorSchema.options;
 
 /** A skill living anywhere under `.agents/` counts as the project having adopted
  *  the hub, not just one directly in `AGENTS_SKILLS_ROOT`. Deliberately a
@@ -33,6 +39,8 @@ const AGENTS_DIR_PREFIX = '.agents/';
 
 /** What the menu knows about the skill. An un-imported explore preview carries
  *  only `{scope, name}`, so every detail field is optional. */
+export { pluginCoverageOf };
+
 export type SkillInstallMenuSkill = Pick<SkillsListEntry, 'scope' | 'name'> &
   Partial<
     Pick<
@@ -45,6 +53,8 @@ export type SkillInstallMenuSkill = Pick<SkillsListEntry, 'scope' | 'name'> &
       | 'conflictHosts'
       | 'driftPaths'
       | 'installableEditors'
+      | 'origin'
+      | 'plugin'
     >
   >;
 
@@ -144,8 +154,9 @@ export function deriveSkillInstallRows({
   // The hub sorts LAST. It is a vendor-neutral fallback rather than a place most
   // people install, so it belongs under the concrete host rows and the SOURCE
   // row, not above them where it used to sit.
+  const editorBase = skill?.scope === 'global' ? GLOBAL_INSTALL_EDITORS : INSTALL_EDITORS;
   const rows: SkillInstallTarget[] = (
-    hubActive ? ([...INSTALL_EDITORS, 'agents'] as SkillInstallTarget[]) : INSTALL_EDITORS
+    hubActive ? ([...editorBase, 'agents'] as SkillInstallTarget[]) : editorBase
   )
     .filter((e) => !(e in aliases))
     .filter((e) => e === 'agents' || installable === null || installable.has(e) || hostSet.has(e));

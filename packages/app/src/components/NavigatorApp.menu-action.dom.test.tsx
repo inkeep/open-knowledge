@@ -107,7 +107,6 @@ function makeNavigatorBridge(): NavigatorBridgeStub {
       listRecent: async () => [],
       removeRecent: async () => undefined,
       getSessionState: async () => ({
-        activeTabByMode: { files: null, skills: null },
         updatedAt: null,
         panes: [
           {

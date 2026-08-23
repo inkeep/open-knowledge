@@ -14,7 +14,7 @@ import {
   type SkillPreviewFlavor,
   type SkillPreviewHashTarget,
 } from '@/lib/doc-hash';
-import { getKnownProjectSkillDirs, knownSkillDirsSettled } from '@/lib/known-skill-dirs';
+import { getKnownProjectSkillDirs } from '@/lib/known-skill-dirs';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { skillDisplayName } from '@/lib/skill-scope';
 import {
@@ -30,44 +30,15 @@ function isSkillScope(value: string): value is SkillScope {
 }
 
 export interface EditorTabSessionState {
-  /**
-   * Last-active tab per surface (Files vs Skills), so a reload can restore the
-   * tab you had open in EACH surface — not just the active one. Each entry is an
-   * open-tab id of its own surface, or null.
-   */
-  activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
   /** Authoritative persisted split-workspace layout. */
   panes: PersistedEditorPane[];
   focusedPaneId: string;
 }
 
-/** An open-tab id valid for `surface`, else null (guards stale/hand-edited state).
- *
- * The surface check is skipped for the skills slot until `/api/skills` has
- * answered once. This parse runs on FIRST PAINT, synchronously off localStorage,
- * while the list is still in flight — so a bundle whose only evidence is that
- * list (symlinked, or at a registered custom root, both of which sit at non-dot
- * paths) reads as Files here. Dropping the slot on that reading does not just
- * lose a classification, it PERSISTS one: the parse feeds `activeTabByModeRef`,
- * the persist effect writes the ref back to localStorage, and the Skills toggle
- * then opens its empty home instead of the doc the user left open. Keeping the
- * value until the answer is real makes the pre-list parse lossless; once the
- * list settles the guard applies in full.
- */
-function surfaceActiveTab(
-  value: unknown,
-  surface: 'files' | 'skills',
-  openTabs: readonly string[],
-): string | null {
-  if (typeof value !== 'string' || !openTabs.includes(value)) return null;
-  if (isSkillTabId(value) === (surface === 'skills')) return value;
-  return surface === 'skills' && !knownSkillDirsSettled() ? value : null;
-}
-
 /** A fresh empty session — factory (not a shared const) so callers can't alias it. */
 function emptyTabSessionState(): EditorTabSessionState {
-  return sessionStateFromWorkspace(parsePersistedEditorWorkspace(null), null, {});
+  return sessionStateFromWorkspace(parsePersistedEditorWorkspace(null), null);
 }
 
 export interface RenamedFolderMapping {
@@ -176,8 +147,47 @@ export function skillPreviewTabId(target: SkillPreviewHashTarget): string {
 }
 
 /**
+ * Tab ids holding the SAME local skill preview as `openedTabId` under a
+ * DIFFERENT id — the twins a fresh open must close.
+ *
+ * A local preview's id includes its `source` path, which moves under the tab (a
+ * plugin update bumps the version in the cache path; a detected skill relocates
+ * when a copy is deleted) and its `level`. The same skill then lives under two
+ * ids at once: identically labelled tabs, one of which every click resolves
+ * away from — "multiple tabs of the same file open, only able to focus one".
+ * One skill, one local preview; explore keeps `source` in its identity on
+ * purpose (one name from two repos is two previews), so it is never matched.
+ *
+ * `subtitle` IS part of the identity: same-name copies in different harness
+ * dirs surface as separate rows whose only distinguisher is the host subtitle
+ * ("plannotator-review (.agents)" vs "(claude)"), and treating those as twins
+ * closes a genuinely different copy. A version bump moves only `source`, never
+ * the subtitle, so the dedup this exists for is unaffected.
+ */
+export function staleLocalSkillPreviewTwins(
+  openTabs: readonly string[],
+  opened: { flavor: SkillPreviewFlavor; name: string; subtitle: string; level: SkillScope },
+  openedTabId: string,
+): string[] {
+  if (opened.flavor === 'explore') return [];
+  return openTabs.filter((id) => {
+    if (id === openedTabId) return false;
+    const tab = parseEditorTabId(id);
+    return (
+      tab.kind === 'skill-preview' &&
+      tab.flavor === opened.flavor &&
+      tab.name === opened.name &&
+      tab.subtitle === opened.subtitle &&
+      tab.level === opened.level
+    );
+  });
+}
+
+/**
  * Find an already-open preview tab for the SAME LOCAL skill, keyed by
- * flavor + name + level and IGNORING the volatile `source` path. Every
+ * flavor + name + subtitle + level and IGNORING the volatile `source` path.
+ * Subtitle stays in the key because same-name copies in different harness dirs
+ * are different previews — reusing across them is a click that "does nothing". Every
  * local-path flavor moves under you: a built-in's bundle path can differ
  * between skills-list refetches, and a detected skill's path carries the
  * PLUGIN VERSION (`…/plugins/cache/<marketplace>/<plugin>/1.2.679/skills/<name>`)
@@ -195,8 +205,9 @@ export function skillPreviewTabId(target: SkillPreviewHashTarget): string {
  */
 export function findLocalSkillPreviewTabId(
   openTabs: readonly string[],
-  flavor: Extract<SkillPreviewFlavor, 'builtin' | 'detected' | 'foreign'>,
+  flavor: Extract<SkillPreviewFlavor, 'builtin' | 'detected' | 'foreign' | 'linked'>,
   name: string,
+  subtitle: string,
   scope: SkillScope,
 ): string | null {
   for (const id of openTabs) {
@@ -205,6 +216,7 @@ export function findLocalSkillPreviewTabId(
       tab.kind === 'skill-preview' &&
       tab.flavor === flavor &&
       tab.name === name &&
+      tab.subtitle === subtitle &&
       tab.level === scope
     ) {
       return id;
@@ -396,9 +408,10 @@ export function shouldPersistTabSession(
 /**
  * True when a plain `doc` name belongs to a skill surface — a project skill's
  * SKILL.md / bundle file (under the skill content root) or a global `__skill__/`
- * managed artifact. Single source shared with `isSkillFocusedTarget`
- * (navigation-targets) so the tab-strip mode filter and the sidebar mode never
- * disagree on what counts as a skill.
+ * managed artifact. The tab strip asks it twice per pane — once to decide
+ * whether any open tab needs the skills list fetched at all, and once per tab to
+ * withhold the file-target actions a skill tab must not offer — so both answers
+ * come from one predicate rather than two shapes that could disagree.
  */
 export function isSkillDocName(docName: string): boolean {
   return (
@@ -446,10 +459,10 @@ export function isSkillDocName(docName: string): boolean {
  * while doc names are `contentDir`-relative, and under a configured `content.dir`
  * the two differ — reading them would trade a narrow miss for a wrong prefix.
  *
- * Stays synchronous and TOTAL: this is reached from the `useState` initializer
- * that parses the persisted tab session on first paint, before any fetch. An
- * empty known-dirs set degrades to the shape answer; it never yields "unknown",
- * which would drop a persisted `activeTabByMode.skills` entry at parse time.
+ * Stays synchronous and TOTAL: it is read during render, for tabs restored from
+ * the persisted session before any fetch has landed. An empty known-dirs set
+ * degrades to the shape answer; it never yields "unknown", which would let a
+ * skill-bundle tab offer the file-target actions it must not have.
  *
  * Deliberately NOT folded into `isSkillDocName`: that parser also feeds the CC1
  * link index and managed-artifact resolution, where a looser shape would mint
@@ -477,20 +490,6 @@ export function isSkillBundleShapedPath(docName: string): boolean {
     if (known.has(docName.slice(0, cut))) return true;
   }
   return false;
-}
-
-/**
- * Classify a tab id as belonging to the Skills surface vs the Files surface,
- * from the id alone (no snapshot lookup). Skill tabs are read-only bundle-file
- * or skill-preview viewers and `doc` tabs whose name is a skill doc.
- */
-export function isSkillTabId(tabId: string): boolean {
-  const tab = parseEditorTabId(tabId);
-  return (
-    tab.kind === 'skill-file' ||
-    tab.kind === 'skill-preview' ||
-    (tab.kind === 'doc' && (isSkillDocName(tab.docName) || isSkillBundleShapedPath(tab.docName)))
-  );
 }
 
 export function normalizeOpenTabs(value: unknown, limit: number): string[] {
@@ -849,31 +848,18 @@ export function parseEditorTabSessionState(value: unknown): EditorTabSessionStat
   }
   const record = value as Record<string, unknown>;
   if (!Array.isArray(record.panes)) return emptyTabSessionState();
-  const rawActiveByMode: Record<string, unknown> =
-    typeof record.activeTabByMode === 'object' &&
-    record.activeTabByMode !== null &&
-    !Array.isArray(record.activeTabByMode)
-      ? (record.activeTabByMode as Record<string, unknown>)
-      : {};
   const workspace = parsePersistedEditorWorkspace(record);
   return sessionStateFromWorkspace(
     workspace,
     typeof record.updatedAt === 'string' ? record.updatedAt : null,
-    rawActiveByMode,
   );
 }
 
 function sessionStateFromWorkspace(
   workspace: ReturnType<typeof parsePersistedEditorWorkspace>,
   updatedAt: string | null,
-  rawActiveByMode: Record<string, unknown>,
 ): EditorTabSessionState {
-  const openTabs = workspace.panes.flatMap((pane) => pane.openTabs);
   return {
-    activeTabByMode: {
-      files: surfaceActiveTab(rawActiveByMode.files, 'files', openTabs),
-      skills: surfaceActiveTab(rawActiveByMode.skills, 'skills', openTabs),
-    },
     updatedAt,
     panes: workspace.panes,
     focusedPaneId: workspace.focusedPaneId,
@@ -882,17 +868,9 @@ function sessionStateFromWorkspace(
 
 export function createEditorTabSessionState(
   workspace: EditorWorkspaceState,
-  activeTabByMode: { files: string | null; skills: string | null } = {
-    files: null,
-    skills: null,
-  },
   now: () => Date = () => new Date(),
 ): EditorTabSessionState {
-  return sessionStateFromWorkspace(
-    persistEditorWorkspace(workspace),
-    now().toISOString(),
-    activeTabByMode,
-  );
+  return sessionStateFromWorkspace(persistEditorWorkspace(workspace), now().toISOString());
 }
 
 export function localTabSessionStorageKey(projectKey: string): string {

@@ -254,6 +254,11 @@ msgstr "{0, plural, one {فائل} other {فائلیں}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, one {فولڈر} other {فولڈرز}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, one {# مہارت نصب کریں} other {# مہارتیں نصب کریں}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, one {مہارت} other {مہارتیں}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · ڈیفالٹ"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0} (نئے ٹیب میں کھلتا ہے)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "{1} میں سے {0} پروجیکٹ منتخب"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "{1} میں سے {0} منتخب"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "اس ناشر کی {0} مزید مہارتیں"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "{0} پلگ ان"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "{0} پلگ ان · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0} یہ مہارت {poolRootRel} کے ذریعے پڑھتا ہے۔ {1} 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0} یہ فولڈر مشترکہ استعمال کرتے ہیں۔"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "{0} مہارتیں منتخب"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "{behind} پیچھے"
 msgid "{behind} behind origin"
 msgstr "{behind} origin سے پیچھے"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName} ایک symlink ہے — اس کا قابلِ ترمیم ماخذ <0>{0}</0> ہے۔ فائل وہیں ترمیم کریں؛ یہ اسکل منظر صرف پڑھنے کے لیے ہے۔"
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, one {فوری طور پر وہ # مسئلہ حل کرت�
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, one {# فائل سے مماثل} other {# فائلوں سے مماثل}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "اس ماخذ پر {count} مہارتیں"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "{count} مہارتیں"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "{keyName} کی قدر"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label} پہلے ہی \"{0}\" کو {1} پلگ اِن سے لوڈ کرتا ہے۔ یہاں انسٹال کرنے پر {2} میں ایک نقل بنتی ہے جسے {label} پلگ اِن کی بجائے استعمال کرتا ہے — وہ نقل پلگ اِن کی تازہ کاریوں کی پیروی چھوڑ دیتی ہے۔"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} فعال"
@@ -845,6 +888,11 @@ msgstr "{pick} اور {keep} دونوں میں {0} کے مختلف نسخے مو
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick} میں ایسی اندراجات ہیں جو مہارتیں نہیں ہیں: {0}۔ انہیں فولڈر سے ہٹائیں یا منتقل کریں، پھر دوبارہ کوشش کریں۔"
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin} میں {0} مزید مہارتیں شامل ہیں"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, one {پلگ اِن} other {پلگ اِنز}}"
@@ -901,9 +949,21 @@ msgstr "{slot} رنگ — {0}"
 msgid "{slot} hex value"
 msgstr "{slot} کی ہیکس قدر"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source} {count} مہارتیں شائع کرتا ہے۔ ان میں سے کوئی بھی ایک ساتھ نصب کریں۔"
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · درآمد شدہ ماخذ"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · skills.sh ماخذ"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}: {updated} اپ ڈیٹ ہوئے، {upToDate} پہلے ہی اپ ڈیٹ"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}: {updated} اپ ڈیٹ ہوئے، {upToDate} پہلے ہی اپ ڈیٹ، {failed} ناکام — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1199,6 +1259,10 @@ msgstr "اس فولڈر میں نئی دستاویزات کے لیے دوبار�
 msgid "A saved theme already uses this name."
 msgstr "اس نام کی ایک محفوظ شدہ تھیم پہلے سے موجود ہے۔"
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "اس نام کی ایک دوسری مہارت موجود ہے — مکمل انتظام کے لیے اس کا نام بدلیں (یا ایک کو حذف کریں)۔"
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "ٹیمپلیٹ کی فہرست میں عنوان کے نیچے دکھائی جانے والی مختصر سطر۔"
@@ -1320,6 +1384,10 @@ msgstr "شامل کریں"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "تبصرہ شامل کریں"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "فائل کا نام شامل کریں (مثلاً notes.md)"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1660,15 +1728,6 @@ msgstr "پہلے سے سائن اِن ہیں؟"
 msgid "Always included"
 msgstr "ہمیشہ شامل"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "ہمیشہ فعال"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "ہمیشہ فعال ٹوکنز"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1995,6 +2054,10 @@ msgstr "خودکار ہر بار شروع ہونے پر ایک خالی پورٹ
 msgid "Available"
 msgstr "دستیاب"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "میں دستیاب"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "اس مشین کے ہر پروجیکٹ میں دستیاب۔ git کے ذریعے شیئر نہیں ہوتا۔"
@@ -2169,10 +2232,6 @@ msgstr "ٹوٹا ہوا لنک"
 msgid "Browse"
 msgstr "براؤز کریں"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "سب براؤز کریں"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "فولڈر براؤز کریں"
@@ -2184,10 +2243,6 @@ msgstr "سینکڑوں تھیمز دیکھیں"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "اس پروجیکٹ کے لیے مہارت براؤز کریں یا اپ لوڈ کریں۔"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "skills.sh براؤز کریں"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2226,10 +2281,6 @@ msgstr "اپنی کہانی کے پس منظر کی دنیا بنائیں اور
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> بنایا جا رہا ہے اور Claude Desktop App کھولا جا رہا ہے"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "بلٹ اِن (صرف پڑھنے کے لیے)"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2309,7 +2360,6 @@ msgstr "یہ راستہ شیئر نہیں کیا جا سکتا۔"
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2344,6 +2394,10 @@ msgstr "ایسی فائلیں حذف نہیں کی جا سکتیں جن کے ت�
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "اپ لوڈ نہیں ہو سکتا: کوئی دستاویز کھلی نہیں"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "تبدیل کریں"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2567,6 +2621,10 @@ msgstr "رنگ ہٹائیں"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "مینو صاف کریں"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "انتخاب صاف کریں"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3155,10 +3213,6 @@ msgstr "مواد کے قواعد"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "مواد کے قواعد ابھی لوڈ نہیں ہوئے — تھوڑی دیر بعد دوبارہ کوشش کریں"
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "کانٹیکسٹ لاگت"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "سیاق کی ونڈو:"
@@ -3220,6 +3274,7 @@ msgid "Copied full path"
 msgstr "مکمل راستہ نقل ہو گیا"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "راستہ نقل ہو گیا"
 
@@ -3233,11 +3288,6 @@ msgstr "نسبتی راستہ نقل ہو گیا"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "نقل ہو گیا!"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "مہارت کو {0} پر نقل کرتا ہے"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3308,6 +3358,7 @@ msgid "Copy path"
 msgstr "راستہ نقل کریں"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "راستہ نقل کریں"
 
@@ -3500,7 +3551,6 @@ msgstr "وہ تبصرہ شامل نہیں ہو سکا۔"
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "تبدیلی لاگو نہیں ہو سکی: {0}"
 
@@ -3521,10 +3571,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "شیئر URL نہیں بنایا جا سکا۔ «مکمل» آزمائیں اور دوبارہ شیئر کریں۔"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "راستہ نقل نہیں ہو سکا"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "نقل نہیں ہو سکا: {detail}"
 
@@ -3534,9 +3586,10 @@ msgstr "نقل نہیں ہو سکا۔ دستی طور پر نقل کرنے کے 
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "{trimmed} نہیں بن سکا: {0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "{effective} نہیں بنایا جا سکا: {0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3557,6 +3610,11 @@ msgstr "ورک ٹری نہیں بن سکا۔ کوئی مختلف نام آزما
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "یہ تھیم بنائی نہیں جا سکی۔ دوبارہ کوشش کریں۔"
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "{0} حذف نہیں ہو سکی: {error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3628,6 +3686,11 @@ msgstr "OpenKnowledge اسکل انسٹال نہیں ہو سکی: {message}"
 msgid "Couldn't install skill: {0}"
 msgstr "مہارت نصب نہیں ہو سکی: {0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "پروجیکٹ کی مہارت نصب نہیں ہو سکی: {0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3677,6 +3740,12 @@ msgstr "آپ کی بگ رپورٹس لوڈ نہیں ہو سکیں۔"
 msgid "Couldn't mark that comment to send."
 msgstr "وہ تبصرہ بھیجنے کے لیے نشان زد نہیں ہو سکا۔"
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "{0} منتقل نہیں ہو سکی: {1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3721,6 +3790,15 @@ msgstr "ورک ٹری نہیں کھل سکا۔ دوبارہ کوشش کریں۔"
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "یہ دستاویز Slidev میں نہیں کھولی جا سکی۔"
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "{name} کو پن نہیں کیا جا سکا"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "{skillName} کو {root} میں نہیں رکھا جا سکا: {0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3973,6 +4051,10 @@ msgstr "«صرف میں» پر تبدیل نہیں ہو سکا"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "اس تبصرے کا نشان نہیں ہٹایا جا سکا — یہ اب بھی بھیجنے کا منتظر ہے۔"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "{name} سے پن نہیں ہٹایا جا سکا"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3982,6 +4064,12 @@ msgstr "{gitignorePath} اپ ڈیٹ نہیں ہو سکا: {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "{subRoot} تازہ نہیں ہو سکا: {0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "{0} سے اپ ڈیٹ نہیں ہو سکا: {1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4064,10 +4152,6 @@ msgstr "ایک ذاتی مہارت بنائیں، جو ہر پروجیکٹ می�
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "اس پروجیکٹ کے لیے مہارت بنائیں۔"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "ایک مہارت بنائیں۔"
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4281,6 +4365,11 @@ msgstr "حذف کریں"
 msgid "Delete {0}"
 msgstr "{0} حذف کریں"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "{0} مہارتیں حذف کریں"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "{deleteDescriptorLabel} حذف کریں"
@@ -4362,6 +4451,10 @@ msgstr "یہ تبصرہ حذف کریں"
 msgid "Deleted {0}."
 msgstr "{0} حذف کر دیا گیا۔"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "{deleted} مہارتیں حذف ہو گئیں"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "{file} حذف ہو گئی"
@@ -4403,10 +4496,6 @@ msgstr "جو پروجیکٹ آپ بنانا چاہتے ہیں اسے بیان ک
 msgid "Describe the skill you want to create"
 msgstr "جو مہارت آپ بنانا چاہتے ہیں اسے بیان کریں"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "بیان کریں کہ اسے کیا کرنا چاہیے، یا خود ایک شامل کریں۔ OpenKnowledge آپ کی مہارتیں ایک جگہ رکھتا ہے، ان کے ورژن سنبھالتا ہے، اور انہیں Claude، Codex اور Cursor جیسے ایجنٹس میں نصب کرتا ہے۔"
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "بیان کریں کہ آپ کیا بنانا چاہتے ہیں، خالی فائل شروع کریں، یا ٹیمپلیٹ سے ڈھانچہ بنائیں۔"
@@ -4419,7 +4508,9 @@ msgstr "جاری رکھنے کے لیے بیان کریں کہ آپ کیا بن�
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "بیان کریں کہ آپ کس چیز پر کام کر رہے ہیں اور ایجنٹ اسے آپ کے لیے ترتیب دے دے گا۔"
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "تفصیل"
@@ -4436,6 +4527,11 @@ msgstr "تفصیل (اختیاری)"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "{field} کی تفصیل"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "تفصیل کے ٹوکنز"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4564,6 +4660,7 @@ msgstr "منقطع کریں"
 msgid "Disconnecting"
 msgstr "منقطع کیا جا رہا ہے"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4842,6 +4939,7 @@ msgid "Edit {tag}"
 msgstr "{tag} میں ترمیم کریں"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "ایک نقل میں ترمیم کریں"
 
@@ -5021,6 +5119,10 @@ msgstr "خالی"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "خالی خاکہ"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "خالی فولڈر نام کی اجازت نہیں ہے (//)"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5210,6 +5312,10 @@ msgstr "ہر تصوراتی دستاویز میں ایک غیر خالی قسم 
 msgid "every doc"
 msgstr "ہر دستاویز"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "{source} سے سب کچھ پہلے ہی اپ ڈیٹ ہے"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5293,6 +5399,7 @@ msgstr "بیان کریں کہ آپ کا کوڈ بیس کیسے کام کرتا 
 msgid "Explore"
 msgstr "دریافت کریں"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "مہارتیں دریافت کریں"
@@ -5759,7 +5866,6 @@ msgid "Filename"
 msgstr "فائل کا نام"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "فائلیں"
 
@@ -6020,6 +6126,10 @@ msgstr "ٹیمپلیٹ سے"
 msgid "From the {0} plugin"
 msgstr "{0} پلگ اِن سے"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "{residentPlugin} پلگ اِن سے — صرف پڑھنے کے لیے؛ پلگ اِن اپڈیٹس یہ فائلیں بدل دیتی ہیں۔"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "frontmatter"
@@ -6151,6 +6261,7 @@ msgstr "اپنے استعمال کے AI ٹولز کو اپنے پروجیکٹس 
 msgid "Glob patterns this schema applies to"
 msgstr "وہ glob پیٹرنز جن پر یہ اسکیما لاگو ہوتا ہے"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6206,6 +6317,10 @@ msgstr "دستاویزات کے لنکس کی گرافی نمائش"
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "سرخی کی قطار کے ساتھ قطاروں اور کالموں کی جالی۔"
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "مہارتوں کو ماخذ کے مطابق گروپ کریں"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6675,6 +6790,14 @@ msgstr "Git پروجیکٹس میں، Open Knowledge ایک دائرہ کار .g
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App میں"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "اس ریپوزٹری میں — ساتھیوں کو git کے ذریعے کاپیاں ملتی ہیں۔"
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "آپ کے ہوم فولڈر میں — اس مشین کے ہر پروجیکٹ میں، صرف آپ کے لیے۔"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "فہرست آئٹم کی اندروں یا باہر کی جگہ بدلیں"
@@ -6833,12 +6956,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror کے طے شدہ کی میپ کے ذریعے سورس ایڈیٹر کی سطریں داخل کریں، حذف کریں، منتقل کریں، نقل کریں اور کھسکائیں۔"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6854,11 +6976,6 @@ msgstr "{0} نصب کریں"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} نصب کریں ←"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "{name} نصب کریں"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6915,17 +7032,9 @@ msgstr "تمام ایجنٹس پر نصب کریں"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "اپنے AI ٹولز میں OpenKnowledge انسٹال کریں"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "منتخب نصب کریں"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
 msgstr "مہارت کو انسٹال کریں۔"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
-msgstr "مہارتیں نصب کریں"
 
 #. Checkbox that installs the user-global discovery skill bundle
 #: src/components/McpConsentDialogBody.tsx
@@ -6936,10 +7045,15 @@ msgstr "<0>open-knowledge-discovery</0> اسکل انسٹال کریں"
 msgid "Install the gh CLI"
 msgstr "gh CLI نصب کریں"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "یہ مہارت نصب کریں"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "نصب شدہ"
 
@@ -6976,11 +7090,6 @@ msgstr "{0} سے {imported} مہارتیں نصب ہو گئیں"
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "{imported} نصب ہو گئیں، مگر {failed} ناکام رہیں: {failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "{0} پر نصب — ہٹانے کے لیے کلک کریں"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "{path} پر نصب — ہٹانے کے لیے کلک کریں"
@@ -6995,6 +7104,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "{label} میں نصب — ہٹانے کے لیے کلک کریں"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7004,8 +7114,19 @@ msgstr "نصب کیا جا رہا ہے"
 msgid "Installing {agentName}…"
 msgstr "{agentName} نصب کیا جا رہا ہے…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "آپ کے تمام پروجیکٹس کے لیے نصب ہوگا"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "اس پروجیکٹ میں نصب ہوگا"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "اسکل کو {path} میں انسٹال کرتا ہے — پہلا مقام اس کی اپنی کاپی رکھتا ہے"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "یہاں نصب ہوگا"
 
@@ -7254,9 +7375,6 @@ msgid "Let's get set up."
 msgstr "آئیے سیٹ اپ کرتے ہیں۔"
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "سطح"
 
@@ -7372,6 +7490,10 @@ msgstr "فہرستیں"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "اسی پروجیکٹ میں رہتا ہے (جہاں بھی مہارت کا فولڈر ہو) اور git کے ذریعے ساتھیوں کے ساتھ مشترک ہوتا ہے۔"
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "اس پروجیکٹ سے باہر ہے — یہاں صرف پڑھنے کے لیے۔"
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7469,7 +7591,6 @@ msgid "Loading PDF"
 msgstr "PDF لوڈ ہو رہی ہے"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "مقبول مہارتیں لوڈ ہو رہی ہیں"
 
@@ -7614,6 +7735,11 @@ msgstr "listPacks کا جواب بگڑا ہوا ہے"
 msgid "Malformed plan response"
 msgstr "پلان کا جواب بگڑا ہوا ہے"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "انتظام کریں"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7634,10 +7760,6 @@ msgstr "اس بلڈ میں AI ٹولز کا انتظام دستیاب نہیں۔
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "اس بلڈ میں پروجیکٹ کے AI ٹولز کا انتظام دستیاب نہیں۔"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "اس بلڈ میں مہارتوں کا انتظام دستیاب نہیں ہے۔"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7837,6 +7959,16 @@ msgstr "سب سے زیادہ نصب شدہ"
 msgid "Move"
 msgstr "منتقل کریں"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "{0} مہارتیں گلوبل میں منتقل کریں"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "{0} مہارتیں پروجیکٹ میں منتقل کریں"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "منتقل ہوں گی"
@@ -7967,6 +8099,14 @@ msgstr "{label} کو بائیں جانب کے نئے پین میں منتقل ک
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label} کو دائیں جانب کے نئے پین میں منتقل کر دیا گیا۔"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "{moved} مہارتیں گلوبل میں منتقل ہو گئیں"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "{moved} مہارتیں پروجیکٹ میں منتقل ہو گئیں"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8147,10 +8287,6 @@ msgstr "اس مہارت میں نئی فائل"
 msgid "New folder"
 msgstr "نیا فولڈر"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "سرے سے نیا"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8192,6 +8328,7 @@ msgstr "نیا سیشن"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "نئی مہارت"
@@ -8270,6 +8407,10 @@ msgstr "ابھی کوئی ایجنٹ ترتیب نہیں دیا گیا — «ا�
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "ابھی کوئی ایجنٹ ترتیب نہیں دیا گیا — بھیجنے کے مینو سے ایک منتخب کریں۔"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "کوئی ایجنٹ نہیں — محفوظ، کہیں نصب نہیں"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "کوئی ایجنٹ دستیاب نہیں۔"
@@ -8282,10 +8423,6 @@ msgstr "کوئی ایجنٹ فعال نہیں"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "آپ کی تلاش سے کوئی ایجنٹ مماثل نہیں۔"
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "کوئی ایجنٹ منتخب نہیں — مہارتیں محفوظ ہیں مگر کہیں نصب نہیں ہوئیں۔"
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8670,6 +8807,10 @@ msgstr "سائیڈ بار میں نہیں"
 msgid "Not installed"
 msgstr "نصب نہیں"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "اس پروجیکٹ میں ابھی نصب نہیں ہے۔"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8779,10 +8920,6 @@ msgstr "فعال — آپ کے تلاش استفسارات اور مماثل ص�
 msgid "On <0>{address}</0>"
 msgstr "<0>{address}</0> پر"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "طلب پر"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "<0>{address}</0> میں منتخب متن پر"
@@ -8790,10 +8927,6 @@ msgstr "<0>{address}</0> میں منتخب متن پر"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "روٹ انڈیکس پر، okf_version کو \"0.2\" کی طرح کوٹڈ سٹرنگ کے طور پر لکھا جاتا ہے۔ بغیر حوالہ، YAML اسے ایک نمبر کے طور پر پڑھتا ہے اور 0.10 خاموشی سے 0.1 بن جاتا ہے۔"
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "ٹرگر ہونے پر"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8972,6 +9105,7 @@ msgstr "{keyName} کے لیے ایموجی منتخب کنندہ کھولیں"
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9468,6 +9602,11 @@ msgstr "یتیم موڈ"
 msgid "Orphans"
 msgstr "یتیم صفحات"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "دیگر"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "دیگر"
@@ -9496,6 +9635,10 @@ msgstr "خاکہ"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "{budgetLabel} ٹوکن بجٹ سے زیادہ"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "{budgetLabel} ٹوکن رہنمائی سے زیادہ۔ مہارت کے استعمال پر یہ سب ایجنٹ کے سیاق میں لوڈ ہوتا ہے — اسے مختصر رکھیں، یا تفصیل references/ فائلوں میں منتقل کریں جو صرف ضرورت پر لوڈ ہوتی ہیں۔"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9601,7 +9744,7 @@ msgstr "پارس ناکام"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "{0} پلگ اِن کا حصہ — صرف پڑھنے کے لیے؛ نقل میں ترمیم کے لیے اسے کھولیں"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "{plugin} پلگ اِن کا حصہ"
 
@@ -9779,6 +9922,11 @@ msgstr "نصب کرنے کے لیے مہارتیں منتخب کریں۔ ہر ا
 msgid "Pick up where you left off"
 msgstr "جہاں چھوڑا تھا وہیں سے شروع کریں"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "منتخب کریں کہ آپ کی نقل کہاں جائے گی۔ منزل منتخب کرنے پر وہ بن جائے گی۔"
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9788,6 +9936,14 @@ msgstr "{1} سے {0} اٹھایا گیا۔"
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "ٹیب پن کریں"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "اوپر پن کریں"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "پن شدہ"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9834,10 +9990,6 @@ msgstr "غور کیا جا رہا ہے…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "مقبول"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "skills.sh پر مقبول"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9972,6 +10124,7 @@ msgstr "پروجیکٹ"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "پروجیکٹ"
@@ -10073,6 +10226,10 @@ msgstr "GitHub پر شائع کریں"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "شائع شدہ"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "{publisher} کی طرف سے شائع کردہ"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10332,6 +10489,7 @@ msgid "Relevance"
 msgstr "مطابقت"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10460,10 +10618,6 @@ msgstr "«{0}» کو ہر دوسرے مقام سے ہٹا دیا گیا — اس
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "«{projectName}» کو حالیہ پروجیکٹس سے ہٹا دیا گیا۔ اس کا فولڈر اب موجود نہیں۔"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "یہاں سے ہٹے گا"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10726,6 +10880,10 @@ msgstr "منظر کے فلٹرز دوبارہ ترتیب دیں"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} کا حجم بدلیں"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "مہارتوں کے پینل کا سائز تبدیل کریں"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "اپنے ٹرمینل میں تصادم حل کریں"
@@ -10754,6 +10912,7 @@ msgstr "ڈیلٹا حل کیے جا رہے ہیں"
 msgid "Resources"
 msgstr "وسائل"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10772,6 +10931,7 @@ msgstr "اس ایپ کے ورژن کے ساتھ دوبارہ چلائیں"
 msgid "Restarted — now running v{appRuntime}."
 msgstr "دوبارہ چل پڑا — اب v{appRuntime} چل رہا ہے۔"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "دوبارہ چلایا جا رہا ہے"
@@ -11260,6 +11420,10 @@ msgstr "نظام کے جائزے کے لیے <0>Architecture</0> دیکھیں۔"
 msgid "See all {0} starter packs"
 msgstr "تمام {0} ابتدائی پیکس دیکھیں"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "تمام {count} مہارتیں دیکھیں"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "مکمل تنصیبی رہنما دیکھیں"
@@ -11457,6 +11621,10 @@ msgid "Server returned a malformed response."
 msgstr "سرور نے بگڑا ہوا جواب لوٹایا۔"
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "سرور نے غلط شکل کا اپ ڈیٹ جواب واپس کیا۔"
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "سرور نے بگڑا ہوا اپ لوڈ جواب لوٹایا۔"
 
@@ -11475,6 +11643,10 @@ msgstr "سرور نے نامکمل اسکلز جواب لوٹایا۔"
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "سرور نے نامکمل ٹیمپلیٹ جواب بھیجا۔"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "سرور برانچ <0>{branch}</0> پر منتقل ہو گیا — مواد دوبارہ لوڈ ہو رہا ہے"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11907,15 +12079,28 @@ msgstr "پروجیکٹ میں پہلے سے ہی مہارت"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "مہارتوں کی دریافت <0>skills.sh</0> سے تقویت یافتہ"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md کا انتظام خود اسکل کرتی ہے — کوئی اور نام منتخب کریں"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "مہارتیں"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "مہارتیں اب مشترک ہیں۔ انہیں اپنی ٹیم کے ساتھ شیئر کرنے کے لیے .ok/skills کمٹ کریں۔"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "{0} سے مہارتیں۔"
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "{0}/{1} سے مہارتیں۔"
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11939,9 +12124,11 @@ msgstr "مہارتیں دوبارہ تفویض ہوئیں"
 msgid "Skills section"
 msgstr "مہارتوں کا سیکشن"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "مہارت اسٹوڈیو"
 
@@ -11957,6 +12144,10 @@ msgstr "مہارتیں آپ کے AI ٹولز کو دہرائے جانے والے
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "اس پروجیکٹ کے ساتھ آنے والی مہارتیں، اور وہ فولڈرز جن سے اس کے AI ٹولز انہیں پڑھتے ہیں۔"
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "مہارتوں کا ٹول بار"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12139,6 +12330,10 @@ msgstr "سورس میں واپسی یا دوبارہ"
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "چھلانگ کے لیے اسپیس، جھکنے کے لیے نیچے کا تیر۔ بس یہی پورا کھیل ہے۔"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "پاتھ میں اسپیس کی اجازت نہیں ہے"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12345,10 +12540,6 @@ msgstr "اس ہفتے میں نے جو کچھ بدلا اس کا خلاصہ کر
 msgid "Switch and update branch"
 msgstr "برانچ بدلیں اور تازہ کریں"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "فائلوں اور مہارتوں کے درمیان بدلیں"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "اپنی جگہ برقرار رکھتے ہوئے بصری اور سورس ایڈیٹر کے درمیان بدلیں۔"
@@ -12406,11 +12597,6 @@ msgstr "{targetPath} کا سِم لنک"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "والد کے ذریعے سِم لنک شدہ"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "مہارت کو {0} سے سِم لنک کرتا ہے"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12754,6 +12940,11 @@ msgstr "وہ پیغام پہلے ہی بھیجا جا چکا ہے — آپ کی 
 msgid "The {0} download request timed out."
 msgstr "{0} کی ڈاؤن لوڈ درخواست کا وقت ختم ہو گیا۔"
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "{0} پلگ اِن یہ مہارتیں اپنے کیش سے فراہم کرتا ہے — OK انہیں کبھی ترمیم یا اپڈیٹ نہیں کرتا۔"
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "{editor} فولڈر میں اس مہارت کا ایک مختلف ورژن ہے۔ منتخب کریں کہ کون سا غالب رہے، یا دونوں کو مختلف ناموں سے رکھیں۔ آپ جو بھی بدلیں گے اس کا پہلے بیک اپ لے لیا جاتا ہے۔"
@@ -12805,10 +12996,6 @@ msgstr "طے شدہ مہارت فولڈر (محفوظ ہونے کے بعد صح�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "ڈیسک ٹاپ ایپ جواب نہیں دے رہی۔ تازہ کریں اور دوبارہ کوشش کریں۔"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "مقامات تبدیل ہو گئے ہیں۔ فہرست دیکھیں، پھر تصدیق کریں۔"
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12876,9 +13063,22 @@ msgstr "کھلا ہوا ایجنٹ"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "اصل متن حذف کر دیا گیا تھا۔ آپ اس تبصرے کو منتخب متن پر دوبارہ رکھ سکتے ہیں۔"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "پاتھ اسکل سے باہر نہیں جا سکتا (. یا .. نہیں)"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "پلگ اِن میں {0} بھی شامل ہیں — یہاں صرف نام دیے گئے ہیں، OK انہیں کبھی نصب نہیں کرتا۔"
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "پیش منظر ان وسائل کو روکتا ہے جو اس کے سیکیورٹی قواعد پر پورے نہ اتریں (مثلاً سادہ http:// والے URLs، یا وہ کوڈ جو eval استعمال کرے)۔ اوپر کا مواد نامکمل رینڈر ہو سکتا ہے۔"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "اس پروجیکٹ کا سرور اس ونڈو سے مختلف برانچ پر ہے — مواد لوڈ نہیں ہو سکتا۔"
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13245,6 +13445,16 @@ msgstr "اس GitHub URL کا اشتراک نہیں کیا جا سکتا۔"
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "یہ {boldName} کا پیش منظر ہے — ایک بلٹ اِن مہارت جو Open Knowledge کے ساتھ آتی ہے۔ یہ صرف پڑھنے کے لیے ہے۔"
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "یہ {boldName} کا پیش منظر ہے — اس ماخذ کی {0} مہارتوں میں سے ایک۔ اسے اپنے ایجنٹس میں نصب کریں۔"
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "یہ {boldName} کا پیش منظر ہے — اس ریپوزٹری کی {0} مہارتوں میں سے ایک۔ اسے اپنے ایجنٹس میں نصب کریں۔"
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "یہ {boldName} کا پیش منظر ہے، جو {boldHarness} میں {boldLevel} سطح پر پایا گیا۔"
@@ -13270,6 +13480,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "یہ کسی ڈرائیو کی جڑ لگتی ہے (مثلاً C:\\)۔ یہاں ڈھانچہ بنانا پوری ڈرائیو اسکین کرے گا۔"
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "یہ مشین"
 
@@ -13334,12 +13545,17 @@ msgstr "یہ {0} کو مستقل طور پر ہٹا دیتا ہے۔ جس پلگ 
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "یہ «{2}» اسکل سے {0}/{1} کو مستقل طور پر ہٹا دیتا ہے۔ SKILL.md میں جو کچھ بھی اس کی طرف اشارہ کرتا ہے، دوبارہ بنائے جانے تک کام نہیں کرے گا۔"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "یہ {names} کو مستقل طور پر حذف کر دیتا ہے۔ ان مہارتوں کو نام سے استعمال کرنے والے ایجنٹس اس وقت تک ناکام رہیں گے جب تک انہیں دوبارہ نہ بنایا جائے۔"
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "یہ {path} کو مستقل طور پر ہٹا دیتا ہے۔ جو ایجنٹس اس ٹیمپلیٹ کا نام سے حوالہ دیتے ہیں وہ اس کے دوبارہ بننے یا کسی والد فولڈر کے ٹیمپلیٹ سے بدلنے تک ناکام رہیں گے۔"
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "یہ پروجیکٹ"
 
@@ -13398,15 +13614,6 @@ msgstr "اس پروجیکٹ کی مہارت مہارت اسٹوڈیو میں م�
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "یہ OpenKnowledge کی ترتیبات اور انضمامات کو آپ کے Mac اور نیچے منتخب کیے گئے پروجیکٹس سے ہٹا دیتا ہے، مگر آپ کا Markdown مواد اور لکھی گئی مہارتیں برقرار رکھتا ہے۔"
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "یہ ریپو {count} مہارتیں سمیٹے ہوئے ہے، اور ساتھ {0}۔ ان میں سے کوئی بھی پلگ اِن سے نصب کریں۔"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "یہ ریپو {count} مہارتیں سمیٹے ہوئے ہے۔ ان میں سے کوئی بھی پلگ اِن سے نصب کریں۔"
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13623,6 +13830,11 @@ msgstr "ٹول کال"
 msgid "Top linked pages"
 msgstr "سب سے زیادہ لنک شدہ صفحات"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "کل"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "git میں ٹریک شدہ — اپ ڈیٹس آپ کے ریپو کے ذریعے آتی ہیں (کھینچ کر یا CI سے)، خودکار اپ ڈیٹ سے نہیں"
@@ -13803,17 +14015,6 @@ msgstr "اس ترمیم تک واپس جائیں؟"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "«سورس میں ترمیم» کے پین یا کوڈ نما خصوصیت کے فیلڈ میں انتخاب کی تبدیلیاں واپس لیں، دوبارہ کریں، یا ان میں گھومیں۔"
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "ان انسٹال کریں"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "{name} ان انسٹال کریں"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13880,6 +14081,10 @@ msgstr "{0} کے تمام تبصروں کا نشان ہٹائیں"
 msgid "Unordered list of items."
 msgstr "آئٹمز کی غیر مرتب فہرست۔"
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "پن ہٹائیں"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "{accessibleLabel} کی پن ہٹائیں"
@@ -13924,6 +14129,10 @@ msgstr "اپ ڈیٹ کریں"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "کیا «{skillName}» کو آپ کی ترامیم پر اپ ڈیٹ کر دیا جائے؟"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "اس ماخذ سے سب کچھ اپ ڈیٹ کریں"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13989,10 +14198,6 @@ msgstr "اپ لوڈ کریں"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "{keyName} اپ لوڈ کریں"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "کوئی مہارت اپ لوڈ کریں"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14092,6 +14297,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr "چھوٹے حروف والی .yaml یا .yml ایکسٹینشن استعمال کریں"
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "اسکل کے اندر نسبتی پاتھ استعمال کریں"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "مہارت کے اندر نسبتی راستہ استعمال کریں (کوئی ..، کوئی خالی جگہ نہیں؛ SKILL.md خودکار سنبھالا جاتا ہے)۔"
@@ -14175,8 +14383,13 @@ msgstr "{viaTags} کے ذریعے"
 msgid "via parent"
 msgstr "والد کے ذریعے"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "بذریعہ پلگ اِن"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "منظر"
@@ -14184,6 +14397,10 @@ msgstr "منظر"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "{name} دیکھیں"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "skills.sh پر {publisher} دیکھیں"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14210,8 +14427,17 @@ msgid "View in Source Markdown"
 msgstr "ماخذ Markdown میں دیکھیں"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "پلگ اِن دیکھیں"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "ماخذ دیکھیں"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "{plugin} پلگ ان کا ریپازٹری دیکھیں"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14389,6 +14615,10 @@ msgstr "جب آپ کسی بیرونی لنک پر ماؤس لے جاتے ہیں 
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "جب آپ کوئی شائع شدہ مہارت نصب کریں تو مہارتوں کی ڈائریکٹری (skills.sh) کو بتائیں تاکہ اس کی تنصیبات کی تعداد درست رہے۔ مہارت کا نام، اس کا ماخذ ریپازٹری، اور یہ کہ وہ کن ایجنٹ ٹولز میں گئی، بھیجا جاتا ہے — فائلوں کا مواد کبھی نہیں، اور نجی، مقامی یا ہاتھ سے لکھے ماخذ کی مہارت کے لیے کبھی نہیں۔ ہر مشین پر ہر مہارت کے لیے ایک بار۔"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "کہاں"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "نئے شامل ہونے والے منسلکات کہاں رکھے جاتے ہیں۔"
@@ -14424,6 +14654,10 @@ msgstr "وکی لنک کی تجاویز"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "وکی لنکس جیسے [[Page]] — یہاں لنک کرنے کا ایک معاون طریقہ ہے، لیکن ایک بیرونی ریڈر کچھ بھی حل نہیں کرتا اور بریکٹ دکھاتا ہے۔"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "<0>{effective}</0> کے طور پر بنایا جائے گا"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

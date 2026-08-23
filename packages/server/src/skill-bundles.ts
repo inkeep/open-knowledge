@@ -70,6 +70,24 @@ export const BUNDLE_SCOPE: Record<BundleId, 'user' | 'project'> = {
 export const USER_GLOBAL_BUNDLE_IDS = BUNDLE_IDS.filter((id) => BUNDLE_SCOPE[id] === 'user');
 
 /**
+ * The bundle skill names that belong to the USER-GLOBAL tier
+ * (`open-knowledge-discovery`, `open-knowledge-write-skill`). Derived from
+ * `BUNDLE_SCOPE`, so a bundle that changes tier cannot leave a stale copy here.
+ */
+const USER_GLOBAL_BUNDLE_SKILL_NAMES: ReadonlySet<string> = new Set(
+  USER_GLOBAL_BUNDLE_IDS.map((id) => BUNDLE_SKILL_NAME[id]),
+);
+
+/**
+ * Is `name` a user-global built-in? Such a skill is global BY DEFINITION, so a
+ * same-named directory inside a PROJECT's harness root is a stray copy rather
+ * than a project skill — see `scanInPlaceSkills`, which refuses to list one.
+ */
+export function isUserGlobalBundleSkillName(name: string): boolean {
+  return USER_GLOBAL_BUNDLE_SKILL_NAMES.has(name);
+}
+
+/**
  * The user-global bundles first-launch onboarding sets up as part of its single
  * "connect my AI tools" decision. `discovery` only: it is what lets an agent
  * recognize an OpenKnowledge project at all, so it belongs with the MCP wiring.

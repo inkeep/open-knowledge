@@ -387,7 +387,6 @@ test.describe('FileTree sidebar create', () => {
         },
       ],
       focusedPaneId: 'pane-main',
-      activeTabByMode: { files: 'sidebar-folder/nested-doc', skills: null },
     });
 
     await page.goto('/#/test-doc');

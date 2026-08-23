@@ -12,12 +12,16 @@ import { isAllowedGitUrl } from './local-op-security.ts';
  * the trust boundary before `git clone`, re-closing the ext::/fd:: RCE class if
  * the two allowlists ever diverge.
  */
+export function isDisallowedGitSpec(spec: SourceSpec): boolean {
+  return spec.kind === 'git' && !isAllowedGitUrl(spec.url);
+}
+
 export function rejectDisallowedGitSpec(
   res: ServerResponse,
   spec: SourceSpec,
   handler: string,
 ): boolean {
-  if (spec.kind === 'git' && !isAllowedGitUrl(spec.url)) {
+  if (spec.kind === 'git' && isDisallowedGitSpec(spec)) {
     errorResponse(res, 400, 'urn:ok:error:url-not-allowed', 'Git URL protocol is not allowed.', {
       handler,
       cause: new Error(`url=${spec.url}`),

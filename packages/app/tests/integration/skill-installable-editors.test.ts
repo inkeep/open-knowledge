@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  PROJECT_SKILL_EDITOR_IDS,
   SkillInstallSuccessSchema,
   SkillsListSuccessSchema,
+  USER_SKILL_EDITOR_IDS,
 } from '@inkeep/open-knowledge-core';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -189,14 +189,15 @@ describe('three-tier size on the skills list (PRD-7978)', () => {
 
 describe('default global install targets stay in the install-target vocabulary', () => {
   /**
-   * Detection (`~/.gemini` → antigravity) is WIDER than the install-target
-   * vocabulary: an editor with no project skill root has no checkbox in the
-   * picker and is filtered out of `resolvedHosts`, so a projection there could
-   * never be seen or removed by a later set-exact install. Omitting `targets`
-   * must therefore yield the same vocabulary an explicit list is filtered to.
+   * Detection and the GLOBAL vocabulary are the same set now: `antigravity`
+   * (`~/.gemini/skills`) is a first-class global target with a menu row, so a
+   * projection there is visible, checkable, and removable by a later
+   * set-exact install. Omitting `targets` projects into every DETECTED user
+   * host — and everything emitted must round-trip through the user
+   * vocabulary, or the picker could not uncheck it.
    *
    */
-  test('omitting targets never projects into a detected non-target host', async () => {
+  test('omitted targets project into every detected user host, and all of them round-trip', async () => {
     const name = 'vocab-skill';
     expect((await putSkill('global', name)).status).toBe(200);
 
@@ -211,11 +212,25 @@ describe('default global install targets stay in the install-target vocabulary',
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
 
-    // Detection really ran: `.claude` is detected AND a valid target.
+    // Detection really ran: `.claude` is detected AND a valid target — and so
+    // is antigravity, whose user root (`~/.gemini/skills`) received a copy.
     expect(parsed.data.hosts).toContain('claude');
-    // …and every emitted host round-trips (`agents` is the hub, not an editor).
-    const vocabulary = new Set<string>([...PROJECT_SKILL_EDITOR_IDS, 'agents']);
+    expect(parsed.data.hosts).toContain('antigravity');
+    // Every emitted host round-trips through the USER vocabulary (`agents` is
+    // the hub, not an editor) — an unexpressible host could never be unchecked.
+    const vocabulary = new Set<string>([...USER_SKILL_EDITOR_IDS, 'agents']);
     expect(parsed.data.hosts.filter((h) => !vocabulary.has(h))).toEqual([]);
+    expect(existsSync(join(tmpHome, '.gemini', 'skills', name))).toBe(true);
+
+    // And the projection is REMOVABLE: a set-exact install without
+    // antigravity drops the `.gemini` copy — the loop the old vocabulary
+    // could not express.
+    const removal = await fetch(`${base()}/api/skill/install`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'global', name, targets: ['claude'] }),
+    });
+    expect(removal.status).toBe(200);
     expect(existsSync(join(tmpHome, '.gemini', 'skills', name))).toBe(false);
   });
 });

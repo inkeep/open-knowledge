@@ -10,6 +10,7 @@ import {
   acquiredBundleTooLarge,
   findByContentHash,
   inspectPluginSource,
+  packMarkerOf,
   parseSkillDir,
   SKILLS_LOCK_REL,
   upsertLockEntry,
@@ -241,12 +242,25 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
       // 4. Write SKILL.md + every bundle file via the sanctioned writers. The
       // frontmatter is canonicalized to {name,description} (OK's skill model);
       // upstream version lives in the lockfile, not the SKILL.md.
-      const skillBody = deps.parseFrontmatterDoc(acquired.skillMd).body;
+      //
+      // `metadata.pack` is the one upstream key carried through. It is identity,
+      // not version: it is the only proof that a generically-named skill is a
+      // starter pack of ours, and the provenance retrofit refuses to act without
+      // it. Dropping it meant an imported pack whose lock entry went missing —
+      // routine, the lockfile is gitignored — could never be recognised again,
+      // so it showed no source and sat outside its group.
+      const acquiredDoc = deps.parseFrontmatterDoc(acquired.skillMd);
+      const skillBody = acquiredDoc.body;
+      const pack = packMarkerOf(acquiredDoc.frontmatter);
       const wr = applySkillWrite({
         skillsRoot: importRoot,
         name: targetName,
         body: skillBody,
-        frontmatter: { name: targetName, description: acquired.description },
+        frontmatter: {
+          name: targetName,
+          description: acquired.description,
+          ...(pack !== undefined ? { metadata: { pack } } : {}),
+        },
       });
       if (!wr.ok) {
         return {

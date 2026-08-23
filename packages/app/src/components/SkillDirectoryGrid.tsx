@@ -69,7 +69,9 @@ export function SkillDirectoryGrid({
         <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           {results.map((r) => (
             <SkillDirectoryResult
-              key={r.id}
+              // skills.sh rows carry an `id`; anything synthesized (degraded
+              // fallback, tests) may not — source+name is the same identity.
+              key={r.id ?? `${r.source}/${r.name}`}
               result={r}
               imported={importedEntry(r)}
               onOpen={() => openResult(r)}

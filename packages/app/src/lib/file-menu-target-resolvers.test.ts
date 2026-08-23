@@ -212,3 +212,57 @@ describe('buildSendToAiInputForActiveTarget', () => {
     ).toBeNull();
   });
 });
+
+describe('buildSendToAiInputForActiveTarget — skill targets', () => {
+  const workspace = { contentDir: '/proj', workspaceRoot: '/proj' } as never;
+
+  test('a skill preview hands off the SKILL, not nothing', () => {
+    // Falling through to null here is what made "send to AI for a specific
+    // skill" dispatch nothing — the pane showed only the dock session's
+    // standing bootstrap, "a message that had nothing to do with the skill".
+    const input = buildSendToAiInputForActiveTarget(
+      {
+        kind: 'skill-preview',
+        target: 'linked//abs/dir/write-skill',
+        flavor: 'linked',
+        source: '/abs/dir/write-skill',
+        name: 'write-skill',
+        subtitle: '',
+        level: 'project',
+      } as never,
+      workspace,
+    );
+    expect(input?.skill).toEqual({ name: 'write-skill', scope: 'project' });
+  });
+
+  test('a skill-file target hands off its skill at the file tab scope', () => {
+    const input = buildSendToAiInputForActiveTarget(
+      {
+        kind: 'skill-file',
+        target: 'global/grill-me/references/x.md',
+        scope: 'global',
+        name: 'grill-me',
+        path: 'references/x.md',
+      } as never,
+      workspace,
+    );
+    expect(input?.skill).toEqual({ name: 'grill-me', scope: 'global' });
+  });
+});
+
+// A session-restored target from a pre-level hash omits `level` — the handoff
+// must still dispatch, at project scope, not drop to null.
+test('a skill preview without a level falls back to project scope', () => {
+  const input = buildSendToAiInputForActiveTarget(
+    {
+      kind: 'skill-preview',
+      target: 'detected//x/ai-sdk',
+      flavor: 'detected',
+      source: '/x',
+      name: 'ai-sdk',
+      subtitle: '',
+    } as never,
+    { contentDir: '/proj', workspaceRoot: '/proj' } as never,
+  );
+  expect(input?.skill).toEqual({ name: 'ai-sdk', scope: 'project' });
+});

@@ -1,6 +1,6 @@
 ---
 name: open-knowledge-write-skill
-description: "Use when the user wants to create, author, write, or design a new Agent Skill (a SKILL.md) — for OpenKnowledge or for their editors — including requests like 'help me write a skill', 'make a skill that…', 'turn this workflow into a skill', or improving an existing skill's triggering and discipline. Also use when capturing reusable agent guidance that should live as an installable skill rather than a one-off prompt. Covers choosing scope (project vs global), the SKILL.md frontmatter contract, progressive-disclosure structure, evaluating the skill, and installing it into the user's editors."
+description: "Use when the user wants to create, author, write, or design a new Agent Skill (a SKILL.md) — for OpenKnowledge or for their editors — including requests like 'help me write a skill', 'make a skill that…', 'turn this workflow into a skill', or improving an existing skill's triggering and discipline. Also use when capturing reusable agent guidance that should live as an installable skill rather than a one-off prompt. Covers choosing scope (project vs global), authoring inside a plugin or skills-distribution repo (write in the repo's own layout, never install), the SKILL.md frontmatter contract, progressive-disclosure structure, evaluating the skill, and installing it into the user's editors."
 compatibility: "OpenKnowledge project recommended (uses the `write` / `edit` / `install` MCP verbs). Authoring + validation are pure file ops; live preview + eval want a running server (`ok start`)."
 metadata:
   author: "Inkeep"
@@ -79,6 +79,19 @@ the user's decision and has different blast radius — make it explicit.
 Default heuristic: inside an OK project and the task is specific to it → **project**;
 "for all my work / globally" → **global**; otherwise ask one question. State the
 choice and its consequence before writing.
+
+**Developing a skills repo or plugin? Then NEITHER scope applies.** If the repo
+you are working in is itself a skill *distribution* — a plugin (e.g. a
+`.claude-plugin/` manifest or marketplace listing) or a catalog repo that
+shelves skills as `skills/<name>/` for others to import — the skill you are
+authoring is a **product of that repo**, not an installation into it. Write it
+in the repo's own layout, beside its sibling skills, following the format the
+repo already uses. Do **not** place it under `.claude/skills/` or
+`.agents/skills/` here, and do **not** `install` it: consumers get it by
+installing the plugin or importing from the repo, and the plugin's own repo
+loads nothing from itself. `install` is only for skills the *current* project
+or user should load. If you are unsure whether the repo is a distribution or a
+consumer, ask — writing to the wrong place ships a skill nobody can find.
 
 ## Stage 3 — Plan the contents
 

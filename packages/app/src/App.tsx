@@ -2,6 +2,7 @@ import { mediaKindForSidebarAssetExtension, SHOW_INSTALL_SKILL } from '@inkeep/o
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';
+import { BranchRecycleBanner } from '@/components/BranchRecycleBanner';
 import { CommandPalette } from '@/components/CommandPalette';
 import { ConnectingBanner } from '@/components/ConnectingBanner';
 import { CreateProjectMenuTrigger } from '@/components/CreateProjectMenuTrigger';
@@ -34,7 +35,6 @@ import { ValidationFreshness } from '@/components/ValidationFreshness';
 import { BackgroundThrottleReporter } from '@/editor/BackgroundThrottleReporter';
 import {
   DocumentProvider,
-  isSkillsNewTabId,
   useDocumentContext,
   useDocumentTransition,
 } from '@/editor/DocumentContext';
@@ -379,7 +379,9 @@ function NavigationHandler() {
         return;
       }
       if (skillsFromHash(window.location.hash)) {
-        if (isSkillsNewTabId(activeNewTabId)) {
+        // One blank-tab kind on the single tab strip: any active blank tab
+        // latches, same as the empty-hash branch below.
+        if (activeNewTabId !== null) {
           latchSurfaceHash();
           return;
         }
@@ -798,6 +800,7 @@ function AppBody() {
   return (
     <>
       <ConnectingBanner />
+      <BranchRecycleBanner />
       <PageListProvider>
         <NoteWindowMainActionReceiver />
         {/* Agent-driven hash navigation retargets the window to whatever doc an

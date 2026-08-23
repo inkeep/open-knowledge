@@ -108,10 +108,13 @@ test.describe('Skills Studio', () => {
     await expect(async () => {
       expect(existsSync(join(installedPath, 'SKILL.md'))).toBe(true);
     }).toPass({ timeout: 20_000 });
-    // The row reflects it without a reload.
-    await expect(page.getByTestId('skills-studio-skill-uninstall-write-skill')).toBeVisible({
-      timeout: 15_000,
-    });
+    // The row reflects it without a reload: install state lives on the row's
+    // agent-icon cluster now (the row IS the control — there is no separate
+    // uninstall button), so the uninstalled placeholder disappears once the
+    // write lands and every row carries a cluster.
+    await expect(
+      page.getByTestId('settings-builtin-skills').getByTestId('skill-consent-row-no-hosts'),
+    ).toHaveCount(0, { timeout: 15_000 });
 
     // The page says what these skills are, in human words. The
     // frontmatter description is the agent's trigger text and must not be here.

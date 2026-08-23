@@ -31,8 +31,9 @@ const uninstall = vi.fn(async () => ({ ok: false as const, error: 'boom' }));
 const install = vi.fn(async () => ({ ok: false as const, error: 'boom' }));
 const requestFileCreate = vi.fn();
 
+let skillsData: unknown[] = [installedEntry];
 vi.doMock('@/hooks/use-skills', () => ({
-  useSkills: () => ({ status: 'ready', data: [installedEntry] }),
+  useSkills: () => ({ status: 'ready', data: skillsData }),
 }));
 vi.doMock('@/components/skill-actions', () => ({
   useSkillActions: () => ({
@@ -87,5 +88,40 @@ describe('SkillEditorActions — new-file affordance (PRD-7429)', () => {
     // targeting the resolved skill entry.
     expect(requestFileCreate).toHaveBeenCalledTimes(1);
     expect(requestFileCreate.mock.calls[0][0]).toMatchObject({ scope: 'project', name: 'foo' });
+  });
+});
+
+describe('SkillEditorActions — stale-scope self-heal', () => {
+  test('a wrong-scope surface resolves by unique name instead of Checking forever', async () => {
+    // A tab identity can carry a stale scope: a built-in previewed at the wrong
+    // level during the global-strays era hung its pill on "Checking" for good —
+    // (project, name) never resolves when the skill only exists at global. One
+    // skill with this name is unambiguous, so the pill adopts it.
+    skillsData = [{ ...installedEntry, scope: 'global' }];
+    render(
+      <TooltipProvider>
+        <SkillEditorActions scope="project" name="foo" />
+      </TooltipProvider>,
+    );
+
+    expect(screen.queryByText('Checking')).toBeNull();
+    expect(await screen.findByText('Installed')).toBeTruthy();
+    skillsData = [installedEntry];
+  });
+
+  test('a genuinely unresolved skill still reads as Checking, not Not installed', async () => {
+    // Two same-named skills at different scopes: ambiguous, so no self-heal —
+    // guessing would put the install controls on the wrong one.
+    skillsData = [
+      { ...installedEntry, scope: 'global', name: 'dupe' },
+      { ...installedEntry, name: 'dupe', installed: false, hosts: [] },
+    ];
+    render(
+      <TooltipProvider>
+        <SkillEditorActions scope="user-weird" name="dupe" />
+      </TooltipProvider>,
+    );
+    expect(await screen.findByText('Checking')).toBeTruthy();
+    skillsData = [installedEntry];
   });
 });

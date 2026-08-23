@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "knowledge-base",
+  "description": "Starter pack: a general team knowledge base",
+  "author": {
+    "name": "Inkeep"
+  },
+  "repository": "https://github.com/inkeep/open-knowledge-skills",
+  "keywords": ["openknowledge", "starter-pack"]
+}

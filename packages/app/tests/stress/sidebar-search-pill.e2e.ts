@@ -14,8 +14,8 @@
  *   - divergent click-while-open semantics: the button click is a no-op when the
  *     palette is open (mirrors the legacy icon); ⌘K-while-open toggles
  *     closed (preserves the global-shortcut contract)
- *   - project actions live with the project-root row rather than
- *     SidebarHeader; the legacy Search ToolbarButton remains absent
+ *   - project actions live with the project-root row; the Search button is
+ *     global navigation and sits in SidebarHeader beside back/forward
  *   - accessible-name calculation returns "Search" via the button's aria-label
  *     (icon-only, no visible label); the lucide icon carries aria-hidden
  *   - compositional journey: discovery → click → query → result selection
@@ -273,14 +273,14 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
     await expect(cmdkRoot(page)).toBeHidden({ timeout: 2_000 });
   });
 
-  test('project actions live under the project-root row and Search stays out of SidebarHeader', async ({
+  test('project actions live under the project-root row and Search sits in SidebarHeader', async ({
     page,
     api,
     workerServer,
   }) => {
     // Seed a doc inside a folder so hasFolders → true → all four project-root
-    // actions render. The pill button ALSO has accessible name "Search" but
-    // lives outside SidebarHeader. Seed a root-level template so the smart-hide
+    // actions render. Search is GLOBAL navigation, so its button lives in the
+    // header beside back/forward. Seed a root-level template so the smart-hide
     // gate around "New from template" evaluates true (the button hides when
     // zero templates resolve at the root cascade).
     await api.seedDocs([{ name: 'q006', markdown: '# q006\n\nBody.' }]);
@@ -314,11 +314,11 @@ test.describe('sidebar-search-pill — discovery, click, keyboard, semantics', (
       timeout: 15_000,
     });
 
-    // SidebarHeader no longer owns the project action toolbar, and the legacy
-    // Search ToolbarButton remains absent.
+    // SidebarHeader no longer owns the project action toolbar; global
+    // navigation (search) is exactly what it DOES own.
     await expect(sidebarHeader(page).getByTestId('sidebar-toolbar')).toHaveCount(0);
     const searchInsideHeader = sidebarHeader(page).getByRole('button', { name: 'Search' });
-    await expect(searchInsideHeader).toHaveCount(0);
+    await expect(searchInsideHeader).toHaveCount(1);
 
     const toolbar = projectActionsToolbar(page);
     await expect(toolbar).toBeVisible();
@@ -772,22 +772,20 @@ test.describe('sidebar-search-pill — Electron host & sidebar-state', () => {
       .toBeLessThanOrEqual(1);
   });
 
-  test('web-mode renders the "Files" label alongside the pill', async ({ page, api }) => {
+  test('web-mode renders the project header alongside the pill', async ({ page, api }) => {
     await api.seedDocs([{ name: 'q022', markdown: '# q022\n\nBody.' }]);
     await page.setViewportSize(DESKTOP_VIEWPORT);
     await page.goto('/#/q022');
     await page.waitForSelector('[role="treeitem"]', { timeout: 15_000 });
 
-    // 'Files' label visible in web mode (no okDesktop shim). Scope to the
-    // font-mono group label — the Files/Skills sidebar toggle also renders a
-    // "Files" segment, so a bare exact-text match is ambiguous (strict-mode).
-    const filesLabel = page.getByText('Files', { exact: true }).and(page.locator('.font-mono'));
-    await expect(filesLabel).toBeVisible();
-    const klass = (await filesLabel.getAttribute('class')) ?? '';
-    expect(klass).toContain('font-mono');
-    expect(klass).toContain('text-sm');
-    expect(klass).toContain('uppercase');
-    expect(klass).toContain('tracking-wider');
+    // The header used to be a literal uppercase "Files" label. It is the PROJECT
+    // row now — the create/view actions sit inline with the folder they act on,
+    // so the row names that folder rather than the generic category. What the
+    // test is actually for is unchanged: in web mode (no okDesktop shim) the
+    // header and the pill coexist rather than one displacing the other.
+    const projectHeader = page.locator('[data-sidebar-root-context]');
+    await expect(projectHeader).toBeVisible();
+    await expect(projectHeader).not.toBeEmpty();
 
     // Pill is also visible.
     await expect(pill(page)).toBeVisible();

@@ -15,7 +15,6 @@ import {
   templateContentDocName,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
-import { isSkillBundleShapedPath, isSkillDocName } from '@/editor/editor-tabs';
 import type { SkillPreviewFlavor } from '@/lib/doc-hash';
 import { normalizeDocNameInput } from '@/lib/doc-paths';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
@@ -109,23 +108,6 @@ export type ResolvedContentTarget = Exclude<
   ResolvedNavigationTarget,
   { kind: 'skills' | 'skill-preview' }
 >;
-
-/**
- * `true` when the active target is skill work — the Skills hub, a read-only
- * bundle-file viewer, or a skill's SKILL.md/reference opened as a plain `doc`
- * (project skills are content docs under `.ok/skills/`; global skills use the
- * `__skill__/` managed-artifact name). Drives the sidebar's Files/Skills focus
- * and the surface a freshly-opened new tab inherits, so both read from one rule.
- */
-export function isSkillFocusedTarget(target: ResolvedNavigationTarget | null): boolean {
-  if (!target) return false;
-  if (target.kind === 'skills' || target.kind === 'skill-file' || target.kind === 'skill-preview')
-    return true;
-  return (
-    target.kind === 'doc' &&
-    (isSkillDocName(target.docName) || isSkillBundleShapedPath(target.docName))
-  );
-}
 
 interface DocumentSizeMeta {
   size?: number;

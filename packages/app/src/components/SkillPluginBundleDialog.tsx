@@ -5,9 +5,10 @@ import {
   type SkillTargetEditor,
 } from '@inkeep/open-knowledge-core';
 
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useId, useState } from 'react';
 import { toast } from 'sonner';
+import { AgentIconCluster } from '@/components/AgentIconCluster';
 import { INSTALL_EDITORS } from '@/components/SkillInstallMenu';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,6 +22,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -30,8 +32,14 @@ import {
 } from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { useSkillTargets } from '@/hooks/use-skill-targets';
-import { SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
-import { discoverSkillsInSource, importSkillsBulk, installSkill } from '@/lib/skills-api';
+import { useSkills } from '@/hooks/use-skills';
+import { customPlacementRoot, SKILL_SCOPE_ORDER, useSkillScopeLabels } from '@/lib/skill-scope';
+import {
+  discoverSkillsInSource,
+  importSkillsBulk,
+  installSkill,
+  placeSkill,
+} from '@/lib/skills-api';
 
 /**
  * One source that carries several skills, normalized across the two ways we
@@ -134,6 +142,53 @@ function OpenSkillPluginBundleDialog({
     skillTargets.state.status === 'ready' ? skillTargets.state.data.targets : null;
   const effectiveEditors: ReadonlySet<SkillTargetEditor> =
     editors ?? new Set(configuredTargets ?? []);
+  // Only OFFER editors installable on THIS machine — the same rule (and the
+  // same same-scope fallback source) the per-skill install menu uses via
+  // `skill-install-rows`. Installing into an undetected editor silently no-ops,
+  // so a static list promises writes that can't happen. null = no data yet →
+  // offer everything (never over-hide); anything already ticked stays visible.
+  const skillsState = useSkills();
+  const installableList =
+    skillsState.status === 'ready'
+      ? skillsState.data.find((s) => s.scope === scope)?.installableEditors
+      : undefined;
+  const offeredEditors = INSTALL_EDITORS.filter(
+    (e) => !installableList || installableList.includes(e) || effectiveEditors.has(e),
+  );
+  // Skills the picker offers that are ALREADY managed at the target scope:
+  // rendered pre-checked with an Installed badge (state, not a choice — the
+  // checkbox is disabled so unchecking can't read as an uninstall) and
+  // excluded from Select all / the CTA count. A re-import would be a no-op
+  // server-side anyway.
+  const installedNames: ReadonlySet<string> =
+    skillsState.status === 'ready'
+      ? new Set(skillsState.data.filter((s) => s.scope === scope).map((s) => s.name))
+      : new Set();
+  // Custom skill roots, offered beside the editor checkboxes exactly like the
+  // per-skill install menu offers them: every declared root the targets config
+  // knows for this scope (non-editor host rows), plus every root any
+  // same-scope skill has a recorded custom placement under.
+  const [customRoots, setCustomRoots] = useState<ReadonlySet<string>>(new Set());
+  const offeredCustomRoots: readonly string[] = (() => {
+    const roots = new Set<string>();
+    if (skillTargets.state.status === 'ready') {
+      for (const f of skillTargets.state.data.folders ?? []) {
+        if (f.scope !== scope) continue;
+        if ((INSTALL_EDITORS as readonly string[]).includes(f.host)) continue;
+        if (f.root) roots.add(f.root);
+      }
+    }
+    if (skillsState.status === 'ready') {
+      for (const s of skillsState.data) {
+        if (s.scope !== scope) continue;
+        for (const cp of s.customPlacements ?? []) {
+          const root = customPlacementRoot(cp);
+          if (root) roots.add(root);
+        }
+      }
+    }
+    return [...roots].sort();
+  })();
 
   const usesInstallOverride = installOverride !== undefined;
   useEffect(() => {
@@ -147,7 +202,8 @@ function OpenSkillPluginBundleDialog({
   }, [source, usesInstallOverride]);
 
   const { plugin, names } = bundle;
-  const allSelected = selected.size === names.length && names.length > 0;
+  const selectableNames = names.filter((n) => !installedNames.has(n));
+  const allSelected = selected.size === selectableNames.length && selectableNames.length > 0;
 
   function toggle(name: string, on: boolean) {
     const next = new Set(selected);
@@ -200,6 +256,14 @@ function OpenSkillPluginBundleDialog({
           linkMode: true,
         });
         if (!projected.ok) toast.error(t`Couldn't install ${skillName}: ${projected.error}`);
+      }
+    }
+    // Custom-root placements ride the same sequential run, one placeSkill per
+    // skill x root — the same primitive the per-skill menu's custom rows use.
+    for (const root of customRoots) {
+      for (const skillName of landed) {
+        const placed = await placeSkill({ scope, name: skillName, dir: root, mode: 'link' });
+        if (!placed.ok) toast.error(t`Couldn't place ${skillName} in ${root}: ${placed.error}`);
       }
     }
     setBusy(false);
@@ -265,74 +329,17 @@ function OpenSkillPluginBundleDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">
-          <div className="flex flex-col gap-2">
-            <Label htmlFor={scopeId}>
-              <Trans>Level</Trans>
-            </Label>
-            <Select
-              value={scope}
-              disabled={busy || usesInstallOverride}
-              onValueChange={(v) => setScope(v as SkillScope)}
-            >
-              <SelectTrigger id={scopeId} className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SKILL_SCOPE_ORDER.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {scopeLabels[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {usesInstallOverride ? null : (
-            <div className="flex flex-col gap-2">
-              <Label>
-                <Trans>Install into</Trans>
-              </Label>
-              <div className="flex flex-wrap gap-x-4 gap-y-2">
-                {INSTALL_EDITORS.map((editor) => (
-                  <Label
-                    key={editor}
-                    className="flex cursor-pointer items-center gap-2 text-sm font-normal"
-                  >
-                    <Checkbox
-                      checked={effectiveEditors.has(editor)}
-                      disabled={busy}
-                      onCheckedChange={(checked) => {
-                        const next = new Set(effectiveEditors);
-                        if (checked === true) next.add(editor);
-                        else next.delete(editor);
-                        setEditors(next);
-                      }}
-                    />
-                    {EDITOR_LABELS[editor] ?? editor}
-                  </Label>
-                ))}
-              </div>
-              {effectiveEditors.size === 0 ? (
-                // Not an error: the skills still land as project skills you can
-                // install later. Say so, so an empty set doesn't read as a failure.
-                <p className="text-1sm text-muted-foreground">
-                  <Trans>
-                    No agents selected — the skills are saved but not installed anywhere.
-                  </Trans>
-                </p>
-              ) : null}
-            </div>
-          )}
           <div className="flex items-center justify-between">
             <p className="font-medium text-xs font-mono text-foreground/70 uppercase tracking-wider">
               <Trans>
-                {selected.size} of {names.length} selected
+                {selected.size} of {selectableNames.length} selected
               </Trans>
             </p>
             <Button
               variant="ghost"
               size="sm"
               disabled={busy}
-              onClick={() => setSelected(allSelected ? new Set() : new Set(names))}
+              onClick={() => setSelected(allSelected ? new Set() : new Set(selectableNames))}
             >
               {allSelected ? <Trans>Clear</Trans> : <Trans>Select all</Trans>}
             </Button>
@@ -342,19 +349,27 @@ function OpenSkillPluginBundleDialog({
           <div className="max-h-72 overflow-y-auto rounded-md border border-border divide-y divide-border">
             {names.map((name) => {
               const description = described.get(name);
+              const installed = installedNames.has(name);
               return (
                 <Label
                   key={name}
                   className="flex cursor-pointer items-start gap-3 p-3 text-sm font-normal hover:bg-muted/40"
                 >
                   <Checkbox
-                    checked={selected.has(name)}
-                    disabled={busy}
+                    checked={installed || selected.has(name)}
+                    disabled={busy || installed}
                     onCheckedChange={(checked) => toggle(name, checked === true)}
                     className="mt-0.5"
                   />
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="font-mono">{name}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono">{name}</span>
+                      {installed ? (
+                        <span className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide">
+                          <Trans>Installed</Trans>
+                        </span>
+                      ) : null}
+                    </span>
                     {description ? (
                       <span className="text-1sm text-muted-foreground line-clamp-2">
                         {description}
@@ -364,6 +379,119 @@ function OpenSkillPluginBundleDialog({
                 </Label>
               );
             })}
+          </div>
+          {/* Destination — a summary, not a form. The skills are the decision;
+              where they land is a default (the project's configured targets +
+              the preview's scope) stated in the app's usual icon language and
+              adjustable behind Change for the minority who want different. */}
+          <div
+            className="flex flex-wrap items-center gap-1.5 text-1sm text-muted-foreground"
+            data-testid="plugin-bundle-destination"
+          >
+            {scope === 'project' ? (
+              <Trans>Installs into this project</Trans>
+            ) : (
+              <Trans>Installs for all your projects</Trans>
+            )}
+            {usesInstallOverride ? null : (
+              <>
+                <span aria-hidden>·</span>
+                {effectiveEditors.size + customRoots.size > 0 ? (
+                  <AgentIconCluster
+                    hosts={[...effectiveEditors, ...customRoots]}
+                    iconClassName="size-3.5"
+                  />
+                ) : (
+                  // Not an error: the skills still land as project skills you
+                  // can install later. Say so, so an empty set doesn't read as
+                  // a failure.
+                  <Trans>no agents — saved, not installed anywhere</Trans>
+                )}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="link"
+                      size="sm"
+                      className="h-auto px-1"
+                      disabled={busy}
+                      data-testid="plugin-bundle-change-destination"
+                    >
+                      <Trans>Change</Trans>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="flex w-72 flex-col gap-4">
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor={scopeId}>
+                        <Trans>Available in</Trans>
+                      </Label>
+                      <Select
+                        value={scope}
+                        disabled={busy}
+                        onValueChange={(v) => setScope(v as SkillScope)}
+                      >
+                        <SelectTrigger id={scopeId} className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SKILL_SCOPE_ORDER.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {scopeLabels[s]}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Label>
+                        <Trans>Install into</Trans>
+                      </Label>
+                      <div className="flex flex-wrap gap-x-4 gap-y-2">
+                        {offeredEditors.map((editor) => (
+                          <Label
+                            key={editor}
+                            className="flex cursor-pointer items-center gap-2 text-sm font-normal"
+                          >
+                            <Checkbox
+                              checked={effectiveEditors.has(editor)}
+                              disabled={busy}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(effectiveEditors);
+                                if (checked === true) next.add(editor);
+                                else next.delete(editor);
+                                setEditors(next);
+                              }}
+                            />
+                            {EDITOR_LABELS[editor] ?? editor}
+                          </Label>
+                        ))}
+                        {/* The scope's known custom skill roots — the same
+                            rows the per-skill install menu offers: declared
+                            roots from the targets config plus any root a
+                            same-scope skill has a recorded placement under. */}
+                        {offeredCustomRoots.map((root) => (
+                          <Label
+                            key={root}
+                            className="flex cursor-pointer items-center gap-2 font-normal text-sm"
+                          >
+                            <Checkbox
+                              checked={customRoots.has(root)}
+                              disabled={busy}
+                              onCheckedChange={(checked) => {
+                                const next = new Set(customRoots);
+                                if (checked === true) next.add(root);
+                                else next.delete(root);
+                                setCustomRoots(next);
+                              }}
+                            />
+                            <span className="font-mono text-xs">{root}</span>
+                          </Label>
+                        ))}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </>
+            )}
           </div>
         </DialogBody>
         <DialogFooter>
@@ -385,8 +513,12 @@ function OpenSkillPluginBundleDialog({
                 <Spinner aria-hidden="true" className="size-4" />
                 <Trans>Installing</Trans>
               </>
+            ) : selected.size === 0 ? (
+              <Trans>Install</Trans>
             ) : (
-              <Trans>Install selected</Trans>
+              // The verb carries the count — "Install selected" never said how
+              // much lands.
+              <Plural value={selected.size} one="Install # skill" other="Install # skills" />
             )}
           </Button>
         </DialogFooter>

@@ -49,6 +49,7 @@ import {
   SkillMenuGroup,
   SkillMenuItem,
   type SkillMenuKind,
+  SkillMenuLabel,
   SkillMenuSeparator,
   SkillMenuSub,
   SkillMenuSubContent,
@@ -59,7 +60,12 @@ import { beginSkillWrite, endSkillWrite } from '@/lib/documents-events';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { skillDir, useSkillScopeLabels } from '@/lib/skill-scope';
-import { convertSkillLocation, duplicateSkill, installSkill } from '@/lib/skills-api';
+import {
+  convertSkillLocation,
+  duplicateSkill,
+  installSkill,
+  reimportSkillsBulk,
+} from '@/lib/skills-api';
 import { useWorkspace } from '@/lib/use-workspace';
 
 /**
@@ -110,6 +116,17 @@ export interface SkillActions {
   runLocationWrite: <T>(skill: SkillsListEntry, run: () => Promise<T>) => Promise<T>;
   /** Duplicate a skill into `<name>-copy` (existing names avoid collisions). */
   duplicate: (skill: SkillsListEntry, existingNames: ReadonlySet<string>) => Promise<void>;
+  /**
+   * Refresh every named skill from its recorded upstream in ONE request, and
+   * report what actually happened per skill. `sourceLabel` names the origin in
+   * the result message — the group row's own label, so the toast reads as the
+   * answer to the row the user clicked.
+   */
+  updateAllFromSource: (input: {
+    scope: SkillScope;
+    names: readonly string[];
+    sourceLabel: string;
+  }) => Promise<void>;
   /** Open the (reused) delete-confirm dialog for a skill. */
   requestDelete: (skill: SkillsListEntry) => void;
   /** Open the rename dialog for a skill; `existingNames` drives its collision check. */
@@ -287,6 +304,66 @@ export function useSkillActions(): SkillActions {
     openSkill(skill.scope, result.name);
   }
 
+  /**
+   * Update every skill from one source in a single request.
+   *
+   * Reports the outcome rather than a bare success, because a batch genuinely
+   * has three of them at once: a partial failure is the normal case (one bundle
+   * the upstream can no longer write is not a reason to hide that six others
+   * updated), and "already up to date" is the most common result of all — a
+   * success toast that did not distinguish it would claim work that never
+   * happened.
+   */
+  async function updateAllFromSource(input: {
+    scope: SkillScope;
+    names: readonly string[];
+    sourceLabel: string;
+  }) {
+    const names = [...input.names];
+    if (names.length === 0) return;
+    // Same write-marking as install: an update rewrites bundle dirs, so a scan
+    // landing mid-write must not read the gap as a deletion and close the tab.
+    // No try/finally around the pair: `reimportSkillsBulk` is total — every
+    // failure, network included, comes back as `{ok:false}` — so there is no
+    // throw for a finally to catch, and the markers cannot leak. A leak would be
+    // permanent (the flag suppresses the reconcile close for that skill forever),
+    // so if this ever calls something that CAN throw, the pair needs the guard.
+    for (const name of names) beginSkillWrite(input.scope, name);
+    setInstallingName(names[0] ?? null);
+    const result = await reimportSkillsBulk({ scope: input.scope, names });
+    for (const name of names) endSkillWrite(input.scope, name);
+    setInstallingName(null);
+    if (!result.ok) {
+      toast.error(t`Couldn't update from ${input.sourceLabel}: ${result.error}`);
+      return;
+    }
+    const failures = result.results.filter(
+      (r) => r.status === 'failed' || r.status === 'not-found',
+    );
+    const source = input.sourceLabel;
+    const updated = result.updated;
+    const upToDate = result.upToDate;
+    if (failures.length > 0) {
+      // Name what broke, with its reason. A bare count ("1 failed") sends the
+      // user hunting through eight rows for the one that did not move.
+      const detail = failures
+        .map((r) => (r.error ? `${r.requested} (${r.error})` : r.requested))
+        .join(', ');
+      const failed = failures.length;
+      // Warning, not error: something usually did land, and an error toast over
+      // a mostly-successful batch reads as "nothing happened".
+      toast.warning(
+        t`${source}: ${updated} updated, ${upToDate} already up to date, ${failed} failed — ${detail}`,
+      );
+      return;
+    }
+    toast.success(
+      updated > 0
+        ? t`${source}: ${updated} updated, ${upToDate} already up to date`
+        : t`Everything from ${source} is already up to date`,
+    );
+  }
+
   const dialogs = (
     <>
       <SkillDeleteDialog
@@ -343,6 +420,7 @@ export function useSkillActions(): SkillActions {
     convertLocations,
     runLocationWrite,
     duplicate,
+    updateAllFromSource,
     requestDelete: setDeleteTarget,
     requestRename: (skill, existingNames) => setRenameTarget({ skill, existingNames }),
     requestScopeMove: (skill, toScope) =>
@@ -465,6 +543,94 @@ export function SkillFileContextMenuItems({
  * Callers select the matching Radix primitive family while every mutation still
  * routes through `useSkillActions`, keeping dialogs and confirmation behavior identical.
  */
+/**
+ * Menu for a managed BUILT-IN row. Read-only bars EDITS (rename, duplicate,
+ * new file, scope move), not inspection or lifecycle: reveal, copy path, the
+ * per-agent Install submenu, and Delete stay available exactly like any other
+ * skill. Same narrow shape as the ordinary menu — Install is a submenu, so
+ * the panel never balloons to the install-body width.
+ */
+export function SkillManagedContextMenuItems({
+  skill,
+  actions,
+  beforeDelete,
+}: {
+  skill: SkillsListEntry;
+  actions: SkillActions;
+  /** Extra rows (e.g. Pin) rendered between Install and the Delete group. */
+  beforeDelete?: ReactNode;
+}) {
+  const { t } = useLingui();
+  const hostToggles = useSkillHostToggles(skill, actions);
+  const absolutePath = skill.absolutePath;
+
+  async function copy(text: string) {
+    try {
+      await scheduleClipboardWrite(text);
+      toast.success(t`Copied path`);
+    } catch {
+      toast.error(t`Couldn't copy path`);
+    }
+  }
+
+  return (
+    <>
+      <SkillMenuGroup menuKind="dropdown">
+        <SkillRevealMenuItem absolutePath={absolutePath} />
+        <SkillMenuSub menuKind="dropdown">
+          <SkillMenuSubTrigger menuKind="dropdown">
+            <Copy aria-hidden />
+            <Trans>Copy Path</Trans>
+          </SkillMenuSubTrigger>
+          <SkillMenuSubContent menuKind="dropdown">
+            <SkillMenuGroup menuKind="dropdown">
+              {absolutePath ? (
+                <SkillMenuItem menuKind="dropdown" onSelect={() => void copy(absolutePath)}>
+                  <Trans>Full Path</Trans>
+                </SkillMenuItem>
+              ) : null}
+              <SkillMenuItem menuKind="dropdown" onSelect={() => void copy(skill.path)}>
+                <Trans>Relative Path</Trans>
+              </SkillMenuItem>
+            </SkillMenuGroup>
+          </SkillMenuSubContent>
+        </SkillMenuSub>
+      </SkillMenuGroup>
+      <SkillMenuSeparator menuKind="dropdown" />
+      <SkillMenuGroup menuKind="dropdown">
+        <SkillMenuSub menuKind="dropdown">
+          <SkillMenuSubTrigger menuKind="dropdown">
+            <DownloadCloud aria-hidden />
+            <Trans>Install</Trans>
+          </SkillMenuSubTrigger>
+          <SkillMenuSubContent menuKind="dropdown" className={SKILL_INSTALL_MENU_WIDTH}>
+            <SkillMenuGroup menuKind="dropdown">
+              <SkillInstallMenuItems
+                toggles={hostToggles}
+                skill={skill}
+                menuKind="dropdown"
+                onResolveFork={(editor) => actions.requestForkResolve(skill, editor)}
+              />
+            </SkillMenuGroup>
+          </SkillMenuSubContent>
+        </SkillMenuSub>
+      </SkillMenuGroup>
+      {beforeDelete}
+      <SkillMenuSeparator menuKind="dropdown" />
+      <SkillMenuGroup menuKind="dropdown">
+        <SkillMenuItem
+          menuKind="dropdown"
+          variant="destructive"
+          onSelect={() => actions.requestDelete(skill)}
+        >
+          <Trash2 aria-hidden />
+          <Trans>Delete</Trans>
+        </SkillMenuItem>
+      </SkillMenuGroup>
+    </>
+  );
+}
+
 export function SkillContextMenuItems({
   skill,
   actions,
@@ -529,6 +695,12 @@ function SkillTargetMenuItems({
   const scopeLabels = useSkillScopeLabels();
   const hostToggles = useSkillHostToggles(skill, actions);
   const absolutePath = skill.absolutePath;
+  // A NON-default bundle of a shared name gets an honest reduced menu: the
+  // name-keyed verbs (rename / duplicate / install / scope-move) all resolve
+  // the by-name DEFAULT bundle server-side, so offering them here would act on
+  // a skill the user did not click. Delete is host-scoped (removes exactly
+  // this bundle) and inspection verbs read the entry's own path, so those stay.
+  const nonDefaultBundle = skill.hostQualifier !== undefined;
 
   async function copy(text: string) {
     try {
@@ -564,55 +736,68 @@ function SkillTargetMenuItems({
         </SkillMenuSub>
       </SkillMenuGroup>
       <SkillMenuSeparator menuKind={menuKind} />
-      <SkillMenuGroup menuKind={menuKind}>
-        <SkillMenuItem
-          menuKind={menuKind}
-          onSelect={() => void actions.duplicate(skill, existingNames)}
-        >
-          <CopyPlus aria-hidden />
-          <Trans>Duplicate</Trans>
-        </SkillMenuItem>
-        <SkillMenuItem
-          menuKind={menuKind}
-          onSelect={() => actions.requestRename(skill, existingNames)}
-        >
-          <PencilLine aria-hidden />
-          <Trans>Rename</Trans>
-        </SkillMenuItem>
-        <SkillMenuItem menuKind={menuKind} onSelect={() => actions.requestFileCreate(skill)}>
-          <FilePlus aria-hidden />
-          <Trans>New file</Trans>
-        </SkillMenuItem>
-        <SkillMenuSub menuKind={menuKind}>
-          <SkillMenuSubTrigger menuKind={menuKind}>
-            <DownloadCloud aria-hidden />
-            <Trans>Install</Trans>
-          </SkillMenuSubTrigger>
-          <SkillMenuSubContent menuKind={menuKind} className={SKILL_INSTALL_MENU_WIDTH}>
-            <SkillMenuGroup menuKind={menuKind}>
-              <SkillInstallMenuItems
-                toggles={hostToggles}
-                skill={skill}
-                menuKind={menuKind}
-                onResolveFork={(editor) => actions.requestForkResolve(skill, editor)}
-              />
-            </SkillMenuGroup>
-          </SkillMenuSubContent>
-        </SkillMenuSub>
-        <SkillMenuItem
-          menuKind={menuKind}
-          onSelect={() =>
-            actions.requestScopeMove(skill, skill.scope === 'project' ? 'global' : 'project')
-          }
-        >
-          <ArrowLeftRight aria-hidden />
-          {skill.scope === 'project' ? (
-            <Trans>Move to {scopeLabels.global}</Trans>
-          ) : (
-            <Trans>Move to {scopeLabels.project}</Trans>
-          )}
-        </SkillMenuItem>
-      </SkillMenuGroup>
+      {nonDefaultBundle ? (
+        <SkillMenuGroup menuKind={menuKind}>
+          <SkillMenuLabel
+            menuKind={menuKind}
+            className="max-w-56 whitespace-normal font-normal text-muted-foreground text-xs"
+          >
+            <Trans>
+              A second skill with this name — rename it (or delete one) to manage it fully.
+            </Trans>
+          </SkillMenuLabel>
+        </SkillMenuGroup>
+      ) : (
+        <SkillMenuGroup menuKind={menuKind}>
+          <SkillMenuItem
+            menuKind={menuKind}
+            onSelect={() => void actions.duplicate(skill, existingNames)}
+          >
+            <CopyPlus aria-hidden />
+            <Trans>Duplicate</Trans>
+          </SkillMenuItem>
+          <SkillMenuItem
+            menuKind={menuKind}
+            onSelect={() => actions.requestRename(skill, existingNames)}
+          >
+            <PencilLine aria-hidden />
+            <Trans>Rename</Trans>
+          </SkillMenuItem>
+          <SkillMenuItem menuKind={menuKind} onSelect={() => actions.requestFileCreate(skill)}>
+            <FilePlus aria-hidden />
+            <Trans>New file</Trans>
+          </SkillMenuItem>
+          <SkillMenuSub menuKind={menuKind}>
+            <SkillMenuSubTrigger menuKind={menuKind}>
+              <DownloadCloud aria-hidden />
+              <Trans>Install</Trans>
+            </SkillMenuSubTrigger>
+            <SkillMenuSubContent menuKind={menuKind} className={SKILL_INSTALL_MENU_WIDTH}>
+              <SkillMenuGroup menuKind={menuKind}>
+                <SkillInstallMenuItems
+                  toggles={hostToggles}
+                  skill={skill}
+                  menuKind={menuKind}
+                  onResolveFork={(editor) => actions.requestForkResolve(skill, editor)}
+                />
+              </SkillMenuGroup>
+            </SkillMenuSubContent>
+          </SkillMenuSub>
+          <SkillMenuItem
+            menuKind={menuKind}
+            onSelect={() =>
+              actions.requestScopeMove(skill, skill.scope === 'project' ? 'global' : 'project')
+            }
+          >
+            <ArrowLeftRight aria-hidden />
+            {skill.scope === 'project' ? (
+              <Trans>Move to {scopeLabels.global}</Trans>
+            ) : (
+              <Trans>Move to {scopeLabels.project}</Trans>
+            )}
+          </SkillMenuItem>
+        </SkillMenuGroup>
+      )}
       <SkillMenuSeparator menuKind={menuKind} />
       <SkillMenuGroup menuKind={menuKind}>
         <SkillMenuItem

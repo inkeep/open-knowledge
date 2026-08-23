@@ -7,7 +7,7 @@
  * Presentational: the caller owns the write and clears `open` when it settles.
  * The confirm control is a plain Button (not AlertDialogAction) so the dialog
  * does not tear itself down before the caller's awaited work finishes, matching
- * SkillInstallConfirmDialog and DeleteConfirmationDialog.
+ * DeleteConfirmationDialog.
  *
  * Direction is the thing users read backwards, so it is drawn rather than
  * described: the picked folder is on the left becoming a pointer, the surviving

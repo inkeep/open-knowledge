@@ -41,12 +41,10 @@ import { PropertyProvider, useProperties } from '@/components/PropertyContext';
 import { ShareReceiveMissPanel } from '@/components/ShareReceiveMissPanel';
 import { SkillFileViewer } from '@/components/SkillFileViewer';
 import { SkillPreviewTab } from '@/components/SkillPreviewTab';
-import { SkillsBasePage } from '@/components/SkillsBasePage';
 import { SettingsDialogShell } from '@/components/settings/SettingsDialogShell';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import {
   isBlobRunnerNewTabId,
-  isSkillsNewTabId,
   useDocumentContext,
   useDocumentTransition,
 } from '@/editor/DocumentContext';
@@ -371,7 +369,6 @@ function EditorAreaInner({
     activeProvider,
     activeTarget,
     activeNewTabId,
-    skillsSidebar,
     recycleDocument,
     docPanelMode,
     docPanelAgentId,
@@ -1542,15 +1539,6 @@ function EditorAreaInner({
       // Skills sidebar is pinned, or opening the game from the Resources menu
       // while in Skills mode would silently render the Skills home instead.
       viewContent = <OkBlobRunnerPage />;
-    } else if (isSkillsNewTabId(activeNewTabId) || skillsSidebar) {
-      // In Skills mode the empty/base state IS the Skills base page ("Create a
-      // skill") — the sidebar toggle keeps the current doc open and only swaps
-      // this base surface, so with no doc active we show Skills' home instead of
-      // the Files "Create something great" one. Same page a Skills-mode new tab
-      // renders.
-      // Same signal the Files empty state below keys off: an open dock already
-      // carries an AI entry point, so the Skills composer would compete with it.
-      viewContent = <SkillsBasePage sessionsDockOpen={terminalVisible} />;
     } else {
       // The empty state collapses to the header-only view while EITHER session
       // panel is open — an open panel is its own AI entry point, so the composer
@@ -1853,9 +1841,6 @@ function EditorAreaInner({
           path={target.path}
         />
       );
-    }
-    if (pane.activeNewTabId && isSkillsNewTabId(pane.activeNewTabId)) {
-      return <SkillsBasePage sessionsDockOpen={false} />;
     }
     return <EmptyEditorState />;
   }

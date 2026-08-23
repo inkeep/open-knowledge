@@ -54,6 +54,13 @@ export const SkillProvenanceSchema = z.looseObject({
   pluginProvider: z.string().optional(),
   plugin: z.string().optional(),
   marketplace: z.string().optional(),
+  /**
+   * The marketplace's GitHub repo, when the harness recorded one. Resolvable
+   * only on the machine that holds the plugin registry, which is why it is
+   * stamped here at enumeration rather than derived by a client from the
+   * marketplace NAME — that name is a local alias and addresses nothing.
+   */
+  repositoryUrl: z.string().optional(),
   version: z.string().optional(),
   gitCommitSha: z.string().optional(),
   scope: z.string().optional(),

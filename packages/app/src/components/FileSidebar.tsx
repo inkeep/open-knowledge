@@ -19,9 +19,9 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
 import { FeedbackCardMount } from '@/components/FeedbackCard';
-import { FilesSkillsToggle } from '@/components/FilesSkillsToggle';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
 import { defaultInitialDir, hasOkPathSegment } from '@/components/file-tree-utils';
+import { subscribeToFilesSectionReveal } from '@/components/files-section-reveal-store';
 import { OpenInAgentEmptySpaceSubmenu } from '@/components/handoff/OpenInAgentEmptySpaceSubmenu';
 import { useTerminalLaunch } from '@/components/handoff/TerminalLaunchContext';
 import {
@@ -39,7 +39,7 @@ import {
   SidebarToolbarButton as ToolbarButton,
   type SidebarToolbarButtonProps as ToolbarButtonProps,
 } from '@/components/SidebarToolbarButton';
-import { SkillsSidebarSection } from '@/components/SkillsSidebarSection';
+import { SkillsSidebarDock } from '@/components/SkillsSidebarDock';
 import {
   readCachedSkillsSectionVisible,
   writeCachedSkillsSectionVisible,
@@ -200,10 +200,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // state-aware items (Duplicate / Rename / Move to Trash / Reveal in Finder / Send to
   // AI / Copy path) — each `onMenuAction` case below reads it to know
   // which doc / folder / asset / project the user picked.
-  // `skillFocused` is the resolved active surface (explicit toggle ?? autofollow
-  // the open doc) — computed once in DocumentContext so the sidebar navigator and
-  // the editor tab-strip mode filter always agree.
-  const { activeDocName, activeTarget, skillFocused } = useDocumentContext();
+  const { activeDocName, activeTarget } = useDocumentContext();
   // The active item's folder is the default create parent — but clicking the
   // tree's empty space "deselects" for creation purposes (FileTree owns that
   // state; `treeCreationCleared` mirrors it below), routing New file / New
@@ -373,22 +370,28 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
   const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
+  // Defaults true, matching the schema — the switch exists because grouping
+  // changes the tree for every existing user and is not obviously better on a
+  // small library, not because we expect it to be turned off.
+  const showSkillGroups = merged?.appearance?.sidebar?.showSkillGroups ?? true;
   // Until the config CRDT syncs after a reload, `showSkillsSection` is undefined.
   // Fall back to the last explicitly-stored value (localStorage mirror) before
   // `?? true`, so the Files/Skills switcher doesn't flash-then-hide for anyone
   // who has the section turned off. Persist the authoritative value
   // once the config carries one so the next reload is flash-free.
+  // Controlled rather than `defaultOpen` so the Skills dock below can tell
+  // whether anything above it is still claiming the sidebar's slack. Collapsing
+  // Files used to leave that space empty with the dock clipped mid-row.
+  const [filesOpen, setFilesOpen] = useState(true);
+  // A doc-opening surface outside this section (the symlinked-skill banner's
+  // Open file) asked for the file browser: expand Files so the tree's
+  // reveal-active-row effect has somewhere to scroll the newly active doc.
+  useEffect(() => subscribeToFilesSectionReveal(() => setFilesOpen(true)), []);
   const configSkillsSection = merged?.appearance?.sidebar?.showSkillsSection;
   const showSkillsSection = configSkillsSection ?? readCachedSkillsSectionVisible() ?? true;
   useEffect(() => {
     if (configSkillsSection !== undefined) writeCachedSkillsSectionVisible(configSkillsSection);
   }, [configSkillsSection]);
-  // The Skills view is the WHOLE sidebar only when a skill is focused AND the
-  // section is shown. With the section hidden by preference, a skill-focused
-  // surface falls back to the Files tree (never a blank sidebar),
-  // so the file-tree controls, empty-space menu, and file/skill create toolbar
-  // all key off this derived flag rather than `skillFocused` alone.
-  const skillsViewActive = skillFocused && showSkillsSection;
   // Smart-hide gates for the Expand/Collapse-all tree-state items, shared by
   // the toolbar popover, the empty-space menu, and the native View menu (via
   // the IPC push below): hide when the action would be a no-op (no folders at
@@ -412,17 +415,6 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   // the event target is a button-like control, suppress both the browser
   // default menu and Radix's ContextMenuTrigger from firing.
   const handleSidebarSurfaceContextMenu: MouseEventHandler<HTMLDivElement> = (event) => {
-    // Skills mode has no file tree, so the file-scoped empty-space menu (New
-    // file/folder/template, …) doesn't apply and its actions are no-ops here —
-    // suppress it entirely. `preventDefault` makes Radix's ContextMenuTrigger
-    // skip opening (composeEventHandlers checks `defaultPrevented`). Skills get
-    // their create/import actions from the scope-header 3-dot and their per-row
-    // actions from the Pierre tree's own context menu.
-    if (skillsViewActive) {
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     // The project-root header is deliberately right-clickable: it opens the
     // project-scoped menu. It is also a CollapsibleTrigger, which Radix renders
     // as a <button> — so without this opt-out the interactive-control check
@@ -497,6 +489,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     showOkFolders?: boolean;
     showOnlyMarkdownFiles?: boolean;
     showSkillsSection?: boolean;
+    showSkillGroups?: boolean;
   }) => {
     if (projectLocalBinding === null) return;
     const result = projectLocalBinding.patch({ appearance: { sidebar } });
@@ -927,118 +920,37 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   className="w-[var(--ok-titlebar-reserve-left,0px)] shrink-0 self-stretch"
                 />
               ) : null}
-              {isExpanded && !isElectronHost ? (
-                <span className="shrink-0 font-mono text-sm uppercase tracking-wider text-sidebar-foreground/50">
-                  <Trans>Files</Trans>
-                </span>
-              ) : null}
-              {/* Back/forward history. Desktop-only: the browser's own controls
-                  already do this on web, so a second pair would be redundant. */}
-              {isElectronHost && isExpanded ? <NavigationHistoryControls /> : null}
+              <div className="ml-auto flex shrink-0 items-center gap-0.5 [&>*]:[-webkit-app-region:no-drag]">
+                {/* Back/forward history. Desktop-only: the browser's own controls
+                    already do this on web, so a second pair would be redundant. */}
+                {isElectronHost && isExpanded ? <NavigationHistoryControls /> : null}
+                {/*
+                 * Search sits with back/forward — global navigation lives in the
+                 * header; the rows below are the project's. Boundary scope is
+                 * intentionally tight: a render-throw silent-fails just the
+                 * search button while the header, FileTree, and the App-level
+                 * ⌘K listener (CommandPalette.tsx) keep working — so search
+                 * stays keyboard-reachable in the fallback state. `resetKeys`
+                 * remounts it on sidebar toggle as a recovery affordance; the
+                 * observability handler is `onPillRenderError` (defined in
+                 * SidebarSearchBar.tsx, emits the project-wide
+                 * `jsx-render-failure` event + parse-health counter).
+                 */}
+                <ErrorBoundary
+                  fallbackRender={() => null}
+                  onError={onPillRenderError}
+                  resetKeys={[sidebarState]}
+                >
+                  <SidebarSearchBar onClick={onOpenSearch} />
+                </ErrorBoundary>
+              </div>
             </SidebarHeader>
-            {/*
-             * Pill row lives outside SidebarContent's overflow-auto boundary so
-             * it is sticky by structure (no sticky CSS needed). no-drag is
-             * defensive — the sibling itself does NOT opt into drag like
-             * SidebarHeader does, but the explicit opt-out survives a future
-             * refactor that might place the row inside a drag region. Opacity
-             * fades in lockstep with the toolbar so neither row visibly
-             * orphans under the macOS traffic-light region mid-slide.
-             *
-             * ErrorBoundary scope is intentionally tight: a pill render-throw
-             * silent-fails just the pill while the toolbar, FileTree,
-             * SidebarFooter, and ⌘K listener continue to function.
-             *
-             * The observability handler is `onPillRenderError` (defined in
-             * SidebarSearchBar.tsx); it emits the project-wide
-             * `jsx-render-failure` event with a stable `sidebarSearchPill`
-             * surface identifier and increments the same parse-health counter
-             * MathInlineView and JsxComponentView feed — one dashboard / alert
-             * rule covers every render-throw surface. Payload shape is unit-
-             * tested at the function level; the
-             * wiring (boundary mounts the function on `onError`) is pinned by
-             * a single source-level guard below.
-             *
-             * The `fallbackRender={() => null}` is deliberate — null leaf, not a
-             * mini-pill replacement. Rationale: (1) the pill is content-free
-             * (icon + literal "Search" + literal kbd), so it has no plausible
-             * render-throw path tied to data; the failure modes are React
-             * internals, browser-extension injection, or a runtime API failure
-             * — none of which a redrawn fallback would recover from. (2) the
-             * App-level ⌘K window keydown listener (CommandPalette.tsx)
-             * remains reachable in the fallback state, so search is
-             * keyboard-reachable even without the visible pill. (3) the
-             * structured-warn + counter pair lands the failure in the same
-             * observability pipeline siblings feed.
-             *
-             * `resetKeys={[sidebarState]}` gives the user a recovery affordance
-             * after a transient render-throw (e.g., one-off `navigator` access
-             * failure, extension-injected error): toggling the sidebar via the
-             * native View → Show/Hide Sidebar menu (⌥⌘S in Electron) or the
-             * SidebarTrigger button flips sidebarState from `expanded` ↔
-             * `collapsed`, which triggers
-             * react-error-boundary to remount the pill subtree. Aligns the
-             * recovery shape with `MathInlineView` (uses `resetKeys={[formula]}`)
-             * and `JsxComponentView` (uses an explicit `resetKey`) — both
-             * sibling boundaries in this codebase expose a recovery path.
-             * The null fallback still diverges from sibling sites (which render
-             * content-preserving fallbacks), but those fallbacks recover
-             * state-bearing user content; this surface has no state to preserve,
-             * just a remount opportunity.
-             */}
-            <div
-              className={cn(
-                // 8px horizontal padding so the row's left edge aligns with the
-                // FileTree rows underneath. Pierre Trees applies
-                // `--trees-padding-inline-override: 0.5rem` (= 8px) on its
-                // container, so tree-row content sits at x = sidebar-left + 8.
-                // Matching `px-2` here lands the Files/Skills toggle on the same
-                // vertical line as the tree icons — visual continuity between the
-                // chrome row and the rows directly below it. (The SidebarHeader
-                // above keeps `px-3` for its own reason — aligning with
-                // EditorHeader's gutter — and is unrelated to tree-row alignment.)
-                'flex items-center gap-2 px-2 pb-0.5',
-                isElectronHost && '[-webkit-app-region:no-drag]',
-                isElectronHost &&
-                  'motion-safe:transition-opacity motion-safe:duration-100 motion-safe:ease-out',
-                isElectronHost && isExpanded && 'motion-safe:delay-100',
-                shouldFadeChrome && 'opacity-0',
-              )}
-            >
-              {/* Files/Skills switch shares the row with search. Gated on the
-                  same view preference that gates the Skills section below, so
-                  hiding Skills also hides the way to reach it; when off, search
-                  is the row's only occupant (still right-aligned via ml-auto). */}
-              {showSkillsSection ? (
-                <FilesSkillsToggle active={skillFocused ? 'skills' : 'files'} />
-              ) : null}
-              <ErrorBoundary
-                fallbackRender={() => null}
-                onError={onPillRenderError}
-                resetKeys={[sidebarState]}
-              >
-                <SidebarSearchBar onClick={onOpenSearch} className="ml-auto" />
-              </ErrorBoundary>
-            </div>
             <SidebarContent>
               <ConflictsSection />
-              {/* Project files, under a collapsible header named for the project.
-                  The pane fills the sidebar body: Skills and Files are mutually
-                  exclusive (Skills returns null outside skills mode), so nothing
-                  else competes for the height, and the tree's own scroll region
-                  keeps the empty area below the last row that the deselect-to-root
-                  click needs. */}
-              {/* View-preference gate on the section render only: with the
-                  section hidden, skill docs stay reachable (links, search,
-                  direct routes) and open with full editor chrome. */}
-              {showSkillsSection ? <SkillsSidebarSection skillsMode={skillFocused} /> : null}
-              {/* Files falls back whenever the Skills section ISN'T the sidebar:
-                  when not skill-focused, OR when a skill IS focused but the
-                  section is hidden by preference. Without the `showSkillsSection`
-                  guard here, focusing a skill with the section hidden rendered
-                  neither branch — a blank sidebar, and a read-only skill with
-                  no sidebar at all. */}
-              {skillsViewActive ? null : (
+              {/* Project files own the scrolling body and take the slack, so the
+                  tree keeps the empty area below its last row that the
+                  deselect-to-root click needs. Skills stacks under it. */}
+              {
                 // `px-0` overrides the SidebarGroup base `p-2`'s horizontal
                 // inset — Pierre's `--trees-padding-inline-override`
                 // (file-tree-density.ts) already lands the rows at 8px.
@@ -1056,7 +968,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                 // SidebarContent scroll. Measured at 720px: ~15 conflicts left a
                 // 89px sliver and ~25 left nothing at all.
                 <Collapsible
-                  defaultOpen
+                  open={filesOpen}
+                  onOpenChange={setFilesOpen}
                   className="group/files flex min-h-0 flex-col data-[state=open]:min-h-48 data-[state=open]:flex-1"
                 >
                   <SidebarGroup className="min-h-0 flex-1 px-0">
@@ -1064,7 +977,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                       with the folder they act on rather than in the window
                       chrome, so it reads as "this folder, these actions" — and
                       the header is left to back/forward, which are global. */}
-                    <SidebarGroupLabel className="shrink-0 gap-1">
+                    <SidebarGroupLabel className="shrink-0 gap-1 rounded-none">
                       <CollapsibleTrigger
                         // Marks the project-root header so right-click opens the
                         // project-scoped menu.
@@ -1112,95 +1025,109 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                          * action would no-op (no folders; every folder already
                          * expanded / collapsed), taking their separator with them.
                          */}
-                        {/* All creation/tree controls act on the file tree, which is
-                          unmounted in Skills view — hide them there so they aren't
-                          dead buttons. New-skill lives in the Skills hub header. */}
-                        {!skillsViewActive ? (
-                          <DropdownMenu>
-                            <ToolbarDropdownTrigger
-                              icon={ListCollapse}
-                              label={t`Tree view options`}
-                            />
-                            <DropdownMenuContent
-                              align="end"
-                              className="min-w-52"
-                              data-testid="tree-options-menu"
-                            >
-                              {showExpandAll ? (
-                                <DropdownMenuItem onSelect={() => tree?.expandAll()}>
-                                  <UnfoldVertical aria-hidden="true" />
-                                  <Trans>Expand all</Trans>
-                                </DropdownMenuItem>
-                              ) : null}
-                              {showCollapseAll ? (
-                                <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
-                                  <FoldVertical aria-hidden="true" />
-                                  <Trans>Collapse all</Trans>
-                                </DropdownMenuItem>
-                              ) : null}
-                              {showTreeStateSection ? <DropdownMenuSeparator /> : null}
-                              {/* Labeled `role="group"` so assistive tech announces the
-                                section; the visual DropdownMenuLabel alone is skipped
-                                by arrow-key menu navigation. Items read group-relative
-                                ("Hidden files") because the label carries the "Show";
-                                the unsectioned menu surfaces use the full-form labels. */}
-                              <DropdownMenuGroup aria-label={t`Show`}>
-                                <DropdownMenuLabel>
-                                  <Trans>Show</Trans>
-                                </DropdownMenuLabel>
-                                <DropdownMenuCheckboxItem
-                                  checked={showHiddenFiles}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showHiddenFiles: checked })
-                                  }
-                                  disabled={projectLocalBinding === null}
-                                  data-testid="tree-options-show-hidden-files"
-                                >
-                                  <Trans>Hidden files</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showOkFolders}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showOkFolders: checked })
-                                  }
-                                  disabled={projectLocalBinding === null}
-                                  data-testid="tree-options-show-ok-folders"
-                                >
-                                  <Trans>.ok folders</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showOnlyMarkdownFiles}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-                                  }
-                                  disabled={projectLocalBinding === null}
-                                  data-testid="tree-options-show-only-markdown-files"
-                                >
-                                  <Trans>Only markdown files</Trans>
-                                </DropdownMenuCheckboxItem>
-                                <DropdownMenuCheckboxItem
-                                  checked={showSkillsSection}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showSkillsSection: checked })
-                                  }
-                                  disabled={projectLocalBinding === null}
-                                  data-testid="tree-options-show-skills"
-                                >
-                                  <Trans>Skills</Trans>
-                                </DropdownMenuCheckboxItem>
-                              </DropdownMenuGroup>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                        {!skillsViewActive ? (
-                          <ToolbarButton
-                            icon={SquarePen}
-                            label={t`New file`}
-                            onClick={() => tree?.startCreating('file', initialCreateDir)}
-                            shortcutId="new-item"
+                        <DropdownMenu>
+                          <ToolbarDropdownTrigger
+                            icon={ListCollapse}
+                            label={t`Tree view options`}
                           />
-                        ) : null}
-                        {!skillsViewActive && activeFolderHasTemplates ? (
+                          <DropdownMenuContent
+                            align="end"
+                            className="min-w-52"
+                            data-testid="tree-options-menu"
+                          >
+                            {showExpandAll ? (
+                              <DropdownMenuItem onSelect={() => tree?.expandAll()}>
+                                <UnfoldVertical aria-hidden="true" />
+                                <Trans>Expand all</Trans>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {showCollapseAll ? (
+                              <DropdownMenuItem onSelect={() => tree?.collapseAll()}>
+                                <FoldVertical aria-hidden="true" />
+                                <Trans>Collapse all</Trans>
+                              </DropdownMenuItem>
+                            ) : null}
+                            {showTreeStateSection ? <DropdownMenuSeparator /> : null}
+                            {/* Labeled `role="group"` so assistive tech announces the
+                              section; the visual DropdownMenuLabel alone is skipped
+                              by arrow-key menu navigation. Items read group-relative
+                              ("Hidden files") because the label carries the "Show";
+                              the unsectioned menu surfaces use the full-form labels. */}
+                            <DropdownMenuGroup aria-label={t`Show`}>
+                              <DropdownMenuLabel>
+                                <Trans>Show</Trans>
+                              </DropdownMenuLabel>
+                              <DropdownMenuCheckboxItem
+                                checked={showHiddenFiles}
+                                onCheckedChange={(checked) =>
+                                  patchSidebarVisibility({ showHiddenFiles: checked })
+                                }
+                                disabled={projectLocalBinding === null}
+                                data-testid="tree-options-show-hidden-files"
+                              >
+                                <Trans>Hidden files</Trans>
+                              </DropdownMenuCheckboxItem>
+                              <DropdownMenuCheckboxItem
+                                checked={showOkFolders}
+                                onCheckedChange={(checked) =>
+                                  patchSidebarVisibility({ showOkFolders: checked })
+                                }
+                                disabled={projectLocalBinding === null}
+                                data-testid="tree-options-show-ok-folders"
+                              >
+                                <Trans>.ok folders</Trans>
+                              </DropdownMenuCheckboxItem>
+                              <DropdownMenuCheckboxItem
+                                checked={showOnlyMarkdownFiles}
+                                onCheckedChange={(checked) =>
+                                  patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                                }
+                                disabled={projectLocalBinding === null}
+                                data-testid="tree-options-show-only-markdown-files"
+                              >
+                                <Trans>Only markdown files</Trans>
+                              </DropdownMenuCheckboxItem>
+                              <DropdownMenuCheckboxItem
+                                checked={showSkillsSection}
+                                onCheckedChange={(checked) =>
+                                  patchSidebarVisibility({ showSkillsSection: checked })
+                                }
+                                disabled={projectLocalBinding === null}
+                                data-testid="tree-options-show-skills"
+                              >
+                                <Trans>Skills Studio</Trans>
+                              </DropdownMenuCheckboxItem>
+                            </DropdownMenuGroup>
+                            {/* OUTSIDE the Show group, deliberately: its label
+                              carries the "Show" that its items read against, and
+                              this is not a visibility toggle — it changes how the
+                              Skills tree is arranged. Hidden when the section is
+                              off rather than offering a control over something
+                              that isn't rendered. */}
+                            {showSkillsSection ? (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuCheckboxItem
+                                  checked={showSkillGroups}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showSkillGroups: checked })
+                                  }
+                                  disabled={projectLocalBinding === null}
+                                  data-testid="tree-options-group-skills"
+                                >
+                                  <Trans>Group skills by source</Trans>
+                                </DropdownMenuCheckboxItem>
+                              </>
+                            ) : null}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <ToolbarButton
+                          icon={SquarePen}
+                          label={t`New file`}
+                          onClick={() => tree?.startCreating('file', initialCreateDir)}
+                          shortcutId="new-item"
+                        />
+                        {activeFolderHasTemplates ? (
                           // Toolbar opens templates on click (not hover): a hover-only
                           // flyout off an icon button isn't keyboard/touch reachable.
                           // Mirrors the Tree view options dropdown above. Picking a
@@ -1223,16 +1150,14 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                             </DropdownMenuContent>
                           </DropdownMenu>
                         ) : null}
-                        {!skillsViewActive ? (
-                          <ToolbarButton
-                            icon={FolderPlus}
-                            label={t`New folder`}
-                            onClick={() => tree?.startCreating('folder', initialCreateDir)}
-                            // Desktop-only binding; on web the keycap would name a
-                            // shortcut that does nothing.
-                            shortcutId={isElectronHost ? 'new-folder' : undefined}
-                          />
-                        ) : null}
+                        <ToolbarButton
+                          icon={FolderPlus}
+                          label={t`New folder`}
+                          onClick={() => tree?.startCreating('folder', initialCreateDir)}
+                          // Desktop-only binding; on web the keycap would name a
+                          // shortcut that does nothing.
+                          shortcutId={isElectronHost ? 'new-folder' : undefined}
+                        />
                       </div>
                     </SidebarGroupLabel>
                     <CollapsibleContent className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1240,7 +1165,24 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                     </CollapsibleContent>
                   </SidebarGroup>
                 </Collapsible>
-              )}
+              }
+              {/* A STACKED section, not a bottom rail. Files takes the slack while
+                  it is open, so Skills lands under the tree and looks docked; the
+                  moment Files collapses to its header, Skills rides up beneath it
+                  and the empty space falls below both — which is what the section
+                  stack in Cursor does, and what a rail pinned to the bottom edge
+                  could never do.
+
+                  Inside SidebarContent for that reason: as a sibling it was
+                  anchored to the bottom no matter what was above it. Both sections
+                  scroll internally (the tree via Pierre, the dock via its own
+                  capped body), so the stack itself has nothing to scroll except
+                  when ConflictsSection is unusually tall — the case the Files
+                  `min-h-48` floor below exists to keep survivable.
+
+                  View-preference gate is on the whole dock: hidden, skill docs stay
+                  reachable via links, search, and direct routes. */}
+              {showSkillsSection ? <SkillsSidebarDock filesOpen={filesOpen} /> : null}
             </SidebarContent>
             <SidebarFooter className="px-0">
               <OnboardingCardMount />

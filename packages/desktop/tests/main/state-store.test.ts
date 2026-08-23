@@ -48,13 +48,8 @@ function projectSession(
   pinnedTabIds: string[],
   activeTabId: string | null,
   updatedAt: string | null = null,
-  activeTabByMode: { files: string | null; skills: string | null } = {
-    files: null,
-    skills: null,
-  },
 ) {
   return {
-    activeTabByMode,
     updatedAt,
     ...persistedWorkspace(openTabs, pinnedTabIds, activeTabId),
   };
@@ -131,25 +126,6 @@ describe('state-store (recent projects + LRU)', () => {
     expect(getProjectSessionState(state, '/tmp/a')).toEqual(session);
   });
 
-  test('project session state round-trips per-surface active tabs', () => {
-    const state = setProjectSessionState(
-      emptyState(),
-      '/tmp/a',
-      projectSession(
-        ['README', 'docs/guide'],
-        [],
-        'docs/guide',
-        '2026-05-06T00:00:00Z',
-        // 'docs/guide' is open → kept; 'gone' is not an open tab → dropped to null.
-        { files: 'docs/guide', skills: 'gone' },
-      ),
-    );
-    expect(getProjectSessionState(state, '/tmp/a').activeTabByMode).toEqual({
-      files: 'docs/guide',
-      skills: null,
-    });
-  });
-
   test('removeRecentProject drops matching session state', () => {
     const withSession = setProjectSessionState(
       emptyState(),
@@ -211,17 +187,12 @@ describe('state-store (recent projects + LRU)', () => {
             },
           ],
           focusedPaneId: 'pane-b',
-          activeTabByMode: {
-            files: 'docs/a\u0000doc-tab:1',
-            skills: 'docs/c\u0000doc-tab:1',
-          },
           updatedAt: '2026-05-06T00:00:00Z',
         },
       },
     });
 
     expect(parsed?.projectSessions['/tmp/a']).toEqual({
-      activeTabByMode: { files: null, skills: null },
       updatedAt: '2026-05-06T00:00:00Z',
       panes: [
         {

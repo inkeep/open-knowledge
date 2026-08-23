@@ -100,6 +100,22 @@ export function upsertLockEntry(lock: SkillsLock, name: string, entry: SkillLock
 const RENAMED_PACK_SKILL_NAMES: ReadonlySet<string> = new Set(Object.values(RENAMED_PACK_SKILLS));
 
 /**
+ * The upstream `metadata.pack` marker in an acquired SKILL.md, when it has one.
+ *
+ * The write canonicalizes frontmatter, and this is the single key that has to
+ * survive it: it is the only proof that a generically-named skill (`write-a-spec`,
+ * `knowledge-base`) is a starter pack of ours rather than the user's own work,
+ * and {@link retrofitPackLockEntry} refuses to synthesize provenance without it.
+ */
+export function packMarkerOf(frontmatter: unknown): string | undefined {
+  if (typeof frontmatter !== 'object' || frontmatter === null) return undefined;
+  const metadata = (frontmatter as { metadata?: unknown }).metadata;
+  if (typeof metadata !== 'object' || metadata === null) return undefined;
+  const pack = (metadata as { pack?: unknown }).pack;
+  return typeof pack === 'string' && pack.trim().length > 0 ? pack.trim() : undefined;
+}
+
+/**
  * Retrofit provenance for a seeded starter pack whose lock entry is missing.
  * A pack skill with no lock entry cannot update, but every pack ships from
  * OPENKNOWLEDGE_SKILLS_REPO — a deterministic upstream — so synthesize the entry

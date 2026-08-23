@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { LINEAGE_EPOCH_KEY } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
@@ -172,6 +172,68 @@ describe('managedArtifactAbsPath', () => {
     ]) {
       expect(() => managedArtifactAbsPath(name, ctx)).toThrow();
     }
+  });
+});
+
+describe('host-qualified global docs (same-name collision)', () => {
+  beforeEach(adoptClaudeHost);
+
+  function seedBundle(root: string, name: string, body: string): void {
+    mkdirSync(join(home, root, name), { recursive: true });
+    writeFileSync(join(home, root, name, 'SKILL.md'), body);
+  }
+
+  test('a qualified doc resolves inside ITS host root, never the by-name default', () => {
+    const ctx = makeCtx();
+    mkdirSync(join(home, '.agents', 'skills'), { recursive: true });
+    seedBundle('.claude/skills', 'dupe', 'claude copy');
+    seedBundle('.agents/skills', 'dupe', 'agents copy');
+    // Unqualified = precedence default; the NON-default host's qualifier must
+    // route to its own bundle (precedence-agnostic: derive which one that is).
+    const unqualified = managedArtifactAbsPath('__skill__/global/dupe', ctx);
+    const other = unqualified.includes(`${sep}.agents${sep}`) ? 'claude' : 'agents';
+    const otherDir = other === 'claude' ? '.claude' : '.agents';
+    const qualified = managedArtifactAbsPath(`__skill__/global/dupe@${other}`, ctx);
+    expect(qualified).toBe(resolve(home, otherDir, 'skills', 'dupe', 'SKILL.md'));
+    expect(qualified).not.toBe(unqualified);
+    // Bundle FILE under the qualified doc stays in the qualified bundle.
+    expect(managedArtifactAbsPath(`__skill__/global/dupe@${other}/references/x`, ctx)).toBe(
+      resolve(home, otherDir, 'skills', 'dupe', 'references', 'x.md'),
+    );
+  });
+
+  test('reverse mapping qualifies the non-default bundle and only it', () => {
+    const ctx = makeCtx();
+    mkdirSync(join(home, '.agents', 'skills'), { recursive: true });
+    seedBundle('.claude/skills', 'dupe', 'claude copy');
+    seedBundle('.agents/skills', 'dupe', 'agents copy');
+    const defaultDoc = managedArtifactDocNameForPath(
+      resolve(home, '.claude/skills/dupe/SKILL.md'),
+      ctx,
+    );
+    const otherDoc = managedArtifactDocNameForPath(
+      resolve(home, '.agents/skills/dupe/SKILL.md'),
+      ctx,
+    );
+    // Two files, two docs — collapsing them fed both bundles into one CRDT doc
+    // whose write-back went only to the default ("is this saving at all?").
+    expect(new Set([defaultDoc, otherDoc]).size).toBe(2);
+    expect([defaultDoc, otherDoc]).toContain('__skill__/global/dupe');
+    expect(otherDoc === '__skill__/global/dupe' ? defaultDoc : otherDoc).toMatch(
+      /^__skill__\/global\/dupe@[a-z-]+$/,
+    );
+    // Round-trip: each doc resolves back to its own file.
+    for (const d of [defaultDoc, otherDoc]) {
+      expect(existsSync(managedArtifactAbsPath(d as string, ctx))).toBe(true);
+    }
+    expect(managedArtifactAbsPath(defaultDoc as string, ctx)).not.toBe(
+      managedArtifactAbsPath(otherDoc as string, ctx),
+    );
+    // A single-bundle skill stays unqualified (stable identity).
+    seedBundle('.claude/skills', 'solo', 'only copy');
+    expect(managedArtifactDocNameForPath(resolve(home, '.claude/skills/solo/SKILL.md'), ctx)).toBe(
+      '__skill__/global/solo',
+    );
   });
 });
 

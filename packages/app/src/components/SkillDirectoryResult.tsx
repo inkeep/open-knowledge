@@ -136,8 +136,8 @@ export function SkillDirectoryResult({
               <span aria-hidden>·</span>
               <span className="shrink-0 whitespace-nowrap" data-testid="skill-card-always-on">
                 {formatSkillTokens(cost.alwaysOn)}{' '}
-                <Trans comment="Suffix on a skill directory card's context-cost figure">
-                  always-on tokens
+                <Trans comment="Suffix on a skill directory card's context-cost figure — the always-loaded description tier">
+                  description tokens
                 </Trans>
               </span>
             </>

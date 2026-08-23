@@ -1,6 +1,7 @@
 {
   "messages": {
     "--T3kB": ["Carregando a pré-visualização"],
+    "-2qraj": [["count"], " habilidades"],
     "-3Qbv7": [
       [
         "count",
@@ -135,6 +136,7 @@
     "0jD-Gn": ["Uma base de conhecimento de equipe, uma wiki pessoal, documentação de projeto..."],
     "0kTAXe": ["Abrir a fonte: ", ["mirrorSrc"]],
     "0m4Snh": ["Habilidades reatribuídas"],
+    "0pLDSn": ["Barra de ferramentas de Habilidades"],
     "0pZmTP": ["Não é possível compartilhar este caminho."],
     "0qyKG6": ["Sincronizado a partir do disco"],
     "0r6d6v": ["Alterações salvas automaticamente."],
@@ -213,6 +215,7 @@
     "1vczDE": ["Abrir ", ["displayName"], " Desktop"],
     "1vn0CI": ["Resposta do servidor inválida"],
     "1xui0Q": ["Falha ao carregar os arquivos locais"],
+    "2-3Mlu": ["Não foi possível desafixar ", ["name"]],
     "2277Tu": ["Recolher o grafo"],
     "237hSL": ["Encerrado"],
     "253MN6": ["Não deu para enviar seus comentários — tente de novo."],
@@ -244,6 +247,7 @@
     "2M0JF6": ["Atualização automática"],
     "2O5Z0r": ["Ocultar ", ["appName"]],
     "2QM24L": ["Todas as tags"],
+    "2QoAQ-": ["Ver ", ["publisher"], " no skills.sh"],
     "2RnFoM": ["Não foi possível retomar este chat: ", ["0"]],
     "2Snes1": ["Isto envia o endereço do link para fora do seu computador"],
     "2VSPan": ["O Terminal foi fechado para abrir espaço para o painel de agentes."],
@@ -376,7 +380,6 @@
     "3uSzeS": [
       "Imagens de qualquer lugar · arquivos que não são imagens devem estar no espaço de trabalho"
     ],
-    "3v62tp": ["Populares no skills.sh"],
     "3wiBAs": ["Onde ela deve ficar?"],
     "3y6XTb": ["Busca semântica"],
     "3zDeFb": ["Remoendo…"],
@@ -399,6 +402,7 @@
     "4E9jPa": ["Crie seu primeiro projeto"],
     "4EZrJN": ["Regras"],
     "4ErgAf": ["OpenKnowledge instalou uma habilidade"],
+    "4FltCB": ["Escolha onde sua cópia vai ficar. Escolher um destino a cria."],
     "4Gz2wC": ["Falha ao enviar o arquivo"],
     "4KmEoC": ["Atalhos de teclado"],
     "4NC2Ym": ["Vai para a próxima célula da tabela ou para a anterior."],
@@ -441,7 +445,6 @@
     "4v2Yyz": [
       "Seleciona todas as linhas visíveis da árvore de arquivos quando o foco está na barra lateral Arquivos."
     ],
-    "4wo5UV": ["Instalar os selecionados"],
     "4xtLTl": ["Pasta “", ["basename"], "” oculta"],
     "4zEZS5": [
       "A sincronização automática está ligada neste worktree, herdada de ",
@@ -460,6 +463,7 @@
     "58qIOK": ["Comentar esta seleção"],
     "59CUI8": ["Compartilhar habilidades entre ferramentas de IA"],
     "5ALjdr": ["Percorre os resultados de busca do editor visual a partir do campo de busca."],
+    "5A_TLD": ["O plugin também traz ", ["0"], " — nomeados aqui, nunca instalados pelo OK."],
     "5Ajb15": ["A fórmula <0>c = √(a² + b²)</0> é renderizada em linha."],
     "5AzM72": [
       "Esta configuração é de cada computador e não é compartilhada com os colaboradores."
@@ -576,9 +580,6 @@
     "6KXnz5": ["Você pode restaurar este arquivo do Lixo."],
     "6LJJ1v": ["Arquivo ", ["identity"], ". Ir para a referência."],
     "6LbUG7": ["O repositório é privado e sua conta do GitHub não tem acesso a ele."],
-    "6Mbe-P": [
-      "Descreva o que ela deve fazer, ou acrescente uma você mesmo. O OpenKnowledge guarda suas habilidades em um só lugar, versiona-as e instala-as em agentes como Claude, Codex e Cursor."
-    ],
     "6MnZEC": ["Falha ao carregar o terminal"],
     "6Nea1q": ["Usar ", ["0"], " no modo escuro ativo"],
     "6O626z": ["Nenhum título corresponde a \"", ["trimmedAnchorQuery"], "\""],
@@ -603,7 +604,6 @@
     "6fGjTz": ["Mostrar menos"],
     "6f_UX4": ["Instalar em todos os agentes"],
     "6gRgw8": ["Tentar de novo"],
-    "6h4-4a": ["Alternar entre Arquivos e Habilidades"],
     "6h4zVU": ["O que você gostaria de criar?"],
     "6hYjww": ["Criar um token em ", ["host"]],
     "6hfDJr": ["Erro do servidor: ", ["status"]],
@@ -666,8 +666,10 @@
     "7FamGZ": ["Ir para a linha"],
     "7Fkcej": ["+ Adicionar ", ["addChildName"]],
     "7H4UHD": ["Documentos com a tag <0>#", ["tagName"], "</0>"],
+    "7HY6fA": ["Instala para todos os seus projetos"],
     "7IsvrP": ["Buscando atualizações"],
     "7JtSLi": ["Falha ao excluir o caminho"],
+    "7MSbAT": ["Disponível em"],
     "7O7REc": ["Não foi possível restaurar ", ["0"], ". Tente novamente."],
     "7OhaRy": ["Busca no código"],
     "7Ongq0": ["Reduza meu arquivo AGENTS.md para menos de 40 mil caracteres"],
@@ -684,9 +686,6 @@
     "7Y9yTo": [["owner"], "/", ["name"], " foi criado, mas o envio falhou."],
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
-    "7ZkJdV": [
-      "Nenhum agente selecionado — as habilidades ficam salvas, mas não são instaladas em lugar nenhum."
     ],
     "7_bFEL": ["Arraste ", ["patternText"], " para reordenar"],
     "7a0YcF": ["Pressione <0>Espaço</0> ou toque no blob para começar"],
@@ -765,6 +764,12 @@
     "8RtNI0": ["Falha ao carregar os documentos"],
     "8TvlHF": ["Despejo de falha"],
     "8Uv5e6": ["Agentes"],
+    "8VLpRT": [
+      ["boldName"],
+      " é um link simbólico — sua fonte editável é <0>",
+      ["0"],
+      "</0>. Edite o arquivo lá; esta visão da skill é somente leitura."
+    ],
     "8Vq20-": ["Trocar de worktree"],
     "8W9CF6": ["Este relatório já está sendo enviado"],
     "8WTrGF": [["summary"], " neste arquivo. Abra o painel Problemas para ver os detalhes."],
@@ -773,6 +778,7 @@
     ],
     "8XQRON": ["Carregando repositórios"],
     "8YymuQ": ["Nenhum agente foi configurado ainda — abrindo Configurar agentes."],
+    "8Z_GCT": [["source"], " · fonte importada"],
     "8_brI5": ["O nome é obrigatório"],
     "8cS0nH": ["Compartilhamento de configuração indisponível: ", ["0"], "."],
     "8cpOa8": ["Não deu para desconectar — tente de novo."],
@@ -827,6 +833,7 @@
     "9Hr9WP": ["Não foi possível salvar as configurações de rede. ", ["0"]],
     "9Ii3uK": ["um novo painel à esquerda de ", ["0"]],
     "9J8xNg": [["importedLabel"], " importado"],
+    "9K4cE9": [["0"], " (abre em uma nova aba)"],
     "9KooKn": ["Rode uma auditoria do projeto pelo painel Problemas."],
     "9NJWgv": ["Retrolinks"],
     "9OIqw4": ["Você não tem acesso de escrita a este repositório."],
@@ -843,6 +850,17 @@
     ],
     "9Vh9Jf": ["Abra esta janela de novo para entrar pelo navegador"],
     "9Vnjc9": ["Enter"],
+    "9XwoPv": [
+      [
+        "0",
+        "plural",
+        {
+          "one": ["Instalar ", "#", " habilidade"],
+          "many": ["Instalar ", "#", " de habilidades"],
+          "other": ["Instalar ", "#", " habilidades"]
+        }
+      ]
+    ],
     "9Y6cCI": ["Falha ao carregar as páginas"],
     "9_2oe6": [
       "Transforma ",
@@ -891,6 +909,7 @@
       "\" — ela ainda não está entre as habilidades do projeto."
     ],
     "9wQrUU": ["Refatoração"],
+    "9x-lMu": ["Neste repositório — colaboradores recebem cópias via git."],
     "9xCnv8": ["Ocultar o Terminal"],
     "9zb2WA": ["Conectando"],
     "A1taO8": ["Buscar"],
@@ -948,6 +967,17 @@
     ],
     "AeLo3p": ["OpenKnowledge resolveu um conflito em ", ["subject"]],
     "AeXO77": ["Conta"],
+    "AgoIW4": [
+      ["source"],
+      ": ",
+      ["updated"],
+      " atualizados, ",
+      ["upToDate"],
+      " já atualizados, ",
+      ["failed"],
+      " com falha — ",
+      ["detail"]
+    ],
     "AhoGwP": ["Configurar as integrações do OpenKnowledge"],
     "AiNMQ7": [
       "Este projeto vive só neste computador. Conecte-o ao GitHub para fazer backup e compartilhar com outras pessoas."
@@ -964,6 +994,7 @@
       "O endpoint respondeu, mas não com uma resposta de embeddings compatível com a OpenAI. Verifique a URL base."
     ],
     "AwrGuz": ["Faltam propriedades obrigatórias neste documento"],
+    "AyKwqp": ["Na sua pasta pessoal — todos os projetos desta máquina, só para você."],
     "AznQ2V": ["Sincronização e compartilhamento"],
     "B11p-O": ["Editar o link markdown"],
     "B2DrPb": ["Salvamento automático"],
@@ -1026,7 +1057,6 @@
     ],
     "BlLxpG": ["Buscar habilidades"],
     "BowKyI": ["Mostrar detalhes"],
-    "BuMD5w": ["Remove de"],
     "Bv5a9_": ["Estatísticas da seleção"],
     "BwKH4d": ["Aplicativos externos"],
     "Bx4EXG": ["Ações de ", ["label"]],
@@ -1050,7 +1080,6 @@
       ]
     ],
     "C0Ciaj": ["Importado como \"", ["0"], "\" — o nome \"", ["1"], "\" já estava em uso."],
-    "C0cll5": ["Instalado em ", ["0"], " — clique para remover"],
     "C0hoX6": ["Sempre incluído"],
     "C3Zc44": ["Explorar habilidades"],
     "C62P6b": ["Seleção do editor"],
@@ -1126,6 +1155,9 @@
     "D-NlUC": ["Sistema"],
     "D-Oh1s": ["Como configurar ", ["0"], " (abre no navegador)"],
     "D-_B7l": ["Conectado — este endpoint devolve vetores de ", ["0"], " dimensões."],
+    "D0CegO": [
+      "Uma segunda habilidade tem este nome — renomeie-a (ou exclua uma) para gerenciá-la por completo."
+    ],
     "D12vtS": ["(desanexado)"],
     "D2emTw": ["Algo deu errado ao enviar seus comentários. Tente de novo."],
     "D4H2N6": ["Remover ", ["tag"]],
@@ -1133,7 +1165,6 @@
     "D8JJwQ": ["Não dá para enviar comentários agora. Tente mais tarde."],
     "D8OV7J": ["Somente colaboradores"],
     "DAVInK": ["Adicionar ao dicionário"],
-    "DBqxw2": ["sempre ativo"],
     "DCSSZt": ["O agente está trabalhando"],
     "DDTdLl": ["Configurações do bloco de código"],
     "DELNQk": ["Os colaboradores veem suas edições em andamento assim que elas sincronizam."],
@@ -1174,6 +1205,7 @@
       "Sem correspondências. Alguns arquivos ficam fora da busca (arquivos ocultos ou ignorados)."
     ],
     "DcFr-y": ["OpenKnowledge excluiu um documento"],
+    "DcH8-w": ["Mover ", ["0"], " para Projeto"],
     "DcLaew": ["Tema personalizado"],
     "Dd6j2Q": ["Ver comentários"],
     "DeDYLr": ["Link wiki não reconhecido"],
@@ -1203,6 +1235,7 @@
       "Navegadores de pré-visualização não conseguem copiar sozinhos. Use Cmd/Ctrl+C na URL acima ou abra o OK no app de desktop."
     ],
     "Dut9Ht": ["Descreva a habilidade que você quer criar"],
+    "DvGkXq": ["Não foi possível criar ", ["effective"], ": ", ["0"]],
     "Dvr1Sg": ["Copiando"],
     "Dvwa0U": ["Criar um worktree a partir deste ramo"],
     "Dz7fsq": ["Aproximar"],
@@ -1231,7 +1264,6 @@
     "E9bKSA": ["Criando"],
     "E9gh86": ["Você pode anexar até ", ["MAX_ATTACHMENTS"], " imagens."],
     "EARn6h": ["Não deu para compartilhar as habilidades — ", ["detail"], "."],
-    "EBS8_X": ["Explorar skills.sh"],
     "EBVbtP": ["Não foi possível duplicar o item"],
     "EDl9kS": ["Assinar"],
     "EDm3wJ": ["Carregando o visualizador de diferenças"],
@@ -1289,6 +1321,13 @@
     "EkH9pt": ["Atualizar"],
     "EkUnmS": ["qualquer"],
     "El7NbA": ["Título 2"],
+    "El9CQ6": [
+      "Isto é uma pré-visualização de ",
+      ["boldName"],
+      " — uma das ",
+      ["0"],
+      " habilidades deste repositório. Instale-a nos seus agentes."
+    ],
     "ElatXA": [
       "Janela de contexto: ",
       ["percent"],
@@ -1320,6 +1359,9 @@
     "Evq3lu": ["Modo órfãs"],
     "ExPiRQ": ["Vai para o próximo diagnóstico de análise do CodeMirror."],
     "ExUzM4": ["habilidade \"", ["0"], "\""],
+    "F-1xhe": [
+      "O servidor deste projeto está em uma branch diferente desta janela — o conteúdo não pode ser carregado."
+    ],
     "F-NRCj": ["Adicionar propriedade"],
     "F-vBv0": ["Perguntar"],
     "F0OA00": ["Obter ", ["displayName"]],
@@ -1330,6 +1372,7 @@
     "F4vEsL": ["Status da sincronização: ", ["syncStateLabel"]],
     "F6pfE9": ["Ativo"],
     "F8GW_c": [["label"], " problemas"],
+    "FBIuPX": ["Limpar seleção"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Rode um terminal de verdade acoplado dentro do OpenKnowledge, começando na pasta deste projeto."
@@ -1373,7 +1416,6 @@
     ],
     "FgQ7XZ": ["Não foi possível carregar seus relatórios de erro."],
     "FgRAvd": ["Logs e informações do sistema"],
-    "FgcPSX": ["O gerenciamento de habilidades não está disponível nesta versão."],
     "Fhp4Gn": ["Ver o plugin"],
     "FiyNln": ["Ir para o texto selecionado na propriedade"],
     "FjkaiT": ["Afastar"],
@@ -1578,6 +1620,7 @@
     "Hp4rRh": ["Endpoint personalizado"],
     "HpK_8d": ["Recarregar"],
     "HptUxX": ["Número"],
+    "Hq3uDq": [["0"], " outras habilidades deste publicador"],
     "HqOPpj": [
       "O git precisa de uma ferramenta auxiliar (como o git-lfs) que não está instalada nem foi encontrada. Instale-a e tente de novo."
     ],
@@ -1672,6 +1715,7 @@
       "Não deu para fazer pull do GitHub. Verifique sua conexão e seu login e tente de novo."
     ],
     "JHf6qZ": ["voce@empresa.com"],
+    "JHv7ti": ["Ainda não instalada neste projeto."],
     "JJcBCm": [["0"], " no total"],
     "JK-Ave": ["Ocultar as miniaturas"],
     "JKXcOi": ["Já em projeto"],
@@ -1700,6 +1744,11 @@
     "Jnz9AY": [["0"], " está sobre ", ["destination"], "."],
     "Jqqevv": ["Erro do sistema"],
     "JrqL_z": ["Inserir linha acima"],
+    "JsHvhz": [
+      "Acima da referência de ",
+      ["budgetLabel"],
+      " tokens. Tudo isto é carregado no contexto do agente quando a habilidade é usada — mantenha enxuto, ou mova os detalhes para arquivos references/ carregados apenas sob demanda."
+    ],
     "JsY1p5": ["Negado"],
     "JtD-Br": ["Link para página"],
     "Jw6EC4": ["Falha ao trocar de ramo — tente abrir ", ["targetNoun"], " manualmente."],
@@ -1740,7 +1789,6 @@
     "KIIamL": [
       "O OpenKnowledge vai criar commits e enviá-los ao seu remoto automaticamente. Se você não quer commits automáticos no seu histórico do git, não deve ativar a sincronização automática."
     ],
-    "KN5RGc": ["Integrado (somente leitura)"],
     "KOZud0": [
       "Monte uma base de conhecimento sobre a concorrência. Comece com uma página geral e depois acrescente páginas interligadas para cada concorrente, seus produtos e preços, e as fontes por trás de cada afirmação."
     ],
@@ -1803,6 +1851,7 @@
     "LCUy_N": ["A sessão terminou"],
     "LDuM35": ["Substituir a ocorrência atual pelo campo"],
     "LE7t79": ["Clonar em uma nova pasta"],
+    "LGvaif": ["Ver o repositório do plugin ", ["plugin"]],
     "LHH461": ["Concluir configuração"],
     "LJXDjm": ["Não foi possível salvar sua preferência de tema."],
     "LJeFU6": [
@@ -1964,7 +2013,6 @@
     "Md709y": ["Carregando ", ["fileName"]],
     "MdpSC1": ["Nova habilidade"],
     "Mh_4hd": ["Aba anterior"],
-    "MiMTvb": ["tokens sempre ativos"],
     "Mj8R8K": ["Não deu para instalar a habilidade: ", ["0"]],
     "MmDDWK": ["Abertos recentemente"],
     "Mnavhe": ["Propriedades de ", ["propPanelDescriptorLabel"]],
@@ -2000,6 +2048,7 @@
     "N55YNr": [
       "Escolha se a configuração do OpenKnowledge deste projeto, incluindo as conexões com ferramentas de IA, é salva junto com o projeto para que os colegas também a recebam, ou fica só no seu computador."
     ],
+    "N5rzKJ": ["Excluir ", ["0"], " habilidades"],
     "N6j2JH": ["Editar ", ["0"]],
     "NBdIgR": ["Comentar"],
     "NErvOX": ["Salvo em"],
@@ -2013,7 +2062,6 @@
     "NOHyEE": ["Tentar o push de novo"],
     "NORKZU": ["Avisos do padrão: ", ["summary"]],
     "NQ8llq": ["Adicionar item"],
-    "NQVepz": ["Instalar ", ["name"]],
     "NQXwDy": ["Editar no arquivo de configuração"],
     "NRSLBe": ["há ", ["diffMin"], " min"],
     "NSnIUP": ["Duas páginas (pares)"],
@@ -2066,7 +2114,6 @@
       " do projeto e remove o mapeamento dele do config.yml."
     ],
     "NzluOx": ["(opcional)"],
-    "O-m8q9": ["Ver tudo"],
     "O0Z2Xr": ["Saída"],
     "O2UpM1": ["Procurar"],
     "O3oNi5": ["E-mail"],
@@ -2106,6 +2153,7 @@
     "OLIKgw": ["Arraste o item ", ["0"], " para reordenar"],
     "ONPvOb": ["Carregando a atividade do agente"],
     "ONWvwQ": ["Enviar"],
+    "ONchxy": ["total"],
     "ONgEZF": ["Carregando os títulos de ", ["pageTarget"]],
     "OOIVJo": ["\"", ["0"], "\" desinstalado de ", ["1"]],
     "OOLsBh": [["0"], " compartilham esta pasta."],
@@ -2128,6 +2176,7 @@
     "Oj-JV8": [
       "Há uma chave definida, mas o provedor de embeddings a rejeitou ou estava indisponível — a busca voltou para correspondência por palavra-chave. Use <0>Testar conexão</0> em Endpoint personalizado para ver o que deu errado."
     ],
+    "OkC7-2": ["Não foi possível colocar ", ["skillName"], " em ", ["root"], ": ", ["0"]],
     "Okd2Xv": ["Liga ou desliga o sublinhado."],
     "OlAl5i": ["Expandir tudo"],
     "OlFVNr": ["Perguntar à IA sobre a seleção"],
@@ -2271,13 +2320,13 @@
     "QLgdT6": ["qualquer documento chamado ", ["0"]],
     "QM3SBZ": ["Plano (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["vazio"],
+    "QPWyTw": ["Agrupar habilidades por origem"],
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
     "QR5SP1": ["modelo criado"],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
-    "QcScEc": ["Desinstalar ", ["name"]],
     "QcpeeE": ["Ir para ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2289,12 +2338,13 @@
       ]
     ],
     "QfFBdJ": ["O nome do arquivo do modelo (sem `.md`)."],
+    "Qft6eW": ["Mover ", ["0"], " para Global"],
     "Qj4RL5": ["Concluído:"],
     "QjzFZj": ["Somente eu"],
     "QlAG4m": ["Conte mais (opcional)"],
     "QlkiD5": ["Reposicionar no texto selecionado"],
     "QlxHAH": ["Mostrando resultados de \"", ["semanticResultsLabel"], "\""],
-    "QnnKlV": ["sob demanda"],
+    "Qm0rWK": ["tokens de descrição"],
     "QohqVL": ["Este agente não oferece comandos de barra"],
     "QpSqAP": [
       "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
@@ -2345,6 +2395,11 @@
     "RGkNeJ": ["Inicializar um pacote inicial"],
     "RGptDW": ["OpenKnowledge moveu um documento"],
     "RJ3a8Z": ["Procurando <0>", ["lookingForUrl"], "</0>."],
+    "RJMO4B": [
+      "Do plugin ",
+      ["residentPlugin"],
+      " — somente leitura; atualizações do plugin substituem estes arquivos."
+    ],
     "RLNIgv": ["O servidor retornou uma resposta de modelos incompleta."],
     "RLYckQ": ["Parar (Esc)"],
     "RMQe3p": [
@@ -2752,6 +2807,7 @@
     "VuxVSP": ["Iniciar o autocompletar do código"],
     "VxLvKE": ["Reverter para a versão instalada"],
     "VxO6wR": ["Excluir os arquivos ou pastas selecionados"],
+    "Vy6XCg": ["Adicione um nome de arquivo (ex.: notes.md)"],
     "VzGJRl": ["Adicionar link"],
     "W-ntoW": ["slug-do-titulo"],
     "W0i24j": ["Objeto"],
@@ -2782,6 +2838,7 @@
     "WFEbV1": [
       "Sinaliza problemas comuns de markdown no editor. Funciona com <0>markdownlint<1/></0>."
     ],
+    "WG3MZ4": [["0"], " habilidades selecionadas"],
     "WGMoTY": ["Bugs, travamentos ou sensação de pouca confiabilidade"],
     "WHPvOb": ["Os filtros de visualização ocultam todos os arquivos."],
     "WJjviG": ["O que incluir"],
@@ -2832,6 +2889,7 @@
     "WyQxwa": ["Conecte este projeto ao GitHub para compartilhar."],
     "WyXG7w": ["Fechar tudo"],
     "Wyxs0x": ["O caminho não pode conter \"..\""],
+    "X0c6kF": [["moved"], " habilidades movidas para Global"],
     "X0ttSN": ["Nenhuma tag corresponde a \"", ["tagListQuery"], "\"."],
     "X2zUS5": ["Excluir este comentário"],
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
@@ -2848,6 +2906,7 @@
     "XEfNPL": [
       "Instalado — o ok está disponível em terminais externos. Desmarcar remove-o; suas ferramentas de IA continuarão funcionando."
     ],
+    "XF1kgP": ["Tudo de ", ["source"], " já está atualizado"],
     "XFpEgc": [
       "Escolha quais agentes aparecem nos menus de agentes do aplicativo, como Ask AI, Open with AI e o botão ＋ de novo chat. Desative um agente para ocultá-lo de todos eles."
     ],
@@ -2865,7 +2924,6 @@
     "XU0OXn": ["Ativar a sincronização automática"],
     "XU5AOg": ["Entrada"],
     "XV5sC0": ["Abrir o worktree"],
-    "XVnIvs": ["Instalar habilidades"],
     "XW18jo": ["A resposta dos títulos da página não corresponde ao esquema de sucesso"],
     "XXA1b_": [["componentLabel"], " (vazio)"],
     "XYZ7tp": ["Não resolvido"],
@@ -3005,6 +3063,7 @@
         }
       ]
     ],
+    "YvwwqC": ["Onde"],
     "YwPUUP": ["Este pacote já está configurado aqui."],
     "YxZDGh": [
       "Não deu para ler ",
@@ -3058,6 +3117,7 @@
     "ZI8uvA": ["Nenhum problema encontrado."],
     "ZJ99sD": ["Inserir coluna à esquerda"],
     "ZNK2Tq": ["raiz"],
+    "ZOVgDv": [["moved"], " habilidades movidas para Projeto"],
     "ZQJ1IV": ["Ativa a última aba do editor."],
     "ZQLDTl": ["pasta criada"],
     "ZQc7C8": ["Digite para editar; <0>Cmd/Ctrl+Enter</0> salva, <1>Esc</1> cancela."],
@@ -3106,12 +3166,25 @@
     ],
     "ZsGpr_": ["Colar link"],
     "ZscwQ0": ["Não deu para mudar para Somente eu"],
+    "Zt7Ktx": ["O caminho não pode sair da habilidade (sem . ou ..)"],
     "Zue_jx": ["Faltam escopos obrigatórios no seu token do GitHub. Tente entrar de novo."],
     "Zul8Ry": ["nunca"],
     "ZvzbDF": ["Adicione-o diretamente a este projeto."],
     "ZwpggY": ["OpenKnowledge leu as configurações do projeto"],
     "_0JUKX": ["Relatar erros exige o app de desktop do OpenKnowledge."],
     "_2cM9E": ["recente"],
+    "_3S4Ql": [
+      ["label"],
+      " já carrega \"",
+      ["0"],
+      "\" do plugin ",
+      ["1"],
+      ". Instalar aqui cria uma cópia em ",
+      ["2"],
+      " que ",
+      ["label"],
+      " usa no lugar da do plugin — ela deixa de acompanhar as atualizações do plugin."
+    ],
     "_5qBNl": ["Ferramentas de IA e CLI"],
     "_6FVBz": ["Ir para as abas 1-8"],
     "_7UQ7y": ["Palavra inteira"],
@@ -3166,9 +3239,9 @@
     ],
     "_ci9Bj": ["O servidor retornou uma resposta de pasta incompleta."],
     "_eguJc": ["Enviando"],
+    "_fQGOp": ["Espaços não são permitidos no caminho"],
     "_gO_m8": ["Aguardando sua aprovação"],
     "_gkGSK": ["modelo excluído"],
-    "_mcDqU": [["count"], " habilidades nesta fonte"],
     "_pY_Vq": ["O repositório foi movido, renomeado ou excluído."],
     "_qD6mn": ["Escolha a pasta onde você o clonou."],
     "_rP3HI": ["há ", ["minutes"], " min"],
@@ -3207,13 +3280,6 @@
     ],
     "aQD_86": ["Falha ao atualizar o provedor de embeddings — ", ["detail"]],
     "aQyGJc": ["Outra coisa"],
-    "aR4DgO": [
-      "Este repositório traz ",
-      ["count"],
-      " habilidades, além de ",
-      ["0"],
-      ". Instale qualquer uma delas pelo plugin."
-    ],
     "aRI3Om": ["Fechar janela"],
     "aS77on": ["O que muda?"],
     "aSVmqV": [
@@ -3221,7 +3287,6 @@
     ],
     "aWlJai": ["Iniciando o fluxo de login"],
     "aXkLuE": ["Resposta de aplicação malformada"],
-    "a_2_uB": ["Não deu para criar ", ["trimmed"], ": ", ["0"]],
     "a_u4ck": ["Carregando tags"],
     "aaE55D": ["Limpar ", ["keyName"]],
     "aaI6cN": [
@@ -3230,8 +3295,8 @@
     "aalx4E": ["Editando código MDX quebrado: ", ["reason"]],
     "aatPoi": ["Arquivos gerados"],
     "abiHje": ["Excluir os itens selecionados"],
-    "ac8G0O": ["ao acionar"],
     "adsMWO": ["Resolvendo deltas"],
+    "ae9Ozt": ["outros"],
     "ah_ekO": ["\"", ["name"], "\" já está atualizado"],
     "ai40UJ": ["Novo recorde · pressione <0>Espaço</0> para jogar de novo"],
     "aiArms": ["Não foi possível clonar este repositório."],
@@ -3250,6 +3315,7 @@
     "anmUZq": ["Faltava um recurso"],
     "annvv7": ["Não foi possível ler quais habilidades estão instaladas."],
     "aoT2xX": ["Este comentário é sobre a propriedade inteira"],
+    "arNEY0": ["Fixar no topo"],
     "arUUsK": ["Novidades do produto"],
     "ax9kie": [
       "As configurações de pré-visualização de links ainda não carregaram — tente de novo em instantes"
@@ -3342,6 +3408,7 @@
       ["1"],
       " carregará todas as extensões que houver nela, não apenas a do Open Knowledge, e ambas permanecem até você remover o Open Knowledge deste projeto."
     ],
+    "c9-Pi9": [["source"], " · fonte do skills.sh"],
     "cCd8Bs": ["Recortar"],
     "cD3aew": [
       "Os embeddings são recalculados à medida que as buscas rodam, então a cobertura recomeça do zero e vai enchendo."
@@ -3448,6 +3515,7 @@
       "A renomeação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
     ],
     "dEgA5A": ["Cancelar"],
+    "dFrqBg": ["Plugin ", ["0"]],
     "dGAdpH": [
       "O novo ramo <0>",
       ["trimmed"],
@@ -3456,7 +3524,6 @@
       "</1>, em um worktree próprio dentro de <2>.ok/worktrees/</2>."
     ],
     "dIYSqk": ["remoto"],
-    "dJXrT9": ["Novo do zero"],
     "dJw2_7": ["Salvo com o projeto para sua equipe."],
     "dMsx3p": ["Página inicial e central de navegação."],
     "dNM58w": ["O Claude Code (claude) não está instalado nem no seu PATH."],
@@ -3523,6 +3590,7 @@
     "e1Rn_k": ["Abrir a pasta que o contém"],
     "e1hptq": ["Incorpora um vídeo com os controles nativos do player."],
     "e2zZ3E": ["Testar conexão"],
+    "e4BHn_": ["Atualizar tudo desta fonte"],
     "e4FxjG": ["Ver os ", ["0"], " pacotes iniciais"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Duplica o item da árvore de arquivos copiado da barra lateral Arquivos."],
@@ -3601,6 +3669,7 @@
     "evs0iw": ["Tags que correspondem a \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sessão de shell"],
     "ezUmoU": ["Valores de elemento permitidos (vazio = qualquer)"],
+    "f-k37b": ["Instalar esta habilidade"],
     "f1-q9m": ["mantém as habilidades"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover o bloco"],
@@ -3611,13 +3680,13 @@
     "fBHvBn": ["Esta janela não tem pasta de projeto, então não dá para iniciar um terminal aqui."],
     "fBoO7w": ["Isto é uma pré-visualização de ", ["boldName"], ". Instale-a nos seus agentes."],
     "fCSBwN": [["agentName"], " não conseguiu iniciar."],
-    "fDjZxw": ["Copia a habilidade para ", ["0"]],
     "fG0X0e": ["Instalar ", ["brand"], " →"],
     "fGqEFq": ["Instalar ", ["0"]],
     "fIJtam": ["Revertendo"],
     "fIgqfQ": ["Reinstalando"],
     "fJ3EbT": ["Temas"],
     "fJgQHX": ["Falha ao criar o arquivo"],
+    "fKsRVO": ["Habilidades de ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Não deu para salvar a configuração de atualização automática: ", ["0"]],
     "fNr-MX": ["Desativar a busca semântica"],
     "fOzzSV": ["O destino do link \"", ["shown"], "\" não corresponde a um arquivo existente."],
@@ -3644,6 +3713,7 @@
     "f_PkYv": [
       "Reiniciar fecha o servidor deste projeto. Os agentes conectados (Claude Code, Codex, Cursor) verão a conexão MCP com o OpenKnowledge fechar de forma inesperada — pode ser preciso reiniciar o agente, ou desligar e ligar o servidor MCP do OpenKnowledge nele, para reconectar."
     ],
+    "faAcQ3": ["Não foi possível instalar a habilidade do projeto: ", ["0"]],
     "fbdLmk": ["Liga ou desliga o negrito."],
     "fbsiBw": ["Algo deu errado ao iniciar o terminal."],
     "fcgvCA": ["Claude"],
@@ -3660,7 +3730,6 @@
     "fnlBN4": [
       "As configurações de aprovação automática ainda não carregaram — tente de novo em instantes"
     ],
-    "fo0VXg": ["Desinstalar"],
     "fo6CCk": ["painel ", ["0"]],
     "fqSfXY": ["Substituir"],
     "ft-BOm": ["Relatar um erro…"],
@@ -3731,6 +3800,7 @@
       " no seu navegador."
     ],
     "gL_sdV": ["Populares"],
+    "gLjtu3": ["Não foi possível mover ", ["0"], ": ", ["1"]],
     "gN3JX8": ["skills.sh"],
     "gOD68k": ["Abra um único arquivo markdown — sem configurar projeto."],
     "gOmloS": [["filePath"], " excluído"],
@@ -3836,6 +3906,11 @@
     "habOU_": ["Falha ao atualizar a configuração de aprovação automática — ", ["detail"]],
     "hadECI": [["0"], " precisa ser substituído"],
     "he3ygx": ["Copiar"],
+    "heV8si": [
+      "Isto remove permanentemente ",
+      ["names"],
+      ". Agentes que invocam essas habilidades pelo nome falharão até que sejam recriadas."
+    ],
     "hgF0al": ["Usar ", ["0"], " no modo claro ativo"],
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Falha ao excluir ", ["file"]],
@@ -3871,6 +3946,7 @@
       ["boldName"],
       " no lugar. As alterações são salvas direto na cópia do seu editor."
     ],
+    "i04BJx": ["Vive fora deste projeto — somente leitura aqui."],
     "i09An-": ["Uma versão anterior foi restaurada (", ["0"], ")"],
     "i1flq_": ["Sugestões de link wiki"],
     "i3f2kh": ["Nenhum comando corresponde."],
@@ -3888,6 +3964,13 @@
     "i9toLO": ["Arquivo de configuração do agente"],
     "iBVgIQ": ["O servidor retornou uma resposta malformada."],
     "iDZtvM": ["Falha ao carregar os modelos: ", ["message"]],
+    "iE-yoU": [
+      "Isto é uma pré-visualização de ",
+      ["boldName"],
+      " — uma das ",
+      ["0"],
+      " habilidades desta fonte. Instale-a nos seus agentes."
+    ],
     "iEQQyu": ["Agente"],
     "iEYxO4": ["Mostrar as miniaturas"],
     "iGCs04": ["Nenhum modelo disponível"],
@@ -3928,6 +4011,7 @@
     "ibE3-O": ["OpenKnowledge criou um link de compartilhamento para ", ["subject"]],
     "idD8Ev": ["Salvo"],
     "idni-S": ["Valores de ", ["keyName"]],
+    "idufL_": ["Habilidades de ", ["0"], "."],
     "ie-f_y": ["Tem certeza de que deseja excluir o item selecionado?"],
     "ig5vUe": ["Falha ao carregar o arquivo"],
     "ii5mVn": ["Relatar este erro"],
@@ -3950,6 +4034,7 @@
     "ilodsp": ["Deixar os agentes usarem o OpenKnowledge sem perguntar"],
     "ioMn4Z": ["Novo a partir de um modelo…"],
     "iodl3p": ["O servidor retornou uma resposta de upload malformada."],
+    "ipCibE": ["Nomes de pasta vazios não são permitidos (//)"],
     "ipn17C": [
       "O <0>type</0> que cada documento criado a partir deste modelo recebe (ex.: <1>research-note</1>). Mantém os novos documentos em conformidade com o Open Knowledge Format."
     ],
@@ -3963,7 +4048,6 @@
     "isRobC": ["Novo"],
     "iuTKci": ["Ainda não há edições."],
     "iv452l": ["Documentação de ", ["0"], " (abre no navegador)"],
-    "ivwdwq": ["Crie uma habilidade."],
     "iy64Li": [
       "Sincronização completa — suas edições recebem commit e são enviadas ao seu remoto automaticamente."
     ],
@@ -4026,7 +4110,6 @@
     "jerqF0": ["Carregando o estado dos ramos"],
     "jhtG3I": [" Sua seleção foi restaurada."],
     "jjtmV_": ["Nome do primeiro arquivo"],
-    "jkt28V": ["Custo de contexto"],
     "jnCROW": [
       "Um instantâneo de memória da falha, e o artefato que mais nos ajuda. Ele pode conter conteúdo de documentos e não pode ser ocultado, então desmarque se preferir não compartilhá-lo."
     ],
@@ -4102,6 +4185,7 @@
       "Não deu para gravar a extensão do Open Knowledge. Esta conversa não tem as ferramentas do Open Knowledge."
     ],
     "kNGLX6": ["Tentando novamente…"],
+    "kNiQp6": ["Fixados"],
     "kNqMMd": ["Pasta"],
     "kRTXGw": [
       "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
@@ -4146,6 +4230,7 @@
     "kkux8f": ["Não foi possível excluir ", ["0"], ". Tente novamente."],
     "klPS-L": ["Arquivo original — antes das edições deste agente."],
     "kmKqZg": ["Grupos"],
+    "kmPvKZ": ["O servidor retornou uma resposta de atualização malformada."],
     "knjOzA": ["Valor da tag"],
     "ko386X": ["Um documento tem um conflito — resolva-o para mantê-lo atualizado."],
     "kolRU1": ["Quer excluir definitivamente?"],
@@ -4300,7 +4385,6 @@
     "mR3Bly": [
       "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta) e as habilidades do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
     ],
-    "mShKiV": ["Enviar uma habilidade"],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],
@@ -4407,6 +4491,7 @@
     "nBgzKO": ["Tornar esta a fonte — a pasta real da habilidade se muda para cá"],
     "nCzR-G": ["Copiar o código ", ["userCode"]],
     "nDT8qt": [["0"], " inicializado, mas não foi possível abri-lo."],
+    "nFAvDj": [["plugin"], " inclui ", ["0"], " outras habilidades"],
     "nJaz5Q": ["Substitui a entrada do OpenKnowledge que cada um já tem."],
     "nMSYz5": [
       "Este caminho está em um volume externo (/Volumes/...). O OpenKnowledge vai perder os arquivos de vista quando a unidade for ejetada."
@@ -4416,9 +4501,13 @@
     "nP-KFo": ["Novo chat do ", ["0"]],
     "nTM8ab": ["Dê um nome antes de editar as cores."],
     "nTwL53": ["Abra um documento para compartilhar a URL dele."],
+    "nWMRxa": ["Desafixar"],
+    "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],
+    "nXHOFU": ["Não foi possível atualizar de ", ["0"], ": ", ["1"]],
     "nYKerc": ["(somente no nível do usuário)"],
     "nYeBmY": ["há ", ["hours"], " h"],
+    "n_I-da": ["Ver fonte"],
     "nbLQ_9": ["Escolha para onde enviar estes comentários"],
     "nbfdhU": ["Integrações"],
     "nc-ipN": [
@@ -4474,6 +4563,7 @@
     ],
     "nzHlj8": ["Fechar ", ["0"]],
     "nzaV6Q": ["Miniaturas das páginas"],
+    "o-XJ9D": ["Alterar"],
     "o0bHtA": ["Pelo OpenKnowledge"],
     "o1veZ6": ["Não foi possível abrir este documento em uma nova janela."],
     "o49mDZ": ["Carregando o histórico da linha do tempo"],
@@ -4496,9 +4586,11 @@
     "oCZkaG": ["Copiar caminho"],
     "oJl7eO": ["Componente desconhecido: ", ["componentName"], " — código editável abaixo"],
     "oKBnk5": ["Mais requisições foram bloqueadas."],
+    "oP-FQW": ["Use um caminho relativo dentro da habilidade"],
     "oPU_4D": ["Enviar quando o agente estiver livre"],
     "oQA-cA": ["Caminho completo"],
     "oS1YpJ": ["Abre o Navegador de projetos."],
+    "oVW7VD": ["Instala neste projeto"],
     "oWsZk8": ["Criar a página inexistente ", ["target"]],
     "oX-rVu": ["Falha na instalação: ", ["0"]],
     "oXKEsy": ["Exclui um chip de link wiki ou de tag que esteja ao lado."],
@@ -4551,6 +4643,7 @@
     "pHYP6v": ["Abra <0>Personalizar</0> na barra lateral <1/> <2>Habilidades</2>."],
     "pI_bKs": ["<0>Espaço</0> para pular · <1>↓</1> para agachar"],
     "pJ7XCo": ["Esta página não faz referência a nenhum arquivo ou imagem local."],
+    "pMPnZv": [["deleted"], " habilidades excluídas"],
     "pOo4Aa": ["Texto simples"],
     "pSimwP": ["Novo nome para a versão do ", ["editor"]],
     "pTPqMK": ["Liga ou desliga um bloco de código delimitado."],
@@ -4587,6 +4680,7 @@
     "pha01Y": ["Páginas de todo o projeto sem arestas de entrada no grafo."],
     "pkAft1": ["A busca falhou."],
     "pmUArF": ["Espaço de trabalho"],
+    "poAsUN": ["nenhum agente — salvas, não instaladas em lugar algum"],
     "ppDgFi": ["Reiniciar com a versão deste app"],
     "ppzof_": [
       "Isso remove permanentemente ",
@@ -4681,6 +4775,7 @@
     ],
     "qbWjTl": ["Desativar a verificação ortográfica"],
     "qbfj1f": ["Recebendo objetos"],
+    "qd7L1J": [["source"], ": ", ["updated"], " atualizados, ", ["upToDate"], " já atualizados"],
     "qdBUHP": ["Não deu para carregar ", ["fileName"]],
     "qi1F96": ["Mostrar no Explorador de Arquivos"],
     "qiRoLb": ["Resuma tudo o que mudei esta semana"],
@@ -4716,6 +4811,11 @@
     "rFTdVq": ["Mostrar no Explorador"],
     "rFmBG3": ["Tema de cores"],
     "rFw02Q": ["Enviando ", ["keyName"]],
+    "rIFV5h": [
+      "O plugin ",
+      ["0"],
+      " serve estas habilidades do seu cache — o OK nunca as edita nem atualiza."
+    ],
     "rJVoVX": ["Resultados de busca no código"],
     "rJm8-2": ["Não foi possível acessar a área de transferência — o tema está na caixa abaixo."],
     "rNifQd": ["Remover a propriedade"],
@@ -4742,6 +4842,7 @@
     "rf8fiC": ["Fechar janela"],
     "rfFpcF": ["Remover ", ["chip"]],
     "rg7hNd": ["Avalie sua experiência"],
+    "rg8BwK": ["Não foi possível excluir ", ["0"], ": ", ["error"]],
     "rgPqOw": ["Converte o bloco atual em um parágrafo."],
     "ri6zS-": [
       "O arquivo de esquema não existe ou falhou ao carregar — adicionar um campo o cria."
@@ -4788,6 +4889,7 @@
     "s1c0ja": ["Lista com marcadores"],
     "s3caR3": ["Excluindo"],
     "s7us1p": ["Só são aceitas imagens PNG, JPEG ou WebP."],
+    "sAP9XO": ["Plugin ", ["0"], " · ", ["1"]],
     "sE7R19": [
       "Não foi possível carregar os modelos: ",
       ["templatesError"],
@@ -4821,6 +4923,7 @@
     "s_ereB": ["ativo"],
     "saIASg": ["Segundo item"],
     "saYiIO": ["O caminho não pode conter bytes nulos"],
+    "scRzTw": ["via plugin"],
     "scu3wk": ["Modelo"],
     "scyoP9": [
       "Os documentos de índice não carregam frontmatter, exceto aquele na raiz da sua base de conhecimento. Os documentos de log não são cobertos — OKF não restringe seu frontmatter."
@@ -4930,6 +5033,7 @@
       ". Deseja excluir permanentemente?"
     ],
     "txUHO8": [["localizedMessage"], " na linha ", ["displayLine"]],
+    "txmRmK": ["Redimensionar o painel de Habilidades"],
     "tzGWeg": ["Preparando a desinstalação do OpenKnowledge"],
     "tzZ6ha": ["Conectar ao GitHub Enterprise Server"],
     "tz_FDV": ["o servidor respondeu, mas o server.lock ainda não tem porta"],
@@ -5078,6 +5182,7 @@
       ],
       " do pacote não serão instaladas."
     ],
+    "vVQlxV": ["O servidor mudou para a branch <0>", ["branch"], "</0> — recarregando o conteúdo"],
     "vXIe7J": ["Idioma"],
     "vYOUOk": ["Adicionar um comentário"],
     "vYPvPB": ["Trocar de projeto…"],
@@ -5178,11 +5283,11 @@
     "wbv9xO": ["Criar novo projeto"],
     "wc54KE": ["Experimentando…"],
     "wcfO9r": ["Ainda não há relatórios de erro."],
+    "wckWOP": ["Gerenciar"],
     "wdRxTD": ["Aplicando…"],
     "wdxz7K": ["Código"],
     "wdzBgi": ["O compartilhamento de configuração agora é Somente eu."],
     "weP6me": ["Não deu para carregar os documentos — digite @ de novo para tentar outra vez"],
-    "wefL17": [["source"], " publica ", ["count"], " habilidades. Instale todas de uma vez."],
     "wgNoIs": ["Selecionar tudo"],
     "wlwXUk": [
       "Você escolheu ~/Downloads. Os arquivos de lá costumam ser passageiros — pense em uma pasta mais estável."
@@ -5258,6 +5363,7 @@
     "xhlFsx": ["Herdado — defina um valor aqui para substituí-lo."],
     "xi9KGG": ["Mostrar o Terminal"],
     "xiv-dW": ["Ainda não há arquivos."],
+    "xk133d": ["Instala a skill em ", ["path"], " — o primeiro local guarda a própria cópia"],
     "xlQpTE": ["Mais opções de recusa"],
     "xloBjn": ["Caminho relativo"],
     "xrVr_k": ["Não deu para criar a habilidade: ", ["0"]],
@@ -5294,6 +5400,7 @@
     ],
     "yHikCO": ["Abre a caixa de ir para a linha do CodeMirror."],
     "yIPXut": ["Preparando a busca"],
+    "yJkw6t": ["SKILL.md é gerenciado pela própria habilidade — escolha outro nome"],
     "yK1m_z": [
       ["0", "plural", { "one": ["Habilidade"], "many": ["Habilidades"], "other": ["Habilidades"] }]
     ],
@@ -5319,7 +5426,7 @@
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["O que aconteceu?"],
     "yaPGPa": ["Abra um projeto para gerenciar as conexões dele com ferramentas de IA."],
-    "ybWWR2": ["Cria um link simbólico da habilidade para ", ["0"]],
+    "ybPMz3": ["Não foi possível fixar ", ["name"]],
     "ycIX5i": ["Você saiu da conta — entre para retomar a sincronização."],
     "yckias": ["Renomear o arquivo"],
     "ydzS9x": ["Sair"],
@@ -5344,6 +5451,7 @@
     "yhdqox": [
       "Instalado — ok está disponível em terminais externos. Desmarcar remove; o terminal integrado e as ferramentas de IA do OpenKnowledge continuam funcionando."
     ],
+    "yhy5h-": ["Ver todas as ", ["count"], " habilidades"],
     "yit5dF": ["Ainda não há pastas neste projeto."],
     "yjExfe": ["O ramo <0>", ["shareBranch"], "</0> está ativo em:"],
     "ylXj1N": ["Selecionado"],
@@ -5385,6 +5493,7 @@
     "zAJzIg": ["Problemas em ", ["0"]],
     "zAsDLY": ["Visualização em grafo dos links entre documentos"],
     "zBUqvf": ["Configurar as integrações do OpenKnowledge…"],
+    "zC5jrM": ["Será criado como <0>", ["effective"], "</0>"],
     "zD1Nqf": [
       [
         "count",
@@ -5420,7 +5529,6 @@
     "zbymaY": ["há ", ["0"], " min"],
     "zcmYx4": ["a configuração do git não está disponível"],
     "zd00pH": ["Copiar caminho"],
-    "zewp9w": ["Os destinos mudaram. Revise a lista e confirme."],
     "zgSFyG": ["Link externo"],
     "zkz0Fg": ["Configurar a sincronização"],
     "zlErBl": ["A resposta de erro dos títulos da página não seguiu a RFC 9457"],
@@ -5431,11 +5539,6 @@
       "O frontmatter com que começa cada documento criado a partir deste modelo. Os valores são YAML — uma lista é <0>[a, b]</0>; <1>{",
       ["date"],
       "}</1> é preenchido na criação."
-    ],
-    "zt9ZgM": [
-      "Este repositório traz ",
-      ["count"],
-      " habilidades. Instale qualquer uma delas pelo plugin."
     ],
     "ztKII6": ["Falha ao adicionar o item"],
     "zvjCD4": ["Diagnóstico detalhado"],

@@ -81,7 +81,9 @@ describe('SkillPluginBundleDialog', () => {
     );
 
     const dialog = screen.getByRole('dialog', { name: 'Install from Example' });
-    const install = within(dialog).getByRole('button', { name: 'Install selected' });
+    // Zero selected: the CTA is a bare disabled "Install" — the count only
+    // enters the label once there is a count to state.
+    const install = within(dialog).getByRole('button', { name: 'Install' });
     expect((install as HTMLButtonElement).disabled).toBe(true);
     expect(discoverSkillsInSource).toHaveBeenCalledWith(
       'https://example.com/plugin',
@@ -89,6 +91,8 @@ describe('SkillPluginBundleDialog', () => {
     );
 
     await user.click(await within(dialog).findByRole('checkbox', { name: /alpha/i }));
+    // The verb now carries the scope of what lands.
+    expect(within(dialog).getByRole('button', { name: 'Install 1 skill' })).toBe(install);
     await user.click(install);
 
     await waitFor(() =>

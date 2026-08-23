@@ -16,6 +16,7 @@ import { parseSkillDir } from './acquire/parse.ts';
 import type { RawSkill, SkillBundle } from './adapters/shared.ts';
 import { enumerateSkillDir } from './adapters/skill-dir.ts';
 import { harnessHomes, projectHarnessHomes } from './harness-homes.ts';
+import { enumerateAgentPluginsRoot } from './plugin-providers/manifest-providers.ts';
 import { enumeratePluginProvider } from './plugin-providers/registry.ts';
 import type { CatalogSkill, OkPack } from './schema.ts';
 import { OK_PACK_SCHEMA_VERSION } from './schema.ts';
@@ -192,6 +193,15 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
   }
   if (opts.projectDir !== undefined) {
     bundles.push(...enumerateProjectHarnessSkills(opts.projectDir));
+    // In-project Agent Plugins (agent-plugins.org): `<projectDir>/plugins/*`
+    // with a conformant manifest surface their skills as project-scoped
+    // detected rows — no harness registration required.
+    bundles.push(
+      ...enumerateAgentPluginsRoot(resolve(opts.projectDir, 'plugins'), 'agent-plugins', {
+        scope: 'project',
+        projectPath: opts.projectDir,
+      }),
+    );
   }
   const localBundles =
     opts.projectDir === undefined

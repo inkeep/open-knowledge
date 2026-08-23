@@ -83,6 +83,7 @@ import {
   EmbedDetectSuccessSchema,
   EmptyRequestSchema,
   encodeShareUrl,
+  estimateSkillCost,
   externalSkillLiveDocName,
   FolderConfigGetSuccessSchema,
   FolderConfigPutRequestSchema,
@@ -212,6 +213,7 @@ import {
   SkillMoveSuccessSchema,
   SkillPutRequestSchema,
   SkillPutSuccessSchema,
+  type SkillReimportBulkResult,
   SkillReimportRequestSchema,
   SkillReimportSuccessSchema,
   SkillRestoreRequestSchema,
@@ -223,6 +225,8 @@ import {
   SkillsImportBulkSuccessSchema,
   SkillsInstalledSuccessSchema,
   SkillsListSuccessSchema,
+  SkillsReimportBulkRequestSchema,
+  SkillsReimportBulkSuccessSchema,
   SkillTargetsGetSuccessSchema,
   SkillTargetsPutRequestSchema,
   SkillTargetsPutSuccessSchema,
@@ -260,6 +264,7 @@ import {
   templateContentDocName,
   UploadAssetSuccessSchema,
   UploadRequestSchema,
+  USER_SKILL_EDITOR_IDS,
   unwrapFrontmatterFences,
   ValidationAuditCountsResponseSchema,
   ValidationAuditResponseSchema,
@@ -276,14 +281,15 @@ import {
   resolveProjectIdentity,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
-  acquiredBundleTooLarge,
   discoverSkillDirs,
   enumerateInstalledSkills,
   fetchSource,
+  type PluginUpstream,
   parseSkillDir,
   parseSkillsLock,
   parseSource,
   pluginRepositoryUrl,
+  pluginUpstreamsByName,
   readSkillDirMeta,
   readWellKnownIndex,
   resolvePluginUpdateSource,
@@ -329,6 +335,7 @@ import {
   snapshotBlocks,
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
+import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
 import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
@@ -478,6 +485,8 @@ import {
   SHARE_TARGET_STATUS_HANDLER_TAG,
 } from './share/target-status.ts';
 import {
+  BUNDLE_IDS,
+  BUNDLE_SCOPE,
   BUNDLE_SKILL_NAME,
   isInternalBundleSkillName,
   USER_GLOBAL_BUNDLE_IDS,
@@ -678,6 +687,7 @@ import {
 import { createMultipartParser, type MultipartParser } from './multipart.ts';
 import { precomputeParse } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
+import { openPluginBaselines } from './plugin-skill-baseline.ts';
 import {
   appendRenameLogEntry,
   createAncestorShaSetCache,
@@ -699,14 +709,15 @@ import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
-import {
-  createSkillImportService,
-  importedBundleLimitError,
-  SKILL_IMPORT_WRITE_LIMITS,
-  type SkillImportOutcome,
-} from './services/skill-import.ts';
+import { createSkillImportService, type SkillImportOutcome } from './services/skill-import.ts';
 import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
 import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
+import {
+  createSkillReimportService,
+  groupReimportNamesBySource,
+  pickReimportDir,
+  type SkillReimportOutcome,
+} from './services/skill-reimport.ts';
 import { createVersionOpsService } from './services/version-ops.ts';
 import {
   listRescueCheckpoints,
@@ -725,7 +736,7 @@ import {
   scanSkillFolderStates,
   unlinkEditorSkillFolder,
 } from './skill-folder-links.ts';
-import { rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
+import { isDisallowedGitSpec, rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
 import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
 import {
   clearSkillPlacements,
@@ -6527,7 +6538,12 @@ export function createApiExtension(
         // surface, not just Claude plugins. The SAME identity is used to scan,
         // stamp, and filter — drop skills bound to a *different* project.
         const identity = resolveProjectIdentity(projectDir ?? contentDir);
-        const catalog = enumerateInstalledSkills({ projectDir: identity });
+        // Same `homeDirOverride` seam as every other home-scanning surface here —
+        // without it a rig (or embedded host) enumerates the REAL ~/.claude/plugins.
+        const catalog = enumerateInstalledSkills({
+          projectDir: identity,
+          ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
+        });
         // In-place editor-dir skills are first-class `/api/skills`
         // entries at BOTH scopes — dropping them here keeps the same skill from
         // double-listing as a "detected" row. What remains detected: plugin-cache
@@ -7784,6 +7800,12 @@ export function createApiExtension(
       try {
         const flushStart = performance.now();
         await flushGitCommit?.();
+        // Contributor stragglers too: lifecycle writes flush fire-and-forget
+        // now, so a contributor recorded after an in-flight run snapshotted
+        // the map is not in the drained commit — without this second drain the
+        // just-made version is missing from the timeline. Reader-side on
+        // purpose: draining in the generic flush changed shutdown semantics.
+        await commitOkArtifactWrite('history-read');
         const flushMs = performance.now() - flushStart;
         if (flushMs > 1000) {
           log.warn({ durationMs: Math.round(flushMs) }, '[history] pre-read commit flush slow');
@@ -13819,8 +13841,13 @@ export function createApiExtension(
   // teaching error rather than silently writing to an unmanaged path.
   const SKILLS_LIST_CAP = 500;
 
+  // The shape check on its own, for callers that classify a name per row rather
+  // than answering the request with a 400 (bulk verbs).
+  function isValidSkillName(name: string): boolean {
+    return Boolean(name) && name.length <= 64 && SKILL_NAME_REGEX.test(name);
+  }
   function validateSkillName(name: string, res: ServerResponse, handler: string): boolean {
-    if (!name || name.length > 64 || !SKILL_NAME_REGEX.test(name)) {
+    if (!isValidSkillName(name)) {
       errorResponse(
         res,
         400,
@@ -14221,12 +14248,208 @@ export function createApiExtension(
   }
 
   /**
-   * The managed, read-only skills-list entry for a built-in bundle skill, read
-   * from its on-disk projection under `base`. Returns null when it isn't
-   * installed (no host copy). Marked `managed: true` so the UI labels it and
-   * disables mutation; the write/rename/delete APIs refuse it independently. An
-   * `origin` (skills.sh repo link + manual update path) is attached from the
-   * synthesized built-in lock entry.
+   * Skills a HARNESS PLUGIN already ships, indexed by name, with the plugin's
+   * own content hash.
+   *
+   * The cross-harness enumeration is the expensive scan (it walks every plugin
+   * cache on the machine), and `/api/skills` is hot — Mike's bug-bash bundle
+   * shows 148 calls in one session. Plugin caches only change when the user runs
+   * a plugin update, so this memoizes for `PLUGIN_INDEX_TTL_MS` rather than
+   * rescanning per request. A stale window costs an origin that is one version
+   * behind for a few seconds; rescanning per request costs the list.
+   */
+  const PLUGIN_INDEX_TTL_MS = 30_000;
+  let pluginIndex: { at: number; identity: string; byName: Map<string, PluginUpstream> } | null =
+    null;
+
+  function pluginSkillsByName(identity: string): Map<string, PluginUpstream> {
+    const now = Date.now();
+    if (
+      pluginIndex &&
+      pluginIndex.identity === identity &&
+      now - pluginIndex.at < PLUGIN_INDEX_TTL_MS
+    )
+      return pluginIndex.byName;
+    let byName = new Map<string, PluginUpstream>();
+    try {
+      // Enumeration and hashing are the IO; the join itself is pure and lives in
+      // core, where it can be tested without a plugin cache on disk.
+      byName = pluginUpstreamsByName(
+        enumerateInstalledSkills({
+          projectDir: identity,
+          ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
+        }).skills,
+        (home) => parseSkillDir(home)?.contentHash,
+      );
+    } catch (err) {
+      // A broken plugin cache must not take the skills list down with it — the
+      // list is the feature, the origin is an enrichment.
+      log.warn({ err }, 'plugin upstream index failed; origins will be omitted');
+    }
+    pluginIndex = { at: now, identity, byName };
+    return byName;
+  }
+
+  /**
+   * Synthesize the lock entry a skill WOULD have if its plugin copy had been
+   * imported through OK.
+   *
+   * A repo that fans plugin skills into `.agents/skills/` has already performed
+   * the copy OK calls "edit a copy" — 83 of them in this monorepo — but nothing
+   * recorded where they came from, so every one of them reads as hand-authored.
+   * This is the same move `synthBuiltinLockEntry` makes for OK's own bundles:
+   * derive the provenance rather than write it, so no file is created and no
+   * claim outlives the evidence.
+   *
+   * Matched by NAME, deliberately. Content cannot carry the LINK: the moment
+   * someone edits their copy it stops matching, which is exactly when "you have
+   * diverged from the plugin" needs saying. Divergence itself is decided against
+   * the machine-local first-seen baseline (`plugin-skill-baseline.ts`), not
+   * against the plugin's bytes — the fan-out legitimately rewrites content on
+   * the way, so the plugin's own hash flags copies nobody edited.
+   */
+  /** The plugin bundle's current content hash for `name`, or null when no
+   *  plugin ships it — the upstream half of the Modified baseline pair. */
+  function pluginUpstreamHash(name: string, identity: string): string | null {
+    return pluginSkillsByName(identity).get(name)?.contentHash ?? null;
+  }
+
+  /**
+   * The plugin identity of a skill that IS a plugin's skill — its bundle dir
+   * resolves to the plugin's own home (a directory-sourced marketplace serving
+   * in place). Null for a COPY of a plugin skill (different dir, same name),
+   * which is the origin/`synthPluginLockEntry` case instead. The distinction is
+   * the difference between "this is the plugin" and "this came from the
+   * plugin", and conflating them would make a skill its own upstream.
+   */
+  function pluginSelfIdentity(
+    name: string,
+    identity: string,
+    skillAbsDir: string,
+  ): { name: string; marketplace: string; provider: string; url?: string } | null {
+    const upstream = pluginSkillsByName(identity).get(name);
+    if (!upstream) return null;
+    try {
+      if (realpathSync(skillAbsDir) !== realpathSync(upstream.home)) return null;
+    } catch {
+      return null;
+    }
+    return {
+      name: upstream.plugin,
+      marketplace: upstream.marketplace,
+      provider: upstream.provider,
+      // The marketplace repo, when the provider knows it — without it the
+      // plugin group row for identity-served skills had no "View plugin" while
+      // every lock-origin plugin group did.
+      ...(upstream.repositoryUrl ? { url: upstream.repositoryUrl } : {}),
+    };
+  }
+
+  function synthPluginLockEntry(
+    name: string,
+    identity: string,
+    skillAbsDir?: string,
+  ): SkillsLock['skills'][string] | null {
+    const upstream = pluginSkillsByName(identity).get(name);
+    if (!upstream) return null;
+    // The skill IS the plugin (in-place directory marketplace): it has no
+    // upstream, it is what everything else would be upstream OF. An origin here
+    // would claim the skill was imported from itself.
+    if (skillAbsDir !== undefined) {
+      try {
+        if (realpathSync(skillAbsDir) === realpathSync(upstream.home)) return null;
+      } catch {
+        // Unresolvable dir: fall through — worst case is an origin on a broken
+        // bundle, which the list already surfaces as unreadable.
+      }
+    }
+    let importedAt: string;
+    try {
+      importedAt = statSync(join(upstream.home, 'SKILL.md')).mtime.toISOString();
+    } catch (err) {
+      // A partially-corrupt plugin cache: the origin still renders, but its
+      // date is the epoch — log so that reads as a broken cache, not a bug here.
+      log.warn({ err, home: upstream.home }, 'plugin bundle unreadable; origin dated epoch');
+      importedAt = new Date(0).toISOString();
+    }
+    return {
+      // The plugin-cache DIR, not a display name — because that is what a real
+      // import from a plugin records as its source, and three consumers already
+      // key off that shape: the sidebar's provenance bucket recognises it as a
+      // PLUGIN group (so the copy lands in the same group as the plugin's own
+      // residents, with the plugin glyph, instead of minting a second group
+      // under an unrecognised label), `use-skill-origin` derives its "From the
+      // {plugin} plugin" wording from it, and the update path can resolve it.
+      source: upstream.home,
+      skill: name,
+      contentHash: upstream.contentHash,
+      // NO `localHash`, so this origin never drives the Modified indicator.
+      //
+      // The plugin's bytes look like the obvious baseline, but a copy is rarely
+      // byte-identical to what it came from: a repo that fans plugin skills into
+      // `.agents/skills/` legitimately rewrites frontmatter and injects a
+      // provenance banner on the way. Measured against this monorepo, every one
+      // of those copies compares as diverged — so a plugin-derived `localHash`
+      // would flag 83 skills as Modified that nobody modified. A transformation
+      // applied on copy is indistinguishable from a user's edit at the byte
+      // level, and "you changed this" is the wrong thing to say when they did
+      // not. Naming the upstream is the claim the evidence supports.
+      // Never auto-pull. The harness owns plugin updates, and a repo that syncs
+      // these has its own updater — two writers for one file is how they fight.
+      autoUpdate: false,
+      importedAt,
+    };
+  }
+
+  /**
+   * `SKILL.md` of the bundle OK ships for `name`. Null in three cases: the name
+   * is not a built-in; the bundle cannot be located (a broken install — the
+   * caller then lists nothing rather than inventing a row); or `scope` is given
+   * and disagrees with the tier the bundle declares, which is how a cross-scope
+   * install is refused. Callers that only need to DESCRIBE a bundle omit
+   * `scope`; callers that are about to WRITE one must pass it.
+   */
+  function shippedBundleSkillMd(name: string, scope?: 'project' | 'global'): string | null {
+    const id = BUNDLE_IDS.find((bundleId) => BUNDLE_SKILL_NAME[bundleId] === name);
+    if (id === undefined) return null;
+    // Each bundle declares the scope it belongs at: `open-knowledge` is
+    // project-local, `discovery` + `write-skill` are user-global. Materializing
+    // one at the other scope makes a SECOND copy of a skill that already exists
+    // — the agent then loads it twice and the sidebar lists it twice, once under
+    // PROJECT and once under GLOBAL. Only the listing side may ask scope-free.
+    if (scope !== undefined && BUNDLE_SCOPE[id] !== (scope === 'global' ? 'user' : 'project')) {
+      return null;
+    }
+    try {
+      const dir = resolveBundledSkillDir(id, { checkDesktop: true });
+      const md = resolve(dir, 'SKILL.md');
+      return existsSync(md) ? md : null;
+    } catch (err) {
+      // A missing bundle asset dir is a broken install — the caller lists
+      // nothing, which is unsupportable without a trail saying why.
+      log.warn({ name, err }, `[skills] bundle asset dir unresolved for built-in ${name}`);
+      return null;
+    }
+  }
+
+  /**
+   * The managed, read-only skills-list entry for a built-in bundle skill.
+   *
+   * Read from its on-disk projection under `base` when one exists. When NONE
+   * does, the entry is still emitted, sourced from the bundle OK ships, with
+   * `installed: false` and no hosts: a built-in the user removed everywhere used
+   * to vanish from this list, which took with it the only row they could install
+   * it back from. The lifecycle verbs are ordinary for these skills, so their row
+   * has to survive being uninstalled the same way any other skill's does.
+   *
+   * `path`/`absolutePath` then point at the shipped bundle, which is where the
+   * content genuinely is — the read + preview surfaces already resolve a built-in
+   * by directory, and there is no in-project doc to name until it is installed.
+   *
+   * Marked `managed: true` so the UI labels it and disables mutation; the
+   * write/rename/delete APIs refuse it independently. An `origin` (skills.sh repo
+   * link + manual update path) is attached from the synthesized built-in lock
+   * entry, which needs an installed copy to hash and so is absent until then.
    */
   function builtinSkillListEntry(
     base: string,
@@ -14241,27 +14464,35 @@ export function createApiExtension(
     installed: boolean;
     hosts: string[];
     managed: true;
+    size?: ReturnType<typeof estimateSkillCost>;
     origin?: ReturnType<typeof skillOriginFor>;
   } | null {
     const resolved = resolveBuiltinSkillDir(base, name);
-    if (!resolved) return null;
+    const skillMd = resolved?.skillMd ?? shippedBundleSkillMd(name);
+    if (skillMd === null) return null;
     let description: string | undefined;
     try {
-      const { frontmatter } = parseFrontmatterDoc(readFileSync(resolved.skillMd, 'utf-8'));
+      const { frontmatter } = parseFrontmatterDoc(readFileSync(skillMd, 'utf-8'));
       if (typeof frontmatter.description === 'string') description = frontmatter.description;
     } catch {
       // Malformed SKILL.md: still list it (without a description) so it's visible.
     }
     const synthEntry = synthBuiltinLockEntry(base, name);
+    // Costed like any other bundle. Omitting it here is what made these rows the
+    // one place a skill's context price was invisible, and it is why the
+    // settings blocks had to read the desktop bridge for a number this endpoint
+    // already had every other input for.
+    const parsed = parseSkillDir(dirname(skillMd));
     return {
       name,
       ...(description !== undefined ? { description } : {}),
       scope,
-      path: resolved.relPath,
-      absolutePath: resolved.skillMd,
-      installed: resolved.hosts.length > 0,
-      hosts: resolved.hosts,
+      path: resolved?.relPath ?? skillMd,
+      absolutePath: skillMd,
+      installed: (resolved?.hosts.length ?? 0) > 0,
+      hosts: resolved?.hosts ?? [],
       managed: true,
+      ...(parsed ? { size: estimateSkillCost(parsed) } : {}),
       ...(synthEntry ? { origin: skillOriginFor(synthEntry) } : {}),
     };
   }
@@ -14764,6 +14995,14 @@ export function createApiExtension(
         // editor rows (leave-behind links, drift expectations) — they feed the
         // drift flags but are NOT custom placements: emitting them as
         // such duplicated every editor row as a folder mark on the pill.
+        // Same identity `/api/skills/installed` scans under, so an upstream this
+        // list attributes is one that endpoint would also report — a linked
+        // worktree resolves to its parent checkout, where the plugin installs
+        // are actually keyed.
+        const detectedIdentity = resolveProjectIdentity(projectDir ?? contentDir);
+        // One read + at most one write per enumeration — the baseline file is a
+        // cache, and this endpoint is hot.
+        const pluginBaselines = openPluginBaselines(contentDir);
         const stdRootsProject = standardSkillRoots('project');
         const stdRootsGlobal = standardSkillRoots('global');
         const dropAliased = (
@@ -14785,13 +15024,39 @@ export function createApiExtension(
           ? scanInPlaceSkills(contentDir).map((s) => {
               const tracked = !projectNameSeen.has(s.name);
               projectNameSeen.add(s.name);
-              // Built-ins have no stored lockfile entry — synthesize their
-              // skills.sh origin so they carry the repo link + manual update path.
-              const entry = tracked
-                ? (lock?.skills[s.name] ?? synthBuiltinLockEntry(contentDir, s.name))
-                : undefined;
+              // Neither built-ins nor plugin-derived copies have a stored
+              // lockfile entry, so both synthesize one: the built-in gets its
+              // skills.sh repo link, and a copy of a plugin's skill gets the
+              // plugin as its upstream. Order matters — a built-in is OK's own
+              // bundle and must not be re-attributed to a plugin that happens to
+              // ship the same name.
+              const skillAbsDir = resolve(contentDir, s.dir);
+              // Identity beats provenance: a skill that IS a plugin's skill
+              // carries the plugin, never an origin.
+              const selfPlugin = tracked
+                ? pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir)
+                : null;
+              const entry =
+                tracked && selfPlugin === null
+                  ? (lock?.skills[s.name] ??
+                    synthBuiltinLockEntry(contentDir, s.name) ??
+                    synthPluginLockEntry(s.name, detectedIdentity, skillAbsDir))
+                  : undefined;
               const origin = entry ? skillOrigin(entry) : undefined;
-              const modified = entry?.localHash !== undefined && s.contentHash !== entry.localHash;
+              // A recorded lock entry carries its own baseline; a plugin-derived
+              // one has none, so divergence is decided against the machine-local
+              // first-seen pair instead ("changed since OK started watching").
+              const modified =
+                entry?.localHash !== undefined
+                  ? s.contentHash !== entry.localHash
+                  : (() => {
+                      if (!entry || !tracked) return false;
+                      const up = pluginUpstreamHash(s.name, detectedIdentity);
+                      return (
+                        up !== null &&
+                        pluginBaselines.isModified('project', s.name, s.contentHash, up)
+                      );
+                    })();
               return {
                 name: s.name,
                 ...(s.description ? { description: s.description } : {}),
@@ -14802,9 +15067,11 @@ export function createApiExtension(
                 hosts: [...s.hosts],
                 size: s.size,
                 installableEditors: projectInstallableEditors,
+                ...(s.pack !== undefined ? { pack: s.pack } : {}),
                 ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
                 ...(Object.keys(projectAliases).length > 0 ? { hostAliases: projectAliases } : {}),
                 ...(s.conflictHosts.length > 0 ? { conflictHosts: [...s.conflictHosts] } : {}),
+                ...(selfPlugin !== null ? { plugin: selfPlugin } : {}),
                 ...(() => {
                   const custom = dropAliased(
                     tracked ? placements[s.name] : undefined,
@@ -14857,6 +15124,14 @@ export function createApiExtension(
           const tracked = !globalNameSeen.has(s.name);
           globalNameSeen.add(s.name);
           const placementsForRow = tracked ? globalPlacements[s.name] : undefined;
+          // Doc-identity qualifier for a NON-default same-named bundle: same
+          // authority as the watcher's reverse mapping (the precedence probe),
+          // so the doc the row opens and the doc its file events feed agree.
+          const defaultDir = resolveGlobalNativeSkillDir(skillsHome, s.name);
+          const hostQualifier =
+            defaultDir !== null && resolve(skillsHome, s.dir) !== resolve(defaultDir)
+              ? s.hosts[0]
+              : undefined;
           return {
             name: s.name,
             ...(s.description ? { description: s.description } : {}),
@@ -14865,8 +15140,10 @@ export function createApiExtension(
             absolutePath: resolve(skillsHome, s.dir, 'SKILL.md'),
             installed: true,
             hosts: [...s.hosts],
+            ...(hostQualifier !== undefined ? { hostQualifier } : {}),
             size: s.size,
             installableEditors: globalInstallableEditors,
+            ...(s.pack !== undefined ? { pack: s.pack } : {}),
             ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
             ...(Object.keys(globalAliases).length > 0 ? { hostAliases: globalAliases } : {}),
             ...(s.conflictHosts.length > 0 ? { conflictHosts: [...s.conflictHosts] } : {}),
@@ -14890,15 +15167,30 @@ export function createApiExtension(
             ...(isInternalBundleSkillName(s.name) ? { managed: true as const } : {}),
             ...(() => {
               if (!tracked) return {};
-              // Built-ins have no stored lockfile entry — synthesize their
-              // skills.sh origin (repo link + manual update path).
-              const entry = globalLock.skills[s.name] ?? synthBuiltinLockEntry(skillsHome, s.name);
+              // Same two synthesized fallbacks as the project site: a built-in
+              // carries its skills.sh origin, a copy of a plugin's skill carries
+              // the plugin.
+              const globalAbsDir = resolve(skillsHome, s.dir);
+              const selfPluginGlobal = pluginSelfIdentity(s.name, detectedIdentity, globalAbsDir);
+              if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };
+              const entry =
+                globalLock.skills[s.name] ??
+                synthBuiltinLockEntry(skillsHome, s.name) ??
+                synthPluginLockEntry(s.name, detectedIdentity, globalAbsDir);
               if (!entry) return {};
+              const globallyModified =
+                entry.localHash !== undefined
+                  ? s.contentHash !== entry.localHash
+                  : (() => {
+                      const up = pluginUpstreamHash(s.name, detectedIdentity);
+                      return (
+                        up !== null &&
+                        pluginBaselines.isModified('global', s.name, s.contentHash, up)
+                      );
+                    })();
               return {
                 origin: skillOrigin(entry),
-                ...(entry.localHash !== undefined && s.contentHash !== entry.localHash
-                  ? { modified: true }
-                  : {}),
+                ...(globallyModified ? { modified: true } : {}),
               };
             })(),
           };
@@ -14938,6 +15230,7 @@ export function createApiExtension(
           ...(projectBuiltin ? [projectBuiltin] : []),
           ...globalBuiltins,
         ];
+        pluginBaselines.flush();
         // A project skill dir can be a SYMLINK to a canonical dir elsewhere in
         // the content tree. Report BOTH: `path` is where the bundle is mounted
         // (what install / reveal / host wiring reasons about), `canonicalPath`
@@ -15095,7 +15388,13 @@ export function createApiExtension(
     // seed DELETED it from the index instead of indexing it: its links never got
     // extracted and nothing pointed at its references until an unrelated rescan.
     if (contentFilter) {
+      contentFilter.refreshInPlaceSkillDirs();
       try {
+        // AWAITED on the authoring path, unlike the lifecycle ops' deferred
+        // rebuilds: the watcher event for the just-written SKILL.md fired
+        // BEFORE the allow-list swap and was rejected, and only the rebuild's
+        // reconcile re-admits it — a hash navigation straight to the new doc
+        // otherwise strands on a page index that does not have it yet.
         await contentFilter.rebuildIgnorePatterns();
       } catch {
         // Fail-soft, matching the watcher's own rebuild: a stale allow-list
@@ -15191,6 +15490,11 @@ export function createApiExtension(
               `${homeRel}/${body.name}/SKILL`,
               `skill-create: ${homeRel}/${body.name}/SKILL.md`,
             );
+            // AWAITED, unlike the lifecycle ops' fire-and-forget flushes: authoring
+            // writes are versions. Two rapid PUTs (create then edit) with a
+            // deferred flush coalesce into ONE commit, folding the create into
+            // the edit — the timeline loses the version boundary and the
+            // create snapshot stops being a restore target.
             await commitOkArtifactWrite('skill-put');
           }
           await seedSkillDerivedViews(
@@ -15269,6 +15573,11 @@ export function createApiExtension(
             okArtifactKey('skill', '', body.name),
             `${created ? 'skill-create' : 'skill-edit'}: ${relPath}`,
           );
+          // AWAITED, unlike the lifecycle ops' fire-and-forget flushes: authoring
+          // writes are versions. Two rapid PUTs (create then edit) with a
+          // deferred flush coalesce into ONE commit, folding the create into
+          // the edit — the timeline loses the version boundary and the
+          // create snapshot stops being a restore target.
           await commitOkArtifactWrite('skill-put');
         }
         // Seed the derived views from the bytes we just wrote. The live-derived
@@ -15308,9 +15617,10 @@ export function createApiExtension(
   function effectiveSkillRoot(
     scope: 'project' | 'global',
     name: string,
+    host?: string,
   ): { root: string; dirRel: string; realDir: string | null } {
     const base = scope === 'project' ? contentDir : skillsHome;
-    const realDir = resolveSkillDirForRead(scope, name);
+    const realDir = resolveSkillDirForRead(scope, name, host);
     const root = realDir !== null ? dirname(realDir) : resolveSkillsRoot(scope);
     const dirRel =
       realDir !== null ? relative(base, realDir).split(sep).join('/') : `.ok/skills/${name}`;
@@ -15341,7 +15651,20 @@ export function createApiExtension(
         if (!validateSkillName(name, res, 'skill-delete')) return;
         const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-delete');
         if (scope === null) return;
-        const { root: skillsRoot, dirRel } = effectiveSkillRoot(scope, name);
+        // Optional host: delete THIS same-named bundle (the one the clicked
+        // row shows), not the by-name default. A host-scoped delete is
+        // surgical — no copy sweep, no store-zombie sweep, no uninstall
+        // fan-out: those all resolve by name and would tear down the DEFAULT
+        // bundle's placements, which the user did not ask to touch.
+        const host = url.searchParams.get('host') ?? undefined;
+        const { root: skillsRoot, dirRel, realDir } = effectiveSkillRoot(scope, name, host);
+        if (host !== undefined && realDir === null) {
+          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
+            handler: 'skill-delete',
+            detail: `No skill "${name}" (${scope}) in ${host}.`,
+          });
+          return;
+        }
 
         // DELETE is query-param transport — read identity + summary from the
         // query string into a synthetic body for `extractActorIdentity`.
@@ -15362,13 +15685,14 @@ export function createApiExtension(
         await captureAndCloseDocuments(
           scope === 'project'
             ? [...new Set([`${dirRel}/SKILL`, skillLiveDocName(scope, name)])]
-            : [skillLiveDocName(scope, name)],
+            : [skillLiveDocName(scope, name, host)],
           'deleted-upstream',
         );
 
         // Same-hash copies/links across the other roots go first (lossless-
-        // guarded) — deleting the canonical must not strand them.
-        sweepSkillOccurrences(scope, name);
+        // guarded) — deleting the canonical must not strand them. Skipped for
+        // a host-scoped delete: that removes one divergent bundle only.
+        if (host === undefined) sweepSkillOccurrences(scope, name);
         const result = applySkillDelete({ skillsRoot, name });
         // Delete is TOTAL — the skill dies everywhere (locked decision). When
         // the canonical lived in a native dir, a legacy `.ok/skills` store
@@ -15378,6 +15702,7 @@ export function createApiExtension(
         // silent survivor.
         const storeRoot = resolveSkillsRoot(scope);
         if (
+          host === undefined &&
           result.ok &&
           storeRoot !== skillsRoot &&
           existsSync(resolve(storeRoot, name, 'SKILL.md'))
@@ -15410,7 +15735,7 @@ export function createApiExtension(
         if (result.existed) {
           if (scope === 'project') {
             attributeOkArtifactWrite(actor, dirRel, `skill-delete: ${dirRel}`);
-            await commitOkArtifactWrite('skill-delete');
+            void commitOkArtifactWrite('skill-delete');
           }
           signalChannel?.('files');
         }
@@ -15421,7 +15746,9 @@ export function createApiExtension(
         // already succeeded. Global skills uninstall from the user-global host
         // dirs + user marker (`<home>`); project skills from the project's.
         const uninstallBase = skillInstallBase(scope);
-        if (uninstallBase) await uninstallSkillFromHostDirs(uninstallBase, name, scope);
+        if (host === undefined && uninstallBase) {
+          await uninstallSkillFromHostDirs(uninstallBase, name, scope);
+        }
         successResponse(
           res,
           200,
@@ -15621,23 +15948,27 @@ export function createApiExtension(
         // entries. Global skills live outside the project graph (not content
         // docs), so they have nothing to re-index.
         if (body.scope === 'project' && !contentEditError) {
-          try {
-            // In-place skill admission is a registry ALLOW-LIST of exact bundle
-            // dirs, not a path prefix, and it only refreshes on an ignore-file
-            // rebuild. Until it learns the NEW dir, the destination doc is
-            // "excluded" — and an unadmitted rename target makes the index drop
-            // the old entry AND the new one, so the skill falls out of tags,
-            // backlinks and search entirely. Refresh before re-indexing, not
-            // after, or we re-index against the pre-rename world.
-            await contentFilter?.rebuildIgnorePatterns();
-            await reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName);
-            await reindexRewrittenSkillRefDocs(refRewrites, body.toName);
-          } catch (err) {
-            getLogger('skill-move').warn(
-              { err, fromName: body.fromName, toName: body.toName },
-              'reindex of moved project skill docs failed — rename succeeded, deferring to next rescan',
-            );
-          }
+          // In-place skill admission is a registry ALLOW-LIST of exact bundle
+          // dirs. The SWAP is synchronous — the client re-opens the renamed doc
+          // the moment this responds, and an unadmitted target would drop it
+          // from tags/backlinks/search. Everything ELSE (the full nested-ignore
+          // rebuild whose onAfterRebuild reconciles the watcher index, then the
+          // targeted re-index against the refreshed admission) is derived state
+          // that self-heals — it runs after the response instead of costing the
+          // rename ~1.7s on a big project. Ordering inside the chain preserved:
+          // rebuild before re-index, or we re-index against the pre-rename
+          // world.
+          contentFilter?.refreshInPlaceSkillDirs();
+          // The PROJECTION is awaited: when this responds, the moved docs are
+          // queryable (the derived-index API readiness gate contract). It
+          // reads the relocated files from disk and mutates the index
+          // directly, so the synchronous allow-list swap above is the only
+          // admission it relies on — the full nested-ignore rebuild (watcher
+          // reconcile + content-scope refresh) is derived state that
+          // self-heals and stays off the response path.
+          await reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName);
+          await reindexRewrittenSkillRefDocs(refRewrites, body.toName);
+          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
         }
 
         const fromKeyPath = skillRelPath(resolve(skillsRoot, body.fromName), body.scope);
@@ -15645,6 +15976,10 @@ export function createApiExtension(
         // Project renames are attributed + shadow-committed (history-preserving
         // git mv); global skills are unversioned — the relocate above already
         // did a plain disk rename, so just skip the shadow attribution.
+        const renamedLocalHash = localSkillHash(skillsRoot, body.toName);
+        await rekeySkillLockEntry(body.scope, body.fromName, body.toName, {
+          localHash: renamedLocalHash,
+        });
         if (body.scope === 'project') {
           attributeOkArtifactWrite(
             actor,
@@ -15652,18 +15987,25 @@ export function createApiExtension(
             `skill-rename: ${fromKeyPath} -> ${toKeyPath}`,
             [{ from: fromKeyPath, to: toKeyPath }],
           );
-          await commitOkArtifactWrite('skill-move');
+          // Flush + revert-baseline off-path: the shadow commit costs a corpus
+          // stat walk, and the baselineRef it yields only arms Revert — which
+          // can light up a beat after the rename lands. Ordering inside the
+          // chain preserved (flush, then read the head it produced).
+          void (async () => {
+            try {
+              await commitOkArtifactWrite('skill-move');
+              const baselineRef = await shadowHeadSha(artifactWriterId(actor), toKeyPath);
+              if (baselineRef !== undefined) {
+                await updateSkillLockEntry('project', body.toName, { baselineRef });
+              }
+            } catch (err) {
+              getLogger('skill-move').warn(
+                { err, toName: body.toName },
+                'deferred shadow flush / revert-baseline failed — Revert stays unarmed until the next flush',
+              );
+            }
+          })();
         }
-
-        const renamedLocalHash = localSkillHash(skillsRoot, body.toName);
-        const renamedBaselineRef =
-          body.scope === 'project'
-            ? await shadowHeadSha(artifactWriterId(actor), toKeyPath)
-            : undefined;
-        await rekeySkillLockEntry(body.scope, body.fromName, body.toName, {
-          localHash: renamedLocalHash,
-          ...(body.scope === 'project' ? { baselineRef: renamedBaselineRef } : {}),
-        });
 
         // Carry install state across the rename. The source dir is now at
         // `toName`; re-project the new name into every editor the old name
@@ -15813,6 +16155,23 @@ export function createApiExtension(
         }
         const { name, fromScope, toScope } = body;
         if (!validateSkillName(name, res, 'skill-move-scope')) return;
+        // A built-in lives at exactly one tier by definition: `open-knowledge` is
+        // the project contract, discovery + write-skill are user-global and
+        // present in EVERY project. Moving one does not relocate a skill, it
+        // manufactures a second copy of something that already exists at the
+        // other tier — which then loads twice for the agent and lists twice in
+        // the sidebar. Lifecycle is otherwise ordinary for these; this one verb
+        // is not theirs to use.
+        if (isInternalBundleSkillName(name)) {
+          errorResponse(
+            res,
+            400,
+            'urn:ok:error:invalid-request',
+            `"${name}" is a built-in skill and always lives at its own scope.`,
+            { handler: 'skill-move-scope', detail: 'BUILTIN_SCOPE_FIXED' },
+          );
+          return;
+        }
         if (fromScope === toScope) {
           errorResponse(
             res,
@@ -16064,28 +16423,36 @@ export function createApiExtension(
         // Attribution + shadow-commit for whichever side is a versioned project
         // scope (global is unversioned — no shadow repo). At most one side is
         // project on a cross-scope move.
+        if (movedLockEntry) {
+          const movedLocalHash = localSkillHash(toRoot, name);
+          await updateSkillLockEntry(toScope, name, { localHash: movedLocalHash });
+        }
         if (fromScope === 'project' || toScope === 'project') {
           attributeOkArtifactWrite(
             actor,
             fromScope === 'project' ? fromDirRel : relative(contentDir, toDir).split(sep).join('/'),
             `skill-move-scope: ${fromScope} -> ${toScope} ${name}`,
           );
-          await commitOkArtifactWrite('skill-move-scope');
-        }
-
-        if (movedLockEntry) {
-          const movedLocalHash = localSkillHash(toRoot, name);
-          const movedBaselineRef =
-            toScope === 'project'
-              ? await shadowHeadSha(
-                  artifactWriterId(actor),
-                  relative(contentDir, toDir).split(sep).join('/'),
-                )
-              : undefined;
-          await updateSkillLockEntry(toScope, name, {
-            localHash: movedLocalHash,
-            ...(toScope === 'project' ? { baselineRef: movedBaselineRef } : {}),
-          });
+          // Flush + revert-baseline off-path — same shape and reasons as the
+          // rename handler's deferred chain.
+          const toKeyForBaseline = relative(contentDir, toDir).split(sep).join('/');
+          const wantBaseline = Boolean(movedLockEntry) && toScope === 'project';
+          void (async () => {
+            try {
+              await commitOkArtifactWrite('skill-move-scope');
+              if (wantBaseline) {
+                const baselineRef = await shadowHeadSha(artifactWriterId(actor), toKeyForBaseline);
+                if (baselineRef !== undefined) {
+                  await updateSkillLockEntry(toScope, name, { baselineRef });
+                }
+              }
+            } catch (err) {
+              getLogger('skill-move-scope').warn(
+                { err, name },
+                'deferred shadow flush / revert-baseline failed — Revert stays unarmed until the next flush',
+              );
+            }
+          })();
         }
 
         // A 200 here must mean the skill is READABLE at the destination. The
@@ -16109,7 +16476,9 @@ export function createApiExtension(
         // in-place allow-list knows about it, so without this the moved SKILL.md
         // 404s and the editor falls back to a Files tab. Same reason and same
         // placement as `handleSkillInstall`, which rebuilds before every exit.
-        await contentFilter?.rebuildIgnorePatterns();
+        // Allow-list swap sync; the expensive rebuild self-heals off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
         signalChannel?.('files');
         successResponse(
@@ -16228,13 +16597,16 @@ export function createApiExtension(
             okArtifactKey('skill', '', body.toName),
             `skill-duplicate: ${body.name} -> ${targetRel}`,
           );
-          await commitOkArtifactWrite('skill-duplicate');
+          void commitOkArtifactWrite('skill-duplicate');
         }
         signalChannel?.('files');
         // A skill dir is not servable until the filter's in-place allow-list knows
         // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`.
-        await contentFilter?.rebuildIgnorePatterns();
+        // call, same reason, same placement as `handleSkillInstall`. The
+        // allow-list SWAP is synchronous (admission gates the client's next
+        // open); the full rebuild + watcher reconcile self-heal off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
         successResponse(
           res,
@@ -16303,6 +16675,25 @@ export function createApiExtension(
     rel: string,
   ): boolean {
     return scope === 'project' && kind === 'reference' && rel.toLowerCase().endsWith('.md');
+  }
+
+  /**
+   * Every project `.md` file under a bundle FOLDER, as ext-less content-doc
+   * names — the teardown list for a folder delete/rename. Non-md files need no
+   * closing (fs-direct, no live doc).
+   */
+  function nestedProjectRefDocNames(realDir: string, dirRel: string): string[] {
+    const base = resolve(realDir, dirRel);
+    const dirDocPrefix = relative(contentDir, realDir).split(sep).join('/');
+    let entries: string[];
+    try {
+      entries = readdirSync(base, { recursive: true, encoding: 'utf-8' });
+    } catch {
+      return [];
+    }
+    return entries
+      .filter((e) => /\.md$/i.test(e))
+      .map((e) => `${dirDocPrefix}/${dirRel}/${e.split(sep).join('/').replace(/\.md$/i, '')}`);
   }
 
   /** The CRDT content-doc name (ext-less) for a project `.md` reference. */
@@ -16694,7 +17085,7 @@ export function createApiExtension(
             okArtifactKey('skill', '', body.name),
             `${created ? 'skill-file-create' : 'skill-file-edit'}: ${skillDirRel}/${rel}`,
           );
-          await commitOkArtifactWrite('skill-file-put');
+          void commitOkArtifactWrite('skill-file-put');
         }
         signalChannel?.('files');
         successResponse(
@@ -16775,6 +17166,18 @@ export function createApiExtension(
               ? `${relative(contentDir, realDir).split(sep).join('/')}/${extLess}`
               : projectRefContentDocName(name, rel);
           await captureAndCloseDocuments([refDoc], 'deleted-upstream');
+        } else if (
+          scope === 'project' &&
+          realDir !== null &&
+          existsSync(bundleAbs) &&
+          statSync(bundleAbs).isDirectory()
+        ) {
+          // Deleting a bundle FOLDER: every project `.md` beneath it is a live
+          // content doc whose persistence debounce could resurrect the file
+          // after the rm — the same race the single-file teardown above exists
+          // for, once per nested doc.
+          const docs = nestedProjectRefDocNames(realDir, rel);
+          if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
         }
 
         const result = applySkillBundleFileDelete({ skillsRoot, name, relPath: rel });
@@ -16806,7 +17209,7 @@ export function createApiExtension(
                 : `${name}/${rel}`
             }`,
           );
-          await commitOkArtifactWrite('skill-file-delete');
+          void commitOkArtifactWrite('skill-file-delete');
         }
         if (result.existed) signalChannel?.('files');
         successResponse(
@@ -16893,6 +17296,15 @@ export function createApiExtension(
         // resurrect the old path; the new-name doc indexes fresh from disk.
         if (fromDocName !== null) {
           await captureAndCloseDocuments([fromDocName], 'deleted-upstream');
+        } else if (body.scope === 'project') {
+          // Renaming a bundle FOLDER moves every doc beneath it: close them all
+          // before the fs move for the same resurrection race as the delete
+          // handler; the renamed paths index fresh from disk (watcher W4).
+          const fromAbs = resolve(realDir, from);
+          if (existsSync(fromAbs) && statSync(fromAbs).isDirectory()) {
+            const docs = nestedProjectRefDocNames(realDir, from);
+            if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
+          }
         }
 
         const result = applySkillBundleFileRename({
@@ -16950,7 +17362,7 @@ export function createApiExtension(
             okArtifactKey('skill', '', body.name),
             `skill-file-rename: ${body.name}/${from} -> ${to}`,
           );
-          await commitOkArtifactWrite('skill-file-rename');
+          void commitOkArtifactWrite('skill-file-rename');
         }
         signalChannel?.('files');
         successResponse(
@@ -17128,6 +17540,97 @@ export function createApiExtension(
     effectiveInstallMode,
     signalFiles: () => signalChannel?.('files'),
   });
+
+  const skillReimportService = createSkillReimportService({
+    contentDir,
+    skillsHome,
+    ...(projectDir !== undefined ? { projectDir } : {}),
+    legacyStoreRoot: LEGACY_SKILL_STORE_ROOT,
+    effectiveSkillRoot,
+    parseFrontmatterDoc,
+    attributeOkArtifactWrite,
+    commitOkArtifactWrite,
+    shadowHeadSha,
+    artifactWriterId,
+    skillArtifactKey: (name) => okArtifactKey('skill', '', name),
+    captureAndCloseDocuments,
+    projectImportedSkillCopy,
+    signalFiles: () => signalChannel?.('files'),
+  });
+
+  function respondSkillReimport(res: ServerResponse, outcome: SkillReimportOutcome): void {
+    if (outcome.ok) {
+      successResponse(res, 200, SkillReimportSuccessSchema, outcome.body, {
+        handler: 'skill-reimport',
+      });
+      return;
+    }
+    errorResponse(res, outcome.status, outcome.urn, outcome.title, {
+      handler: 'skill-reimport',
+      ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
+      ...(outcome.cause !== undefined ? { cause: outcome.cause } : {}),
+    });
+  }
+
+  /**
+   * Where a skill's bundle physically lives: the in-place canonical when the scan
+   * knows one, else the legacy `.ok/skills` store. Same precedence the install
+   * handler uses — the store is only a fallback for a resident not yet drained.
+   */
+  function packBundleDir(scope: 'project' | 'global', name: string, skillsRoot: string): string {
+    const base = scope === 'project' ? contentDir : skillsHome;
+    const found = (
+      scope === 'project' ? scanInPlaceSkills(contentDir) : scanGlobalInPlaceSkills(skillsHome)
+    ).find((s) => s.name === name);
+    return found ? resolve(base, found.dir) : resolve(skillsRoot, name);
+  }
+
+  /**
+   * The lockfile entry a skill updates from, with the two retrofits that make a
+   * seeded skill updatable at all: a starter pack installed before provenance
+   * was recorded, and a bundled built-in. Shared by the single and bulk update
+   * paths so a skill that Update works on can never be one Update-all skips.
+   */
+  function resolveReimportLockEntry(
+    scope: 'project' | 'global',
+    name: string,
+    skillsRoot: string,
+    lock: SkillsLock,
+  ): SkillsLock['skills'][string] | null {
+    const recorded = lock.skills[name];
+    if (recorded) return recorded;
+    // A starter pack seeded before provenance was recorded has no lock entry,
+    // but its upstream is deterministic — synthesize it so the pack updates
+    // through this same path. Uses the installed content hash so an unchanged
+    // upstream is a correct no-op. The post-rename names are generic
+    // (`write-a-spec`, `knowledge-base`), so presence is not proof of ownership:
+    // the bundle's own `metadata.pack` marker is the witness, or a user's
+    // same-named skill would be handed our provenance and offered an overwrite.
+    // Read the bundle where it ACTUALLY is. Both of these used to look only in
+    // `.ok/skills/<name>` — the retired store — so for an in-place skill (which
+    // is every seeded pack now) the hash came back empty and the witness came
+    // back false from a directory that does not exist. The retrofit then declined
+    // every short-named pack skill, which is why a seeded pack showed no
+    // provenance and floated outside its source group.
+    const bundleDir = packBundleDir(scope, name, skillsRoot);
+    return (
+      retrofitPackLockEntry(
+        name,
+        parseSkillDir(bundleDir)?.contentHash ?? '',
+        new Date().toISOString(),
+        { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(bundleDir) },
+      ) ??
+      synthBuiltinLockEntry(scope === 'global' ? skillsHome : contentDir, name) ??
+      // A copy of a plugin's skill: the list serves it a synthesized plugin
+      // origin (`synthPluginLockEntry`), so the Update button and the
+      // auto-update toggle render — resolving from the stored lockfile alone
+      // answered both with "no recorded import source". Same synthesis here,
+      // so the update path honors what the origin advertises. Passing the real
+      // bundle dir keeps the plugin's OWN skill (self-identity) unresolvable —
+      // it has no upstream to update from.
+      synthPluginLockEntry(name, resolveProjectIdentity(projectDir ?? contentDir), bundleDir)
+    );
+  }
   const handleSkillImport = withValidation(
     SkillImportRequestSchema,
     async (_req, res, body) => {
@@ -17296,8 +17799,10 @@ export function createApiExtension(
         }
         // The imported skill dir is brand new on disk; until the filter's in-place
         // allow-list is rebuilt its SKILL.md is not servable, and opening the skill
-        // the user just imported falls back to a Files tab.
-        await contentFilter?.rebuildIgnorePatterns();
+        // the user just imported falls back to a Files tab. Allow-list swap
+        // sync; the expensive rebuild self-heals off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
         respondSkillImport(res, outcome);
       } catch (e) {
@@ -17527,8 +18032,11 @@ export function createApiExtension(
         }
         // A skill dir is not servable until the filter's in-place allow-list knows
         // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`.
-        await contentFilter?.rebuildIgnorePatterns();
+        // call, same reason, same placement as `handleSkillInstall`. The
+        // allow-list SWAP is synchronous (admission gates the client's next
+        // open); the full rebuild + watcher reconcile self-heal off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
         successResponse(
           res,
@@ -17902,7 +18410,27 @@ export function createApiExtension(
             ? scanInPlaceSkills(contentDir)
             : scanGlobalInPlaceSkills(skillsHome)
         ).find((s) => s.name === body.name);
-        const skillDir = inPlaceEntry ? resolve(inPlaceScanBase, inPlaceEntry.dir) : storeSkillDir;
+        // A built-in with no copy anywhere installs FROM THE BUNDLE OK SHIPS.
+        //
+        // Everything below fans an existing canonical out to more hosts, so
+        // without this the first install of a built-in was impossible through
+        // this endpoint: the user had nothing on disk to fan out, and the only
+        // code that could create one lived behind the desktop bridge in settings.
+        // That split is why settings had to keep a write of its own, and why the
+        // same skill answered "installed?" differently depending on which surface
+        // you asked. The bundle is a legitimate canonical — it is where a
+        // built-in's bytes come from in the first place.
+        //
+        // Only for OK's own reserved names: for anything else an absent dir is a
+        // caller error and still says so.
+        const bundleSource = isInternalBundleSkillName(body.name)
+          ? shippedBundleSkillMd(body.name, body.scope)
+          : null;
+        const skillDir = inPlaceEntry
+          ? resolve(inPlaceScanBase, inPlaceEntry.dir)
+          : existsSync(storeSkillDir) || bundleSource === null
+            ? storeSkillDir
+            : dirname(bundleSource);
         if (!existsSync(skillDir)) {
           errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
             handler: 'skill-install',
@@ -18011,7 +18539,8 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
-          await contentFilter?.rebuildIgnorePatterns();
+          contentFilter?.refreshInPlaceSkillDirs();
+          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
           successResponse(
             res,
             200,
@@ -18119,7 +18648,8 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
-          await contentFilter?.rebuildIgnorePatterns();
+          contentFilter?.refreshInPlaceSkillDirs();
+          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
           successResponse(
             res,
             200,
@@ -18194,7 +18724,8 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
-          await contentFilter?.rebuildIgnorePatterns();
+          contentFilter?.refreshInPlaceSkillDirs();
+          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
           successResponse(
             res,
             200,
@@ -18288,7 +18819,8 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
-          await contentFilter?.rebuildIgnorePatterns();
+          contentFilter?.refreshInPlaceSkillDirs();
+          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
           successResponse(
             res,
             200,
@@ -18404,19 +18936,15 @@ export function createApiExtension(
         const targets: EditorId[] =
           body.scope === 'global'
             ? targetsReq !== undefined
-              ? // targetsReq is the narrower SkillTargetEditor set (no
-                // claude-desktop, which shares claude's host dir); match by
-                // value so the EditorId/SkillTargetEditor widths don't clash.
-                PROJECT_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
-              : // Detection (`USER_SKILL_HOSTS`) is WIDER than the install-target
-                // vocabulary: `antigravity` has a user skill root (`~/.gemini/skills`)
-                // but no project one, so it is absent from PROJECT_SKILL_EDITOR_IDS,
-                // from the picker's checkbox set, and from `resolvedHosts` — a copy
-                // projected there could never be shown or dropped by a later
-                // set-exact install. Intersect, as the explicit branches do.
-                detectUserSkillHosts(skillsHome)
-                  .map((host) => host.editorId)
-                  .filter((id) => PROJECT_SKILL_EDITOR_IDS.includes(id))
+              ? // Global targets speak the user-global vocabulary (which now
+                // includes `antigravity` — `~/.gemini/skills`); match by value
+                // so the EditorId/SkillUserTargetEditor widths don't clash.
+                USER_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
+              : // Omitted targets = every user host detected on this machine.
+                // Detection and vocabulary are the same set now, so nothing is
+                // dropped — a copy at `~/.gemini/skills` is installable,
+                // listable, and un-installable like any other host's.
+                detectUserSkillHosts(skillsHome).map((host) => host.editorId)
             : targetsReq !== undefined
               ? // An EXPLICIT target list from the per-editor menu is set-exact,
                 // INCLUDING `[]` (unchecking the last editor = install nowhere =
@@ -19055,8 +19583,11 @@ export function createApiExtension(
         signalChannel?.('files');
         // A skill dir is not servable until the filter's in-place allow-list knows
         // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`.
-        await contentFilter?.rebuildIgnorePatterns();
+        // call, same reason, same placement as `handleSkillInstall`. The
+        // allow-list SWAP is synchronous (admission gates the client's next
+        // open); the full rebuild + watcher reconcile self-heal off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
         successResponse(
           res,
@@ -19111,17 +19642,15 @@ export function createApiExtension(
         if (!validateSkillName(body.name, res, 'skill-reimport')) return;
 
         // The bundle's REAL root at either scope (in-place-first; store
-        // fallback), so Update rewrites the bundle where it actually lives.
-        // Global skills are provenance-tracked via `~/.ok/skills-lock.json`
-        // (seeded runtime skills record it from birth) but UNVERSIONED — no
-        // shadow attribution below.
+        // fallback). The spine re-resolves it before writing; this early probe
+        // refuses a missing skill BEFORE the clone, and before the auto-update
+        // toggle below records a flag for a skill that isn't there.
         const reimportBase = body.scope === 'global' ? skillsHome : contentDir;
         const {
           root: skillsRoot,
           dirRel: skillDirRel,
           realDir: reimportRealDir,
         } = effectiveSkillRoot(body.scope, body.name);
-        const inPlaceSkill = !skillDirRel.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`);
         if (
           reimportRealDir === null ||
           !existsSync(resolve(reimportBase, skillDirRel, 'SKILL.md'))
@@ -19137,32 +19666,15 @@ export function createApiExtension(
           body.scope === 'global' ? skillsHome : (projectDir as string),
           ...SKILLS_LOCK_REL,
         );
-        const lock = readSkillsLock(lockPath);
         // An old-name pack install resolves directly: it was never renamed, so
         // its lock key still matches its dir. The source-dir pick below carries
         // the old→new mapping so the fetch lands on the renamed mirror dir.
-        let entry = lock.skills[body.name];
-        if (!entry) {
-          // Retrofit: a starter pack seeded before provenance was recorded has no
-          // lock entry, but its upstream is deterministic — synthesize it so the pack
-          // updates through this same reimport path. Uses the installed content hash
-          // so an unchanged upstream is a correct no-op. (Pure decision unit-tested
-          // in lockfile.test.ts; non-pack names return null and fall through to the
-          // NOT_IMPORTED error below.)
-          const synthesized =
-            retrofitPackLockEntry(
-              body.name,
-              parseSkillDir(resolve(skillsRoot, body.name))?.contentHash ?? '',
-              new Date().toISOString(),
-              // The post-rename names are generic (`write-a-spec`,
-              // `knowledge-base`), so presence is not proof of ownership. Pass
-              // the bundle's own `metadata.pack` marker as the witness, or a
-              // user's same-named skill would be handed our provenance and
-              // offered an overwrite with ours.
-              { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(resolve(skillsRoot, body.name)) },
-            ) ?? synthBuiltinLockEntry(reimportBase, body.name);
-          if (synthesized) entry = synthesized;
-        }
+        const entry = resolveReimportLockEntry(
+          body.scope,
+          body.name,
+          skillsRoot,
+          readSkillsLock(lockPath),
+        );
         if (!entry) {
           errorResponse(
             res,
@@ -19201,11 +19713,10 @@ export function createApiExtension(
           );
           return;
         }
-        // Recorded into the refreshed lockfile entry below (the new upstream
-        // sha); NOT echoed on the HTTP response (no client reads it there).
+        // Recorded into the refreshed lockfile entry by the spine (the new
+        // upstream sha); NOT echoed on the HTTP response (no client reads it).
         let ref: string | undefined;
-        let acquired: ReturnType<typeof parseSkillDir> = null;
-        let hasScripts = false;
+        let acquiredDir: string | null = null;
         try {
           // A listing-sourced install looks its skill up on skills.sh by name.
           // A pre-rename install asks for a name the repo no longer ships: that
@@ -19244,17 +19755,11 @@ export function createApiExtension(
           cleanup = fetched.cleanup;
           ref = fetched.ref;
           const dirs = discoverSkillDirs(fetched.dir);
-          // Re-select the same skill: the recorded dir basename first, then a
-          // match on the local skill's name (basename or frontmatter), then the
-          // sole skill if the source has exactly one.
-          const pick =
-            (resolvedSkill ? dirs.find((d) => d.name === resolvedSkill) : undefined) ??
-            dirs.find((d) => d.name === body.name) ??
-            dirs.find((d) => parseSkillDir(d.dir)?.name === body.name) ??
-            // Rename alias: an old-name install updating against the renamed
-            // mirror finds its bundle under the new name.
-            dirs.find((d) => d.name === RENAMED_PACK_SKILLS[resolvedSkill ?? body.name]) ??
-            (dirs.length === 1 ? dirs[0] : undefined);
+          const pick = pickReimportDir(dirs, {
+            ...(resolvedSkill !== undefined ? { recordedSkill: resolvedSkill } : {}),
+            localName: body.name,
+            frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
+          });
           if (!pick) {
             errorResponse(
               res,
@@ -19265,18 +19770,7 @@ export function createApiExtension(
             );
             return;
           }
-          const oversize = acquiredBundleTooLarge(pick.dir);
-          if (oversize) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Skill bundle exceeds import limits.',
-              { handler: 'skill-reimport', detail: oversize },
-            );
-            return;
-          }
-          acquired = parseSkillDir(pick.dir);
+          acquiredDir = pick.dir;
         } catch (e) {
           if (e instanceof SkillFetchError) {
             errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not fetch source.', {
@@ -19287,238 +19781,33 @@ export function createApiExtension(
           }
           throw e;
         }
-        if (!acquired) {
+        if (!acquiredDir) {
           errorResponse(res, 422, 'urn:ok:error:invalid-request', 'Source has no readable skill.', {
             handler: 'skill-reimport',
           });
           return;
         }
-        const limitError = importedBundleLimitError(acquired);
-        if (limitError) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Skill bundle exceeds import limits.',
-            { handler: 'skill-reimport', detail: limitError },
-          );
-          return;
-        }
-        hasScripts = acquired.files.some((f) => f.relPath.startsWith('scripts/'));
-        const localBefore = parseSkillDir(resolve(skillsRoot, body.name));
-        const upstreamPaths = new Set(acquired.files.map((f) => f.relPath));
-        const localPaths = new Set((localBefore?.files ?? []).map((f) => f.relPath));
-        // New lock entries carry the prior upstream manifest, which lets us
-        // delete only files the upstream used to own. For legacy entries, the
-        // whole local bundle is a safe ownership witness only while it still
-        // matches the recorded local baseline. Once local bytes diverge, an
-        // untracked file may be user-authored and must never be inferred away.
-        const priorUpstreamPaths =
-          entry.files ??
-          (entry.localHash !== undefined && localBefore?.contentHash === entry.localHash
-            ? localBefore.files.map((file) => file.relPath)
-            : []);
-        const removedUpstream = priorUpstreamPaths
-          .filter((path) => !upstreamPaths.has(path))
-          .filter((path) => localPaths.has(path));
-
-        // Already up to date — nothing to write. (Temp dir is dropped by the
-        // handler's `finally { cleanup() }` — no explicit call needed here.)
-        if (acquired.contentHash === entry.contentHash && removedUpstream.length === 0) {
-          // A skill dir is not servable until the filter's in-place allow-list knows
-          // about it, and an API write does not otherwise trigger a rebuild. Same
-          // call, same reason, same placement as `handleSkillInstall`.
-          await contentFilter?.rebuildIgnorePatterns();
-
-          successResponse(
-            res,
-            200,
-            SkillReimportSuccessSchema,
-            {
-              name: body.name,
-              updated: false,
-              source: entry.source,
-              warnings: [],
-            },
-            { handler: 'skill-reimport' },
-          );
-          return;
-        }
-
-        // Overwrite the skill in place (same name — no `-imported` rename), same
-        // sanctioned writers + frontmatter canonicalization as import.
-        const skillBody = parseFrontmatterDoc(acquired.skillMd).body;
-
-        // Preview: upstream differs — report the two bodies for the confirm dialog
-        // and write nothing. (Reached only when the hashes diverge, above.)
-        if (body.dryRun) {
-          const localMd = parseSkillDir(resolve(skillsRoot, body.name))?.skillMd ?? '';
-          // Auto-update gate input: a PROJECT bundle with tracked files updates
-          // through the repo (pull / CI), never the per-machine auto loop — two
-          // machines auto-updating with autoSync on churn-wars the lockfile and
-          // bundle (the pre-in-place version-stamp nightmare, re-armed).
-          let gitTracked: boolean | undefined;
-          if (body.scope === 'project' && projectDir) {
-            try {
-              const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
-              const rel = relative(projectDir, resolve(skillsRoot, body.name)).split(sep).join('/');
-              gitTracked = (await pg.raw('ls-files', '--', rel)).trim().length > 0;
-            } catch {
-              gitTracked = undefined; // not a git repo / unborn index — no gate
-            }
-          }
-          // A skill dir is not servable until the filter's in-place allow-list knows
-          // about it, and an API write does not otherwise trigger a rebuild. Same
-          // call, same reason, same placement as `handleSkillInstall`.
-          await contentFilter?.rebuildIgnorePatterns();
-
-          successResponse(
-            res,
-            200,
-            SkillReimportSuccessSchema,
-            {
-              name: body.name,
-              updated: true,
-              source: entry.source,
-              localBody: parseFrontmatterDoc(localMd).body,
-              upstreamBody: skillBody,
-              ...(gitTracked !== undefined ? { gitTracked } : {}),
-              warnings: [],
-            },
-            { handler: 'skill-reimport' },
-          );
-          return;
-        }
-        if (body.scope === 'project') {
-          const removedMarkdownDocs = removedUpstream
-            .filter((path) => /\.mdx?$/i.test(path))
-            .map((path) => `${skillDirRel}/${path.replace(/\.mdx?$/i, '')}`);
-          if (removedMarkdownDocs.length > 0) {
-            await captureAndCloseDocuments(removedMarkdownDocs, 'deleted-upstream');
-          }
-        }
-        const wr = applySkillWrite({
-          skillsRoot,
+        // Size pre-flight, diff, write, attribution, lockfile and re-projection
+        // are the shared reimport spine, also used by the bulk endpoint.
+        const outcome = await skillReimportService.runSkillReimport({
+          acquiredDir,
           name: body.name,
-          body: skillBody,
-          frontmatter: { name: body.name, description: acquired.description },
+          scope: body.scope,
+          entry,
+          lockPath,
+          ref,
+          actor,
+          ...(body.dryRun !== undefined ? { dryRun: body.dryRun } : {}),
         });
-        if (!wr.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Failed to write skill.', {
-            handler: 'skill-reimport',
-            detail: wr.error.code,
-            cause: new Error(wr.error.message),
-          });
-          return;
-        }
-        const warnings = [...wr.warnings];
-        for (const f of acquired.files) {
-          const br = applySkillBundleFileWrite({
-            skillsRoot,
-            name: body.name,
-            relPath: f.relPath,
-            content: f.content,
-            bytes: f.bytes,
-            limits: SKILL_IMPORT_WRITE_LIMITS,
-          });
-          if (!br.ok) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              'Failed to write the complete refreshed skill bundle.',
-              {
-                handler: 'skill-reimport',
-                detail: `${f.relPath}: ${br.error.code}`,
-                cause: new Error(br.error.message),
-              },
-            );
-            return;
-          }
-        }
-        for (const relPath of removedUpstream) {
-          const deleted = applySkillBundleFileDelete({
-            skillsRoot,
-            name: body.name,
-            relPath,
-          });
-          if (!deleted.ok) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              'Failed to reconcile files removed upstream.',
-              {
-                handler: 'skill-reimport',
-                detail: `${relPath}: ${deleted.error.code}`,
-                cause: new Error(deleted.error.message),
-              },
-            );
-            return;
-          }
-        }
-
-        if (body.scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.name),
-            `skill-reimport: ${entry.source} -> ${skillDirRel}`,
-          );
-          await commitOkArtifactWrite('skill-reimport');
-        }
-
-        const reimportLocalHash = localSkillHash(skillsRoot, body.name);
-        const reimportBaselineRef =
-          body.scope === 'project'
-            ? await shadowHeadSha(artifactWriterId(actor), skillDirRel)
-            : undefined;
-        // `lock`/`entry` above predate the upstream fetch — re-read so a
-        // concurrent import's entry survives this write.
-        await mutateSkillsLock(lockPath, (current) =>
-          upsertLockEntry(current, body.name, {
-            ...(current.skills[body.name] ?? entry),
-            contentHash: acquired.contentHash,
-            files: acquired.files.map((file) => file.relPath),
-            ...(reimportLocalHash !== undefined ? { localHash: reimportLocalHash } : {}),
-            ...(reimportBaselineRef !== undefined ? { baselineRef: reimportBaselineRef } : {}),
-            ref,
-            importedAt: new Date().toISOString(),
-          }),
-        );
-
-        // Re-project the refreshed skill into the configured editor dirs (same
-        // best-effort copy projection as import — a failure must not fail the
-        // update; reconcile re-projects on the next open). An IN-PLACE skill's
-        // bundle already IS an editor dir — no projection (fan-out is its own
-        // future pass).
-        if (!inPlaceSkill && body.scope === 'project') {
-          await projectImportedSkillCopy({
-            skillsRoot,
-            name: body.name,
-            scope: 'project',
-            hasScripts,
-            handler: 'skill-reimport',
-          });
-        }
-
-        signalChannel?.('files');
         // A skill dir is not servable until the filter's in-place allow-list knows
         // about it, and an API write does not otherwise trigger a rebuild. Same
-        // call, same reason, same placement as `handleSkillInstall`.
-        await contentFilter?.rebuildIgnorePatterns();
+        // call, same reason, same placement as `handleSkillInstall`. The
+        // allow-list SWAP is synchronous (admission gates the client's next
+        // open); the full rebuild + watcher reconcile self-heal off-path.
+        contentFilter?.refreshInPlaceSkillDirs();
+        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
 
-        successResponse(
-          res,
-          200,
-          SkillReimportSuccessSchema,
-          {
-            name: body.name,
-            updated: true,
-            source: entry.source,
-            warnings,
-          },
-          { handler: 'skill-reimport' },
-        );
+        respondSkillReimport(res, outcome);
       } catch (e) {
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to reimport skill.', {
           handler: 'skill-reimport',
@@ -19529,6 +19818,255 @@ export function createApiExtension(
       }
     },
     { handler: 'skill-reimport', method: 'POST' },
+  );
+
+  // `POST /api/skills/reimport-bulk` — refresh MANY skills from their recorded
+  // upstreams, cloning once per SOURCE. The provenance-group case: a sidebar row
+  // naming a source offers "update everything from here", and driving the
+  // single-skill endpoint per member re-clones that repo every time — the same
+  // problem `/api/skills/import-bulk` exists to solve. Identical spine, so the
+  // two paths cannot drift; the differences are the amortized fetch and
+  // per-skill results, so one unreachable source or one bundle that refuses to
+  // write never fails the rest of the batch.
+  const handleSkillsReimportBulk = withValidation(
+    SkillsReimportBulkRequestSchema,
+    async (_req, res, body) => {
+      try {
+        if (body.scope === 'project' && !projectDir) {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
+            handler: 'skills-reimport-bulk',
+            detail: 'NO_PROJECT_ROOT',
+          });
+          return;
+        }
+        const actor = extractActorIdentity(
+          body as unknown as Record<string, unknown>,
+          getPrincipal,
+        );
+        if (actor.kind === 'invalid-summary') {
+          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
+            handler: 'skills-reimport-bulk',
+          });
+          return;
+        }
+        const lockPath = join(
+          body.scope === 'global' ? skillsHome : (projectDir as string),
+          ...SKILLS_LOCK_REL,
+        );
+        const lock = readSkillsLock(lockPath);
+        const results: SkillReimportBulkResult[] = [];
+        const named = new Set(body.names);
+        // A malformed name resolves against no lockfile key, but it would still
+        // reach `resolveReimportLockEntry`'s filesystem probes — refuse the shape
+        // before any path is built from it.
+        const wellFormed = [...named].filter((name) => {
+          if (isValidSkillName(name)) return true;
+          results.push({ requested: name, status: 'failed', warnings: [], error: 'INVALID_NAME' });
+          return false;
+        });
+        const { bySource, unrecorded } = groupReimportNamesBySource(wellFormed, (name) =>
+          resolveReimportLockEntry(
+            body.scope,
+            name,
+            effectiveSkillRoot(body.scope, name).root,
+            lock,
+          ),
+        );
+        for (const name of unrecorded) {
+          results.push({ requested: name, status: 'not-found', warnings: [] });
+        }
+
+        // No operation-level deadline on purpose. Every fetch this loop makes is
+        // already bounded per source (60s for a clone, 15s for a well-known
+        // index), so a dead host stalls one group and reports as its failure
+        // rather than hanging the batch. A cap across the whole request would
+        // instead truncate a large-but-honest one — dropping skills the caller
+        // asked to update, with a partial answer that looks complete.
+        for (const group of bySource) {
+          let cleanup: () => void = () => {};
+          try {
+            let ref: string | undefined;
+            let dirs: ReturnType<typeof discoverSkillDirs> = [];
+            try {
+              // Resolution is per-SKILL by contract (a skills.sh page URL looks
+              // its repo up by one name), and every skill in this group records
+              // the same source, so any of them answers the same question — the
+              // first is the probe, exactly as the bulk import does.
+              const probe = group.names[0] as string;
+              const skillsSh = await resolveSkillsShImportSource(group.source, probe).catch(
+                async (err: unknown) => {
+                  const renamed = RENAMED_PACK_SKILLS[probe];
+                  if (renamed === undefined) throw err;
+                  return resolveSkillsShImportSource(group.source, renamed);
+                },
+              );
+              // A plugin-cache copy re-points at the NEWEST cached version — the
+              // recorded dir is a version pin the plugin manager prunes.
+              const resolvedSource =
+                skillsSh?.source ??
+                resolvePluginUpdateSource(
+                  group.source,
+                  lock.skills[group.names[0] as string]?.pluginProvider,
+                );
+              const spec = skillsSh?.spec ?? parseSource(resolvedSource);
+              if (!spec || isDisallowedGitSpec(spec)) {
+                for (const name of group.names) {
+                  results.push({
+                    requested: name,
+                    status: 'failed',
+                    source: group.source,
+                    warnings: [],
+                    error: 'INVALID_SOURCE',
+                  });
+                }
+                continue;
+              }
+              const fetched = await fetchSource(spec);
+              cleanup = fetched.cleanup;
+              ref = fetched.ref;
+              dirs = discoverSkillDirs(fetched.dir);
+            } catch (e) {
+              // One unreachable source fails only its own members. Everything
+              // already updated in this batch still reports.
+              getLogger('skills-reimport-bulk').warn(
+                { source: group.source, err: e, requestId: getRequestId(_req) },
+                'bulk update: one source could not be fetched (rest continue)',
+              );
+              for (const name of group.names) {
+                results.push({
+                  requested: name,
+                  status: 'failed',
+                  source: group.source,
+                  warnings: [],
+                  error: e instanceof Error ? e.message : String(e),
+                });
+              }
+              continue;
+            }
+            // Sequential by design: each update writes files, attributes, and
+            // (project scope) shadow-commits — the git index is not
+            // concurrency-safe here.
+            for (const name of group.names) {
+              const entry = resolveReimportLockEntry(
+                body.scope,
+                name,
+                effectiveSkillRoot(body.scope, name).root,
+                lock,
+              );
+              if (!entry) {
+                results.push({ requested: name, status: 'not-found', warnings: [] });
+                continue;
+              }
+              const pick = pickReimportDir(dirs, {
+                ...(entry.skill !== undefined ? { recordedSkill: entry.skill } : {}),
+                localName: name,
+                frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
+              });
+              if (!pick) {
+                results.push({
+                  requested: name,
+                  status: 'not-found',
+                  source: entry.source,
+                  warnings: [],
+                });
+                continue;
+              }
+              try {
+                const outcome = await skillReimportService.runSkillReimport({
+                  acquiredDir: pick.dir,
+                  name,
+                  scope: body.scope,
+                  entry,
+                  lockPath,
+                  ref,
+                  actor,
+                });
+                if (!outcome.ok) {
+                  getLogger('skills-reimport-bulk').warn(
+                    {
+                      skill: name,
+                      err: outcome.cause,
+                      detail: outcome.detail,
+                      requestId: getRequestId(_req),
+                    },
+                    'bulk update: one skill failed (rest continue)',
+                  );
+                  results.push({
+                    requested: name,
+                    status: 'failed',
+                    source: entry.source,
+                    warnings: [],
+                    error: outcome.detail ?? outcome.title,
+                  });
+                  continue;
+                }
+                results.push({
+                  requested: name,
+                  status: outcome.body.updated ? 'updated' : 'up-to-date',
+                  source: outcome.body.source,
+                  warnings: outcome.body.warnings,
+                });
+              } catch (e) {
+                // Failure isolation is the contract of this endpoint, and the
+                // spine can THROW as well as return a failure outcome — an
+                // unreadable bundle dir, a lockfile write that hits ENOSPC.
+                // Without this catch one such skill aborts the batch and every
+                // already-updated result is lost with it, since the response is
+                // only written after the loop.
+                getLogger('skills-reimport-bulk').warn(
+                  { skill: name, err: e, requestId: getRequestId(_req) },
+                  'bulk update: one skill threw (rest continue)',
+                );
+                results.push({
+                  requested: name,
+                  status: 'failed',
+                  source: entry.source,
+                  warnings: [],
+                  error: e instanceof Error ? e.message : String(e),
+                });
+              }
+            }
+          } finally {
+            // One clone per source; dropped before the next source is fetched.
+            cleanup();
+          }
+        }
+        successResponse(
+          res,
+          200,
+          SkillsReimportBulkSuccessSchema,
+          {
+            results,
+            updated: results.filter((r) => r.status === 'updated').length,
+            upToDate: results.filter((r) => r.status === 'up-to-date').length,
+            failed: results.filter((r) => r.status === 'failed' || r.status === 'not-found').length,
+          },
+          { handler: 'skills-reimport-bulk' },
+        );
+
+        // AFTER the response, and best-effort. A skill dir is not servable until
+        // the filter's in-place allow-list knows about it, and an API write does
+        // not otherwise trigger a rebuild — but the skills are already written by
+        // this point. Rebuilding first meant a throw here landed in the outer
+        // catch and answered 500, telling the user nothing updated when in fact
+        // everything had. The endpoint's whole contract is that it reports what
+        // happened; a bookkeeping failure must not erase that report.
+        try {
+          await contentFilter?.rebuildIgnorePatterns();
+        } catch (e) {
+          getLogger('skills-reimport-bulk').warn(
+            { err: e },
+            'bulk update: ignore-pattern rebuild failed after a reported success',
+          );
+        }
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to update skills.', {
+          handler: 'skills-reimport-bulk',
+          cause: e,
+        });
+      }
+    },
+    { handler: 'skills-reimport-bulk', method: 'POST' },
   );
 
   // `POST /api/skill/revert` — discard local edits and restore an imported skill
@@ -22197,6 +22735,7 @@ export function createApiExtension(
     '/api/skill/uninstall': handleSkillUninstall,
     '/api/skill/restore': handleSkillRestore,
     '/api/skill/reimport': handleSkillReimport,
+    '/api/skills/reimport-bulk': handleSkillsReimportBulk,
     '/api/skill/revert': handleSkillRevert,
     '/api/skill/track-in-git': handleSkillTrackInGit,
     '/api/skill-targets': handleSkillTargets,
@@ -22333,6 +22872,7 @@ export function createApiExtension(
     '/api/skill/uninstall',
     '/api/skill/restore',
     '/api/skill/reimport',
+    '/api/skills/reimport-bulk',
     '/api/skill/revert',
     '/api/skill/track-in-git',
     // Read-shaped GETs, but each triggers an arbitrary `git clone` (network egress)

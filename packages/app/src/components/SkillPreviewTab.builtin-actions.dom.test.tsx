@@ -17,6 +17,17 @@ vi.mock('@/hooks/use-skill-origin', () => ({
   useSkillOrigin: (args: unknown) => useSkillOriginMock(args),
 }));
 
+// The install control is its own tested surface (SkillEditorActions) and drags
+// in the document context + skills fetch. Stubbed to a marker so these tests
+// stay about the provenance header they were written for, while still asserting
+// the control is PRESENT — the thing that makes a built-in installable from the
+// tab you are reading it in.
+vi.mock('@/components/SkillEditorActions', () => ({
+  SkillEditorActions: ({ showNewFile }: { showNewFile?: boolean }) => (
+    <div data-testid="install-control" data-show-new-file={String(showNewFile)} />
+  ),
+}));
+
 import { BuiltinHeaderActions } from './SkillPreviewTab';
 
 interface OriginState {
@@ -46,10 +57,24 @@ afterEach(() => {
 });
 
 describe('BuiltinHeaderActions', () => {
-  test('renders nothing when provenance has not resolved', () => {
+  test('still offers the install control when provenance has not resolved', () => {
+    // It used to render nothing at all here. Provenance is about UPDATING; where
+    // a skill loads is a separate question, and a built-in whose origin has not
+    // resolved is still installable.
     mockOrigin({ origin: null, github: null });
-    const { container } = render(<BuiltinHeaderActions scope="global" name="x" />);
-    expect(container.innerHTML).toBe('');
+    render(<BuiltinHeaderActions scope="global" name="x" />);
+    expect(screen.getByTestId('install-control')).toBeTruthy();
+    // Nothing provenance-shaped, though — no source link, no Update.
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('button', { name: /update/i })).toBeNull();
+  });
+
+  test('offers the install control alongside provenance, without New file', () => {
+    // A built-in's bundle cannot be added to, so the control renders WITHOUT the
+    // new-file button it carries in the editor toolbar.
+    mockOrigin({ updateAvailable: true });
+    render(<BuiltinHeaderActions scope="global" name="open-knowledge-discovery" />);
+    expect(screen.getByTestId('install-control').getAttribute('data-show-new-file')).toBe('false');
   });
 
   test('shows the source link but NO Update button when up to date', () => {

@@ -419,6 +419,15 @@ export interface PersistenceOptions {
    */
   onConfigPersisted?: (docName: string) => void;
   /**
+   * Fired after a MANAGED skill doc durably persists to disk (`'persisted'`
+   * outcome only). Wired in the server factory to re-sync recorded same-name
+   * copies for the GLOBAL tier, whose copies otherwise refresh at boot only —
+   * without it, editing a global skill that was converted to copies leaves
+   * every copy stale until the next restart. Omitted in rigs with no copy
+   * plumbing.
+   */
+  onManagedSkillPersisted?: (docName: string) => void;
+  /**
    * MarkdownManager instance used by `storeDocumentNow`'s pre-write
    * sanity check (`fragmentBody = mgr.serialize(json)`). Defaults to
    * the production singleton from `./md-manager.ts`. Tests inject a
@@ -640,6 +649,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   const onFlushCommit = options?.onFlushCommit;
   const onDiskFlush = options?.onDiskFlush;
   const onConfigPersisted = options?.onConfigPersisted;
+  const onManagedSkillPersisted = options?.onManagedSkillPersisted;
   // Per-instance MarkdownManager seam used by `storeDocumentNow`'s pre-write
   // sanity check. Defaults to the production singleton. Tests inject a
   // dedicated `new MarkdownManager({ extensions: sharedExtensions })` so the
@@ -2924,6 +2934,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               scheduleGitCommit();
             }
           }
+          // The persist succeeded; a copy-resync failure must not surface as a
+          // store failure (same contract as onConfigPersisted above).
+          try {
+            onManagedSkillPersisted?.(documentName);
+          } catch (err) {
+            log.warn(
+              { err, documentName },
+              '[persistence] onManagedSkillPersisted callback failed',
+            );
+          }
         }
         return;
       }
@@ -2969,9 +2989,14 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
    * drain rather than racing with `scheduleGitCommit` or another flush.
    */
   async function flushContributors(): Promise<void> {
-    if (commitInFlight) {
+    // Loop rather than await-and-return: an in-flight run snapshotted the
+    // contributor map when IT started, so a contributor recorded after that
+    // (write handlers flush fire-and-forget now — two back-to-back writes
+    // race exactly this way) is NOT in it. Returning here stranded that
+    // second write's commit until some unrelated flush, which read as a
+    // missing version on an immediate history read.
+    while (commitInFlight) {
       await commitInFlight;
-      return;
     }
     if (contributorCount() === 0) return;
     commitInFlight = commitToWipRef().finally(() => {

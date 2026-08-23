@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { useSkills } from '@/hooks/use-skills';
 import { skillNameSetsByScope } from '@/lib/skill-scope';
-import { saveSkill } from '@/lib/skills-api';
+import { listSkills, saveSkill } from '@/lib/skills-api';
 
 /**
  * Placeholder description seeded into a freshly-created skill. A skill must have
@@ -35,15 +35,36 @@ export function useCreateBlankSkill() {
     opts?: { name?: string; description?: string },
   ) {
     if (creating) return;
-    const taken = skillNameSetsByScope(skillsState.status === 'ready' ? skillsState.data : [])[
-      scope
-    ];
     let name = opts?.name?.trim() || 'new-skill';
+    setCreating(true);
     if (!opts?.name) {
+      // The auto-name loop is only sound against a KNOWN name set, and
+      // `PUT /api/skill` is an UPSERT: it overwrites an existing skill's body
+      // and frontmatter without complaint (`created: false`, no warning). So an
+      // unresolved list is not a harmless "assume nothing is taken" — it means
+      // picking `new-skill` regardless of what is there and silently replacing a
+      // real skill's contents with the blank template, under a toast that says
+      // "created". The list is served from cache and settles fast, but the
+      // window is exactly the one a user clicks in: right after opening the app.
+      //
+      // So when the hook's list is not ready, ask the server before naming
+      // rather than guessing. A failure here refuses to create, which is the
+      // only safe direction — there is no name we can prove is free.
+      let taken = skillNameSetsByScope(skillsState.status === 'ready' ? skillsState.data : [])[
+        scope
+      ];
+      if (skillsState.status !== 'ready') {
+        const listed = await listSkills(scope);
+        if (!listed.ok) {
+          setCreating(false);
+          toast.error(t`Couldn't create skill: ${listed.error}`);
+          return;
+        }
+        taken = skillNameSetsByScope(listed.skills)[scope];
+      }
       for (let i = 2; taken.has(name); i++) name = `new-skill-${i}`;
     }
     const description = opts?.description?.trim() || DEFAULT_NEW_SKILL_DESCRIPTION;
-    setCreating(true);
     const result = await saveSkill({
       scope,
       name,

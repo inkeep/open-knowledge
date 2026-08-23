@@ -147,6 +147,31 @@ export function subscribeToSkillsChanged(onChange: () => void): () => void {
   return () => window.removeEventListener(SKILLS_CHANGED_EVENT, listener);
 }
 
+// Fired by `moveSkillScope` after a successful cross-scope move — the ONE
+// chokepoint every move path (dialog, bulk menu, drag-and-drop) goes through.
+// Exists so per-scope UI state keyed by (scope, name) can follow the skill:
+// pins live in different config layers per scope, so a move would otherwise
+// silently drop the pin.
+const SKILL_SCOPE_MOVED_EVENT = 'open-knowledge:skill-scope-moved';
+
+export interface SkillScopeMovedDetail {
+  name: string;
+  fromScope: SkillScope;
+  toScope: SkillScope;
+}
+
+export function emitSkillScopeMoved(detail: SkillScopeMovedDetail): void {
+  window.dispatchEvent(new CustomEvent(SKILL_SCOPE_MOVED_EVENT, { detail }));
+}
+
+export function subscribeToSkillScopeMoved(
+  onMove: (detail: SkillScopeMovedDetail) => void,
+): () => void {
+  const listener = (e: Event) => onMove((e as CustomEvent<SkillScopeMovedDetail>).detail);
+  window.addEventListener(SKILL_SCOPE_MOVED_EVENT, listener);
+  return () => window.removeEventListener(SKILL_SCOPE_MOVED_EVENT, listener);
+}
+
 // Optimistic cross-scope-move overlay. A scope-move copies the whole bundle to
 // the destination and deletes the source LAST, so the source row lingers in the
 // dock through the (potentially slow) copy. A mover hides the source row the

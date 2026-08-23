@@ -12,14 +12,12 @@ import { describe, expect, test, vi } from 'vitest';
  * source row before this runs — so the fallback is the common path, not the edge.
  */
 const retarget = vi.fn();
-const setSkillsSidebar = vi.fn();
 
 vi.doMock('@/components/ManagedArtifactProperties', () => ({
   useManagedArtifactRetarget: () => retarget,
 }));
 vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({
-    setSkillsSidebar,
     // The real in-place project doc is open; the store-shaped name is not.
     openTabs: ['.claude/skills/improve-codebase-architecture/SKILL'],
   }),
@@ -56,7 +54,6 @@ describe('useMoveSkillScope retarget source', () => {
     expect(fromDoc).not.toContain('.ok/skills');
     expect(toDoc).toBe('__skill__/global/improve-codebase-architecture');
     // And the surface stays on Skills rather than following into Files.
-    expect(setSkillsSidebar).toHaveBeenCalledWith(true);
   });
 
   test('refuses to retarget when no open tab matches the skill', async () => {
@@ -64,14 +61,12 @@ describe('useMoveSkillScope retarget source', () => {
     // resolvable source we must skip rather than fall back to a guessed name.
     // Dropping this guard would silently reintroduce the store-shaped phantom.
     retarget.mockClear();
-    setSkillsSidebar.mockClear();
     const { result } = renderHook(() => useMoveSkillScope());
 
     await result.current({ scope: 'project', name: 'not-an-open-tab' }, 'global');
 
     expect(retarget).not.toHaveBeenCalled();
     // The move still succeeded, so the surface must still stay on Skills.
-    expect(setSkillsSidebar).toHaveBeenCalledWith(true);
   });
 });
 
@@ -114,6 +109,5 @@ describe('the write flag is always released', () => {
     expect(endSkillWrite).toHaveBeenCalledWith('project', 'improve-codebase-architecture');
     // The move succeeded, so the surface belongs on Skills even though the tab
     // repoint threw — otherwise a working move dumps the user into Files.
-    expect(setSkillsSidebar).toHaveBeenCalledWith(true);
   });
 });

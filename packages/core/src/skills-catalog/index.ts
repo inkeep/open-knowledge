@@ -20,6 +20,7 @@ export {
 export {
   emptySkillsLock,
   findByContentHash,
+  packMarkerOf,
   parseSkillsLock,
   retrofitPackLockEntry,
   SKILLS_LOCK_FILENAME,
@@ -91,6 +92,7 @@ export type {
   PluginProviderId,
   PluginSourceInspection,
 } from './plugin-providers/types.ts';
+export { type PluginUpstream, pluginUpstreamsByName } from './plugin-upstream.ts';
 export { parseSkillsShPublisherPage } from './publisher.ts';
 export { parseGitHubRepoSearch, parseOpenGraph, parseSkillsShSearch } from './search.ts';
 export {

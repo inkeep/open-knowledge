@@ -55,6 +55,20 @@ function iconNodeToSvg(iconNode: IconNode): string {
   );
 }
 
+/**
+ * A lucide icon as a CSS `mask-image` data URI, for places that style a row from
+ * the tree's `unsafeCSS` rather than render into it — the sprite + `<use>` route
+ * needs a DOM node to hang the `<svg>` on, and Pierre owns the label cell. The
+ * stroke is baked in because a mask has no `currentColor`; the caller supplies
+ * the colour through `background-color`.
+ */
+export function lucideMaskDataUri(iconNode: IconNode): string {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${iconNodeToSvg(iconNode)}</svg>`;
+  // Percent-encoded rather than base64: it stays readable in devtools, and the
+  // characters a CSS `url()` minds are exactly the ones this escapes.
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export function createLucideSpriteSymbol(id: string, iconNode: IconNode): string {
   const symbolContent = iconNodeToSvg(iconNode);
   return `<symbol id="${id}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${symbolContent}</symbol>`;

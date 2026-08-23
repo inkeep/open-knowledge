@@ -254,6 +254,11 @@ msgstr "{0, plural, other {文件}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, other {文件夹}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, other {安装 # 个技能}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, other {技能}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · 默认"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0}（在新标签页中打开）"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "已选择 {1} 个项目中的 {0} 个"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "已选择 {1} 项中的 {0} 项"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "该发布者的另外 {0} 个技能"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "{0} 插件"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "{0} 插件 · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0} 通过 {poolRootRel} 读取这个技能。点击可让 {1} 不再获
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0} 共用此文件夹。"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "已选择 {0} 个技能"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "落后 {behind} 个"
 msgid "{behind} behind origin"
 msgstr "比 origin 落后 {behind} 个"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName} 是一个符号链接——其可编辑源文件是 <0>{0}</0>。请到该文件处编辑；此技能视图为只读。"
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, other {立即修复有已知自动修复方案的 # 个�
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {匹配 # 个文件}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "此来源有 {count} 个技能"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "{count} 个技能"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "{keyName} 的值"
 msgid "{label} ({0})"
 msgstr "{label}（{0}）"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label} 已经通过 {1} 插件加载 \"{0}\"。在此安装会在 {2} 创建一个副本，{label} 将使用该副本而不是插件的版本——副本不再跟随插件更新。"
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "已启用 {label}"
@@ -845,6 +888,11 @@ msgstr "{pick} 和 {keep} 各自保存着不同版本的：{0}。请先处理这
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick} 中包含非技能条目：{0}。请将它们从文件夹中删除或移走，然后重试。"
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin} 还提供另外 {0} 个技能"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, other {插件}}"
@@ -901,9 +949,21 @@ msgstr "{slot} 颜色 — {0}"
 msgid "{slot} hex value"
 msgstr "{slot} 十六进制值"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source} 发布了 {count} 个技能。你可以把它们一起安装。"
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · 导入的来源"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · skills.sh 来源"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}：已更新 {updated} 个，{upToDate} 个已是最新"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}：已更新 {updated} 个，{upToDate} 个已是最新，{failed} 个失败 — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1199,6 +1259,10 @@ msgstr "这个文件夹中新文档可复用的起点。"
 msgid "A saved theme already uses this name."
 msgstr "已有一个已保存的主题使用此名称。"
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "存在同名的第二个技能——重命名它（或删除其一）以进行完整管理。"
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "在模板列表中显示在标题下方的一行简介。"
@@ -1320,6 +1384,10 @@ msgstr "添加"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "添加评论"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "添加文件名（例如 notes.md）"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1660,15 +1728,6 @@ msgstr "已经登录了？"
 msgid "Always included"
 msgstr "始终包含"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "常驻"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "常驻 token"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1995,6 +2054,10 @@ msgstr "自动模式会在每次启动时选择一个空闲端口。选择固定
 msgid "Available"
 msgstr "可用"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "可用范围"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "在这台电脑的每个项目中都可用。不通过 git 共享。"
@@ -2169,10 +2232,6 @@ msgstr "失效链接"
 msgid "Browse"
 msgstr "浏览"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "浏览全部"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "浏览文件夹"
@@ -2184,10 +2243,6 @@ msgstr "浏览数百个主题"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "为这个项目浏览或上传技能。"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "浏览 skills.sh"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2226,10 +2281,6 @@ msgstr "构建并梳理你故事背后的世界。一个安放角色、地点、
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "正在构建 <0>openknowledge.skill</0> 并打开 Claude 桌面应用"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "内置（只读）"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2309,7 +2360,6 @@ msgstr "无法共享此路径。"
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2344,6 +2394,10 @@ msgstr "无法删除存在未解决冲突的文件"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "无法上传：当前没有打开的文档"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "更改"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2567,6 +2621,10 @@ msgstr "清除颜色"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "清空菜单"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "清除选择"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3155,10 +3213,6 @@ msgstr "内容规则"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "内容规则尚未加载——请稍后再试"
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "上下文开销"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "上下文窗口："
@@ -3220,6 +3274,7 @@ msgid "Copied full path"
 msgstr "已复制完整路径"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "已复制路径"
 
@@ -3233,11 +3288,6 @@ msgstr "已复制相对路径"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "已复制！"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "把技能复制到 {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3308,6 +3358,7 @@ msgid "Copy path"
 msgstr "复制路径"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "复制路径"
 
@@ -3500,7 +3551,6 @@ msgstr "无法添加那条评论。"
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "无法应用该更改：{0}"
 
@@ -3521,10 +3571,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "无法构建共享 URL。请点击「完成」后重新共享。"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "无法复制路径"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "无法复制：{detail}"
 
@@ -3534,9 +3586,10 @@ msgstr "无法复制。请选中上方的 URL 手动复制。"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "无法创建 {trimmed}：{0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "无法创建 {effective}：{0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3557,6 +3610,11 @@ msgstr "无法创建 worktree。请换一个名字。"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "无法创建此主题。请重试。"
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "无法删除 {0}：{error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3628,6 +3686,11 @@ msgstr "无法安装 OpenKnowledge 技能：{message}"
 msgid "Couldn't install skill: {0}"
 msgstr "无法安装技能：{0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "无法安装项目技能：{0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3677,6 +3740,12 @@ msgstr "无法加载你的错误报告。"
 msgid "Couldn't mark that comment to send."
 msgstr "无法把那条评论标记为待发送。"
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "无法移动 {0}：{1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3721,6 +3790,15 @@ msgstr "无法打开 worktree。请重试。"
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "无法在 Slidev 中打开此文档。"
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "无法置顶 {name}"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "无法将 {skillName} 放入 {root}：{0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3973,6 +4051,10 @@ msgstr "无法切换到「仅自己」"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "无法取消标记那条评论——它仍在等待发送。"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "无法取消置顶 {name}"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3982,6 +4064,12 @@ msgstr "无法更新 {gitignorePath}：{0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "无法更新 {subRoot}：{0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "无法从 {0} 更新：{1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4064,10 +4152,6 @@ msgstr "创建一个个人技能，在每个项目中都可用。"
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "为这个项目创建一个技能。"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "创建一个技能。"
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4281,6 +4365,11 @@ msgstr "删除"
 msgid "Delete {0}"
 msgstr "删除 {0}"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "删除 {0} 个技能"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "删除 {deleteDescriptorLabel}"
@@ -4362,6 +4451,10 @@ msgstr "删除这条评论"
 msgid "Deleted {0}."
 msgstr "已删除 {0}。"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "已删除 {deleted} 个技能"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "已删除 {file}"
@@ -4403,10 +4496,6 @@ msgstr "描述你想创建的项目"
 msgid "Describe the skill you want to create"
 msgstr "描述你想创建的技能"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "描述它该做什么，或者自己添加一个。OpenKnowledge 会把你的技能集中保存、做版本管理，并安装到 Claude、Codex、Cursor 等智能体中。"
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "描述你想构建的东西、新建空白文件，或者从模板生成。"
@@ -4419,7 +4508,9 @@ msgstr "请先描述你想创建的内容再继续"
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "描述一下你在做什么，智能体会为你搭建好。"
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "描述"
@@ -4436,6 +4527,11 @@ msgstr "描述（可选）"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "{field} 的描述"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "描述 token"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4564,6 +4660,7 @@ msgstr "断开连接"
 msgid "Disconnecting"
 msgstr "正在断开连接"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4842,6 +4939,7 @@ msgid "Edit {tag}"
 msgstr "编辑 {tag}"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "编辑一份副本"
 
@@ -5021,6 +5119,10 @@ msgstr "空"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "空图示"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "不允许空的文件夹名称（//）"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5210,6 +5312,10 @@ msgstr "每个概念文档都带有一个非空类型。这是 OKF 的一致性�
 msgid "every doc"
 msgstr "所有文档"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "来自 {source} 的内容均已是最新"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5293,6 +5399,7 @@ msgstr "讲清楚你的代码库是怎么运作的，让队友和 AI 智能体�
 msgid "Explore"
 msgstr "探索"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "探索技能"
@@ -5759,7 +5866,6 @@ msgid "Filename"
 msgstr "文件名"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "文件"
 
@@ -6020,6 +6126,10 @@ msgstr "来自模板"
 msgid "From the {0} plugin"
 msgstr "来自 {0} 插件"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "来自 {residentPlugin} 插件 — 只读；插件更新会替换这些文件。"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "frontmatter"
@@ -6151,6 +6261,7 @@ msgstr "让你使用的 AI 工具能够读取和更新你的项目。勾选即�
 msgid "Glob patterns this schema applies to"
 msgstr "这个架构适用的 glob 模式"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6206,6 +6317,10 @@ msgstr "文档链接的图形可视化。"
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "由行和列组成的表格，带一行表头。"
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "按来源分组技能"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6675,6 +6790,14 @@ msgstr "在 Git 项目中，Open Knowledge 还添加了一个作用域 .gitattri
 msgid "In the Claude Desktop App"
 msgstr "在 Claude 桌面应用中"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "位于此仓库中——协作者会通过 git 获得副本。"
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "位于你的主目录中——此电脑上的每个项目，仅限你自己。"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "增加或减少列表项缩进"
@@ -6833,12 +6956,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、删除、移动、复制和缩进行。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6854,11 +6976,6 @@ msgstr "安装 {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "安装 {brand} →"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "安装 {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6915,17 +7032,9 @@ msgstr "安装到所有智能体"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "在你的 AI 工具中安装 OpenKnowledge"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "安装选中项"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
 msgstr "安装技巧"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
-msgstr "安装技能"
 
 #. Checkbox that installs the user-global discovery skill bundle
 #: src/components/McpConsentDialogBody.tsx
@@ -6936,10 +7045,15 @@ msgstr "安装 <0>open-knowledge-discovery</0> 技能"
 msgid "Install the gh CLI"
 msgstr "安装 gh CLI"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "安装此技能"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "已安装"
 
@@ -6976,11 +7090,6 @@ msgstr "已从 {0} 安装 {imported} 个技能"
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "已安装 {imported} 个，但 {failed} 个失败：{failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "已安装在 {0}——点击可移除"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "已安装在 {path}——点击可移除"
@@ -6995,6 +7104,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "已安装在 {label}——点击可移除"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7004,8 +7114,19 @@ msgstr "正在安装"
 msgid "Installing {agentName}…"
 msgstr "正在安装 {agentName}…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "安装后可用于你的所有项目"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "安装到此项目"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "将技能安装到 {path} — 第一个位置保存技能自身的副本"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "安装到"
 
@@ -7254,9 +7375,6 @@ msgid "Let's get set up."
 msgstr "开始设置吧。"
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "级别"
 
@@ -7372,6 +7490,10 @@ msgstr "列表"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "保存在这个项目里（技能文件夹在哪里都行），并通过 git 与协作者共享。"
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "位于此项目之外 — 在这里只读。"
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7469,7 +7591,6 @@ msgid "Loading PDF"
 msgstr "正在加载 PDF"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "正在加载热门技能"
 
@@ -7614,6 +7735,11 @@ msgstr "listPacks 响应格式错误"
 msgid "Malformed plan response"
 msgstr "计划响应格式错误"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "管理"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7634,10 +7760,6 @@ msgstr "这个版本不支持管理 AI 工具。"
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "这个版本不支持管理项目的 AI 工具。"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "此版本不支持管理技能。"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7837,6 +7959,16 @@ msgstr "安装量最高"
 msgid "Move"
 msgstr "移动"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "将 {0} 个技能移至全局"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "将 {0} 个技能移至项目"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "移动过去"
@@ -7967,6 +8099,14 @@ msgstr "已将 {label} 移动到左侧的新窗格。"
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "已将 {label} 移动到右侧的新窗格。"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "已将 {moved} 个技能移至全局"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "已将 {moved} 个技能移至项目"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8147,10 +8287,6 @@ msgstr "在这个技能中新建文件"
 msgid "New folder"
 msgstr "新建文件夹"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "从零新建"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8192,6 +8328,7 @@ msgstr "新会话"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "新建技能"
@@ -8270,6 +8407,10 @@ msgstr "还没有配置任何智能体——正在打开「配置智能体」。
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "还没有配置任何智能体——请从发送菜单中选一个。"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "未选择智能体 — 仅保存，不安装到任何位置"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "没有可用的智能体。"
@@ -8282,10 +8423,6 @@ msgstr "没有启用任何智能体"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "没有智能体匹配你的搜索。"
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "未选择任何智能体——技能已保存，但没有安装到任何地方。"
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8670,6 +8807,10 @@ msgstr "不在侧边栏中"
 msgid "Not installed"
 msgstr "未安装"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "尚未安装到此项目。"
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8779,10 +8920,6 @@ msgstr "开启——你的搜索查询和匹配页面的文本会发送到你的
 msgid "On <0>{address}</0>"
 msgstr "在 <0>{address}</0> 上"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "按需"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "在 <0>{address}</0> 中选中的文本上"
@@ -8790,10 +8927,6 @@ msgstr "在 <0>{address}</0> 中选中的文本上"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "在根索引上，okf_version 被写为带引号的字符串，如 \"0.2\"。不加引号，YAML 将其读取为数字，0.10 默默地变成 0.1。"
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "触发时"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8972,6 +9105,7 @@ msgstr "打开 {keyName} 的表情符号选择器"
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9468,6 +9602,11 @@ msgstr "孤立页模式"
 msgid "Orphans"
 msgstr "孤立页"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "其他"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "其他"
@@ -9496,6 +9635,10 @@ msgstr "大纲"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "超出 {budgetLabel} token 预算"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "超出 {budgetLabel} 个 token 的建议上限。技能被使用时这些内容会全部载入智能体上下文——请保持精简，或将细节移入仅按需加载的 references/ 文件。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9601,7 +9744,7 @@ msgstr "解析失败"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "属于 {0} 插件——只读；打开它可编辑一份副本"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "属于 {plugin} 插件"
 
@@ -9779,6 +9922,11 @@ msgstr "选择要安装的技能。每个都会成为归你所有、可编辑的
 msgid "Pick up where you left off"
 msgstr "从上次的位置继续"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "选择副本的存放位置。选定目标位置即会创建副本。"
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9788,6 +9936,14 @@ msgstr "已从 {1} 拾取 {0}。"
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "固定标签页"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "置顶"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "已置顶"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9834,10 +9990,6 @@ msgstr "正在思量…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "热门"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "skills.sh 上的热门"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9972,6 +10124,7 @@ msgstr "项目"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "项目"
@@ -10073,6 +10226,10 @@ msgstr "发布到 GitHub"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "已发布"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "由 {publisher} 发布"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10332,6 +10489,7 @@ msgid "Relevance"
 msgstr "相关度"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10460,10 +10618,6 @@ msgstr "已把“{0}”从其他所有位置移除——它的来源文件夹仍
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "已把“{projectName}”从最近的项目中移除。它的文件夹已不存在。"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "从以下位置移除"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10726,6 +10880,10 @@ msgstr "重置视图筛选条件"
 msgid "Resize {handleKey}"
 msgstr "调整 {handleKey} 的大小"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "调整「技能」面板大小"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "在你的终端中解决冲突"
@@ -10754,6 +10912,7 @@ msgstr "正在解析差异"
 msgid "Resources"
 msgstr "资源"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10772,6 +10931,7 @@ msgstr "用这个应用的版本重启"
 msgid "Restarted — now running v{appRuntime}."
 msgstr "已重启——现在运行的是 v{appRuntime}。"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "正在重启"
@@ -11260,6 +11420,10 @@ msgstr "系统总览见<0>架构</0>。"
 msgid "See all {0} starter packs"
 msgstr "查看全部 {0} 个入门包"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "查看全部 {count} 个技能"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "查看完整的安装指南"
@@ -11457,6 +11621,10 @@ msgid "Server returned a malformed response."
 msgstr "服务器返回的响应格式错误。"
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "服务器返回的更新响应格式无效。"
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "服务器返回的上传响应格式错误。"
 
@@ -11475,6 +11643,10 @@ msgstr "服务器返回的技能响应不完整。"
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "服务器返回的模板响应不完整。"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "服务器已切换到分支 <0>{branch}</0>，正在重新加载内容"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11907,15 +12079,28 @@ msgstr "项目中已有的技能"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "技能发现由 <0>skills.sh</0> 提供支持"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md 由技能本身管理——请选择其他名称"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "技能"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "技能现在已共享。提交 .ok/skills 即可分享给你的团队。"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "来自 {0} 的技能。"
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "来自 {0}/{1} 的技能。"
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11939,9 +12124,11 @@ msgstr "技能已重新分配"
 msgid "Skills section"
 msgstr "技能区"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "技能工作室"
 
@@ -11957,6 +12144,10 @@ msgstr "技能让你的 AI 工具学会可重复的任务。在编辑器的“�
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "本项目自带的技能，以及它的 AI 工具读取这些技能的文件夹。"
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "「技能」工具栏"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12139,6 +12330,10 @@ msgstr "源码撤销或重做"
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "空格跳跃，下方向键下蹲。整个游戏就这么简单。"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "路径中不允许有空格"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12345,10 +12540,6 @@ msgstr "总结我这周改了些什么"
 msgid "Switch and update branch"
 msgstr "切换并更新分支"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "在「文件」和「技能」之间切换"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "在可视化编辑器和源码编辑器之间切换，并保持当前位置。"
@@ -12406,11 +12597,6 @@ msgstr "指向 {targetPath} 的符号链接"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "通过上级目录建立的符号链接"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "把技能符号链接到 {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12754,6 +12940,11 @@ msgstr "该消息已发出——你的编辑未生效。"
 msgid "The {0} download request timed out."
 msgstr "{0} 的下载请求超时。"
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "{0} 插件从其缓存提供这些技能 — OK 绝不会编辑或更新它们。"
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "{editor} 文件夹中有这个技能的另一个版本。请选择保留哪一个，或者用不同的名字都保留。被替换的内容会先备份。"
@@ -12805,10 +12996,6 @@ msgstr "默认的技能文件夹（保存后会显示确切路径）"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "桌面应用没有响应。请刷新后重试。"
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "安装位置已变化。请检查列表后确认。"
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12876,9 +13063,22 @@ msgstr "已打开的智能体"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "原始文本已被删除。你可以将此评论重新定位到选中的文本上。"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "路径不能离开技能（不允许 . 或 ..）"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "该插件还附带 {0} — 仅在此列出，OK 绝不会安装。"
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "预览会拦截不符合其安全规则的资源（例如纯 http:// 的 URL，或使用了 eval 的代码）。上面的内容可能渲染不完整。"
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "该项目的服务器所在分支与此窗口不一致，内容无法加载。"
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13245,6 +13445,16 @@ msgstr "无法分享此 GitHub URL。"
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "这是 {boldName} 的预览——一个随 Open Knowledge 一起提供的内置技能。它是只读的。"
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "这是 {boldName} 的预览 — 此来源共有 {0} 个技能，这是其中之一。把它安装到你的智能体中。"
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "这是 {boldName} 的预览 — 此仓库共有 {0} 个技能，这是其中之一。把它安装到你的智能体中。"
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "这是 {boldName} 的预览，在 {boldHarness} 的 {boldLevel} 级别中检测到。"
@@ -13270,6 +13480,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "这看起来像是驱动器根目录（例如 C:\\）。在这里搭建项目会扫描整个驱动器。"
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "本机"
 
@@ -13334,12 +13545,17 @@ msgstr "这会永久移除 {0}。它复制自的那个插件不受影响——�
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "此操作会从“{2}”技能中永久删除 {0}/{1}。SKILL.md 中指向它的内容将失效，直到重新创建为止。"
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "这将永久删除 {names}。按名称调用这些技能的智能体将失败，直到重新创建它们。"
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件夹中的同名模板取代之前，按名称引用这个模板的智能体都会失败。"
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "本项目"
 
@@ -13398,15 +13614,6 @@ msgstr "本项目的技能已移至技能工作室。"
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "这会从你的 Mac 以及你在下方选择的项目中移除 OpenKnowledge 的设置和集成，但保留你的 markdown 内容和自己编写的技能。"
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "这个仓库包含 {count} 个技能，外加 {0}。你可以从插件中安装其中任意一个。"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "这个仓库包含 {count} 个技能。你可以从插件中安装其中任意一个。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13623,6 +13830,11 @@ msgstr "工具调用"
 msgid "Top linked pages"
 msgstr "被链接最多的页面"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "总计"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "受 git 跟踪——更新通过你的仓库（pull 或 CI）流入，而不是自动更新"
@@ -13803,17 +14015,6 @@ msgstr "要撤销到这次编辑吗？"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "在「编辑源码」面板或代码类属性字段中撤销、重做，或逐步回溯选区变化。"
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "卸载"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "卸载 {name}"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13880,6 +14081,10 @@ msgstr "取消勾选 {0} 中的所有评论"
 msgid "Unordered list of items."
 msgstr "不带编号的项目列表。"
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "取消置顶"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "取消固定 {accessibleLabel}"
@@ -13924,6 +14129,10 @@ msgstr "更新"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "要用“{skillName}”覆盖你的编辑进行更新吗？"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "从此来源更新全部"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13989,10 +14198,6 @@ msgstr "上传"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "上传 {keyName}"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "上传一个技能"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14092,6 +14297,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr "使用小写的 .yaml 或 .yml 扩展名"
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "使用技能内部的相对路径"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "使用技能内部的相对路径（不能有 ..，不能有空格；SKILL.md 由系统管理）。"
@@ -14175,8 +14383,13 @@ msgstr "通过 {viaTags}"
 msgid "via parent"
 msgstr "通过上级目录"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "来自插件"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "查看"
@@ -14184,6 +14397,10 @@ msgstr "查看"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "查看 {name}"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "在 skills.sh 上查看 {publisher}"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14210,8 +14427,17 @@ msgid "View in Source Markdown"
 msgstr "在 Markdown 源码中查看"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "查看插件"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "查看来源"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "查看 {plugin} 插件的代码仓库"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14389,6 +14615,10 @@ msgstr "把鼠标悬停在外部链接上时，它的 URL 会发送到目标站�
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "当你安装一个已发布的技能时，会告知技能目录（skills.sh），让它的安装量统计保持准确。发送的内容包括技能名称、它的来源仓库，以及它被安装到了哪些 AI 工具——绝不包含文件内容，也绝不会为来自私有、本地或手动输入来源的技能发送。每个技能在每台电脑上只发送一次。"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "位置"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "新添加的附件放在哪里。"
@@ -14424,6 +14654,10 @@ msgstr "维基链接建议"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "像 [[Page]] 这样的 Wiki 链接 — 一种受支持的链接方式，但外部阅读器无法解析任何内容并显示括号。"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "将创建为 <0>{effective}</0>"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

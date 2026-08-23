@@ -202,6 +202,9 @@ describe('scanInPlaceSkills (list projection)', () => {
     expect(skills.find((s) => s.name === 'open-knowledge')?.dir).toBe(
       '.agents/skills/open-knowledge',
     );
+    // And it must not carry conflict hosts — the drifted copy is an artifact to
+    // ignore, not a conflict to badge.
+    expect(skills.find((s) => s.name === 'open-knowledge')?.conflictHosts).toEqual([]);
   });
 
   test('three distinct contents under one name yield three rows', () => {

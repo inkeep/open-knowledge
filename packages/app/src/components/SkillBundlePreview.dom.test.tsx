@@ -76,24 +76,24 @@ describe('SkillBundlePreview tokens row', () => {
         ],
       }),
     );
-    expect(cost.textContent).toContain('~10');
-    expect(cost.textContent).toContain('~200');
-    expect(cost.textContent).toContain('~300');
-    expect(cost.textContent).toContain('always-on');
-    expect(cost.textContent).toContain('on trigger');
-    expect(cost.textContent).toContain('on demand');
-    // Had the script counted, on-demand would read ~1.3k — it must not.
-    expect(cost.textContent).not.toContain('~1.3k');
+    expect(cost.textContent).toContain('10');
+    expect(cost.textContent).toContain('200');
+    expect(cost.textContent).toContain('300');
+    expect(cost.textContent).toContain('description');
+    expect(cost.textContent).toContain('SKILL.md');
+    expect(cost.textContent).toContain('other');
+    // Had the script counted, the other tier would read 1.3k — it must not.
+    expect(cost.textContent).not.toContain('1.3k');
   });
 
   test('renders zeroes, not a blank row, for a skill with no body and no references', async () => {
     const cost = await renderPreviewCost(
       ok({ name: 'e', description: null, skillMd: '', files: [] }),
     );
-    // Three explicit zeroes — never an absent row that could read as a free skill.
-    expect(cost.textContent).toContain('~0');
-    expect(cost.textContent).toContain('on trigger');
-    expect(cost.textContent).toContain('on demand');
+    // Explicit zeroes — never an absent row that could read as a free skill.
+    expect(cost.textContent).toContain('0');
+    expect(cost.textContent).toContain('SKILL.md');
+    expect(cost.textContent).toContain('other');
   });
 
   test('skips a binary/null reference and counts the readable remainder', async () => {
@@ -105,7 +105,7 @@ describe('SkillBundlePreview tokens row', () => {
         ],
       }),
     );
-    expect(cost.textContent).toContain('~100');
+    expect(cost.textContent).toContain('100');
   });
 
   test('marks an over-budget tier and leaves on-demand bare', async () => {
@@ -122,7 +122,7 @@ describe('SkillBundlePreview tokens row', () => {
     const marks = screen.getAllByRole('img');
     expect(marks).toHaveLength(1);
     expect(marks[0].getAttribute('aria-label')).toMatch(/over the .* token budget/);
-    expect(cost.textContent).toContain('~50k');
+    expect(cost.textContent).toContain('50k');
   });
 });
 

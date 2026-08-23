@@ -29,14 +29,10 @@ export function SkillFileDeleteDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLingui();
-  const { setSkillsSidebar, closeTabs, openTabs } = useDocumentContext();
+  const { closeTabs, openTabs } = useDocumentContext();
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete({ skill, filePath }: SkillFileDeleteTarget) {
-    // Pin the Skills surface before the tab eviction, for the same reason the
-    // skill-level delete does: closing the active tab can otherwise let
-    // autofollow drop the sidebar back to Files.
-    setSkillsSidebar(true);
     setDeleting(true);
     const result = await deleteSkillFile({
       scope: skill.scope,

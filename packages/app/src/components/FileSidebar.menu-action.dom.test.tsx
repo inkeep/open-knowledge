@@ -239,9 +239,6 @@ vi.doMock('@/editor/DocumentContext', () => ({
     activeDocName: 'notes/source',
     activeTarget,
   }),
-  // FileSidebar imports isSkillsNewTabId; the partial mock must keep that
-  // export or the module link fails (activeNewTabId is unset here → false).
-  isSkillsNewTabId: () => false,
   isBlobRunnerNewTabId: () => false,
 }));
 

@@ -94,6 +94,10 @@ const REQUIRED_HANDLERS = [
   // the same content writers as import, so it threads identity at entry
   // (`extractActorIdentity`) like `handleSkillImport`.
   'handleSkillReimport',
+  // `/api/skills/reimport-bulk` — the same reimport spine, run once per skill
+  // against one clone per recorded source, so it threads identity at entry
+  // exactly the same way.
+  'handleSkillsReimportBulk',
   // `/api/skill-upload` — materialize an uploaded skill archive into
   // `.ok/skills` via the shared `finishSkillImport` spine (the same content
   // writers as import), so it threads identity at entry (`extractActorIdentity`)

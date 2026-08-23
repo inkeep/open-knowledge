@@ -6,9 +6,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
 import type { ResolvedNavigationTarget } from '@/components/navigation-targets';
-import { docNameForNavigationTarget, isSkillFocusedTarget } from '@/components/navigation-targets';
+import { docNameForNavigationTarget } from '@/components/navigation-targets';
 import { consumePrewarmClick } from '@/components/prewarm-correlation';
-import { useSkills } from '@/hooks/use-skills';
+import {
+  type ContentRecycleNotice,
+  recordBranchMismatchDispatch,
+} from '@/lib/branch-recycle-notice';
 import {
   assetPathFromHash,
   docNameFromHash,
@@ -17,7 +20,6 @@ import {
   hashFromFolderPath,
   hashFromSkillFile,
   hashFromSkillPreview,
-  hashFromSkills,
   isSameHash,
   skillFileFromHash,
   skillPreviewFromHash,
@@ -72,7 +74,6 @@ import {
   filterClosableTabIds,
   filterOpenTabsForKnownTargets,
   folderTabId,
-  isSkillTabId,
   localTabSessionKeyForMode,
   parseEditorTabId,
   parseEditorTabSessionState,
@@ -83,6 +84,7 @@ import {
   shouldPersistTabSession,
   skillFileTabId,
   skillPreviewTabId,
+  staleLocalSkillPreviewTwins,
   type TabSessionRestoreOutcome,
   tabIdForNavigationTarget,
   writeLocalTabSessionState,
@@ -254,21 +256,6 @@ interface DocumentContextValue {
   activeNewTabId: string | null;
   /** True when the active editor surface is the empty "New tab" placeholder. */
   isNewTabActive: boolean;
-  /**
-   * Explicit Files/Skills surface pin. `null` = autofollow the active doc's
-   * surface (the default); `true`/`false` = an explicit toggle. The pin only
-   * survives until the next navigation, when pane activation re-arms it to
-   * `null`, so autofollow keeps working after a toggle. Not persisted. Prefer
-   * reading `skillFocused` (the resolved surface); this is the raw override.
-   */
-  skillsSidebar: boolean | null;
-  setSkillsSidebar: (on: boolean | null) => void;
-  /**
-   * The resolved active surface: `skillsSidebar ?? (active doc/new-tab is a
-   * skill)`. Drives BOTH the sidebar navigator and the editor tab-strip mode
-   * filter, so the two never disagree. `true` = Skills, `false` = Files.
-   */
-  skillFocused: boolean;
   /** Open an empty tab placeholder that the next sidebar document click can fill. */
   openNewTab: () => void;
   /** Focus the blob-runner tab, opening one if it is not already around. */
@@ -390,6 +377,12 @@ interface DocumentContextValue {
     | null;
   /** Reset retry state — exits terminal mode, resumes polling. */
   retryCollab: () => void;
+  /**
+   * Branch-driven content-recycle notice (switch in progress / server
+   * refusing this window's branch claim). Rendered by `BranchRecycleBanner`.
+   */
+  contentRecycleNotice: ContentRecycleNotice | null;
+  dismissContentRecycleNotice: () => void;
   /**
    * DocPanel mode — which scope the right-rail panel is showing.
    *   - `'doc'`:   existing 5-tab info pane keyed to `activeDocName`.
@@ -527,10 +520,6 @@ function readInitialLocalTabSession() {
 // `skills:` infix, and its empty state renders the Skills home instead of the
 // Files "Create something great" one.
 const NEW_TAB_PREFIX = 'new-tab:';
-const SKILLS_NEW_TAB_PREFIX = 'new-tab:skills:';
-export function isSkillsNewTabId(id: string | null | undefined): boolean {
-  return id?.startsWith(SKILLS_NEW_TAB_PREFIX) ?? false;
-}
 
 // The blob runner is a full-pane surface with no document behind it, so it
 // rides the same ephemeral new-tab placeholder the Skills home uses rather
@@ -544,31 +533,21 @@ const BLOB_RUNNER_NEW_TAB_PREFIX = 'new-tab:blob-runner:';
  * a literal prefix of the other two, so classification MUST test the specific
  * surfaces first — a plain `startsWith(NEW_TAB_PREFIX)` matches all three.
  */
-export type NewTabSurface = 'files' | 'skills' | 'blob-runner';
+export type NewTabSurface = 'files' | 'blob-runner';
 
 const NEW_TAB_PREFIX_BY_SURFACE: Record<NewTabSurface, string> = {
   files: NEW_TAB_PREFIX,
-  skills: SKILLS_NEW_TAB_PREFIX,
   'blob-runner': BLOB_RUNNER_NEW_TAB_PREFIX,
 };
 
 function newTabSurfaceOf(tabId: string): NewTabSurface {
   if (isBlobRunnerNewTabId(tabId)) return 'blob-runner';
-  if (isSkillsNewTabId(tabId)) return 'skills';
   return 'files';
 }
 export function isBlobRunnerNewTabId(id: string | null | undefined): boolean {
   return id?.startsWith(BLOB_RUNNER_NEW_TAB_PREFIX) ?? false;
 }
 
-/**
- * Which surface a visible tab id belongs to (Skills vs Files) — covers both real
- * open tabs (`isSkillTabId`) and ephemeral new-tab placeholders (`isSkillsNewTabId`).
- * Drives the mode filter that shows one surface's tabs at a time.
- */
-function tabIdIsSkillSurface(id: string): boolean {
-  return isSkillsNewTabId(id) || isSkillTabId(id);
-}
 function hashFromTabId(tabId: string): string {
   const tab = parseEditorTabId(tabId);
   switch (tab.kind) {
@@ -586,6 +565,12 @@ function hashFromTabId(tabId: string): string {
         source: tab.source,
         name: tab.name,
         subtitle: tab.subtitle,
+        // Level is part of the tab's IDENTITY (`encodeSkillPreviewSegments`
+        // includes it). Dropping it here made the tab→hash→tab roundtrip land
+        // on the DEFAULT level: clicking a global-level preview tab activated —
+        // or minted — its project-level twin, which is exactly "multiple tabs
+        // of the same file open, only able to focus one".
+        level: tab.level,
       });
   }
 }
@@ -826,43 +811,16 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   );
   const visibleTabIdsByPaneRef = useRef(visibleTabIdsByPane);
   const currentPane = focusedPane(workspace);
-  const activeTarget = currentPane.activeTarget;
-  const activeTabId = currentPane.activeTabId;
   const openTabs = flattenWorkspaceTabs(workspace);
   const pinnedTabIds = flattenWorkspacePinnedTabs(workspace);
   const previewTabIdsByPane = new Map(
     workspace.panes.map((pane) => [pane.id, pane.previewTabId] as const),
   );
-  const activeNewTabId = currentPane.activeNewTabId;
   const visibleTabIds = reconcileVisibleTabOrder(
     visibleTabIdsByPane.get(currentPane.id) ?? [],
     currentPane.openTabs,
     currentPane.newTabIds,
   );
-  // Subscribed, not consumed: the Files/Skills surface decision reads the
-  // project's known skill dirs synchronously via `isSkillBundleShapedPath`, and
-  // `useSkills` is what publishes them. Mounting it HERE (unconditionally) does
-  // two things nothing else does:
-  //
-  //  - re-renders this provider when `/api/skills` lands, so `skillFocused`
-  //    recomputes for a symlinked or custom-rooted bundle instead of sitting on
-  //    the shape-only answer until an unrelated render happens to occur;
-  //  - breaks the circular gate — `EditorTabs` fetches only when it already
-  //    recognises a skill tab, so a doc recognisable ONLY through the list would
-  //    never trigger the fetch that recognises it.
-  //
-  // Costs no extra request in the default configuration: `SkillsSidebarSection`
-  // already calls `useSkills` on every render and mounts whenever the Skills
-  // section is enabled, and the hook shares one module-level in-flight request.
-  const skillsListStatus = useSkills().status;
-  const [skillsSidebar, setSkillsSidebarState] = useState<boolean | null>(null);
-  // Per-surface active-tab memory: switching Files/Skills restores the tab you
-  // last had active in that surface (or clears to its empty/home state). Kept in
-  // a ref — it's read imperatively on toggle, never rendered.
-  const activeTabByModeRef = useRef<{ files: string | null; skills: string | null }>({
-    files: null,
-    skills: null,
-  });
   const [tabSessionLoaded, setTabSessionLoaded] = useState(false);
   const nextNewTabOrdinalRef = useRef(1);
   const nextPaneOrdinalRef = useRef(1);
@@ -892,6 +850,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     lastError: collabLastError,
     retry: retryCollab,
   } = useCollabUrl();
+  // Branch-driven content recycles were invisible: a switch blanked every open
+  // doc silently, and a NON-converging branch-mismatch refusal loop rendered
+  // the app empty with no explanation. `BranchRecycleBanner` renders this.
+  const [contentRecycleNotice, setContentRecycleNotice] = useState<ContentRecycleNotice | null>(
+    null,
+  );
+  const branchMismatchTimesRef = useRef<number[]>([]);
 
   function createPaneId(): EditorPaneId {
     let paneId = '';
@@ -920,8 +885,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
     if (!updateHash) return;
     let nextHash = '';
+    // A new tab is deliberately the EMPTY hash: it has no target to address, and
+    // falling through to the active tab's hash would put the previous document's
+    // URL on a blank tab — so back/forward would return to a tab that no longer
+    // shows what its address claims. Empty branch rather than a negated
+    // condition, because the ordering states the precedence: new tab first, then
+    // whatever is open.
     if (focused.activeNewTabId !== null) {
-      if (isSkillsNewTabId(focused.activeNewTabId)) nextHash = hashFromSkills();
     } else if (focused.activeTabId !== null) {
       nextHash = hashFromTabId(focused.activeTabId);
     }
@@ -987,54 +957,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     commitWorkspace(next, options.updateHash);
   }
 
-  // The active sidebar/tab surface. An explicit pin (`skillsSidebar`
-  // true/false) wins; the default `null` follows whichever surface the open doc
-  // / new tab belongs to. Single source for the sidebar AND the editor-tab
-  // strip's mode filter, so the two never disagree.
-  //
-  // Both trees pin as they open, so clicking a row keeps you where you are —
-  // a skill's file opened from Files stays in Files, and the reverse. Autofollow
-  // is therefore the rule for navigation that carries no surface intent of its
-  // own: a deep link, the command palette, session restore.
-  const skillFocused =
-    skillsSidebar ?? (isSkillFocusedTarget(activeTarget) || isSkillsNewTabId(activeNewTabId));
-
-  // Remember the active tab per surface so a Files↔Skills toggle can restore it.
-  // Runs on every activeTabId change (incl. session restore) so both surfaces
-  // stay current even before the first toggle.
-  //
-  // Also re-runs when the skills list settles. A tab restored on first paint is
-  // filed before `/api/skills` answers, so a bundle known only to that list lands
-  // under `files`; leaving it there survives into localStorage and pulls the
-  // toggle straight back across on every press. Re-filing on arrival — and
-  // releasing the slot it was wrongly filed under — is what keeps the pre-list
-  // guess from outliving the answer.
-  //
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `skillsListStatus` is a re-run trigger, not an input — the body reads the list through `isSkillTabId`, which is not reactive on its own.
-  useEffect(() => {
-    if (!activeTabId) return;
-    const mode = isSkillTabId(activeTabId) ? 'skills' : 'files';
-    const previousMode = mode === 'skills' ? 'files' : 'skills';
-    activeTabByModeRef.current[mode] = activeTabId;
-    if (activeTabByModeRef.current[previousMode] === activeTabId) {
-      activeTabByModeRef.current[previousMode] = null;
-    }
-  }, [activeTabId, skillsListStatus]);
-
-  // Show only the current surface's tabs. Filtering here (not in EditorTabs)
-  // keeps the strip, keyboard cycle/jump, and drag-reorder all consistent;
-  // reorderTabs' backstop re-adds any hidden-surface tab, so none are dropped.
-  const visibleTabIdsForMode = visibleTabIds.filter(
-    (id) => tabIdIsSkillSurface(id) === skillFocused,
-  );
-  const visibleTabIdsByPaneForMode = new Map(
-    [...visibleTabIdsByPane].map(([paneId, tabIds]) => [
-      paneId,
-      tabIds.filter((tabId) => tabIdIsSkillSurface(tabId) === skillFocused),
-    ]),
-  );
+  // One surface: file tabs and skill tabs share the strip. The filter that used
+  // to hide the other surface's tabs is gone, so a file and a skill can be open
+  // side by side — the whole point of unifying the sidebar.
   const surfaceWorkspace = workspaceWithResolvedTargets(
-    projectVisibleEditorWorkspace(workspace, visibleTabIdsByPaneForMode),
+    projectVisibleEditorWorkspace(workspace, visibleTabIdsByPane),
   );
   const surfacePane = focusedPane(surfaceWorkspace);
 
@@ -1124,13 +1051,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
             activeTarget: currentFocused.activeNewTabId ? null : pane.activeTarget,
           }));
         }
-        // Restore each surface's last-active tab without overwriting a tab
-        // opened while the async session read was in flight.
-        activeTabByModeRef.current = {
-          files: activeTabByModeRef.current.files ?? state.activeTabByMode.files,
-          skills: activeTabByModeRef.current.skills ?? state.activeTabByMode.skills,
-        };
-
         const hash = window.location.hash;
         const hashTabId = tabIdFromHash(hash);
         const hashOwner = hashTabId ? findPaneOwningTab(nextWorkspace, hashTabId) : null;
@@ -1183,7 +1103,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!tabSessionLoaded) return;
     if (!shouldPersistTabSession(restoreOutcomeRef.current, openTabs.length)) return;
-    const state = createEditorTabSessionState(workspace, activeTabByModeRef.current);
+    const state = createEditorTabSessionState(workspace);
     const bridge = getDesktopBridge();
     if (bridge) {
       void bridge.project.setSessionState(state).catch((err: unknown) => {
@@ -1268,55 +1188,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
           : null;
     if (!closedActiveTabId) return workspaceAfterClose;
 
-    const nextPane = workspaceAfterClose.panes.find((pane) => pane.id === previousPane.id);
-    const nextActiveTabId = nextPane?.activeTabId ?? nextPane?.activeNewTabId ?? null;
-    const closedSkillsTab = tabIdIsSkillSurface(closedActiveTabId);
-    if (!nextPane || !nextActiveTabId || tabIdIsSkillSurface(nextActiveTabId) === closedSkillsTab) {
-      return workspaceAfterClose;
-    }
-
-    const visibleOrder = reconcileVisibleTabOrder(
-      visibleTabIdsByPaneRef.current.get(previousPane.id) ?? [],
-      previousPane.openTabs,
-      previousPane.newTabIds,
-    );
-    const activeIndex = visibleOrder.indexOf(closedActiveTabId);
-    const candidates =
-      activeIndex < 0
-        ? visibleOrder
-        : [...visibleOrder.slice(activeIndex + 1), ...visibleOrder.slice(0, activeIndex).reverse()];
-    const remainingTabIds = new Set([...nextPane.openTabs, ...nextPane.newTabIds]);
-    const fallbackTabId = candidates.find(
-      (tabId) =>
-        !closingTabIds.has(tabId) &&
-        remainingTabIds.has(tabId) &&
-        tabIdIsSkillSurface(tabId) === closedSkillsTab,
-    );
-
-    if (fallbackTabId) {
-      return updateEditorPane(workspaceAfterClose, previousPane.id, (pane) => ({
-        ...pane,
-        activeTabId: pane.openTabs.includes(fallbackTabId) ? fallbackTabId : null,
-        activeNewTabId: pane.newTabIds.includes(fallbackTabId) ? fallbackTabId : null,
-        activeTarget: null,
-      }));
-    }
-
-    // Nothing left on the closed tab's surface, but the OTHER surface still has
-    // tabs. The placeholder is load-bearing here, not cosmetic: it occupies
-    // `activeNewTabId`, which is the only thing that stops `normalizePane` from
-    // falling back to `openTabs[0]` — the other surface's tab. Without it the
-    // hash follows that tab and the whole surface flips under you.
-    const prefix = closedSkillsTab ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
-    const newTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
-    nextNewTabOrdinalRef.current += 1;
-    return updateEditorPane(workspaceAfterClose, previousPane.id, (pane) => ({
-      ...pane,
-      newTabIds: [...pane.newTabIds, newTabId],
-      activeTabId: null,
-      activeNewTabId: newTabId,
-      activeTarget: null,
-    }));
+    // One surface now, so the transition's own fallback is always acceptable:
+    // the strip no longer hides tabs, and a close should land on whatever tab
+    // is next regardless of whether it is a file or a skill.
+    return workspaceAfterClose;
   }
 
   const closeTabsInPaneById = (
@@ -1456,7 +1331,18 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     // `void`-fronted fetch resolves the gate on the next microtask
     // while the recovery is still in flight, so cross-turn mismatches
     // (N providers, N RTTs) re-fire the dispatch and double-recycle.
-    p.setOnBranchMismatch(() => refreshServerInfo(p));
+    p.setOnBranchMismatch(() => {
+      // One dispatch is the normal recovery (refresh → recycle → reconnect)
+      // and stays silent; a second inside the window means the server is
+      // STILL refusing — the formerly-invisible empty-app state. Surface it.
+      const { times, escalate } = recordBranchMismatchDispatch(
+        branchMismatchTimesRef.current,
+        Date.now(),
+      );
+      branchMismatchTimesRef.current = times;
+      if (escalate) setContentRecycleNotice({ kind: 'refused', at: Date.now() });
+      return refreshServerInfo(p);
+    });
 
     // Auth-rejection cleanup arms. The pool fires these synchronously from
     // its authenticationFailed handler; we own the React-state-aware
@@ -1645,14 +1531,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const surfacePane = surfaceWorkspace.panes.find((candidate) => candidate.id === paneId);
     let nextWorkspace = workspaceRef.current;
     if (surfacePane?.activeTabId && surfacePane.activeTabId !== pane.activeTabId) {
-      setSkillsSidebarState(null);
       nextWorkspace = transitionEditorWorkspace(nextWorkspace, {
         type: 'activate-tab',
         paneId,
         tabId: surfacePane.activeTabId,
       }).workspace;
     } else if (surfacePane?.activeNewTabId && surfacePane.activeNewTabId !== pane.activeNewTabId) {
-      setSkillsSidebarState(null);
       nextWorkspace = updateEditorPane(nextWorkspace, paneId, (candidate) => ({
         ...candidate,
         activeTabId: null,
@@ -1680,7 +1564,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
     if (!pane.openTabs.includes(tabId)) return;
-    setSkillsSidebarState(null);
     commitWorkspace(
       transitionEditorWorkspace(workspaceRef.current, {
         type: 'activate-tab',
@@ -1723,7 +1606,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         : null;
     const existingTabId =
       activeOnSurface ?? pane.newTabIds.find((tabId) => newTabSurfaceOf(tabId) === surface);
-    setSkillsSidebarState(null);
     if (existingTabId) {
       updatePaneState(
         pane.id,
@@ -1760,7 +1642,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const paneId = requestedPaneId ?? workspaceRef.current.focusedPaneId;
     const p = getPool(collabUrl);
     if (target.kind === 'skills') {
-      activateOrOpenSurfaceNewTab(paneId, 'skills');
+      // The Skills home is gone with the surface it belonged to, so an old deep
+      // link or a restored history entry lands on the ordinary new tab instead
+      // of a route that renders nothing.
+      activateOrOpenSurfaceNewTab(paneId, 'files');
       return;
     }
     const docName = docNameForNavigationTarget(target);
@@ -1783,8 +1668,52 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       existingTabBehavior,
     });
     if (transition.replacedPreviewTabId !== null) markTabSessionClosedDuringRestore();
-    setSkillsSidebarState(null);
-    commitWorkspace(transition.workspace);
+    let nextWorkspace = transition.workspace;
+    // A LOCAL skill preview's identity includes its `source` path, which moves
+    // under the tab: a plugin update bumps the version in the cache path, a
+    // detected skill relocates when a copy is deleted. The same skill then
+    // opens under a NEW id while the old tab survives as an identically
+    // labelled twin ("multiple tabs of the same file open"). One skill, one
+    // local preview: opening one closes any twin holding the same
+    // (flavor, name, level) under a different id. Explore previews keep
+    // `source` in their identity on purpose — one name from two repos is two
+    // different previews.
+    //
+    // Folded into the SAME commit as the open. A separate
+    // `closeTabsAcrossPanes` call would commit a second time with
+    // updateHash=true whenever a twin sits in the focused pane, navigating the
+    // hash mid-open — an extra history entry and a re-entrant `hashchange`
+    // the open path (which owns the hash, updateHash=false) never asked for.
+    if (target.kind === 'skill-preview' && target.level) {
+      const twins = new Set(
+        staleLocalSkillPreviewTwins(
+          flattenWorkspaceTabs(nextWorkspace),
+          {
+            flavor: target.flavor,
+            name: target.name,
+            subtitle: target.subtitle ?? '',
+            level: target.level,
+          },
+          nextTabId,
+        ),
+      );
+      if (twins.size > 0) {
+        markTabSessionClosedDuringRestore();
+        for (const paneId of nextWorkspace.panes.map((pane) => pane.id)) {
+          const pane = nextWorkspace.panes.find((candidate) => candidate.id === paneId);
+          if (!pane) continue;
+          const inPane = pane.openTabs.filter((tabId) => twins.has(tabId));
+          if (inPane.length === 0) continue;
+          nextWorkspace = transitionEditorWorkspace(nextWorkspace, {
+            type: 'close-tabs',
+            paneId,
+            tabIds: inPane,
+          }).workspace;
+        }
+        closeProvidersWithoutOpenTabs(twins, nextWorkspace);
+      }
+    }
+    commitWorkspace(nextWorkspace);
   };
   const openTarget = (target: ResolvedNavigationTarget, options?: OpenTargetOptions) => {
     openTargetWithOptions(target, options);
@@ -1812,7 +1741,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const openNewTabInPaneById = (paneId: EditorPaneId) => {
     const pane = workspaceRef.current.panes.find((candidate) => candidate.id === paneId);
     if (!pane) return;
-    const prefix = skillFocused ? SKILLS_NEW_TAB_PREFIX : NEW_TAB_PREFIX;
+    const prefix = NEW_TAB_PREFIX;
     const nextNewTabId = `${prefix}${nextNewTabOrdinalRef.current}`;
     nextNewTabOrdinalRef.current += 1;
     commitWorkspace(
@@ -1841,51 +1770,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       paneId,
       tabIds: [tabId],
     }).workspace;
-    const nextPane = nextWorkspace.panes.find((candidate) => candidate.id === paneId);
-    const nextActiveTabId = nextPane?.activeTabId ?? nextPane?.activeNewTabId ?? null;
-    const closedSkillsTab = isSkillsNewTabId(tabId);
-    const remainsOnClosedSurface =
-      nextActiveTabId !== null && tabIdIsSkillSurface(nextActiveTabId) === closedSkillsTab;
-    // A blob-runner tab belongs to no sidebar surface, so closing one should
-    // leave the sidebar wherever it was. Without this guard it reads as a Files
-    // tab and pins the sidebar to Files even when the next active tab is Skills.
-    if (wasActive && !remainsOnClosedSurface && !isBlobRunnerNewTabId(tabId)) {
-      setSkillsSidebarState(closedSkillsTab);
-    }
-    commitWorkspace(
-      nextWorkspace,
-      workspaceRef.current.focusedPaneId === paneId && wasActive && remainsOnClosedSurface,
-    );
+    commitWorkspace(nextWorkspace, workspaceRef.current.focusedPaneId === paneId && wasActive);
   };
   const closeNewTabById = (tabId: string) =>
     closeNewTabInPaneById(workspaceRef.current.focusedPaneId, tabId);
-
-  // Files/Skills toggle. Each surface remembers its last active tab even when
-  // that tab lives in a different split pane. With no remembered tab, retain
-  // the workspace and activate that surface's ephemeral home tab.
-  const setSkillsSidebar = (next: boolean | null) => {
-    if (next === null) {
-      setSkillsSidebarState(null);
-      return;
-    }
-
-    const targetMode = next ? 'skills' : 'files';
-    if ((skillFocused ? 'skills' : 'files') === targetMode) {
-      setSkillsSidebarState(next);
-      return;
-    }
-
-    const rememberedTabId = activeTabByModeRef.current[targetMode];
-    const owner = rememberedTabId ? findPaneOwningTab(workspaceRef.current, rememberedTabId) : null;
-    if (rememberedTabId && owner) {
-      setSkillsSidebarState(null);
-      activateTabInPaneById(owner.id, rememberedTabId);
-      return;
-    }
-
-    const pane = focusedPane(workspaceRef.current);
-    activateOrOpenSurfaceNewTab(pane.id, next ? 'skills' : 'files');
-  };
 
   const closeActiveTabOrWindow = (): boolean => {
     const pane = focusedPane(workspaceRef.current);
@@ -2152,9 +2040,6 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     principal,
     activeTarget: surfacePane.activeTarget,
     activeTabId: surfacePane.activeTabId,
-    skillsSidebar,
-    setSkillsSidebar,
-    skillFocused,
     activeDocName,
     activeProvider,
     workspace,
@@ -2176,9 +2061,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     resizePanes: resizeEditorPanes,
     openTabs,
     pinnedTabIds,
-    visibleTabIdsByPane: visibleTabIdsByPaneForMode,
+    visibleTabIdsByPane,
     previewTabIdsByPane,
-    visibleTabIds: visibleTabIdsForMode,
+    visibleTabIds,
     tabSessionLoaded,
     syncState: snapshot.syncState,
     serverRestartRecovery: snapshot.serverRestartRecovery,
@@ -2202,11 +2087,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     // falls back to `openTabs[0]` and the hash follows a tab nobody picked.
     clearTarget: () => {
       const pane = focusedPane(workspaceRef.current);
-      if (pane.activeNewTabId !== null && !isSkillsNewTabId(pane.activeNewTabId)) return;
-      if (pane.openTabs.length === 0 && pane.newTabIds.length === 0) {
-        setSkillsSidebarState(false);
-        return;
-      }
+      if (pane.activeNewTabId !== null) return;
+      if (pane.openTabs.length === 0 && pane.newTabIds.length === 0) return;
       activateOrOpenSurfaceNewTab(pane.id, 'files');
     },
     closeDocument: (docName: string) => {
@@ -2327,6 +2209,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       if (collabUrl === null) return;
       const p = getPool(collabUrl);
       p.setObservedBranch(branch);
+      branchMismatchTimesRef.current = [];
+      setContentRecycleNotice({ kind: 'branch-switch', branch, at: Date.now() });
       await handleBranchSwitched(p, branch);
       // CRDT provider recycle alone leaves the non-Y.Doc derived-view stores
       // (PageList / FileTree / backlinks / graph) on stale-branch data until
@@ -2341,6 +2225,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       // First observation seeds the pool's branch state without invalidating;
       // subsequent mismatches replay handleBranchSwitched client-side.
       if (p.compareAndUpdateObservedBranch(branch)) {
+        branchMismatchTimesRef.current = [];
+        setContentRecycleNotice({ kind: 'branch-switch', branch, at: Date.now() });
         await handleBranchSwitched(p, branch);
         emitDocumentsChanged(['files', 'backlinks', 'graph']);
         emitBranchChanged(branch);
@@ -2358,6 +2244,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     },
     collabUrl,
     collabTerminal,
+    contentRecycleNotice,
+    dismissContentRecycleNotice: () => setContentRecycleNotice(null),
     collabLastError,
     retryCollab,
     docPanelMode,

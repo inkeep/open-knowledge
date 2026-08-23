@@ -11,11 +11,12 @@ import type {
   SkillsImportBulkSuccess,
   SkillsInstalledSuccess,
   SkillsListEntry,
+  SkillsReimportBulkSuccess,
   SkillsSearchSuccess,
 } from '@inkeep/open-knowledge-core';
 import { SkillFolderLinkPreviewSchema, SkillsListSuccessSchema } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
-import { emitSkillsChanged } from '@/lib/documents-events';
+import { emitSkillScopeMoved, emitSkillsChanged } from '@/lib/documents-events';
 import { parseApiError } from '@/lib/parse-api-error';
 
 /**
@@ -534,6 +535,7 @@ export async function moveSkillScope(input: {
     });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as { path?: string } | null;
+    emitSkillScopeMoved({ name, fromScope, toScope });
     emitSkillsChanged();
     return {
       ok: true,
@@ -619,9 +621,12 @@ export async function moveSkill(input: {
 export async function deleteSkill(
   scope: SkillScope,
   name: string,
+  /** Host qualifier of a NON-default same-named bundle: delete THAT bundle
+   *  (the row the user acted on), not the by-name default. */
+  host?: string,
 ): Promise<WriteResult<{ existed: boolean }>> {
   try {
-    const qs = `?name=${encodeURIComponent(name)}&scope=${encodeURIComponent(scope)}`;
+    const qs = `?name=${encodeURIComponent(name)}&scope=${encodeURIComponent(scope)}${host ? `&host=${encodeURIComponent(host)}` : ''}`;
     const res = await fetch(`/api/skill${qs}`, { method: 'DELETE' });
     if (!res.ok) return { ok: false, error: await readErrorBody(res) };
     const payload = (await res.json().catch(() => null)) as { existed?: boolean } | null;
@@ -1056,6 +1061,35 @@ export async function reimportSkill(input: {
       ...(payload?.gitTracked !== undefined ? { gitTracked: payload.gitTracked } : {}),
       warnings: payload?.warnings ?? [],
     };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * POST `/api/skills/reimport-bulk` — refresh SEVERAL skills from their recorded
+ * upstreams, cloning once per source server-side. Always resolves `ok` when the
+ * request itself was answered: per-skill outcomes ride `results`, so a caller
+ * reports counts and names what failed rather than treating one unreachable
+ * source as a failed request.
+ */
+export async function reimportSkillsBulk(input: {
+  names: string[];
+  scope: SkillScope;
+}): Promise<WriteResult<SkillsReimportBulkSuccess>> {
+  try {
+    const res = await fetch('/api/skills/reimport-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
+    const payload = (await res.json().catch(() => null)) as SkillsReimportBulkSuccess | null;
+    if (!payload || !Array.isArray(payload.results)) {
+      return { ok: false, error: t`Server returned a malformed update response.` };
+    }
+    emitSkillsChanged();
+    return { ok: true, ...payload };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

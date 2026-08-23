@@ -17,9 +17,8 @@ import {
   ViewPlugin,
   type ViewUpdate,
 } from '@codemirror/view';
-import { hashFromDocName, hashFromSkills } from '@/lib/doc-hash';
-import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
-import { getSkillNameSnapshot } from '@/lib/skill-name-set';
+import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
+import { getSkillNameSnapshot, skillRefNavHashForHit } from '@/lib/skill-name-set';
 import {
   BUNDLE_PATH_RE,
   isSkillRefCandidate,
@@ -152,12 +151,13 @@ export function createSkillPathLinksSourceExtension(docName: string): Extension 
       if (slug !== undefined) {
         event.preventDefault();
         const hit = getSkillNameSnapshot()?.get(slug);
-        window.location.hash =
-          hit !== undefined
-            ? hashFromDocName(
-                skillEntryLiveDocName({ scope: hit.scope, name: slug, path: hit.path }),
-              )
-            : hashFromSkills();
+        if (hit !== undefined) {
+          window.location.hash = skillRefNavHashForHit(slug, hit);
+        } else {
+          // Name we cannot resolve: open the dock so the reader can look for it,
+          // rather than route to the retired Skills home.
+          requestSkillsDockExpanded();
+        }
         return true;
       }
       const el = (event.target as HTMLElement | null)?.closest?.('.cm-skill-path-link');

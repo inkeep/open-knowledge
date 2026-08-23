@@ -19,7 +19,11 @@
  */
 
 import { z } from 'zod';
-import { type EditorId, PROJECT_SKILL_EDITOR_IDS } from '../constants/editors.ts';
+import {
+  type EditorId,
+  PROJECT_SKILL_EDITOR_IDS,
+  USER_SKILL_EDITOR_IDS,
+} from '../constants/editors.ts';
 
 /**
  * Editor ids valid as install-projection targets. Runtime values come from the
@@ -46,13 +50,29 @@ export const SkillTargetEditorSchema = z.enum(
 export type SkillTargetEditor = z.infer<typeof SkillTargetEditorSchema>;
 
 /**
+ * Editor ids valid as USER-GLOBAL install targets — the project set plus the
+ * user-root-only editors (today: `antigravity`, whose skills live at
+ * `~/.gemini/skills`). Same derived-tuple cast discipline as above;
+ * schema.test.ts pins value-equality with `USER_SKILL_EDITOR_IDS`.
+ */
+type UserSkillEditorId = Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'lm-studio' | 'hermes'>;
+export const SkillUserTargetEditorSchema = z.enum(
+  USER_SKILL_EDITOR_IDS as unknown as readonly [UserSkillEditorId, ...UserSkillEditorId[]],
+);
+export type SkillUserTargetEditor = z.infer<typeof SkillUserTargetEditorSchema>;
+
+/**
  * The install-verb target vocabulary: the per-project editor set plus the
  * `.agents` hub pseudo-host. ONE membership predicate — the scattered
  * `h === 'agents' || EDITORS.includes(h)` copies it replaces were the
  * breeding ground for vocabulary-gap bugs (a host id the predicate can't
  * express gets silently dropped from set-exact semantics).
  */
-export type SkillInstallTarget = SkillTargetEditor | 'agents';
+export type SkillInstallTarget = SkillUserTargetEditor | 'agents';
 export function isSkillInstallTarget(host: string): host is SkillInstallTarget {
-  return host === 'agents' || (PROJECT_SKILL_EDITOR_IDS as readonly string[]).includes(host);
+  // Membership is the WIDER user-global set: a host id must be expressible
+  // wherever install targets flow, and scope-specific narrowing (a project
+  // install cannot target antigravity) is the resolver's job, not this
+  // predicate's — a project surface never produces a user-only id.
+  return host === 'agents' || (USER_SKILL_EDITOR_IDS as readonly string[]).includes(host);
 }

@@ -1751,6 +1751,29 @@ describe('composeTerminalLaunchPrompt — docked-terminal bare launch is load + 
     expect(claudeOut).toContain(OK_TERMINAL_SURFACE_PREAMBLE);
   });
 
+  test('skill scope threads the author-with-AI directive — NOT a bare launch', async () => {
+    // Regression: skill scope carries its intent in `input.skill` with no free
+    // text, so the instruction-presence guard alone dropped the Skills manager's
+    // "Open with AI" into the bare load+then-stop prompt — the launched agent
+    // was never told which skill to author.
+    const { composeTerminalLaunchPrompt, selectScopedPrompt } = await import(
+      './useHandoffDispatch'
+    );
+    const input = {
+      docContext: null,
+      skill: { name: 'my-skill', scope: 'project' as const },
+      projectDir: '/proj',
+      docPath: '',
+    };
+    expect(composeTerminalLaunchPrompt(input, 'claude')).toBe(
+      `${OK_TERMINAL_SURFACE_PREAMBLE} ${selectScopedPrompt(input, 'claude-code', false, 'terminal')}`,
+    );
+    const claudeOut = composeTerminalLaunchPrompt(input, 'claude');
+    expect(claudeOut).toContain('`my-skill`');
+    expect(claudeOut).toContain('open-knowledge-write-skill');
+    expect(claudeOut).not.toContain('Then stop.');
+  });
+
   test('whitespace-only instruction is treated as a bare launch', async () => {
     // The `.trim()` guard in composeTerminalLaunchPrompt is deliberate: a
     // whitespace-only textarea value (e.g. '   ') must route to the bare

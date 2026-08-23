@@ -26,7 +26,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import { MANAGED_ARTIFACT_SCOPES } from '../../constants/cc1.ts';
-import { SkillTargetEditorSchema } from '../../skill-targets/schema.ts';
+import {
+  SkillTargetEditorSchema,
+  SkillUserTargetEditorSchema,
+} from '../../skill-targets/schema.ts';
 import { SkillCostTiersSchema } from '../../skills-catalog/skill-cost.ts';
 import { agentIdentityFields, summaryField } from './_shared.ts';
 
@@ -396,6 +399,19 @@ export const SkillFrontmatterSchema = z
   .object({
     name: z.string(),
     description: z.string(),
+    /**
+     * Upstream-owned identity carried through an import, NOT something OK
+     * authors. Only `pack` is admitted: it is the witness that a starter-pack
+     * skill really is ours, which the provenance retrofit needs when a skill's
+     * lock entry has gone missing (the lockfile is gitignored, so a cloned
+     * project routinely arrives without one). Canonicalizing it away left that
+     * retrofit unable to prove anything about a generic name like `write-a-spec`,
+     * so seeded packs lost their source and floated outside their group.
+     *
+     * The rest of an upstream's frontmatter is still dropped: version lives in
+     * the lockfile, and OK injects no descriptive frontmatter of its own.
+     */
+    metadata: z.object({ pack: z.string() }).strict().optional(),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
@@ -502,6 +518,10 @@ export const SkillsListEntrySchema = z
     absolutePath: z.string().min(1).optional(),
     installed: z.boolean(),
     hosts: z.array(z.string()),
+    hostQualifier: z.string().optional().meta({
+      description:
+        'Set on a GLOBAL entry that shares its name with a distinct-content bundle in another host dir AND is not the by-name default: the host id whose root holds THIS bundle. Doc-name builders append it (`__skill__/global/<name>@<host>`) so each same-named bundle keeps its own tab and its own write-back path; the default bundle keeps the stable unqualified name.',
+    }),
     /** Hosts whose occurrence is a SYMLINK (in-place skills; user links are
      *  preserved and disclosed rather than presented as plain copies). */
     driftPaths: z.array(z.string()).optional().meta({
@@ -532,16 +552,47 @@ export const SkillsListEntrySchema = z
     customPlacements: z
       .array(z.object({ path: z.string(), mode: z.enum(['copy', 'link']) }).strict())
       .optional(),
+    /**
+     * Set when this skill IS a harness plugin's skill, served in place — its
+     * bundle dir resolves to the plugin's own home (a directory-sourced
+     * marketplace inside the repo). Identity, not provenance: the skill was
+     * never copied FROM the plugin, it is what the plugin serves, so it carries
+     * no `origin` (an origin would make it its own upstream) and no update
+     * path. Drives the plugin group in the sidebar and the editor rows that
+     * already load it via the plugin.
+     */
+    plugin: z
+      .object({
+        name: z.string().min(1),
+        marketplace: z.string().min(1),
+        /** The harness whose plugin system serves it (e.g. `claude`). */
+        provider: z.string().min(1),
+        /** The marketplace's repository URL, when the provider records one —
+         *  what makes the plugin group row's "View plugin" possible for
+         *  identity-served skills. */
+        url: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     /** True for OpenKnowledge's own built-in `open-knowledge*` skills (the ones
      *  projected into editor host dirs, e.g. `.claude/skills/open-knowledge`).
      *  They are READ-ONLY: surfaced so users can see what their agents load, but
      *  edit/rename/delete/install are disabled in the UI and refused by the API. */
     managed: z.boolean().optional(),
-    // Import provenance from `.ok/skills-lock.json` (project skills only). Present
-    // when the skill was brought in via import; drives the "Imported from …"
-    // properties row + the "Update from source" action. Absent for authored
-    // skills and all global-scope skills (the global store is unversioned).
+    // Import provenance from `.ok/skills-lock.json`, resolved per scope: the
+    // project lock under `projectDir`, the global one under the skills home.
+    // Present when the skill was brought in via import OR seeded by a pack
+    // (`recordPackSkillProvenance` stamps `inkeep/open-knowledge-skills`), so
+    // global skills carry it too. Drives the "Imported from …" properties row +
+    // the "Update from source" action. Absent for hand-authored skills, and for
+    // a project whose skills are checked in rather than seeded — no lock entry
+    // was ever written there.
     origin: SkillOriginSchema.optional(),
+    // The skill's `metadata.pack` identity marker — which starter pack /
+    // plugin bundle it belongs to. Read from frontmatter at scan time; drives
+    // the pack-level grouping under the source repo in the sidebar. Absent for
+    // skills that never carried a marker.
+    pack: z.string().optional(),
     // True when the skill's current on-disk content diverges from what was
     // installed (the write-time `localHash` baseline in the lockfile). Drives the
     // "Modified" indicator. Only set for imported project skills whose lock entry
@@ -939,7 +990,10 @@ export type SkillFileDeleteSuccess = z.infer<typeof SkillFileDeleteSuccessSchema
  */
 /** An editor host id or the vendor-neutral `.agents/skills` hub — the
  *  non-path skill location ids. */
-export const SkillHostIdArgSchema = z.union([SkillTargetEditorSchema, z.literal('agents')]);
+// The WIRE vocabulary is the user-global superset: a global install may name
+// `antigravity` (`~/.gemini/skills`). Project handlers narrow by scope after
+// parse — rejecting at the schema hid a host the enumerator itself reports.
+export const SkillHostIdArgSchema = z.union([SkillUserTargetEditorSchema, z.literal('agents')]);
 export type SkillHostIdArg = z.infer<typeof SkillHostIdArgSchema>;
 
 /** A base-relative custom skills-root path (e.g. `.tim/skills`). Never
@@ -1723,6 +1777,62 @@ export const SkillsImportBulkSuccessSchema = z
   })
   .loose() satisfies StandardSchemaV1;
 export type SkillsImportBulkSuccess = z.infer<typeof SkillsImportBulkSuccessSchema>;
+
+/**
+ * Request body for `POST /api/skills/reimport-bulk` — refresh SEVERAL imported
+ * skills from their recorded upstreams, cloning once per SOURCE rather than once
+ * per skill (the provenance-group case: "update everything from this source",
+ * where one request per skill re-clones the same repo every time).
+ *
+ * There is deliberately no `source` field. Each name's own lockfile entry is the
+ * authority on where it came from, so the server groups the request by recorded
+ * source and fetches each once — which is both the amortization and the guard
+ * against updating a skill from a repo it never came from. `.strict()`.
+ */
+export const SkillsReimportBulkRequestSchema = z
+  .object({
+    scope: SkillScopeSchema.default('project'),
+    names: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(SKILLS_IMPORT_BULK_MAX)
+      .meta({ description: 'Managed skill names to refresh from their recorded upstreams.' }),
+    ...agentIdentityFields,
+    summary: summaryField,
+  })
+  .strict() satisfies StandardSchemaV1;
+export type SkillsReimportBulkRequest = z.infer<typeof SkillsReimportBulkRequestSchema>;
+
+/**
+ * One row of a bulk update. `status` is per-skill so an unreachable source, a
+ * skill the upstream no longer ships, or a bundle that refuses to write never
+ * fails the rest of the batch: `updated` rewrote the bundle, `up-to-date`
+ * matched the recorded upstream hash, `not-found` has no recorded source or is
+ * no longer in it, `failed` carries the reason in `error`.
+ */
+export const SkillReimportBulkResultSchema = z
+  .object({
+    requested: z.string(),
+    status: z.enum(['updated', 'up-to-date', 'not-found', 'failed']),
+    /** The upstream this skill records, when one was resolved. */
+    source: z.string().optional(),
+    warnings: z.array(z.string()),
+    error: z.string().optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type SkillReimportBulkResult = z.infer<typeof SkillReimportBulkResultSchema>;
+
+/** Success body for `POST /api/skills/reimport-bulk`. Always 200: the per-skill
+ *  outcomes ride `results`, and the counts are what the caller reports. */
+export const SkillsReimportBulkSuccessSchema = z
+  .object({
+    results: z.array(SkillReimportBulkResultSchema),
+    updated: z.number(),
+    upToDate: z.number(),
+    failed: z.number(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type SkillsReimportBulkSuccess = z.infer<typeof SkillsReimportBulkSuccessSchema>;
 
 /** Provenance recorded for an imported skill (mirrors the lockfile entry). */
 export const SkillImportProvenanceSchema = z

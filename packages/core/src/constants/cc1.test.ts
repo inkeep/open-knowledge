@@ -19,12 +19,14 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
       scope: 'global',
       name: 'demo',
       rel: null,
+      host: null,
     });
     expect(parseManagedArtifactName('__skill__/project/demo')).toEqual({
       kind: 'skill',
       scope: 'project',
       name: 'demo',
       rel: null,
+      host: null,
     });
   });
 
@@ -34,12 +36,14 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
       scope: 'global',
       name: 'demo',
       rel: 'references/patterns',
+      host: null,
     });
     expect(parseManagedArtifactName('__skill__/global/demo/references/sub/deep')).toEqual({
       kind: 'skill',
       scope: 'global',
       name: 'demo',
       rel: 'references/sub/deep',
+      host: null,
     });
   });
 
@@ -51,6 +55,7 @@ describe('parseManagedArtifactName — skill name/rel split (per-file editabilit
       scope: 'global',
       name: 'demo',
       rel: 'references/patterns',
+      host: null,
     });
   });
 
@@ -241,6 +246,7 @@ describe('parseGlobalSkillBundleDoc', () => {
       name: 'demo',
       kind: 'skill',
       rel: null,
+      host: null,
     });
   });
 
@@ -249,11 +255,13 @@ describe('parseGlobalSkillBundleDoc', () => {
       name: 'demo',
       kind: 'reference',
       rel: 'notes',
+      host: null,
     });
     expect(parseGlobalSkillBundleDoc('__skill__/global/demo/references/sub/deep')).toEqual({
       name: 'demo',
       kind: 'reference',
       rel: 'sub/deep',
+      host: null,
     });
   });
 

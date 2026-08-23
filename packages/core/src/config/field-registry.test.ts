@@ -195,6 +195,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.customTheme.variant',
       'appearance.language',
       'appearance.preview.autoOpen',
+      'appearance.sidebar.pinnedGlobalSkills',
       'appearance.theme',
       'editor.previewTabs',
       'editor.wordWrap',
@@ -304,9 +305,11 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .map((l) => l.path.join('.'))
       .sort();
     expect(projectLocalStrict).toEqual([
+      'appearance.sidebar.pinnedProjectSkills',
       'appearance.sidebar.showHiddenFiles',
       'appearance.sidebar.showOkFolders',
       'appearance.sidebar.showOnlyMarkdownFiles',
+      'appearance.sidebar.showSkillGroups',
       'appearance.sidebar.showSkillsSection',
       'autoSync.enabled',
       'autoSync.mode',

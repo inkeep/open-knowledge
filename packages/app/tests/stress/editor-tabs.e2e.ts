@@ -91,7 +91,6 @@ async function installLocalTabSession(
     window.localStorage.setItem(
       `ok-editor-tabs-v1:${window.location.origin}`,
       JSON.stringify({
-        activeTabByMode: { files: null, skills: null },
         updatedAt: '2026-05-12T00:00:00.000Z',
         panes: [
           {
@@ -350,8 +349,12 @@ test.describe('Editor tabs', () => {
     await clickNewTabCloseButton(page, 0);
 
     await expect(newTabs).toHaveCount(0);
-    // Skills' own empty state (its blank tab renders the same page) survives.
-    await expect(page.getByTestId('skill-source-new')).toBeVisible();
+    // One tab surface now: with every blank tab closed, the ordinary empty
+    // state is what renders — the skills-surface home and its
+    // `skill-source-new` card left with the second surface. The root testid,
+    // not a composer button: which button renders depends on whether the
+    // machine has agents installed, and CI has none.
+    await expect(page.getByTestId('create-view')).toBeVisible();
     await expect(newTabs).toHaveCount(0);
   });
 

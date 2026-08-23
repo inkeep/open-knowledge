@@ -1,3 +1,4 @@
+import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,6 +22,34 @@ const toastError = vi.fn(() => {});
 vi.doMock('sonner', () => ({
   toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
 }));
+
+// The rows are fed by `/api/skills` — the same list every other skills surface
+// reads. The desktop bridge below is the INTRO's source only, so the two are
+// controlled separately here on purpose: a bridgeless render must still produce
+// rows.
+let skillsState: { status: string; data?: readonly SkillsListEntry[]; message?: string } = {
+  status: 'loading',
+};
+vi.doMock('@/hooks/use-skills', () => ({ useSkills: () => skillsState }));
+
+// The row's entire contract is "open the skill's own preview", so the opener is
+// spied rather than exercised — the tab machinery behind it is covered where it
+// lives.
+const openPreviewSpy = vi.fn();
+vi.doMock('@/lib/open-managed-artifact-tab', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/open-managed-artifact-tab')>(
+    '@/lib/open-managed-artifact-tab',
+  );
+  // Calls THROUGH: a sibling test asserts the real hash this writes, so
+  // replacing the implementation would quietly gut it.
+  return {
+    ...actual,
+    openSkillPreviewTab: (target: Parameters<typeof actual.openSkillPreviewTab>[0]) => {
+      openPreviewSpy(target);
+      actual.openSkillPreviewTab(target);
+    },
+  };
+});
 
 // Spy on the perf-mark instrumentation while keeping the module's other exports.
 const markSpy = vi.fn();
@@ -53,8 +82,56 @@ function renderSection() {
   );
 }
 
-/** `editors` and `path` are required by the status contract but belong to the AI
- *  tools page; this section reads only `skills` + `available`. */
+const discovery: SkillsListEntry = {
+  name: 'open-knowledge-discovery',
+  // The real frontmatter shape: a trigger prompt aimed at an agent, which is
+  // exactly why the row renders the human blurb instead.
+  description:
+    'Read when the user asks what OpenKnowledge is, wants to install it on a repository. Do NOT load to perform OpenKnowledge reads/writes.',
+  scope: 'global',
+  path: '.claude/skills/open-knowledge-discovery/SKILL.md',
+  absolutePath: '/home/.claude/skills/open-knowledge-discovery/SKILL.md',
+  installed: true,
+  hosts: ['claude'],
+  managed: true,
+  size: { alwaysOn: 140, onTrigger: 1495, onDemand: 0 },
+};
+
+const writeSkill: SkillsListEntry = {
+  name: 'open-knowledge-write-skill',
+  description:
+    'Use when the user wants to create, author, write, or design a new Agent Skill (a SKILL.md).',
+  scope: 'global',
+  path: 'bundles/open-knowledge-write-skill/SKILL.md',
+  absolutePath: '/bundles/open-knowledge-write-skill/SKILL.md',
+  installed: false,
+  hosts: [],
+  managed: true,
+  size: { alwaysOn: 156, onTrigger: 3218, onDemand: 916 },
+};
+
+/** An ordinary authored global skill + the project built-in: both must stay out
+ *  of this block, which is the user-global built-ins only. */
+const authored: SkillsListEntry = {
+  name: 'grill-me',
+  scope: 'global',
+  path: '.claude/skills/grill-me/SKILL.md',
+  absolutePath: '/home/.claude/skills/grill-me/SKILL.md',
+  installed: true,
+  hosts: ['claude'],
+};
+const projectBuiltin: SkillsListEntry = {
+  name: 'open-knowledge',
+  scope: 'project',
+  path: '.claude/skills/open-knowledge/SKILL.md',
+  absolutePath: '/proj/.claude/skills/open-knowledge/SKILL.md',
+  installed: true,
+  hosts: ['claude'],
+  managed: true,
+};
+
+/** The bridge snapshot backs the first-visit intro ONLY — which bundles setup
+ *  already asked about (`onboarding`) is knowledge the endpoint does not have. */
 const baseStatus: OkIntegrationsStatus = {
   available: true,
   editors: [],
@@ -63,10 +140,7 @@ const baseStatus: OkIntegrationsStatus = {
     {
       id: 'discovery',
       name: 'open-knowledge-discovery',
-      // The real frontmatter shape: a trigger prompt aimed at an agent, which is
-      // exactly why the row renders `blurb` instead.
-      description:
-        'Read when the user asks what OpenKnowledge is, wants to install it on a repository. Do NOT load to perform OpenKnowledge reads/writes.',
+      description: discovery.description ?? '',
       installed: true,
       onboarding: true,
       paths: [
@@ -80,8 +154,7 @@ const baseStatus: OkIntegrationsStatus = {
     {
       id: 'write-skill',
       name: 'open-knowledge-write-skill',
-      description:
-        'Use when the user wants to create, author, write, or design a new Agent Skill (a SKILL.md).',
+      description: writeSkill.description ?? '',
       installed: false,
       onboarding: false,
       paths: ['~/.agents/skills/open-knowledge-write-skill'],
@@ -120,35 +193,56 @@ function installBridge({ status = baseStatus, setResult }: HarnessOpts = {}) {
  *  so the dialog does not sit over the rows they assert on. */
 beforeEach(() => {
   introSeen = true;
+  skillsState = { status: 'ready', data: [authored, discovery, writeSkill, projectBuiltin] };
 });
 
 afterEach(() => {
   cleanup();
   toastError.mockClear();
   markSpy.mockClear();
+  openPreviewSpy.mockClear();
   window.location.hash = '';
   // biome-ignore lint/suspicious/noExplicitAny: test-only global teardown.
   (window as any).okDesktop = undefined;
 });
 
 describe('BuiltInSkillsSection', () => {
-  test('renders one row per shipped bundle, installed state driving the control', async () => {
-    installBridge();
+  test('renders one row per user-global built-in, and nothing else from the list', async () => {
     renderSection();
 
     await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-uninstall-discovery')).toBeTruthy();
+      expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
     });
-    // No checkbox: a single click never writes.
-    expect(screen.queryByTestId('skills-studio-skill-checkbox-discovery')).toBeNull();
-    expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
+    expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
+    // An authored global skill belongs to the manager below; the PROJECT
+    // built-in belongs to the project block. Both filter the same list, so a
+    // slip here puts one skill on the page twice.
+    expect(screen.queryByText('grill-me')).toBeNull();
+    expect(screen.queryByText('open-knowledge')).toBeNull();
+  });
+
+  test('the rows render without the desktop bridge', async () => {
+    // They used to come from the bridge, so the whole block vanished in the
+    // browser — on a page whose other half rendered there fine. Nothing is
+    // installed here, which is exactly when the bridge would have been asked.
+    renderSection();
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
+    });
+    const rows = screen.getAllByTestId('skill-consent-row-preview');
+    expect(rows.length).toBe(2);
+    // Zero hosts is the state the row exists FOR (install it back) — a re-added
+    // disabled guard would regress that silently.
+    for (const row of rows) {
+      expect(row.hasAttribute('disabled')).toBe(false);
+      expect(row.getAttribute('aria-disabled')).toBeNull();
+    }
   });
 
   test('the row prints the human blurb, never the agent-facing frontmatter description', async () => {
-    // The bug this section was moved to fix: `description` is trigger text for a
-    // model — discovery's ends in a `Do NOT load` clause — so a settings row that
-    // renders it hands the user a prompt written for something else.
-    installBridge();
+    // `description` is trigger text for a model — discovery's ends in a
+    // `Do NOT load` clause — so a settings row that renders it hands the user a
+    // prompt written for something else.
     renderSection();
 
     await waitFor(() => {
@@ -159,14 +253,12 @@ describe('BuiltInSkillsSection', () => {
   });
 
   test('a bundle the copy module does not know falls back to its description', async () => {
-    // A newer main process shipping a bundle this build has no localized line
-    // for must still render a row that says something.
-    installBridge({
-      status: {
-        ...baseStatus,
-        skills: [{ ...baseStatus.skills[1], id: 'future-bundle', name: 'open-knowledge-future' }],
-      },
-    });
+    // A newer server shipping a bundle this build has no localized line for must
+    // still render a row that says something.
+    skillsState = {
+      status: 'ready',
+      data: [{ ...writeSkill, name: 'open-knowledge-future' }],
+    };
     renderSection();
 
     await waitFor(() => {
@@ -174,41 +266,19 @@ describe('BuiltInSkillsSection', () => {
     });
   });
 
-  test('a bundle setup already asked about is never re-offered, even uninstalled', async () => {
-    // Uninstalled + onboarding means the user DECLINED it at first launch.
-    // Offering it back in a modal is the app not taking no for an answer.
-    introSeen = false;
-    installBridge({
-      status: {
-        ...baseStatus,
-        skills: baseStatus.skills.map((s) =>
-          s.id === 'discovery' ? { ...s, installed: false } : { ...s, installed: true },
-        ),
-      },
-    });
+  test('the row is the control — there is no separate button to write from', async () => {
+    // Settings owning a second write of the same state is what let one surface
+    // say "installed" while the skill's own page said which agents.
     renderSection();
-
-    const dialog = await screen.findByTestId('skills-studio-intro');
-    // Explainer only — discovery is declined, write-skill is installed.
-    expect(screen.queryByTestId('skills-studio-intro-install')).toBeNull();
-    expect(within(dialog).queryByText('open-knowledge-discovery')).toBeNull();
-    expect(screen.getByTestId('skills-studio-intro-ack')).toBeTruthy();
-  });
-
-  test('without the desktop bridge the section renders nothing, leaving the page usable', async () => {
-    // Skills Studio also renders in the browser, where the folders block below
-    // still works — a whole-page "desktop only" fallback would be a lie there.
-    const { container } = renderSection();
     await waitFor(() => {
-      expect(container.querySelector('[data-testid="settings-builtin-skills"]')).toBeNull();
+      expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
     });
+    expect(screen.queryByTestId('skills-studio-skill-manage-discovery')).toBeNull();
+    expect(screen.queryByTestId('skills-studio-skill-install-write-skill')).toBeNull();
+    expect(screen.queryByTestId('skills-studio-skill-checkbox-discovery')).toBeNull();
   });
 
   test('the block states that installing reaches every AI tool on the machine', async () => {
-    // The old copy said "independent of the MCP connections you chose above",
-    // which only parsed while this block sat under the MCP list. On Skills
-    // Studio there is nothing above it, so the fact stands on its own.
-    installBridge();
     renderSection();
     await waitFor(() => {
       expect(screen.getByTestId('settings-builtin-skills')).toBeTruthy();
@@ -218,11 +288,10 @@ describe('BuiltInSkillsSection', () => {
     );
   });
 
-  test('clicking the row body opens the built-in preview, which dismisses the settings surface', async () => {
-    installBridge();
+  test('clicking the row body opens the built-in preview addressed by its bundle dir', async () => {
     renderSection();
     await waitFor(() => {
-      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBeGreaterThan(0);
+      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
     });
     // Settings is a hash-driven dialog (#settings); navigating to a preview hash
     // is exactly what dismisses it.
@@ -230,156 +299,77 @@ describe('BuiltInSkillsSection', () => {
 
     await userEvent.click(screen.getAllByTestId('skill-consent-row-preview')[0]);
 
+    expect(openPreviewSpy).toHaveBeenCalledWith(
+      // The bundle DIR, not the SKILL.md the list reports — a preview addressed
+      // at the file resolves nothing.
+      expect.objectContaining({
+        flavor: 'builtin',
+        name: 'open-knowledge-discovery',
+        source: '/home/.claude/skills/open-knowledge-discovery',
+        level: 'global',
+      }),
+    );
     expect(window.location.hash.startsWith('#/__skill-preview__/')).toBe(true);
     expect(window.location.hash).not.toBe('#settings');
   });
 
-  test('Install opens a confirm modal naming the skill and its destinations; nothing writes until confirmed', async () => {
-    const withCustomRoot: OkIntegrationsStatus = {
-      ...baseStatus,
-      skills: baseStatus.skills.map((s) =>
-        s.id === 'write-skill'
-          ? {
-              ...s,
-              paths: [
-                '~/.agents/skills/open-knowledge-write-skill',
-                '~/my-agent/skills/open-knowledge-write-skill',
-              ],
-              resolvedHosts: [
-                { editor: 'claude', skillsRoot: '.claude/skills', custom: false },
-                {
-                  editor: '~/my-agent/skills',
-                  skillsRoot: '~/my-agent/skills',
-                  custom: true,
-                },
-              ],
-            }
-          : s,
-      ),
-    };
-    const { setCalls } = installBridge({ status: withCustomRoot });
+  test('an UNINSTALLED built-in row still opens the preview, addressed at the shipped bundle', async () => {
+    // The row's whole reason to survive uninstall is being the way back in —
+    // with no host projection on disk, the preview must address the bundle OK
+    // ships (the list's absolutePath), not a home copy that no longer exists.
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
+      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
     });
-    // No checkbox in the skills group any more — the control is an explicit button.
-    expect(screen.queryByTestId('skills-studio-skill-checkbox-write-skill')).toBeNull();
 
-    await userEvent.click(screen.getByTestId('skills-studio-skill-install-write-skill'));
+    await userEvent.click(screen.getAllByTestId('skill-consent-row-preview')[1]);
 
-    const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText('Install open-knowledge-write-skill')).toBeTruthy();
-    // Every destination is listed, including the declared custom root, verbatim.
-    expect(within(dialog).getByText('~/.agents/skills/open-knowledge-write-skill')).toBeTruthy();
-    expect(within(dialog).getByText('~/my-agent/skills/open-knowledge-write-skill')).toBeTruthy();
-    // Nothing is written before the user confirms.
-    expect(setCalls).toEqual([]);
-
-    await userEvent.click(within(dialog).getByTestId('skill-confirm-primary'));
-    await waitFor(() => {
-      expect(setCalls).toEqual([
-        { component: { kind: 'skill', id: 'write-skill' }, enabled: true },
-      ]);
-    });
+    expect(openPreviewSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        flavor: 'builtin',
+        name: 'open-knowledge-write-skill',
+        source: '/bundles/open-knowledge-write-skill',
+        level: 'global',
+      }),
+    );
+    expect(window.location.hash.startsWith('#/__skill-preview__/')).toBe(true);
   });
 
-  test('a skill with zero resolved hosts disables Install and states the reason on the row', async () => {
-    const noHosts: OkIntegrationsStatus = {
-      ...baseStatus,
-      skills: baseStatus.skills.map((s) =>
-        s.id === 'write-skill' ? { ...s, resolvedHosts: [] } : s,
-      ),
-    };
-    installBridge({ status: noHosts });
+  test('a skill installed nowhere still states the reason on the row', async () => {
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
+      expect(screen.getByTestId('skill-consent-row-no-hosts')).toBeTruthy();
     });
-
-    expect(
-      screen.getByTestId('skills-studio-skill-install-write-skill').hasAttribute('disabled'),
-    ).toBe(true);
-    // The row states what would make it clickable (exactly the zero-host skill).
     expect(screen.getByTestId('skill-consent-row-no-hosts').textContent).toContain(
       'No AI tools detected',
     );
   });
 
-  test('an install that fails for every host stays uninstalled and surfaces the failure', async () => {
-    installBridge({
-      setResult: () => ({
-        ok: false as const,
-        error: "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
-        status: baseStatus,
-      }),
-    });
+  test('a failed list keeps the heading and says what could not be read', async () => {
+    skillsState = { status: 'error', message: 'boom' };
     renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
+      expect(screen.getByTestId('builtin-skills-unavailable')).toBeTruthy();
     });
-
-    await userEvent.click(screen.getByTestId('skills-studio-skill-install-write-skill'));
-    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
-
-    await waitFor(() => {
-      expect(toastError).toHaveBeenCalledWith(
-        "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
-      );
-    });
-    // No silent revert: the control still reads Install (uninstalled).
-    expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
-    expect(screen.queryByTestId('skills-studio-skill-uninstall-write-skill')).toBeNull();
-  });
-
-  test('a confirmed install marks an event carrying the originating surface and host count', async () => {
-    const { setCalls } = installBridge();
-    renderSection();
-    await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
-    });
-
-    await userEvent.click(screen.getByTestId('skills-studio-skill-install-write-skill'));
-    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
-    await waitFor(() => {
-      expect(setCalls.length).toBe(1);
-    });
-
-    expect(markSpy).toHaveBeenCalledWith(
-      'ok/skill/install',
-      expect.objectContaining({ surface: 'settings', mode: 'install', hostCount: 1 }),
+    expect(screen.getByTestId('settings-builtin-skills').textContent).toContain(
+      'Skills from OpenKnowledge',
     );
   });
 
-  test('a partial install is treated as installed with the reach the fresh status reports', async () => {
-    // Fresh snapshot after a partial install: write-skill now installed, its
-    // reach reflecting only the host that actually took the copy.
-    const landed: OkIntegrationsStatus = {
-      ...baseStatus,
-      skills: baseStatus.skills.map((s) =>
-        s.id === 'write-skill'
-          ? {
-              ...s,
-              installed: true,
-              resolvedHosts: [{ editor: 'claude', skillsRoot: '.claude/skills', custom: false }],
-            }
-          : s,
-      ),
-    };
-    installBridge({ setResult: () => ({ ok: true as const, status: landed }) });
+  test('the loading state announces itself rather than showing a silent skeleton', async () => {
+    skillsState = { status: 'loading' };
     renderSection();
-    await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
-    });
+    const loading = await screen.findByTestId('builtin-skills-loading');
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    expect(loading.textContent).toContain('Loading skills');
+  });
 
-    await userEvent.click(screen.getByTestId('skills-studio-skill-install-write-skill'));
-    await userEvent.click(await screen.findByTestId('skill-confirm-primary'));
-
-    // The fresh status flips the control to Uninstall — treated as installed —
-    // and no failure is surfaced.
+  test('a list with no built-ins renders nothing, leaving the folders block below', async () => {
+    skillsState = { status: 'ready', data: [authored] };
+    const { container } = renderSection();
     await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-uninstall-write-skill')).toBeTruthy();
+      expect(container.querySelector('[data-testid="settings-builtin-skills"]')).toBeNull();
     });
-    expect(toastError).not.toHaveBeenCalled();
   });
 
   describe('first-visit intro', () => {
@@ -410,6 +400,63 @@ describe('BuiltInSkillsSection', () => {
       });
     });
 
+    test('a bundle setup already asked about is never re-offered, even uninstalled', async () => {
+      // Uninstalled + onboarding means the user DECLINED it at first launch.
+      // Offering it back in a modal is the app not taking no for an answer.
+      introSeen = false;
+      installBridge({
+        status: {
+          ...baseStatus,
+          skills: baseStatus.skills.map((s) =>
+            s.id === 'discovery' ? { ...s, installed: false } : { ...s, installed: true },
+          ),
+        },
+      });
+      renderSection();
+
+      const dialog = await screen.findByTestId('skills-studio-intro');
+      // Explainer only — discovery is declined, write-skill is installed.
+      expect(screen.queryByTestId('skills-studio-intro-install')).toBeNull();
+      expect(within(dialog).queryByText('open-knowledge-discovery')).toBeNull();
+      expect(screen.getByTestId('skills-studio-intro-ack')).toBeTruthy();
+    });
+
+    test('an install that fails for every host stays uninstalled and surfaces the failure', async () => {
+      introSeen = false;
+      installBridge({
+        setResult: () => ({
+          ok: false as const,
+          error: "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
+          status: baseStatus,
+        }),
+      });
+      renderSection();
+      await userEvent.click(await screen.findByTestId('skills-studio-intro-install'));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Couldn't write ~/.claude/skills/open-knowledge-write-skill",
+        );
+      });
+      // No silent revert: the rows still report what the endpoint says.
+      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
+    });
+
+    test('a confirmed install marks an event carrying the originating surface and host count', async () => {
+      introSeen = false;
+      const { setCalls } = installBridge();
+      renderSection();
+      await userEvent.click(await screen.findByTestId('skills-studio-intro-install'));
+      await waitFor(() => {
+        expect(setCalls.length).toBe(1);
+      });
+
+      expect(markSpy).toHaveBeenCalledWith(
+        'ok/skill/install',
+        expect.objectContaining({ surface: 'skills-studio-intro', mode: 'install', hostCount: 1 }),
+      );
+    });
+
     test('shows once — a dismissal is remembered across mounts', async () => {
       introSeen = false;
       installBridge();
@@ -427,14 +474,14 @@ describe('BuiltInSkillsSection', () => {
 
     test('declining leaves the offer standing on the page', async () => {
       // "Not now" must cost the user nothing — no decision is recorded, and the
-      // row underneath still installs.
+      // row underneath still reaches the skill.
       introSeen = false;
       const { setCalls } = installBridge();
       renderSection();
       await userEvent.click(await screen.findByTestId('skills-studio-intro-dismiss'));
 
       expect(setCalls).toEqual([]);
-      expect(screen.getByTestId('skills-studio-skill-install-write-skill')).toBeTruthy();
+      expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
     });
 
     test('with everything installed it explains and gets out of the way', async () => {
@@ -453,25 +500,30 @@ describe('BuiltInSkillsSection', () => {
       expect(screen.queryByTestId('skills-studio-intro-install')).toBeNull();
       expect(screen.getByTestId('skills-studio-intro-ack')).toBeTruthy();
     });
-  });
 
-  test('uninstalling an installed skill confirms, then writes enabled: false', async () => {
-    // This file covered Install in detail; the opposite direction of the shared
-    // applyToggle was only covered in the sibling section.
-    const { setCalls } = installBridge();
-    renderSection();
-    await waitFor(() => {
-      expect(screen.getByTestId('skills-studio-skill-uninstall-discovery')).toBeTruthy();
+    test('a bridgeless build shows rows and simply no intro', async () => {
+      // The intro is the one bridge-dependent thing left here. Without a bridge
+      // it must fail quiet, not take the rows down with it.
+      introSeen = false;
+      renderSection();
+      await waitFor(() => {
+        expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
+      });
+      expect(screen.queryByTestId('skills-studio-intro')).toBeNull();
     });
 
-    await userEvent.click(screen.getByTestId('skills-studio-skill-uninstall-discovery'));
-    const dialog = await screen.findByRole('alertdialog');
-    expect(within(dialog).getByText('Uninstall open-knowledge-discovery')).toBeTruthy();
-    expect(setCalls).toEqual([]);
-
-    await userEvent.click(within(dialog).getByTestId('skill-confirm-primary'));
-    await waitFor(() => {
-      expect(setCalls).toEqual([{ component: { kind: 'skill', id: 'discovery' }, enabled: false }]);
+    test('a bridge that fails to answer costs the offer, not the section', async () => {
+      introSeen = false;
+      Object.defineProperty(window, 'okDesktop', {
+        value: { integrations: { status: async () => Promise.reject(new Error('no main')) } },
+        configurable: true,
+        writable: true,
+      });
+      renderSection();
+      await waitFor(() => {
+        expect(screen.getAllByTestId('skill-consent-row-preview').length).toBe(2);
+      });
+      expect(screen.queryByTestId('skills-studio-intro')).toBeNull();
     });
   });
 });

@@ -36,16 +36,16 @@ export interface PackSkillSource {
   readonly excludePaths: readonly string[];
 }
 
-/** Immediate subdirectories of `packDir` that hold their own `SKILL.md`. */
-function memberDirNames(packDir: string): string[] {
+/** Immediate subdirectories of `root` that hold their own `SKILL.md`. */
+function skillDirsUnder(root: string): string[] {
   let entries: Dirent[];
   try {
-    entries = readdirSync(packDir, { withFileTypes: true });
+    entries = readdirSync(root, { withFileTypes: true });
   } catch {
     return [];
   }
   return entries
-    .filter((e) => e.isDirectory() && existsSync(join(packDir, e.name, 'SKILL.md')))
+    .filter((e) => e.isDirectory() && existsSync(join(root, e.name, 'SKILL.md')))
     .map((e) => e.name)
     .sort();
 }
@@ -63,16 +63,22 @@ function frontmatterName(skillDir: string): string {
 
 /** Pure enumeration over an already-resolved pack directory. */
 export function enumeratePackSkills(packDir: string): PackSkillSource[] {
-  const members = memberDirNames(packDir);
+  const members = skillDirsUnder(packDir);
+  // Packs are also Agent Plugins (agent-plugins.org): a `plugin.json` manifest
+  // plus, in the spec's layout, member skills under `skills/`. Both member
+  // locations are enumerated so the legacy shape and the conformant shape work
+  // during and after the layout migration; the manifest and the `skills/` dir
+  // must never ship inside the root skill's copy.
+  const specMembers = skillDirsUnder(join(packDir, 'skills')).map((name) => join('skills', name));
   const sources: PackSkillSource[] = [];
   if (existsSync(join(packDir, 'SKILL.md'))) {
     sources.push({
       name: frontmatterName(packDir),
       sourceDir: packDir,
-      excludePaths: [...members, 'README.md'],
+      excludePaths: [...members, 'README.md', 'plugin.json', 'skills'],
     });
   }
-  for (const member of members) {
+  for (const member of [...members, ...specMembers]) {
     sources.push({
       name: frontmatterName(join(packDir, member)),
       sourceDir: join(packDir, member),

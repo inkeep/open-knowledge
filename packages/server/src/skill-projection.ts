@@ -46,6 +46,7 @@ import {
   tracedRmSync,
   tracedSymlinkSync,
 } from './fs-traced.ts';
+import { isInternalBundleSkillName } from './skill-bundles.ts';
 import { inspectSkillPathEntry } from './skill-path-entry.ts';
 
 /**
@@ -369,6 +370,29 @@ export function projectSkill(
 /** What occupies a host dest for an in-place fan-out decision. `canonical-dir`
  *  is the canonical bundle ITSELF (never touched); `link-to-canonical` is a live
  *  symlink resolving to it (kept on install, removable on uninstall). */
+/**
+ * Is a DIVERGED real dir at `dest` a stale projection this skill may replace?
+ *
+ * Only for OK's own bundles, and it is the same rule the in-place registry
+ * already applies when it collapses their rows: OK ships those bytes and nothing
+ * may edit them here, so a same-named dir whose content drifted is an older
+ * projection of THIS skill, not a fork of somebody else's. For every other skill
+ * a diverged dir is user content and stays untouchable.
+ *
+ * Narrower than the `different` verdict it qualifies: that verdict also covers a
+ * stray non-directory entry, which is nobody's projection and is never written
+ * over. Requiring a real dir with a SKILL.md keeps this to bundles.
+ */
+function isStaleBundleProjection(dest: string, name: string): boolean {
+  if (!isInternalBundleSkillName(name)) return false;
+  try {
+    if (lstatSync(dest).isSymbolicLink()) return false;
+    return existsSync(join(dest, 'SKILL.md'));
+  } catch {
+    return false;
+  }
+}
+
 export function classifyInPlaceDest(
   dest: string,
   canonicalAbs: string,
@@ -509,6 +533,11 @@ export function projectInPlaceSkill(opts: {
         hosts.push(editor);
         break;
       case 'different':
+        if (isStaleBundleProjection(dest, name)) {
+          materialize(dest, hostRoot);
+          hosts.push(editor);
+          break;
+        }
         conflicted.push(editor);
         break;
       case 'link':
@@ -754,8 +783,18 @@ export function removeInPlaceSkillCopies(opts: {
         tracedRmSync(dest, { recursive: true, force: true });
         removed.push(editor);
         break;
+      case 'different':
+        // Same rule as the install arm: for OK's own bundles a diverged dir is
+        // an older projection of this skill. Leaving it behind is what made an
+        // uninstall look like it worked and then hand the next install an
+        // unresolvable conflict.
+        if (isStaleBundleProjection(dest, name)) {
+          tracedRmSync(dest, { recursive: true, force: true });
+          removed.push(editor);
+        }
+        break;
       default:
-        break; // absent, the canonical itself, or a differing dir — never removed
+        break; // absent, the canonical itself, or somebody else's dir
     }
   }
   // Removing an occurrence (real copy OR a link other links chained through)

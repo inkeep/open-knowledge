@@ -1136,6 +1136,17 @@ export interface ContentFilter {
    * Calls `onAfterRebuild` (if supplied at construction) only on success.
    */
   rebuildIgnorePatterns(): Promise<RebuildResult>;
+
+  /**
+   * Refresh ONLY the in-place skill allow-list (a live `rescanInPlaceSkillDirs`
+   * re-run + swap). The full `rebuildIgnorePatterns` re-walks every nested
+   * ignore file, which costs ~0.5s per 50k files — but a skill rename / scope
+   * move changes no ignore FILE, only which bundle dirs the registry admits,
+   * and the admission predicates read the allow-list live. Fail-soft: a
+   * provider throw keeps the previous set (same semantics as the rebuild's own
+   * refresh step). No-op when no provider was supplied.
+   */
+  refreshInPlaceSkillDirs(): void;
 }
 
 /**
@@ -1359,6 +1370,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     if (contentOutsideProject) return false;
     return isIgnored(relativePath);
   }
+
+  // Single-flight + one trailing run for rebuildIgnorePatterns (see the
+  // method). Factory scope: one flight per filter instance.
+  let rebuildInFlight: Promise<RebuildResult> | null = null;
+  let rebuildTrailing: Promise<RebuildResult> | null = null;
 
   return {
     isExcluded(relativePath: string, opts?: ContentFilterReadOpts): boolean {
@@ -1652,110 +1668,146 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       configuredAttachmentFolder = attachmentFolderShape(value);
     },
 
-    async rebuildIgnorePatterns(): Promise<RebuildResult> {
-      // Refresh the in-place skill allow-list first (live re-scan): the new
-      // set governs the dirCount refresh + every predicate after the swap. A
-      // provider throw keeps the previous set (fail-soft, matching the
-      // per-file ignore-read semantics).
-      if (opts.rescanInPlaceSkillDirs) {
-        try {
-          inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
-        } catch (err) {
-          log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
-        }
+    refreshInPlaceSkillDirs(): void {
+      if (!opts.rescanInPlaceSkillDirs) return;
+      try {
+        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+      } catch (err) {
+        log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
       }
+    },
 
-      // Snapshot for rollback. dirCount is too large to snapshot — we re-walk
-      // it from the rolled-back ig instance if rebuild fails partway.
-      const prevIg = ig;
-      const prevOkignoreIg = okignoreIg;
-      const prevRootPatterns = rootIgnorePatterns;
-      const prevWatcherGlobs = watcherIgnoreGlobs;
-      const prevPatternCount = lastPatternCount;
-      const prevNestedFileCount = lastNestedFileCount;
-      const prevBytes = lastBytes;
+    async rebuildIgnorePatterns(): Promise<RebuildResult> {
+      // Single-flight with one trailing run. Every skill lifecycle op
+      // calls this, a bulk move once PER SKILL, and each run is a full
+      // content walk - overlapping walks compounded into a minutes-long
+      // stat storm on big repos that pinned the server and froze the app.
+      // Callers arriving mid-flight share ONE follow-up run that starts
+      // fresh after the current one (their disk state postdates its
+      // snapshot); everyone else piggybacks on what is already running.
+      const startRun = (runOnce: () => Promise<RebuildResult>): Promise<RebuildResult> => {
+        rebuildInFlight = runOnce().finally(() => {
+          rebuildInFlight = null;
+        });
+        return rebuildInFlight;
+      };
+      const runRebuild = async (): Promise<RebuildResult> => {
+        // Refresh the in-place skill allow-list first (live re-scan): the new
+        // set governs the dirCount refresh + every predicate after the swap. A
+        // provider throw keeps the previous set (fail-soft, matching the
+        // per-file ignore-read semantics).
+        if (opts.rescanInPlaceSkillDirs) {
+          try {
+            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+          } catch (err) {
+            log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+          }
+        }
 
-      const startedAt = Date.now();
+        // Snapshot for rollback. dirCount is too large to snapshot — we re-walk
+        // it from the rolled-back ig instance if rebuild fails partway.
+        const prevIg = ig;
+        const prevOkignoreIg = okignoreIg;
+        const prevRootPatterns = rootIgnorePatterns;
+        const prevWatcherGlobs = watcherIgnoreGlobs;
+        const prevPatternCount = lastPatternCount;
+        const prevNestedFileCount = lastNestedFileCount;
+        const prevBytes = lastBytes;
 
-      return withSpan('config.ignore.rebuild', { attributes: {} }, async (span) => {
-        try {
-          const counts = buildPatternState();
-          // Refresh sibling-asset counts against the new ignore rules.
-          dirCount.clear();
-          refreshDirCount();
+        const startedAt = Date.now();
 
-          const durationMs = Date.now() - startedAt;
-          span.setAttributes({
-            'ok.ignore.pattern_count': counts.patternCount,
-            'ok.ignore.nested_file_count': counts.nestedFileCount,
-            'ok.ignore.bytes': counts.bytes,
-          });
-          log.info(
-            {
+        return withSpan('config.ignore.rebuild', { attributes: {} }, async (span) => {
+          try {
+            const counts = buildPatternState();
+            // Refresh sibling-asset counts against the new ignore rules.
+            dirCount.clear();
+            refreshDirCount();
+
+            const durationMs = Date.now() - startedAt;
+            span.setAttributes({
+              'ok.ignore.pattern_count': counts.patternCount,
+              'ok.ignore.nested_file_count': counts.nestedFileCount,
+              'ok.ignore.bytes': counts.bytes,
+            });
+            log.info(
+              {
+                patternCount: counts.patternCount,
+                nestedFileCount: counts.nestedFileCount,
+                bytes: counts.bytes,
+                durationMs,
+              },
+              'content-filter rebuild succeeded',
+            );
+
+            if (onAfterRebuild) {
+              try {
+                onAfterRebuild();
+              } catch (err) {
+                log.warn(
+                  { err: err instanceof Error ? err : new Error(String(err)) },
+                  'content-filter onAfterRebuild callback threw — derived views may be stale',
+                );
+              }
+            }
+
+            return {
+              ok: true as const,
               patternCount: counts.patternCount,
               nestedFileCount: counts.nestedFileCount,
               bytes: counts.bytes,
               durationMs,
-            },
-            'content-filter rebuild succeeded',
-          );
-
-          if (onAfterRebuild) {
+            };
+          } catch (err) {
+            // Roll back to previous state. The mutable bindings inside the
+            // closure are restored so subsequent isExcluded / isDirExcluded
+            // calls behave as if the rebuild never happened.
+            ig = prevIg;
+            okignoreIg = prevOkignoreIg;
+            rootIgnorePatterns = prevRootPatterns;
+            watcherIgnoreGlobs = prevWatcherGlobs;
+            lastPatternCount = prevPatternCount;
+            lastNestedFileCount = prevNestedFileCount;
+            lastBytes = prevBytes;
+            // Re-derive dirCount from the rolled-back ig. If the re-walk
+            // throws (e.g. contentDir went away between buildPatternState
+            // failure and rollback), warn and continue — leaving dirCount
+            // empty would cause every asset to read excluded via the
+            // sibling-asset rule (children-count reads 0). Stale counts
+            // until the next rebuild are strictly better than silently
+            // hiding every image.
+            dirCount.clear();
             try {
-              onAfterRebuild();
-            } catch (err) {
+              refreshDirCount();
+            } catch (rollbackErr) {
               log.warn(
-                { err: err instanceof Error ? err : new Error(String(err)) },
-                'content-filter onAfterRebuild callback threw — derived views may be stale',
+                {
+                  err: rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr)),
+                },
+                'content-filter rollback dirCount re-walk failed — sibling-asset counts may be stale until next rebuild',
               );
             }
-          }
 
-          return {
-            ok: true as const,
-            patternCount: counts.patternCount,
-            nestedFileCount: counts.nestedFileCount,
-            bytes: counts.bytes,
-            durationMs,
-          };
-        } catch (err) {
-          // Roll back to previous state. The mutable bindings inside the
-          // closure are restored so subsequent isExcluded / isDirExcluded
-          // calls behave as if the rebuild never happened.
-          ig = prevIg;
-          okignoreIg = prevOkignoreIg;
-          rootIgnorePatterns = prevRootPatterns;
-          watcherIgnoreGlobs = prevWatcherGlobs;
-          lastPatternCount = prevPatternCount;
-          lastNestedFileCount = prevNestedFileCount;
-          lastBytes = prevBytes;
-          // Re-derive dirCount from the rolled-back ig. If the re-walk
-          // throws (e.g. contentDir went away between buildPatternState
-          // failure and rollback), warn and continue — leaving dirCount
-          // empty would cause every asset to read excluded via the
-          // sibling-asset rule (children-count reads 0). Stale counts
-          // until the next rebuild are strictly better than silently
-          // hiding every image.
-          dirCount.clear();
-          try {
-            refreshDirCount();
-          } catch (rollbackErr) {
+            const message = err instanceof Error ? err.message : String(err);
             log.warn(
-              {
-                err: rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr)),
-              },
-              'content-filter rollback dirCount re-walk failed — sibling-asset counts may be stale until next rebuild',
+              { err: err instanceof Error ? err : new Error(message) },
+              'content-filter rebuild failed — rolled back to previous state',
             );
+            return { ok: false as const, error: { message } };
           }
-
-          const message = err instanceof Error ? err.message : String(err);
-          log.warn(
-            { err: err instanceof Error ? err : new Error(message) },
-            'content-filter rebuild failed — rolled back to previous state',
-          );
-          return { ok: false as const, error: { message } };
+        });
+      };
+      if (rebuildInFlight !== null) {
+        if (rebuildTrailing === null) {
+          rebuildTrailing = rebuildInFlight
+            .catch(() => null)
+            .then(() => {
+              rebuildTrailing = null;
+              return startRun(runRebuild);
+            });
         }
-      });
+        return rebuildTrailing;
+      }
+      return startRun(runRebuild);
     },
   };
 }
@@ -2133,6 +2185,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   // Initial build.
   await buildAndSwapPatternState();
 
+  // Single-flight + one trailing run for rebuildIgnorePatterns (see the
+  // method). Factory scope: one flight per filter instance.
+  let rebuildInFlight: Promise<RebuildResult> | null = null;
+  let rebuildTrailing: Promise<RebuildResult> | null = null;
+
   return {
     isExcluded(relativePath: string, opts?: ContentFilterReadOpts): boolean {
       if (isReservedDocName(relativePath)) return true;
@@ -2324,65 +2381,101 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       configuredAttachmentFolder = attachmentFolderShape(value);
     },
 
-    async rebuildIgnorePatterns(): Promise<RebuildResult> {
-      // Refresh the in-place skill allow-list first (live re-scan) — mirrors
-      // the sync factory; a provider throw keeps the previous set.
-      if (opts.rescanInPlaceSkillDirs) {
-        try {
-          inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
-        } catch (err) {
-          log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
-        }
+    refreshInPlaceSkillDirs(): void {
+      if (!opts.rescanInPlaceSkillDirs) return;
+      try {
+        inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+      } catch (err) {
+        log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
       }
-      const prevIg = ig;
-      const prevOkignoreIg = okignoreIg;
-      const prevWatcherGlobs = watcherIgnoreGlobs;
-      const prevDirCount = new Map(dirCount);
-      const startedAt = Date.now();
+    },
 
-      return withSpan('config.ignore.rebuild', { attributes: {} }, async (span) => {
-        try {
-          await buildAndSwapPatternState();
-          const durationMs = Date.now() - startedAt;
-          span.setAttributes({
-            'ok.ignore.pattern_count': lastPatternCount,
-            'ok.ignore.nested_file_count': 0,
-            'ok.ignore.bytes': 0,
-          });
-          log.info({ durationMs }, 'content-filter async rebuild succeeded');
-
-          if (onAfterRebuild) {
-            try {
-              onAfterRebuild();
-            } catch (err) {
-              log.warn(
-                { err: err instanceof Error ? err : new Error(String(err)) },
-                'content-filter onAfterRebuild callback threw — derived views may be stale',
-              );
-            }
+    async rebuildIgnorePatterns(): Promise<RebuildResult> {
+      // Single-flight with one trailing run. Every skill lifecycle op
+      // calls this, a bulk move once PER SKILL, and each run is a full
+      // content walk - overlapping walks compounded into a minutes-long
+      // stat storm on big repos that pinned the server and froze the app.
+      // Callers arriving mid-flight share ONE follow-up run that starts
+      // fresh after the current one (their disk state postdates its
+      // snapshot); everyone else piggybacks on what is already running.
+      const startRun = (runOnce: () => Promise<RebuildResult>): Promise<RebuildResult> => {
+        rebuildInFlight = runOnce().finally(() => {
+          rebuildInFlight = null;
+        });
+        return rebuildInFlight;
+      };
+      const runRebuild = async (): Promise<RebuildResult> => {
+        // Refresh the in-place skill allow-list first (live re-scan) — mirrors
+        // the sync factory; a provider throw keeps the previous set.
+        if (opts.rescanInPlaceSkillDirs) {
+          try {
+            inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
+          } catch (err) {
+            log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
           }
-
-          return {
-            ok: true as const,
-            patternCount: lastPatternCount,
-            nestedFileCount: 0,
-            bytes: 0,
-            durationMs,
-          };
-        } catch (err) {
-          ig = prevIg;
-          okignoreIg = prevOkignoreIg;
-          watcherIgnoreGlobs = prevWatcherGlobs;
-          dirCount.clear();
-          for (const [k, v] of prevDirCount) dirCount.set(k, v);
-          const message = err instanceof Error ? err.message : String(err);
-          log.warn(
-            { err: err instanceof Error ? err : new Error(message) },
-            'content-filter async rebuild failed — rolled back',
-          );
-          return { ok: false as const, error: { message } };
         }
-      });
+        const prevIg = ig;
+        const prevOkignoreIg = okignoreIg;
+        const prevWatcherGlobs = watcherIgnoreGlobs;
+        const prevDirCount = new Map(dirCount);
+        const startedAt = Date.now();
+
+        return withSpan('config.ignore.rebuild', { attributes: {} }, async (span) => {
+          try {
+            await buildAndSwapPatternState();
+            const durationMs = Date.now() - startedAt;
+            span.setAttributes({
+              'ok.ignore.pattern_count': lastPatternCount,
+              'ok.ignore.nested_file_count': 0,
+              'ok.ignore.bytes': 0,
+            });
+            log.info({ durationMs }, 'content-filter async rebuild succeeded');
+
+            if (onAfterRebuild) {
+              try {
+                onAfterRebuild();
+              } catch (err) {
+                log.warn(
+                  { err: err instanceof Error ? err : new Error(String(err)) },
+                  'content-filter onAfterRebuild callback threw — derived views may be stale',
+                );
+              }
+            }
+
+            return {
+              ok: true as const,
+              patternCount: lastPatternCount,
+              nestedFileCount: 0,
+              bytes: 0,
+              durationMs,
+            };
+          } catch (err) {
+            ig = prevIg;
+            okignoreIg = prevOkignoreIg;
+            watcherIgnoreGlobs = prevWatcherGlobs;
+            dirCount.clear();
+            for (const [k, v] of prevDirCount) dirCount.set(k, v);
+            const message = err instanceof Error ? err.message : String(err);
+            log.warn(
+              { err: err instanceof Error ? err : new Error(message) },
+              'content-filter async rebuild failed — rolled back',
+            );
+            return { ok: false as const, error: { message } };
+          }
+        });
+      };
+      if (rebuildInFlight !== null) {
+        if (rebuildTrailing === null) {
+          rebuildTrailing = rebuildInFlight
+            .catch(() => null)
+            .then(() => {
+              rebuildTrailing = null;
+              return startRun(runRebuild);
+            });
+        }
+        return rebuildTrailing;
+      }
+      return startRun(runRebuild);
     },
   };
 }

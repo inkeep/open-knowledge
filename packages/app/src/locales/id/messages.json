@@ -1,6 +1,7 @@
 {
   "messages": {
     "--T3kB": ["Memuat pratinjau"],
+    "-2qraj": [["count"], " keterampilan"],
     "-3Qbv7": [["count", "plural", { "other": ["cocok dengan ", "#", " berkas"] }]],
     "-3ois8": ["Ganti baris paksa"],
     "-5jISU": [["0", "plural", { "other": ["#", " templat"] }]],
@@ -121,6 +122,7 @@
     "0jD-Gn": ["Basis pengetahuan tim, wiki pribadi, dokumentasi proyek..."],
     "0kTAXe": ["Buka sumber: ", ["mirrorSrc"]],
     "0m4Snh": ["Keterampilan dialihkan"],
+    "0pLDSn": ["Bilah alat Keterampilan"],
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
     "0qyKG6": ["Tersinkron dari disk"],
     "0r6d6v": ["Perubahan disimpan otomatis."],
@@ -195,6 +197,7 @@
     "1vczDE": ["Buka ", ["displayName"], " Desktop"],
     "1vn0CI": ["Respons server tidak valid"],
     "1xui0Q": ["Gagal memuat berkas lokal"],
+    "2-3Mlu": ["Tidak dapat melepas sematan ", ["name"]],
     "2277Tu": ["Ciutkan graf"],
     "237hSL": ["Berakhir"],
     "253MN6": ["Komentar Anda tidak bisa dikirim — silakan coba lagi."],
@@ -224,6 +227,7 @@
     "2M0JF6": ["Pembaruan otomatis"],
     "2O5Z0r": ["Sembunyikan ", ["appName"]],
     "2QM24L": ["Semua tag"],
+    "2QoAQ-": ["Lihat ", ["publisher"], " di skills.sh"],
     "2RnFoM": ["Tidak dapat melanjutkan obrolan ini: ", ["0"]],
     "2Snes1": ["Ini mengirim alamat tautannya keluar dari komputer Anda"],
     "2VSPan": ["Terminal ditutup untuk memberi ruang bagi panel agen."],
@@ -328,7 +332,6 @@
     "3qDsdf": ["Instal keterampilan"],
     "3ri_4O": ["Menjaga basis pengetahuan Anda tetap selaras dengan Open Knowledge Format."],
     "3uSzeS": ["Gambar dari mana saja · berkas non-gambar harus berada di ruang kerja"],
-    "3v62tp": ["Populer di skills.sh"],
     "3wiBAs": ["Di mana ia sebaiknya berada?"],
     "3y6XTb": ["Pencarian semantik"],
     "3zDeFb": ["Merenung…"],
@@ -351,6 +354,7 @@
     "4E9jPa": ["Buat proyek pertama Anda"],
     "4EZrJN": ["Aturan"],
     "4ErgAf": ["OpenKnowledge memasang sebuah keterampilan"],
+    "4FltCB": ["Pilih tujuan salinan Anda. Memilih tujuan akan membuatnya."],
     "4Gz2wC": ["Gagal mengunggah berkas"],
     "4KmEoC": ["Tombol pintas"],
     "4NC2Ym": ["Pergi ke sel tabel berikutnya atau sebelumnya."],
@@ -387,7 +391,6 @@
     "4v2Yyz": [
       "Memilih semua baris pohon berkas yang terlihat ketika fokus ada di bilah sisi Berkas."
     ],
-    "4wo5UV": ["Pasang yang dipilih"],
     "4xtLTl": ["Folder “", ["basename"], "” disembunyikan"],
     "4zEZS5": [
       "Sinkronisasi otomatis aktif untuk worktree ini, diwarisi dari ",
@@ -406,6 +409,11 @@
     "58qIOK": ["Komentari pilihan ini"],
     "59CUI8": ["Bagikan keterampilan antar alat AI"],
     "5ALjdr": ["Menelusuri hasil pencarian penyunting visual dari bidang pencarian."],
+    "5A_TLD": [
+      "Plugin ini juga menyertakan ",
+      ["0"],
+      " — hanya disebutkan di sini, tidak pernah dipasang oleh OK."
+    ],
     "5Ajb15": ["Rumus <0>c = √(a² + b²)</0> dirender sebaris."],
     "5AzM72": ["Pengaturan ini berlaku per komputer dan tidak dibagikan dengan kolaborator."],
     "5BlXTD": [
@@ -508,9 +516,6 @@
     "6KXnz5": ["Anda dapat memulihkan berkas ini dari Tempat Sampah."],
     "6LJJ1v": ["File ", ["identity"], ". Buka referensi."],
     "6LbUG7": ["Repositorinya bersifat pribadi dan akun GitHub Anda tidak punya akses ke sana."],
-    "6Mbe-P": [
-      "Jelaskan apa yang harus dilakukannya, atau tambahkan sendiri. OpenKnowledge menyimpan keterampilan Anda di satu tempat, memberinya versi, dan memasangnya ke agen seperti Claude, Codex, dan Cursor."
-    ],
     "6MnZEC": ["Gagal memuat terminal"],
     "6Nea1q": ["Pakai ", ["0"], " untuk mode gelap yang aktif"],
     "6O626z": ["Tidak ada judul yang cocok dengan \"", ["trimmedAnchorQuery"], "\""],
@@ -535,7 +540,6 @@
     "6fGjTz": ["Tampilkan lebih sedikit"],
     "6f_UX4": ["Pasang di semua agen"],
     "6gRgw8": ["Coba lagi"],
-    "6h4-4a": ["Beralih antara Berkas dan Keterampilan"],
     "6h4zVU": ["Apa yang ingin Anda buat?"],
     "6hYjww": ["Buat token di ", ["host"]],
     "6hfDJr": ["Galat server: ", ["status"]],
@@ -576,8 +580,10 @@
     "7FamGZ": ["Ke baris"],
     "7Fkcej": ["+ Tambah ", ["addChildName"]],
     "7H4UHD": ["Dokumen bertag <0>#", ["tagName"], "</0>"],
+    "7HY6fA": ["Terpasang untuk semua proyek Anda"],
     "7IsvrP": ["Memeriksa pembaruan"],
     "7JtSLi": ["Gagal menghapus jalur"],
+    "7MSbAT": ["Tersedia di"],
     "7O7REc": [["0"], " tidak dapat dipulihkan. Coba lagi."],
     "7OhaRy": ["Pencarian di sumber"],
     "7Ongq0": ["Ringkas berkas AGENTS.md saya menjadi kurang dari 40 ribu karakter"],
@@ -592,9 +598,6 @@
     "7Y9yTo": [["owner"], "/", ["name"], " dibuat, tetapi push gagal."],
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
-    ],
-    "7ZkJdV": [
-      "Tidak ada agen yang dipilih — keterampilannya tersimpan tetapi tidak dipasang di mana pun."
     ],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
     "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
@@ -663,6 +666,12 @@
     "8RtNI0": ["Gagal memuat dokumen"],
     "8TvlHF": ["Crash dump"],
     "8Uv5e6": ["Agen"],
+    "8VLpRT": [
+      ["boldName"],
+      " adalah symlink — sumber yang dapat diedit ada di <0>",
+      ["0"],
+      "</0>. Edit berkasnya di sana; tampilan skill ini hanya-baca."
+    ],
     "8Vq20-": ["Ganti worktree"],
     "8W9CF6": ["Laporan ini sudah dikirim"],
     "8WTrGF": [["summary"], " di file ini. Buka panel Masalah untuk detailnya."],
@@ -671,6 +680,7 @@
     ],
     "8XQRON": ["Memuat repositori"],
     "8YymuQ": ["Belum ada agen yang disiapkan — membuka Atur agen."],
+    "8Z_GCT": [["source"], " · sumber impor"],
     "8_brI5": ["Nama wajib diisi"],
     "8cS0nH": ["Berbagi konfigurasi tidak tersedia: ", ["0"], "."],
     "8cpOa8": ["Tidak bisa memutus koneksi — silakan coba lagi."],
@@ -725,6 +735,7 @@
     "9Hr9WP": ["Tidak dapat menyimpan pengaturan jaringan. ", ["0"]],
     "9Ii3uK": ["panel baru di sebelah kiri ", ["0"]],
     "9J8xNg": [["importedLabel"], " diimpor"],
+    "9K4cE9": [["0"], " (terbuka di tab baru)"],
     "9KooKn": ["Jalankan audit proyek dari panel Masalah."],
     "9NJWgv": ["Tautan balik"],
     "9OIqw4": ["Anda tidak punya akses tulis ke repo ini."],
@@ -741,6 +752,7 @@
     ],
     "9Vh9Jf": ["Buka lagi jendela ini untuk masuk lewat peramban Anda"],
     "9Vnjc9": ["Enter"],
+    "9XwoPv": [["0", "plural", { "other": ["Pasang ", "#", " keterampilan"] }]],
     "9Y6cCI": ["Gagal memuat halaman"],
     "9_2oe6": [
       "Mengubah ",
@@ -775,6 +787,7 @@
     "9uI_rE": ["Batalkan"],
     "9uRLEH": ["\"", ["name"], "\" tidak bisa dibuka — ia belum ada di keterampilan proyek ini."],
     "9wQrUU": ["Refaktor"],
+    "9x-lMu": ["Di repositori ini — kolaborator mendapat salinan lewat git."],
     "9xCnv8": ["Sembunyikan Terminal"],
     "9zb2WA": ["Menghubungkan"],
     "A1taO8": ["Cari"],
@@ -824,6 +837,17 @@
     "AeHuzT": ["# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"],
     "AeLo3p": ["OpenKnowledge menyelesaikan konflik di ", ["subject"]],
     "AeXO77": ["Akun"],
+    "AgoIW4": [
+      ["source"],
+      ": ",
+      ["updated"],
+      " diperbarui, ",
+      ["upToDate"],
+      " sudah terbaru, ",
+      ["failed"],
+      " gagal — ",
+      ["detail"]
+    ],
     "AhoGwP": ["Siapkan integrasi OpenKnowledge"],
     "AiNMQ7": [
       "Proyek ini hanya ada di komputer ini. Hubungkan ke GitHub untuk mencadangkannya dan membagikannya dengan orang lain."
@@ -840,6 +864,7 @@
       "Endpoint-nya menjawab, tetapi bukan dengan respons embedding yang kompatibel dengan OpenAI. Periksa URL dasarnya."
     ],
     "AwrGuz": ["Dokumen ini kehilangan properti yang wajib"],
+    "AyKwqp": ["Di folder home Anda — semua proyek di mesin ini, hanya untuk Anda."],
     "AznQ2V": ["Sinkronisasi & berbagi"],
     "B11p-O": ["Sunting tautan markdown"],
     "B2DrPb": ["Simpan otomatis"],
@@ -880,7 +905,6 @@
     ],
     "BlLxpG": ["Cari keterampilan"],
     "BowKyI": ["Tampilkan detail"],
-    "BuMD5w": ["Dihapus dari"],
     "Bv5a9_": ["Statistik pilihan"],
     "BwKH4d": ["Aplikasi eksternal"],
     "Bx4EXG": ["Tindakan untuk ", ["label"]],
@@ -898,7 +922,6 @@
     "C-xgad": ["atau pakai paket awal"],
     "C0C43b": [["warningCount", "plural", { "other": ["#", " peringatan"] }]],
     "C0Ciaj": ["Diimpor sebagai \"", ["0"], "\" — nama \"", ["1"], "\" sudah dipakai."],
-    "C0cll5": ["Terpasang di ", ["0"], " — klik untuk menghapus"],
     "C0hoX6": ["Selalu disertakan"],
     "C3Zc44": ["Jelajahi keterampilan"],
     "C62P6b": ["Pilihan penyunting"],
@@ -966,6 +989,9 @@
     "D-NlUC": ["Sistem"],
     "D-Oh1s": ["Cara menyiapkan ", ["0"], " (terbuka di peramban)"],
     "D-_B7l": ["Terhubung — endpoint ini mengembalikan vektor berdimensi ", ["0"], "."],
+    "D0CegO": [
+      "Ada keterampilan kedua dengan nama ini — ganti namanya (atau hapus salah satu) untuk mengelolanya sepenuhnya."
+    ],
     "D12vtS": ["(terlepas)"],
     "D2emTw": ["Ada yang tidak beres saat mengirim masukan Anda. Silakan coba lagi."],
     "D4H2N6": ["Hapus ", ["tag"]],
@@ -973,7 +999,6 @@
     "D8JJwQ": ["Masukan tidak tersedia saat ini. Silakan coba lagi nanti."],
     "D8OV7J": ["Hanya kolaborator"],
     "DAVInK": ["Tambahkan ke kamus"],
-    "DBqxw2": ["selalu aktif"],
     "DCSSZt": ["Agennya sedang bekerja"],
     "DDTdLl": ["Pengaturan blok kode"],
     "DELNQk": ["Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."],
@@ -1009,6 +1034,7 @@
       "Tidak ada kecocokan. Sebagian berkas dikecualikan dari pencarian (berkas tersembunyi atau yang diabaikan)."
     ],
     "DcFr-y": ["OpenKnowledge menghapus sebuah dokumen"],
+    "DcH8-w": ["Pindahkan ", ["0"], " ke Proyek"],
     "DcLaew": ["Tema khusus"],
     "Dd6j2Q": ["Lihat komentar"],
     "DeDYLr": ["Tautan wiki tidak dikenali"],
@@ -1034,6 +1060,7 @@
       "Peramban pratinjau tidak bisa menyalin otomatis. Gunakan Cmd/Ctrl+C pada URL di atas, atau buka OK di aplikasi desktop."
     ],
     "Dut9Ht": ["Jelaskan keterampilan yang ingin Anda buat"],
+    "DvGkXq": ["Tidak dapat membuat ", ["effective"], ": ", ["0"]],
     "Dvr1Sg": ["Menyalin"],
     "Dvwa0U": ["Buat worktree dari cabang ini"],
     "Dz7fsq": ["Perbesar"],
@@ -1062,7 +1089,6 @@
     "E9bKSA": ["Membuat"],
     "E9gh86": ["Anda bisa melampirkan hingga ", ["MAX_ATTACHMENTS"], " gambar."],
     "EARn6h": ["Keterampilan tidak bisa dibagikan — ", ["detail"], "."],
-    "EBS8_X": ["Jelajahi skills.sh"],
     "EBVbtP": ["Item tidak dapat digandakan"],
     "EDl9kS": ["Berlangganan"],
     "EDm3wJ": ["Memuat perender perbedaan"],
@@ -1118,6 +1144,13 @@
     "EkH9pt": ["Perbarui"],
     "EkUnmS": ["apa saja"],
     "El7NbA": ["Judul 2"],
+    "El9CQ6": [
+      "Ini pratinjau ",
+      ["boldName"],
+      " — satu dari ",
+      ["0"],
+      " keterampilan di repo ini. Pasang ke agen Anda."
+    ],
     "ElatXA": [
       "Jendela konteks: ",
       ["percent"],
@@ -1149,6 +1182,9 @@
     "Evq3lu": ["Mode yatim"],
     "ExPiRQ": ["Pergi ke diagnostik lint CodeMirror berikutnya."],
     "ExUzM4": ["keterampilan \"", ["0"], "\""],
+    "F-1xhe": [
+      "Server proyek ini berada di branch yang berbeda dari jendela ini — konten tidak dapat dimuat."
+    ],
     "F-NRCj": ["Tambahkan properti"],
     "F-vBv0": ["Tanya"],
     "F0OA00": ["Dapatkan ", ["displayName"]],
@@ -1159,6 +1195,7 @@
     "F4vEsL": ["Status sinkronisasi: ", ["syncStateLabel"]],
     "F6pfE9": ["Aktif"],
     "F8GW_c": [["label"], " masalah"],
+    "FBIuPX": ["Bersihkan pilihan"],
     "FBknns": ["HTML"],
     "FCAcjR": [
       "Jalankan terminal sungguhan yang tertambat di dalam OpenKnowledge, dimulai di folder proyek ini."
@@ -1202,7 +1239,6 @@
     ],
     "FgQ7XZ": ["Laporan bug Anda tidak bisa dimuat."],
     "FgRAvd": ["Log & info sistem"],
-    "FgcPSX": ["Pengelolaan keterampilan tidak tersedia di build ini."],
     "Fhp4Gn": ["Lihat plugin"],
     "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
@@ -1374,6 +1410,7 @@
     "Hp4rRh": ["Endpoint khusus"],
     "HpK_8d": ["Muat ulang"],
     "HptUxX": ["Angka"],
+    "Hq3uDq": [["0"], " keterampilan lain dari penerbit ini"],
     "HqOPpj": [
       "Git membutuhkan alat bantu (seperti git-lfs) yang belum terpasang atau tidak ditemukan. Pasang dulu, lalu coba lagi."
     ],
@@ -1460,6 +1497,7 @@
       "Tidak bisa melakukan pull dari GitHub. Periksa koneksi dan status masuk Anda, lalu coba lagi."
     ],
     "JHf6qZ": ["anda@perusahaan.com"],
+    "JHv7ti": ["Belum terpasang di proyek ini."],
     "JJcBCm": [["0"], " total"],
     "JK-Ave": ["Sembunyikan gambar mini"],
     "JKXcOi": ["Sudah dalam proyek"],
@@ -1486,6 +1524,11 @@
     "Jnz9AY": [["0"], " berada di atas ", ["destination"], "."],
     "Jqqevv": ["Galat sistem"],
     "JrqL_z": ["Sisipkan baris di atas"],
+    "JsHvhz": [
+      "Melebihi panduan ",
+      ["budgetLabel"],
+      " token. Semua ini dimuat ke konteks agen saat keterampilan digunakan — jaga tetap ringkas, atau pindahkan detail ke berkas references/ yang dimuat hanya saat dibutuhkan."
+    ],
     "JsY1p5": ["Ditolak"],
     "JtD-Br": ["Tautan halaman"],
     "Jw6EC4": ["Gagal berpindah cabang — coba buka ", ["targetNoun"], " secara manual."],
@@ -1526,7 +1569,6 @@
     "KIIamL": [
       "OpenKnowledge akan membuat commit dan mengirimkannya ke remote Anda secara otomatis. Jika Anda tidak ingin commit otomatis di riwayat git Anda, sebaiknya jangan aktifkan sinkronisasi otomatis."
     ],
-    "KN5RGc": ["Bawaan (hanya-baca)"],
     "KOZud0": [
       "Bangun basis pengetahuan riset pesaing. Mulai dengan halaman ikhtisar, lalu tambahkan halaman yang saling tertaut untuk tiap pesaing, produk dan harganya, serta sumber di balik setiap klaim."
     ],
@@ -1593,6 +1635,7 @@
     "LCUy_N": ["Sesi berakhir"],
     "LDuM35": ["Ganti kecocokan saat ini dari bidangnya"],
     "LE7t79": ["Kloning ke folder baru"],
+    "LGvaif": ["Lihat repositori plugin ", ["plugin"]],
     "LHH461": ["Selesaikan penyiapan"],
     "LJXDjm": ["Tidak dapat menyimpan preferensi tema Anda."],
     "LJeFU6": [
@@ -1716,7 +1759,6 @@
     "Md709y": ["Memuat ", ["fileName"]],
     "MdpSC1": ["Keterampilan baru"],
     "Mh_4hd": ["Tab sebelumnya"],
-    "MiMTvb": ["token selalu aktif"],
     "Mj8R8K": ["Keterampilan tidak bisa dipasang: ", ["0"]],
     "MmDDWK": ["Baru saja dibuka"],
     "Mnavhe": ["Properti ", ["propPanelDescriptorLabel"]],
@@ -1752,6 +1794,7 @@
     "N55YNr": [
       "Pilih apakah penyiapan OpenKnowledge proyek ini, termasuk koneksi alat AI-nya, disimpan bersama proyek agar rekan tim juga mendapatkannya, atau disimpan hanya di komputer Anda."
     ],
+    "N5rzKJ": ["Hapus ", ["0"], " keterampilan"],
     "N6j2JH": ["Sunting ", ["0"]],
     "NBdIgR": ["Komentari"],
     "NErvOX": ["Disimpan ke"],
@@ -1765,7 +1808,6 @@
     "NOHyEE": ["Coba push lagi"],
     "NORKZU": ["Peringatan pola: ", ["summary"]],
     "NQ8llq": ["Tambahkan item"],
-    "NQVepz": ["Pasang ", ["name"]],
     "NQXwDy": ["Sunting di berkas konfigurasi"],
     "NRSLBe": [["diffMin"], " mnt lalu"],
     "NSnIUP": ["Dua halaman (genap)"],
@@ -1816,7 +1858,6 @@
       " secara permanen dari proyek dan menghapus pemetaannya dari config.yml."
     ],
     "NzluOx": ["(opsional)"],
-    "O-m8q9": ["Lihat semua"],
     "O0Z2Xr": ["Keluar"],
     "O2UpM1": ["Telusuri"],
     "O3oNi5": ["Surel"],
@@ -1854,6 +1895,7 @@
     "OLIKgw": ["Seret item ", ["0"], " untuk menata ulang"],
     "ONPvOb": ["Memuat aktivitas agen"],
     "ONWvwQ": ["Unggah"],
+    "ONchxy": ["total"],
     "ONgEZF": ["Memuat judul untuk ", ["pageTarget"]],
     "OOIVJo": ["\"", ["0"], "\" dicopot dari ", ["1"]],
     "OOLsBh": [["0"], " berbagi folder ini."],
@@ -1876,6 +1918,7 @@
     "Oj-JV8": [
       "Kuncinya sudah disetel, tetapi penyedia embedding menolaknya atau tidak dapat dihubungi — pencarian kembali ke pencocokan kata kunci. Gunakan <0>Uji koneksi</0> di Endpoint khusus untuk melihat apa yang salah."
     ],
+    "OkC7-2": ["Tidak dapat menempatkan ", ["skillName"], " di ", ["root"], ": ", ["0"]],
     "Okd2Xv": ["Menyalakan atau mematikan format garis bawah."],
     "OlAl5i": ["Bentangkan semua"],
     "OlFVNr": ["Tanya AI tentang Pilihan"],
@@ -2009,13 +2052,13 @@
     "QLgdT6": ["dokumen mana pun bernama ", ["0"]],
     "QM3SBZ": ["Rencana (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["kosong"],
+    "QPWyTw": ["Kelompokkan keterampilan menurut sumber"],
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
-    "QcScEc": ["Copot ", ["name"]],
     "QcpeeE": ["Pergi ke ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2023,12 +2066,13 @@
       ["childCount", "plural", { "other": ["#", " item"] }]
     ],
     "QfFBdJ": ["Nama berkas templatnya (tanpa `.md`)."],
+    "Qft6eW": ["Pindahkan ", ["0"], " ke Global"],
     "Qj4RL5": ["Selesai:"],
     "QjzFZj": ["Hanya saya"],
     "QlAG4m": ["Ceritakan lebih banyak (opsional)"],
     "QlkiD5": ["Tempatkan ulang pada teks terpilih"],
     "QlxHAH": ["Menampilkan hasil untuk \"", ["semanticResultsLabel"], "\""],
-    "QnnKlV": ["sesuai permintaan"],
+    "Qm0rWK": ["token deskripsi"],
     "QohqVL": ["Agen ini tidak menawarkan perintah garis miring"],
     "QpSqAP": [
       "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
@@ -2071,6 +2115,11 @@
     "RGkNeJ": ["Inisialisasi sebuah paket awal"],
     "RGptDW": ["OpenKnowledge memindahkan sebuah dokumen"],
     "RJ3a8Z": ["Mencari <0>", ["lookingForUrl"], "</0>."],
+    "RJMO4B": [
+      "Dari plugin ",
+      ["residentPlugin"],
+      " — hanya-baca; pembaruan plugin mengganti file-file ini."
+    ],
     "RLNIgv": ["Server mengembalikan respons templat yang tidak lengkap."],
     "RLYckQ": ["Hentikan (Esc)"],
     "RMQe3p": [
@@ -2411,6 +2460,7 @@
     "VuxVSP": ["Mulai pelengkapan sumber"],
     "VxLvKE": ["Kembalikan ke versi yang terpasang"],
     "VxO6wR": ["Hapus berkas atau folder terpilih"],
+    "Vy6XCg": ["Tambahkan nama file (mis. notes.md)"],
     "VzGJRl": ["Tambahkan tautan"],
     "W-ntoW": ["slug-judul"],
     "W0i24j": ["Objek"],
@@ -2435,6 +2485,7 @@
     "WFEbV1": [
       "Menandai masalah markdown yang umum di penyunting. Ditenagai <0>markdownlint<1/></0>."
     ],
+    "WG3MZ4": [["0"], " keterampilan dipilih"],
     "WGMoTY": ["Bug, kegagalan, atau terasa tidak andal"],
     "WHPvOb": ["Semua berkas disembunyikan oleh filter tampilan."],
     "WJjviG": ["Apa yang disertakan"],
@@ -2485,6 +2536,7 @@
     "WyQxwa": ["Hubungkan proyek ini ke GitHub untuk membagikannya."],
     "WyXG7w": ["Tutup semua"],
     "Wyxs0x": ["Jalur tidak boleh memuat \"..\""],
+    "X0c6kF": [["moved"], " keterampilan dipindahkan ke Global"],
     "X0ttSN": ["Tidak ada tag yang cocok dengan \"", ["tagListQuery"], "\"."],
     "X2zUS5": ["Hapus komentar ini"],
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
@@ -2501,6 +2553,7 @@
     "XEfNPL": [
       "Terpasang — ok tersedia di terminal eksternal. Menghapus centang akan menghapusnya; alat AI Anda tetap berfungsi."
     ],
+    "XF1kgP": ["Semua dari ", ["source"], " sudah yang terbaru"],
     "XFpEgc": [
       "Pilih agen mana yang muncul di menu agen di seluruh aplikasi, seperti Ask AI, Open with AI, dan tombol ＋ obrolan baru. Nonaktifkan agen untuk menyembunyikannya dari semuanya."
     ],
@@ -2518,7 +2571,6 @@
     "XU0OXn": ["Aktifkan sinkronisasi otomatis"],
     "XU5AOg": ["Masukan"],
     "XV5sC0": ["Buka worktree"],
-    "XVnIvs": ["Pasang keterampilan"],
     "XW18jo": ["Respons judul halaman tidak sesuai skema sukses"],
     "XXA1b_": [["componentLabel"], " (kosong)"],
     "XYZ7tp": ["Tidak terselesaikan"],
@@ -2633,6 +2685,7 @@
     ],
     "Yp-Hi_": ["Buka pengaturan"],
     "YsEYYS": [["behind", "plural", { "other": ["#", " commit di belakang"] }]],
+    "YvwwqC": ["Di mana"],
     "YwPUUP": ["Paket ini sudah disiapkan di sini."],
     "YxZDGh": [
       ["fileName"],
@@ -2685,6 +2738,7 @@
     "ZI8uvA": ["Tidak ada masalah ditemukan."],
     "ZJ99sD": ["Sisipkan kolom di kiri"],
     "ZNK2Tq": ["akar"],
+    "ZOVgDv": [["moved"], " keterampilan dipindahkan ke Proyek"],
     "ZQJ1IV": ["Mengaktifkan tab penyunting terakhir."],
     "ZQLDTl": ["folder dibuat"],
     "ZQc7C8": ["Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> membatalkan."],
@@ -2723,12 +2777,25 @@
     ],
     "ZsGpr_": ["Tempel tautan"],
     "ZscwQ0": ["Tidak bisa berpindah ke Hanya saya"],
+    "Zt7Ktx": ["Jalur tidak boleh keluar dari skill (tanpa . atau ..)"],
     "Zue_jx": ["Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."],
     "Zul8Ry": ["tidak pernah"],
     "ZvzbDF": ["Tambahkan langsung ke proyek ini."],
     "ZwpggY": ["OpenKnowledge membaca pengaturan proyek"],
     "_0JUKX": ["Pelaporan bug memerlukan aplikasi desktop OpenKnowledge."],
     "_2cM9E": ["terbaru"],
+    "_3S4Ql": [
+      ["label"],
+      " sudah memuat \"",
+      ["0"],
+      "\" dari plugin ",
+      ["1"],
+      ". Memasang di sini membuat salinan di ",
+      ["2"],
+      " yang dipakai ",
+      ["label"],
+      " alih-alih milik plugin — salinan itu berhenti mengikuti pembaruan plugin."
+    ],
     "_5qBNl": ["Alat AI & CLI"],
     "_6FVBz": ["Lompat ke tab 1-8"],
     "_7UQ7y": ["Kata utuh"],
@@ -2778,9 +2845,9 @@
     "_bth6g": ["Claude Code sudah terpasang, tetapi alat OpenKnowledge belum terhubung dengannya."],
     "_ci9Bj": ["Server mengembalikan respons folder yang tidak lengkap."],
     "_eguJc": ["Mengunggah"],
+    "_fQGOp": ["Spasi tidak diperbolehkan di jalur"],
     "_gO_m8": ["Menunggu persetujuan Anda"],
     "_gkGSK": ["templat dihapus"],
-    "_mcDqU": [["count"], " keterampilan di sumber ini"],
     "_pY_Vq": ["Repositorinya dipindahkan, diganti nama, atau dihapus."],
     "_qD6mn": ["Pilih folder tempat Anda mengkloningnya."],
     "_rP3HI": [["minutes"], " mnt lalu"],
@@ -2819,13 +2886,6 @@
     ],
     "aQD_86": ["Gagal memperbarui penyedia embedding — ", ["detail"]],
     "aQyGJc": ["Hal lain"],
-    "aR4DgO": [
-      "Repo ini memuat ",
-      ["count"],
-      " keterampilan, ditambah ",
-      ["0"],
-      ". Pasang salah satunya dari plugin."
-    ],
     "aRI3Om": ["Tutup Jendela"],
     "aS77on": ["Apa yang berubah?"],
     "aSVmqV": [
@@ -2833,7 +2893,6 @@
     ],
     "aWlJai": ["Memulai alur masuk"],
     "aXkLuE": ["Respons apply salah bentuk"],
-    "a_2_uB": [["trimmed"], " tidak bisa dibuat: ", ["0"]],
     "a_u4ck": ["Memuat tag"],
     "aaE55D": ["Bersihkan ", ["keyName"]],
     "aaI6cN": [
@@ -2842,8 +2901,8 @@
     "aalx4E": ["Menyunting sumber MDX yang rusak: ", ["reason"]],
     "aatPoi": ["File yang dihasilkan"],
     "abiHje": ["Hapus item terpilih"],
-    "ac8G0O": ["saat dipicu"],
     "adsMWO": ["Menyelesaikan delta"],
+    "ae9Ozt": ["lainnya"],
     "ah_ekO": ["\"", ["name"], "\" sudah yang terbaru"],
     "ai40UJ": ["Rekor baru · tekan <0>Spasi</0> untuk main lagi"],
     "aiArms": ["Kami tidak bisa mengkloning repositori ini."],
@@ -2862,6 +2921,7 @@
     "anmUZq": ["Ada fitur yang kurang"],
     "annvv7": ["Tidak dapat membaca keterampilan mana yang terpasang."],
     "aoT2xX": ["Komentar ini berlaku untuk seluruh properti"],
+    "arNEY0": ["Sematkan di atas"],
     "arUUsK": ["Kabar terbaru produk"],
     "ax9kie": ["Pengaturan pratinjau tautan belum dimuat — coba lagi sebentar"],
     "axQ1h6": ["Ada yang ingin Anda tambahkan? (opsional)"],
@@ -2950,6 +3010,7 @@
       ["1"],
       " akan memuat setiap ekstensi di dalamnya, bukan hanya milik Open Knowledge, dan keduanya tetap ada sampai Anda menghapus Open Knowledge dari proyek ini."
     ],
+    "c9-Pi9": [["source"], " · sumber skills.sh"],
     "cCd8Bs": ["Potong"],
     "cD3aew": [
       "Embedding dihitung ulang seiring pencarian berjalan, jadi cakupannya dimulai lagi dari nol lalu terisi kembali."
@@ -3040,6 +3101,7 @@
       "Penggantian nama berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
     "dEgA5A": ["Batal"],
+    "dFrqBg": ["Plugin ", ["0"]],
     "dGAdpH": [
       "Cabang baru <0>",
       ["trimmed"],
@@ -3048,7 +3110,6 @@
       "</1>, di worktree tersendiri di bawah <2>.ok/worktrees/</2>."
     ],
     "dIYSqk": ["remote"],
-    "dJXrT9": ["Baru dari nol"],
     "dJw2_7": ["Disimpan bersama proyek untuk tim Anda."],
     "dMsx3p": ["Halaman utama dan pusat navigasi."],
     "dNM58w": ["Claude Code (claude) belum terpasang atau tidak ada di PATH Anda."],
@@ -3099,6 +3160,7 @@
     "e1Rn_k": ["Buka folder induknya"],
     "e1hptq": ["Menyematkan video dengan kendali pemutar bawaan."],
     "e2zZ3E": ["Uji koneksi"],
+    "e4BHn_": ["Perbarui semua dari sumber ini"],
     "e4FxjG": ["Lihat semua ", ["0"], " paket awal"],
     "e4GHWP": ["Pull"],
     "e4PbgC": ["Menggandakan item pohon berkas yang disalin dari bilah sisi Berkas."],
@@ -3157,6 +3219,7 @@
     "evs0iw": ["Tag yang cocok dengan \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sesi shell"],
     "ezUmoU": ["Nilai elemen yang diizinkan (kosong = apa saja)"],
+    "f-k37b": ["Pasang keterampilan ini"],
     "f1-q9m": ["menyimpan keterampilan"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
@@ -3169,13 +3232,13 @@
     ],
     "fBoO7w": ["Ini pratinjau ", ["boldName"], ". Pasang ke agen Anda."],
     "fCSBwN": [["agentName"], " tidak dapat dijalankan."],
-    "fDjZxw": ["Menyalin keterampilan ke ", ["0"]],
     "fG0X0e": ["Pasang ", ["brand"], " →"],
     "fGqEFq": ["Pasang ", ["0"]],
     "fIJtam": ["Mengembalikan"],
     "fIgqfQ": ["Memasang ulang"],
     "fJ3EbT": ["Tema"],
     "fJgQHX": ["Gagal membuat berkas"],
+    "fKsRVO": ["Keterampilan dari ", ["0"], "/", ["1"], "."],
     "fMsFdZ": ["Pengaturan pembaruan otomatis tidak bisa disimpan: ", ["0"]],
     "fNr-MX": ["Nonaktifkan pencarian semantik"],
     "fOzzSV": ["Target tautan \"", ["shown"], "\" tidak merujuk ke file yang ada."],
@@ -3196,6 +3259,7 @@
     "f_PkYv": [
       "Memulai ulang akan menutup server proyek ini. Agen yang terhubung (Claude Code, Codex, Cursor) akan melihat koneksi MCP OpenKnowledge mereka tertutup tak terduga — Anda mungkin perlu memulai ulang agennya, atau mematikan lalu menyalakan server MCP OpenKnowledge padanya, untuk tersambung kembali."
     ],
+    "faAcQ3": ["Tidak dapat memasang keterampilan proyek: ", ["0"]],
     "fbdLmk": ["Menyalakan atau mematikan format tebal."],
     "fbsiBw": ["Ada yang tidak beres saat memulai terminal."],
     "fcgvCA": ["Claude"],
@@ -3208,7 +3272,6 @@
     "fiMNLl": ["Pengaturan sinkronisasi belum dimuat — coba lagi sebentar"],
     "fj5YiP": ["Mengunduh salinan baru dari GitHub."],
     "fnlBN4": ["Pengaturan persetujuan otomatis belum dimuat — coba lagi sebentar"],
-    "fo0VXg": ["Copot"],
     "fo6CCk": ["panel ", ["0"]],
     "fqSfXY": ["Ganti"],
     "ft-BOm": ["Laporkan bug…"],
@@ -3263,6 +3326,7 @@
       " di peramban Anda."
     ],
     "gL_sdV": ["Populer"],
+    "gLjtu3": ["Tidak dapat memindahkan ", ["0"], ": ", ["1"]],
     "gN3JX8": ["skills.sh"],
     "gOD68k": ["Buka satu berkas markdown — tanpa penyiapan proyek."],
     "gOmloS": [["filePath"], " dihapus"],
@@ -3368,6 +3432,11 @@
     "habOU_": ["Gagal memperbarui pengaturan persetujuan otomatis — ", ["detail"]],
     "hadECI": [["0"], " perlu diganti"],
     "he3ygx": ["Salin"],
+    "heV8si": [
+      "Ini menghapus ",
+      ["names"],
+      " secara permanen. Agen yang memanggil keterampilan ini berdasarkan nama akan gagal sampai dibuat ulang."
+    ],
     "hgF0al": ["Pakai ", ["0"], " untuk mode terang yang aktif"],
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Gagal menghapus ", ["file"]],
@@ -3403,6 +3472,7 @@
       ["boldName"],
       " di tempatnya. Perubahan langsung tersimpan ke salinan penyunting Anda."
     ],
+    "i04BJx": ["Berada di luar proyek ini — hanya-baca di sini."],
     "i09An-": ["Versi terdahulu dipulihkan (", ["0"], ")"],
     "i1flq_": ["Saran tautan wiki"],
     "i3f2kh": ["Tidak ada perintah yang cocok."],
@@ -3421,6 +3491,13 @@
     "i9toLO": ["Berkas konfigurasi agen"],
     "iBVgIQ": ["Server mengembalikan respons yang salah bentuk."],
     "iDZtvM": ["Gagal memuat templat: ", ["message"]],
+    "iE-yoU": [
+      "Ini pratinjau ",
+      ["boldName"],
+      " — satu dari ",
+      ["0"],
+      " keterampilan di sumber ini. Pasang ke agen Anda."
+    ],
     "iEQQyu": ["Agen"],
     "iEYxO4": ["Tampilkan gambar mini"],
     "iGCs04": ["Tidak ada templat yang tersedia"],
@@ -3455,6 +3532,7 @@
     "ibE3-O": ["OpenKnowledge membuat tautan berbagi untuk ", ["subject"]],
     "idD8Ev": ["Tersimpan"],
     "idni-S": ["Nilai untuk ", ["keyName"]],
+    "idufL_": ["Keterampilan dari ", ["0"], "."],
     "ie-f_y": ["Yakin ingin menghapus item yang dipilih?"],
     "ig5vUe": ["Gagal memuat berkas"],
     "ii5mVn": ["Laporkan galat ini"],
@@ -3477,6 +3555,7 @@
     "ilodsp": ["Biarkan agen memakai OpenKnowledge tanpa bertanya"],
     "ioMn4Z": ["Baru dari Templat…"],
     "iodl3p": ["Server mengembalikan respons unggahan yang salah bentuk."],
+    "ipCibE": ["Nama folder kosong tidak diperbolehkan (//)"],
     "ipn17C": [
       "<0>type</0> yang didapat setiap dokumen yang dibuat dari templat ini (mis. <1>research-note</1>). Menjaga dokumen baru tetap sesuai Open Knowledge Format."
     ],
@@ -3490,7 +3569,6 @@
     "isRobC": ["Baru"],
     "iuTKci": ["Belum ada suntingan."],
     "iv452l": ["Dokumentasi untuk ", ["0"], " (terbuka di peramban)"],
-    "ivwdwq": ["Buat keterampilan."],
     "iy64Li": [
       "Sinkronisasi penuh — suntingan Anda di-commit dan dikirim ke remote Anda secara otomatis."
     ],
@@ -3555,7 +3633,6 @@
     "jerqF0": ["Memuat keadaan cabang"],
     "jhtG3I": [" Pilihan Anda telah dipulihkan."],
     "jjtmV_": ["Nama berkas pertama"],
-    "jkt28V": ["Biaya konteks"],
     "jnCROW": [
       "Cuplikan memori dari kegagalan itu, dan artefak yang paling membantu kami. Isinya bisa memuat isi dokumen dan tidak bisa disunting, jadi hapus centangnya jika Anda tidak ingin membagikannya."
     ],
@@ -3631,6 +3708,7 @@
       "Ekstensi Open Knowledge tidak bisa ditulis. Utas ini tidak memiliki alat Open Knowledge."
     ],
     "kNGLX6": ["Mencoba lagi…"],
+    "kNiQp6": ["Disematkan"],
     "kNqMMd": ["Folder"],
     "kRTXGw": [
       "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
@@ -3665,6 +3743,7 @@
     "kkux8f": [["0"], " tidak dapat dihapus. Coba lagi."],
     "klPS-L": ["Berkas asli — sebelum suntingan agen ini."],
     "kmKqZg": ["Klaster"],
+    "kmPvKZ": ["Server mengembalikan respons pembaruan yang tidak valid."],
     "knjOzA": ["Nilai tag"],
     "ko386X": ["Sebuah dokumen mengalami konflik — selesaikan agar tetap mutakhir."],
     "kolRU1": ["Hapus permanen saja?"],
@@ -3808,7 +3887,6 @@
     "mR3Bly": [
       "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat), keterampilan proyek.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
     ],
-    "mShKiV": ["Unggah sebuah keterampilan"],
     "mToVM9": ["Kirim pesan ke ", ["agentName"]],
     "mU3j1b": ["Hapus item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (konflik)"],
@@ -3897,6 +3975,7 @@
     "nBgzKO": ["Jadikan ini sumbernya — folder asli keterampilan ini pindah ke sini"],
     "nCzR-G": ["Salin kode ", ["userCode"]],
     "nDT8qt": [["0"], " diinisialisasi tetapi tidak dapat dibuka."],
+    "nFAvDj": [["plugin"], " menyertakan ", ["0"], " keterampilan lain"],
     "nJaz5Q": ["Mengganti entri OpenKnowledge yang sudah dimiliki masing-masing."],
     "nMSYz5": [
       "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
@@ -3906,9 +3985,13 @@
     "nP-KFo": ["Obrolan ", ["0"], " baru"],
     "nTM8ab": ["Beri nama sebelum menyunting warnanya."],
     "nTwL53": ["Buka sebuah dokumen untuk membagikan URL-nya."],
+    "nWMRxa": ["Lepas sematan"],
+    "nWS2gQ": ["Diterbitkan oleh ", ["publisher"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
+    "nXHOFU": ["Tidak dapat memperbarui dari ", ["0"], ": ", ["1"]],
     "nYKerc": ["(hanya tingkat pengguna)"],
     "nYeBmY": [["hours"], " j lalu"],
+    "n_I-da": ["Lihat sumber"],
     "nbLQ_9": ["Pilih ke mana komentar ini dikirim"],
     "nbfdhU": ["Integrasi"],
     "nc-ipN": [
@@ -3954,6 +4037,7 @@
     ],
     "nzHlj8": ["Tutup ", ["0"]],
     "nzaV6Q": ["Gambar mini halaman"],
+    "o-XJ9D": ["Ubah"],
     "o0bHtA": ["Oleh OpenKnowledge"],
     "o1veZ6": ["Tidak dapat membuka dokumen ini di jendela baru."],
     "o49mDZ": ["Memuat riwayat lini masa"],
@@ -3976,9 +4060,11 @@
     "oCZkaG": ["Salin jalur"],
     "oJl7eO": ["Komponen tidak dikenal: ", ["componentName"], " — sumber bisa disunting di bawah"],
     "oKBnk5": ["Lebih banyak permintaan diblokir."],
+    "oP-FQW": ["Gunakan jalur relatif di dalam skill"],
     "oPU_4D": ["Kirim saat agen sedang senggang"],
     "oQA-cA": ["Jalur lengkap"],
     "oS1YpJ": ["Membuka Navigator Proyek."],
+    "oVW7VD": ["Terpasang ke proyek ini"],
     "oWsZk8": ["Buat halaman ", ["target"], " yang belum ada"],
     "oX-rVu": ["Pemasangan gagal: ", ["0"]],
     "oXKEsy": ["Menghapus chip tautan wiki atau tag yang ada di sebelahnya."],
@@ -4035,6 +4121,7 @@
     "pHYP6v": ["Buka <0>Sesuaikan</0> di bilah sisi <1/> <2>Keterampilan</2>."],
     "pI_bKs": ["<0>Spasi</0> untuk melompat · <1>↓</1> untuk menunduk"],
     "pJ7XCo": ["Halaman ini tidak merujuk ke berkas atau gambar lokal apa pun."],
+    "pMPnZv": [["deleted"], " keterampilan dihapus"],
     "pOo4Aa": ["Teks biasa"],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
     "pTPqMK": ["Menyalakan atau mematikan blok kode berpagar."],
@@ -4067,6 +4154,7 @@
     "pha01Y": ["Halaman tingkat proyek yang tidak punya sisi graf masuk."],
     "pkAft1": ["Pencarian gagal."],
     "pmUArF": ["Ruang kerja"],
+    "poAsUN": ["tanpa agen — disimpan, tidak dipasang di mana pun"],
     "ppDgFi": ["Mulai ulang dengan versi aplikasi ini"],
     "ppzof_": [
       "Ini menghapus ",
@@ -4135,6 +4223,7 @@
     "qaHyRJ": [["linkCount", "plural", { "other": ["#", " tautan"] }]],
     "qbWjTl": ["Nonaktifkan pemeriksa ejaan"],
     "qbfj1f": ["Menerima objek"],
+    "qd7L1J": [["source"], ": ", ["updated"], " diperbarui, ", ["upToDate"], " sudah terbaru"],
     "qdBUHP": [["fileName"], " tidak bisa dimuat"],
     "qi1F96": ["Tampilkan di Penjelajah Berkas"],
     "qiRoLb": ["Ringkas semua yang saya ubah minggu ini"],
@@ -4170,6 +4259,11 @@
     "rFTdVq": ["Tampilkan di Explorer"],
     "rFmBG3": ["Tema warna"],
     "rFw02Q": ["Mengunggah ", ["keyName"]],
+    "rIFV5h": [
+      "Plugin ",
+      ["0"],
+      " menyajikan keterampilan ini dari cache-nya — OK tidak pernah mengedit atau memperbaruinya."
+    ],
     "rJVoVX": ["Hasil pencarian sumber"],
     "rJm8-2": ["Papan klip tidak dapat diakses — tema ada di kotak di bawah."],
     "rNifQd": ["Hapus properti"],
@@ -4196,6 +4290,7 @@
     "rf8fiC": ["Tutup jendela"],
     "rfFpcF": ["Hapus ", ["chip"]],
     "rg7hNd": ["Nilai pengalaman Anda"],
+    "rg8BwK": ["Tidak dapat menghapus ", ["0"], ": ", ["error"]],
     "rgPqOw": ["Mengubah blok saat ini menjadi paragraf."],
     "ri6zS-": [
       "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidang akan membuatnya."
@@ -4236,6 +4331,7 @@
     "s1c0ja": ["Daftar Berpoin"],
     "s3caR3": ["Menghapus"],
     "s7us1p": ["Hanya gambar PNG, JPEG, atau WebP yang diizinkan."],
+    "sAP9XO": ["Plugin ", ["0"], " · ", ["1"]],
     "sE7R19": [
       "Templat tidak dapat dimuat: ",
       ["templatesError"],
@@ -4268,6 +4364,7 @@
     "s_ereB": ["aktif"],
     "saIASg": ["Item kedua"],
     "saYiIO": ["Jalur tidak boleh memuat bita null"],
+    "scRzTw": ["via plugin"],
     "scu3wk": ["Model"],
     "scyoP9": [
       "Dokumen indeks tidak membawa frontmatter, kecuali dokumen yang ada di akar basis pengetahuan Anda. Dokumen log tidak tercakup — OKF tidak membatasi frontmatter mereka."
@@ -4369,6 +4466,7 @@
       ". Apakah Anda ingin menghapus permanen saja?"
     ],
     "txUHO8": [["localizedMessage"], " pada baris ", ["displayLine"]],
+    "txmRmK": ["Ubah ukuran panel Keterampilan"],
     "tzGWeg": ["Bersiap mencopot OpenKnowledge"],
     "tzZ6ha": ["Hubungkan ke GitHub Enterprise Server"],
     "tz_FDV": ["server merespons tetapi server.lock belum memiliki port"],
@@ -4475,6 +4573,7 @@
       ["packSkillCount", "plural", { "one": ["#", " skill"], "other": ["#", " skill"] }],
       " dari paket ini tidak akan dipasang."
     ],
+    "vVQlxV": ["Server beralih ke branch <0>", ["branch"], "</0> — memuat ulang konten"],
     "vXIe7J": ["Bahasa"],
     "vYOUOk": ["Tambahkan komentar"],
     "vYPvPB": ["Ganti proyek…"],
@@ -4575,16 +4674,11 @@
     "wbv9xO": ["Buat proyek baru"],
     "wc54KE": ["Mencobanya…"],
     "wcfO9r": ["Belum ada laporan bug."],
+    "wckWOP": ["Kelola"],
     "wdRxTD": ["Menerapkan…"],
     "wdxz7K": ["Sumber"],
     "wdzBgi": ["Berbagi konfigurasi kini Hanya saya."],
     "weP6me": ["Dokumen tidak bisa dimuat — ketik @ lagi untuk mencoba ulang"],
-    "wefL17": [
-      ["source"],
-      " menerbitkan ",
-      ["count"],
-      " keterampilan. Anda bisa memasang semuanya sekaligus."
-    ],
     "wgNoIs": ["Pilih semua"],
     "wlwXUk": [
       "Anda memilih ~/Downloads. Berkas di sana biasanya sementara — pertimbangkan folder yang lebih tetap."
@@ -4656,6 +4750,7 @@
     "xhlFsx": ["Diwarisi — setel sebuah nilai di sini untuk menggantinya."],
     "xi9KGG": ["Tampilkan Terminal"],
     "xiv-dW": ["Belum ada berkas."],
+    "xk133d": ["Memasang skill ke ", ["path"], " — lokasi pertama menyimpan salinan aslinya"],
     "xlQpTE": ["Opsi penolakan lainnya"],
     "xloBjn": ["Jalur Relatif"],
     "xrVr_k": ["Keterampilan tidak bisa dibuat: ", ["0"]],
@@ -4686,6 +4781,7 @@
     "yH7T4q": [["failedCount", "plural", { "other": [["failedCount"], " berkas gagal diunggah"] }]],
     "yHikCO": ["Membuka kotak ke-baris CodeMirror."],
     "yIPXut": ["Menyiapkan pencarian"],
+    "yJkw6t": ["SKILL.md dikelola oleh skill itu sendiri — pilih nama lain"],
     "yK1m_z": [["0", "plural", { "other": ["Keterampilan"] }]],
     "yKu_3Y": ["Pulihkan"],
     "yLEyuq": ["Kabar terbaru produk di kotak masuk Anda."],
@@ -4709,7 +4805,7 @@
     "y_5CE8": ["Item ", ["0"]],
     "y_K0Dz": ["Apa yang terjadi?"],
     "yaPGPa": ["Buka sebuah proyek untuk mengelola koneksi alat AI-nya."],
-    "ybWWR2": ["Menautkan keterampilan secara symlink ke ", ["0"]],
+    "ybPMz3": ["Tidak dapat menyematkan ", ["name"]],
     "ycIX5i": ["Anda sudah keluar — masuk untuk melanjutkan sinkronisasi."],
     "yckias": ["Ganti nama berkas"],
     "ydzS9x": ["Keluar"],
@@ -4734,6 +4830,7 @@
     "yhdqox": [
       "Terpasang — ok tersedia di terminal eksternal. Melepas centang menghapusnya; terminal bawaan dan alat AI OpenKnowledge tetap berfungsi."
     ],
+    "yhy5h-": ["Lihat semua ", ["count"], " keterampilan"],
     "yit5dF": ["Belum ada folder di proyek ini."],
     "yjExfe": ["Cabang <0>", ["shareBranch"], "</0> sedang dipakai di:"],
     "ylXj1N": ["Terpilih"],
@@ -4771,6 +4868,7 @@
     "zAJzIg": ["Masalah di ", ["0"]],
     "zAsDLY": ["Visualisasi graf tautan antardokumen"],
     "zBUqvf": ["Siapkan integrasi OpenKnowledge…"],
+    "zC5jrM": ["Akan dibuat sebagai <0>", ["effective"], "</0>"],
     "zD1Nqf": [["count", "plural", { "other": ["#", " dokumen"] }]],
     "zFH7iU": [
       "Tidak dapat sepenuhnya menghapus pengaturan jaringan, tetapi paparan sedang dimatikan. ",
@@ -4798,7 +4896,6 @@
     "zbymaY": [["0"], " mnt lalu"],
     "zcmYx4": ["konfigurasi git tidak tersedia"],
     "zd00pH": ["Salin Jalur"],
-    "zewp9w": ["Tujuannya berubah. Periksa daftarnya, lalu konfirmasi."],
     "zgSFyG": ["Tautan eksternal"],
     "zkz0Fg": ["Siapkan sinkronisasi"],
     "zlErBl": ["Respons galat judul halaman tidak sesuai RFC 9457"],
@@ -4810,7 +4907,6 @@
       ["date"],
       "}</1> terisi saat pembuatan."
     ],
-    "zt9ZgM": ["Repo ini memuat ", ["count"], " keterampilan. Pasang salah satunya dari plugin."],
     "ztKII6": ["Gagal menambahkan item"],
     "zvjCD4": ["Diagnostik terperinci"],
     "zwBp5t": ["Pribadi"],

@@ -254,6 +254,11 @@ msgstr "{0, plural, other {파일}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, other {폴더}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, other {스킬 #개 설치}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, other {스킬}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · 기본값"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0}(새 탭에서 열림)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "{0}개 선택됨 (전체 {1}개 프로젝트 중)"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "{0}/{1} 선택됨"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "이 게시자의 다른 스킬 {0}개"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "{0} 플러그인"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "{0} 플러그인 · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0}: {poolRootRel}을 통해 이 스킬을 읽는 중입니다. {1}이 \
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0}이(가) 이 폴더를 공유합니다."
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "스킬 {0}개 선택됨"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "{behind}개 뒤처져 있음"
 msgid "{behind} behind origin"
 msgstr "origin보다 {behind}개 뒤처져 있음"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName}은(는) 심볼릭 링크입니다. 편집 가능한 원본은 <0>{0}</0>입니다. 해당 파일에서 편집하세요. 이 스킬 보기는 읽기 전용입니다."
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, other {자동 수정이 알려진 문제 #개를 즉시 
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {파일 #개와 일치}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "이 소스의 스킬 {count}개"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "스킬 {count}개"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "{keyName} 값"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label}은(는) 이미 {1} 플러그인에서 \"{0}\"을(를) 불러옵니다. 여기에 설치하면 {2}에 복사본이 만들어지고 {label}이(가) 플러그인 대신 그 복사본을 사용합니다. 복사본은 플러그인 업데이트를 더 이상 따르지 않습니다."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} 활성화됨"
@@ -845,6 +888,11 @@ msgstr "{pick} 및 {keep}에 {0}의 서로 다른 버전이 있습니다. 먼저
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick}에 스킬이 아닌 항목이 있습니다: {0}. 폴더에서 제거하거나 이동한 후 다시 시도하세요."
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin}에 다른 스킬 {0}개가 더 있습니다"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, other {플러그인}}"
@@ -901,9 +949,21 @@ msgstr "{slot} 색상, {0}"
 msgid "{slot} hex value"
 msgstr "{slot} 16진수 값"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source}에서 스킬 {count}개를 게시합니다. 원하는 스킬을 함께 설치할 수 있습니다."
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · 가져온 소스"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · skills.sh 소스"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}: {updated}개 업데이트, {upToDate}개는 이미 최신"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}: {updated}개 업데이트, {upToDate}개는 이미 최신, {failed}개 실패 — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1199,6 +1259,10 @@ msgstr "이 폴더에서 새 문서를 시작할 수 있는 재사용 가능한 
 msgid "A saved theme already uses this name."
 msgstr "이미 이 이름을 사용하는 저장된 테마가 있습니다."
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "같은 이름의 스킬이 하나 더 있습니다 — 완전히 관리하려면 이름을 바꾸거나 하나를 삭제하세요."
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "템플릿 목록에서 제목 아래에 표시되는 짧은 문장입니다."
@@ -1320,6 +1384,10 @@ msgstr "추가"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "댓글 추가"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "파일 이름을 추가하세요 (예: notes.md)"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1660,15 +1728,6 @@ msgstr "이미 로그인했나요?"
 msgid "Always included"
 msgstr "항상 포함"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "상시"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "상시 토큰"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1995,6 +2054,10 @@ msgstr "자동을 선택하면 시작할 때마다 사용 가능한 포트를 �
 msgid "Available"
 msgstr "사용 가능"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "사용 범위"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "이 컴퓨터의 모든 프로젝트에서 사용할 수 있습니다. git으로 공유되지 않습니다."
@@ -2169,10 +2232,6 @@ msgstr "끊어진 링크"
 msgid "Browse"
 msgstr "찾아보기"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "모두 찾아보기"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "폴더 찾아보기"
@@ -2184,10 +2243,6 @@ msgstr "수백 개의 테마 찾아보기"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "이 프로젝트에서 스킬을 찾아보거나 업로드합니다."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "skills.sh 찾아보기"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2226,10 +2281,6 @@ msgstr "이야기 속 세계를 만들고 관리합니다. 캐릭터, 장소, �
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> 빌드 중, Claude Desktop App 여는 중"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "내장됨 (읽기 전용)"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2309,7 +2360,6 @@ msgstr "이 경로는 공유할 수 없습니다."
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2344,6 +2394,10 @@ msgstr "해결되지 않은 충돌이 있는 파일은 삭제할 수 없습니�
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "업로드할 수 없습니다. 열린 문서가 없습니다"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "변경"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2567,6 +2621,10 @@ msgstr "색상 지우기"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "메뉴 지우기"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "선택 해제"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3155,10 +3213,6 @@ msgstr "콘텐츠 규칙"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "콘텐츠 규칙을 아직 불러오지 못했습니다. 잠시 후 다시 시도합니다."
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "컨텍스트 비용"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "컨텍스트 창:"
@@ -3220,6 +3274,7 @@ msgid "Copied full path"
 msgstr "전체 경로를 복사했습니다"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "복사된 경로"
 
@@ -3233,11 +3288,6 @@ msgstr "상대 경로를 복사했습니다"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "복사됨!"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "스킬을 {0}에 복사합니다"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3308,6 +3358,7 @@ msgid "Copy path"
 msgstr "경로 복사"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "경로 복사"
 
@@ -3500,7 +3551,6 @@ msgstr "댓글 추가에 실패했습니다."
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "변경사항을 적용하지 못했습니다: {0}"
 
@@ -3521,10 +3571,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "공유 URL을 만들 수 없습니다. 완료를 누른 후 다시 공유하세요."
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "경로를 복사하지 못했습니다"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "복사 실패: {detail}"
 
@@ -3534,9 +3586,10 @@ msgstr "복사할 수 없습니다. 위 URL을 선택해 직접 복사하세요.
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "{trimmed} 생성 실패: {0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "{effective}을(를) 만들 수 없습니다: {0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3557,6 +3610,11 @@ msgstr "워크트리를 만들 수 없습니다. 다른 이름을 사용해 보�
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "이 테마를 만들지 못했습니다. 다시 시도합니다."
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "{0}을(를) 삭제할 수 없음: {error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3628,6 +3686,11 @@ msgstr "OpenKnowledge 스킬 설치 실패: {message}"
 msgid "Couldn't install skill: {0}"
 msgstr "스킬 설치 실패: {0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "프로젝트 스킬을 설치할 수 없음: {0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3677,6 +3740,12 @@ msgstr "버그 보고서를 불러오지 못했습니다."
 msgid "Couldn't mark that comment to send."
 msgstr "댓글 전송 표시 설정에 실패했습니다."
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "{0}을(를) 이동할 수 없음: {1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3721,6 +3790,15 @@ msgstr "워크트리를 열 수 없습니다. 다시 시도하세요."
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "이 문서를 Slidev에서 열지 못했습니다."
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "{name}을(를) 고정할 수 없습니다"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "{skillName}을(를) {root}에 배치할 수 없음: {0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3973,6 +4051,10 @@ msgstr "나만 보기로 전환하지 못했습니다"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "댓글 전송 표시 해제에 실패했습니다. 아직 전송 대기 중입니다."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "{name}의 고정을 해제할 수 없습니다"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3982,6 +4064,12 @@ msgstr "{gitignorePath} 업데이트 실패: {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "{subRoot} 업데이트 실패: {0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "{0}에서 업데이트할 수 없습니다: {1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4064,10 +4152,6 @@ msgstr "모든 프로젝트에서 사용할 수 있는 개인 스킬을 만듭�
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "이 프로젝트용 스킬을 만듭니다."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "스킬을 만듭니다."
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4281,6 +4365,11 @@ msgstr "삭제"
 msgid "Delete {0}"
 msgstr "{0} 삭제"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "스킬 {0}개 삭제"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "{deleteDescriptorLabel} 삭제"
@@ -4362,6 +4451,10 @@ msgstr "이 댓글 삭제"
 msgid "Deleted {0}."
 msgstr "{0} 삭제됨."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "스킬 {deleted}개 삭제됨"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "{file} 삭제됨"
@@ -4403,10 +4496,6 @@ msgstr "만들려는 프로젝트 설명"
 msgid "Describe the skill you want to create"
 msgstr "만들려는 스킬 설명"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "무엇을 해야 하는지 설명하거나 직접 추가하세요. OpenKnowledge는 스킬을 한곳에 보관하고 버전을 관리하며 Claude, Codex, Cursor 같은 에이전트에 설치합니다."
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "만들려는 것을 설명하고, 빈 파일로 시작하거나 템플릿에서 뼈대를 만듭니다."
@@ -4419,7 +4508,9 @@ msgstr "계속하려면 만들려는 것을 설명하세요"
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "작업 중인 내용을 설명하면 에이전트가 설정합니다."
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "설명"
@@ -4436,6 +4527,11 @@ msgstr "설명(선택 사항)"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "{field} 설명"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "설명 토큰"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4564,6 +4660,7 @@ msgstr "연결 해제"
 msgid "Disconnecting"
 msgstr "연결 해제 중"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4842,6 +4939,7 @@ msgid "Edit {tag}"
 msgstr "{tag} 편집"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "복사본 편집"
 
@@ -5021,6 +5119,10 @@ msgstr "비어 있음"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "빈 다이어그램"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "빈 폴더 이름은 사용할 수 없습니다 (//)"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5210,6 +5312,10 @@ msgstr "모든 개념 문서에는 비어 있지 않은 type이 있습니다. �
 msgid "every doc"
 msgstr "모든 문서"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "{source}의 모든 항목이 이미 최신입니다"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5293,6 +5399,7 @@ msgstr "팀원과 AI 에이전트가 코드베이스를 파악할 수 있도록 
 msgid "Explore"
 msgstr "탐색"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "스킬 탐색"
@@ -5759,7 +5866,6 @@ msgid "Filename"
 msgstr "파일 이름"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "파일"
 
@@ -6020,6 +6126,10 @@ msgstr "템플릿에서"
 msgid "From the {0} plugin"
 msgstr "{0} 플러그인에서"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "{residentPlugin} 플러그인 제공 — 읽기 전용이며, 플러그인 업데이트가 이 파일들을 교체합니다."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "Frontmatter"
@@ -6151,6 +6261,7 @@ msgstr "사용하는 AI 도구에 프로젝트를 읽고 업데이트할 권한�
 msgid "Glob patterns this schema applies to"
 msgstr "이 스키마가 적용되는 glob 패턴"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6206,6 +6317,10 @@ msgstr "문서 링크 그래프 시각화"
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "헤더 행이 있는 행과 열 그리드입니다."
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "소스별로 스킬 그룹화"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6675,6 +6790,14 @@ msgstr "Git 프로젝트에서 Open Knowledge는 다음 재빌드 전에 동시�
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App에서"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "이 저장소에 저장 — 협업자는 git을 통해 사본을 받습니다."
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "홈 폴더에 저장 — 이 컴퓨터의 모든 프로젝트에서, 나만 사용합니다."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "목록 항목을 들여쓰거나 내어씁니다."
@@ -6833,12 +6956,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "CodeMirror 기본 키맵을 통해 소스 편집기 줄을 삽입, 삭제, 이동, 복사하고 들여씁니다."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6854,11 +6976,6 @@ msgstr "{0} 설치"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "{brand} 설치 →"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "{name} 설치"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6915,16 +7032,8 @@ msgstr "모든 에이전트에 설치"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "AI 도구에 OpenKnowledge 설치"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "선택 항목 설치"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
-msgstr "스킬 설치"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
 msgstr "스킬 설치"
 
 #. Checkbox that installs the user-global discovery skill bundle
@@ -6936,10 +7045,15 @@ msgstr "<0>open-knowledge-discovery</0> 스킬 설치"
 msgid "Install the gh CLI"
 msgstr "gh CLI 설치"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "이 스킬 설치"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "설치됨"
 
@@ -6976,11 +7090,6 @@ msgstr "스킬 {imported}개를 {0}에서 설치했습니다"
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "{imported}개 설치됨. {failed}개 실패: {failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "{0}에 설치됨. 제거하려면 클릭"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "{path}에 설치됨. 제거하려면 클릭"
@@ -6995,6 +7104,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "{label}에 설치됨. 제거하려면 클릭"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7004,8 +7114,19 @@ msgstr "설치 중"
 msgid "Installing {agentName}…"
 msgstr "{agentName} 설치 중…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "모든 프로젝트에 설치됨"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "이 프로젝트에 설치됨"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "스킬을 {path}에 설치합니다 — 첫 위치가 스킬의 원본 사본을 보관합니다"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "설치 위치"
 
@@ -7254,9 +7375,6 @@ msgid "Let's get set up."
 msgstr "설정을 시작해 볼까요."
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "수준"
 
@@ -7372,6 +7490,10 @@ msgstr "목록"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "이 프로젝트에 있습니다(스킬 폴더 위치와 무관). git을 통해 협업자와 공유됩니다."
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "이 프로젝트 밖에 있습니다 — 여기서는 읽기 전용입니다."
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7469,7 +7591,6 @@ msgid "Loading PDF"
 msgstr "PDF를 불러오는 중"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "인기 스킬 불러오는 중"
 
@@ -7614,6 +7735,11 @@ msgstr "잘못된 listPacks 응답"
 msgid "Malformed plan response"
 msgstr "잘못된 plan 응답"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "관리"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7634,10 +7760,6 @@ msgstr "이 빌드에서는 AI 도구를 관리할 수 없습니다."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "이 빌드에서는 프로젝트 AI 도구를 관리할 수 없습니다."
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "이 빌드에서는 스킬 관리를 사용할 수 없습니다."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7837,6 +7959,16 @@ msgstr "가장 많이 설치됨"
 msgid "Move"
 msgstr "이동"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "스킬 {0}개를 전역으로 이동"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "스킬 {0}개를 프로젝트로 이동"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "이동됨"
@@ -7967,6 +8099,14 @@ msgstr "{label}을 왼쪽의 새 패널로 이동했습니다."
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label}을 오른쪽의 새 패널로 이동했습니다."
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "스킬 {moved}개를 전역으로 이동함"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "스킬 {moved}개를 프로젝트로 이동함"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8147,10 +8287,6 @@ msgstr "이 스킬에 새 파일"
 msgid "New folder"
 msgstr "새 폴더"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "새로 만들기"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8192,6 +8328,7 @@ msgstr "새 세션"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "새 스킬"
@@ -8270,6 +8407,10 @@ msgstr "에이전트 미설정. 에이전트 설정을 엽니다."
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "아직 설정된 에이전트 없음. 전송 메뉴에서 선택하세요."
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "에이전트 없음 — 저장만 되고 어디에도 설치되지 않음"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "사용 가능한 에이전트 없음."
@@ -8282,10 +8423,6 @@ msgstr "활성화된 에이전트 없음"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "검색과 일치하는 에이전트 없음."
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "선택한 에이전트가 없습니다. 스킬은 저장되지만 어디에도 설치되지 않습니다."
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8670,6 +8807,10 @@ msgstr "사이드바에 없음"
 msgid "Not installed"
 msgstr "설치되지 않음"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "아직 이 프로젝트에 설치되지 않았습니다."
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8779,10 +8920,6 @@ msgstr "켜짐, 검색어와 일치하는 페이지의 텍스트가 임베딩 �
 msgid "On <0>{address}</0>"
 msgstr "<0>{address}</0>에"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "요청 시"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "선택 텍스트: <0>{address}</0>"
@@ -8790,10 +8927,6 @@ msgstr "선택 텍스트: <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "루트 인덱스에서 okf_version은 \"0.2\"와 같은 따옴표 문자열로 작성됩니다. 따옴표가 없으면 YAML이 숫자로 읽어 0.10이 조용히 0.1로 바뀝니다."
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "트리거 시"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8972,6 +9105,7 @@ msgstr "{keyName} 이모지 선택기 열기"
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9468,6 +9602,11 @@ msgstr "고아 모드"
 msgid "Orphans"
 msgstr "고아"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "기타"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "기타"
@@ -9496,6 +9635,10 @@ msgstr "개요"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "{budgetLabel} 토큰 예산 초과"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "{budgetLabel} 토큰 가이드를 초과했습니다. 스킬이 사용될 때 이 내용 전체가 에이전트 컨텍스트에 로드됩니다 — 간결하게 유지하거나, 필요할 때만 로드되는 references/ 파일로 세부 내용을 옮기세요."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9601,7 +9744,7 @@ msgstr "구문 분석 실패"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "{0} 플러그인의 일부. 읽기 전용이며, 복사본을 편집하려면 엽니다"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "{plugin} 플러그인의 일부"
 
@@ -9779,6 +9922,11 @@ msgstr "설치할 스킬을 선택하세요. 각 스킬은 편집 가능한 내 
 msgid "Pick up where you left off"
 msgstr "중단한 지점부터 계속"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "복사본을 저장할 위치를 선택하세요. 대상을 선택하면 복사본이 만들어집니다."
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9788,6 +9936,14 @@ msgstr "{0}을 {1}에서 가져왔습니다."
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "탭 고정"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "맨 위에 고정"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "고정됨"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9834,10 +9990,6 @@ msgstr "숙고 중…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "인기"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "skills.sh에서 인기"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9972,6 +10124,7 @@ msgstr "프로젝트"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "프로젝트"
@@ -10073,6 +10226,10 @@ msgstr "GitHub에 게시"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "게시됨"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "게시자: {publisher}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10332,6 +10489,7 @@ msgid "Relevance"
 msgstr "관련성"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10460,10 +10618,6 @@ msgstr "다른 모든 위치에서 \"{0}\"을 제거했습니다. 소스 폴더�
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "최근 프로젝트에서 \"{projectName}\"을 제거했습니다. 폴더가 더 이상 존재하지 않습니다."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "제거 위치"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10726,6 +10880,10 @@ msgstr "보기 필터 초기화"
 msgid "Resize {handleKey}"
 msgstr "{handleKey} 크기 조정"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "스킬 패널 크기 조절"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "터미널에서 충돌 해결"
@@ -10754,6 +10912,7 @@ msgstr "델타 해결 중"
 msgid "Resources"
 msgstr "리소스"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10772,6 +10931,7 @@ msgstr "이 앱의 버전으로 다시 시작"
 msgid "Restarted — now running v{appRuntime}."
 msgstr "다시 시작했습니다. 현재 v{appRuntime}을 실행 중입니다."
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "재시작 중"
@@ -11260,6 +11420,10 @@ msgstr "시스템 개요는 <0>Architecture</0>에서 확인하세요."
 msgid "See all {0} starter packs"
 msgstr "스타터 팩 {0}개 모두 보기"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "스킬 {count}개 모두 보기"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "전체 설치 안내 보기"
@@ -11457,6 +11621,10 @@ msgid "Server returned a malformed response."
 msgstr "서버에서 잘못된 응답을 반환했습니다."
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "서버가 잘못된 형식의 업데이트 응답을 반환했습니다."
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "서버에서 잘못된 업로드 응답을 반환했습니다."
 
@@ -11475,6 +11643,10 @@ msgstr "서버에서 불완전한 스킬 응답을 반환했습니다."
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "서버가 불완전한 템플릿 응답을 반환했습니다."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "서버가 <0>{branch}</0> 브랜치로 전환되었습니다 — 콘텐츠를 다시 불러오는 중"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11907,15 +12079,28 @@ msgstr "이미 프로젝트에 있는 스킬"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "스킬 탐색: <0>skills.sh</0> 제공"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md는 스킬 자체에서 관리합니다. 다른 이름을 선택하세요"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "스킬"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "이제 스킬을 공유합니다. 팀과 공유하려면 .ok/skills를 커밋하세요."
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "{0}의 스킬."
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "{0}/{1}의 스킬."
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11939,9 +12124,11 @@ msgstr "스킬 재할당됨"
 msgid "Skills section"
 msgstr "스킬 섹션"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "스킬 스튜디오"
 
@@ -11957,6 +12144,10 @@ msgstr "스킬은 AI 도구에 반복 작업을 가르칩니다. 직접 만든 �
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "이 프로젝트에 포함된 스킬과 AI 도구가 스킬을 읽는 폴더입니다."
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "스킬 도구 모음"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12139,6 +12330,10 @@ msgstr "소스 실행 취소 또는 다시 실행"
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "스페이스로 점프하고 아래쪽 화살표로 숙입니다. 게임은 이것이 전부입니다."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "경로에는 공백을 사용할 수 없습니다"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12345,10 +12540,6 @@ msgstr "이번 주 변경한 내용 모두 요약"
 msgid "Switch and update branch"
 msgstr "브랜치 전환 및 업데이트"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "파일과 스킬 간 전환"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "현재 위치를 유지하면서 비주얼 편집기와 소스 편집기 사이를 전환합니다."
@@ -12406,11 +12597,6 @@ msgstr "심볼릭 링크: {targetPath}"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "상위 경로를 통한 심볼릭 링크"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "{0}에 스킬을 심볼릭 링크합니다"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12754,6 +12940,11 @@ msgstr "메시지 전송 완료. 편집 내용 미적용."
 msgid "The {0} download request timed out."
 msgstr "{0} 다운로드 요청 시간 초과."
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "{0} 플러그인이 캐시에서 이 스킬들을 제공합니다 — OK는 이를 편집하거나 업데이트하지 않습니다."
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "{editor} 폴더에 이 스킬의 다른 버전이 있습니다. 어느 버전을 사용할지 선택하거나 서로 다른 이름으로 둘 다 유지하세요. 교체하는 항목은 먼저 백업합니다."
@@ -12805,10 +12996,6 @@ msgstr "기본 스킬 폴더(저장 후 정확한 경로가 표시됨)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "데스크톱 앱 응답 없음. 새로 고침 후 다시 시도하세요."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "대상이 변경되었습니다. 목록을 확인한 후 승인하세요."
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12876,9 +13063,22 @@ msgstr "열린 에이전트"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "원문 삭제됨. 선택한 텍스트에 댓글 다시 배치 가능"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "경로는 스킬 밖으로 나갈 수 없습니다 (. 또는 .. 불가)"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "플러그인에는 {0}도 포함되어 있습니다 — 여기에 이름만 표시되며 OK가 설치하지는 않습니다."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "미리보기는 보안 규칙을 충족하지 않는 리소스를 차단합니다. 예를 들어 일반 http:// URL이나 eval을 사용하는 코드가 차단됩니다. 위 콘텐츠가 완전히 렌더링되지 않을 수 있습니다."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "이 프로젝트의 서버가 이 창과 다른 브랜치에 있어 콘텐츠를 불러올 수 없습니다."
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13245,6 +13445,16 @@ msgstr "이 GitHub URL은 공유할 수 없습니다."
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "이것은 {boldName}의 미리보기입니다. Open Knowledge에 내장된 스킬이며 읽기 전용입니다."
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "이것은 {boldName}의 미리보기입니다 — 이 소스의 스킬 {0}개 중 하나입니다. 에이전트에 설치하세요."
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "이것은 {boldName}의 미리보기입니다 — 이 저장소의 스킬 {0}개 중 하나입니다. 에이전트에 설치하세요."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "이것은 {boldName}의 미리보기입니다. {boldHarness}의 {boldLevel} 수준에서 감지되었습니다."
@@ -13270,6 +13480,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "이 컴퓨터"
 
@@ -13334,12 +13545,17 @@ msgstr "{0}이 영구적으로 삭제됩니다. 복사한 플러그인은 영향
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "{0}/{1}은 \"{2}\" 스킬에서 영구적으로 삭제됩니다. 이를 가리키는 SKILL.md의 항목은 다시 만들 때까지 작동하지 않습니다."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "{names}이(가) 영구적으로 삭제됩니다. 이 스킬들을 이름으로 호출하는 에이전트는 다시 만들 때까지 실패합니다."
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "{path}이 영구적으로 삭제됩니다. 이 템플릿을 이름으로 참조하는 에이전트는 템플릿을 다시 만들거나 상위 폴더의 템플릿으로 교체할 때까지 실패합니다."
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "이 프로젝트"
 
@@ -13398,15 +13614,6 @@ msgstr "이 프로젝트의 스킬이 스킬 스튜디오로 이동했습니다.
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "이 작업은 Mac과 아래에서 선택한 프로젝트에서 OpenKnowledge의 설정과 통합을 제거하지만, markdown 콘텐츠와 직접 작성한 스킬은 유지합니다."
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "이 저장소에는 스킬 {count}개와 {0}이 함께 들어 있습니다. 플러그인에서 원하는 항목을 설치하세요."
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "이 저장소에는 스킬 {count}개가 들어 있습니다. 플러그인에서 원하는 항목을 설치하세요."
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13623,6 +13830,11 @@ msgstr "도구 호출"
 msgid "Top linked pages"
 msgstr "링크가 가장 많은 페이지"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "합계"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "git에서 추적됨. 업데이트는 자동 업데이트가 아니라 저장소를 통해 전달됩니다(pull 또는 CI)"
@@ -13803,17 +14015,6 @@ msgstr "이 편집으로 되돌리시겠습니까?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "소스 편집 창 또는 코드 형태의 속성 필드에서 선택 영역 변경을 실행 취소, 다시 실행하거나 단계별로 이동합니다."
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "설치 제거"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "{name} 설치 제거"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13880,6 +14081,10 @@ msgstr "{0}의 모든 댓글 전송 표시 해제"
 msgid "Unordered list of items."
 msgstr "글머리 기호 목록입니다."
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "고정 해제"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "{accessibleLabel} 고정 해제"
@@ -13924,6 +14129,10 @@ msgstr "업데이트"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "\"{skillName}\"을 편집한 내용 위에 업데이트할까요?"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "이 소스의 항목 모두 업데이트"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13989,10 +14198,6 @@ msgstr "업로드"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "{keyName} 업로드"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "스킬 업로드"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14092,6 +14297,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr ".yaml 또는 .yml 확장자를 소문자로 사용합니다."
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "스킬 내부의 상대 경로를 사용하세요"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "스킬 내부에서 상대 경로를 사용하세요(.. 및 공백은 사용할 수 없고 SKILL.md는 관리됩니다)."
@@ -14175,8 +14383,13 @@ msgstr "{viaTags} 경유"
 msgid "via parent"
 msgstr "상위 경로를 통해"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "플러그인 제공"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "보기"
@@ -14184,6 +14397,10 @@ msgstr "보기"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "{name} 보기"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "skills.sh에서 {publisher} 보기"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14210,8 +14427,17 @@ msgid "View in Source Markdown"
 msgstr "소스 Markdown에서 보기"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "플러그인 보기"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "소스 보기"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "{plugin} 플러그인 저장소 보기"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14389,6 +14615,10 @@ msgstr "외부 링크 위에 마우스를 올리면 미리보기 메타데이터
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "게시된 스킬을 설치하면 skills.sh에 알려 설치 횟수가 정확해집니다. 스킬 이름, 소스 저장소 및 사용된 에이전트 도구를 전송하지만 파일 내용은 전송하지 않으며, 비공개·로컬·직접 입력한 소스의 스킬에는 적용되지 않습니다. 컴퓨터당 스킬별로 한 번만 전송합니다."
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "위치"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "새로 추가한 첨부 파일의 위치"
@@ -14424,6 +14654,10 @@ msgstr "위키 링크 제안"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "위키 링크([[Page]] 등)는 이곳에서 지원되지만 외부 리더는 아무것도 해석하지 못하고 대괄호를 그대로 표시합니다."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "<0>{effective}</0>(으)로 생성됩니다"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

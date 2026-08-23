@@ -254,6 +254,11 @@ msgstr "{0, plural, other {Berkas}}"
 msgid "{0, plural, one {Folder} other {Folders}}"
 msgstr "{0, plural, other {Folder}}"
 
+#. placeholder {0}: selected.size
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "{0, plural, one {Install # skill} other {Install # skills}}"
+msgstr "{0, plural, other {Pasang # keterampilan}}"
+
 #. placeholder {0}: counted.total
 #. placeholder {1}: counted.matched
 #. placeholder {2}: counted.total
@@ -282,6 +287,11 @@ msgstr "{0, plural, other {Keterampilan}}"
 #: src/lib/acp/config-value-hints.ts
 msgid "{0} · default"
 msgstr "{0} · bawaan"
+
+#. placeholder {0}: mark.title
+#: src/components/skill-provenance-mark.ts
+msgid "{0} (opens in a new tab)"
+msgstr "{0} (terbuka di tab baru)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
@@ -355,10 +365,26 @@ msgid "{0} of {1} projects selected"
 msgstr "{0} dari {1} proyek dipilih"
 
 #. placeholder {0}: selected.size
-#. placeholder {1}: names.length
+#. placeholder {1}: selectableNames.length
 #: src/components/SkillPluginBundleDialog.tsx
 msgid "{0} of {1} selected"
 msgstr "{0} dari {1} dipilih"
+
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{0} other skills by this publisher"
+msgstr "{0} keterampilan lain dari penerbit ini"
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin"
+msgstr "Plugin {0}"
+
+#. placeholder {0}: bucket.id
+#. placeholder {1}: bucket.url
+#: src/components/SkillsTree.tsx
+msgid "{0} plugin · {1}"
+msgstr "Plugin {0} · {1}"
 
 #. placeholder {0}: descriptor.displayName ?? name
 #: src/editor/extensions/JsxInlineView.tsx
@@ -376,6 +402,11 @@ msgstr "{0} membaca keterampilan ini lewat {poolRootRel}. Klik agar {1} berhenti
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "{0} share this folder."
 msgstr "{0} berbagi folder ini."
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "{0} skills selected"
+msgstr "{0} keterampilan dipilih"
 
 #. placeholder {0}: templates.length
 #: src/components/empty-state/CreateView.tsx
@@ -498,6 +529,11 @@ msgstr "{behind} di belakang"
 msgid "{behind} behind origin"
 msgstr "{behind} di belakang origin"
 
+#. placeholder {0}: linkedFile ?? source
+#: src/components/SkillPreviewTab.tsx
+msgid "{boldName} is a symlink — its editable source is <0>{0}</0>. Edit the file there; this skill view is read-only."
+msgstr "{boldName} adalah symlink — sumber yang dapat diedit ada di <0>{0}</0>. Edit berkasnya di sana; tampilan skill ini hanya-baca."
+
 #. placeholder {0}: pluginInfo.plugin
 #: src/components/SkillPreviewTab.tsx
 msgid "{boldName} is part of the <0>{0}</0> plugin{pluginVersion} — read-only. {boldHarness} replaces plugin files on update."
@@ -580,9 +616,9 @@ msgstr "{count, plural, other {Langsung memperbaiki # masalah yang punya perbaik
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {cocok dengan # berkas}}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{count} skills at this source"
-msgstr "{count} keterampilan di sumber ini"
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "{count} skills"
+msgstr "{count} keterampilan"
 
 #: src/components/TimelinePanel.tsx
 msgid "{days, plural, one {# day ago} other {# days ago}}"
@@ -735,6 +771,13 @@ msgstr "Nilai {keyName}"
 msgid "{label} ({0})"
 msgstr "{label} ({0})"
 
+#. placeholder {0}: skill?.name ?? ''
+#. placeholder {1}: pluginCoverage.plugin
+#. placeholder {2}: path ?? label
+#: src/components/SkillInstallMenu.tsx
+msgid "{label} already loads \"{0}\" from the {1} plugin. Installing here puts a copy at {2} that {label} uses instead of the plugin's — it stops tracking plugin updates."
+msgstr "{label} sudah memuat \"{0}\" dari plugin {1}. Memasang di sini membuat salinan di {2} yang dipakai {label} alih-alih milik plugin — salinan itu berhenti mengikuti pembaruan plugin."
+
 #: src/components/settings/plugin-enabled-notice.ts
 msgid "{label} enabled"
 msgstr "{label} diaktifkan"
@@ -845,6 +888,11 @@ msgstr "{pick} dan {keep} sama-sama memuat versi berbeda dari: {0}. Selesaikan i
 msgid "{pick} holds entries that aren't skills: {0}. Remove or move them from the folder and try again."
 msgstr "{pick} berisi entri yang bukan keterampilan: {0}. Hapus atau pindahkan entri tersebut dari folder, lalu coba lagi."
 
+#. placeholder {0}: siblings.length
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "{plugin} ships {0} other skills"
+msgstr "{plugin} menyertakan {0} keterampilan lain"
+
 #: src/components/CreatedItemsList.tsx
 msgid "{pluginCount, plural, one {plugin} other {plugins}}"
 msgstr "{pluginCount, plural, other {plugin}}"
@@ -901,9 +949,21 @@ msgstr "Warna {slot} — {0}"
 msgid "{slot} hex value"
 msgstr "Nilai heksa {slot}"
 
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "{source} publishes {count} skills. Install any of them together."
-msgstr "{source} menerbitkan {count} keterampilan. Anda bisa memasang semuanya sekaligus."
+#: src/components/SkillsTree.tsx
+msgid "{source} · imported source"
+msgstr "{source} · sumber impor"
+
+#: src/components/SkillsTree.tsx
+msgid "{source} · skills.sh source"
+msgstr "{source} · sumber skills.sh"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date"
+msgstr "{source}: {updated} diperbarui, {upToDate} sudah terbaru"
+
+#: src/components/skill-actions.tsx
+msgid "{source}: {updated} updated, {upToDate} already up to date, {failed} failed — {detail}"
+msgstr "{source}: {updated} diperbarui, {upToDate} sudah terbaru, {failed} gagal — {detail}"
 
 #: src/components/EnableSyncConfirmDialog.tsx
 msgid "{strandedCommitCount, plural, one {You have 1 change you haven't shared. It will stay on this computer.} other {You have # changes you haven't shared. They will stay on this computer.}}"
@@ -1195,6 +1255,10 @@ msgstr "Titik awal yang bisa dipakai ulang untuk dokumen baru di folder ini."
 msgid "A saved theme already uses this name."
 msgstr "Tema tersimpan lain sudah menggunakan nama ini."
 
+#: src/components/skill-actions.tsx
+msgid "A second skill with this name — rename it (or delete one) to manage it fully."
+msgstr "Ada keterampilan kedua dengan nama ini — ganti namanya (atau hapus salah satu) untuk mengelolanya sepenuhnya."
+
 #: src/components/TemplateForm.tsx
 msgid "A short line shown under the title in the template list."
 msgstr "Satu baris singkat yang ditampilkan di bawah judul pada daftar templat."
@@ -1316,6 +1380,10 @@ msgstr "Tambah"
 #: src/comments/PropertyCommentButton.tsx
 msgid "Add a comment"
 msgstr "Tambahkan komentar"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Add a file name (e.g. notes.md)"
+msgstr "Tambahkan nama file (mis. notes.md)"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
@@ -1656,15 +1724,6 @@ msgstr "Sudah masuk?"
 msgid "Always included"
 msgstr "Selalu disertakan"
 
-#: src/components/SkillCostValue.tsx
-msgid "always-on"
-msgstr "selalu aktif"
-
-#. Suffix on a skill directory card's context-cost figure
-#: src/components/SkillDirectoryResult.tsx
-msgid "always-on tokens"
-msgstr "token selalu aktif"
-
 #: src/components/AppErrorBoundary.tsx
 #: src/components/DocumentErrorBoundary.tsx
 msgid "An unexpected error occurred."
@@ -1991,6 +2050,10 @@ msgstr "Otomatis memilih port bebas setiap kali dimulai. Pilih port tetap untuk 
 msgid "Available"
 msgstr "Tersedia"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Available in"
+msgstr "Tersedia di"
+
 #: src/lib/skill-scope.ts
 msgid "Available in every project on this machine. Not shared through git."
 msgstr "Tersedia di setiap proyek pada komputer ini. Tidak dibagikan lewat git."
@@ -2165,10 +2228,6 @@ msgstr "Tautan rusak"
 msgid "Browse"
 msgstr "Telusuri"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Browse all"
-msgstr "Lihat semua"
-
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
 msgstr "Pilih folder"
@@ -2180,10 +2239,6 @@ msgstr "Jelajahi ratusan tema"
 #: src/components/ImportSkillDialog.tsx
 msgid "Browse or upload a skill for this project."
 msgstr "Telusuri atau unggah sebuah keterampilan untuk proyek ini."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Browse skills.sh"
-msgstr "Jelajahi skills.sh"
 
 #: src/components/CloneDialog.tsx
 msgid "Browse your repos:"
@@ -2222,10 +2277,6 @@ msgstr "Bangun dan pantau dunia di balik cerita Anda. Rumah bagi tokoh, tempat, 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Membangun <0>openknowledge.skill</0> dan membuka aplikasi Claude Desktop"
-
-#: src/components/SkillsTree.tsx
-msgid "Built-in (read-only)"
-msgstr "Bawaan (hanya-baca)"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
@@ -2305,7 +2356,6 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/components/ShareReceiveDialog.tsx
 #: src/components/SkillFileCreateDialog.tsx
 #: src/components/SkillFileRenameDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillRenameDialog.tsx
 #: src/components/SkillScopeMoveDialog.tsx
@@ -2340,6 +2390,10 @@ msgstr "Tidak dapat menghapus berkas yang konfliknya belum diselesaikan"
 #: src/editor/image-upload/index.ts
 msgid "Cannot upload: no document is open"
 msgstr "Tidak bisa mengunggah: tidak ada dokumen yang terbuka"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Change"
+msgstr "Ubah"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Change pack"
@@ -2563,6 +2617,10 @@ msgstr "Hapus warna"
 #: src/lib/native-menu-catalog.ts
 msgid "Clear menu"
 msgstr "Kosongkan menu"
+
+#: src/components/SkillsTree.tsx
+msgid "Clear selection"
+msgstr "Bersihkan pilihan"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Clear the field to reset back to the default OpenAI endpoint."
@@ -3151,10 +3209,6 @@ msgstr "Aturan konten"
 msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Aturan konten belum dimuat — coba lagi sebentar"
 
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Context cost"
-msgstr "Biaya konteks"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "Jendela konteks:"
@@ -3216,6 +3270,7 @@ msgid "Copied full path"
 msgstr "Jalur lengkap disalin"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copied path"
 msgstr "Jalur disalin"
 
@@ -3229,11 +3284,6 @@ msgstr "Jalur relatif disalin"
 #: src/components/CopyButton.tsx
 msgid "Copied!"
 msgstr "Disalin!"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Copies the skill to {0}"
-msgstr "Menyalin keterampilan ke {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Copies the skill to {path}"
@@ -3304,6 +3354,7 @@ msgid "Copy path"
 msgstr "Salin jalur"
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Copy Path"
 msgstr "Salin Jalur"
 
@@ -3496,7 +3547,6 @@ msgstr "Komentar itu tidak bisa ditambahkan."
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
 msgid "Couldn't apply the change: {0}"
 msgstr "Perubahannya tidak bisa diterapkan: {0}"
 
@@ -3517,10 +3567,12 @@ msgid "Couldn't construct the share URL. Try Done and re-share."
 msgstr "URL berbagi tidak bisa disusun. Tekan Selesai lalu bagikan ulang."
 
 #: src/components/skill-actions.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy path"
 msgstr "Jalurnya tidak bisa disalin"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SkillsTree.tsx
 msgid "Couldn't copy: {detail}"
 msgstr "Tidak bisa menyalin: {detail}"
 
@@ -3530,9 +3582,10 @@ msgstr "Tidak bisa menyalin. Pilih URL di atas untuk menyalinnya secara manual."
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileCreateDialog.tsx
-msgid "Couldn't create {trimmed}: {0}"
-msgstr "{trimmed} tidak bisa dibuat: {0}"
+msgid "Couldn't create {effective}: {0}"
+msgstr "Tidak dapat membuat {effective}: {0}"
 
+#. placeholder {0}: listed.error
 #. placeholder {0}: result.error
 #: src/hooks/use-create-blank-skill.ts
 msgid "Couldn't create skill: {0}"
@@ -3553,6 +3606,11 @@ msgstr "Worktree-nya tidak bisa dibuat. Coba nama lain."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t create this theme. Try again."
 msgstr "Tema ini tidak dapat dibuat. Coba lagi."
+
+#. placeholder {0}: target.name
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Couldn't delete {0}: {error}"
+msgstr "Tidak dapat menghapus {0}: {error}"
 
 #. placeholder {0}: theme.label
 #: src/components/settings/SavedThemesTiles.tsx
@@ -3624,6 +3682,11 @@ msgstr "Tidak dapat memasang keterampilan OpenKnowledge: {message}"
 msgid "Couldn't install skill: {0}"
 msgstr "Keterampilan tidak bisa dipasang: {0}"
 
+#. placeholder {0}: err instanceof Error ? err.message : String(err)
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Couldn't install the project skill: {0}"
+msgstr "Tidak dapat memasang keterampilan proyek: {0}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Couldn't install: {0}"
@@ -3673,6 +3736,12 @@ msgstr "Laporan bug Anda tidak bisa dimuat."
 msgid "Couldn't mark that comment to send."
 msgstr "Komentar itu tidak bisa ditandai untuk dikirim."
 
+#. placeholder {0}: s.name
+#. placeholder {1}: r.error
+#: src/components/SkillsTree.tsx
+msgid "Couldn't move {0}: {1}"
+msgstr "Tidak dapat memindahkan {0}: {1}"
+
 #. placeholder {0}: result.error
 #: src/hooks/use-move-skill-scope.ts
 msgid "Couldn't move skill: {0}"
@@ -3717,6 +3786,15 @@ msgstr "Worktree-nya tidak bisa dibuka. Coba lagi."
 #: src/components/SlidesToolbarControls.tsx
 msgid "Couldn't open this document in Slidev."
 msgstr "Tidak dapat membuka dokumen ini di Slidev."
+
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't pin {name}"
+msgstr "Tidak dapat menyematkan {name}"
+
+#. placeholder {0}: placed.error
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Couldn't place {skillName} in {root}: {0}"
+msgstr "Tidak dapat menempatkan {skillName} di {root}: {0}"
 
 #: src/lib/share/publish-wizard.ts
 msgid "Couldn't prepare this project for publish."
@@ -3969,6 +4047,10 @@ msgstr "Tidak bisa berpindah ke Hanya saya"
 msgid "Couldn't unmark that comment — it's still waiting to send."
 msgstr "Tanda pada komentar itu tidak bisa dilepas — ia masih menunggu dikirim."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "Couldn't unpin {name}"
+msgstr "Tidak dapat melepas sematan {name}"
+
 #. placeholder {0}: result.error
 #: src/components/SkillTrackInGitDialog.tsx
 msgid "Couldn't update {gitignorePath}: {0}"
@@ -3978,6 +4060,12 @@ msgstr "Tidak dapat memperbarui {gitignorePath}: {0}"
 #: src/components/SkillInstallMenu.tsx
 msgid "Couldn't update {subRoot}: {0}"
 msgstr "{subRoot} tidak bisa diperbarui: {0}"
+
+#. placeholder {0}: input.sourceLabel
+#. placeholder {1}: result.error
+#: src/components/skill-actions.tsx
+msgid "Couldn't update from {0}: {1}"
+msgstr "Tidak dapat memperbarui dari {0}: {1}"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Couldn't update skills sharing"
@@ -4060,10 +4148,6 @@ msgstr "Buat keterampilan pribadi, tersedia di semua proyek."
 #: src/components/NewSkillDialog.tsx
 msgid "Create a skill for this project."
 msgstr "Buat keterampilan untuk proyek ini."
-
-#: src/components/SkillsBasePage.tsx
-msgid "Create a skill."
-msgstr "Buat keterampilan."
 
 #: src/components/AuthModal.tsx
 msgid "Create a token on {host}"
@@ -4277,6 +4361,11 @@ msgstr "Hapus"
 msgid "Delete {0}"
 msgstr "Hapus {0}"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Delete {0} skills"
+msgstr "Hapus {0} keterampilan"
+
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "Delete {deleteDescriptorLabel}"
 msgstr "Hapus {deleteDescriptorLabel}"
@@ -4358,6 +4447,10 @@ msgstr "Hapus komentar ini"
 msgid "Deleted {0}."
 msgstr "{0} dihapus."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleted {deleted} skills"
+msgstr "{deleted} keterampilan dihapus"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Deleted {file}"
 msgstr "{file} dihapus"
@@ -4399,10 +4492,6 @@ msgstr "Jelaskan proyek yang ingin Anda buat"
 msgid "Describe the skill you want to create"
 msgstr "Jelaskan keterampilan yang ingin Anda buat"
 
-#: src/components/SkillsBasePage.tsx
-msgid "Describe what it should do, or add one yourself. OpenKnowledge keeps your skills in one place, versions them, and installs them into agents like Claude, Codex, and Cursor."
-msgstr "Jelaskan apa yang harus dilakukannya, atau tambahkan sendiri. OpenKnowledge menyimpan keterampilan Anda di satu tempat, memberinya versi, dan memasangnya ke agen seperti Claude, Codex, dan Cursor."
-
 #: src/components/empty-state/empty-state-copy.ts
 msgid "Describe what you want to build, start a blank file, or scaffold from a template."
 msgstr "Jelaskan apa yang ingin Anda bangun, mulai dari berkas kosong, atau susun dari templat."
@@ -4415,7 +4504,9 @@ msgstr "Jelaskan apa yang ingin Anda buat untuk melanjutkan"
 msgid "Describe what you're working on and the agent sets it up for you."
 msgstr "Jelaskan apa yang sedang Anda kerjakan dan agennya akan menyiapkannya untuk Anda."
 
+#. The skill's frontmatter description — the always-loaded tier
 #: src/components/SkillBundlePreview.tsx
+#: src/components/SkillCostValue.tsx
 #: src/components/TemplateProperties.tsx
 msgid "description"
 msgstr "deskripsi"
@@ -4432,6 +4523,11 @@ msgstr "Deskripsi (opsional)"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Description for {field}"
 msgstr "Deskripsi untuk {field}"
+
+#. Suffix on a skill directory card's context-cost figure — the always-loaded description tier
+#: src/components/SkillDirectoryResult.tsx
+msgid "description tokens"
+msgstr "token deskripsi"
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
@@ -4560,6 +4656,7 @@ msgstr "Putuskan koneksi"
 msgid "Disconnecting"
 msgstr "Memutus koneksi"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
 #: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
@@ -4838,6 +4935,7 @@ msgid "Edit {tag}"
 msgstr "Sunting {tag}"
 
 #: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
 msgid "Edit a copy"
 msgstr "Sunting salinan"
 
@@ -5017,6 +5115,10 @@ msgstr "Kosong"
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
 msgstr "Diagram kosong"
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Empty folder names aren't allowed (//)"
+msgstr "Nama folder kosong tidak diperbolehkan (//)"
 
 #: src/components/NewItemDialog.tsx
 msgid "Empty starting content"
@@ -5206,6 +5308,10 @@ msgstr "Setiap dokumen konsep memiliki tipe yang tidak kosong. Ini adalah keselu
 msgid "every doc"
 msgstr "semua dokumen"
 
+#: src/components/skill-actions.tsx
+msgid "Everything from {source} is already up to date"
+msgstr "Semua dari {source} sudah yang terbaru"
+
 #. placeholder {0}: summary.folder
 #: src/components/settings/LintingSection.tsx
 msgid "everything under {0}/"
@@ -5289,6 +5395,7 @@ msgstr "Jelaskan cara kerja basis kode Anda agar rekan tim dan agen AI bisa mene
 msgid "Explore"
 msgstr "Jelajahi"
 
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "Explore skills"
 msgstr "Jelajahi keterampilan"
@@ -5755,7 +5862,6 @@ msgid "Filename"
 msgstr "Nama berkas"
 
 #: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Files"
 msgstr "Berkas"
 
@@ -6016,6 +6122,10 @@ msgstr "Dari templat"
 msgid "From the {0} plugin"
 msgstr "Dari plugin {0}"
 
+#: src/components/SkillsTree.tsx
+msgid "From the {residentPlugin} plugin — read-only; plugin updates replace these files."
+msgstr "Dari plugin {residentPlugin} — hanya-baca; pembaruan plugin mengganti file-file ini."
+
 #: src/components/settings/LintingSection.tsx
 msgid "Frontmatter"
 msgstr "frontmatter"
@@ -6147,6 +6257,7 @@ msgstr "Beri alat AI yang Anda pakai akses untuk membaca dan memperbarui proyek 
 msgid "Glob patterns this schema applies to"
 msgstr "Pola glob tempat skema ini berlaku"
 
+#: src/components/SkillsTree.tsx
 #: src/lib/keyboard-shortcuts.ts
 #: src/lib/skill-scope.ts
 msgid "Global"
@@ -6202,6 +6313,10 @@ msgstr "Visualisasi graf tautan antardokumen"
 #: src/editor/slash-command/items.tsx
 msgid "Grid of rows and columns with a header row."
 msgstr "Kisi baris dan kolom dengan satu baris kepala."
+
+#: src/components/FileSidebar.tsx
+msgid "Group skills by source"
+msgstr "Kelompokkan keterampilan menurut sumber"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Guides your AI agents on how to work here."
@@ -6671,6 +6786,14 @@ msgstr "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitatt
 msgid "In the Claude Desktop App"
 msgstr "Di aplikasi Claude Desktop"
 
+#: src/components/SkillScopeSegment.tsx
+msgid "In this repo — collaborators get copies via git."
+msgstr "Di repositori ini — kolaborator mendapat salinan lewat git."
+
+#: src/components/SkillScopeSegment.tsx
+msgid "In your home folder — every project on this machine, just you."
+msgstr "Di folder home Anda — semua proyek di mesin ini, hanya untuk Anda."
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Indent or outdent list item"
 msgstr "Tambah atau kurangi indentasi item daftar"
@@ -6829,12 +6952,11 @@ msgid "Insert, delete, move, copy, and indent source editor lines through CodeMi
 msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris penyunting sumber lewat peta tombol bawaan CodeMirror."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
-#: src/components/settings/BuiltInSkillsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
 #: src/components/settings/ProjectSkillSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
 #: src/components/skill-actions.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 #: src/components/SkillsTree.tsx
 msgid "Install"
@@ -6850,11 +6972,6 @@ msgstr "Pasang {0}"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Install {name}"
-msgstr "Pasang {name}"
 
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
@@ -6911,17 +7028,9 @@ msgstr "Pasang di semua agen"
 msgid "Install OpenKnowledge in your AI tools"
 msgstr "Pasang OpenKnowledge di alat AI Anda"
 
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "Install selected"
-msgstr "Pasang yang dipilih"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Install skill"
 msgstr "Instal keterampilan"
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "Install skills"
-msgstr "Pasang keterampilan"
 
 #. Checkbox that installs the user-global discovery skill bundle
 #: src/components/McpConsentDialogBody.tsx
@@ -6932,10 +7041,15 @@ msgstr "Pasang skill <0>open-knowledge-discovery</0>"
 msgid "Install the gh CLI"
 msgstr "Pasang CLI gh"
 
+#: src/components/SkillPreviewTab.tsx
+msgid "Install this skill"
+msgstr "Pasang keterampilan ini"
+
 #: src/components/settings/AiToolsSection.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ProjectAiToolsSection.tsx
 #: src/components/SkillEditorActions.tsx
+#: src/components/SkillPluginBundleDialog.tsx
 msgid "Installed"
 msgstr "Terpasang"
 
@@ -6972,11 +7086,6 @@ msgstr "{imported} keterampilan dipasang dari {0}"
 msgid "Installed {imported}, but {failed} failed: {failedNames}"
 msgstr "{imported} dipasang, tetapi {failed} gagal: {failedNames}"
 
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Installed at {0} — click to remove"
-msgstr "Terpasang di {0} — klik untuk menghapus"
-
 #: src/components/SkillInstallMenu.tsx
 msgid "Installed at {path} — click to remove"
 msgstr "Terpasang di {path} — klik untuk menghapus"
@@ -6991,6 +7100,7 @@ msgid "Installed in {label} — click to remove"
 msgstr "Terpasang di {label} — klik untuk menghapus"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/settings/ProjectSkillSection.tsx
 #: src/components/SkillPluginBundleDialog.tsx
 #: src/components/SkillPreviewTab.tsx
 msgid "Installing"
@@ -7000,8 +7110,19 @@ msgstr "Memasang"
 msgid "Installing {agentName}…"
 msgstr "Memasang {agentName}…"
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs for all your projects"
+msgstr "Terpasang untuk semua proyek Anda"
+
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "Installs into this project"
+msgstr "Terpasang ke proyek ini"
+
+#: src/components/SkillInstallMenu.tsx
+msgid "Installs the skill to {path} — the first location holds its own copy"
+msgstr "Memasang skill ke {path} — lokasi pertama menyimpan salinan aslinya"
+
 #: src/components/settings/SkillsStudioIntroDialog.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
 msgid "Installs to"
 msgstr "Dipasang di"
 
@@ -7250,9 +7371,6 @@ msgid "Let's get set up."
 msgstr "Mari kita siapkan."
 
 #: src/components/SkillLevelSelect.tsx
-#: src/components/SkillPluginBundleDialog.tsx
-#: src/components/SkillPreviewTab.tsx
-#: src/components/SkillToolbarControls.tsx
 msgid "Level"
 msgstr "Tingkat"
 
@@ -7368,6 +7486,10 @@ msgstr "Daftar"
 msgid "Lives in this project (wherever the skill's folder is) and is shared with collaborators through git."
 msgstr "Berada di proyek ini (di mana pun folder keterampilannya) dan dibagikan ke kolaborator lewat git."
 
+#: src/components/SkillsTree.tsx
+msgid "Lives outside this project — read-only here."
+msgstr "Berada di luar proyek ini — hanya-baca di sini."
+
 #: src/components/emoji-picker.tsx
 #: src/components/ui/spinner.tsx
 #: src/editor/components/TagDialog.tsx
@@ -7465,7 +7587,6 @@ msgid "Loading PDF"
 msgstr "Memuat PDF"
 
 #: src/components/ExploreSkills.tsx
-#: src/components/SkillsBasePage.tsx
 msgid "Loading popular skills"
 msgstr "Memuat keterampilan populer"
 
@@ -7610,6 +7731,11 @@ msgstr "Respons listPacks salah bentuk"
 msgid "Malformed plan response"
 msgstr "Respons plan salah bentuk"
 
+#: src/components/settings/BuiltInSkillsSection.tsx
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Manage"
+msgstr "Kelola"
+
 #: src/components/EditorTabTargetMenuItems.tsx
 #: src/components/FileTree.tsx
 msgid "Manage hidden files in Settings → Ignore patterns."
@@ -7630,10 +7756,6 @@ msgstr "Pengelolaan alat AI tidak tersedia pada build ini."
 #: src/components/settings/ProjectAiToolsSection.tsx
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "Pengelolaan alat AI proyek tidak tersedia pada build ini."
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-msgid "Managing skills is unavailable in this build."
-msgstr "Pengelolaan keterampilan tidak tersedia di build ini."
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
@@ -7833,6 +7955,16 @@ msgstr "Paling banyak dipasang"
 msgid "Move"
 msgstr "Pindahkan"
 
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Global"
+msgstr "Pindahkan {0} ke Global"
+
+#. placeholder {0}: bulkEntries.length
+#: src/components/SkillsTree.tsx
+msgid "Move {0} to Project"
+msgstr "Pindahkan {0} ke Proyek"
+
 #: src/components/settings/SkillFolderLinkConfirmDialog.tsx
 msgid "Move across"
 msgstr "Dipindahkan"
@@ -7963,6 +8095,14 @@ msgstr "{label} dipindahkan ke panel baru di sebelah kiri."
 #: src/components/EditorTabs.tsx
 msgid "Moved {label} to a new pane on the right."
 msgstr "{label} dipindahkan ke panel baru di sebelah kanan."
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Global"
+msgstr "{moved} keterampilan dipindahkan ke Global"
+
+#: src/components/SkillsTree.tsx
+msgid "Moved {moved} skills to Project"
+msgstr "{moved} keterampilan dipindahkan ke Proyek"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "moved template"
@@ -8143,10 +8283,6 @@ msgstr "Berkas baru di keterampilan ini"
 msgid "New folder"
 msgstr "Folder baru"
 
-#: src/components/SkillsBasePage.tsx
-msgid "New from scratch"
-msgstr "Baru dari nol"
-
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -8188,6 +8324,7 @@ msgstr "Sesi baru"
 
 #: src/components/command-palette-commands.ts
 #: src/components/NewSkillDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 #: src/components/SkillsTree.tsx
 msgid "New skill"
 msgstr "Keterampilan baru"
@@ -8266,6 +8403,10 @@ msgstr "Belum ada agen yang disiapkan — membuka Atur agen."
 msgid "No agent is set up yet — pick one from the send menu."
 msgstr "Belum ada agen yang disiapkan — pilih satu dari menu kirim."
 
+#: src/components/SkillPluginBundleDialog.tsx
+msgid "no agents — saved, not installed anywhere"
+msgstr "tanpa agen — disimpan, tidak dipasang di mana pun"
+
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents available."
 msgstr "Tidak ada agen yang tersedia."
@@ -8278,10 +8419,6 @@ msgstr "Tidak ada agen yang diaktifkan"
 #: src/components/settings/ConfigureAgentsSection.tsx
 msgid "No agents match your search."
 msgstr "Tidak ada agen yang cocok dengan pencarian Anda."
-
-#: src/components/SkillPluginBundleDialog.tsx
-msgid "No agents selected — the skills are saved but not installed anywhere."
-msgstr "Tidak ada agen yang dipilih — keterampilannya tersimpan tetapi tidak dipasang di mana pun."
 
 #: src/components/FileSidebar.tsx
 msgid "No AI agents installed"
@@ -8666,6 +8803,10 @@ msgstr "Tidak ada di bilah sisi"
 msgid "Not installed"
 msgstr "Belum terpasang"
 
+#: src/components/settings/ProjectSkillSection.tsx
+msgid "Not installed in this project yet."
+msgstr "Belum terpasang di proyek ini."
+
 #. Declines the first-visit skill offer; the row on the page keeps it available
 #: src/components/acp/ThreadView.tsx
 #: src/components/ReportBugDialogBody.tsx
@@ -8775,10 +8916,6 @@ msgstr "Aktif — kueri pencarian Anda dan teks halaman yang cocok dikirim ke pe
 msgid "On <0>{address}</0>"
 msgstr "Pada <0>{address}</0>"
 
-#: src/components/SkillCostValue.tsx
-msgid "on demand"
-msgstr "sesuai permintaan"
-
 #: src/comments/PropertyCommentButton.tsx
 msgid "On selected text in <0>{address}</0>"
 msgstr "Pada teks terpilih di <0>{address}</0>"
@@ -8786,10 +8923,6 @@ msgstr "Pada teks terpilih di <0>{address}</0>"
 #: src/components/settings/LintingSection.tsx
 msgid "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
 msgstr "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
-
-#: src/components/SkillCostValue.tsx
-msgid "on trigger"
-msgstr "saat dipicu"
 
 #. Next step for a Cursor project MCP row — Cursor leaves project servers disabled
 #: src/components/settings/ProjectAiToolsSection.tsx
@@ -8968,6 +9101,7 @@ msgstr "Buka pemilih emoji untuk {keyName}"
 
 #: src/components/AssetPreview.tsx
 #: src/components/ProjectSwitcher.tsx
+#: src/components/SkillPreviewTab.tsx
 #: src/components/ViewerStatusPane.tsx
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open file"
@@ -9464,6 +9598,11 @@ msgstr "Mode yatim"
 msgid "Orphans"
 msgstr "Yatim"
 
+#. Bundled non-SKILL.md files — read only when opened
+#: src/components/SkillCostValue.tsx
+msgid "other"
+msgstr "lainnya"
+
 #: src/components/FeedbackForm.tsx
 msgid "Other"
 msgstr "Lainnya"
@@ -9492,6 +9631,10 @@ msgstr "Kerangka"
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "melebihi anggaran token {budgetLabel}"
+
+#: src/components/SkillCostValue.tsx
+msgid "Over the {budgetLabel} token guidance. Everything here loads into the agent's context when the skill is used — keep it lean, or move detail into references/ files that load only on demand."
+msgstr "Melebihi panduan {budgetLabel} token. Semua ini dimuat ke konteks agen saat keterampilan digunakan — jaga tetap ringkas, atau pindahkan detail ke berkas references/ yang dimuat hanya saat dibutuhkan."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Overlapping edits"
@@ -9597,7 +9740,7 @@ msgstr "Penguraian gagal"
 msgid "Part of the {0} plugin — read-only; open it to edit a copy"
 msgstr "Bagian dari plugin {0} — hanya-baca; buka untuk menyunting salinannya"
 
-#: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "Part of the {plugin} plugin"
 msgstr "Bagian dari plugin {plugin}"
 
@@ -9775,6 +9918,11 @@ msgstr "Pilih keterampilan yang akan dipasang. Masing-masing masuk sebagai keter
 msgid "Pick up where you left off"
 msgstr "Lanjutkan dari tempat Anda berhenti"
 
+#: src/components/SkillPreviewTab.tsx
+#: src/components/SkillsTree.tsx
+msgid "Pick where your copy goes. Choosing a destination creates it."
+msgstr "Pilih tujuan salinan Anda. Memilih tujuan akan membuatnya."
+
 #. placeholder {0}: data.label
 #. placeholder {1}: paneLabel(data.paneId)
 #: src/components/EditorWorkspace.tsx
@@ -9784,6 +9932,14 @@ msgstr "{0} diambil dari {1}."
 #: src/components/EditorTabs.tsx
 msgid "Pin tab"
 msgstr "Sematkan tab"
+
+#: src/components/SkillsTree.tsx
+msgid "Pin to top"
+msgstr "Sematkan di atas"
+
+#: src/components/SkillsTree.tsx
+msgid "Pinned"
+msgstr "Disematkan"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Plain"
@@ -9830,10 +9986,6 @@ msgstr "Menimbang…"
 #: src/components/ExploreSkills.tsx
 msgid "Popular"
 msgstr "Populer"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Popular on skills.sh"
-msgstr "Populer di skills.sh"
 
 #. placeholder {0}: portDraft.trim()
 #: src/components/settings/NetworkAccessSection.tsx
@@ -9968,6 +10120,7 @@ msgstr "proyek"
 #: src/components/CommandPalette.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/skill-scope.ts
 msgid "Project"
 msgstr "Proyek"
@@ -10069,6 +10222,10 @@ msgstr "Terbitkan ke GitHub"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Published"
 msgstr "Diterbitkan"
+
+#: src/components/SkillsTree.tsx
+msgid "Published by {publisher}"
+msgstr "Diterbitkan oleh {publisher}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Publishing..."
@@ -10328,6 +10485,7 @@ msgid "Relevance"
 msgstr "Relevansi"
 
 #: src/components/AppMenubar.tsx
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/EditorActivityPool.tsx
 #: src/components/settings/SettingsDialogErrorBoundary.tsx
 #: src/components/TerminalGate.tsx
@@ -10456,10 +10614,6 @@ msgstr "\"{0}\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat
 #: src/lib/install-recent-removed-listener.ts
 msgid "Removed \"{projectName}\" from recent projects. Its folder no longer exists."
 msgstr "\"{projectName}\" dihapus dari proyek terbaru. Foldernya sudah tidak ada."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Removes from"
-msgstr "Dihapus dari"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Removing"
@@ -10722,6 +10876,10 @@ msgstr "Setel ulang filter tampilan"
 msgid "Resize {handleKey}"
 msgstr "Ubah ukuran {handleKey}"
 
+#: src/components/SkillsSidebarDock.tsx
+msgid "Resize skills panel"
+msgstr "Ubah ukuran panel Keterampilan"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "Selesaikan konfliknya di terminal Anda"
@@ -10750,6 +10908,7 @@ msgstr "Menyelesaikan delta"
 msgid "Resources"
 msgstr "Sumber daya"
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/presence/use-sync-toasts.ts
@@ -10768,6 +10927,7 @@ msgstr "Mulai ulang dengan versi aplikasi ini"
 msgid "Restarted — now running v{appRuntime}."
 msgstr "Dimulai ulang — kini menjalankan v{appRuntime}."
 
+#: src/components/BranchRecycleBanner.tsx
 #: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "Memulai ulang"
@@ -11256,6 +11416,10 @@ msgstr "Lihat <0>Arsitektur</0> untuk ikhtisar sistemnya."
 msgid "See all {0} starter packs"
 msgstr "Lihat semua {0} paket awal"
 
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "See all {count} skills"
+msgstr "Lihat semua {count} keterampilan"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "See the full install guide"
 msgstr "Lihat panduan pemasangan lengkap"
@@ -11453,6 +11617,10 @@ msgid "Server returned a malformed response."
 msgstr "Server mengembalikan respons yang salah bentuk."
 
 #: src/lib/skills-api.ts
+msgid "Server returned a malformed update response."
+msgstr "Server mengembalikan respons pembaruan yang tidak valid."
+
+#: src/lib/skills-api.ts
 msgid "Server returned a malformed upload response."
 msgstr "Server mengembalikan respons unggahan yang salah bentuk."
 
@@ -11471,6 +11639,10 @@ msgstr "Server mengembalikan respons skill yang tidak lengkap."
 #: src/hooks/use-folder-config.ts
 msgid "Server returned an incomplete templates response."
 msgstr "Server mengembalikan respons templat yang tidak lengkap."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "Server switched to branch <0>{branch}</0> — reloading content"
+msgstr "Server beralih ke branch <0>{branch}</0> — memuat ulang konten"
 
 #: src/components/FileTree.tsx
 msgid "Server-side cleanup failed for {failedCount, plural, one {# item} other {# items}}"
@@ -11903,15 +12075,28 @@ msgstr "Keterampilan sudah ada dalam proyek"
 msgid "Skill discovery powered by <0>skills.sh</0>"
 msgstr "Penemuan keterampilan ditenagai <0>skills.sh</0>"
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "SKILL.md is managed by the skill itself — pick another name"
+msgstr "SKILL.md dikelola oleh skill itu sendiri — pilih nama lain"
+
 #: src/components/command-palette-commands.ts
-#: src/components/FileSidebar.tsx
-#: src/components/FilesSkillsToggle.tsx
 msgid "Skills"
 msgstr "Keterampilan"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
+
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}."
+msgstr "Keterampilan dari {0}."
+
+#. placeholder {0}: bucket.publisher
+#. placeholder {1}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "Skills from {0}/{1}."
+msgstr "Keterampilan dari {0}/{1}."
 
 #. Heading above the project's own skill row, in Settings → This project → Skills Studio
 #. Heading above the rows for the skills OpenKnowledge ships, in Settings → Skills Studio
@@ -11935,9 +12120,11 @@ msgstr "Keterampilan dialihkan"
 msgid "Skills section"
 msgstr "Bagian Keterampilan"
 
+#: src/components/FileSidebar.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/settings/SkillsManagerSection.tsx
 #: src/components/settings/SkillsStudioIntroDialog.tsx
+#: src/components/SkillsSidebarDock.tsx
 msgid "Skills Studio"
 msgstr "Studio Keterampilan"
 
@@ -11953,6 +12140,10 @@ msgstr "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Tulis milik
 #: src/components/settings/SkillsManagerSection.tsx
 msgid "Skills that come with this project, and the folders its AI tools read them from."
 msgstr "Keterampilan yang disertakan dengan proyek ini, dan folder tempat alat AI-nya membacanya."
+
+#: src/components/SkillsSidebarDock.tsx
+msgid "Skills toolbar"
+msgstr "Bilah alat Keterampilan"
 
 #: src/components/SkillPreviewTab.tsx
 msgid "skills.sh"
@@ -12135,6 +12326,10 @@ msgstr "Batalkan atau ulangi di sumber"
 #: src/components/OkBlobRunnerPage.tsx
 msgid "Space to jump, down arrow to duck. That is the whole game."
 msgstr "Spasi untuk melompat, panah bawah untuk menunduk. Hanya itu permainannya."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Spaces aren't allowed in the path"
+msgstr "Spasi tidak diperbolehkan di jalur"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Split list item"
@@ -12341,10 +12536,6 @@ msgstr "Ringkas semua yang saya ubah minggu ini"
 msgid "Switch and update branch"
 msgstr "Ganti cabang dan perbarui"
 
-#: src/components/FilesSkillsToggle.tsx
-msgid "Switch between Files and Skills"
-msgstr "Beralih antara Berkas dan Keterampilan"
-
 #: src/lib/keyboard-shortcuts.ts
 msgid "Switch between the visual and source editors, keeping your place."
 msgstr "Beralih antara penyunting visual dan sumber, tanpa kehilangan posisi Anda."
@@ -12402,11 +12593,6 @@ msgstr "Symlink ke {targetPath}"
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "symlinked via parent"
 msgstr "ditautkan lewat folder induk"
-
-#. placeholder {0}: r.display
-#: src/components/SkillInstallMenu.tsx
-msgid "Symlinks the skill to {0}"
-msgstr "Menautkan keterampilan secara symlink ke {0}"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "Symlinks the skill to {path}"
@@ -12750,6 +12936,11 @@ msgstr "Pesan itu sudah terkirim — hasil suntinganmu tidak diterapkan."
 msgid "The {0} download request timed out."
 msgstr "Permintaan unduhan {0} kehabisan waktu."
 
+#. placeholder {0}: bucket.id
+#: src/components/SkillsTree.tsx
+msgid "The {0} plugin serves these skills from its cache — OK never edits or updates them."
+msgstr "Plugin {0} menyajikan keterampilan ini dari cache-nya — OK tidak pernah mengedit atau memperbaruinya."
+
 #: src/components/SkillForkDialog.tsx
 msgid "The {editor} folder holds a different version of this skill. Pick which one wins, or keep both under different names. Whatever you replace is backed up first."
 msgstr "Folder {editor} memuat versi lain dari keterampilan ini. Pilih mana yang menang, atau simpan keduanya dengan nama berbeda. Apa pun yang Anda ganti dicadangkan lebih dulu."
@@ -12801,10 +12992,6 @@ msgstr "folder keterampilan bawaan (jalur persisnya muncul setelah disimpan)"
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The desktop app isn't responding. Refresh and try again."
 msgstr "Aplikasi desktopnya tidak merespons. Segarkan lalu coba lagi."
-
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "The destinations changed. Review the list, then confirm."
-msgstr "Tujuannya berubah. Periksa daftarnya, lalu konfirmasi."
 
 #. placeholder {0}: summary.target
 #: src/components/settings/LintingSection.tsx
@@ -12872,9 +13059,22 @@ msgstr "agen yang terbuka"
 msgid "The original text was deleted. You can re-place this comment on selected text."
 msgstr "Teks aslinya telah dihapus. Anda dapat menempatkan ulang komentar ini pada teks terpilih."
 
+#: src/components/SkillFileCreateDialog.tsx
+msgid "The path can't leave the skill (no . or ..)"
+msgstr "Jalur tidak boleh keluar dari skill (tanpa . atau ..)"
+
+#. placeholder {0}: caps.join(', ')
+#: src/components/SkillPluginBundleBanner.tsx
+msgid "The plugin also ships {0} — named here, never installed by OK."
+msgstr "Plugin ini juga menyertakan {0} — hanya disebutkan di sini, tidak pernah dipasang oleh OK."
+
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "The preview blocks resources that don't meet its security rules (for example plain http:// URLs, or code that uses eval). The content above may render incompletely."
 msgstr "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (misalnya URL http:// polos, atau kode yang memakai eval). Konten di atas mungkin dirender tidak lengkap."
+
+#: src/components/BranchRecycleBanner.tsx
+msgid "The project's server is on a different branch than this window — content can't load."
+msgstr "Server proyek ini berada di branch yang berbeda dari jendela ini — konten tidak dapat dimuat."
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13241,6 +13441,16 @@ msgstr "URL GitHub ini tidak dapat dibagikan."
 msgid "This is a preview of {boldName} — a built-in skill shipped with Open Knowledge. It's read-only."
 msgstr "Ini pratinjau {boldName} — keterampilan bawaan yang disertakan bersama Open Knowledge. Ia hanya-baca."
 
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills at this source. Install it into your agents."
+msgstr "Ini pratinjau {boldName} — satu dari {0} keterampilan di sumber ini. Pasang ke agen Anda."
+
+#. placeholder {0}: bundleDisclosure.names.length
+#: src/components/SkillPreviewTab.tsx
+msgid "This is a preview of {boldName} — one of {0} skills in this repo. Install it into your agents."
+msgstr "Ini pratinjau {boldName} — satu dari {0} keterampilan di repo ini. Pasang ke agen Anda."
+
 #: src/components/SkillPreviewTab.tsx
 msgid "This is a preview of {boldName}, detected in {boldHarness} at the {boldLevel} level."
 msgstr "Ini pratinjau {boldName}, terdeteksi di {boldHarness} pada tingkat {boldLevel}."
@@ -13266,6 +13476,7 @@ msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an 
 msgstr "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
 
 #: src/components/settings/ScopeBadge.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This machine"
 msgstr "Mesin ini"
 
@@ -13330,12 +13541,17 @@ msgstr "Ini menghapus {0} secara permanen. Plugin asal salinannya tidak tersentu
 msgid "This permanently removes {0}/{1} from the \"{2}\" skill. Anything in SKILL.md that points at it will break until it's recreated."
 msgstr "Ini menghapus {0}/{1} secara permanen dari skill “{2}”. Apa pun di SKILL.md yang menunjuk ke berkas itu akan rusak sampai dibuat ulang."
 
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "This permanently removes {names}. Agents that invoke these skills by name will fail until they're recreated."
+msgstr "Ini menghapus {names} secara permanen. Agen yang memanggil keterampilan ini berdasarkan nama akan gagal sampai dibuat ulang."
+
 #: src/components/TemplateDeleteDialog.tsx
 msgid "This permanently removes {path}. Agents that reference this template by name will fail until it's recreated or replaced by one in a parent folder."
 msgstr "Ini menghapus {path} secara permanen. Agen yang merujuk templat ini berdasarkan nama akan gagal sampai ia dibuat ulang atau digantikan oleh templat di folder induk."
 
 #: src/components/PanelScopeHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
+#: src/components/SkillScopeSegment.tsx
 msgid "This project"
 msgstr "Proyek ini"
 
@@ -13394,15 +13610,6 @@ msgstr "Keterampilan proyek ini dipindahkan ke Studio Keterampilan."
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "This removes OpenKnowledge’s settings and integrations from your Mac and any projects you select below, but keeps your markdown content and authored skills."
 msgstr "Ini menghapus pengaturan dan integrasi OpenKnowledge dari Mac Anda serta dari proyek mana pun yang Anda pilih di bawah, tetapi mempertahankan konten markdown dan keterampilan yang Anda tulis."
-
-#. placeholder {0}: caps.join(', ')
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills, plus {0}. Install any of them from the plugin."
-msgstr "Repo ini memuat {count} keterampilan, ditambah {0}. Pasang salah satunya dari plugin."
-
-#: src/components/SkillPluginBundleBanner.tsx
-msgid "This repo bundles {count} skills. Install any of them from the plugin."
-msgstr "Repo ini memuat {count} keterampilan. Pasang salah satunya dari plugin."
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
@@ -13619,6 +13826,11 @@ msgstr "Panggilan alat"
 msgid "Top linked pages"
 msgstr "Halaman paling banyak ditaut"
 
+#. Sum of all three token tiers
+#: src/components/SkillCostValue.tsx
+msgid "total"
+msgstr "total"
+
 #: src/components/SkillOriginInline.tsx
 msgid "Tracked in git — updates flow through your repo (pull or CI), not auto-update"
 msgstr "Dilacak di git — pembaruan mengalir lewat repo Anda (pull atau CI), bukan pembaruan otomatis"
@@ -13799,17 +14011,6 @@ msgstr "Batalkan hingga suntingan ini?"
 msgid "Undo, redo, or step through selection changes in the Edit source pane or a code-shaped property field."
 msgstr "Membatalkan, mengulangi, atau menelusuri perubahan pilihan di panel Sunting sumber atau bidang properti berbentuk kode."
 
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/settings/ProjectSkillSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall"
-msgstr "Copot"
-
-#: src/components/settings/BuiltInSkillsSection.tsx
-#: src/components/SkillInstallConfirmDialog.tsx
-msgid "Uninstall {name}"
-msgstr "Copot {name}"
-
 #: src/lib/native-menu-catalog.ts
 #: src/uninstall/UninstallPickerScreen.tsx
 msgid "Uninstall OpenKnowledge"
@@ -13876,6 +14077,10 @@ msgstr "Hapus tanda semua komentar di {0}"
 msgid "Unordered list of items."
 msgstr "Daftar item tanpa nomor."
 
+#: src/components/SkillsTree.tsx
+msgid "Unpin"
+msgstr "Lepas sematan"
+
 #: src/components/EditorTabs.tsx
 msgid "Unpin {accessibleLabel}"
 msgstr "Lepas sematan {accessibleLabel}"
@@ -13920,6 +14125,10 @@ msgstr "Perbarui"
 #: src/components/SkillUpdateConflictDialog.tsx
 msgid "Update \"{skillName}\" over your edits?"
 msgstr "Perbarui \"{skillName}\" menimpa suntingan Anda?"
+
+#: src/components/SkillsTree.tsx
+msgid "Update all from this source"
+msgstr "Perbarui semua dari sumber ini"
 
 #. placeholder {0}: result.error
 #: src/hooks/use-skill-origin.ts
@@ -13985,10 +14194,6 @@ msgstr "Unggah"
 #: src/components/PageHeaderWidgets.tsx
 msgid "Upload {keyName}"
 msgstr "Unggah {keyName}"
-
-#: src/components/SkillsBasePage.tsx
-msgid "Upload a skill"
-msgstr "Unggah sebuah keterampilan"
 
 #: src/editor/image-upload/index.ts
 msgid "Upload failed"
@@ -14088,6 +14293,9 @@ msgid "Use a lowercase .yaml or .yml extension"
 msgstr "Pakai ekstensi .yaml atau .yml dalam huruf kecil"
 
 #: src/components/SkillFileCreateDialog.tsx
+msgid "Use a relative path inside the skill"
+msgstr "Gunakan jalur relatif di dalam skill"
+
 #: src/components/SkillFileRenameDialog.tsx
 msgid "Use a relative path inside the skill (no .., no spaces; SKILL.md is managed)."
 msgstr "Pakai jalur relatif di dalam keterampilan (tanpa .., tanpa spasi; SKILL.md dikelola sistem)."
@@ -14171,8 +14379,13 @@ msgstr "via {viaTags}"
 msgid "via parent"
 msgstr "lewat folder induk"
 
+#: src/components/SkillInstallMenu.tsx
+msgid "via plugin"
+msgstr "via plugin"
+
 #: src/components/AppMenubar.tsx
 #: src/components/CommandPalette.tsx
+#: src/components/SkillsTree.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "View"
 msgstr "Tampilan"
@@ -14180,6 +14393,10 @@ msgstr "Tampilan"
 #: src/components/SkillDirectoryCard.tsx
 msgid "View {name}"
 msgstr "Lihat {name}"
+
+#: src/components/SkillsTree.tsx
+msgid "View {publisher} on skills.sh"
+msgstr "Lihat {publisher} di skills.sh"
 
 #: src/components/AssetPreview.tsx
 msgid "View as text"
@@ -14206,8 +14423,17 @@ msgid "View in Source Markdown"
 msgstr "Lihat di sumber Markdown"
 
 #: src/components/SkillPluginBundleBanner.tsx
+#: src/components/SkillsTree.tsx
 msgid "View plugin"
 msgstr "Lihat plugin"
+
+#: src/components/SkillsTree.tsx
+msgid "View source"
+msgstr "Lihat sumber"
+
+#: src/components/SkillsTree.tsx
+msgid "View the {plugin} plugin repo"
+msgstr "Lihat repositori plugin {plugin}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Visibility"
@@ -14385,6 +14611,10 @@ msgstr "Ketika Anda mengarahkan kursor ke tautan eksternal, URL-nya dikirim ke s
 msgid "When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine."
 msgstr "Ketika Anda memasang keterampilan yang diterbitkan, direktori keterampilan (skills.sh) diberi tahu agar hitungan pemasangannya akurat. Yang dikirim adalah nama keterampilannya, repositori sumbernya, dan alat agen mana yang menerimanya — tidak pernah isi berkas, dan tidak pernah untuk keterampilan dari sumber pribadi, lokal, atau yang diketik manual. Sekali per keterampilan per komputer."
 
+#: src/components/SkillScopeSegment.tsx
+msgid "Where"
+msgstr "Di mana"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Where newly added attachments are placed."
 msgstr "Tempat lampiran yang baru ditambahkan diletakkan."
@@ -14420,6 +14650,10 @@ msgstr "Saran tautan wiki"
 #: src/components/settings/LintingSection.tsx
 msgid "Wiki-links like [[Page]] — a supported way to link here, but an external reader resolves nothing and shows the brackets."
 msgstr "Tautan wiki seperti [[Page]] — cara yang didukung untuk membuat tautan di sini, tetapi pembaca eksternal tidak menyelesaikan apa pun dan memperlihatkan tanda kurung."
+
+#: src/components/SkillFileCreateDialog.tsx
+msgid "Will be created as <0>{effective}</0>"
+msgstr "Akan dibuat sebagai <0>{effective}</0>"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Will be created as <0>{sanitizedName}</0>"

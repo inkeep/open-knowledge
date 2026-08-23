@@ -322,6 +322,7 @@ export {
   SYSTEM_DOC_NAME,
   skillFileLiveDocName,
   skillLiveDocName,
+  splitSkillHostQualifier,
   stripMdExt,
   templateContentDocName,
 } from './constants/cc1.ts';
@@ -366,6 +367,7 @@ export {
   receivesProjectIntegrationWrite,
   skillRootActivationPath,
   USER_MCP_GATED_EDITOR_IDS,
+  USER_SKILL_EDITOR_IDS,
   USER_SKILL_HOSTS,
 } from './constants/editors.ts';
 export {
@@ -1306,6 +1308,8 @@ export {
   SkillPutRequestSchema,
   type SkillPutSuccess,
   SkillPutSuccessSchema,
+  type SkillReimportBulkResult,
+  SkillReimportBulkResultSchema,
   type SkillReimportRequest,
   SkillReimportRequestSchema,
   type SkillReimportSuccess,
@@ -1329,6 +1333,10 @@ export {
   SkillsListEntrySchema,
   type SkillsListSuccess,
   SkillsListSuccessSchema,
+  type SkillsReimportBulkRequest,
+  SkillsReimportBulkRequestSchema,
+  type SkillsReimportBulkSuccess,
+  SkillsReimportBulkSuccessSchema,
   type SkillTargetsGetSuccess,
   SkillTargetsGetSuccessSchema,
   type SkillTargetsPutRequest,
@@ -1831,12 +1839,18 @@ export {
   type SkillInstallTarget,
   type SkillTargetEditor,
   SkillTargetEditorSchema,
+  type SkillUserTargetEditor,
+  SkillUserTargetEditorSchema,
 } from './skill-targets/schema.ts';
 export {
   SKILL_IMPORT_MAX_BUNDLE_FILES,
   SKILL_IMPORT_MAX_FILE_BYTES,
   SKILL_IMPORT_MAX_TOTAL_BYTES,
 } from './skills-catalog/import-limits.ts';
+export {
+  type PluginUpstream,
+  pluginUpstreamsByName,
+} from './skills-catalog/plugin-upstream.ts';
 // Skill/Pack model — browser-safe schemas and source helpers. The node:fs
 // enumerator lives behind the `@inkeep/open-knowledge-core/skills-catalog`
 // subpath so this root barrel stays importable from app/docs browser bundles.

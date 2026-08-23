@@ -889,7 +889,6 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     prewarm,
     reconcileLocalRemoval,
     reconcileLocalRename,
-    setSkillsSidebar,
   } = useDocumentContext();
   const { notifySidebarFileSelected } = useSidebar();
   const { resolvedTheme } = useTheme();
@@ -1012,13 +1011,6 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       );
       pushHashWithoutNavigation(hashFromAssetPath(target.assetPath));
     }
-    // Opening from the Files tree KEEPS you in Files, even when the thing you
-    // opened is a skill's file. Surface follows the target only when the
-    // navigation came from outside a tree (a deep link, the palette) and so
-    // carries no surface intent of its own — clicking a row in a tree carries
-    // plenty. Must run after `openTarget`: committing a new tab re-arms
-    // autofollow, and this is the pin that overrides it.
-    setSkillsSidebar(false);
     notifySidebarFileSelected();
   }
   function activateTreePath(

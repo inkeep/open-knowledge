@@ -904,8 +904,15 @@ export function composeTerminalLaunchPrompt(input: HandoffDispatchInput, cli: Te
   // `input.instruction` the toolbar popover uses. Checking only `hasInstruction`
   // would route every composer dispatch into the bare load+read+stop prompt and
   // silently drop the user's typed text; `selectScopedPrompt` already threads
-  // `input.compose` through `assembleHandoffPrompt`, so route it there.
-  if (input.compose !== undefined || input.createDescription !== undefined || hasInstruction) {
+  // `input.compose` through `assembleHandoffPrompt`, so route it there. Skill
+  // scope likewise carries intent without free text — the author-with-AI
+  // directive — so it too must skip the bare bootstrap.
+  if (
+    input.compose !== undefined ||
+    input.createDescription !== undefined ||
+    input.skill !== undefined ||
+    hasInstruction
+  ) {
     // Typed intent: keep the user's instruction (via the directive composer,
     // which already prepends the skill pointer) but lead with the terminal-
     // surface preamble so the launch reads as the same OK handoff the bare
@@ -926,7 +933,12 @@ export function composeTerminalLaunchPrompt(input: HandoffDispatchInput, cli: Te
  */
 function composeThreadLaunchPrompt(input: HandoffDispatchInput): string {
   const hasInstruction = typeof input.instruction === 'string' && input.instruction.trim() !== '';
-  if (input.compose !== undefined || input.createDescription !== undefined || hasInstruction) {
+  if (
+    input.compose !== undefined ||
+    input.createDescription !== undefined ||
+    input.skill !== undefined ||
+    hasInstruction
+  ) {
     // Threads deliver the composed prompt straight to the server-hosted agent —
     // no URL round-trip and no shell quoting — so use the generous `terminal`
     // byte budget rather than `url`, whose per-target URL budget would trim

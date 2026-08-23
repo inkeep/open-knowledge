@@ -226,12 +226,10 @@ export function hashFromAssetPath(assetPath: string): string {
 
 const SKILL_FILE_HASH_PREFIX = '#/__skill-file__/';
 
-// The Skills destination hub is a singleton full-pane route; its hash carries no
-// coordinates. Opened via `#/__skills__`.
+// Retired route. Nothing MINTS this hash any more — Skills live in the sidebar
+// dock, not behind a full-pane route — but it is still parsed so an old bookmark
+// or a restored history entry resolves and redirects instead of dead-ending.
 const SKILLS_HASH_PREFIX = '#/__skills__';
-export function hashFromSkills(): string {
-  return SKILLS_HASH_PREFIX;
-}
 export function skillsFromHash(hash: string): boolean {
   return hash === SKILLS_HASH_PREFIX || hash.startsWith(`${SKILLS_HASH_PREFIX}/`);
 }
@@ -248,7 +246,7 @@ export function skillsFromHash(hash: string): boolean {
 const SKILL_PREVIEW_HASH_PREFIX = '#/__skill-preview__/';
 /** The skill-preview surfaces, single-sourced. Add a flavor here and every
  *  hash/tab-id validator + target type picks it up. */
-const SKILL_PREVIEW_FLAVORS = ['explore', 'detected', 'builtin', 'foreign'] as const;
+const SKILL_PREVIEW_FLAVORS = ['explore', 'detected', 'builtin', 'foreign', 'linked'] as const;
 export type SkillPreviewFlavor = (typeof SKILL_PREVIEW_FLAVORS)[number];
 /** Type-guard for an untrusted flavor (from a `window.location` hash or a
  *  persisted, hand-editable tab id). */

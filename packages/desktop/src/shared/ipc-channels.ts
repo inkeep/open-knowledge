@@ -338,7 +338,6 @@ interface PersistedEditorPane {
 }
 
 interface ProjectSessionState {
-  activeTabByMode: { files: string | null; skills: string | null };
   updatedAt: string | null;
   panes: PersistedEditorPane[];
   focusedPaneId: string;

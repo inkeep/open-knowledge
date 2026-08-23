@@ -99,6 +99,11 @@ const SAFE_AREA_AFFORDANCE_MARKERS = [
   // `pl-[78px]` literal was retired when EditorHeader adopted the shared
   // `--ok-titlebar-reserve-left` token — no live site uses it anymore.
   'pl-[var(--ok-titlebar-reserve-left,1rem)]',
+  // The logical-property twin: new sites MUST use `ps-` (the
+  // no-physical-direction-utility GritQL rule rejects `pl-`), so the scanner
+  // recognizes both. `ConnectingBanner` keeps `pl-` under its file-level
+  // pre-rule exemption; `BranchRecycleBanner` is the first `ps-` site.
+  'ps-[var(--ok-titlebar-reserve-left,1rem)]',
 ];
 
 /**

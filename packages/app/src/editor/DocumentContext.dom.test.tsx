@@ -6,10 +6,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Toaster } from '@/components/ui/sonner';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { hashFromAssetPath } from '@/lib/doc-hash';
-import {
-  __resetKnownProjectSkillDirsForTests,
-  setKnownProjectSkillDirs,
-} from '@/lib/known-skill-dirs';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 import {
   consumeHashNavigationSuppression,
@@ -34,11 +30,10 @@ vi.doMock('@/lib/use-collab-url', () => ({
   }),
 }));
 
-// The surface decision reads the known-skill-dirs store, which `useSkills`
-// publishes. Mocking the hook is what makes the "list has not landed yet" ->
-// "list landed" transition drivable from a test: the provider subscribes to this
-// status, so flipping it is what re-runs the per-surface tracking effect.
-let mockSkillsStatus: 'idle' | 'loading' | 'ready' = 'idle';
+// The provider no longer subscribes to the skills list — that subscription existed
+// to recompute the Files/Skills surface. The mock stays because components
+// rendered here may still call the hook; nothing varies it any more.
+const mockSkillsStatus: 'idle' | 'loading' | 'ready' = 'idle';
 
 vi.doMock('@/hooks/use-skills', () => ({
   useSkills: () => ({ status: mockSkillsStatus, data: [] }),
@@ -60,7 +55,6 @@ function persistedTabSession(
   updatedAt: string | null,
 ) {
   return {
-    activeTabByMode: { files: null, skills: null },
     updatedAt,
     panes: [
       {
@@ -135,7 +129,6 @@ function seedPaneWorkspaceSession() {
   window.localStorage.setItem(
     localTabSessionStorageKey(window.location.origin),
     JSON.stringify({
-      activeTabByMode: { files: null, skills: null },
       panes: [
         {
           id: 'pane-left',
@@ -154,33 +147,6 @@ function seedPaneWorkspaceSession() {
       ],
       focusedPaneId: 'pane-right',
       updatedAt: new Date('2026-07-23T00:00:00.000Z').toISOString(),
-    }),
-  );
-}
-
-function seedSurfacePaneWorkspaceSession() {
-  window.localStorage.setItem(
-    localTabSessionStorageKey(window.location.origin),
-    JSON.stringify({
-      activeTabByMode: { files: PINNED_TAB_ID, skills: SKILL_TAB_ID },
-      panes: [
-        {
-          id: 'pane-files',
-          openTabs: [PINNED_TAB_ID],
-          pinnedTabIds: [],
-          activeTabId: PINNED_TAB_ID,
-          size: 50,
-        },
-        {
-          id: 'pane-skills',
-          openTabs: [SKILL_TAB_ID],
-          pinnedTabIds: [],
-          activeTabId: SKILL_TAB_ID,
-          size: 50,
-        },
-      ],
-      focusedPaneId: 'pane-files',
-      updatedAt: new Date('2026-08-04T00:00:00.000Z').toISOString(),
     }),
   );
 }
@@ -206,26 +172,6 @@ function seedMixedSurfacePaneWorkspaceSession() {
         },
       ],
       focusedPaneId: 'pane-left',
-      updatedAt: new Date('2026-08-04T00:00:00.000Z').toISOString(),
-    }),
-  );
-}
-
-function seedReloadedFileOverSkillSession() {
-  window.localStorage.setItem(
-    localTabSessionStorageKey(window.location.origin),
-    JSON.stringify({
-      activeTabByMode: { files: OTHER_TAB_ID, skills: SKILL_TAB_ID },
-      panes: [
-        {
-          id: 'pane-main',
-          openTabs: [SKILL_TAB_ID, OTHER_TAB_ID],
-          pinnedTabIds: [],
-          activeTabId: OTHER_TAB_ID,
-          size: 100,
-        },
-      ],
-      focusedPaneId: 'pane-main',
       updatedAt: new Date('2026-08-04T00:00:00.000Z').toISOString(),
     }),
   );
@@ -353,7 +299,6 @@ function CloseActiveHarness() {
       <span data-testid="active-tab">{ctx.activeTabId ?? ''}</span>
       <span data-testid="new-tabs">{ctx.newTabIds.join('|')}</span>
       <span data-testid="active-new-tab">{ctx.activeNewTabId ?? ''}</span>
-      <span data-testid="skill-focused">{String(ctx.skillFocused)}</span>
       <span data-testid="pane-state">
         {ctx.panes
           .map(
@@ -365,12 +310,6 @@ function CloseActiveHarness() {
       <span data-testid="close-handled">{handled}</span>
       <button type="button" onClick={() => ctx.openNewTab()}>
         Open new
-      </button>
-      <button type="button" onClick={() => ctx.setSkillsSidebar(false)}>
-        Show files
-      </button>
-      <button type="button" onClick={() => ctx.setSkillsSidebar(true)}>
-        Show skills
       </button>
       <button type="button" onClick={() => ctx.openNewTabInPane('pane-left')}>
         Open new in left
@@ -843,41 +782,6 @@ describe('DocumentContext tab close force contract', () => {
     expect(screen.getByTestId('active-tab').textContent).toBe('');
     expect(screen.getByTestId('new-tabs').textContent).toBe('');
     expect(screen.getByTestId('active-new-tab').textContent).toBe('');
-    // Files keeps the surface, so the Files empty state is what renders.
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-  });
-
-  test('closes the last Files new tab even when a hidden skill tab remains', async () => {
-    window.localStorage.setItem(
-      localTabSessionStorageKey(window.location.origin),
-      JSON.stringify(
-        persistedTabSession(
-          [SKILL_TAB_ID],
-          [],
-          SKILL_TAB_ID,
-          new Date('2026-08-04T00:00:00.000Z').toISOString(),
-        ),
-      ),
-    );
-    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Show files' }));
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-    expect(screen.getByTestId('active-new-tab').textContent).toMatch(/^new-tab:\d+$/);
-
-    await user.click(screen.getByRole('button', { name: 'Close active' }));
-
-    expect(screen.getByTestId('new-tabs').textContent).toBe('');
-    expect(screen.getByTestId('active-new-tab').textContent).toBe('');
-    expect(screen.getByTestId('active-tab').textContent).toBe('');
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-    expect(screen.getByTestId('open-tabs').textContent).toBe(SKILL_TAB_ID);
-
-    await user.click(screen.getByRole('button', { name: 'Show skills' }));
-
-    expect(screen.getByTestId('skill-focused').textContent).toBe('true');
-    expect(screen.getByTestId('active-tab').textContent).toBe(SKILL_TAB_ID);
   });
 
   test('closeActiveTabOrWindow reports unhandled when no visible tabs remain', async () => {
@@ -1711,63 +1615,6 @@ describe('DocumentContext pane workspace', () => {
     expect(screen.getByTestId('active-pane-tab').textContent).toBe(THIRD_TAB_ID);
   });
 
-  test('removes panes with no tabs on the active surface without deleting their workspace state', async () => {
-    seedSurfacePaneWorkspaceSession();
-    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
-
-    expect(screen.getByTestId('pane-count').textContent).toBe('1');
-    expect(screen.getByTestId('stored-pane-count').textContent).toBe('2');
-    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-files');
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Activate skill surface' }));
-
-    expect(screen.getByTestId('pane-count').textContent).toBe('1');
-    expect(screen.getByTestId('stored-pane-count').textContent).toBe('2');
-    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-skills');
-
-    await user.click(screen.getByRole('button', { name: 'Activate file surface' }));
-
-    expect(screen.getByTestId('pane-count').textContent).toBe('1');
-    expect(screen.getByTestId('stored-pane-count').textContent).toBe('2');
-    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-files');
-  });
-
-  test('focuses a pane through its active-surface tab instead of revealing a hidden tab', async () => {
-    seedMixedSurfacePaneWorkspaceSession();
-    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
-
-    expect(screen.getByTestId('pane-count').textContent).toBe('2');
-    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-left');
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Focus right' }));
-
-    expect(screen.getByTestId('pane-count').textContent).toBe('2');
-    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-right');
-    expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
-  });
-
-  test('does not reveal a restored skill tab when the active file tab closes', async () => {
-    seedReloadedFileOverSkillSession();
-    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
-
-    expect(screen.getByTestId('active-tab').textContent).toBe(OTHER_TAB_ID);
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Close other' }));
-
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-    expect(screen.getByTestId('active-tab').textContent).toBe('');
-    // The placeholder is load-bearing when the OTHER surface still holds tabs:
-    // occupying `activeNewTabId` is the only thing that stops `normalizePane`
-    // from falling back to `openTabs[0]` — the skill tab below. Without it the
-    // hash follows that tab and the surface flips to Skills.
-    expect(screen.getByTestId('active-new-tab').textContent).toMatch(/^new-tab:\d+$/);
-    expect(screen.getByTestId('open-tabs').textContent).toBe(SKILL_TAB_ID);
-  });
-
   test('focuses the owning pane instead of duplicating an already-open target', async () => {
     mockCollabUrl = 'ws://localhost:1/collab';
     globalThis.fetch = vi.fn(() => Promise.reject(new Error('unexpected fetch'))) as never;
@@ -1797,6 +1644,27 @@ describe('DocumentContext pane workspace', () => {
     expect(screen.getByTestId('focused-pane').textContent).toBe('pane-1');
     expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
     expect(screen.getByTestId('pane-tabs').textContent?.match(/Other\.md/g)).toHaveLength(1);
+  });
+
+  // The acceptance test for unifying the Files/Skills surfaces. `skillFocused`
+  // used to filter the tab strip, so a file tab and a skill tab could never be
+  // visible at once no matter how the panes were arranged. Both now show, and
+  // moving focus between panes changes nothing about what is visible.
+  test('shows file and skill tabs together across panes', async () => {
+    seedMixedSurfacePaneWorkspaceSession();
+    render(<PaneWorkspaceHarness />, { wrapper: ProviderHarness });
+
+    const visible = () => screen.getByTestId('pane-visible-tabs').textContent ?? '';
+    expect(visible()).toContain(PINNED_TAB_ID);
+    expect(visible()).toContain(SKILL_TAB_ID);
+    expect(screen.getByTestId('pane-count').textContent).toBe('2');
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Focus right' }));
+
+    expect(screen.getByTestId('focused-pane').textContent).toBe('pane-right');
+    expect(visible()).toContain(PINNED_TAB_ID);
+    expect(visible()).toContain(SKILL_TAB_ID);
   });
 
   test('maps a cross-pane visible drop slot around a blank tab to regular-tab order', async () => {
@@ -1986,110 +1854,5 @@ describe('DocumentContext local rename reconciliation — preserves tab position
     await waitFor(() => {
       expect(window.location.hash).toBe('#/to.md');
     });
-  });
-});
-
-describe('DocumentContext skills-surface new tabs', () => {
-  afterEach(() => {
-    window.localStorage.clear();
-    cleanup();
-  });
-
-  test('re-resolving the skills hub keeps the active new tab', async () => {
-    render(<CloseActiveHarness />, { wrapper: ProviderHarness });
-    const user = userEvent.setup();
-    const newTabIds = () => (screen.getByTestId('new-tabs').textContent ?? '').split('|');
-    const activeNewTabId = () => screen.getByTestId('active-new-tab').textContent;
-
-    await user.click(screen.getByRole('button', { name: 'Show skills' }));
-    await user.click(screen.getByRole('button', { name: 'Open new' }));
-
-    const [first, second] = newTabIds();
-    expect(first).toMatch(/^new-tab:skills:\d+$/);
-    expect(second).toMatch(/^new-tab:skills:\d+$/);
-    expect(activeNewTabId()).toBe(second);
-
-    // The skills hub hash is the same for every skills new tab, so the nav
-    // effect re-resolves it on unrelated re-renders. That must not move the
-    // user off the tab they are on.
-    await user.click(screen.getByRole('button', { name: 'Resolve skills hub' }));
-    expect(activeNewTabId()).toBe(second);
-
-    await user.click(screen.getByRole('button', { name: 'Activate first new tab' }));
-    expect(activeNewTabId()).toBe(first);
-
-    await user.click(screen.getByRole('button', { name: 'Resolve skills hub' }));
-    expect(activeNewTabId()).toBe(first);
-  });
-});
-
-describe('DocumentContext skills-surface classification without a loaded skills list', () => {
-  afterEach(() => {
-    mockSkillsStatus = 'idle';
-    __resetKnownProjectSkillDirsForTests();
-    window.localStorage.clear();
-    window.location.hash = '';
-    cleanup();
-  });
-
-  function seedSingleDocSession(tabId: string) {
-    window.localStorage.setItem(
-      localTabSessionStorageKey(window.location.origin),
-      JSON.stringify(
-        persistedTabSession([tabId], [], tabId, new Date('2026-05-13T00:00:00.000Z').toISOString()),
-      ),
-    );
-  }
-
-  // The reported bug, at the rendering level: a repo that authors skills keeps
-  // bundles at an ordinary path. Those files are content, so the sidebar must
-  // stay on Files when one is active.
-  test('an ordinary doc under a non-dot skills/ dir leaves the surface on Files', async () => {
-    seedSingleDocSession(
-      docTabId('packages/design-ai/skills/ooui/references/layout-and-interaction'),
-    );
-    mockCollabUrl = 'ws://localhost:1234';
-
-    render(
-      <DocumentProvider>
-        <CloseActiveHarness />
-      </DocumentProvider>,
-    );
-
-    await waitFor(() => expect(screen.getByTestId('skill-focused')).toBeTruthy());
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-  });
-
-  // The regression the review caught: a bundle whose only evidence is
-  // /api/skills classifies as Files before the list lands. That answer must not
-  // outlive the list — the provider subscribes to the hook's status, so arrival
-  // re-derives the surface.
-  test('an aliased bundle doc re-derives to Skills when the list lands', async () => {
-    seedSingleDocSession(docTabId('plugins/ok/skills/bake-lume-golden/SKILL'));
-    mockCollabUrl = 'ws://localhost:1234';
-
-    const { rerender } = render(
-      <DocumentProvider>
-        <CloseActiveHarness />
-      </DocumentProvider>,
-    );
-
-    // Pre-list: shape is all there is, and a non-dot path is indistinguishable
-    // from ordinary repo content.
-    await waitFor(() => expect(screen.getByTestId('skill-focused')).toBeTruthy());
-    expect(screen.getByTestId('skill-focused').textContent).toBe('false');
-
-    // The list lands and names the dir.
-    setKnownProjectSkillDirs(new Set(['plugins/ok/skills/bake-lume-golden']));
-    mockSkillsStatus = 'ready';
-    await act(async () => {
-      rerender(
-        <DocumentProvider>
-          <CloseActiveHarness />
-        </DocumentProvider>,
-      );
-    });
-
-    await waitFor(() => expect(screen.getByTestId('skill-focused').textContent).toBe('true'));
   });
 });

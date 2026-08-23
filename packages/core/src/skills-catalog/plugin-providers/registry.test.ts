@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   enumeratePluginProvider,
+  inspectPluginBundleDir,
   inspectPluginSource,
   resolvePluginUpdateSource,
 } from './registry.ts';
@@ -116,5 +117,72 @@ describe('plugin provider registry', () => {
       marketplace: 'market',
       version: '1.0.0',
     });
+  });
+});
+
+describe('the vendor-neutral Agent Plugins standard', () => {
+  /** A plugin exactly as agent-plugins.org defines it: root `plugin.json` whose
+   *  only required fields are `$schema` and `name`, with `skills/` discovered by
+   *  convention. The spec forbids the manifest from listing components. */
+  function seedConformantPlugin(manifest: Record<string, unknown>): string {
+    const dir = join(root, 'standard-plugin');
+    const skill = join(dir, 'skills', 'demo');
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(dir, 'plugin.json'), JSON.stringify(manifest));
+    writeFileSync(join(skill, 'SKILL.md'), '---\nname: demo\ndescription: Demo\n---\n');
+    return dir;
+  }
+
+  test('detects a conformant plugin, which declares no component fields at all', () => {
+    // The regression this guards: detection used to require a `skills` FIELD,
+    // which the spec forbids — so the one shape the standard mandates was the
+    // one shape OK could not see.
+    const dir = seedConformantPlugin({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'minimal-plugin',
+      version: '1.0.0',
+    });
+
+    expect(inspectPluginBundleDir(dir)).toMatchObject({
+      provider: 'agent-plugins',
+      plugin: 'minimal-plugin',
+      version: '1.0.0',
+      bundledSkills: ['demo'],
+    });
+  });
+
+  test('reports mcp.json at the plugin root, which is where the standard puts it', () => {
+    // Claude's convention is the dotted `.mcp.json`. A conformant plugin ships
+    // `mcp.json`, and reporting `mcp: false` for it would understate the plugin
+    // to every surface that asks what it contains.
+    const dir = seedConformantPlugin({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'with-mcp',
+    });
+    writeFileSync(join(dir, 'mcp.json'), JSON.stringify({ mcpServers: {} }));
+
+    expect(inspectPluginBundleDir(dir)).toMatchObject({
+      provider: 'agent-plugins',
+      capabilities: { mcp: true },
+    });
+  });
+
+  test('a directory named SKILL.md is not a skill', () => {
+    // The spec says the path must RESOLVE TO A REGULAR FILE. `existsSync` says
+    // yes to a directory, which would enumerate a folder as a skill.
+    const dir = seedConformantPlugin({
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'odd-shapes',
+    });
+    mkdirSync(join(dir, 'skills', 'not-a-skill', 'SKILL.md'), { recursive: true });
+
+    expect(inspectPluginBundleDir(dir)).toMatchObject({ bundledSkills: ['demo'] });
+  });
+
+  test('leaves an unrelated root plugin.json alone', () => {
+    // `plugin.json` is a common filename. Without the `$schema` check this would
+    // claim any project that happens to have one.
+    const dir = seedConformantPlugin({ name: 'not-a-plugin', version: '1.0.0' });
+    expect(inspectPluginBundleDir(dir)).toBeNull();
   });
 });

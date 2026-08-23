@@ -26,6 +26,7 @@ export function SkillPluginBundleBanner({
   bundle,
   source,
   scope,
+  previewedName,
   onInstalled,
 }: {
   bundle: SkillBundleDisclosure;
@@ -33,6 +34,9 @@ export function SkillPluginBundleBanner({
   source: string;
   /** Level the picker opens on (the preview's own level). */
   scope: SkillScope;
+  /** The skill this preview is about — excluded from the sibling chips, since
+   *  the banner's job is to name what ELSE the source carries. */
+  previewedName: string;
   /** Skills that landed, requested name → on-disk name. The hosting preview tab
    *  needs this: the bulk import runs entirely inside this banner, so without it
    *  the tab keeps previewing a skill the user now owns. */
@@ -52,6 +56,10 @@ export function SkillPluginBundleBanner({
   ].filter((c): c is string => c !== null);
   const count = bundle.names.length;
   const plugin = bundle.plugin;
+  // The siblings, concretely: a few visible names turn "N skills" from a bulk
+  // threat into discovery. The previewed skill is not its own sibling.
+  const siblings = bundle.names.filter((n) => n !== previewedName);
+  const shownSiblings = siblings.slice(0, 4);
 
   return (
     <div className="editor-content-aligned">
@@ -64,38 +72,45 @@ export function SkillPluginBundleBanner({
         <PackageIcon className="size-4" aria-hidden />
         <AlertTitle>
           {plugin ? (
-            <Trans>Part of the {plugin} plugin</Trans>
+            <Trans>
+              {plugin} ships {siblings.length} other skills
+            </Trans>
           ) : (
             // No manifest to name — the source itself is the grouping.
-            <Trans>{count} skills at this source</Trans>
+            <Trans>{siblings.length} other skills by this publisher</Trans>
           )}
         </AlertTitle>
         {/* `source` can be a long unbroken URL; the grid track would otherwise
-            size to it and stretch the whole box. */}
+            size to it and stretch the whole box. Capabilities stay named — they
+            are the "what else rides along" disclosure — but no install verb
+            lives here: browsing is the banner's only action, so nothing reads
+            as "install all N". */}
         <AlertDescription className="min-w-0">
           {caps.length > 0 ? (
             <Trans>
-              This repo bundles {count} skills, plus {caps.join(', ')}. Install any of them from the
-              plugin.
+              The plugin also ships {caps.join(', ')} — named here, never installed by OK.
             </Trans>
-          ) : plugin ? (
-            <Trans>This repo bundles {count} skills. Install any of them from the plugin.</Trans>
-          ) : (
-            <Trans>
-              {source} publishes {count} skills. Install any of them together.
-            </Trans>
-          )}
+          ) : null}
         </AlertDescription>
         {/* Third content row, so it needs the same column the title claims —
             auto-placement would otherwise drop it under the icon. */}
-        <div className="mt-2.5 flex items-center gap-2 group-has-[>svg]/alert:col-start-2">
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5 group-has-[>svg]/alert:col-start-2">
+          {shownSiblings.map((n) => (
+            <code
+              key={n}
+              className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[12px] text-foreground/80"
+            >
+              {n}
+            </code>
+          ))}
           <Button
-            variant="outline"
+            variant="link"
             size="sm"
+            className="px-1"
             data-testid="plugin-bundle-pick"
             onClick={() => setPicking(true)}
           >
-            <Trans>Install skills</Trans>
+            <Trans>See all {count} skills</Trans>
           </Button>
           {bundle.repositoryUrl ? (
             <Button variant="ghost" size="sm" asChild>

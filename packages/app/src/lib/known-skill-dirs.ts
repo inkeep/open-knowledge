@@ -4,34 +4,18 @@ import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
  * The project-scoped bundle dirs OK actually knows to be skills — the data half
  * of the Files/Skills surface decision (`isSkillBundleShapedPath`).
  *
- * Plain module state, not React state, because the predicates that read it run
- * OUTSIDE render: `isSkillTabId` is reached from the `useState` initializer that
- * parses the persisted tab session on first paint, before any fetch has
- * happened. The predicates therefore must stay synchronous and total — an empty
- * set means "nothing known yet", never "not a skill", and the shape half answers
- * alone until `/api/skills` lands.
+ * Plain module state, not React state, because the predicate that reads it lives
+ * in a plain module and answers for tabs that exist before `/api/skills` has
+ * landed. It therefore must stay synchronous and total — an empty set means
+ * "nothing known yet", never "not a skill", and the shape half answers alone
+ * until the list settles.
  *
- * Written by `useSkills` as the list settles; read by the surface predicates.
+ * Written by `useSkills` as the list settles; read by `isSkillBundleShapedPath`.
  * One project per renderer (the desktop spawns a BrowserWindow per project and
  * focuses an existing window rather than reusing one — `window-manager.ts`), so
  * module scope cannot leak one project's dirs into another's.
  */
 let knownDirs: ReadonlySet<string> = new Set();
-
-/**
- * Has `/api/skills` answered at least once this session?
- *
- * An empty `knownDirs` is ambiguous on its own: it means "no project skills"
- * AND "the list has not landed yet", and the two demand opposite handling at
- * the one place that writes DURABLE state. The tab-session parse runs on first
- * paint, synchronously off localStorage, while the list is a network round trip
- * away — so a doc whose only evidence is the list classifies as Files there. If
- * the parse acted on that, it would drop the remembered Skills tab and the
- * persist effect would write the guess back out, making a timing artifact
- * permanent. This flag lets that one call site stay lossless until the answer is
- * real, without weakening the guard for projects that legitimately have none.
- */
-let settled = false;
 
 /** Bundle dirs of every project-scope skill in a `/api/skills` payload.
  *
@@ -69,17 +53,11 @@ export function getKnownProjectSkillDirs(): ReadonlySet<string> {
   return knownDirs;
 }
 
-export function knownSkillDirsSettled(): boolean {
-  return settled;
-}
-
 export function setKnownProjectSkillDirs(next: ReadonlySet<string>): void {
   knownDirs = next;
-  settled = true;
 }
 
 /** Test-only reset — module state outlives a single test file's renders. */
 export function __resetKnownProjectSkillDirsForTests(): void {
   knownDirs = new Set();
-  settled = false;
 }

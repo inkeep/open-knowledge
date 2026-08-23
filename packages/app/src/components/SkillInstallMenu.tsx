@@ -30,7 +30,9 @@ import {
 } from '@/lib/skill-install-overlay-store';
 import {
   deriveSkillInstallRows,
+  GLOBAL_INSTALL_EDITORS,
   INSTALL_EDITORS,
+  pluginCoverageOf,
   type SkillInstallMenuSkill,
 } from '@/lib/skill-install-rows';
 import { aliasSubscribersOf, skillHostRootDir } from '@/lib/skill-scope';
@@ -38,7 +40,7 @@ import { placeSkill, putSkillFolderAction, setSkillSource, unplaceSkill } from '
 
 // Re-exported at its historical home: the editor toolbar badge imports it from
 // here for its installed-agent icon cluster.
-export { INSTALL_EDITORS } from '@/lib/skill-install-rows';
+export { GLOBAL_INSTALL_EDITORS, INSTALL_EDITORS } from '@/lib/skill-install-rows';
 
 /**
  * Width floor for any container holding {@link SkillInstallMenuItems}.
@@ -208,15 +210,19 @@ export function useSkillHostToggles(
       commitHosts([...next], true);
     },
     installAll() {
+      // Global skills speak the wider user-global vocabulary (antigravity has
+      // a user root but no project surface) — "All" must reach what the
+      // installer can write.
+      const editorVocab = skill.scope === 'global' ? GLOBAL_INSTALL_EDITORS : INSTALL_EDITORS;
       // Preserve non-editor hosts (the `.agents` hub) in the overlay set.
       const nonEditor = liveHostsRef.current.filter(
-        (h) => !(INSTALL_EDITORS as readonly string[]).includes(h),
+        (h) => !(editorVocab as readonly string[]).includes(h),
       );
       // "All" targets only editors installable on THIS machine for the
       // scope (plus any the skill is already in) — installing into an undetected
       // editor just no-ops and reverts.
-      const installable = skill.installableEditors ?? INSTALL_EDITORS;
-      const editors = INSTALL_EDITORS.filter(
+      const installable = skill.installableEditors ?? editorVocab;
+      const editors = editorVocab.filter(
         (e) => installable.includes(e) || liveHostsRef.current.includes(e),
       );
       commitHosts([...nonEditor, ...editors], false);
@@ -416,6 +422,7 @@ export function SkillInstallMenuItems({
   // second click can land on state that is about to change, and the transient
   // per-row marks stay hidden until it settles.
   const busy = toggles.installing;
+  const pluginCoverage = pluginCoverageOf(skill);
   const relOf = (display: string | null): string => (display ?? '').replace(/^~\//, '');
   // Row-level convert (never skill-wide): state the whole effect, then write
   // exactly one path. The old skill-wide Copies/Symlinks tabs silently
@@ -539,11 +546,15 @@ export function SkillInstallMenuItems({
                     ? path
                       ? t`Installed at ${path} — click to remove`
                       : t`Installed in ${label} — click to remove`
-                    : path
-                      ? expectedMode === 'link'
-                        ? t`Symlinks the skill to ${path}`
-                        : t`Copies the skill to ${path}`
-                      : t`Click to install in ${label}`
+                    : pluginCoverage?.editor === editor
+                      ? t`${label} already loads "${skill?.name ?? ''}" from the ${pluginCoverage.plugin} plugin. Installing here puts a copy at ${path ?? label} that ${label} uses instead of the plugin's — it stops tracking plugin updates.`
+                      : path
+                        ? sourceHost === undefined
+                          ? t`Installs the skill to ${path} — the first location holds its own copy`
+                          : expectedMode === 'link'
+                            ? t`Symlinks the skill to ${path}`
+                            : t`Copies the skill to ${path}`
+                        : t`Click to install in ${label}`
             }
           >
             <SkillMenuCheckboxItem
@@ -574,6 +585,19 @@ export function SkillInstallMenuItems({
                     data-testid={`skill-row-audience-${editor}`}
                   >
                     {audience.map((h) => audienceIcon(h, rootRel))}
+                  </span>
+                ) : null}
+                {pluginCoverage?.editor === editor && !hostSet.has(editor) ? (
+                  // Says the editor is not empty-handed: it already loads this
+                  // skill from a plugin, so an unchecked box here reads as
+                  // "claude doesn't have this" and is wrong. Checking stays a
+                  // real action — a copy at the editor's own dir overrides the
+                  // plugin (verified), which is what the hint spells out.
+                  <span
+                    className="inline-flex h-5 shrink-0 items-center rounded border border-border/60 px-1 text-[10px] uppercase tracking-wide text-muted-foreground"
+                    data-testid={`skill-row-plugin-covered-${editor}`}
+                  >
+                    <Trans>via plugin</Trans>
                   </span>
                 ) : null}
                 {conflicted.has(editor) ? (
@@ -647,82 +671,87 @@ export function SkillInstallMenuItems({
           uncheck = remove (lossless-only; a hand-edited copy is refused
           server-side). Icons: OK blob for `.ok`, plain folder otherwise —
           brand marks stay first-party-only. */}
-      {customRootRows.map((r) => (
-        <Hint
-          key={r.root}
-          hint={
-            r.placed !== null
-              ? t`Installed at ${r.display} — click to remove`
-              : expectedMode === 'link'
-                ? t`Symlinks the skill to ${r.display}`
-                : t`Copies the skill to ${r.display}`
-          }
-        >
-          <SkillMenuCheckboxItem
-            menuKind={menuKind}
-            disabled={busy}
-            checked={r.placed !== null}
-            onCheckedChange={(on) => {
-              if (on === true && r.placed === null) {
-                if (!confirmReach(r.root)) return;
-                toggles.placeAt(r.root, expectedMode);
-              } else if (r.placed !== null) {
-                toggles.unplaceAt?.(r.placed.path);
-              }
-            }}
-            onSelect={(e) => e.preventDefault()}
-            className="group"
-            data-testid={`skill-custom-root-${r.root}`}
+      {customRootRows.map((r) => {
+        const path = r.display;
+        return (
+          <Hint
+            key={r.root}
+            hint={
+              r.placed !== null
+                ? t`Installed at ${path} — click to remove`
+                : sourceHost === undefined
+                  ? t`Installs the skill to ${path} — the first location holds its own copy`
+                  : expectedMode === 'link'
+                    ? t`Symlinks the skill to ${path}`
+                    : t`Copies the skill to ${path}`
+            }
           >
-            {r.root === AGENTS_SKILLS_ROOT ? (
-              <AgentBrandIcon host="agents" aria-hidden className="size-4" />
-            ) : (
-              <Folder aria-hidden className="size-4 text-muted-foreground" />
-            )}
-            <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-              <span className="min-w-0 truncate font-mono text-xs">{r.display}</span>
-              {subscribersOf(r.root).length > 0 ? (
-                <span
-                  className="flex shrink-0 items-center gap-0.5"
-                  data-testid={`skill-row-audience-custom-${r.root}`}
-                >
-                  {subscribersOf(r.root).map((h) => audienceIcon(h, r.root))}
-                </span>
-              ) : null}
-              {!busy && r.placed !== null && drifted.has(r.placed.path) ? (
-                <Hint
-                  hint={t`Changed outside OK since it last wrote here — the state shown is what's on disk now`}
-                >
-                  <ChangedOutsideBadge testId={`skill-drift-custom-${r.root}`} />
-                </Hint>
-              ) : r.placed !== null ? (
-                // Same contract as the host rows: divergent form gets a convert
-                // tag, set-source rides the row on hover.
-                <>
-                  {!busy && r.placed.mode !== expectedMode
-                    ? convertRow(r.root, r.display, r.placed.mode)
-                    : null}
-                  <Hint hint={t`Make this the source — the skill's real folder moves here`}>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 shrink-0 rounded border border-border/60 px-1 font-normal text-[10px] text-muted-foreground uppercase tracking-wide opacity-0 focus-visible:opacity-100 group-hover:opacity-100 hover:border-foreground/40 hover:text-foreground"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggles.setSource?.(r.root);
-                      }}
-                      data-testid={`skill-set-source-custom-${r.root}`}
-                    >
-                      <Trans>make source</Trans>
-                    </Button>
+            <SkillMenuCheckboxItem
+              menuKind={menuKind}
+              disabled={busy}
+              checked={r.placed !== null}
+              onCheckedChange={(on) => {
+                if (on === true && r.placed === null) {
+                  if (!confirmReach(r.root)) return;
+                  toggles.placeAt(r.root, expectedMode);
+                } else if (r.placed !== null) {
+                  toggles.unplaceAt?.(r.placed.path);
+                }
+              }}
+              onSelect={(e) => e.preventDefault()}
+              className="group"
+              data-testid={`skill-custom-root-${r.root}`}
+            >
+              {r.root === AGENTS_SKILLS_ROOT ? (
+                <AgentBrandIcon host="agents" aria-hidden className="size-4" />
+              ) : (
+                <Folder aria-hidden className="size-4 text-muted-foreground" />
+              )}
+              <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                <span className="min-w-0 truncate font-mono text-xs">{r.display}</span>
+                {subscribersOf(r.root).length > 0 ? (
+                  <span
+                    className="flex shrink-0 items-center gap-0.5"
+                    data-testid={`skill-row-audience-custom-${r.root}`}
+                  >
+                    {subscribersOf(r.root).map((h) => audienceIcon(h, r.root))}
+                  </span>
+                ) : null}
+                {!busy && r.placed !== null && drifted.has(r.placed.path) ? (
+                  <Hint
+                    hint={t`Changed outside OK since it last wrote here — the state shown is what's on disk now`}
+                  >
+                    <ChangedOutsideBadge testId={`skill-drift-custom-${r.root}`} />
                   </Hint>
-                </>
-              ) : null}
-            </span>
-          </SkillMenuCheckboxItem>
-        </Hint>
-      ))}
+                ) : r.placed !== null ? (
+                  // Same contract as the host rows: divergent form gets a convert
+                  // tag, set-source rides the row on hover.
+                  <>
+                    {!busy && r.placed.mode !== expectedMode
+                      ? convertRow(r.root, r.display, r.placed.mode)
+                      : null}
+                    <Hint hint={t`Make this the source — the skill's real folder moves here`}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 shrink-0 rounded border border-border/60 px-1 font-normal text-[10px] text-muted-foreground uppercase tracking-wide opacity-0 focus-visible:opacity-100 group-hover:opacity-100 hover:border-foreground/40 hover:text-foreground"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          toggles.setSource?.(r.root);
+                        }}
+                        data-testid={`skill-set-source-custom-${r.root}`}
+                      >
+                        <Trans>make source</Trans>
+                      </Button>
+                    </Hint>
+                  </>
+                ) : null}
+              </span>
+            </SkillMenuCheckboxItem>
+          </Hint>
+        );
+      })}
 
       {/* Nothing to install into. Reachable only since destinations became
           existence-gated: a project (or home) with no agent folder yet has no

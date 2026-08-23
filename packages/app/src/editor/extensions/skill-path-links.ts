@@ -26,14 +26,10 @@ import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import {
-  hashFromDocName,
-  hashFromSkillFile,
-  hashFromSkillPreview,
-  hashFromSkills,
-} from '@/lib/doc-hash';
+import { requestSkillsDockExpanded } from '@/components/skills-dock-expanded-store';
+import { hashFromDocName, hashFromSkillFile, hashFromSkillPreview } from '@/lib/doc-hash';
 import { skillEntryFileLiveDocName, skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
-import { getSkillNameSnapshot } from '@/lib/skill-name-set';
+import { getSkillNameSnapshot, skillRefNavHashForHit } from '@/lib/skill-name-set';
 import { resolveSkillRef } from '@/lib/skills-api';
 
 /** Bundle-relative path shape: the two allowed roots, sane segments, no `..`,
@@ -184,9 +180,7 @@ export const SkillPathLinks = Extension.create<{
               const known = getSkillNameSnapshot();
               const hit = known?.get(slug);
               if (hit !== undefined) {
-                window.location.hash = hashFromDocName(
-                  skillEntryLiveDocName({ scope: hit.scope, name: slug, path: hit.path }),
-                );
+                window.location.hash = skillRefNavHashForHit(slug, hit);
               } else {
                 // Not installed: resolve the reference by trusted-provenance
                 // precedence (local / same-source sibling / same-publisher). A
@@ -215,7 +209,9 @@ export const SkillPathLinks = Extension.create<{
                         level: target.scope,
                       });
                     } else {
-                      window.location.hash = hashFromSkills();
+                      // Nothing resolvable to open: reveal the sidebar dock,
+                      // which replaced the Skills home.
+                      requestSkillsDockExpanded();
                     }
                   },
                 );

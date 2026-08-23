@@ -377,6 +377,64 @@ describe('projectInPlaceSkill / removeInPlaceSkillCopies (in-place fan-out guard
     );
   });
 
+  test("replaces a built-in's DRIFTED projection — it is stale, not a fork", () => {
+    // OK ships these bytes and nothing may edit them here, so a same-named dir
+    // whose content drifted is an older projection of this skill. Refusing it
+    // as a fork is what left an unresolvable CONFLICT badge on the picker for a
+    // directory OK wrote itself.
+    const canonical = makeAt('.agents/skills/open-knowledge', '# Current');
+    makeAt('.cursor/skills/open-knowledge', '# An OLD release of the same skill');
+    const r = projectInPlaceSkill({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      canonicalRootRel: '.agents/skills',
+      name: 'open-knowledge',
+      cwd: root,
+      targets: ['cursor'],
+    });
+    expect(r.conflicted).toEqual([]);
+    expect(r.hosts).toEqual(['cursor']);
+    expect(readFileSync(join(root, '.cursor/skills/open-knowledge/SKILL.md'), 'utf-8')).toContain(
+      '# Current',
+    );
+  });
+
+  test('a drifted dir for an ORDINARY skill is still untouchable', () => {
+    // The exemption is keyed on OK's own bundle names and nothing else: for any
+    // other skill a diverged dir is user content, and this is the guard that
+    // says so.
+    const canonical = makeAt('.agents/skills/open-knowledge-ish', '# Current');
+    makeAt('.cursor/skills/open-knowledge-ish', '# MINE');
+    const r = projectInPlaceSkill({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      canonicalRootRel: '.agents/skills',
+      name: 'open-knowledge-ish',
+      cwd: root,
+      targets: ['cursor'],
+    });
+    expect(r.conflicted).toEqual(['cursor']);
+    expect(
+      readFileSync(join(root, '.cursor/skills/open-knowledge-ish/SKILL.md'), 'utf-8'),
+    ).toContain('# MINE');
+  });
+
+  test("uninstall removes a built-in's drifted projection too", () => {
+    // Leaving it behind is what made an uninstall look like it worked and then
+    // hand the next install a conflict over OK's own leftovers.
+    const canonical = makeAt('.agents/skills/open-knowledge', '# Current');
+    makeAt('.cursor/skills/open-knowledge', '# An OLD release');
+    const removed = removeInPlaceSkillCopies({
+      canonicalAbs: canonical,
+      canonicalHash: hashOf(canonical),
+      name: 'open-knowledge',
+      cwd: root,
+      targets: ['cursor'],
+    });
+    expect(removed).toEqual(['cursor']);
+    expect(existsSync(join(root, '.cursor/skills/open-knowledge'))).toBe(false);
+  });
+
   test('remove deletes only lossless occurrences; canonical + forks survive', () => {
     const canonical = makeAt('.claude/skills/foo', '# Canonical');
     const hash = hashOf(canonical);

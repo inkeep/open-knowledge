@@ -260,13 +260,20 @@ export const ConfigSchema = z.looseObject({
   // pattern and not what users expect from the chrome toggle.
   // SchemaStore validation flags it in project YAML; chrome toggle
   // always writes via `userBinding.patch()`.
-  // The `appearance.sidebar.*` leaves are per-machine, per-project view
-  // toggles (hidden files, only-markdown filter, Skills section, .ok
-  // reveal). Project scope would bleed one teammate's view choice across
+  // The `appearance.sidebar.*` VIEW TOGGLES are per-machine, per-project
+  // (hidden files, only-markdown filter, Skills section, .ok reveal,
+  // grouping). Project scope would bleed one teammate's view choice across
   // collaborators via git; user scope would force a single global setting
   // for every OK project. `project-local` (gitignored
-  // `<projectDir>/.ok/local/config.yml`) is the only correct home — each
-  // teammate chooses independently for their machine.
+  // `<projectDir>/.ok/local/config.yml`) is their home — each teammate
+  // chooses independently for their machine.
+  //
+  // ONE deliberate exception lives in the same block: `pinnedGlobalSkills`
+  // is USER scope, because a pin follows the SKILL's scope. Pinning a global
+  // skill is a statement about your toolkit, which should travel to the next
+  // project rather than be re-pinned there; its project-scope sibling
+  // `pinnedProjectSkills` stays project-local like the toggles above. The
+  // full rationale sits on the fields themselves.
   //
   // `appearance.preview.autoOpen` is USER-scope: whether the agent
   // auto-opens or refreshes the OK preview UI on edits is a personal
@@ -497,6 +504,45 @@ export const ConfigSchema = z.looseObject({
                 'Show .ok folders (skills, templates, and other OpenKnowledge-managed state) in the file tree as read-only entries. .ok/worktrees and .ok/local never appear. Per-machine (project-local) — not shared with collaborators.',
             })
             .default(false),
+          showSkillGroups: z
+            .boolean()
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Group skills in the sidebar by where they came from — the publisher they were imported from, or the plugin that ships them. Skills you authored stay ungrouped at the top of their scope. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default(true),
+          // Two lists, not one, because pin scope follows SKILL scope: a project
+          // pin is about this repo and stays with it, a global pin is about your
+          // toolkit and should follow you into the next repo rather than being
+          // re-pinned there. Skills are identified by NAME — the directory
+          // basename is a skill's identity on every harness, and it survives a
+          // re-import or a scope move that a path would not.
+          pinnedProjectSkills: z
+            .array(z.string())
+            .register(fieldRegistry, {
+              scope: 'project-local',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'project-local',
+              description:
+                'Project-scope skills pinned to the top of the Skills sidebar, by name. A pinned skill also keeps its normal row, so a provenance group still lists everything from its source. Per-machine (project-local) — not shared with collaborators.',
+            })
+            .default([]),
+          pinnedGlobalSkills: z
+            .array(z.string())
+            .register(fieldRegistry, {
+              scope: 'user',
+              agentSettable: false,
+              reload: 'live',
+              defaultScope: 'user',
+              description:
+                'Global-scope skills pinned to the top of the Skills sidebar, by name. Stored per USER rather than per project, so a pinned global skill follows you into every project.',
+            })
+            .default([]),
         })
         .optional(),
     })
