@@ -183,7 +183,7 @@ jobs:
       #
       # fetch-depth: 0 — the native-config staging step's provenance check
       # (`git merge-base --is-ancestor`) needs full history.
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
           fetch-depth: 0
@@ -509,7 +509,7 @@ jobs:
       smoke_verdict: ${{ steps.dmg_smoke.outputs.verdict }}
       smoke_reason: ${{ steps.dmg_smoke.outputs.reason }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
 
@@ -869,7 +869,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
 
@@ -1092,7 +1092,7 @@ jobs:
             targets: deb:arm64 rpm:arm64
             unpacked_dir: linux-arm64-unpacked
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
 
@@ -1549,7 +1549,7 @@ jobs:
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Marker-delimited (`<!-- ok-downloads:start/end -->`) so re-renders are
       # idempotent and the rest of the body — the changelog and the beta
@@ -1828,7 +1828,7 @@ jobs:
       CHANNEL: ${{ needs.prepare.outputs.channel }}
     steps:
       # $GITHUB_SHA — CI tooling, not release content (see finalize's header).
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # FR5c — page the release channel when the gate refuses a stable
       # release. Without this a blocked release is silent: the Release simply

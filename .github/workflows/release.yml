@@ -140,7 +140,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           # publish-stable: client_payload.ref carries the stable tag
@@ -426,7 +426,7 @@ jobs:
           # Query existing v<BASE_VERSION>-beta.N tags on this repo and
           # find the max N. `git tag --list` only sees local tags; we
           # fetched them in the checkout step (fetch-depth: 0 pulls all
-          # refs by default for actions/checkout@v6). Cross-check via
+          # refs by default for actions/checkout@v7). Cross-check via
           # `gh api` for tags created by parallel runs that pushed to
           # origin since our checkout finished — the actual collision
           # window is between this step and the `git push origin TAG`

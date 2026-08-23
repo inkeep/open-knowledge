@@ -82,7 +82,7 @@ jobs:
 
       - name: Checkout with full history and tags
         if: steps.tag.outputs.stable == 'true'
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Tag containment is how the shipped version is derived, so every
           # stable tag and the full history behind them have to be present.

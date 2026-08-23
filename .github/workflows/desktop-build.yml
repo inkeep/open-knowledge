@@ -79,7 +79,7 @@ jobs:
     # headroom for cold cache and notary-service queue spikes.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Node 24 matches the existing ci.yml / release.yml pattern —
       # turbo's `^build` pulls in the app via workspace deps that resolve
