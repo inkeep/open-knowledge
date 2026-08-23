@@ -331,9 +331,20 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
-  /** Exact bounds of a step: its `- name:` up to the next sibling step. */
+  /**
+   * Exact bounds of a step: its `- name:` up to the next sibling step.
+   *
+   * Throws on a missing name rather than returning a degenerate slice. An
+   * unguarded `indexOf` yields -1, `slice(-1)` yields the file's last
+   * character, and every `not.toContain` / `not.toMatch` assertion below then
+   * passes against that one character — so a renamed or relocated step turns
+   * its own coverage green instead of red. The sibling helper in
+   * release-cascade-shape.test.mjs guards the same way, for the same reason.
+   */
   const step = (name) => {
-    const rest = bugLaneVerify.slice(bugLaneVerify.indexOf(`- name: ${name}`));
+    const start = bugLaneVerify.indexOf(`- name: ${name}`);
+    if (start === -1) throw new Error(`bug-lane-verify.yml has no step named ${name}`);
+    const rest = bugLaneVerify.slice(start);
     const end = rest.indexOf('\n      - name: ');
     return end === -1 ? rest : rest.slice(0, end);
   };

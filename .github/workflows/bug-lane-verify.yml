@@ -97,13 +97,23 @@ jobs:
         # Only reachable via a hand-typed dispatch: the evaluator never asks
         # for a verify without candidates. Fail rather than proceed — an empty
         # FIX_REFS would cherry-pick nothing and read as a clean pass.
+        env:
+          # Every inputs.* reference in this workflow goes through env, never
+          # `${{ }}` inside a run: block — the expression engine splices before
+          # the shell parses, so a dispatch value carrying `$(...)` or a quote
+          # break executes in a job that later holds GITHUB_TOKEN and the Slack
+          # webhook secrets. Same convention and same reason as
+          # publish-linux-repo.yml's TAG and point-release.yml's ten inputs.
+          FIX_REFS: ${{ inputs.fix_refs }}
+          STABLE: ${{ inputs.stable }}
+          DISPATCHED_BY: ${{ inputs.dispatched_by }}
         run: |
           set -euo pipefail
-          if [[ -z "${{ inputs.fix_refs }}" ]]; then
+          if [[ -z "$FIX_REFS" ]]; then
             echo "::error::bug-lane-verify: fix_refs is empty; nothing to verify."
             exit 1
           fi
-          echo "::notice::bug-lane-verify: ${{ inputs.fix_refs }} over ${{ inputs.stable }} (requested by ${{ inputs.dispatched_by || 'a manual dispatch' }})."
+          echo "::notice::bug-lane-verify: ${FIX_REFS} over ${STABLE} (requested by ${DISPATCHED_BY:-a manual dispatch})."
 
       - name: Checkout with full history and tags
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
