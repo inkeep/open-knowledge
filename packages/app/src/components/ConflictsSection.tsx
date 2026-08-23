@@ -1,6 +1,6 @@
 /**
  * ConflictsSection — pinned section at the top of the left sidebar listing
- * every doc whose `.ok/conflicts.json` entry is currently active.
+ * every doc whose `.ok/local/conflicts.json` entry is currently active.
  *
  * Renders nothing when `conflicts.length === 0` (auto-hide at zero;
  * auto-appears at >0 — no manual collapse / expand state). Rows are
@@ -14,8 +14,10 @@
  * Count parity:
  *   - Section count comes from `useConflicts()` → `/api/sync/conflicts`.
  *   - Topbar `SyncStatusBadge`'s `conflictCount` comes from `/api/sync/status`,
- *     which itself derives `conflictCount` from the same `.ok/conflicts.json`.
- *     CC1 `sync-status` invalidates both in lockstep.
+ *     which is NOT backed identically: it returns a cached scalar the engine
+ *     refreshes from that same store at discrete points, seeded from
+ *     `<projectDir>/.ok/local/sync-state.json` on load. CC1 `sync-status`
+ *     invalidates both in lockstep, so they agree in steady state.
  *   - Tab-badge counts come from per-doc Y.Map `lifecycle.status` (live CRDT),
  *     pushed by the server's file-watcher / reconciliation paths on the same
  *     edges that flip `conflicts.json`. They converge in steady state; a

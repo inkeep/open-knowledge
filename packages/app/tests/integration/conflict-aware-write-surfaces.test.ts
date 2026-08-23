@@ -394,7 +394,7 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
    * SyncEngine.{getConflicts, getStatus} → `/api/sync/conflicts` +
    * `/api/sync/status`. Those two reads have SEPARATE backing state:
    * `getConflicts()` lists the live ConflictStore, while `getStatus()`
-   * returns a cached `conflictCount` scalar persisted in sync-state.json.
+   * returns a cached `conflictCount` scalar derived from sync-state.json.
    * This test pins that the two agree: seed 2 conflicts, assert both
    * endpoints report 2; resolve 1, assert both report 1.
    *
