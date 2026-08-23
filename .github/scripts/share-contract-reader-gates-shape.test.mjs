@@ -150,8 +150,13 @@ describe('stable release reader attestation', () => {
     expect(restore).toContain('.github/composite-actions/share-contract-reader-gate/action.yml');
     expect(restore).toContain('.github/scripts/probe-share-contract.mjs');
     expect(restore).toContain('test-support/fixtures/share-url-v1-v2.json');
-    expect(release.indexOf('- name: Restore reader gate from workflow revision')).toBeLessThan(
-      release.indexOf('- name: Attest production reader before release'),
-    );
+    // Both resolved before comparing: a missing FIRST step yields -1, and
+    // -1 < anyPositiveIndex passes, so renaming it would satisfy this ordering
+    // ratchet instead of breaking it.
+    const restoreAt = release.indexOf('- name: Restore reader gate from workflow revision');
+    const attestAt = release.indexOf('- name: Attest production reader before release');
+    expect(restoreAt, 'no "Restore reader gate" step').toBeGreaterThan(-1);
+    expect(attestAt, 'no "Attest production reader" step').toBeGreaterThan(-1);
+    expect(restoreAt).toBeLessThan(attestAt);
   });
 });

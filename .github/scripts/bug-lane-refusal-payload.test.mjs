@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -436,5 +436,116 @@ describe('workflow wiring', () => {
     // other acquire the flag silently.
     expect(bugLane).not.toContain('resolve_paths');
     expect(bugLaneVerify).not.toContain('resolve_paths');
+  });
+
+  // Pins the guard itself. Every other call site names a step that exists, so
+  // the throw branch is otherwise dead code — and a future edit that dropped it
+  // (a merge conflict, a simplification) would return this whole describe to
+  // passing vacuously with nothing going red. Verifying it by hand once proves
+  // it works today; only this proves it still does.
+  test('step() throws on a missing name instead of returning a degenerate slice', () => {
+    expect(() => step('This step does not exist')).toThrow(/has no step named/);
+  });
+
+  /**
+   * Every `run:` body in a workflow, block-scalar and inline forms both.
+   *
+   * Scoped to `run:` rather than matching `${{ inputs.` line-shapes anywhere,
+   * because the rule is about reaching a SHELL. A `with:` parameter
+   * (`ref: ${{ inputs.stable }}`) is legitimate and a line-shape filter would
+   * red-flag it, teaching whoever trips it that the rule is arbitrary.
+   */
+  const runBodies = (yaml) => {
+    const lines = yaml.split('\n');
+    const bodies = [];
+    for (let i = 0; i < lines.length; i++) {
+      const block = /^(\s*)run: [|>]/.exec(lines[i]);
+      if (block) {
+        const indent = block[1].length;
+        const body = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === '') {
+            body.push(lines[j]);
+            continue;
+          }
+          if (lines[j].length - lines[j].trimStart().length <= indent) break;
+          body.push(lines[j]);
+        }
+        bodies.push(body.join('\n'));
+        continue;
+      }
+      const inline = /^\s*run: (?![|>]\s*$)(.+)$/.exec(lines[i]);
+      if (inline) bodies.push(inline[1]);
+    }
+    return bodies;
+  };
+
+  // THE RATCHET for the env-only convention. Without it the rule lives in a
+  // comment: reverting the `Refuse an empty batch` env block to direct
+  // `${{ inputs.* }}` splicing left all 1200 tests in this project green, which
+  // is how that defect shipped in the first place despite two reviewers naming
+  // it. `${{ }}` is substituted as raw text before the shell parses, so a
+  // dispatch value carrying `$(...)` executes in a job holding GITHUB_TOKEN and
+  // the Slack webhook secrets.
+  //
+  // Scoped to `inputs.` — the untrusted surface. `steps.*.outputs.*` splicing
+  // is deliberately NOT banned: those values are produced by the workflow
+  // itself, so a blanket ban would be a materially different and much churnier
+  // rule than the one the convention comments actually state.
+  test('dispatch inputs reach the shell only through env, never `${{ }}` splicing', () => {
+    // Every workflow, not just the lane's two: the convention comment claims to
+    // govern publish-linux-repo.yml and point-release.yml as well, and a rule
+    // enforced only where it was written is how the next copy escapes it.
+    const dir = join(REPO_ROOT, '.github', 'workflows');
+    const files = readdirSync(dir).filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'));
+    expect(files.length, 'no workflows found to scan').toBeGreaterThan(0);
+
+    for (const file of files) {
+      const yaml = readFileSync(join(dir, file), 'utf8');
+      const bodies = runBodies(yaml);
+      // Catches a walker that SKIPS a block. It cannot catch one that captures
+      // a block and TRUNCATES it, since `declared` reads the same `run:`
+      // anchor — that half is pinned directly by the walker unit test below,
+      // which is the only thing that actually proves depth.
+      const declared = yaml.split('\n').filter((l) => /^\s*run: /.test(l)).length;
+      expect(bodies.length, `${file}: walker missed a run: block`).toBe(declared);
+      // Every spelling, not one literal. `${{inputs.x}}`, a two-space variant
+      // and the `github.event.inputs.*` form are all equivalent to Actions and
+      // all enable the identical injection — and that last form is a live idiom
+      // in this very directory, so it is the likely alternate spelling rather
+      // than a hypothetical one.
+      const spliced = bodies.filter((b) => /\$\{\{\s*(github\.event\.)?inputs\./.test(b));
+      expect(spliced, `${file}: inputs spliced into a run: body`).toEqual([]);
+    }
+  });
+
+  // Pins runBodies() against a synthetic document, which is the only thing that
+  // proves DEPTH. A count check compares the walker to the same `run:` anchor it
+  // reads, so a walker truncated to its first line keeps the count intact and
+  // the ratchet above goes quiet with a real splice sitting on line two. A
+  // corpus sentinel does not close it either: the first line of these bodies is
+  // the shell preamble, so a one-line capture still matches it.
+  test('runBodies captures a whole block, neither truncated nor bled into the next step', () => {
+    const doc = [
+      'jobs:',
+      '  j:',
+      '    steps:',
+      '      - name: one',
+      '        run: |',
+      '          first',
+      '          second',
+      '          third',
+      '      - name: two',
+      '        run: echo inline',
+      '',
+    ].join('\n');
+    const bodies = runBodies(doc);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toContain('first');
+    // The assertion a truncating walker fails.
+    expect(bodies[0]).toContain('third');
+    // The assertion an over-capturing walker fails.
+    expect(bodies[0]).not.toContain('- name: two');
+    expect(bodies[1]).toBe('echo inline');
   });
 });

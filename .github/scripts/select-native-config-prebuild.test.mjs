@@ -21,7 +21,11 @@ const workflow = (name) => readFileSync(join(REPO_ROOT, '.github', 'workflows', 
  * an assertion cannot run past it into a neighbouring step's shell.
  */
 const stagingStep = (yaml) => {
-  const rest = yaml.slice(yaml.indexOf('- name: Stage native-config prebuilt binaries'));
+  // Throw rather than slice(-1), which returns the file's last character and
+  // makes every negative assertion below pass vacuously on a renamed step.
+  const start = yaml.indexOf('- name: Stage native-config prebuilt binaries');
+  if (start === -1) throw new Error('no "Stage native-config prebuilt binaries" step');
+  const rest = yaml.slice(start);
   const end = rest.indexOf('\n      - name: ');
   return end === -1 ? rest : rest.slice(0, end);
 };
@@ -178,6 +182,17 @@ describe('describeSelectionFailure', () => {
       releaseRef: 'HEAD',
     });
     expect(reason).toContain('32317026296');
+  });
+});
+
+describe('step extraction', () => {
+  // Pins the guard in stagingStep(). Every other call passes a document that
+  // contains the step, so the throw is otherwise dead code and dropping it
+  // silently restores the degenerate one-character slice.
+  test('stagingStep() throws on a document with no staging step', () => {
+    expect(() => stagingStep('name: nothing that matches\n')).toThrow(
+      /Stage native-config prebuilt binaries/,
+    );
   });
 });
 

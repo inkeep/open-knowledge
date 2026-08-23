@@ -21,8 +21,16 @@ const desktopRelease = readFileSync(
  * The fixed-length slices this replaces (400 / 4000 / 5000 chars) could run
  * past the step and assert against a neighbouring step's shell.
  */
-const alertStep = () => {
-  const rest = desktopRelease.slice(desktopRelease.indexOf('- name: Alert on a blocked release'));
+const alertStep = (source = desktopRelease) => {
+  // Throw rather than return a degenerate slice. An unguarded `indexOf` yields
+  // -1, `slice(-1)` yields the file's last character, and the tests below whose
+  // only assertions are `not.toMatch` / `not.toContain` then pass against that
+  // one character — so renaming the step turns its own ratchet green instead of
+  // red. Measured: renaming it reddens 7 of 30 tests here but leaves `a blocked
+  // release never pages Discord`, the pure-negative one, passing.
+  const start = source.indexOf('- name: Alert on a blocked release');
+  if (start === -1) throw new Error('desktop-release.yml has no "Alert on a blocked release" step');
+  const rest = source.slice(start);
   const end = rest.indexOf('\n      - name: ');
   return end === -1 ? rest : rest.slice(0, end);
 };
@@ -233,6 +241,16 @@ describe('parseArgs', () => {
 });
 
 describe('workflow wiring', () => {
+  // Pins the guard in alertStep(). Every other call here reaches a step that
+  // exists, so the throw branch is otherwise dead code, and dropping it would
+  // silently restore the vacuous pass that `a blocked release never pages
+  // Discord` below depends on being impossible.
+  test('alertStep() throws on a missing step instead of slicing one character', () => {
+    expect(() => alertStep('name: nothing that matches\n')).toThrow(
+      /has no "Alert on a blocked release" step/,
+    );
+  });
+
   test('the alert job fires on a blocked release, never on success', () => {
     // The blocked-release predicate lives at the ALERT JOB level (a failed
     // packaging job skips finalize, so a failure()-step inside finalize

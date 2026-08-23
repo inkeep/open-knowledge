@@ -198,10 +198,22 @@ describe('parseArgs', () => {
 describe('workflow wiring', () => {
   /** The `- name:` block of a step, up to the next sibling step. */
   const step = (needle) => {
-    const rest = desktopRelease.slice(desktopRelease.indexOf(`- name: ${needle}`));
+    // Throw rather than slice(-1), which returns the file's last character and
+    // makes every negative assertion below pass vacuously on a renamed step.
+    const start = desktopRelease.indexOf(`- name: ${needle}`);
+    if (start === -1) throw new Error(`desktop-release.yml has no step named ${needle}`);
+    const rest = desktopRelease.slice(start);
     const end = rest.indexOf('\n      - name: ');
     return end === -1 ? rest : rest.slice(0, end);
   };
+
+  // Pins the guard above. Every other call names a step that exists, so the
+  // throw is otherwise dead code and a later simplification drops it silently,
+  // returning every negative assertion in this describe to passing against one
+  // character.
+  test('step() throws on a missing name instead of returning a degenerate slice', () => {
+    expect(() => step('This step does not exist')).toThrow(/has no step named/);
+  });
 
   // Every platform that packages an installer. The 0.52.2/0.52.3 incident was
   // Linux; the same un-retried exposure existed on Windows.

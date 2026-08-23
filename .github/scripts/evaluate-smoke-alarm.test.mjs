@@ -239,7 +239,11 @@ describe('buildHistory', () => {
       ),
       'utf8',
     );
-    const step = wf.slice(wf.indexOf('- name: Page the release channel'));
+    // Bounded and guarded: an unguarded indexOf yields -1 and slice(-1) is one
+    // character, which the two negative assertions below would pass against.
+    const pageStart = wf.indexOf('- name: Page the release channel');
+    expect(pageStart, 'no "Page the release channel" step').toBeGreaterThan(-1);
+    const step = wf.slice(pageStart);
     expect(step).toContain('SLACK_WEBHOOK_URL');
     expect(step).not.toContain('DISCORD_WEBHOOK_URL');
     // Scoped to a `post … Discord` leg, not to the word: the step's comments
