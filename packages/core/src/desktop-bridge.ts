@@ -385,6 +385,8 @@ export interface OkUpdateRelaunchFailedInfo {
   readonly version: string;
   readonly message?: string;
   readonly downloadUrl?: string;
+  /** Clear the shared in-progress card instead of layering the error over it. */
+  readonly dismissPending?: boolean;
 }
 
 /**

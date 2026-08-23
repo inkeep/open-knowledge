@@ -314,6 +314,48 @@ describe('Notice A cross-window relaunch — ok:update:relaunching', () => {
     expect(bridge.update.relaunchNow).not.toHaveBeenCalled();
   });
 
+  test('relaunch-failed with dismissPending clears the stuck fetching card', () => {
+    // The click repainted every window with the button-less, non-dismissible
+    // fetching card and then found nothing staged to install. No banner re-arm
+    // follows, so the card has to be cleared explicitly or the error notice
+    // simply layers over one the user can never remove.
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissed: string[] = [];
+    attachUpdateSubscribers(castBridge(bridge), addNotice, (id: string) => {
+      dismissed.push(id);
+    });
+
+    bridge._fetchingLatest?.({ version: '0.1.1' });
+    bridge._relaunchFailed?.({
+      version: '0.1.1',
+      message: 'the update stopped being available',
+      dismissPending: true,
+    });
+
+    expect(dismissed).toContain('update-downloaded');
+    // Both halves of the contract: clearing the stuck card is only correct if
+    // the user is also told why it went away. An early return after the
+    // dismiss would satisfy the assertion above and leave them with nothing.
+    const error = addNotice.mock.calls.at(-1)?.[0] as UpdateNotice;
+    expect(error.id).toBe('relaunch-error-0.1.1');
+    expect(error.variant).toBe('error');
+    expect(error.body).toContain('the update stopped being available');
+  });
+
+  test('an ordinary relaunch-failed leaves the banner alone (main re-arms it)', () => {
+    const bridge = makeFakeBridge();
+    const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});
+    const dismissed: string[] = [];
+    attachUpdateSubscribers(castBridge(bridge), addNotice, (id: string) => {
+      dismissed.push(id);
+    });
+
+    bridge._relaunchFailed?.({ version: '0.1.1', message: 'App Still Running Error' });
+
+    expect(dismissed).not.toContain('update-downloaded');
+  });
+
   test('onUpdateRelaunchFailed → error notice with detail, same id as the rejection path', () => {
     const bridge = makeFakeBridge();
     const addNotice = vi.fn<(notice: UpdateNotice) => void>(() => {});

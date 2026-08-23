@@ -1100,6 +1100,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // stage is running.
   let stagingInFlight: { version: string } | null = null;
 
+  // The version THIS process has actually staged, as opposed to the one
+  // `versionPendingInstall` remembers from a previous run.
+  //
+  // The two come apart whenever a staged update does not get installed in the
+  // session that fetched it — a crash, a force-quit, a failed ShipIt swap, or
+  // simply any Linux session the user did not click through, since
+  // install-on-quit is off there. `versionPendingInstall` deliberately survives
+  // that (boot only clears it once the running version catches up), but
+  // electron-updater keeps nothing: its downloaded-update helper is built
+  // inside `downloadUpdate()` and dies with the process. Without the helper
+  // there is no installer path and no quit handler, so both install routes are
+  // dead until something calls `downloadUpdate()` again.
+  //
+  // So the re-download skip has to be scoped to what this process staged.
+  // Skipping the first offer of a session would strand exactly the population
+  // that already has a failed install behind them.
+  let stagedThisSession: string | null = null;
+
   /** Accessor form, so a read after an `await` is not stale-narrowed. */
   const currentStaging = (): { version: string } | null => stagingInFlight;
 
@@ -1235,12 +1253,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // the re-armed banner below is the user's retry affordance and would be
     // inert without this.
     installRequested = false;
-    if (
-      persistSafely({ ...readState(), versionPendingInstall: version }, 'relaunch-failed-restore')
-    ) {
+    const restored = persistSafely(
+      { ...readState(), versionPendingInstall: version },
+      'relaunch-failed-restore',
+    );
+    if (restored) {
       broadcastToAllWindows('ok:update:downloaded', { version });
     }
-    broadcastToAllWindows('ok:update:relaunch-failed', { version, message });
+    broadcastToAllWindows('ok:update:relaunch-failed', {
+      version,
+      message,
+      // Every window is on the shared in-progress card by now — a relaunch
+      // only fails after it was announced — and that card has no action and
+      // no dismiss. A successful restore replaces it by id, so nothing more is
+      // needed. A failed one leaves it there, and the error notice lands under
+      // a different id at higher priority, so dismissing the error would just
+      // reveal the stuck card underneath. Clear it instead.
+      ...(restored ? {} : { dismissPending: true }),
+    });
     logger.warn('relaunch failed — restored pending install and re-armed windows', {
       version,
       kind,
@@ -1363,7 +1393,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // `stagingInFlight`), so an hourly re-stage of a build we already hold is
     // pure downside. A version CHANGE still re-downloads, and a download that
     // failed left `versionPendingInstall` unset, so retries are unaffected.
-    if (offeredVersion && readState().versionPendingInstall === offeredVersion) {
+    //
+    // Both conditions are required. `stagedThisSession` is what makes the skip
+    // safe (see its declaration): the persisted field alone would also match on
+    // the FIRST offer of a session that inherited a staged-but-uninstalled
+    // build, and skipping there leaves electron-updater with no installer path
+    // and no quit handler, so the update becomes uninstallable until a newer
+    // one ships.
+    if (
+      offeredVersion &&
+      stagedThisSession === offeredVersion &&
+      readState().versionPendingInstall === offeredVersion
+    ) {
       logger.debug('update-available for the already-staged version — skipping re-download', {
         version: offeredVersion,
       });
@@ -1478,6 +1519,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       onDispatch?.('update-downloaded-empty-version');
       return;
     }
+    // Record before the dedupe below: this is the point electron-updater holds
+    // a real staged artifact for this process, which is what the re-download
+    // skip keys on. A deduped re-fire is still a stage.
+    stagedThisSession = version;
     const state = readState();
     if (state.versionPendingInstall === version) {
       logger.info('update-downloaded re-fired for same pending version — deduped', { version });
@@ -1875,11 +1920,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // The refresh cleared the gate rather than advancing it, which means the
       // staged build stopped being installable while we waited. Recover the
       // windows instead of calling into Squirrel with nothing staged.
+      //
+      // Deliberately NOT also gated on `stagedThisSession`. A click on a build
+      // this process never staged is the case the refresh above exists to
+      // resolve, and it normally does by downloading it. When it cannot (an
+      // offline check), electron-updater reports the missing installer path
+      // through its error event, which `failRelaunch` already turns into a
+      // re-armed banner plus an explained failure — the same recovery this
+      // branch performs, reached one step later.
       logger.warn('relaunch-now lost its staged build during the freshness check — ignoring');
       installRequested = false;
       broadcastToAllWindows('ok:update:relaunch-failed', {
         version: preRefresh.versionPendingInstall,
         message: 'the update stopped being available',
+        // Nothing is staged, so there is no banner to re-arm — but every
+        // window is still showing the fetching card this click painted, and
+        // that card has no action and no dismiss. Clear it explicitly, or the
+        // error notice merely stacks on top of a permanent one.
+        dismissPending: true,
       });
       return undefined;
     }
@@ -1966,9 +2024,32 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       )
     ) {
       // The whole point of bailing here is that the user can click again once
-      // the disk is healthy, so the commit flag has to come back off with it.
+      // the disk is healthy, so the commit flag has to come back off with it —
+      // and so does the banner. Every window is currently showing the fetching
+      // card, which has no action and no dismiss, so releasing the flag alone
+      // would leave the click with nothing to click.
+      //
+      // The broadcast covers the other windows; the throw covers the clicked
+      // one, and it has to be a throw rather than a quiet return. Resolving
+      // would run that window's success continuation, which dismisses the
+      // shared notice id and so removes the banner this broadcast just put
+      // back — and whether it wins is a race, because the broadcast and the
+      // invoke reply travel different IPC pipes and are ordered only within a
+      // pipe. Rejecting instead routes the clicked window to its failure arm,
+      // which re-arms the banner itself and tells the user the click did not
+      // take. Same reasoning as the `quitAndInstall` throw below.
       installRequested = false;
-      return undefined;
+      broadcastToAllWindows('ok:update:downloaded', { version: pending });
+      // Pair the re-arm with the reason, the way `failRelaunch` does for the
+      // watchdog and throw paths. Without it the other windows watch the
+      // banner reappear with no account of why, and the clicked window is the
+      // only one that learns a relaunch was even attempted. Same version-keyed
+      // id as the rejection notice below, so the clicked window dedupes.
+      broadcastToAllWindows('ok:update:relaunch-failed', {
+        version: pending,
+        message: 'could not save the update state',
+      });
+      throw new Error('could not save the update state');
     }
     // Tell EVERY window the relaunch is underway BEFORE the teardown await:
     // each renderer swaps its "…ready to install [Relaunch]" banner to the
@@ -2374,7 +2455,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // to update again for a while. A fresh install (`lastSeenVersion === null`)
   // is deliberately excluded — nobody just sat through an update, and the
   // installer is often already a release or two behind.
-  if (shouldShowVersionNotice) {
+  //
+  // Gated on install-on-quit, which is what makes deferring the banner free:
+  // the update still lands at the next quit, so only the interruption moves.
+  // Where install-on-quit is off (Linux), the banner is not a notification at
+  // all, it is the sole install affordance — holding it would withhold the
+  // only way to apply the update and leave the build staged and uninstalled.
+  if (shouldShowVersionNotice && updater.autoInstallOnAppQuit) {
     postUpdateQuietUntil = now().getTime() + POST_UPDATE_QUIET_MS;
     logger.info('post-update quiet window armed', {
       from: state.lastSeenVersion,

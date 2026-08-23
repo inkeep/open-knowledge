@@ -385,7 +385,12 @@ export function attachUpdateSubscribers(
   );
 
   unsubscribers.push(
-    bridge.onUpdateRelaunchFailed(({ version, message, downloadUrl }) => {
+    bridge.onUpdateRelaunchFailed(({ version, message, downloadUrl, dismissPending }) => {
+      // The click repainted every window with the button-less, non-dismissible
+      // fetching card and then found nothing to install. No banner re-arm is
+      // coming (there is nothing staged), so clear that card here — otherwise
+      // the error notice below just layers over one the user can never remove.
+      if (dismissPending) dismissNotice(downloadedNoticeId);
       // Boot-detected failed install (a clean quit whose post-quit install
       // never ran) arrives with a `downloadUrl` — main re-armed
       // versionPendingInstall, so show the richer two-action recovery card:

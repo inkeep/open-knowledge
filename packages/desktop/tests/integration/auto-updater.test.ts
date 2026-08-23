@@ -3213,7 +3213,14 @@ describe('async relaunch failure — error event + no-quit watchdog', () => {
     expect(captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(0);
     const failed = captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
     expect(failed).toHaveLength(1);
-    expect(failed[0]?.payload).toEqual({ version: '0.3.2', message: 'the update timed out' });
+    // With no re-arm to replace it, every window is still on the shared
+    // in-progress card, which has no action and no dismiss — so the failure
+    // has to carry the instruction to clear it.
+    expect(failed[0]?.payload).toEqual({
+      version: '0.3.2',
+      message: 'the update timed out',
+      dismissPending: true,
+    });
   });
 
   test('updater error with NO relaunch in flight → no relaunch-failed broadcast (normal error path)', () => {
@@ -3916,7 +3923,7 @@ describe('relaunch-now idempotency (Major #2)', () => {
     expect(rig.state.versionPendingInstall).toBeNull();
   });
 
-  test('persistSafely failure → no quitAndInstall call (better to retry)', () => {
+  test('persistSafely failure → no quitAndInstall call (better to retry)', async () => {
     const updater = new FakeUpdater();
     const ipc = makeFakeIpc();
     const clock = makeFakeClock();
@@ -3942,7 +3949,9 @@ describe('relaunch-now idempotency (Major #2)', () => {
         debug: vi.fn(() => {}),
       },
     });
-    ipc.invoke('ok:update:relaunch-now');
+    // Rejects so the clicked window runs its failure arm rather than its
+    // success one, which would dismiss the banner the bail just re-armed.
+    await expect(Promise.resolve(ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow();
     expect(updater.quitAndInstall).not.toHaveBeenCalled();
     // State stays pending since persist failed — user can click again.
     expect(state.versionPendingInstall).toBe('0.3.2');
@@ -4497,9 +4506,16 @@ function fireTimerFor(clock: FakeClock, ms: number): void {
 }
 
 describe('same-version download guard', () => {
-  test('an offer for the already-staged version does not re-download', () => {
-    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+  /** Take a rig through a real in-session stage of `version`. */
+  function stageInSession(rig: TestRig, version: string): void {
+    rig.updater.emit('update-available', { version });
+    rig.updater.emit('update-downloaded', { version });
     rig.updater.downloadUpdate.mockClear();
+  }
+
+  test('a re-offer of the build this session staged does not re-download', () => {
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
 
     rig.updater.emit('update-available', { version: '0.3.2' });
 
@@ -4511,9 +4527,42 @@ describe('same-version download guard', () => {
     // The pipeline reached a parsed manifest; only the download was declined.
     // Treating it as a failure would march the 7-day stuck-hint toward firing
     // on a healthy updater that simply has nothing new to fetch.
-    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    rig.dispatches.length = 0;
+
     rig.updater.emit('update-available', { version: '0.3.2' });
+
     expect(rig.dispatches).toContain('check-success' as DispatchKind);
+  });
+
+  test('the FIRST offer of a session re-downloads even when state says it is staged', async () => {
+    // A staged build that never installed (crash, force-quit, failed swap, or
+    // any Linux session the user did not click through) carries
+    // `versionPendingInstall` into the next session, but electron-updater
+    // keeps nothing across processes: no download means no installer path and
+    // no quit handler, so skipping here would leave the update uninstallable
+    // until a newer one shipped.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(rig.dispatches).not.toContain('download-skipped-already-staged' as DispatchKind);
+
+    // And the install route is live again once that download completes.
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+    rig.updater.downloadUpdate.mockClear();
+
+    // Having staged it for real, the skip re-engages — the inherited-state
+    // re-download is a one-time correction, not a permanent opt-out.
+    rig.updater.emit('update-available', { version: '0.3.2' });
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 
   test('a genuinely newer offer still downloads', () => {
@@ -4639,6 +4688,29 @@ describe('click-gated freshness check', () => {
     expect(rig.state.versionPendingInstall).toBeNull();
   });
 
+  test('a staged build that vanishes during the check clears the fetching card', async () => {
+    // Every window is showing the button-less, non-dismissible fetching card
+    // by this point, and there is nothing staged left to re-arm the banner
+    // with — so the failure notice has to carry the flag that clears that
+    // card, or it just layers on top of one the user can never remove.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
+    rig.updater.checkForUpdates.mockImplementation(() => {
+      rig.state = { ...rig.state, versionPendingInstall: null };
+      return Promise.resolve(undefined);
+    });
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
+    for (const win of rig.windows) {
+      const failed = win.filter((c) => c.channel === 'ok:update:relaunch-failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toMatchObject({ version: '0.3.2', dismissPending: true });
+      // No banner re-arm on this path — there is nothing staged to offer.
+      expect(win.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(0);
+    }
+  });
+
   test('a check that never reports back falls through on the timeout', async () => {
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
     rig.updater.checkForUpdates.mockImplementation(() => new Promise(() => {}));
@@ -4664,13 +4736,69 @@ describe('the commit flag releases on every path that re-offers the click', () =
     const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
     rig.failNextPersist = true;
 
-    await rig.ipc.invoke('ok:update:relaunch-now');
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
+      'could not save the update state',
+    );
     expect(rig.updater.quitAndInstall).not.toHaveBeenCalled();
 
     rig.failNextPersist = false;
     await rig.ipc.invoke('ok:update:relaunch-now');
 
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  test('a relaunch failure that restores cleanly does NOT ask to clear the card', async () => {
+    // The re-armed banner replaces the in-progress card by id, so clearing as
+    // well would take the retry affordance away again.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.updater.emit('error', new Error('ShipIt swap failed'));
+
+    const failed = rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
+    expect(failed).toHaveLength(1);
+    expect((failed[0]?.payload as { dismissPending?: boolean }).dismissPending).toBeUndefined();
+    expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
+  });
+
+  test('a persist failure rejects the click rather than resolving it', async () => {
+    // Resolving would run the clicked window's success continuation, which
+    // dismisses the shared notice id and removes the banner the broadcast just
+    // re-armed — and whether it wins is a race, since the broadcast and the
+    // invoke reply travel different IPC pipes. Rejecting routes that window to
+    // its failure arm, which re-arms the banner itself and says the click did
+    // not take.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2' });
+    rig.failNextPersist = true;
+
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow();
+  });
+
+  test('a persist failure re-arms the banner in EVERY window, not just the clicked one', async () => {
+    // The click already repainted every window with the button-less,
+    // non-dismissible fetching card. Only the clicked window has a failure arm
+    // of its own, so without a broadcast the others are stranded on it.
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2', extraWindowCount: 2 });
+    rig.failNextPersist = true;
+
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow();
+
+    for (const win of rig.windows) {
+      expect(win.filter((c) => c.channel === 'ok:update:fetching-latest')).toHaveLength(1);
+      const rearm = win.filter((c) => c.channel === 'ok:update:downloaded');
+      expect(rearm).toHaveLength(1);
+      expect(rearm[0]?.payload).toEqual({ version: '0.3.2' });
+      // Paired with the reason, so a window that did not click still learns a
+      // relaunch was attempted rather than watching the banner reappear on its
+      // own. No `dismissPending` here: the re-arm above already replaced the
+      // in-progress card by id, and clearing as well would take the retry
+      // affordance away again.
+      const failed = win.filter((c) => c.channel === 'ok:update:relaunch-failed');
+      expect(failed).toHaveLength(1);
+      expect(failed[0]?.payload).toEqual({
+        version: '0.3.2',
+        message: 'could not save the update state',
+      });
+    }
   });
 
   test('the linux no-graphical-auth preflight leaves the banner clickable again', async () => {
@@ -4729,6 +4857,24 @@ describe('post-update quiet window', () => {
   test('a plain relaunch on the same version does not arm it', () => {
     const { handle } = makeRig({ lastSeenVersion: '0.3.1', appVersion: '0.3.1' });
     expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+  });
+
+  test('linux does not arm it — the banner there is the only install route', () => {
+    // Install-on-quit is off on Linux, so the banner is not a notification the
+    // user can ignore, it is the sole affordance for applying the update.
+    // Holding it back would withhold the install entirely and leave the build
+    // staged and uninstalled.
+    const { rig, handle } = makeRig({
+      platform: 'linux',
+      lastSeenVersion: '0.3.0',
+      appVersion: '0.3.1',
+    });
+    expect(handle.isWithinPostUpdateQuietWindow()).toBe(false);
+
+    rig.updater.emit('update-downloaded', { version: '0.3.2' });
+
+    expect(rig.captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(1);
+    expect(rig.dispatches).not.toContain('toast-a-deferred-post-update-quiet' as DispatchKind);
   });
 
   test('outside the window the banner fires immediately, as before', () => {

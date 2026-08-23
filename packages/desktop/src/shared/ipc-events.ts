@@ -98,7 +98,21 @@ export interface EventChannels {
    * two routes dedupe to one card.
    */
   'ok:update:relaunch-failed': {
-    payload: { version: string; message?: string; downloadUrl?: string };
+    payload: {
+      version: string;
+      message?: string;
+      downloadUrl?: string;
+      /**
+       * Clear the shared in-progress card rather than leaving it under the
+       * error notice. Set only on the paths that already repainted every
+       * window with `ok:update:fetching-latest` and then found there is
+       * nothing to install: the fetching card carries no action and no
+       * dismiss, so without this it would sit there for the rest of the
+       * session. Paths that re-arm the banner via `ok:update:downloaded`
+       * replace the card by id and do not need it.
+       */
+      dismissPending?: boolean;
+    };
   };
   /**
    * First-launch-post-update signal: main compared `app.getVersion()` to
