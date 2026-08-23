@@ -94,11 +94,22 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
+/**
+ * `editorPage` lets a caller that already holds the editor window skip the
+ * rediscovery poll. That poll is not free: it re-evaluates
+ * `window.okDesktop.config.mode` in the renderer, so it costs whatever the
+ * renderer's main thread is busy with, measured at ~400ms on a loaded CI
+ * runner. Any caller TIMING this dispatch must pass the page, or it charges the
+ * app for the harness's own round trip. On darwin the menu click happens inside
+ * main and never pays it at all, so leaving it in makes the same assertion mean
+ * two different things per platform.
+ */
 async function dispatchRendererMenuAction(
   app: ElectronApplication,
   action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
+  editorPage?: Page,
 ): Promise<void> {
-  const page = await findEditorWindow(app);
+  const page = editorPage ?? (await findEditorWindow(app));
   await page.evaluate(async (menuAction) => {
     const menu = window.okDesktop?.menu;
     if (!menu) throw new Error('renderer menu bridge is unavailable');
@@ -136,9 +147,12 @@ async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
   });
 }
 
-async function clickTerminalPlacementItem(app: ElectronApplication): Promise<void> {
+async function clickTerminalPlacementItem(
+  app: ElectronApplication,
+  editorPage?: Page,
+): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'move-terminal');
+    await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -154,10 +168,14 @@ async function clickTerminalPlacementItem(app: ElectronApplication): Promise<voi
 async function clickTerminalPlacementItemRapidly(
   app: ElectronApplication,
   count: number,
+  editorPage?: Page,
 ): Promise<void> {
   if (process.platform !== 'darwin') {
     for (let index = 0; index < count; index += 1) {
-      await dispatchRendererMenuAction(app, 'move-terminal');
+      // The page matters most here: without it each of these iterations pays
+      // its own rediscovery poll, and the settlement being timed spans all of
+      // them.
+      await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
     }
     return;
   }
@@ -175,13 +193,70 @@ const visibleTerminal = (page: Page) => page.locator('section[aria-label="Termin
 const terminalTabs = (page: Page) =>
   page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
 
+/**
+ * Widen the editor window and PROVE the width stuck.
+ *
+ * `setSize` past the display's work area is honored in the renderer for a beat
+ * and then clamped back, and a bare `innerWidth >= n` poll happily catches that
+ * beat. The assertions below then measure a window that has since shrunk and
+ * blame the app: a right column squeezed to its drag floor reads as a lost
+ * width, and `Math.abs(rendered - restored) < 20` fails by hundreds of pixels.
+ * Sampling until the width settles is what makes the precondition real; a
+ * display that cannot hold the window skips, the same way the suite skips a
+ * platform without a PTY.
+ */
+async function widenEditorWindow(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
+  const editorWindow = await app.browserWindow(page);
+  await editorWindow.evaluate(
+    (windowHandle: unknown, size) => {
+      (windowHandle as { setSize: (w: number, h: number, animate: boolean) => void }).setSize(
+        size.width,
+        size.height,
+        false,
+      );
+    },
+    { width, height },
+  );
+
+  let settled = 0;
+  let previous = Number.NaN;
+  await expect(async () => {
+    const inner = await page.evaluate(() => window.innerWidth);
+    settled = inner === previous ? settled + 1 : 0;
+    previous = inner;
+    expect(settled).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: 10_000, intervals: [100] });
+
+  if (previous < width - 100) {
+    const workArea = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workAreaSize);
+    // Only a display that genuinely cannot hold the window earns a skip. On one
+    // that can, a window settling short is the app mis-sizing itself, and
+    // calling that "your display is too small" would bury a real regression
+    // under a reason that is not true.
+    if (workArea.width < width) {
+      test.skip(
+        true,
+        `Window settled at ${previous}px after asking for ${width}px. The primary display's work area is ${workArea.width}x${workArea.height} and cannot hold it, and this test asserts a layout the app only owes at ${width}px.`,
+      );
+    }
+    throw new Error(
+      `Window settled at ${previous}px after asking for ${width}px, on a display whose work area is ${workArea.width}x${workArea.height} and could have held it. That is a window-sizing bug, not a display limit.`,
+    );
+  }
+}
+
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   const terminal = visibleTerminal(page);
   await expect(async () => {
     // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
     if (await terminal.isVisible()) return;
     await clickViewTerminalItem(app);
-    await expect(terminal).toBeVisible({ timeout: 1_000 });
+    await expect(terminal).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
   await expect(terminal.locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
@@ -219,20 +294,42 @@ async function readActiveTerminal(page: Page): Promise<string> {
   });
 }
 
-async function readScrollbackContaining(page: Page, marker: string): Promise<string> {
+/**
+ * Scroll the active terminal's scrollback until every marker is on screen at
+ * once — the proof that the lines survived whatever just happened to the panel.
+ *
+ * Reads `.xterm-rows` ONLY. The `.xterm-accessibility` node beside it is
+ * xterm's screen-reader announcement buffer, NOT scrollback: under a burst it
+ * collapses to "Too much output to announce, navigate to rows manually to read"
+ * and truncates whatever it was mid-way through, token included. Reading it as
+ * retained output is what failed this assertion on a loaded runner while the
+ * terminal itself was perfectly healthy — the sentinel was found in the
+ * announcement buffer, and the line printed right after it had been cut in
+ * half there and was not yet scrolled into the rows.
+ *
+ * Steps are deliberately shorter than one wheel-page for the same reason:
+ * markers on adjacent lines must not be able to straddle a step boundary and
+ * so never appear together.
+ */
+async function expectScrollbackRetains(page: Page, ...markers: string[]): Promise<void> {
   const terminal = visibleTerminal(page).locator('.xterm');
   await terminal.hover();
-  for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
-    const text = await readActiveTerminal(page);
-    if (text.includes(marker)) return text;
-    await page.mouse.wheel(0, -1_000);
+  const readRows = () =>
+    visibleTerminal(page).evaluate(
+      (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
+    );
+
+  let text = await readRows();
+  for (let step = 0; step < 40 && !markers.every((marker) => text.includes(marker)); step += 1) {
+    await page.mouse.wheel(0, -500);
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
+    text = await readRows();
   }
-  const text = await readActiveTerminal(page);
-  if (text.includes(marker)) return text;
-  throw new Error(`Terminal scrollback is missing ${marker}: ${text}`);
+  for (const marker of markers) {
+    expect(text, `terminal scrollback is missing ${marker}`).toContain(marker);
+  }
 }
 
 function waitForTerminalHome(page: Page, home: TerminalHome): Promise<number> {
@@ -280,19 +377,33 @@ async function moveTerminal(
   home: TerminalHome,
 ): Promise<number> {
   const settlement = waitForTerminalHome(page, home);
-  await clickTerminalPlacementItem(app);
+  // The stopwatch is already running inside the renderer, so the dispatch must
+  // not re-discover the window on the clock.
+  await clickTerminalPlacementItem(app, page);
   return settlement;
 }
 
+/**
+ * The live shell's pid, read from the terminal ROWS alone.
+ *
+ * Every other reader here substring-matches a whole marker, so xterm's
+ * `.xterm-accessibility` announcement buffer can only ever delay them — a
+ * truncated prefix never satisfies a `toContain`. This one PARSES, which makes
+ * truncation dangerous rather than merely slow: a `MARKER=67818` cut short in
+ * the announcement buffer yields `67`, which clears the `toBeGreaterThan(0)`
+ * gate and then gets compared against the real pid as proof the session
+ * survived a move. Rows carry no such truncation.
+ */
 async function readShellPid(page: Page, marker: string): Promise<number> {
   await typeInActiveTerminal(page, `printf '${marker}=%s\\n' "$$"\r`);
   let processId = 0;
   await expect
     .poll(
       async () => {
-        const matches = [
-          ...(await readActiveTerminal(page)).matchAll(new RegExp(`${marker}=(\\d+)`, 'g')),
-        ];
+        const rows = await visibleTerminal(page).evaluate(
+          (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
+        );
+        const matches = [...rows.matchAll(new RegExp(`${marker}=(\\d+)`, 'g'))];
         processId = Number(matches.at(-1)?.[1] ?? 0);
         return processId;
       },
@@ -341,14 +452,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
-    const editorWindow = await app.browserWindow(page);
-    await editorWindow.evaluate((windowHandle: unknown) => {
-      const target = windowHandle as {
-        setSize: (width: number, height: number, animate: boolean) => void;
-      };
-      target.setSize(1900, 900, false);
-    });
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
     await openBareTab(page);
@@ -370,7 +474,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expect
       .poll(() => readActiveTerminal(page), { timeout: 15_000 })
       .toContain(`SCROLL_${token}_120`);
-    expect(await readScrollbackContaining(page, sentinel)).toContain(scrollStart);
+    await expectScrollbackRetains(page, sentinel, scrollStart);
 
     const toRightMs = await moveTerminal(app, page, 'right');
     expect(toRightMs).toBeLessThan(300);
@@ -379,13 +483,13 @@ test.describe('Terminal placement continuity — live Electron', () => {
       'aria-selected',
       'true',
     );
-    expect(await readScrollbackContaining(page, sentinel)).toContain(scrollStart);
+    await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rightOutput = `RIGHT_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `printf '${rightOutput}\\n'\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rightOutput);
 
-    expect(await readScrollbackContaining(page, sentinel)).toContain(scrollStart);
+    await expectScrollbackRetains(page, sentinel, scrollStart);
     const toBottomMs = await moveTerminal(app, page, 'bottom');
     expect(toBottomMs).toBeLessThan(300);
     await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
@@ -393,14 +497,14 @@ test.describe('Terminal placement continuity — live Electron', () => {
       'aria-selected',
       'true',
     );
-    expect(await readScrollbackContaining(page, sentinel)).toContain(scrollStart);
+    await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const bottomOutput = `BOTTOM_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `printf '${bottomOutput}\\n'\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(bottomOutput);
 
     const rapidSettlement = waitForTerminalHome(page, 'right');
-    await clickTerminalPlacementItemRapidly(app, 7);
+    await clickTerminalPlacementItemRapidly(app, 7, page);
     expect(await rapidSettlement).toBeLessThan(300);
     await expect(page.locator('section[aria-label="Terminal"]')).toHaveCount(2);
     await expect(visibleTerminal(page)).toHaveCount(1);
@@ -417,7 +521,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const rapidOutput = `RAPID_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `printf '${rapidOutput}\\n'\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rapidOutput);
-    expect(await readScrollbackContaining(page, sentinel)).toContain(scrollStart);
+    await expectScrollbackRetains(page, sentinel, scrollStart);
   });
 
   test('renderer restart restores the right layout and its live active terminal', async ({
@@ -430,14 +534,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
-    const editorWindow = await app.browserWindow(page);
-    await editorWindow.evaluate((windowHandle: unknown) => {
-      const target = windowHandle as {
-        setSize: (width: number, height: number, animate: boolean) => void;
-      };
-      target.setSize(1900, 900, false);
-    });
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
     await openBareTab(page);
@@ -498,6 +595,8 @@ test.describe('Terminal placement continuity — live Electron', () => {
 
     await clickViewAgentsItem(app);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
+    // Shrinking always takes, so this direction needs no settle proof.
+    const editorWindow = await app.browserWindow(page);
     await editorWindow.evaluate((windowHandle: unknown) => {
       const target = windowHandle as {
         setSize: (width: number, height: number, animate: boolean) => void;

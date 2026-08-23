@@ -100,6 +100,34 @@ async function findWindowByMode(
   return page;
 }
 
+/**
+ * Hold until the renderer's main thread is answering promptly.
+ *
+ * `findWindowByMode` resolves as soon as PRELOAD answers, and main registers
+ * the window's project context only after `loadFile` settles — so between
+ * those two points the editor window exists and is drivable but main cannot
+ * yet say which project it belongs to. "New Terminal Window" invoked in that
+ * gap resolves no project and opens a HOME-cwd window with an empty
+ * `collabUrl`. A responsive renderer is strictly past load, so this closes it.
+ *
+ * An idle renderer answers a round-trip in single-digit ms; 100ms is slack
+ * rather than a budget, and three in a row rules out landing in a gap between
+ * two chunks of boot work.
+ */
+async function waitForRendererResponsive(page: Page): Promise<void> {
+  await expect(async () => {
+    for (let probe = 0; probe < 3; probe += 1) {
+      const startedAt = Date.now();
+      await page.evaluate(() => performance.now());
+      expect(Date.now() - startedAt).toBeLessThan(100);
+    }
+    // 15s: the measured worst case for a loaded CI runner to reach a settled
+    // renderer is under 5s. Past 15s the app is not slow, it is broken — and
+    // failing HERE names that, instead of surfacing as a puzzling downstream
+    // timeout.
+  }).toPass({ timeout: 15_000, intervals: [250] });
+}
+
 async function clickNewTerminalWindow(
   app: ElectronApplication,
   sourceWebContentsId?: number,
@@ -169,6 +197,8 @@ test.describe('Standalone terminal window — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     // The main-process command inherits project context from the source editor.
     const editor = await findWindowByMode(app, 'editor');
+    // …but only once main HAS that context; see `waitForRendererResponsive`.
+    await waitForRendererResponsive(editor);
     const editorWindow = await app.browserWindow(editor);
     const editorWebContentsId = await editorWindow.evaluate(
       (win: unknown) => (win as { webContents: { id: number } }).webContents.id,
@@ -216,7 +246,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
-    await findWindowByMode(app, 'editor');
+    await waitForRendererResponsive(await findWindowByMode(app, 'editor'));
 
     expect(await clickNewTerminalWindow(app)).toBe(true);
     await findWindowByMode(app, 'terminal');

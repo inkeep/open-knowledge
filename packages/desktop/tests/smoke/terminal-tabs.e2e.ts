@@ -144,7 +144,11 @@ const terminalTabs = (page: Page) =>
  */
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   await expect(async () => {
-    await clickViewTerminalItem(app);
+    // Observe before acting: a queued dispatch from a previous attempt can land
+    // between attempts, and a blind second toggle would hide the section again.
+    // Only the CLICK is conditional — the assertions below still run, so a
+    // section that came up without a live shell keeps retrying.
+    if (!(await visibleSection(page).isVisible())) await clickViewTerminalItem(app);
     await expect(visibleSection(page)).toBeVisible({ timeout: 8_000 });
     await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
       'data-terminal-status',

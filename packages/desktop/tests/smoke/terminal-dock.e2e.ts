@@ -195,11 +195,20 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
   return page;
 }
 
+/**
+ * `editorPage` lets a caller that already holds the editor window skip the
+ * rediscovery poll. That poll is not free: it re-evaluates
+ * `window.okDesktop.config.mode` in the renderer, so it costs whatever the
+ * renderer's main thread is busy with — measured at ~400ms on a loaded CI
+ * runner. Any caller TIMING this dispatch must pass the page, or it charges
+ * the app for the harness's own round trip.
+ */
 async function dispatchRendererMenuAction(
   app: ElectronApplication,
   action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
+  editorPage?: Page,
 ): Promise<void> {
-  const page = await findEditorWindow(app);
+  const page = editorPage ?? (await findEditorWindow(app));
   await page.evaluate(async (menuAction) => {
     const menu = window.okDesktop?.menu;
     if (!menu) throw new Error('renderer menu bridge is unavailable');
@@ -208,8 +217,9 @@ async function dispatchRendererMenuAction(
 }
 
 /** Click the View → Show/Hide Terminal application-menu item (real toggle path
- *  on desktop — CmdOrCtrl+J is its OS-captured accelerator). Returns the item label. */
-async function clickViewTerminalItem(app: ElectronApplication): Promise<string> {
+ *  on desktop — CmdOrCtrl+J is its OS-captured accelerator). Returns the item label.
+ *  Pass `editorPage` when timing the toggle; see `dispatchRendererMenuAction`. */
+async function clickViewTerminalItem(app: ElectronApplication, editorPage?: Page): Promise<string> {
   const label = await app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) throw new Error('application menu is unavailable');
@@ -222,7 +232,8 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<string> 
     if (process.platform === 'darwin') item.click();
     return label;
   });
-  if (process.platform !== 'darwin') await dispatchRendererMenuAction(app, 'toggle-terminal');
+  if (process.platform !== 'darwin')
+    await dispatchRendererMenuAction(app, 'toggle-terminal', editorPage);
   return label;
 }
 
@@ -302,12 +313,106 @@ const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
 // strict mode. Scope the claude-readiness banner by its stable test seam instead.
 const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-banner');
 
+/**
+ * Hold until the renderer's main thread is answering promptly.
+ *
+ * `findEditorWindow` resolves as soon as PRELOAD answers, which is seconds
+ * ahead of a renderer that has committed its first render. Driving a menu
+ * action into that gap is what makes this whole family time-dependent: the
+ * dispatch, the state flip and the mount are all serviced by the one thread
+ * that is still booting. An idle renderer answers a round-trip in single-digit
+ * ms, so 100ms is slack rather than a budget; three in a row rules out
+ * catching a gap between two chunks of boot work.
+ */
+async function waitForRendererResponsive(page: Page): Promise<void> {
+  await expect(async () => {
+    for (let probe = 0; probe < 3; probe += 1) {
+      const startedAt = Date.now();
+      await page.evaluate(() => performance.now());
+      expect(Date.now() - startedAt).toBeLessThan(100);
+    }
+    // 15s: the measured worst case for a loaded CI runner to reach a settled
+    // renderer is under 5s. Past 15s the app is not slow, it is broken — and
+    // failing HERE names that, instead of surfacing as a puzzling downstream
+    // timeout.
+  }).toPass({ timeout: 15_000, intervals: [250] });
+}
+
+/**
+ * Widen the editor window and PROVE the width stuck.
+ *
+ * The rail tests below assert a layout the app only owes at the width they ask
+ * for, so the width is a precondition rather than setup. `setSize` past the
+ * display's work area is honored in the renderer for a beat and then clamped
+ * back, and a bare `innerWidth >= n` poll happily catches that beat — after
+ * which the assertions measure a narrower window and blame the app. On a 1512pt
+ * laptop that reads as the right terminal column resolving to its 324px drag
+ * floor instead of its 740px preferred width, which is CORRECT behavior for the
+ * window it actually had.
+ *
+ * So: sample until the width settles, then check it settled where it was asked
+ * to. A display that cannot hold the window SKIPS, the same way the suite skips
+ * a platform without a PTY — it is a fact about the machine, not a verdict on
+ * the app, and CI runners are wide enough that the coverage stays real. A
+ * display that COULD have held it and did not FAILS, because that is the app
+ * mis-sizing its own window and a skip would bury it.
+ */
+async function widenEditorWindow(
+  app: ElectronApplication,
+  page: Page,
+  width: number,
+  height: number,
+): Promise<void> {
+  const editorWindow = await app.browserWindow(page);
+  await editorWindow.evaluate(
+    (win: unknown, size) => {
+      (win as { setSize: (w: number, h: number, animate: boolean) => void }).setSize(
+        size.width,
+        size.height,
+        false,
+      );
+    },
+    { width, height },
+  );
+
+  let settled = 0;
+  let previous = Number.NaN;
+  await expect(async () => {
+    const inner = await page.evaluate(() => window.innerWidth);
+    settled = inner === previous ? settled + 1 : 0;
+    previous = inner;
+    expect(settled).toBeGreaterThanOrEqual(3);
+  }).toPass({ timeout: 10_000, intervals: [100] });
+
+  if (previous < width - 100) {
+    const workArea = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workAreaSize);
+    // Only a display that genuinely cannot hold the window earns a skip. On one
+    // that can, a window settling short is the app mis-sizing itself, and
+    // calling that "your display is too small" would bury a real regression
+    // under a reason that is not true.
+    if (workArea.width < width) {
+      test.skip(
+        true,
+        `Window settled at ${previous}px after asking for ${width}px. The primary display's work area is ${workArea.width}x${workArea.height} and cannot hold it, and this test asserts a layout the app only owes at ${width}px.`,
+      );
+    }
+    throw new Error(
+      `Window settled at ${previous}px after asking for ${width}px, on a display whose work area is ${workArea.width}x${workArea.height} and could have held it. That is a window-sizing bug, not a display limit.`,
+    );
+  }
+}
+
 async function revealTerminalSurface(app: ElectronApplication, target: Locator): Promise<void> {
   await expect(async () => {
-    // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
+    // Observe before acting. A dispatch that arrived before the renderer had a
+    // listener is QUEUED by the preload and replayed on subscribe, so a retry
+    // fired while one is still in flight would land a SECOND toggle and hide
+    // the surface this call was asked to reveal. This check is the actual
+    // defence; the 5s inner window only makes a retry unlikely enough that the
+    // outer budget still has attempts left when one is genuinely needed.
     if (await target.isVisible()) return;
     await clickViewTerminalItem(app);
-    await expect(target).toBeVisible({ timeout: 1_000 });
+    await expect(target).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
 }
 
@@ -512,12 +617,7 @@ test.describe('Docked terminal — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
-    const editorWindow = await app.browserWindow(page);
-    await editorWindow.evaluate((win: unknown) => {
-      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
-      target.setSize(1900, 900, false);
-    });
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
 
     const moveRightButton = page.getByRole('button', { name: 'Move Terminal to right' });
@@ -555,12 +655,7 @@ test.describe('Docked terminal — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
-    const editorWindow = await app.browserWindow(page);
-    await editorWindow.evaluate((win: unknown) => {
-      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
-      target.setSize(1900, 900, false);
-    });
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeGreaterThanOrEqual(1800);
+    await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
     await clickTerminalPlacementItem(app);
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
@@ -581,6 +676,8 @@ test.describe('Docked terminal — live Electron', () => {
     const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];
     expect(Number(columns)).toBeGreaterThanOrEqual(92);
 
+    // Shrinking always takes, so this direction needs no settle proof.
+    const editorWindow = await app.browserWindow(page);
     await editorWindow.evaluate((win: unknown) => {
       const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
       target.setSize(900, 900, false);
@@ -609,8 +706,18 @@ test.describe('Docked terminal — live Electron', () => {
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
+    // Boot must be OVER before the stopwatch starts, or this budget is charged
+    // for it: the dispatch and the mount are both serviced by the renderer's
+    // main thread, so a thread still booting shows up as toggle latency.
+    // Measured on a loaded Linux runner without this barrier: 1.6-2.0s of a
+    // 3.3-4.0s "toggle" was the dispatch round-trip alone.
+    await waitForRendererResponsive(page);
+
     const t0 = await page.evaluate(() => performance.now());
-    await clickViewTerminalItem(app);
+    // `page` is handed over so the non-darwin dispatch path does not re-discover
+    // the editor window on the clock. That rediscovery is harness cost, and it
+    // is why this budget read ~400ms higher on Linux than on macOS.
+    await clickViewTerminalItem(app, page);
     // The section becomes present synchronously on the state flip.
     await page.waitForSelector('section[aria-label="Terminal"]', {
       state: 'attached',

@@ -300,6 +300,146 @@ ipcRenderer.on('ok:accessibility:changed', (_event, info: { screenReaderActive: 
   screenReaderActive = info.screenReaderActive === true;
 });
 
+/**
+ * Menu actions that arrive before the renderer has a listener are QUEUED, not
+ * dropped.
+ *
+ * The menu lives in main and is live from the moment the window opens, but the
+ * renderer's listener is not: `local-menu-action-bus` installs its single
+ * `onMenuAction` forwarder lazily, when the first component subscribes — which
+ * is inside a React effect, so only after the first commit. Between window
+ * open and that commit there is a real window, seconds wide on a cold or
+ * loaded machine, in which main pushes `ok:menu-action` at a renderer that has
+ * never called `ipcRenderer.on`. The event lands on no listener and is gone,
+ * so a user who hits CmdOrCtrl+J during launch watches the terminal not open.
+ *
+ * The preload runs before any renderer script, so subscribing HERE cannot miss
+ * anything; buffer until someone attaches, then replay in order.
+ *
+ * Sibling pattern, deliberately not reused: `registerPendingDelivery`
+ * (`shared/ipc-send.ts`) closes the same race for ONE-SHOT events (deep-link,
+ * share-received) by gating a single send on `dom-ready` in main. Menu actions
+ * are recurring and user-triggered, with no payload known before load, so they
+ * need a standing buffer on the renderer side rather than a deferred send.
+ *
+ * Bounded because a window type that never subscribes can still be main's
+ * chosen target (`resolveMenuActionTarget` falls back to the focused window,
+ * then the first one). Past the cap the OLDEST intent is dropped — the newest
+ * is the one the user is still waiting on.
+ */
+const MAX_BUFFERED_MENU_ACTIONS = 32;
+
+/**
+ * How each action behaves when it arrives with nobody listening.
+ *
+ * `never-buffer` DESTROYS something a second press cannot get back. What these
+ * act on is resolved when they RUN (the active tab, the selected file), so
+ * replaying one after the window finally mounts aims it at whatever is selected
+ * then rather than at what the user was looking at when they pressed. Dropping
+ * an early `kill-terminal` costs a keystroke; honoring it late can cost a
+ * session.
+ *
+ * `parity` means a FLIP rather than a count. While buffered the user gets no
+ * feedback at all, so a repeated press is the same intent restated ("open,
+ * please"), not a request to open and then close — replaying both would land
+ * the terminal shut, which is the complaint that motivated this whole fix.
+ * Collapsed only against the immediately preceding entry, so an interleaved
+ * A,B,A stays three distinct intents.
+ *
+ * `additive` keeps exact multiplicity: two presses of `new-terminal` mean two
+ * terminals.
+ *
+ * A total Record rather than a pair of Sets, because `ReadonlySet<OkMenuAction>`
+ * accepts any subset including the empty one: a new union member would compile
+ * clean and land in the replay-verbatim bucket, which is exactly what must not
+ * happen to a future destructive action. This shape fails the typecheck until
+ * someone classifies it. Same reasoning as `OK_MENU_ACTIONS`' drift guard in
+ * the app package, one step stronger — that one detects omission, this one
+ * refuses to build without a decision.
+ */
+type MenuActionBufferPolicy = 'never-buffer' | 'parity' | 'additive';
+
+const MENU_ACTION_BUFFER_POLICY: Record<OkMenuAction, MenuActionBufferPolicy> = {
+  delete: 'never-buffer',
+  'move-to-trash': 'never-buffer',
+  'close-active-tab-or-window': 'never-buffer',
+  'kill-terminal': 'never-buffer',
+
+  'toggle-sidebar': 'parity',
+  'toggle-source': 'parity',
+  'toggle-doc-panel': 'parity',
+  'toggle-terminal': 'parity',
+  'toggle-agent-panel': 'parity',
+  'toggle-show-hidden-files': 'parity',
+  'toggle-show-ok-folders': 'parity',
+  'toggle-show-only-markdown-files': 'parity',
+  'toggle-show-skills-section': 'parity',
+  'move-terminal': 'parity',
+
+  'new-doc': 'additive',
+  'new-folder': 'additive',
+  'new-project': 'additive',
+  rename: 'additive',
+  'save-version': 'additive',
+  'version-history': 'additive',
+  'focus-search': 'additive',
+  'focus-command-palette': 'additive',
+  'navigate-back': 'additive',
+  'navigate-forward': 'additive',
+  'new-from-template': 'additive',
+  duplicate: 'additive',
+  'reveal-in-finder': 'additive',
+  'send-to-ai': 'additive',
+  'copy-full-path': 'additive',
+  'copy-relative-path': 'additive',
+  'expand-all-tree': 'additive',
+  'collapse-all-tree': 'additive',
+  'new-terminal': 'additive',
+  'new-worktree': 'additive',
+  'switch-worktree': 'additive',
+  'report-bug': 'additive',
+  'send-feedback': 'additive',
+};
+
+const menuActionListeners = new Set<(action: OkMenuAction) => void>();
+/**
+ * Fan one action out, isolating subscriber faults. A throwing listener must not
+ * starve the ones after it, and in the replay path it must not take the rest of
+ * the batch with it — that batch is already spliced out of the queue, so an
+ * escaping throw would silently discard intents the buffer promised to deliver.
+ * Same contract the renderer-side bus keeps for its own subscribers.
+ */
+function deliverMenuAction(action: OkMenuAction): void {
+  for (const listener of menuActionListeners) {
+    try {
+      listener(action);
+    } catch (err) {
+      console.error('[preload:menu-action] listener threw during dispatch:', err);
+    }
+  }
+}
+
+const bufferedMenuActions: OkMenuAction[] = [];
+
+// biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+ipcRenderer.on('ok:menu-action', (_event, action: OkMenuAction) => {
+  if (menuActionListeners.size > 0) {
+    deliverMenuAction(action);
+    return;
+  }
+  const policy = MENU_ACTION_BUFFER_POLICY[action];
+  if (policy === 'never-buffer') {
+    // The one drop worth a trace: a user who pressed it saw nothing happen and
+    // may well report that. The parity collapse below is the designed common
+    // path and would log on every repeated keypress, so it stays quiet.
+    console.debug('[preload:menu-action] destructive action dropped, nothing listening:', action);
+    return;
+  }
+  if (policy === 'parity' && bufferedMenuActions.at(-1) === action) return;
+  if (bufferedMenuActions.length >= MAX_BUFFERED_MENU_ACTIONS) bufferedMenuActions.shift();
+  bufferedMenuActions.push(action);
+});
+
 const bridge: OkDesktopBridge = {
   config: readConfigFromArgv(),
 
@@ -313,10 +453,31 @@ const bridge: OkDesktopBridge = {
   },
 
   onMenuAction(cb: (action: OkMenuAction) => void) {
-    const listener = (_event: IpcRendererEvent, action: OkMenuAction) => cb(action);
-    // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
-    ipcRenderer.on('ok:menu-action', listener);
-    return () => ipcRenderer.removeListener('ok:menu-action', listener);
+    // The `ipcRenderer.on` for this channel is permanent and lives at module
+    // scope (see the buffering block above), so subscribing is set membership.
+    const wasUnlistened = menuActionListeners.size === 0;
+    menuActionListeners.add(cb);
+    if (wasUnlistened && bufferedMenuActions.length > 0) {
+      const replay = bufferedMenuActions.splice(0, bufferedMenuActions.length);
+      // Drained on a microtask, not inline: the caller is `subscribeLocalMenuAction`
+      // running inside a React effect, and dispatching synchronously would run
+      // subscriber handlers — which set state — before that effect has returned
+      // its cleanup.
+      queueMicrotask(() => {
+        // The set can empty again in the microtask hop (a subscriber that
+        // attaches and detaches within one turn). Put the batch back rather
+        // than dropping it: "queued or delivered, never lost" is the whole
+        // contract, and a silent loss here is the bug this block exists for.
+        if (menuActionListeners.size === 0) {
+          bufferedMenuActions.unshift(...replay);
+          return;
+        }
+        for (const action of replay) deliverMenuAction(action);
+      });
+    }
+    return () => {
+      menuActionListeners.delete(cb);
+    };
   },
 
   onUpdateDownloaded(cb: (info: OkUpdateDownloadedInfo) => void) {

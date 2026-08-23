@@ -124,7 +124,7 @@ async function openTerminal(page: Page): Promise<void> {
     // A prior dispatch can land between attempts; observe first so a retry cannot hide it again.
     if (await terminal.isVisible()) return;
     await dispatchRendererMenuAction(page, 'toggle-terminal');
-    await expect(terminal).toBeVisible({ timeout: 1_000 });
+    await expect(terminal).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
   await expect(terminal.locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
