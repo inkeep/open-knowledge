@@ -54,6 +54,11 @@ import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const STABLE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/;
+// A prerelease tag of the beta cadence: `v0.59.0-beta.3`. Deliberately its own
+// pattern rather than an optional group on STABLE_TAG_RE, so every stable-only
+// call site keeps refusing prereleases by construction. The beta channel has to
+// ask for them; it must not be reachable by an accidental widening.
+const BETA_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
 // Copybara emits the trailer on its own line. Matched case-insensitively on
 // the key and anchored to a line start so a trailer quoted inside a prose body
@@ -118,6 +123,64 @@ export function parseFixRef(raw, { defaultRepo = DEFAULT_PRIVATE_REPO } = {}) {
   );
 }
 
+/**
+ * Sort key for a release tag, or null when the tag is neither a stable nor a
+ * beta of the cadence this repo cuts.
+ *
+ * The fourth component carries semver's prerelease precedence: every
+ * `v0.59.0-beta.N` ranks BELOW the `v0.59.0` that supersedes it. That ordering
+ * is the whole reason the beta channel can answer "the earliest build carrying
+ * this fix" with the beta rather than the stable that followed it weeks later.
+ *
+ * The same precedence rule is spelled out once more, over version strings rather
+ * than tags, as `releaseVersionKey` in `write-back-gate.mjs`. That file is
+ * deliberately IO-free and imports nothing from here, so the two cannot share an
+ * implementation; a change to the shape of this repo's release tags has to land
+ * in both.
+ */
+function releaseTagKey(raw) {
+  const line = String(raw).trim();
+  const stable = STABLE_TAG_RE.exec(line);
+  if (stable) {
+    return { tag: stable[0], key: [Number(stable[1]), Number(stable[2]), Number(stable[3]), 1, 0] };
+  }
+  const beta = BETA_TAG_RE.exec(line);
+  if (beta) {
+    return {
+      tag: beta[0],
+      key: [Number(beta[1]), Number(beta[2]), Number(beta[3]), 0, Number(beta[4])],
+    };
+  }
+  return null;
+}
+
+function byReleaseKeyAscending(a, b) {
+  for (let i = 0; i < a.key.length; i += 1) {
+    if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i];
+  }
+  return 0;
+}
+
+/**
+ * Sort every release tag this repo cuts — stables and betas together —
+ * ascending, dropping non-conforming refs.
+ *
+ * Kept separate from the stable-only sorter rather than folded into it behind a
+ * flag. The two answer different questions, and the failure mode of conflating
+ * them is asymmetric: a stable channel that accidentally saw a prerelease would
+ * tell a reporter their fix is out when only a beta carries it, which is the one
+ * thing this whole path exists not to do.
+ */
+export function sortReleaseTagsAscending(rawTags) {
+  const parsed = [];
+  for (const line of rawTags) {
+    const entry = releaseTagKey(line);
+    if (entry) parsed.push(entry);
+  }
+  parsed.sort(byReleaseKeyAscending);
+  return parsed.map((p) => p.tag);
+}
+
 /** Sort `vX.Y.Z` tags ascending by numeric semver, dropping non-conforming refs. */
 export function sortStableTagsAscending(rawTags) {
   const parsed = [];
@@ -153,12 +216,24 @@ export function firstContainingStableTag({ sortedStableTags, sha, contains }) {
  *   findMirroredCommits(privateSha) -> [{ sha, message }]   (candidates; may over-match)
  *   contains(tag, sha)              -> boolean              (sha is in tag's history)
  *
+ * `channel` selects which tags count as a build a reporter could install:
+ * `stable` (the default) considers bare `vX.Y.Z` only, `beta` considers every
+ * tag of the cadence so the answer can be the prerelease the fix first reached.
+ * `stableTags` is the raw `git tag --list v*` output either way — betas are
+ * present in it already, and the channel is what decides whether they count.
+ *
  * Returns one of:
  *   { shipped: true,  privateSha, mirroredSha, mirroredShas, tag, version }
  *   { shipped: false, reason: 'not-mirrored', privateSha, mirroredShas: [] }
- *   { shipped: false, reason: 'not-in-any-stable', privateSha, mirroredShas }
+ *   { shipped: false, reason: 'not-in-any-stable' | 'not-in-any-release', privateSha, mirroredShas }
  */
-export function resolveShippedVersion({ privateSha, stableTags, findMirroredCommits, contains }) {
+export function resolveShippedVersion({
+  privateSha,
+  stableTags,
+  findMirroredCommits,
+  contains,
+  channel = 'stable',
+}) {
   if (!FULL_SHA_RE.test(String(privateSha ?? ''))) {
     throw new Error(`privateSha must be a full 40-character commit SHA, got '${privateSha}'`);
   }
@@ -177,7 +252,8 @@ export function resolveShippedVersion({ privateSha, stableTags, findMirroredComm
     return { shipped: false, reason: 'not-mirrored', privateSha: wanted, mirroredShas: [] };
   }
 
-  const sorted = sortStableTagsAscending(stableTags);
+  const sorted =
+    channel === 'beta' ? sortReleaseTagsAscending(stableTags) : sortStableTagsAscending(stableTags);
   const rank = new Map(sorted.map((tag, i) => [tag, i]));
 
   // A fix can exist at more than one mirrored SHA: a point release cherry-picks
@@ -195,7 +271,8 @@ export function resolveShippedVersion({ privateSha, stableTags, findMirroredComm
     }
   }
   if (best === null) {
-    return { shipped: false, reason: 'not-in-any-stable', privateSha: wanted, mirroredShas };
+    const reason = channel === 'beta' ? 'not-in-any-release' : 'not-in-any-stable';
+    return { shipped: false, reason, privateSha: wanted, mirroredShas };
   }
 
   return {
@@ -218,8 +295,31 @@ function runGit(args) {
   return String(res.stdout || '');
 }
 
-export function realStableTags() {
-  return runGit(['tag', '--list', 'v*', '--sort=version:refname']).split('\n');
+/**
+ * Split `git tag --list` output into tags.
+ *
+ * Pure, and separated from the git call so the one property that matters here
+ * can be tested: prereleases come back. A caller that wants only stables asks
+ * the sorter for them, because the sorter is where the channel is known.
+ */
+export function parseTagLines(raw) {
+  return String(raw ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Every release tag this repo has cut, prereleases INCLUDED.
+ *
+ * Named for what it returns. It was `realStableTags`, and a second, private copy
+ * of it in `write-back.mjs` quietly filtered to bare `vX.Y.Z` to live up to that
+ * name — which silently emptied the beta channel, since no prerelease ever
+ * reached the channel-aware resolver. One reader, honestly named, and the
+ * filtering left to the sorter that knows which channel is asking.
+ */
+export function realReleaseTags() {
+  return parseTagLines(runGit(['tag', '--list', 'v*', '--sort=version:refname']));
 }
 
 // Record separator between commits and a unit separator between the SHA and
@@ -300,7 +400,7 @@ function main() {
     const privateSha = resolvePrivateSha(fixRef, { resolvePrMergeSha: realResolvePrMergeSha });
     result = resolveShippedVersion({
       privateSha,
-      stableTags: realStableTags(),
+      stableTags: realReleaseTags(),
       findMirroredCommits: realFindMirroredCommits,
       contains: realContains,
     });

@@ -1,5 +1,5 @@
 /**
- * The decisions behind telling a bug reporter their fix shipped: which of a
+ * The decisions behind telling a reporter their fix is out: which of a
  * ticket's attachments is a place a human can be replied to, and whether
  * everything that descended from their report has actually gone out.
  *
@@ -40,7 +40,10 @@ const DISCORD_THREAD_RE =
 const SLACK_ARCHIVE_RE = /^https?:\/\/[^/]*\.slack\.com\/archives\//i;
 const LINEAR_UPLOAD_RE = /^https?:\/\/uploads\.linear\.app\//i;
 
-const SEMVER_RE = /^v?(\d+)\.(\d+)\.(\d+)$/;
+// Accepts both channels' version strings: `0.59.1` and `0.59.0-beta.3`. The
+// optional prerelease group is captured so ordering can honour semver
+// precedence, where a beta ranks below the stable of the same X.Y.Z.
+const RELEASE_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 
 const RELEASES_URL = 'https://github.com/inkeep/open-knowledge/releases';
 // Discord caps a message at 2000 characters. Bounding the quoted prose leaves
@@ -52,14 +55,24 @@ const MAX_PROSE_CHARS = 1200;
  * What a single attachment URL is, for write-back purposes.
  *
  *   { kind: 'repliable-origin',   channel: 'github-issue' | 'discord-thread', ... }
- *   { kind: 'unrepliable-origin', channel: 'slack-archive' | 'linear-upload' }
+ *   { kind: 'unrepliable-origin', channel: 'slack-archive' }
+ *   { kind: 'evidence',           channel: 'linear-upload' }
  *   { kind: 'fix-reference',      channel: 'pull-request' | 'commit' }
  *   { kind: 'unknown' }
  *
  * `unrepliable-origin` exists as its own answer rather than collapsing into
- * `unknown` so the caller can say WHY it skipped. A Slack archive link and a
- * diagnostic bundle both name a real report; there is simply nowhere in them to
- * post a reply, and that is worth a warning rather than silence.
+ * `unknown` so the caller can say WHY it skipped: a Slack archive link names a
+ * real report, in a thread someone is waiting in, that this workflow has no way
+ * to post into. That is worth a warning rather than silence.
+ *
+ * An uploaded file is NOT that, and calling it one was a mistake worth naming.
+ * `uploads.linear.app` is any file dragged onto any ticket: a screenshot, a
+ * diagnostic zip, a log. Nobody is waiting inside it. While the enumeration was
+ * narrowed to Bug tickets the difference rarely showed, because a bundle on a
+ * bug ticket did imply a report. Workspace-wide it is simply an attachment, and
+ * treating it as an origin would both keep every ticket carrying a screenshot on
+ * the expensive path and produce a warning saying its "only origin" cannot be
+ * replied to, when the ticket never had an origin at all.
  */
 export function classifyAttachment(rawUrl) {
   const url = String(rawUrl ?? '').trim();
@@ -113,16 +126,16 @@ export function classifyAttachment(rawUrl) {
     return { kind: 'unrepliable-origin', channel: 'slack-archive', url };
   }
   if (LINEAR_UPLOAD_RE.test(url)) {
-    return { kind: 'unrepliable-origin', channel: 'linear-upload', url };
+    return { kind: 'evidence', channel: 'linear-upload', url };
   }
 
   return { kind: 'unknown', url };
 }
 
 /**
- * Split a ticket's attachments into the three buckets the write-back needs.
- * Returns { origins, unrepliable, fixReferences } with the classification
- * objects, in attachment order.
+ * Split a ticket's attachments into the buckets the write-back needs.
+ * Returns { origins, unrepliable, evidence, fixReferences } with the
+ * classification objects, in attachment order.
  *
  * `fixReferences` keeps pull requests ahead of commits: a pull request resolves
  * to a merge commit whose mirrored copy is what tag containment walks, while a
@@ -132,6 +145,7 @@ export function classifyAttachment(rawUrl) {
 export function partitionAttachments(attachmentUrls = []) {
   const origins = [];
   const unrepliable = [];
+  const evidence = [];
   const pulls = [];
   const commits = [];
 
@@ -139,25 +153,64 @@ export function partitionAttachments(attachmentUrls = []) {
     const classified = classifyAttachment(raw);
     if (classified.kind === 'repliable-origin') origins.push(classified);
     else if (classified.kind === 'unrepliable-origin') unrepliable.push(classified);
+    else if (classified.kind === 'evidence') evidence.push(classified);
     else if (classified.kind === 'fix-reference') {
       (classified.channel === 'pull-request' ? pulls : commits).push(classified);
     }
   }
 
-  return { origins, unrepliable, fixReferences: [...pulls, ...commits] };
+  return { origins, unrepliable, evidence, fixReferences: [...pulls, ...commits] };
+}
+
+/**
+ * Whether this workflow can actually post to an origin, from the repo it runs in.
+ *
+ * A Discord thread is reachable through the bot regardless of repo. A GitHub
+ * issue is only reachable when it lives in THIS repo: the reply is posted with
+ * the job's own `GITHUB_TOKEN`, which has no standing anywhere else.
+ *
+ * This matters far more now that the candidate query no longer filters by
+ * label. The backlog spans several products, and a completed ticket over in
+ * another one routinely carries an issue origin in that product's repo. Without
+ * this check every one of them would be attempted, 403, and be collected as a
+ * failure, turning a correctly-behaving run red on tickets it was never
+ * supposed to speak about.
+ */
+export function isOriginRepliableFrom(origin, selfRepo) {
+  if (origin?.channel === 'discord-thread') return true;
+  if (origin?.channel !== 'github-issue') return false;
+  const self = String(selfRepo ?? '')
+    .trim()
+    .toLowerCase();
+  if (!self) return false;
+  return self === `${origin.owner}/${origin.repo}`.toLowerCase();
 }
 
 /** Numeric semver ordering. String comparison puts v0.9.0 above v0.36.0. */
 export function compareVersions(a, b) {
-  const pa = SEMVER_RE.exec(String(a ?? '').trim());
-  const pb = SEMVER_RE.exec(String(b ?? '').trim());
-  if (!pa) throw new Error(`not a version: '${a}'`);
-  if (!pb) throw new Error(`not a version: '${b}'`);
-  for (let i = 1; i <= 3; i += 1) {
-    const diff = Number(pa[i]) - Number(pb[i]);
-    if (diff !== 0) return diff;
+  const ka = releaseVersionKey(a);
+  const kb = releaseVersionKey(b);
+  if (!ka) throw new Error(`not a version: '${a}'`);
+  if (!kb) throw new Error(`not a version: '${b}'`);
+  for (let i = 0; i < ka.length; i += 1) {
+    if (ka[i] !== kb[i]) return ka[i] - kb[i];
   }
   return 0;
+}
+
+/**
+ * Ordering key for a version string, or null if it is not one.
+ *
+ * The fourth component is 1 for a stable and 0 for a beta, so `0.59.0-beta.9`
+ * sorts below `0.59.0` exactly as semver requires. Without it a plain
+ * three-part compare calls them equal, and `highestVersion` over a fan-in
+ * spanning both channels would pick whichever happened to come first.
+ */
+function releaseVersionKey(raw) {
+  const m = RELEASE_VERSION_RE.exec(String(raw ?? '').trim());
+  if (!m) return null;
+  const isStable = m[4] === undefined;
+  return [Number(m[1]), Number(m[2]), Number(m[3]), isStable ? 1 : 0, isStable ? 0 : Number(m[4])];
 }
 
 /** Highest of a non-empty version list, normalized without the leading `v`. */
@@ -294,12 +347,21 @@ export function evaluateFanIn({ ticket, descendants = [], resolveVersion, log = 
  * empty changeset is the one case: a blank or version-only reply reads as a
  * claim with no content behind it, so the caller warns and posts nothing.
  */
-export function composeReply({ changeset = {}, version, originChannel, coverage = [] }) {
+export function composeReply({
+  changeset = {},
+  version,
+  originChannel,
+  coverage = [],
+  channel = 'stable',
+}) {
   const normalizedVersion = String(version ?? '')
     .trim()
     .replace(/^v/, '');
-  if (!SEMVER_RE.test(normalizedVersion)) {
+  if (!RELEASE_VERSION_RE.test(normalizedVersion)) {
     throw new Error(`composeReply needs a derived version, got '${version}'`);
+  }
+  if (channel !== 'stable' && channel !== 'beta') {
+    throw new Error(`composeReply needs a channel of 'stable' or 'beta', got '${channel}'`);
   }
 
   const body = String(changeset.body ?? '').trim();
@@ -310,17 +372,13 @@ export function composeReply({ changeset = {}, version, originChannel, coverage 
   const trimmedProse =
     prose.length > MAX_PROSE_CHARS ? `${prose.slice(0, MAX_PROSE_CHARS).trimEnd()}...` : prose;
 
-  const lines = [
-    `This shipped in Open Knowledge v${normalizedVersion}. Thanks for the report.`,
-    '',
-    trimmedProse,
-  ];
+  const lines = [openingLine(channel, normalizedVersion), '', trimmedProse];
 
   if (coverage.length > 0) {
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);
   }
 
-  lines.push('', updateInstruction(originChannel));
+  lines.push('', updateInstruction(originChannel, channel, normalizedVersion));
 
   return lines.join('\n');
 }
@@ -335,9 +393,43 @@ export function composeReply({ changeset = {}, version, originChannel, coverage 
  * renders an inline link, while a bare URL on Discord expands into an embed
  * card unless it is wrapped in angle brackets.
  */
-function updateInstruction(originChannel) {
+function updateInstruction(originChannel, channel = 'stable', version = '') {
+  // A beta is not on the update channel the desktop app follows, so "update to
+  // the latest" would send a reporter to a build that does not carry the fix.
+  // The beta build has to be downloaded deliberately, and the wording says so.
+  const action =
+    channel === 'beta'
+      ? `To try it ahead of that, download the v${version} beta from`
+      : 'To pick it up, update to the latest desktop app from';
+  const tail = channel === 'beta' ? ' once its installers have finished uploading' : '';
   if (originChannel === 'discord-thread') {
-    return `To pick it up, update to the latest desktop app from <${RELEASES_URL}>.`;
+    return `${action} <${RELEASES_URL}>${tail}.`;
   }
-  return `To pick it up, update to the latest desktop app from [the releases page](${RELEASES_URL}).`;
+  return `${action} [the releases page](${RELEASES_URL})${tail}.`;
+}
+
+/**
+ * The claim the reply opens with, which is the part a reporter reads.
+ *
+ * The two channels make genuinely different claims and must not share wording.
+ * A stable reply says the fix is out, full stop. A beta reply has to carry three
+ * things at once: it is fixed, the build carrying it is a beta rather than the
+ * channel their app follows, and a second message is coming when the stable
+ * ships. That last one is a promise the stable leg keeps, and it is what makes
+ * the two messages read as a sequence rather than as the same news sent twice.
+ */
+function openingLine(channel, version) {
+  if (channel === 'beta') {
+    // Deliberately not "available now". The dispatch this runs off fires when the
+    // release is still a DRAFT, minutes to an hour before its installers finish
+    // uploading, so a reporter sent to the releases page at that moment finds
+    // nothing there. Saying it is going out, and that the build appears when its
+    // installers do, is true at every point in that window.
+    return (
+      `This is fixed, and it is going out now on the Open Knowledge beta channel as v${version}. ` +
+      'Thanks for the report. It will reach the stable channel in an upcoming release, ' +
+      'and we will follow up here when it does.'
+    );
+  }
+  return `This shipped in Open Knowledge v${version}. Thanks for the report.`;
 }

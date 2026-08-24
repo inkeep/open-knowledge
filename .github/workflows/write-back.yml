@@ -1,6 +1,10 @@
 name: Reporter Write-Back
 
-# Tell bug reporters, once, that the fix they reported has shipped.
+# Tell a reporter, at most once per channel, that the fix they reported is out.
+#
+# "A reporter", not "a bug reporter": the candidate enumeration no longer
+# narrows on the Bug label, because whether someone hears back should not depend
+# on how triage classified what they raised.
 #
 # HOW IT'S TRIGGERED (no edits to the delicate publish path)
 #   release.yml (beta) and promote-stable.yml (stable) both already fire a
@@ -11,9 +15,18 @@ name: Reporter Write-Back
 #   cascades from GITHUB_TOKEN-authored release events, and repository_dispatch
 #   is the documented exemption.
 #
-#   Only a bare vX.Y.Z runs. A `-beta.N` cut is a no-op: a reporter told their
-#   fix is out should be able to install it from the default channel, and a beta
-#   is not that.
+#   BOTH channels run, and they say different things. A `-beta.N` cut tells the
+#   reporter their fix is available now in a beta and that a second message is
+#   coming; the stable promotion sends that second message. The two are kept
+#   apart by their notification markers, which key on the version, so neither can
+#   fire twice and a cycle that cuts beta.0 through beta.7 still produces exactly
+#   one beta reply.
+#
+#   This used to be stable-only, on the reasoning that a reporter told "your fix
+#   is out" should be able to install it from the default channel. That reasoning
+#   holds, and it is why the beta reply does not make that claim: it names the
+#   beta as a beta, points at a build that must be downloaded deliberately, and
+#   promises the follow-up rather than implying none is coming.
 #
 # WHY IT IS DECOUPLED
 #   This posts in public under the project's name and it runs after a release
@@ -43,7 +56,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Stable release tag to notify reporters about (e.g. v0.36.0)"
+        description: "Release tag to notify reporters about (e.g. v0.36.0 or v0.36.0-beta.3)"
         required: true
         type: string
 
@@ -65,7 +78,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
     steps:
-      - name: Decide whether this tag is a stable release
+      - name: Decide which release channel this tag belongs to
         id: tag
         run: |
           set -euo pipefail
@@ -74,24 +87,27 @@ jobs:
             exit 1
           fi
           if [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "stable=true" >> "$GITHUB_OUTPUT"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          elif [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo "channel=beta" >> "$GITHUB_OUTPUT"
           else
-            echo "stable=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${RELEASE_TAG} is not a bare stable tag; reporters are only told about stable releases."
+            echo "channel=none" >> "$GITHUB_OUTPUT"
+            echo "::notice::${RELEASE_TAG} is neither a stable nor a beta tag of this cadence; there is no build to tell anyone about."
           fi
 
       - name: Checkout with full history and tags
-        if: steps.tag.outputs.stable == 'true'
+        if: steps.tag.outputs.channel != 'none'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Tag containment is how the shipped version is derived, so every
-          # stable tag and the full history behind them have to be present.
+          # release tag of both channels and the full history behind them have
+          # to be present.
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        if: steps.tag.outputs.stable == 'true'
+        if: steps.tag.outputs.channel != 'none'
         with:
           node-version: "24"
 
@@ -99,7 +115,7 @@ jobs:
         # Fix references point into the private monorepo, which this repo's own
         # token cannot read at all. Secrets are unreadable in `if:` expressions,
         # so the presence check runs here and gates the mint via an output.
-        if: steps.tag.outputs.stable == 'true'
+        if: steps.tag.outputs.channel != 'none'
         id: bridge-check
         env:
           OK_RELEASE_BRIDGE_APP_ID: ${{ secrets.OK_RELEASE_BRIDGE_APP_ID }}
@@ -113,7 +129,7 @@ jobs:
           fi
 
       - name: Mint cross-repo read token (bridge App)
-        if: steps.tag.outputs.stable == 'true' && steps.bridge-check.outputs.configured == 'true'
+        if: steps.tag.outputs.channel != 'none' && steps.bridge-check.outputs.configured == 'true'
         id: bridge-token
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
@@ -129,7 +145,7 @@ jobs:
           permission-pull-requests: read
 
       - name: Notify reporters whose fix reached this release
-        if: steps.tag.outputs.stable == 'true'
+        if: steps.tag.outputs.channel != 'none'
         env:
           # Posting the reply, which happens against this repo.
           GH_TOKEN: ${{ github.token }}

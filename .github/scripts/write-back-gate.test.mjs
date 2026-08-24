@@ -4,6 +4,7 @@ import {
   compareVersions,
   composeReply,
   evaluateFanIn,
+  isOriginRepliableFrom,
   highestVersion,
   partitionAttachments,
 } from './write-back-gate.mjs';
@@ -46,10 +47,22 @@ describe('attachment classification', () => {
     expect(c.channel).toBe('slack-archive');
   });
 
-  test('a Linear diagnostic bundle is an origin with nowhere to reply', () => {
+  test('a Linear upload is evidence on the ticket, not a place anyone is waiting', () => {
+    // Any file dragged onto any ticket lands here: a screenshot, a log, a
+    // diagnostic zip. Reading one as an origin kept every such ticket on the
+    // expensive path and produced a warning about an "only origin" that could
+    // not be replied to, on tickets that never had an origin.
     const c = classifyAttachment(LINEAR_UPLOAD);
-    expect(c.kind).toBe('unrepliable-origin');
+    expect(c.kind).toBe('evidence');
     expect(c.channel).toBe('linear-upload');
+  });
+
+  test('evidence is neither an origin nor a fix reference when the buckets are split', () => {
+    const parts = partitionAttachments([LINEAR_UPLOAD, GH_ISSUE, GH_PULL]);
+    expect(parts.evidence.map((e) => e.url)).toEqual([LINEAR_UPLOAD]);
+    expect(parts.origins.map((o) => o.url)).toEqual([GH_ISSUE]);
+    expect(parts.unrepliable).toEqual([]);
+    expect(parts.fixReferences.map((f) => f.url)).toEqual([GH_PULL]);
   });
 
   test('a GitHub pull request is a fix reference and never an origin', () => {
@@ -370,5 +383,108 @@ describe('reply composition', () => {
     });
     expect(text).not.toContain('INTERNAL');
     expect(text).not.toContain('Dana');
+  });
+});
+
+describe('origin remit', () => {
+  const issue = (owner, repo) => ({ channel: 'github-issue', owner, repo });
+
+  test('an issue in this repo is repliable and one anywhere else is not', () => {
+    expect(isOriginRepliableFrom(issue('inkeep', 'open-knowledge'), 'inkeep/open-knowledge')).toBe(
+      true,
+    );
+    expect(isOriginRepliableFrom(issue('inkeep', 'agents'), 'inkeep/open-knowledge')).toBe(false);
+    expect(isOriginRepliableFrom(issue('someone', 'fork'), 'inkeep/open-knowledge')).toBe(false);
+  });
+
+  test('the comparison ignores case, because GitHub slugs are not case sensitive', () => {
+    expect(isOriginRepliableFrom(issue('Inkeep', 'Open-Knowledge'), 'inkeep/open-knowledge')).toBe(
+      true,
+    );
+  });
+
+  test('a Discord thread is repliable regardless of repo, and an unknown repo makes nothing repliable', () => {
+    expect(isOriginRepliableFrom({ channel: 'discord-thread', threadId: '1' }, '')).toBe(true);
+    expect(isOriginRepliableFrom(issue('inkeep', 'open-knowledge'), '')).toBe(false);
+    expect(isOriginRepliableFrom(undefined, 'inkeep/open-knowledge')).toBe(false);
+  });
+});
+
+describe('prerelease ordering', () => {
+  test('a beta ranks below the stable that supersedes it', () => {
+    expect(compareVersions('0.59.0-beta.9', '0.59.0')).toBeLessThan(0);
+    expect(compareVersions('0.59.0', '0.59.0-beta.9')).toBeGreaterThan(0);
+  });
+
+  test('betas of one cycle order numerically, not as strings', () => {
+    expect(compareVersions('0.59.0-beta.2', '0.59.0-beta.10')).toBeLessThan(0);
+  });
+
+  test('the highest across a fan-in spanning both channels is the stable', () => {
+    // A three-part compare calls a beta equal to its stable, so whichever
+    // arrived first would win and a reporter could be sent to a build that does
+    // not carry every part of what they reported.
+    expect(highestVersion(['0.59.0-beta.9', '0.59.0', '0.58.1'])).toBe('0.59.0');
+  });
+});
+
+describe('the two channels say different things', () => {
+  const changeset = {
+    title: 'Configurable auto-sync cadence',
+    body: 'Auto-sync cadence is now configurable.',
+  };
+
+  test('a stable reply claims the fix is out and points at the current app', () => {
+    const text = composeReply({ changeset, version: '0.59.1', originChannel: 'github-issue' });
+    expect(text).toContain('This shipped in Open Knowledge v0.59.1.');
+    expect(text).toContain('update to the latest desktop app');
+    expect(text).not.toMatch(/beta/i);
+  });
+
+  test('a beta reply names the beta, does not claim the default channel, and promises the follow-up', () => {
+    const text = composeReply({
+      changeset,
+      version: '0.59.0-beta.2',
+      originChannel: 'github-issue',
+      channel: 'beta',
+    });
+    expect(text).toContain('v0.59.0-beta.2');
+    expect(text).toContain('going out now on the Open Knowledge beta channel');
+    expect(text).toContain('follow up here');
+    // "update to the latest" would send them to a build without the fix: a beta
+    // is not on the channel the desktop app follows.
+    expect(text).not.toContain('update to the latest');
+    expect(text).toContain('download the v0.59.0-beta.2 beta');
+    // The release is still a draft when this posts, so nothing may claim the
+    // build is already sitting on the releases page.
+    expect(text).not.toMatch(/available now|download it now/i);
+    expect(text).toContain('installers have finished uploading');
+  });
+
+  test('a Discord beta reply wraps the URL so it does not expand into an embed', () => {
+    const text = composeReply({
+      changeset,
+      version: '0.59.0-beta.2',
+      originChannel: 'discord-thread',
+      channel: 'beta',
+    });
+    expect(text).toMatch(/<https:\/\/github\.com\/inkeep\/open-knowledge\/releases>/);
+  });
+
+  test('a channel that is neither refuses rather than composing a reply in the wrong voice', () => {
+    expect(() =>
+      composeReply({
+        changeset,
+        version: '0.59.1',
+        originChannel: 'github-issue',
+        channel: 'nightly',
+      }),
+    ).toThrow(/channel/);
+  });
+
+  test('a beta version is a version composeReply accepts', () => {
+    expect(() =>
+      composeReply({ changeset, version: 'nonsense', originChannel: 'github-issue' }),
+    ).toThrow(/derived version/);
   });
 });
