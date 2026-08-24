@@ -161,7 +161,7 @@ Six sub-passes, each with its own STOP gate.
 ### 5a. Orphan triage (STOP gate 5a)
 
 1. Run `links({ kind: "orphans" })`.
-2. For each orphan, run `links({ kind: "suggest", docName: <orphan> })`:
+2. For each orphan, run `links({ kind: "suggest", document: <orphan> })`:
    - If `mentions[]` is non-empty → there are docs that mention this orphan without linking. Adoption candidates.
    - If `mentions[]` is empty → the orphan is **genuinely standalone** (no other doc references it at all). Surface as: "this looks intentionally standalone (e.g., a README). Skip / adopt anyway by linking from a hub / add to `.okignore`?"
 3. Confirm per orphan. For each "link" choice, `edit({ document: { path, find, replace } })` on the source doc — find the existing mention text `links({ kind: "suggest" })` surfaced and replace it wrapped in link syntax.
@@ -179,7 +179,7 @@ Six sub-passes, each with its own STOP gate.
 
 ### 5c. Dead-link sweep (STOP gate 5c)
 
-1. Run `links({ kind: "dead" })` (no `sourceDocNames` → audits the whole corpus).
+1. Run `audit` (the authoritative end-state link check; it covers the whole corpus). `links({ kind: "dead" })` is the graph-navigation view of the same data, useful for browsing but not the validation step.
 2. For each dead link, propose: a fix candidate (via `search` for the correct target), or deletion (remove the link, or the prose around it). Leaving it as an "intentional redlink" is not an option — every dead link is fixed or removed.
 3. Confirm per dead-link. Apply confirmed fixes via `edit`.
 
@@ -187,7 +187,7 @@ Six sub-passes, each with its own STOP gate.
 
 `links({ kind: "suggest" })` implements server-side detection of prose mentions of a target doc that aren't wrapped in link syntax. Lean on it directly.
 
-1. For each substantial `[KB]` doc, run `links({ kind: "suggest", docName: <target> })`.
+1. For each substantial `[KB]` doc, run `links({ kind: "suggest", document: <target> })`.
 2. Each call returns `mentions[]` with `{ source, excerpt, offset }` — places to insert links pointing TO this target from OTHER docs.
 3. Surface batched **by source doc** (not per-link, to keep cognitive load reasonable):
 
@@ -209,7 +209,7 @@ Harder case: prose discusses a concept covered by another doc without naming it.
 1. For each substantial doc, identify its main concepts. Use frontmatter `subjects:` / `topics:` if present; else extract from heading text + the first 2-3 paragraphs.
 2. For each concept, run `search({ query: <concept> })`. Take the top 1-2 non-self results.
 3. For each candidate sibling:
-   - Verify it is NOT already linked from this doc (`links({ kind: "forward", docName: <doc> })`).
+   - Verify it is NOT already linked from this doc (`links({ kind: "forward", document: <doc> })`).
    - Verify the content is actually relevant (re-read the summary).
 4. Surface to the user with brief justification per pair. Confirm. Apply via `edit` (insert the link in a "Related" or "References" section).
 
@@ -232,7 +232,7 @@ After all confirmed proposals are applied:
 1. Re-run `exec("ls -A <folder>")` on every `[KB]` folder. Verify:
    - the folder's descriptive `title`/`description`/`tags` are populated (folder frontmatter landed)
    - `templates_available` includes the new template (template landed)
-2. Re-run the orphan + dead-link audit in one call — `links({ kind: ["orphans", "dead"] })`. Confirm the orphan count dropped vs. the Phase 5a baseline and that fixed dead links no longer report.
+2. Re-run `audit` to confirm fixed dead links no longer report, and `links({ kind: "orphans" })` to confirm the orphan count dropped vs. the Phase 5a baseline.
 
 If any validation step fails, surface it to the user — do NOT silently pass.
 

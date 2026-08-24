@@ -262,7 +262,7 @@ Specs that don't link back are islands. Wire the spec into the graph and prove i
 - **Backlink the parent proposal** inline in the spec body: `derived from [Payment retries proposal](./proposals/0004-payment-retries.md)`. Plain markdown relative link — never backticked, never an HTML anchor.
 - **Link every decision the spec depends on** — if the design rests on a frozen record in `decisions/`, link it where it's relied upon.
 - Update the parent proposal (and any hub) to link forward to this spec, so the spec is discoverable via backlinks. `links({ kind: "backlinks", ... })` to confirm the reverse edge registered.
-- `links({ kind: "dead", sourceDocNames: ["specs/004-payment-retries/spec"] })` — returns clean, zero dead links. Fix or remove every one.
+- `audit({ path: "specs/004-payment-retries/spec.md" })` — returns clean, zero dead links. Fix or remove every one.
 - Frontmatter complete: `type`, `description`, `status`, `owner`, `parent_proposal`, `created`, `tags` all present.
 
 ---

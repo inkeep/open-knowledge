@@ -159,8 +159,8 @@ Then add a line near the top of the old record's Context (or a short `> Supersed
 
 ## Step 8 — Link and validate
 
-- **Backlinks in:** ensure the parent proposal links forward to this decision, and any spec that *implements* this decision links back to it. `links({ kind: "backlinks", docName: "decisions/0012-adopt-event-sourcing-for-orders" })` to see who points here; add the missing ones so the record is discoverable.
-- **Dead links out:** `links({ kind: "dead", sourceDocNames: ["decisions/0012-adopt-event-sourcing-for-orders"] })` returns clean — zero dead links. Fix or remove every one; a broken link to a superseded record defeats the whole chain.
+- **Backlinks in:** ensure the parent proposal links forward to this decision, and any spec that *implements* this decision links back to it. `links({ kind: "backlinks", document: "decisions/0012-adopt-event-sourcing-for-orders" })` to see who points here; add the missing ones so the record is discoverable.
+- **Dead links out:** `audit({ path: "decisions/0012-adopt-event-sourcing-for-orders.md" })` returns clean — zero dead links. Fix or remove every one; a broken link to a superseded record defeats the whole chain.
 - **Frontmatter complete:** `type`, `description`, `status`, `date`, `deciders`, `supersedes`, `tags` all present and correct.
 - **Status reflects reality:** if the deciders have accepted, flip `status: proposed` → `accepted`. If they haven't, leave it `proposed` and tell the user it's awaiting sign-off. Do not mark a decision `accepted` on the user's behalf.
 - **Body shape:** exactly `## Context`, `## Decision`, `## Consequences`, in order. No extra top-level sections — depth that doesn't fit these three belongs in a linked spec.
