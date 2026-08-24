@@ -739,7 +739,12 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // The prior text asserted "the fix passes on main but not on the stable it
     // would ship against" off a single red run, sending operators hunting for
     // an incompatibility that was really a flake.
-    const page = bugLaneVerify.slice(bugLaneVerify.indexOf('- name: Page on a refusal'));
+    // Through the file's own guarded helper: it refuses -1 AND bounds at the
+    // next step, where a hand-rolled floor check would slice to end-of-file.
+    // This test's ONLY assertion is a negative one, so an unguarded slice would
+    // yield one character and pass — renaming the step would satisfy the test
+    // rather than break it.
+    const page = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(page).not.toContain('the fix passes on main but not on the stable');
   });
 });
@@ -795,11 +800,17 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   // regression class that exits 0 while the page reappears in the product
   // channel, so it is invisible without a test.
   const RESOLVED = 'WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"';
-  const stepAfter = (source, name, next) =>
-    source.slice(
-      source.indexOf(`- name: ${name}`),
+  // Guarded at the chokepoint: four call sites feed this, several asserting
+  // only negatives, so an unguarded miss would yield slice(-1) — one character —
+  // and turn those assertions green on a renamed step.
+  const stepAfter = (source, name, next) => {
+    const start = source.indexOf(`- name: ${name}`);
+    if (start === -1) throw new Error(`no step named ${name}`);
+    return source.slice(
+      start,
       next === undefined ? undefined : source.indexOf(`- name: ${next}`),
     );
+  };
 
   for (const { label, step } of [
     {
