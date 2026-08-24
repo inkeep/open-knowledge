@@ -150,7 +150,12 @@ export function SlashCommandMenu({
         <aside
           aria-hidden="true"
           onMouseDown={preventFocusSteal}
-          className={`w-64 rounded-lg border bg-popover p-2 shadow-md ${
+          // `ok-suggestion-preview` is the hook the positioning pass hides this
+          // column by when the editor pane cannot hold both columns — see
+          // `suggestion-floating-ui.ts`. Hidden in CSS rather than unrendered
+          // here because the width that decides it is measured per
+          // `computePosition` pass, outside React.
+          className={`ok-suggestion-preview w-64 rounded-lg border bg-popover p-2 shadow-md ${
             selectedItem?.preview ? '' : 'invisible'
           }`}
         >

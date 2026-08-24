@@ -236,17 +236,36 @@ export function deriveEditorSizeOptions(
 ): () => EditorSizeOptions {
   return () => ({
     apply({ elements }) {
-      const boundary = resolveRegionBoundary(editor);
-      if (!boundary) {
+      const regionWidth = editorRegionWidthPx(editor);
+      if (regionWidth === null) {
         elements.floating.style.maxWidth = '';
         return;
       }
-      const regionWidth = Math.max(0, boundary.getBoundingClientRect().width - PANE_GUTTER_PX * 2);
       elements.floating.style.maxWidth = authorMaxWidth
         ? `min(${authorMaxWidth}, ${regionWidth}px)`
         : `${regionWidth}px`;
     },
   });
+}
+
+/**
+ * The width a surface may occupy inside the region — the number
+ * `deriveEditorSizeOptions` caps to, exposed for the one caller that has to
+ * decide something other than a `max-width` from it.
+ *
+ * The suggestion picker is that caller: it is two columns, and squeezing both
+ * into a pane that fits neither reads worse than dropping the decorative one.
+ * Deciding that needs the measurement itself, not the style the producer
+ * writes — and re-measuring at the call site would be a second definition of
+ * the region free to drift from this one.
+ *
+ * `null` when no region resolves, matching the producer's own fallback: the
+ * caller has no basis for a width-conditional decision either.
+ */
+export function editorRegionWidthPx(editor: Editor): number | null {
+  const boundary = resolveRegionBoundary(editor);
+  if (!boundary) return null;
+  return Math.max(0, boundary.getBoundingClientRect().width - PANE_GUTTER_PX * 2);
 }
 
 /**

@@ -91,7 +91,7 @@ export function TagSuggestionMenu({
         ref={containerRef}
         role="status"
         aria-live="polite"
-        className="w-64 rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
+        className="w-64 max-w-full rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
         style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
         onMouseDown={preventFocusSteal}
       >
@@ -113,7 +113,7 @@ export function TagSuggestionMenu({
         ref={containerRef}
         role="status"
         aria-live="polite"
-        className="w-64 rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
+        className="w-64 max-w-full rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
         style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
         onMouseDown={preventFocusSteal}
       >
@@ -133,7 +133,7 @@ export function TagSuggestionMenu({
       aria-activedescendant={activeDescendant}
       tabIndex={-1}
       onMouseDown={preventFocusSteal}
-      className="w-64 overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
+      className="w-64 max-w-full overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
       style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
     >
       {/* Live region announces the selected item on arrow navigation —

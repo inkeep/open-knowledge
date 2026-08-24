@@ -5719,6 +5719,17 @@ html.electron-mode [data-slot="sidebar-inner"] {
    be clickable and the enter/leave handlers keep the box alive while the
    pointer travels to it, so it also swallows clicks on the region it covers
    (the line above the hovered one). Any keypress retires it. */
+/* One-column suggestion picker.
+
+   `suggestion-floating-ui.ts` sets `data-suggestion-narrow` on the popup when
+   the editor's visible region cannot hold the list AND the preview beside it.
+   Squeezing both columns into a pane that fits neither reads worse than the
+   list alone, and the preview is `aria-hidden` decoration, so it is the column
+   that gives way. */
+[data-suggestion-popup][data-suggestion-narrow] .ok-suggestion-preview {
+  display: none;
+}
+
 .ok-lint-tooltip {
   position: absolute;
   z-index: 50;

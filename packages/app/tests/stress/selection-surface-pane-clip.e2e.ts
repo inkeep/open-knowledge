@@ -1302,7 +1302,8 @@ test('comment composer stays inside a pane narrower than the card', async ({ pag
  * the rail beside it.
  */
 
-const SUGGESTION_POPUP = '[data-suggestion-popup="slash-command"]';
+const SLASH_PICKER = '[data-suggestion-popup="slash-command"]';
+const SUGGESTION_POPUP = SLASH_PICKER;
 const LINT_CALLOUT = '.ok-lint-tooltip';
 
 /**
@@ -1401,9 +1402,65 @@ async function placeCaretNearPaneRight(page: Page, marker: string, insetPx: numb
  * mid-word never opens anything and the test would fail on setup.
  */
 async function openSuggestionPicker(page: Page): Promise<void> {
-  await page.keyboard.type(' /');
-  await page.locator(SUGGESTION_POPUP).waitFor({ state: 'visible', timeout: 10_000 });
-  await waitForFloatingSurfaceSettled(page, SUGGESTION_POPUP);
+  await openPicker(page, SLASH_PICKER);
+}
+
+/**
+ * Every picker that rides the shared middleware, with the characters that
+ * summon it. Parameterised rather than one arm for the slash menu, because the
+ * three do NOT degrade alike: the slash menu's columns are flex items that
+ * shrink under the cap on their own, while the other two render a block root
+ * carrying a fixed `width`, which a `max-width` on the portaled wrapper cannot
+ * shrink. A group that only exercised the flex shape would go green while the
+ * other two kept overhanging.
+ */
+const PICKERS = [
+  { label: 'slash', trigger: ' /', selector: '[data-suggestion-popup="slash-command"]' },
+  {
+    label: 'wiki-link',
+    trigger: ' [[',
+    selector: '[data-suggestion-popup="wiki-link-suggestion"]',
+  },
+  { label: 'tag', trigger: ' #', selector: '[data-suggestion-popup="tag-suggestion"]' },
+] as const;
+
+async function openPicker(page: Page, selector: string, trigger = ' /'): Promise<void> {
+  await page.keyboard.type(trigger);
+  await page.locator(selector).waitFor({ state: 'visible', timeout: 10_000 });
+  await waitForFloatingSurfaceSettled(page, selector);
+}
+
+/**
+ * The widest box the picker actually PAINTS — the wrapper unioned with every
+ * descendant.
+ *
+ * `readFloatingSurfaceGeometry` reads the wrapper's own border box, and a
+ * child is free to overflow it: a block menu root with `width: 20rem` inside a
+ * wrapper capped at 287px leaves the wrapper at 287 and paints 320. Measuring
+ * the wrapper alone therefore reports containment for a picker the user can
+ * plainly see lying across the dock, which is the exact hole that let a cap
+ * inert on two of the three pickers look pinned.
+ */
+async function readPaintedPickerBox(
+  page: Page,
+  selector: string,
+): Promise<{ left: number; right: number }> {
+  return page.evaluate((sel) => {
+    const root = Array.from(document.querySelectorAll(sel)).find(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && element.getClientRects().length > 0,
+    );
+    if (!root) throw new Error(`readPaintedPickerBox: no painted ${sel}`);
+    const boxes = [root, ...root.querySelectorAll('*')]
+      .filter(
+        (el): el is HTMLElement => el instanceof HTMLElement && el.getClientRects().length > 0,
+      )
+      .map((el) => el.getBoundingClientRect());
+    return {
+      left: Math.min(...boxes.map((b) => b.left)),
+      right: Math.max(...boxes.map((b) => b.right)),
+    };
+  }, selector);
 }
 
 /** The caret's rect, read the way the picker's virtual element reads it. */
@@ -1457,6 +1514,85 @@ test('suggestion picker stays inside the pane when opened past the middle of a l
 
   expectInsideVisibleRegionHorizontally(geometry, 'suggestion picker');
 });
+
+for (const picker of PICKERS) {
+  test(`${picker.label} picker stays inside a pane narrower than the picker`, async ({
+    page,
+    api,
+  }) => {
+    await openTallDoc(page, api, `clip-suggest-narrow-${picker.label}`);
+    await selectSingleMarker(page, blockMarker(40));
+    const before = await readFloatingSurfaceGeometry(page, picker.selector);
+    await parkCaretAtViewportY(page, before.regionTop + 40);
+    await openPicker(page, picker.selector, picker.trigger);
+    const natural = await readPaintedPickerBox(page, picker.selector);
+    const naturalWidth = natural.right - natural.left;
+    if (picker.label === 'slash') {
+      // Both columns up in a roomy pane. Asserted so the narrow-pane check
+      // below pins a TOGGLE rather than an absence that a never-rendered
+      // preview would satisfy just as well. Only the slash menu has one.
+      expect(await previewColumnCount(page), 'preview column up in a roomy pane').toBe(1);
+    }
+
+    await narrowPaneAsFarAsPossible(page);
+    // The trigger characters and the caret do not survive the reflow the
+    // resize causes, so the picker is re-opened against the narrowed pane
+    // rather than measured where it was.
+    const region = await readFloatingSurfaceGeometry(page, picker.selector);
+    await parkCaretAtViewportY(page, region.regionTop + 40);
+    await openPicker(page, picker.selector, picker.trigger);
+
+    const geometry = await readFloatingSurfaceGeometry(page, picker.selector);
+    expect(geometry.present, `${picker.label} picker still mounted`).toBe(true);
+    expect(geometry.visible, `${picker.label} picker must be on screen to bite`).toBe(true);
+    // Reachability from the two MEASURED numbers rather than a table of
+    // expected widths: `narrowPaneTo` bottoms out at whatever chrome the host
+    // keeps beside the pane, and a picker narrower than that floor has no
+    // overhang for this arm to contain however narrow the window goes — the
+    // same limit that keeps the lint callout out of the group above. Skipping
+    // says so with both numbers instead of passing on nothing, and a picker
+    // that grows past the floor starts being covered with no edit here.
+    const paneWidth = geometry.regionRight - geometry.regionLeft;
+    test.skip(
+      naturalWidth <= paneWidth,
+      `${picker.label} picker is ${naturalWidth}px, which already fits the narrowest pane ` +
+        `this host lays out (${paneWidth}px) — no overhang to contain`,
+    );
+    expectPaneNarrowerThan(geometry, naturalWidth, `${picker.label} picker`);
+
+    // The PAINTED box, not the wrapper's: a menu root carrying a fixed `width`
+    // leaves the wrapper at the cap and paints past it, which the wrapper's
+    // own rect reports as contained.
+    const painted = await readPaintedPickerBox(page, picker.selector);
+    expect(
+      painted.right,
+      `${picker.label} picker painted past the pane's right edge (${geometry.regionRight}): ` +
+        `rendered ${painted.left}-${painted.right}`,
+    ).toBeLessThanOrEqual(geometry.regionRight + REGION_TOLERANCE_PX);
+    expect(
+      painted.left,
+      `${picker.label} picker painted past the pane's left edge (${geometry.regionLeft}): ` +
+        `rendered ${painted.left}-${painted.right}`,
+    ).toBeGreaterThanOrEqual(geometry.regionLeft - REGION_TOLERANCE_PX);
+
+    if (picker.label === 'slash') {
+      // Containment alone would also be satisfied by squeezing both columns
+      // into the pane, which is what the one-column rule exists to avoid.
+      expect(await previewColumnCount(page), 'preview column dropped in a narrow pane').toBe(0);
+    }
+  });
+}
+
+/** Painted preview columns inside the suggestion picker — 0 once it goes one-column. */
+async function previewColumnCount(page: Page): Promise<number> {
+  return page.evaluate(
+    (selector) =>
+      Array.from(document.querySelectorAll(`${selector} .ok-suggestion-preview`)).filter(
+        (el) => el.getClientRects().length > 0,
+      ).length,
+    SUGGESTION_POPUP,
+  );
+}
 
 test('suggestion picker stays inside the pane when the caret sits mid-pane', async ({
   page,

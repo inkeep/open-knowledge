@@ -1,9 +1,12 @@
+import type { MiddlewareState } from '@floating-ui/dom';
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 import type { Editor } from '@tiptap/core';
 import type { SuggestionProps } from '@tiptap/suggestion';
 import {
   deriveEditorClipOptions,
   deriveEditorShiftOptions,
+  deriveEditorSizeOptions,
+  editorRegionWidthPx,
 } from '@/editor/utils/editor-visible-region';
 
 export interface SuggestionPositionState {
@@ -64,6 +67,17 @@ export function suggestionHasSelectableItem(view: object): boolean {
  * ideal placement, caps the list at the room actually available beside the
  * anchor, and leaves the clamp with nothing to do.
  */
+/**
+ * Width below which the picker drops to one column.
+ *
+ * The slash menu is a `w-56` list beside a `w-64` preview with a `gap-2`
+ * between them — 488px of fixed columns. A pane that cannot hold both squeezes
+ * BOTH, and a half-width list beside a sliver of preview reads worse than the
+ * list alone. The preview is `aria-hidden` decoration, so dropping it costs
+ * nothing a screen reader was getting.
+ */
+const SUGGESTION_TWO_COLUMN_MIN_PX = 488;
+
 function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
   const applySize = {
     apply({ availableHeight }: { availableHeight: number }) {
@@ -88,12 +102,45 @@ function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
     ];
   }
   const clipOptions = deriveEditorClipOptions(editor);
+  const capWidth = deriveEditorSizeOptions(editor);
   return [
     offset(SUGGESTION_ANCHOR_GAP_PX),
     flip(clipOptions),
-    size(() => ({ ...clipOptions(), ...applySize })),
+    // The width cap rides the EXISTING `size` rather than a second one, and
+    // this call keeps its place BEFORE the clamp. That position is load-bearing
+    // for the height half above (see this function's docstring) and the cap is
+    // indifferent to it: `deriveEditorSizeOptions` measures the region instead
+    // of reading floating-ui's position-dependent `availableWidth`, so it is
+    // correct wherever in the chain it runs.
+    size(() => {
+      const { apply: applyWidthCap } = capWidth();
+      return {
+        ...clipOptions(),
+        apply(state: MiddlewareState & { availableHeight: number }) {
+          applyWidthCap(state);
+          applySize.apply(state);
+          applyColumnCount(popup, editor);
+        },
+      };
+    }),
     shift(deriveEditorShiftOptions(editor)),
   ];
+}
+
+/**
+ * Mark the popup one-column when the region cannot hold both of its columns.
+ *
+ * A `data-` attribute plus a CSS rule rather than React state: the menus are
+ * rendered into this popup by three different components, the decision is a
+ * pure function of a width this positioning pass already measured, and routing
+ * it back through React would re-render the list on every scroll tick. No
+ * resolvable region leaves the attribute alone — same fallback as the cap.
+ */
+function applyColumnCount(popup: HTMLDivElement, editor: Editor): void {
+  if (!popup.isConnected) return;
+  const regionWidth = editorRegionWidthPx(editor);
+  if (regionWidth === null) return;
+  popup.toggleAttribute('data-suggestion-narrow', regionWidth < SUGGESTION_TWO_COLUMN_MIN_PX);
 }
 
 /**
