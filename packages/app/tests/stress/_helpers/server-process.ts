@@ -319,10 +319,14 @@ export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Prom
   if (!signalTree(proc, 'SIGTERM')) return;
   await Promise.race([exited, wait(timeoutMs)]);
   if (proc.exitCode === null && proc.signalCode === null) {
-    // signalTree may report the tree already gone (the child exited during
-    // the timeout window); `exited` was armed before the first signal, so
-    // the await below cannot hang either way. The group-SIGKILL inside
-    // signalTree already reaped any descendants — no further sweep needed.
+    // signalTree can report false for either tolerated errno, and neither
+    // can hang the await. ESRCH means the child exited during the timeout
+    // window. EPERM means the pid it holds is no longer ours — which requires
+    // that pid to have been recycled, and a pid is only recycled once the
+    // process holding it was reaped, so our child has exited on that branch
+    // too. `exited` was armed before the first signal, so it is already
+    // settled either way. The group-SIGKILL inside signalTree already reaped
+    // any descendants — no further sweep needed.
     signalTree(proc, 'SIGKILL');
     await exited;
   } else if (proc.pid !== undefined) {

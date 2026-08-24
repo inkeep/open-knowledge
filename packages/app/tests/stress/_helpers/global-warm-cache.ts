@@ -44,6 +44,7 @@ import {
   VITE_E2E_SEED_DIR,
   waitForHttpReady,
 } from './server-process.ts';
+import { removeAllDuringTeardown } from './teardown-fs.ts';
 
 const SEED_KEY_FILENAME = '.seed-key';
 const OPTIMIZER_SETTLE_BUDGET_MS = 90_000;
@@ -159,23 +160,27 @@ async function buildSeedOnce(key: string): Promise<void> {
     // Kill BEFORE any buildDir cleanup: the server writes into buildDir (its
     // Vite cacheDir) until it exits, and the optimizer recreates a deleted
     // dir mid-write — orphaning it under node_modules/ with nothing to reap it.
-    // Cleanup still runs if the kill throws; which errnos it absorbs is
-    // `tolerateDuringTeardown` in server-process.ts (same guard shape as the
+    // Cleanup still runs if the kill throws, and a directory that refuses to
+    // go does not strand the others; which errnos each half absorbs is
+    // `tolerateDuringTeardown` in server-process.ts and
+    // `removeAllDuringTeardown` in teardown-fs.ts (same guard shape as the
     // worker-fixture teardown in fixtures.ts).
     try {
       await killGracefully(proc);
     } finally {
       closeServerLog(log);
-      rmSync(contentDir, { recursive: true, force: true });
-      if (!succeeded) {
-        rmSync(buildDir, { recursive: true, force: true });
-      }
+      // buildDir is only reclaimed on failure: a successful build is renamed
+      // into the seed dir below, so removing it here would destroy the seed.
+      removeAllDuringTeardown(contentDir, ...(succeeded ? [] : [buildDir]));
     }
   }
   try {
+    // Bare `rmSync`: this one is a PRECONDITION for the rename, not teardown.
+    // Its failure must abort the promotion rather than be tolerated, or the
+    // rename lands on top of a half-cleared seed.
     rmSync(VITE_E2E_SEED_DIR, { recursive: true, force: true });
     renameSync(buildDir, VITE_E2E_SEED_DIR);
-    rmSync(log.path, { force: true });
+    removeAllDuringTeardown(log.path);
   } catch (promoteErr) {
     // A failed promotion (e.g. ENOTEMPTY from a concurrent local run's
     // globalSetup re-creating the seed) would otherwise orphan buildDir
@@ -183,8 +188,7 @@ async function buildSeedOnce(key: string): Promise<void> {
     // on !succeeded. The build itself succeeded, so the log holds no
     // failure diagnostics; remove both and rethrow for the fail-open
     // wrapper to handle.
-    rmSync(buildDir, { recursive: true, force: true });
-    rmSync(log.path, { force: true });
+    removeAllDuringTeardown(buildDir, log.path);
     throw promoteErr;
   }
 }
