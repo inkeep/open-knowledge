@@ -1147,6 +1147,14 @@ export interface ContentFilter {
    * refresh step). No-op when no provider was supplied.
    */
   refreshInPlaceSkillDirs(): void;
+  /** Cheap identity of the current in-place allow-list — lets read-side caches
+   *  detect a skill dir that appeared on disk without any API mutation. */
+  inPlaceSkillDirsFingerprint(): string;
+  /** Fingerprint of a FRESH rescan WITHOUT swapping the live allow-list - the
+   *  read-side cache uses it to detect external skill-dir changes while the
+   *  admission-heal's excluded-detection still sees the pre-swap state (a
+   *  pre-heal swap would silently defuse the heal's trigger). */
+  peekFreshInPlaceSkillDirsFingerprint(): string;
 }
 
 /**
@@ -1677,6 +1685,19 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       }
     },
 
+    inPlaceSkillDirsFingerprint(): string {
+      return [...inPlaceSkillDirs].sort().join('\n');
+    },
+
+    peekFreshInPlaceSkillDirsFingerprint(): string {
+      if (!opts.rescanInPlaceSkillDirs) return [...inPlaceSkillDirs].sort().join('\n');
+      try {
+        return [...opts.rescanInPlaceSkillDirs()].sort().join('\n');
+      } catch {
+        return [...inPlaceSkillDirs].sort().join('\n');
+      }
+    },
+
     async rebuildIgnorePatterns(): Promise<RebuildResult> {
       // Single-flight with one trailing run. Every skill lifecycle op
       // calls this, a bulk move once PER SKILL, and each run is a full
@@ -1720,8 +1741,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
           try {
             const counts = buildPatternState();
             // Refresh sibling-asset counts against the new ignore rules.
+            // Yielding: the rebuild is background work and must not hold the
+            // event loop for the whole walk.
             dirCount.clear();
-            refreshDirCount();
+            if (singleDocRelPath === undefined) {
+              await populateDirCountYielding(contentDir, isIgnored, dirCount);
+            }
 
             const durationMs = Date.now() - startedAt;
             span.setAttributes({
@@ -1816,6 +1841,50 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
  * Walk contentDir to count included `.md`/`.mdx` files per directory.
  * Populates the refcount map used by the sibling-asset inclusion rule.
  */
+/**
+ * Yielding variant for RUNTIME rebuilds: same traversal as
+ * {@link populateDirCount}, but hands the event loop back every
+ * `YIELD_EVERY_DIRS` directories. On monorepo-sized roots the synchronous
+ * walk holds the loop for 20s+, and a rebuild scheduled after a skill op
+ * then starves the NEXT interactive request - the walk may take its time,
+ * but never in one uninterruptible slice. Boot keeps the sync version (one
+ * blocking walk before serving is the boot scan's contract).
+ */
+const YIELD_EVERY_DIRS = 50;
+async function populateDirCountYielding(
+  dir: string,
+  isIgnored: (path: string) => boolean,
+  dirCount: Map<string, number>,
+): Promise<void> {
+  const stack: Array<{ dir: string; relPath: string }> = [{ dir, relPath: '' }];
+  let sinceYield = 0;
+  while (stack.length > 0) {
+    const { dir: cur, relPath } = stack.pop() as { dir: string; relPath: string };
+    sinceYield += 1;
+    if (sinceYield >= YIELD_EVERY_DIRS) {
+      sinceYield = 0;
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    let entries: import('node:fs').Dirent[];
+    try {
+      entries = readdirSync(cur, { withFileTypes: true });
+    } catch (err) {
+      log.warn({ dir: cur, err }, `Failed to read directory for dir-count: ${cur}`);
+      continue;
+    }
+    for (const entry of entries) {
+      const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (BUILTIN_SKIP_DIRS.has(entry.name)) continue;
+        if (isIgnored(childRel) || isIgnored(`${childRel}/`)) continue;
+        stack.push({ dir: join(cur, entry.name), relPath: childRel });
+      } else if (entry.isFile() && isSupportedDocFile(entry.name) && !isIgnored(childRel)) {
+        dirCount.set(relPath, (dirCount.get(relPath) ?? 0) + 1);
+      }
+    }
+  }
+}
+
 function populateDirCount(
   dir: string,
   relPath: string,
@@ -2387,6 +2456,19 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         inPlaceSkillDirs = opts.rescanInPlaceSkillDirs();
       } catch (err) {
         log.warn({ err }, 'in-place skill re-scan failed — keeping previous allow-list');
+      }
+    },
+
+    inPlaceSkillDirsFingerprint(): string {
+      return [...inPlaceSkillDirs].sort().join('\n');
+    },
+
+    peekFreshInPlaceSkillDirsFingerprint(): string {
+      if (!opts.rescanInPlaceSkillDirs) return [...inPlaceSkillDirs].sort().join('\n');
+      try {
+        return [...opts.rescanInPlaceSkillDirs()].sort().join('\n');
+      } catch {
+        return [...inPlaceSkillDirs].sort().join('\n');
       }
     },
 

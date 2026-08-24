@@ -4366,6 +4366,7 @@ msgid "Delete {0}"
 msgstr "Hapus {0}"
 
 #. placeholder {0}: bulkEntries.length
+#. placeholder {0}: deletable.length
 #: src/components/SkillsTree.tsx
 msgid "Delete {0} skills"
 msgstr "Hapus {0} keterampilan"
@@ -4475,6 +4476,10 @@ msgstr "templat dihapus"
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "Menghapus"
+
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleting {progress} of {count}"
+msgstr "Menghapus {progress} dari {count}"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Denied"

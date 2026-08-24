@@ -4370,6 +4370,7 @@ msgid "Delete {0}"
 msgstr "删除 {0}"
 
 #. placeholder {0}: bulkEntries.length
+#. placeholder {0}: deletable.length
 #: src/components/SkillsTree.tsx
 msgid "Delete {0} skills"
 msgstr "删除 {0} 个技能"
@@ -4479,6 +4480,10 @@ msgstr "已删除模板"
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "正在删除"
+
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleting {progress} of {count}"
+msgstr "正在删除第 {progress} 个，共 {count} 个"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Denied"

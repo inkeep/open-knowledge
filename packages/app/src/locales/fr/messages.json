@@ -4039,6 +4039,7 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Échec de la suppression de ", ["file"]],
     "hh4mVC": ["Demander à l'IA de corriger ", ["flatId"]],
+    "hiNDrI": ["Suppression de ", ["progress"], " sur ", ["count"]],
     "hjO0Mq": ["Ajouter un onglet"],
     "hmYd9H": [
       "Gardez la trace des personnes et des entreprises avec lesquelles vous travaillez et des réunions que vous avez avec elles. Utile pour se rappeler qui est quelqu'un, comment vous le connaissez, et de quoi vous avez parlé la dernière fois."

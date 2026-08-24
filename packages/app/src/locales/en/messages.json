@@ -3436,6 +3436,7 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["Failed to delete ", ["file"]],
     "hh4mVC": ["Ask AI to fix ", ["flatId"]],
+    "hiNDrI": ["Deleting ", ["progress"], " of ", ["count"]],
     "hjO0Mq": ["Add tab"],
     "hmYd9H": [
       "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."

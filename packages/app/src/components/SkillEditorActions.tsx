@@ -126,7 +126,15 @@ export function SkillEditorActions({
           that refetches while folders are being rewritten, so a menu left open
           shows a half-converted state settling. It also cannot be reopened
           mid-run — the trigger is disabled while `installing`. */}
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <DropdownMenu
+        // modal=false: scope moves from this menu retarget the tab it lives
+        // on, unmounting the menu mid-close — a modal menu's body pointer-lock
+        // leaks on that abrupt unmount and the app goes click-dead until
+        // reload. Same class as the preview install menu.
+        modal={false}
+        open={menuOpen}
+        onOpenChange={setMenuOpen}
+      >
         <DropdownMenuTrigger asChild>
           {/* Status pill + install menu in one button: the label is the state,
               the chevron opens the menu. */}

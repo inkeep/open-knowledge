@@ -2002,7 +2002,13 @@ describe('reconcileWithDisk', () => {
       const reloaded = new BacklinkIndex({ projectDir, contentDir });
       expect(await reloaded.loadFromDisk()).toBe(true);
       const diff = await reloaded.reconcileWithDisk();
-      expect(diff).toEqual({ added: 0, updated: 0, deleted: 0, deletedDocNames: [] });
+      expect(diff).toEqual({
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        deletedDocNames: [],
+        changedDocs: [],
+      });
 
       // Backlinks should still be intact after a no-op reconcile.
       expect(reloaded.getBacklinks('beta')).toEqual([

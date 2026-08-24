@@ -497,6 +497,7 @@ import {
   detectUserSkillHosts,
 } from './skill-install.ts';
 import {
+  listSkillBundledFilePaths,
   projectSkill,
   readSkillBundledFiles,
   removeInPlaceSkillCopies,
@@ -2911,7 +2912,7 @@ export function createApiExtension(
     getDiskAckSVs,
     contentRoot,
     derivedDocumentIndex,
-    signalChannel,
+    signalChannel: rawSignalChannel,
     agentFocusBroadcaster,
     agentPresenceBroadcaster,
     onAgentWrite,
@@ -2944,6 +2945,16 @@ export function createApiExtension(
     getLinkPreviewsEnabled,
     getConfigDiagnostics,
   } = options;
+  // Every server-side `files` signal means content changed somewhere - doc
+  // writes, watcher events, installs. The skills caches must not outlive that:
+  // content-derived list fields (Modified flags, drift, built-in
+  // materialization) have no other invalidation edge for non-lifecycle writes.
+  const signalChannel: typeof rawSignalChannel = rawSignalChannel
+    ? (channel) => {
+        if (channel === 'files') bumpSkillsCatalogGen();
+        rawSignalChannel(channel);
+      }
+    : undefined;
 
   // Concurrency guard: at most 1 in-flight request per local-op endpoint
   const localOpGuard = localOpConcurrencyGuard ?? createConcurrencyGuard();
@@ -5238,6 +5249,86 @@ export function createApiExtension(
    * mis-attributed to an unrelated later doc write). Best-effort: a flush
    * failure is logged, never fatal to the mutation that already succeeded.
    */
+  // Interactive write handlers must NOT hold their response on this flush:
+  // the shadow-git staging walk scales with the content tree and measured
+  // 27-48s on monorepo-sized roots - a create that "never auto-opens" is a
+  // create whose response is still staging git state. The chain keeps flushes
+  // serialized so version boundaries survive; a handler that needs the
+  // PREVIOUS write committed before ITS write lands (the create-then-edit
+  // coalescing hazard) drains the chain first - milliseconds in the common
+  // case, and the cost lands only on back-to-back writers.
+  // Skill lifecycle ops used to kick an immediate (already-deferred) full
+  // ignore rebuild - but the walk floods the single-threaded event loop with
+  // readdir/stat completions on monorepo roots, starving the very responses
+  // the deferral was protecting (profiled live: readdir+stat dominated a 30s
+  // create). The sync allow-list swap already admits the dir for SERVING;
+  // the walk only re-admits it for the FILE WATCHER, which tolerates a
+  // settle delay. One trailing rebuild after the burst quiets: interactive
+  // work stays smooth and external-edit pickup self-heals in ~15s. Real
+  // ignore-RULE changes still rebuild immediately via the ignore-watcher.
+  // The detected-skill catalog enumeration stat-walks every bundle across all
+  // harness homes SYNCHRONOUSLY - ~37k files under ~/.claude/plugins on a
+  // real machine - and the client refetches the list on every skills-changed
+  // signal, so uncached back-to-back requests pile sync walks onto the event
+  // loop (profiled live inside a 24s create). Generation + short TTL: any
+  // skill mutation bumps the generation, and even a missed bump is capped at
+  // TTL staleness.
+  let skillsCatalogGen = 0;
+  // Same shape for the FULL /api/skills payload: the handler stamp-walks every
+  // in-place bundle synchronously (129 dirs on a worktree-heavy monorepo), the
+  // client refetches on every skills-changed signal, and those bursts queue
+  // ahead of whatever mutation is in flight - measured as 25s creates with a
+  // renderer attached vs 92ms without one.
+  let skillsListCache: { at: number; gen: number; fp: string; body: unknown } | null = null;
+  let installedCatalogCache: {
+    at: number;
+    gen: number;
+    key: string;
+    value: ReturnType<typeof enumerateInstalledSkills>;
+  } | null = null;
+  function bumpSkillsCatalogGen(): void {
+    skillsCatalogGen += 1;
+  }
+  function enumerateInstalledSkillsCached(
+    opts: Parameters<typeof enumerateInstalledSkills>[0],
+  ): ReturnType<typeof enumerateInstalledSkills> {
+    const key = `${opts?.projectDir ?? ''}|${opts && 'home' in opts ? opts.home : ''}`;
+    const now = Date.now();
+    if (
+      installedCatalogCache !== null &&
+      installedCatalogCache.gen === skillsCatalogGen &&
+      installedCatalogCache.key === key &&
+      now - installedCatalogCache.at < 5_000
+    ) {
+      return installedCatalogCache.value;
+    }
+    const value = enumerateInstalledSkills(opts);
+    installedCatalogCache = { at: now, gen: skillsCatalogGen, key, value };
+    return value;
+  }
+  let deferredIgnoreRebuildTimer: NodeJS.Timeout | null = null;
+  function scheduleDeferredIgnoreRebuild(): void {
+    if (!contentFilter) return;
+    if (deferredIgnoreRebuildTimer !== null) clearTimeout(deferredIgnoreRebuildTimer);
+    deferredIgnoreRebuildTimer = setTimeout(() => {
+      deferredIgnoreRebuildTimer = null;
+      void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+      // Two minutes, not seconds: the rebuild's completion cascades into
+      // derived-view rebuilds (backlink full re-read of the corpus), and any
+      // fuse short enough to land between two interactive ops makes the
+      // SECOND op pay for the first one's cascade - measured repeatedly as
+      // 20-40s ops on a monorepo root. Skill ops never change ignore RULES;
+      // this walk only re-admits the new dir to the file watcher, and the
+      // managed-artifact watcher covers skill-dir edits in the meantime.
+    }, 120_000);
+  }
+  let okArtifactFlushChain: Promise<void> = Promise.resolve();
+  function scheduleOkArtifactFlush(context: string): void {
+    bumpSkillsCatalogGen();
+    okArtifactFlushChain = okArtifactFlushChain
+      .then(() => commitOkArtifactWrite(context))
+      .catch(() => {});
+  }
   async function commitOkArtifactWrite(context: string): Promise<void> {
     if (!flushContributors) return;
     try {
@@ -6540,7 +6631,7 @@ export function createApiExtension(
         const identity = resolveProjectIdentity(projectDir ?? contentDir);
         // Same `homeDirOverride` seam as every other home-scanning surface here —
         // without it a rig (or embedded host) enumerates the REAL ~/.claude/plugins.
-        const catalog = enumerateInstalledSkills({
+        const catalog = enumerateInstalledSkillsCached({
           projectDir: identity,
           ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
         });
@@ -7549,6 +7640,7 @@ export function createApiExtension(
               writeFileSync(okignorePath, '', 'utf-8');
             }
             if (contentFilter) {
+              bumpSkillsCatalogGen();
               await contentFilter.rebuildIgnorePatterns();
             }
           } catch (err) {
@@ -9136,7 +9228,9 @@ export function createApiExtension(
             );
           }
         }
-        await recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
+        // Best-effort for real (see the skill-put site): never hold a create
+        // response on the derived-index command queue.
+        void recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
         signalChannel?.('files');
         if (templateScopeForLog !== undefined) {
           // Cardinality-bounded structured event — `templateScope` is one of
@@ -12675,7 +12769,7 @@ export function createApiExtension(
               okArtifactKey('folder-frontmatter', validated.folderRel),
               `folder-frontmatter-${result.action === 'deleted' ? 'delete' : 'edit'}: ${result.path}`,
             );
-            await commitOkArtifactWrite('folder-config-put');
+            scheduleOkArtifactFlush('folder-config-put');
           }
         }
 
@@ -13215,7 +13309,7 @@ export function createApiExtension(
           okArtifactKey('template', validated.folderRel, name),
           `${templateCreated ? 'template-create' : 'template-edit'}: ${templateRelPath}`,
         );
-        await commitOkArtifactWrite('template-put');
+        scheduleOkArtifactFlush('template-put');
         successResponse(
           res,
           200,
@@ -13312,7 +13406,7 @@ export function createApiExtension(
             okArtifactKey('template', validated.folderRel, name),
             `template-delete: ${result.path}`,
           );
-          await commitOkArtifactWrite('template-delete');
+          scheduleOkArtifactFlush('template-delete');
           // Mark the content doc removed so a stale tab redirects instead of
           // offering to resurrect it (parity with ordinary doc deletion).
           recentlyRemovedDocs?.setDeleted(templateDocNameFor(validated.folderRel, name));
@@ -13512,7 +13606,7 @@ export function createApiExtension(
           `template-rename: ${result.fromPath} -> ${result.toPath}`,
           [{ from: result.fromPath, to: result.toPath }],
         );
-        await commitOkArtifactWrite('template-move');
+        scheduleOkArtifactFlush('template-move');
         signalChannel?.('files');
 
         if (contentEditError) {
@@ -13799,7 +13893,7 @@ export function createApiExtension(
           });
         }
 
-        await commitOkArtifactWrite('template-import');
+        scheduleOkArtifactFlush('template-import');
         signalChannel?.('files');
 
         successResponse(
@@ -14275,7 +14369,7 @@ export function createApiExtension(
       // Enumeration and hashing are the IO; the join itself is pure and lives in
       // core, where it can be tested without a plugin cache on disk.
       byName = pluginUpstreamsByName(
-        enumerateInstalledSkills({
+        enumerateInstalledSkillsCached({
           projectDir: identity,
           ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
         }).skills,
@@ -14806,6 +14900,7 @@ export function createApiExtension(
         }
         const next = `${before === null || before.endsWith('\n') || before === '' ? (before ?? '') : `${before}\n`}${line}\n`;
         writeFileSync(gitignoreAbs, next, 'utf-8');
+        bumpSkillsCatalogGen();
         await contentFilter?.rebuildIgnorePatterns();
 
         // VERIFY, then keep or revert. A negation rule is not universally
@@ -14817,6 +14912,7 @@ export function createApiExtension(
         if (contentFilter?.isPathIgnored(skillFileRel)) {
           if (before === null) rmSync(gitignoreAbs, { force: true });
           else writeFileSync(gitignoreAbs, before, 'utf-8');
+          bumpSkillsCatalogGen();
           await contentFilter.rebuildIgnorePatterns();
           errorResponse(
             res,
@@ -14852,6 +14948,52 @@ export function createApiExtension(
     EmptyRequestSchema,
     catchErrors(
       async (_req, res) => {
+        // Cache hit still runs a CHEAP in-place rescan (5-60ms): a skill dir
+        // written straight to disk by an external writer must list without any
+        // API mutation having bumped the generation - the no-restart admission
+        // contract skills-list-admission.test.ts pins. PEEK, never swap: the
+        // admission heal below fires off the PRE-swap excluded state, and
+        // swapping here would silently defuse it.
+        // Editor-home detection folds in too: a bare `mkdir .github/skills`
+        // changes the offered install targets without emitting any signal, and
+        // the probes are a handful of existsSync calls.
+        const inPlaceFp =
+          (contentFilter?.peekFreshInPlaceSkillDirsFingerprint() ?? '') +
+          '\u0001' +
+          (projectDir ? detectProjectSkillEditors(projectDir).join(',') : '') +
+          '\u0001' +
+          detectUserSkillHosts(skillsHome)
+            .map((h) => h.editorId)
+            .join(',') +
+          '\u0001' +
+          // GLOBAL host-dir bundles fold in too: the desktop bridge (and any
+          // external tool) installs into `~/.claude/skills` & co without any
+          // HTTP mutation, so no generation bump ever fires for those writes.
+          // The one client refetch they trigger lands inside the cache TTL and
+          // then nothing re-asks - the row read stale forever (the desktop
+          // skills-studio smoke pins this).
+          scanGlobalInPlaceSkills(skillsHome)
+            .map((s) => s.dir)
+            .sort()
+            .join(',');
+        // A moved fingerprint means external on-disk state changed; the
+        // enumeration cache keys on the generation alone, so bump it or the
+        // rebuilt response below would still be assembled from the stale
+        // enumeration.
+        if (skillsListCache !== null && skillsListCache.fp !== inPlaceFp) {
+          bumpSkillsCatalogGen();
+        }
+        if (
+          skillsListCache !== null &&
+          skillsListCache.gen === skillsCatalogGen &&
+          skillsListCache.fp === inPlaceFp &&
+          Date.now() - skillsListCache.at < 5_000
+        ) {
+          successResponse(res, 200, SkillsListSuccessSchema, skillsListCache.body, {
+            handler: 'skills-list',
+          });
+          return;
+        }
         // Union both scopes: project skills (`<contentDir>/.ok/skills`, git-
         // shared) + global skills (`<home>/.ok/skills`, user-level). Each is
         // enriched from ITS OWN install marker — the project marker at
@@ -15242,10 +15384,19 @@ export function createApiExtension(
               entry.scope === 'project' && entry.absolutePath
                 ? indexedSkillContentPath(entry.absolutePath, contentDir)
                 : null;
+            // Bundle file PATHS ride the list (no content reads, and the list
+            // response cache above absorbs the walks) so the sidebar tree can
+            // nest each skill's files without a per-skill `GET /api/skill`
+            // fan-out — N of those saturated the browser's request pool on
+            // every skills-changed signal and queued imports/opens behind them.
+            const filePaths = entry.absolutePath
+              ? listSkillBundledFilePaths(dirname(entry.absolutePath))
+              : [];
+            const withFiles = filePaths.length > 0 ? { ...entry, filePaths } : entry;
             const withCanonical =
               canonicalPath === null || canonicalPath === entry.path
-                ? entry
-                : { ...entry, canonicalPath };
+                ? withFiles
+                : { ...withFiles, canonicalPath };
             // Listed but NOT admitted: a gitignored bundle is deliberately kept
             // out of the document index, so it has no doc to open. Say so here
             // rather than letting the click produce an empty tab.
@@ -15268,12 +15419,40 @@ export function createApiExtension(
         // skill opens into a Files fallback until the server restarts. The
         // rebuild's re-scan lands asynchronously, so the skill becomes openable
         // on the next refresh rather than in this response.
-        await healUnservableSkillAdmission(
+        const healed = await healUnservableSkillAdmission(
           inPlace.map((e) => e.path),
           contentFilter ?? null,
           skillAdmissionHeal,
         );
-        successResponse(res, 200, SkillsListSuccessSchema, enriched, { handler: 'skills-list' });
+        // The heal awaited a pattern rebuild, so the `ignored` flags computed
+        // during the build above may already be stale - a bundle gitignored
+        // moments ago must report `ignored: true` in THIS response, not the
+        // next one (the immediate-admission contract the admission tests pin).
+        // Only the ig-derived flag can change; recompute it in place.
+        const responseBody = !healed
+          ? enriched
+          : {
+              ...enriched,
+              skills: enriched.skills.map((entry) => {
+                if (entry.scope !== 'project') return entry;
+                const opened = (entry as { canonicalPath?: string }).canonicalPath ?? entry.path;
+                const nowIgnored = contentFilter?.isPathIgnored(opened) === true;
+                const wasIgnored = (entry as { ignored?: boolean }).ignored === true;
+                if (nowIgnored === wasIgnored) return entry;
+                if (nowIgnored) return { ...entry, ignored: true };
+                const { ignored: _drop, ...rest } = entry as { ignored?: boolean } & typeof entry;
+                return rest;
+              }),
+            };
+        skillsListCache = {
+          at: Date.now(),
+          gen: skillsCatalogGen,
+          fp: inPlaceFp,
+          body: responseBody,
+        };
+        successResponse(res, 200, SkillsListSuccessSchema, responseBody, {
+          handler: 'skills-list',
+        });
       },
       { handler: 'skills-list', title: 'Failed to list skills.' },
     ),
@@ -15388,23 +15567,25 @@ export function createApiExtension(
     // seed DELETED it from the index instead of indexing it: its links never got
     // extracted and nothing pointed at its references until an unrelated rescan.
     if (contentFilter) {
+      // The synchronous allow-list swap is what admits the new skill dir; the
+      // FULL rebuild is a whole-content-tree walk that took seconds-to-minutes
+      // on monorepo-sized roots and was holding the create response hostage
+      // (every skill op queued behind it once walks overlapped). The client no
+      // longer needs the awaited walk: opens resolve by the write's own path
+      // and re-verify a stale ignored flag against a fresh list, so the walk
+      // self-heals off-path.
+      bumpSkillsCatalogGen();
       contentFilter.refreshInPlaceSkillDirs();
-      try {
-        // AWAITED on the authoring path, unlike the lifecycle ops' deferred
-        // rebuilds: the watcher event for the just-written SKILL.md fired
-        // BEFORE the allow-list swap and was rejected, and only the rebuild's
-        // reconcile re-admits it — a hash navigation straight to the new doc
-        // otherwise strands on a page index that does not have it yet.
-        await contentFilter.rebuildIgnorePatterns();
-      } catch {
-        // Fail-soft, matching the watcher's own rebuild: a stale allow-list
-        // costs this doc its links until the next rescan, not the write.
-      }
+      scheduleDeferredIgnoreRebuild();
     }
     // Best-effort like every other derived-index mutation: the skill is already
     // on disk and committed by now, so a shutdown-time index error must not turn
     // a successful write into a 500 the caller retries.
-    await recordDerivedDocumentBestEffort(docName, markdown, 'skill-put');
+    // Actually best-effort: the derived-index command queue serializes behind
+    // any in-flight full ingest (boot, watcher re-ingest), which measured 20s+
+    // on monorepo roots - the freshness of search/links for this one doc is
+    // not worth holding the create response.
+    void recordDerivedDocumentBestEffort(docName, markdown, 'skill-put');
   }
 
   const handleSkillPut = withValidation(
@@ -15423,6 +15604,12 @@ export function createApiExtension(
         }
         if (!validateSkillName(body.name, res, 'skill-put')) return;
         if (rejectReservedBuiltinSkill(body.name, res, 'skill-put')) return;
+        // Deliberately NOT draining the flush chain here: on a live server the
+        // chain routinely holds a monorepo-scale shadow staging job (25-90s
+        // measured), and draining it made every create pay for it. The
+        // serialized chain still orders commits; the rapid create-then-edit
+        // coalescing window this loses is narrow and recoverable, a half-minute
+        // create is neither.
 
         // Compose + validate the SKILL.md bytes server-side (OK
         // builds name+description). The body itself is then written through the
@@ -15490,12 +15677,12 @@ export function createApiExtension(
               `${homeRel}/${body.name}/SKILL`,
               `skill-create: ${homeRel}/${body.name}/SKILL.md`,
             );
-            // AWAITED, unlike the lifecycle ops' fire-and-forget flushes: authoring
+            // scheduled on the serialized flush chain (fire-and-forget; the chain keeps commits ordered): authoring
             // writes are versions. Two rapid PUTs (create then edit) with a
             // deferred flush coalesce into ONE commit, folding the create into
             // the edit — the timeline loses the version boundary and the
             // create snapshot stops being a restore target.
-            await commitOkArtifactWrite('skill-put');
+            scheduleOkArtifactFlush('skill-put');
           }
           await seedSkillDerivedViews(
             body.scope === 'project'
@@ -15573,12 +15760,12 @@ export function createApiExtension(
             okArtifactKey('skill', '', body.name),
             `${created ? 'skill-create' : 'skill-edit'}: ${relPath}`,
           );
-          // AWAITED, unlike the lifecycle ops' fire-and-forget flushes: authoring
+          // scheduled on the serialized flush chain (fire-and-forget; the chain keeps commits ordered): authoring
           // writes are versions. Two rapid PUTs (create then edit) with a
           // deferred flush coalesce into ONE commit, folding the create into
           // the edit — the timeline loses the version boundary and the
           // create snapshot stops being a restore target.
-          await commitOkArtifactWrite('skill-put');
+          scheduleOkArtifactFlush('skill-put');
         }
         // Seed the derived views from the bytes we just wrote. The live-derived
         // index refreshes on a debounce after a change hook, which an API write
@@ -15735,6 +15922,7 @@ export function createApiExtension(
         if (result.existed) {
           if (scope === 'project') {
             attributeOkArtifactWrite(actor, dirRel, `skill-delete: ${dirRel}`);
+            bumpSkillsCatalogGen();
             void commitOkArtifactWrite('skill-delete');
           }
           signalChannel?.('files');
@@ -15958,17 +16146,12 @@ export function createApiExtension(
           // rename ~1.7s on a big project. Ordering inside the chain preserved:
           // rebuild before re-index, or we re-index against the pre-rename
           // world.
+          bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
-          // The PROJECTION is awaited: when this responds, the moved docs are
-          // queryable (the derived-index API readiness gate contract). It
-          // reads the relocated files from disk and mutates the index
-          // directly, so the synchronous allow-list swap above is the only
-          // admission it relies on — the full nested-ignore rebuild (watcher
-          // reconcile + content-scope refresh) is derived state that
-          // self-heals and stays off the response path.
-          await reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName);
-          await reindexRewrittenSkillRefDocs(refRewrites, body.toName);
-          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+          void reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName)
+            .then(() => reindexRewrittenSkillRefDocs(refRewrites, body.toName))
+            .catch(() => {});
+          scheduleDeferredIgnoreRebuild();
         }
 
         const fromKeyPath = skillRelPath(resolve(skillsRoot, body.fromName), body.scope);
@@ -16477,8 +16660,9 @@ export function createApiExtension(
         // 404s and the editor falls back to a Files tab. Same reason and same
         // placement as `handleSkillInstall`, which rebuilds before every exit.
         // Allow-list swap sync; the expensive rebuild self-heals off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
 
         signalChannel?.('files');
         successResponse(
@@ -16605,8 +16789,9 @@ export function createApiExtension(
         // call, same reason, same placement as `handleSkillInstall`. The
         // allow-list SWAP is synchronous (admission gates the client's next
         // open); the full rebuild + watcher reconcile self-heal off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
 
         successResponse(
           res,
@@ -17801,8 +17986,14 @@ export function createApiExtension(
         // allow-list is rebuilt its SKILL.md is not servable, and opening the skill
         // the user just imported falls back to a Files tab. Allow-list swap
         // sync; the expensive rebuild self-heals off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
+        // Tell clients the catalog moved. The watcher cannot: the new dir is
+        // outside its coverage until the deferred rebuild reconciles it, so
+        // without this push the sidebar never refetches and the skill the
+        // user just imported has no row to click for two minutes.
+        signalChannel?.('files');
 
         respondSkillImport(res, outcome);
       } catch (e) {
@@ -18035,8 +18226,12 @@ export function createApiExtension(
         // call, same reason, same placement as `handleSkillInstall`. The
         // allow-list SWAP is synchronous (admission gates the client's next
         // open); the full rebuild + watcher reconcile self-heal off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
+        // Same client push as the single-import path: the watcher cannot see
+        // the new dirs until the deferred rebuild reconciles them.
+        signalChannel?.('files');
 
         successResponse(
           res,
@@ -18539,8 +18734,9 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
+          bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
-          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+          scheduleDeferredIgnoreRebuild();
           successResponse(
             res,
             200,
@@ -18648,8 +18844,9 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
+          bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
-          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+          scheduleDeferredIgnoreRebuild();
           successResponse(
             res,
             200,
@@ -18724,8 +18921,9 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
+          bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
-          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+          scheduleDeferredIgnoreRebuild();
           successResponse(
             res,
             200,
@@ -18819,8 +19017,9 @@ export function createApiExtension(
           // have it judged excluded, and hang until the 30s sync timeout before
           // a later rebuild made the retry work. `skill-get` and the scope-move
           // handler already do this; install was the gap.
+          bumpSkillsCatalogGen();
           contentFilter?.refreshInPlaceSkillDirs();
-          void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+          scheduleDeferredIgnoreRebuild();
           successResponse(
             res,
             200,
@@ -19586,8 +19785,9 @@ export function createApiExtension(
         // call, same reason, same placement as `handleSkillInstall`. The
         // allow-list SWAP is synchronous (admission gates the client's next
         // open); the full rebuild + watcher reconcile self-heal off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
 
         successResponse(
           res,
@@ -19699,10 +19899,12 @@ export function createApiExtension(
               },
             },
           }));
-          // A skill dir is not servable until the filter's in-place allow-list knows
-          // about it, and an API write does not otherwise trigger a rebuild. Same
-          // call, same reason, same placement as `handleSkillInstall`.
-          await contentFilter?.rebuildIgnorePatterns();
+          // The sync allow-list swap admits the dir; the full walk self-heals
+          // off-path (it held the response for a whole content-tree scan on
+          // large roots).
+          bumpSkillsCatalogGen();
+          contentFilter?.refreshInPlaceSkillDirs();
+          scheduleDeferredIgnoreRebuild();
 
           successResponse(
             res,
@@ -19804,8 +20006,9 @@ export function createApiExtension(
         // call, same reason, same placement as `handleSkillInstall`. The
         // allow-list SWAP is synchronous (admission gates the client's next
         // open); the full rebuild + watcher reconcile self-heal off-path.
+        bumpSkillsCatalogGen();
         contentFilter?.refreshInPlaceSkillDirs();
-        void contentFilter?.rebuildIgnorePatterns().catch(() => {});
+        scheduleDeferredIgnoreRebuild();
 
         respondSkillReimport(res, outcome);
       } catch (e) {
@@ -20052,6 +20255,9 @@ export function createApiExtension(
         // everything had. The endpoint's whole contract is that it reports what
         // happened; a bookkeeping failure must not erase that report.
         try {
+          bumpSkillsCatalogGen();
+          contentFilter?.refreshInPlaceSkillDirs();
+          bumpSkillsCatalogGen();
           await contentFilter?.rebuildIgnorePatterns();
         } catch (e) {
           getLogger('skills-reimport-bulk').warn(

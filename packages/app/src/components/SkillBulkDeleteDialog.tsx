@@ -28,11 +28,14 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
   const { t } = useLingui();
   const { closeTabs, openTabs } = useDocumentContext();
   const [deleting, setDeleting] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   async function handleDelete(targets: readonly SkillsListEntry[]) {
     setDeleting(true);
+    setProgress(0);
     let deleted = 0;
     for (const target of targets) {
+      setProgress((n) => n + 1);
       const result = await deleteSkill(target.scope, target.name, target.hostQualifier);
       if (!result.ok) {
         const { error } = result;
@@ -63,6 +66,9 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
         <DeleteConfirmationDialog
           itemName={t`${count} skills`}
           isSubmitting={deleting}
+          // Sequential deletes over a big selection take real time; a bare
+          // "Deleting" spinner reads as hung ("it did not delete").
+          customConfirmLabelBusy={t`Deleting ${progress} of ${count}`}
           onDelete={() => handleDelete(skills)}
           customDescription={t`This permanently removes ${names}. Agents that invoke these skills by name will fail until they're recreated.`}
         />

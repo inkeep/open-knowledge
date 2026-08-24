@@ -511,6 +511,12 @@ export const SkillsListEntrySchema = z
      * prefer this when present; `path` still reports where the bundle lives.
      */
     canonicalPath: z.string().min(1).optional(),
+    /** Bundle-relative paths of the files shipped beside SKILL.md (scripts/,
+     *  references/, assets) — paths only, no content. Inlined on the list so
+     *  the sidebar tree can nest a skill's files without a follow-up
+     *  per-skill detail fetch (N of which saturated the request pool on
+     *  large installs and queued every other call behind them). */
+    filePaths: z.array(z.string()).optional(),
     /** Absolute on-disk path to the skill's SKILL.md — drives the desktop
      *  Reveal-in-Finder / Open-in-Terminal / Copy-Path row actions. Always set on
      *  `/api/skills` list entries; omitted on partial entries built client-side

@@ -38,3 +38,29 @@ export function groupUpdatableSkills(input: {
   }
   return members;
 }
+
+/**
+ * The members of a provenance group that "Delete N skills" may remove — the
+ * group-row bulk delete. Broader than {@link groupUpdatableSkills}: deletion
+ * needs no recorded source (an adopted or source-less copy is still ours to
+ * remove). Same plugin gate though — a harness plugin's served skills are
+ * vendor state OK never mutates — and managed built-ins are read-only
+ * everywhere.
+ */
+export function groupDeletableSkills(input: {
+  groupPrefix: string;
+  bucket: ProvenanceBucket | undefined;
+  skillByPrefix: ReadonlyMap<string, SkillsListEntry>;
+}): SkillsListEntry[] {
+  const { groupPrefix, bucket, skillByPrefix } = input;
+  const packChild = bucket?.kind === 'plugin' && bucket.parent !== undefined && bucket.url !== null;
+  if (!bucket || (bucket.kind === 'plugin' && !packChild)) return [];
+  const prefix = `${groupPrefix}/`;
+  const members: SkillsListEntry[] = [];
+  for (const [rowPrefix, skill] of skillByPrefix) {
+    if (!rowPrefix.startsWith(prefix)) continue;
+    if (skill.managed) continue;
+    members.push(skill);
+  }
+  return members;
+}

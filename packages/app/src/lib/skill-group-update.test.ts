@@ -1,6 +1,6 @@
 import type { SkillsListEntry } from '@inkeep/open-knowledge-core';
 import { describe, expect, it } from 'vitest';
-import { groupUpdatableSkills } from './skill-group-update';
+import { groupDeletableSkills, groupUpdatableSkills } from './skill-group-update';
 import type { ProvenanceBucket } from './skill-provenance-bucket';
 
 function skill(name: string, source?: string): SkillsListEntry {
@@ -101,5 +101,58 @@ describe('groupUpdatableSkills', () => {
     expect(
       groupUpdatableSkills({ groupPrefix: GROUP, bucket: sourceBucket, skillByPrefix: map }),
     ).toEqual([]);
+  });
+});
+
+describe('groupDeletableSkills', () => {
+  it('includes every non-managed member, recorded source or not', () => {
+    const map = new Map([
+      [`${GROUP}/a`, skill('a', 'inkeep/open-knowledge-skills')],
+      [`${GROUP}/b`, skill('b')],
+      [`${GROUP}/c`, skill('c', 'adopt:claude')],
+    ]);
+    const members = groupDeletableSkills({
+      groupPrefix: GROUP,
+      bucket: sourceBucket,
+      skillByPrefix: map,
+    });
+    expect(members.map((m) => m.name).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('excludes managed built-ins', () => {
+    const managed = { ...skill('builtin'), managed: true } as SkillsListEntry;
+    const map = new Map([
+      [`${GROUP}/builtin`, managed],
+      [`${GROUP}/plain`, skill('plain')],
+    ]);
+    const members = groupDeletableSkills({
+      groupPrefix: GROUP,
+      bucket: sourceBucket,
+      skillByPrefix: map,
+    });
+    expect(members.map((m) => m.name)).toEqual(['plain']);
+  });
+
+  it('offers nothing for a harness plugin group — its members are vendor state', () => {
+    const map = new Map([[`${GROUP}/a`, skill('a', 'inkeep/team-skills')]]);
+    const members = groupDeletableSkills({
+      groupPrefix: GROUP,
+      bucket: pluginBucket,
+      skillByPrefix: map,
+    });
+    expect(members).toEqual([]);
+  });
+
+  it('ignores rows outside the group prefix', () => {
+    const map = new Map([
+      [`${GROUP}/a`, skill('a')],
+      ['PROJECT/other-group/b', skill('b')],
+    ]);
+    const members = groupDeletableSkills({
+      groupPrefix: GROUP,
+      bucket: sourceBucket,
+      skillByPrefix: map,
+    });
+    expect(members.map((m) => m.name)).toEqual(['a']);
   });
 });

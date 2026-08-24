@@ -4370,6 +4370,7 @@ msgid "Delete {0}"
 msgstr "Eliminar {0}"
 
 #. placeholder {0}: bulkEntries.length
+#. placeholder {0}: deletable.length
 #: src/components/SkillsTree.tsx
 msgid "Delete {0} skills"
 msgstr "Eliminar {0} habilidades"
@@ -4479,6 +4480,10 @@ msgstr "plantilla eliminada"
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "Eliminando"
+
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleting {progress} of {count}"
+msgstr "Eliminando {progress} de {count}"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Denied"
