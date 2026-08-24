@@ -465,6 +465,46 @@ describe('createEphemeralWindow', () => {
     expect(env.windows[0]?.destroy).toHaveBeenCalled();
     // It was never registered, so no later 'closed' teardown can double-fire.
     expect(env.killCalls.filter((k) => k.signal === 'SIGTERM')).toHaveLength(1);
+    // ...and it stops resolving to a project: the reap released the loading
+    // context, so nothing hands New Terminal Window a destroyed window.
+    const failed = env.windows[0];
+    if (!failed) throw new Error('window was never created');
+    expect(wm.getContextForBrowserWindow(failed)).toBeUndefined();
+  });
+
+  test('an ephemeral window resolves to its content dir while its renderer loads', async () => {
+    // The ephemeral factory carries the same gap as the project factory, and its
+    // window is an ordinary editor window as far as New Terminal Window cares.
+    let releaseLoad: (() => void) | undefined;
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      const w = makeWindow();
+      w.loadFile = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseLoad = resolve;
+          }),
+      ) as typeof w.loadFile;
+      env.windows.push(w);
+      return w;
+    };
+
+    const wm = new WindowManager(env.deps);
+    const pending = wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await vi.waitFor(() => {
+      expect(releaseLoad).toBeDefined();
+    });
+
+    const loading = env.windows[0];
+    if (!loading) throw new Error('window was never created');
+    expect(wm.getContextForBrowserWindow(loading)?.projectPath).toBe(PARENT);
+
+    releaseLoad?.();
+    expect(wm.getContextForBrowserWindow(loading)).toBe(await pending);
   });
 
   test("the 'closed' ownership guard makes teardown single-pass", async () => {

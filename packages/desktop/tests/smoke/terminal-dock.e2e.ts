@@ -314,15 +314,23 @@ const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
 const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-banner');
 
 /**
- * Hold until the renderer's main thread is answering promptly.
+ * Hold until the renderer's main thread is answering promptly, so a genuinely
+ * un-booted app fails HERE with that name rather than as a puzzling downstream
+ * timeout.
  *
- * `findEditorWindow` resolves as soon as PRELOAD answers, which is seconds
- * ahead of a renderer that has committed its first render. Driving a menu
- * action into that gap is what makes this whole family time-dependent: the
- * dispatch, the state flip and the mount are all serviced by the one thread
- * that is still booting. An idle renderer answers a round-trip in single-digit
- * ms, so 100ms is slack rather than a budget; three in a row rules out
- * catching a gap between two chunks of boot work.
+ * This is a liveness check and nothing more. It is NOT a proxy for the renderer
+ * having committed its first render, nor for main having registered the
+ * window's project context: `findEditorWindow` resolves as soon as PRELOAD
+ * answers, and preload answers from a document that has not finished loading,
+ * so all three probes can clear inside the boot window. Measured on a failing
+ * Linux run, the three round-trips cost 70ms total and cleared
+ * 240ms after the window first became discoverable — the earlier claim that
+ * three in a row "rules out catching a gap between two chunks of boot work"
+ * was disproven by that trace. Ordering against main's state is main's job, not
+ * this helper's.
+ *
+ * An idle renderer answers a round-trip in single-digit ms; 100ms is slack
+ * rather than a budget.
  */
 async function waitForRendererResponsive(page: Page): Promise<void> {
   await expect(async () => {

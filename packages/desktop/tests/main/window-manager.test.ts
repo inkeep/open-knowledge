@@ -646,6 +646,82 @@ describe('WindowManager', () => {
     expect(wm.getContextForBrowserWindow(stranger)).toBeUndefined();
   });
 
+  test('getContextForBrowserWindow resolves a window whose renderer is still loading', async () => {
+    // The window exists — and its application menu is live — from the moment
+    // `createWindow` returns, but the `windowsByPath` entry lands only once
+    // `loadFile` resolves. Anything that asks "which project owns this window"
+    // inside that gap used to be told "none", so Terminal -> New Terminal Window
+    // opened a HOME-cwd window with an empty collab URL instead of inheriting the
+    // project. Hold `loadFile` open and ask mid-load.
+    let releaseLoad: (() => void) | undefined;
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      const w = makeWindow();
+      w.loadFile = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseLoad = resolve;
+          }),
+      ) as typeof w.loadFile;
+      env.windows.push(w);
+      return w;
+    };
+
+    const wm = new WindowManager(env.deps);
+    const pending = wm.createProjectWindow({ projectPath: '/tmp/ctx-mid-load' });
+    env.utilities[0]?.fire({ type: 'ready', port: 52101, apiOrigin: 'http://localhost:52101' });
+    // Let the spawn path run up to (and park on) `await loadFile`.
+    await vi.waitFor(() => {
+      expect(releaseLoad).toBeDefined();
+    });
+
+    const loading = env.windows[0];
+    if (!loading) throw new Error('window was never created');
+    const midLoad = wm.getContextForBrowserWindow(loading);
+    expect(midLoad?.projectPath).toBe('/tmp/ctx-mid-load');
+    expect(midLoad?.apiOrigin).toBe('http://localhost:52101');
+
+    releaseLoad?.();
+    const settled = await pending;
+    // The same object once the load resolves, not a copy that could drift from
+    // the authoritative entry.
+    expect(wm.getContextForBrowserWindow(loading)).toBe(settled);
+  });
+
+  test('a window whose renderer load rejects stops resolving to a project', async () => {
+    // The mid-load answer must not outlive a failed load: a window that never
+    // came up owns nothing, and a stale entry would hand New Terminal Window a
+    // project whose window is already gone.
+    let rejectLoad: ((err: Error) => void) | undefined;
+    env.deps.createWindow = (opts) => {
+      env.createWindowOpts.push(opts);
+      const w = makeWindow();
+      w.loadFile = vi.fn(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectLoad = reject;
+          }),
+      ) as typeof w.loadFile;
+      env.windows.push(w);
+      return w;
+    };
+
+    const wm = new WindowManager(env.deps);
+    const pending = wm.createProjectWindow({ projectPath: '/tmp/ctx-load-fails' });
+    env.utilities[0]?.fire({ type: 'ready', port: 52102, apiOrigin: 'http://localhost:52102' });
+    await vi.waitFor(() => {
+      expect(rejectLoad).toBeDefined();
+    });
+
+    const loading = env.windows[0];
+    if (!loading) throw new Error('window was never created');
+    expect(wm.getContextForBrowserWindow(loading)?.projectPath).toBe('/tmp/ctx-load-fails');
+
+    rejectLoad?.(new Error('ERR_FILE_NOT_FOUND'));
+    await expect(pending).rejects.toThrow('ERR_FILE_NOT_FOUND');
+    expect(wm.getContextForBrowserWindow(loading)).toBeUndefined();
+  });
+
   test('onUtilityMessage (when wired) receives post-init utility messages', async () => {
     const observed: unknown[] = [];
     env.deps.onUtilityMessage = (msg) => observed.push(msg);
@@ -766,6 +842,61 @@ describe('WindowManager', () => {
       // it's the production path, so omitting it here would silently disable
       // window-position restore in packaged builds.
       expect(env.createWindowOpts[0]?.projectPath).toBe(ctx.projectPath);
+    });
+
+    test('an attach-mode window resolves to its project while its renderer loads', async () => {
+      // Same gap as the spawn path: the attach path also registers in
+      // `windowsByPath` only once the renderer load resolves, and an
+      // attach-mode window is an ordinary editor window as far as
+      // Terminal -> New Terminal Window is concerned.
+      enableAttachProbe();
+      let releaseLoad: (() => void) | undefined;
+      env.deps.createWindow = (opts) => {
+        env.createWindowOpts.push(opts);
+        const w = makeWindow();
+        w.loadFile = vi.fn(
+          () =>
+            new Promise<void>((resolve) => {
+              releaseLoad = resolve;
+            }),
+        ) as typeof w.loadFile;
+        env.windows.push(w);
+        return w;
+      };
+
+      const wm = new WindowManager(env.deps);
+      const pending = wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      await vi.waitFor(() => {
+        expect(releaseLoad).toBeDefined();
+      });
+
+      const loading = env.windows[0];
+      if (!loading) throw new Error('window was never created');
+      expect(wm.getContextForBrowserWindow(loading)?.projectPath).toBe('/tmp/dragon');
+
+      releaseLoad?.();
+      expect(wm.getContextForBrowserWindow(loading)).toBe(await pending);
+    });
+
+    test('a throw between the load and the registry does not strand the loading entry', async () => {
+      // `createKeepalive` runs after the renderer load and before
+      // `windowsByPath.set`. If that span is not bracketed, a throw there leaves
+      // the context — and its strong BrowserWindow reference — in
+      // `loadingContextByWindow` for the life of the process, and a destroyed
+      // window keeps resolving to a project.
+      enableAttachProbe();
+      env.deps.createKeepalive = vi.fn(() => {
+        throw new Error('keepalive boom');
+      }) as unknown as WindowManagerDeps['createKeepalive'];
+
+      const wm = new WindowManager(env.deps);
+      await expect(wm.createProjectWindow({ projectPath: '/tmp/dragon' })).rejects.toThrow(
+        'keepalive boom',
+      );
+
+      const stranded = env.windows[0];
+      if (!stranded) throw new Error('window was never created');
+      expect(wm.getContextForBrowserWindow(stranded)).toBeUndefined();
     });
 
     test('attach path injects --ok-fresh-create=1 when freshlyCreated is set (production path)', async () => {

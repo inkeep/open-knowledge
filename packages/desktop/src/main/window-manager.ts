@@ -1033,6 +1033,28 @@ export class WindowManager {
   private readonly windowsByPath = new Map<string, ProjectContext>();
 
   /**
+   * BrowserWindow → its ProjectContext for windows still loading their
+   * renderer. Read only through `getContextForBrowserWindow`.
+   *
+   * `windowsByPath` is authoritative but its entry lands only AFTER
+   * `await loadFile` resolves, whereas the window — and the application menu
+   * acting on it — exists from the moment `createWindow` returns. Every field
+   * of the context is known before that call, so for the whole renderer load
+   * this class owned a project window it would not admit to owning, and
+   * anything asking "which project is this window's?" got `undefined`.
+   *
+   * The user-visible cost was Terminal → New Terminal Window during load:
+   * `resolveTerminalWindowProject` saw no editor context and opened a
+   * project-less HOME-cwd window with an empty collab URL, silently.
+   *
+   * Deliberately keyed by window rather than project: this answers the
+   * window→project question only, and must not widen `windowsByPath`'s
+   * meaning (a completed, dedupable, restorable window) to include windows
+   * that may still fail to load.
+   */
+  private readonly loadingContextByWindow = new Map<BrowserWindowLike, ProjectContext>();
+
+  /**
    * canonicalKey → pid of the detached server THIS desktop process spawned
    * during its lifetime. Survives window closes within the same desktop run
    * (the server outlives the window in detached mode); cleared when the
@@ -1189,12 +1211,47 @@ export class WindowManager {
    * map) instead of going through `appState.recentProjects`, which avoids a
    * stale-state race between `createProjectWindow` resolving and
    * `addRecentProject` persisting.
+   *
+   * Falls back to `loadingContextByWindow` so a window whose renderer is still
+   * loading resolves too — see that field for why the authoritative map cannot
+   * answer during that span. Both maps hold the SAME context object, so callers
+   * cannot tell which one answered.
+   *
+   * Still returns `undefined` for a window mid-`restartAttachedServer`: that
+   * path deliberately detaches the originating window from `windowsByPath`, and
+   * its context carries the terminated server's `port`/`apiOrigin`. Tracked
+   * separately; do not read this function as covering it.
    */
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {
     for (const ctx of this.windowsByPath.values()) {
       if (ctx.window === win) return ctx;
     }
-    return undefined;
+    // Still loading its renderer — same context object the completed entry
+    // will hold, so callers cannot tell the two apart (and must not).
+    return this.loadingContextByWindow.get(win);
+  }
+
+  /**
+   * Publish a freshly-created window's context until its authoritative
+   * `windowsByPath` entry lands, and hand back the release.
+   *
+   * The bracket MUST enclose `windowsByPath.set`, NOT just the load. A
+   * `finally` wrapped around only the `await` releases the moment the load
+   * settles — before the authoritative entry exists — which reopens the exact
+   * window this map was added to close, in the one function that implements the
+   * fix. Bracket the whole span: publish, load, `set`, release.
+   *
+   * Releasing after `set` is safe because both maps hold the SAME object and
+   * `getContextForBrowserWindow` reads `windowsByPath` first, so the overlap is
+   * invisible. Release is idempotent, so a path that must also release early
+   * (the ephemeral reap, which stops a `destroy()`ed window resolving before it
+   * awaits teardown) can do that and still keep the bracket as its backstop.
+   */
+  private publishLoadingContext(context: ProjectContext): () => void {
+    this.loadingContextByWindow.set(context.window, context);
+    return () => {
+      this.loadingContextByWindow.delete(context.window);
+    };
   }
 
   /**
@@ -2249,32 +2306,6 @@ export class WindowManager {
     // emitted on timeout.
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    if (this.deps.rendererDevUrl) {
-      await window.loadURL(this.deps.rendererDevUrl);
-    } else {
-      await window.loadFile(this.deps.rendererEntryPath);
-    }
-    this.deps.startup?.markLoadUrlResolved?.();
-
-    window.on('closed', () => {
-      // Drop any stale show-gate state — a window destroyed before either
-      // signal arrives must not hold a slot in the registry's Map.
-      disposeShowGate();
-      // Guard against detached IPC port — the utility may have already exited
-      // (e.g. crash, parent-death poll beat us) in which case `postMessage`
-      // throws ERR_IPC_CHANNEL_CLOSED. The utility's shutdown drain +
-      // parentLifecycleBound takes care of the forked process regardless;
-      // windowsByPath.delete fires from the utility's exit event above.
-      try {
-        utility.postMessage({ type: 'shutdown' });
-      } catch (err) {
-        this.deps.log?.warn(
-          { err, projectPath },
-          'utility shutdown IPC failed on window close (likely already exited)',
-        );
-      }
-    });
-
     const context: ProjectContext = {
       projectPath,
       canonicalKey,
@@ -2285,7 +2316,38 @@ export class WindowManager {
       utility,
       ownsServer: true,
     };
-    this.windowsByPath.set(canonicalKey, context);
+    const releaseLoadingContext = this.publishLoadingContext(context);
+    try {
+      if (this.deps.rendererDevUrl) {
+        await window.loadURL(this.deps.rendererDevUrl);
+      } else {
+        await window.loadFile(this.deps.rendererEntryPath);
+      }
+      this.deps.startup?.markLoadUrlResolved?.();
+
+      window.on('closed', () => {
+        // Drop any stale show-gate state — a window destroyed before either
+        // signal arrives must not hold a slot in the registry's Map.
+        disposeShowGate();
+        // Guard against detached IPC port — the utility may have already exited
+        // (e.g. crash, parent-death poll beat us) in which case `postMessage`
+        // throws ERR_IPC_CHANNEL_CLOSED. The utility's shutdown drain +
+        // parentLifecycleBound takes care of the forked process regardless;
+        // windowsByPath.delete fires from the utility's exit event above.
+        try {
+          utility.postMessage({ type: 'shutdown' });
+        } catch (err) {
+          this.deps.log?.warn(
+            { err, projectPath },
+            'utility shutdown IPC failed on window close (likely already exited)',
+          );
+        }
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
     return context;
   }
 
@@ -2541,28 +2603,6 @@ export class WindowManager {
 
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    try {
-      if (this.deps.rendererDevUrl) {
-        await window.loadURL(this.deps.rendererDevUrl);
-      } else {
-        await window.loadFile(this.deps.rendererEntryPath);
-      }
-    } catch (err) {
-      // Renderer load failed AFTER the server spawned + bound its lock. The
-      // window never reaches the `'closed'` teardown below (it isn't in
-      // `windowsByPath` yet), so reap here: drop the show gate, destroy the
-      // never-shown window, and terminate the detached server + remove its temp
-      // dir. Without this the server pid + `ok-ephemeral-*` temp dir orphan.
-      disposeShowGate();
-      window.destroy?.();
-      await this.teardownEphemeralSession({
-        projectDir: tempProjectDir,
-        pid: handle.pid,
-        lockDir,
-      });
-      throw err;
-    }
-
     const context: ProjectContext = {
       projectPath: opts.contentDir,
       canonicalKey,
@@ -2574,7 +2614,6 @@ export class WindowManager {
       ownsServer: false,
       ephemeral: { projectDir: tempProjectDir, pid: handle.pid, lockDir },
     };
-
     // Exit-watch handle — shared by the `'closed'` handler (below) and the
     // liveness poll (further below). The spawner observes the child's `'exit'`
     // but exposes it only as a pull snapshot (`readExit`), not a push signal to
@@ -2589,27 +2628,58 @@ export class WindowManager {
       if (watchHandle !== undefined) this.deps.clearInterval?.(watchHandle);
     };
 
-    window.on('closed', () => {
-      // Stop the liveness poll first — the session is going away under the normal
-      // teardown path; a straggling poll must not fire a second teardown.
-      stopExitWatch();
-      disposeShowGate();
-      // Ownership guard — only tear down if THIS window still owns the slot. A
-      // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
-      // the entry; without the guard we'd terminate a sibling's server or double
-      // free. (Double teardown is itself safe — ESRCH + force-rm — but the guard
-      // keeps the common path single-pass.)
-      if (this.windowsByPath.get(canonicalKey) !== context) return;
-      this.windowsByPath.delete(canonicalKey);
-      // Fire-and-forget: the `'closed'` event handler is synchronous. Terminate
-      // the server THEN remove the temp dir (sequential — see
-      // `teardownEphemeralSession`).
-      void this.teardownEphemeralSession(
-        context.ephemeral as NonNullable<ProjectContext['ephemeral']>,
-      );
-    });
+    const releaseLoadingContext = this.publishLoadingContext(context);
 
-    this.windowsByPath.set(canonicalKey, context);
+    try {
+      try {
+        if (this.deps.rendererDevUrl) {
+          await window.loadURL(this.deps.rendererDevUrl);
+        } else {
+          await window.loadFile(this.deps.rendererEntryPath);
+        }
+      } catch (err) {
+        // Stop a window we are about to `destroy()` from resolving to a project
+        // before the awaited teardown below; the outer bracket is the backstop.
+        releaseLoadingContext();
+        // Renderer load failed AFTER the server spawned + bound its lock. The
+        // window never reaches the `'closed'` teardown below (it isn't in
+        // `windowsByPath` yet), so reap here: drop the show gate, destroy the
+        // never-shown window, and terminate the detached server + remove its temp
+        // dir. Without this the server pid + `ok-ephemeral-*` temp dir orphan.
+        disposeShowGate();
+        window.destroy?.();
+        await this.teardownEphemeralSession({
+          projectDir: tempProjectDir,
+          pid: handle.pid,
+          lockDir,
+        });
+        throw err;
+      }
+
+      window.on('closed', () => {
+        // Stop the liveness poll first — the session is going away under the normal
+        // teardown path; a straggling poll must not fire a second teardown.
+        stopExitWatch();
+        disposeShowGate();
+        // Ownership guard — only tear down if THIS window still owns the slot. A
+        // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
+        // the entry; without the guard we'd terminate a sibling's server or double
+        // free. (Double teardown is itself safe — ESRCH + force-rm — but the guard
+        // keeps the common path single-pass.)
+        if (this.windowsByPath.get(canonicalKey) !== context) return;
+        this.windowsByPath.delete(canonicalKey);
+        // Fire-and-forget: the `'closed'` event handler is synchronous. Terminate
+        // the server THEN remove the temp dir (sequential — see
+        // `teardownEphemeralSession`).
+        void this.teardownEphemeralSession(
+          context.ephemeral as NonNullable<ProjectContext['ephemeral']>,
+        );
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
 
     // Exit-watch: proactively notice a detached server that dies while its window
     // is still open (kill / crash / idle-shutdown) and reap its throwaway temp
@@ -3263,56 +3333,6 @@ export class WindowManager {
     // on a fast load.
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    if (this.deps.rendererDevUrl) {
-      await window.loadURL(this.deps.rendererDevUrl);
-    } else {
-      await window.loadFile(this.deps.rendererEntryPath);
-    }
-    this.deps.startup?.markLoadUrlResolved?.();
-
-    // Open the keepalive WS as soon as the project window mounts. The WS
-    // counts toward the server's idle-shutdown WS-client tally so a brief
-    // MCP disconnect (the agent restarts, the IDE reloads its MCP shim,
-    // etc.) does not trigger idle-shutdown while the user has a project
-    // window open. Presence-invisibility is enforced by the wired
-    // `createKeepalive` (which omits `displayName`/`clientName`/
-    // `colorSeed`); the dep contract documents this constraint.
-    if (this.deps.createKeepalive) {
-      const existingKeepalive = this.keepalives.get(canonicalKey);
-      // Defensive idempotence — a second window for the same project (e.g.
-      // a deep-link re-open while the previous one is mid-teardown) would
-      // race the close handler. Drop the old handle before opening a new
-      // one so we never leak.
-      if (existingKeepalive) existingKeepalive.close();
-      const lockDir = getLocalDir(projectPath);
-      const handle = this.deps.createKeepalive({ lockDir });
-      this.keepalives.set(canonicalKey, handle);
-    }
-
-    window.on('closed', () => {
-      // Drop any stale show-gate state — a window destroyed before either
-      // signal arrives must not hold a slot in the registry's Map.
-      disposeShowGate();
-      // Only release the project's slot if THIS window still owns it. A
-      // server-restart recreate detaches the originating window from the map
-      // and replaces it under the same `canonicalKey` before closing the old
-      // one — without this guard the old window's `'closed'` would delete the
-      // new window's entry (and its keepalive).
-      if (this.windowsByPath.get(canonicalKey) !== context) return;
-      // Close the project's keepalive WS so the server's idle-shutdown
-      // counter can fall back to whatever MCP clients (if any) are still
-      // connected. No-op when no keepalive was opened (back-compat tests).
-      const keepalive = this.keepalives.get(canonicalKey);
-      if (keepalive) {
-        keepalive.close();
-        this.keepalives.delete(canonicalKey);
-      }
-      // Drop from our map so a subsequent open either re-attaches (if the
-      // sibling is still live) or spawns (if it has since exited). Critically,
-      // NO shutdown IPC — the server is not ours to stop.
-      this.windowsByPath.delete(canonicalKey);
-    });
-
     const context: ProjectContext = {
       projectPath,
       canonicalKey,
@@ -3323,7 +3343,62 @@ export class WindowManager {
       utility: null,
       ownsServer: false,
     };
-    this.windowsByPath.set(canonicalKey, context);
+    const releaseLoadingContext = this.publishLoadingContext(context);
+    try {
+      if (this.deps.rendererDevUrl) {
+        await window.loadURL(this.deps.rendererDevUrl);
+      } else {
+        await window.loadFile(this.deps.rendererEntryPath);
+      }
+      this.deps.startup?.markLoadUrlResolved?.();
+
+      // Open the keepalive WS as soon as the project window mounts. The WS
+      // counts toward the server's idle-shutdown WS-client tally so a brief
+      // MCP disconnect (the agent restarts, the IDE reloads its MCP shim,
+      // etc.) does not trigger idle-shutdown while the user has a project
+      // window open. Presence-invisibility is enforced by the wired
+      // `createKeepalive` (which omits `displayName`/`clientName`/
+      // `colorSeed`); the dep contract documents this constraint.
+      if (this.deps.createKeepalive) {
+        const existingKeepalive = this.keepalives.get(canonicalKey);
+        // Defensive idempotence — a second window for the same project (e.g.
+        // a deep-link re-open while the previous one is mid-teardown) would
+        // race the close handler. Drop the old handle before opening a new
+        // one so we never leak.
+        if (existingKeepalive) existingKeepalive.close();
+        const lockDir = getLocalDir(projectPath);
+        const handle = this.deps.createKeepalive({ lockDir });
+        this.keepalives.set(canonicalKey, handle);
+      }
+
+      window.on('closed', () => {
+        // Drop any stale show-gate state — a window destroyed before either
+        // signal arrives must not hold a slot in the registry's Map.
+        disposeShowGate();
+        // Only release the project's slot if THIS window still owns it. A
+        // server-restart recreate detaches the originating window from the map
+        // and replaces it under the same `canonicalKey` before closing the old
+        // one — without this guard the old window's `'closed'` would delete the
+        // new window's entry (and its keepalive).
+        if (this.windowsByPath.get(canonicalKey) !== context) return;
+        // Close the project's keepalive WS so the server's idle-shutdown
+        // counter can fall back to whatever MCP clients (if any) are still
+        // connected. No-op when no keepalive was opened (back-compat tests).
+        const keepalive = this.keepalives.get(canonicalKey);
+        if (keepalive) {
+          keepalive.close();
+          this.keepalives.delete(canonicalKey);
+        }
+        // Drop from our map so a subsequent open either re-attaches (if the
+        // sibling is still live) or spawns (if it has since exited). Critically,
+        // NO shutdown IPC — the server is not ours to stop.
+        this.windowsByPath.delete(canonicalKey);
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
     return context;
   }
 }

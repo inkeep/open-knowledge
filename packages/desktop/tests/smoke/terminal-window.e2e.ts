@@ -101,18 +101,21 @@ async function findWindowByMode(
 }
 
 /**
- * Hold until the renderer's main thread is answering promptly.
+ * Hold until the renderer's main thread is answering promptly, so a genuinely
+ * un-booted app fails HERE with that name rather than as a puzzling downstream
+ * timeout.
  *
- * `findWindowByMode` resolves as soon as PRELOAD answers, and main registers
- * the window's project context only after `loadFile` settles — so between
- * those two points the editor window exists and is drivable but main cannot
- * yet say which project it belongs to. "New Terminal Window" invoked in that
- * gap resolves no project and opens a HOME-cwd window with an empty
- * `collabUrl`. A responsive renderer is strictly past load, so this closes it.
+ * This is a liveness check and nothing more. It is NOT a proxy for main having
+ * registered the window's project context: `findWindowByMode` resolves as soon
+ * as PRELOAD answers, and preload answers from a document that has not finished
+ * loading, so all three probes can clear inside the boot window. Measured on a
+ * failing Linux run, the three round-trips cost 70ms total and cleared 240ms
+ * after the window first became discoverable. Ordering the two is main's job —
+ * `WindowManager.getContextForBrowserWindow` resolves a window from the moment
+ * it exists — not this helper's.
  *
  * An idle renderer answers a round-trip in single-digit ms; 100ms is slack
- * rather than a budget, and three in a row rules out landing in a gap between
- * two chunks of boot work.
+ * rather than a budget.
  */
 async function waitForRendererResponsive(page: Page): Promise<void> {
   await expect(async () => {
@@ -196,8 +199,9 @@ test.describe('Standalone terminal window — live Electron', () => {
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
     // The main-process command inherits project context from the source editor.
+    // Main resolves that from the moment the window exists, so no ordering is
+    // needed here; this only holds until the app is answering.
     const editor = await findWindowByMode(app, 'editor');
-    // …but only once main HAS that context; see `waitForRendererResponsive`.
     await waitForRendererResponsive(editor);
     const editorWindow = await app.browserWindow(editor);
     const editorWebContentsId = await editorWindow.evaluate(
