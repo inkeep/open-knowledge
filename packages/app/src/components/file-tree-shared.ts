@@ -100,12 +100,39 @@ export const FILE_TREE_USER_NAME_DIRECTION_CSS = `
 `;
 
 /**
- * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
- * badges + indent guides + sticky headers + per-name writing direction. This is
- * everything a NON-editing tree needs. The main tree extends this with its
- * rename / drop / creation CSS.
+ * Guard against Pierre's truncation ellipsis false-firing at fractional page
+ * zoom (Electron `setZoomLevel` / browser Cmd±).
+ *
+ * Pierre detects overflow purely in CSS: an aria-hidden copy of the row name
+ * (`word-break: break-all`) wraps onto a second line when the name doesn't
+ * fit, which grows the `container: measure / size` marker cell past one line,
+ * and `@container measure (height > 1lh)` then reveals the `…` marker — an
+ * opaque overlay painted over the tail of the name. At zoom factors below ~0.92
+ * Blink's layout-unit snapping makes that cell measure a hair over `1lh` on
+ * EVERY row (observed 26.03px vs 26px at factor 0.833), so every name gets an
+ * ellipsis painted over its last characters even though it fully fits.
+ *
+ * Genuine overflow always wraps the hidden copy by whole line boxes, so the
+ * cell lands at ≥ 2lh; rounding error is < 0.01lh. `1.5lh` cleanly separates
+ * the two, at any tree density (the threshold scales with line-height). This
+ * rule ships in Pierre's `unsafe` cascade layer, which wins over its `base`
+ * layer, so it overrides the base reveal rule whenever both match.
  */
-export const OK_FILE_TREE_READONLY_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
+export const FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS = `
+  @container measure (height <= 1.5lh) {
+    [data-truncate-marker] {
+      opacity: 0;
+    }
+  }
+`;
+
+/**
+ * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
+ * badges + indent guides + sticky headers + per-name writing direction +
+ * fractional-zoom truncation guard. This is everything a NON-editing tree
+ * needs. The main tree extends this with its rename / drop / creation CSS.
+ */
+export const OK_FILE_TREE_READONLY_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}\n${FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS}`;
 
 export interface OkFileTreeOptionsInput {
   readonly paths: readonly string[];

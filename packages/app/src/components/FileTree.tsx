@@ -145,7 +145,10 @@ import {
   resolveFileTreeSelection,
   resolveFileTreeSelectionAction,
 } from '@/components/file-tree-selection';
-import { FILE_TREE_USER_NAME_DIRECTION_CSS } from '@/components/file-tree-shared';
+import {
+  FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS,
+  FILE_TREE_USER_NAME_DIRECTION_CSS,
+} from '@/components/file-tree-shared';
 import { selectTrashConfirmCopy, trashTargetDisplayName } from '@/components/file-tree-trash-copy';
 import {
   classifyEmptyTree,
@@ -441,7 +444,7 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
 // markdown icon stays gray when its row is selected. The full styling block lives
 // alongside the badge-injection processor in file-tree-extension-badge.ts so the
 // CSS + DOM-mutation contract stays in one place.
-const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
+const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}\n${FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS}`;
 
 interface PendingCreate {
   kind: 'file' | 'folder';

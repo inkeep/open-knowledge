@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildOkFileTreeOptions,
+  FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS,
   FILE_TREE_USER_NAME_DIRECTION_CSS,
   lucideMaskDataUri,
   MARKDOWN_FILE_ICON_ID,
@@ -28,6 +29,17 @@ describe('buildOkFileTreeOptions', () => {
     // tree composes its own `unsafeCSS`, so it carries this separately — the
     // real-browser check for that one lives in `user-text-direction.e2e.ts`.
     expect(OK_FILE_TREE_READONLY_UNSAFE_CSS).toContain(FILE_TREE_USER_NAME_DIRECTION_CSS);
+  });
+
+  test('the read-only base carries the fractional-zoom truncation guard', () => {
+    // At page-zoom factors below ~0.92 Blink's layout-unit rounding makes
+    // Pierre's `@container measure (height > 1lh)` overflow detector fire on
+    // every row, painting an `…` over names that fully fit. The guard hides
+    // the marker while the measure cell is under 1.5lh (genuine overflow
+    // wraps to ≥ 2lh, so it keeps its ellipsis). The main tree composes its
+    // own `unsafeCSS`, so `FileTree.tsx` includes the guard separately.
+    expect(OK_FILE_TREE_READONLY_UNSAFE_CSS).toContain(FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS);
+    expect(FILE_TREE_TRUNCATION_ZOOM_GUARD_CSS).toContain('@container measure (height <= 1.5lh)');
   });
 
   test('unsafeCSS override wins (the editable main tree passes its full composition)', () => {
