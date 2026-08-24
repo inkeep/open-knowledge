@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
     // Fail the build on any compiler diagnostic
     panicThreshold: 'all_errors',
   },
+  turbopack: {
+    // Fix Warning: Next.js inferred your workspace root, but it may not be correct.
+    root: fileURLToPath(new URL('..', import.meta.url)),
+  },
   // PostHog ingestion is proxied through this origin (api_host: '/ingest' in
   // instrumentation-client.ts) so ad-blockers don't drop analytics requests.
   // skipTrailingSlashRedirect keeps PostHog's trailing-slash routes reachable
