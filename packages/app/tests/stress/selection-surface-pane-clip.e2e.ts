@@ -1027,6 +1027,238 @@ test('comment composer stays inside the pane when anchored at the text column le
 });
 
 /**
+ * The pane NARROWER than the surface anchored in it.
+ *
+ * Everything above turns on WHERE a surface is put. This turns on how WIDE it
+ * is: `shift()` relocates but cannot shrink, and its clamp can satisfy both
+ * pane edges only while the surface fits between them. A surface with a fixed
+ * width overhangs a narrower pane from every coordinate the clamp could pick,
+ * so a boundary-aware chain still paints it on the neighbour — the escape the
+ * position fix could not reach.
+ *
+ * In the product the narrowing is a docked session panel: dragging the
+ * terminal's (or the agents rail's) handle inward takes the editor column down
+ * to its 5% floor while the bar keeps its ~450px of controls. Neither dock
+ * exists on the web host these tests run against — the terminal needs a pty —
+ * so the window is the lever that reaches the same geometry. It is the same
+ * lever either way: every assertion here is a function of the pane's own
+ * width, never of what occupies the space beyond it.
+ */
+
+/**
+ * Shrink the window until the editor pane is about `targetPaneWidthPx` wide.
+ *
+ * Derives the window width from the CURRENT chrome rather than hardcoding one,
+ * so a sidebar or gutter change moves the window instead of quietly widening
+ * the pane back out of the regime under test — the failure mode that turns a
+ * containment test into a tautology. `expectPaneNarrowerThan` is the assertion
+ * that catches it if a responsive breakpoint defeats this anyway.
+ */
+async function narrowPaneTo(page: Page, targetPaneWidthPx: number): Promise<void> {
+  const initial = page.viewportSize();
+  if (!initial) throw new Error('narrowPaneTo: no viewport to resize');
+  // Converge instead of solving for the window once. The chrome beside the
+  // pane is not a constant: the sidebar collapses to an icon rail below its
+  // own breakpoint and HANDS ITS WIDTH BACK to the editor, so a single
+  // `window = chrome + target` lands the pane wider than it started. Each
+  // round re-measures the chrome the app actually has at that width.
+  for (let round = 0; round < 6; round += 1) {
+    const paneWidth = await readPaneWidth(page);
+    // Sub-pixel slack: the window is set in whole pixels, so the pane lands a
+    // fraction wide of an exactly-computed target and an exact comparison
+    // never terminates.
+    if (paneWidth <= targetPaneWidthPx + 1) {
+      await nextLayoutFrame(page);
+      return;
+    }
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error('narrowPaneTo: viewport disappeared mid-resize');
+    const chromeWidth = viewport.width - paneWidth;
+    await page.setViewportSize({
+      width: Math.max(MIN_VIEWPORT_WIDTH_PX, Math.round(chromeWidth + targetPaneWidthPx) - 1),
+      height: initial.height,
+    });
+    await waitForPaneWidthSettled(page);
+  }
+  throw new Error(
+    `narrowPaneTo: pane still ${await readPaneWidth(page)}px after 6 rounds, wanted ` +
+      `<= ${targetPaneWidthPx}px`,
+  );
+}
+
+/**
+ * Wait until the pane's width stops moving.
+ *
+ * Stability rather than "it changed": the pane is a `react-resizable-panels`
+ * member whose relayout is driven by a ResizeObserver on the group, so it
+ * still reads the pre-resize width for several frames — but a round that
+ * lands on the width it already had is a legitimate convergence, and a
+ * must-have-changed predicate would fail there instead of finishing.
+ */
+async function waitForPaneWidthSettled(page: Page): Promise<void> {
+  let previous: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const current = Math.round(await readPaneWidth(page));
+        const settled = current === previous;
+        previous = current;
+        return settled;
+      },
+      { timeout: 10_000, intervals: [100, 100, 200] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Floor for the converging resize — the narrowest viewport the app is expected
+ * to lay out in. A pane that still will not shrink at this width is a layout
+ * finding rather than a test that needs a smaller window, so the loop reports
+ * it instead of shrinking further.
+ *
+ * It is also the ceiling on how narrow a pane these tests can construct, which
+ * is why the group covers the bar and the comment composer but not the lint
+ * callout: at this floor the pane is still wider than a callout, so there is
+ * no overhang to contain. The callout's cap is pinned at the producer tier in
+ * `editor-visible-region.dom.test.tsx` instead.
+ */
+const MIN_VIEWPORT_WIDTH_PX = 320;
+
+/**
+ * Narrow the pane as far as the app's own layout allows.
+ *
+ * The narrow-pane arms want the widest overhang they can get, and the floor
+ * is the app's, not a number this file should guess: `narrowPaneTo` converges
+ * against whatever chrome the layout keeps at each width and stops at
+ * `MIN_VIEWPORT_WIDTH_PX`. Asking for zero and swallowing the resulting
+ * "could not reach it" is how we ask for that floor without restating it.
+ * `expectPaneNarrowerThan` is what then proves the floor was low enough for
+ * the surface under test.
+ */
+async function narrowPaneAsFarAsPossible(page: Page): Promise<void> {
+  await narrowPaneTo(page, 0).catch(() => {});
+}
+
+/**
+ * How far below the scroll container's top the selection is parked once the
+ * pane has been narrowed.
+ *
+ * Narrowing reflows the prose, so the selected block ends up somewhere else —
+ * often below the region's floor, where `hide()` correctly blanks the bar and
+ * the containment assertion would pass on nothing. A plain
+ * `scrollIntoView()` is not enough either: it settles the block against the
+ * nearest edge, which is under the Ask AI composer's band. This inset clears
+ * the toolbar band at the top and the composer band at the bottom by more
+ * than a bar height on a 720px-tall window.
+ */
+const SELECTION_MID_PANE_INSET_PX = 200;
+
+/** Width of the painted editor scroll container. */
+async function readPaneWidth(page: Page): Promise<number> {
+  return page.evaluate((scrollerSel) => {
+    const scroller = Array.from(document.querySelectorAll(scrollerSel)).find(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && element.getClientRects().length > 0,
+    );
+    if (!scroller) throw new Error('readPaneWidth: no painted scroll container');
+    return scroller.getBoundingClientRect().width;
+  }, SCROLLER);
+}
+
+/**
+ * Assert the pane really is too narrow to host the surface at its natural
+ * width. Without this the containment assertions pass on a pane that never
+ * squeezed anything, and the whole group goes quietly green the day the
+ * surface loses a control or the chrome gains one.
+ */
+function expectPaneNarrowerThan(
+  geometry: SurfaceGeometry,
+  naturalWidthPx: number,
+  label: string,
+): void {
+  const regionWidth = geometry.regionRight - geometry.regionLeft;
+  expect(
+    regionWidth,
+    `${label}: the pane (${regionWidth}px) must be narrower than the surface's natural ` +
+      `width (${naturalWidthPx}px) for the width cap to be under test`,
+  ).toBeLessThan(naturalWidthPx);
+}
+
+/** The surface's width with no pane cap biting — measured, never assumed. */
+async function readNaturalSurfaceWidth(page: Page, testId: string): Promise<number> {
+  const geometry = await readSurfaceGeometry(page, testId);
+  expect(geometry.visible, 'surface must be on screen to measure its natural width').toBe(true);
+  return geometry.right - geometry.left;
+}
+
+test('bubble bar stays inside a pane narrower than the bar', async ({ page, api }) => {
+  await openTallDoc(page, api, 'clip-bar-narrow');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, BUBBLE_BAR);
+  await narrowPaneAsFarAsPossible(page);
+  // Re-anchor: narrowing reflows the prose, so the block the selection lives
+  // in leaves the visible region, at which point `hide()` fires and the
+  // containment assertion passes vacuously on an invisible bar.
+  await parkSelectionTopAtPaneInset(page, SELECTION_MID_PANE_INSET_PX);
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const geometry = await readSurfaceGeometry(page, BUBBLE_BAR);
+  expect(geometry.present, 'bubble bar still mounted').toBe(true);
+  expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar');
+  await expectAnchorInsideRegionHorizontally(page, geometry);
+  expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane)');
+});
+
+test('bubble bar stays inside a narrow pane when the plugin repositions it', async ({
+  page,
+  api,
+}) => {
+  await openTallDoc(page, api, 'clip-bar-narrow-plugin');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, BUBBLE_BAR);
+  await narrowPaneAsFarAsPossible(page);
+  await parkSelectionTopAtPaneInset(page, SELECTION_MID_PANE_INSET_PX);
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  // The plugin fixes `size` after `shift` in an array we cannot reorder, so
+  // this arm is what proves the cap is stated on BOTH writers rather than
+  // inherited from whichever one happened to run last.
+  const written = await repositionViaPluginPath(page);
+
+  const geometry = await readSurfaceGeometry(page, BUBBLE_BAR);
+  expect(geometry.present, 'bubble bar still mounted').toBe(true);
+  expectGeometryIsThePluginsWrite(written, geometry, 'bubble bar in a narrow pane');
+  expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar (plugin pass)');
+  await expectAnchorInsideRegionHorizontally(page, geometry);
+  expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane, plugin pass)');
+});
+
+test('comment composer stays inside a pane narrower than the card', async ({ page, api }) => {
+  await openTallDoc(page, api, 'clip-composer-narrow');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+
+  await page.getByTestId('comment-bubble-button').click();
+  await expect(page.getByTestId(COMMENT_COMPOSER)).toBeVisible();
+  await waitForSurfaceSettled(page, COMMENT_COMPOSER);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, COMMENT_COMPOSER);
+  await narrowPaneAsFarAsPossible(page);
+  await waitForSurfaceSettled(page, COMMENT_COMPOSER);
+
+  const geometry = await readSurfaceGeometry(page, COMMENT_COMPOSER);
+  expect(geometry.present, 'comment composer still mounted').toBe(true);
+  expectPaneNarrowerThan(geometry, naturalWidth, 'comment composer');
+  expectInsideVisibleRegionHorizontally(geometry, 'comment composer (narrow pane)');
+});
+
+/**
  * The same contract at the two remaining editor-anchored floating surfaces:
  * the suggestion picker (slash / wiki-link / tag) and the markdown-lint hover
  * callout. Both are body-appended, `position: fixed`, and anchored to a

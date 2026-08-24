@@ -30,7 +30,7 @@
  * re-check at the end of each pass rather than an observer.
  */
 
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 import {
   sharedExtensions as coreExtensions,
   isFrontmatterScoped,
@@ -55,6 +55,7 @@ import {
 import {
   deriveEditorClipOptions,
   deriveEditorShiftOptions,
+  deriveEditorSizeOptions,
 } from '@/editor/utils/editor-visible-region';
 import { cn } from '@/lib/utils';
 import { blockIndexForLine, comparableChildCount, computeSourceBlockSpans } from '../block-spans';
@@ -67,6 +68,15 @@ import { runScrollNavigation } from '../scroll-restore-coordination';
  * value the callout has always used.
  */
 const LINT_CALLOUT_GAP_PX = 6;
+
+/**
+ * Mirrors the `max-width` on `.ok-lint-tooltip` in `globals.css`. Restated
+ * here because the pane cap is written as an INLINE `max-width`, which
+ * outranks the stylesheet: the region producer has to be told the author's
+ * ceiling to fold it in with `min()` instead of replacing it. Drifting from
+ * the rule widens the callout on a roomy pane; it cannot make it escape.
+ */
+const LINT_CALLOUT_MAX_WIDTH = '22rem';
 
 const markdownLintDecorationKey = new PluginKey<DecorationSet>('markdownLintDecorations');
 
@@ -278,11 +288,26 @@ function createLintTooltip(
   // painting across the toolbar.
   const clipOptions = deriveEditorClipOptions(opts.editor);
   const shiftOptions = deriveEditorShiftOptions(opts.editor);
+  // `.ok-lint-tooltip` caps itself at 22rem, which is wider than the pane once
+  // a terminal or rail is docked beside a narrowed column — and the clamp can
+  // only place a callout that fits. Handing that same 22rem back as the
+  // author cap keeps this a narrowing: the inline `max-width` an unqualified
+  // producer writes would outrank the stylesheet and let a roomy pane stretch
+  // the callout past the width the rule picked for it. The body is prose, so
+  // the narrowing costs reflow and nothing else.
+  const sizeOptions = deriveEditorSizeOptions(opts.editor, {
+    authorMaxWidth: LINT_CALLOUT_MAX_WIDTH,
+  });
 
   function position() {
     computePosition(virtualEl, tooltip, {
       placement: 'top-start',
-      middleware: [offset(LINT_CALLOUT_GAP_PX), flip(clipOptions), shift(shiftOptions)],
+      middleware: [
+        offset(LINT_CALLOUT_GAP_PX),
+        flip(clipOptions),
+        shift(shiftOptions),
+        size(sizeOptions),
+      ],
     })
       .then(({ x, y }) => {
         if (tooltip.isConnected) {

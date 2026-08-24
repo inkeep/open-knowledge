@@ -1,10 +1,12 @@
 /**
- * DOM-tier tests for both halves of the editor's visible-region contract:
+ * DOM-tier tests for all three parts of the editor's visible-region contract:
  * `deriveEditorClipOptions`, which describes the region (scroll container
  * minus the toolbar band and the live bottom-composer / conflict-footer
- * overlays), and `deriveEditorShiftOptions`, which clamps a surface into it.
- * The consumers are the formatting bubble bar and the comment composer, so
- * neither the module nor these tests belong to either one.
+ * overlays), `deriveEditorShiftOptions`, which clamps a surface into it, and
+ * `deriveEditorSizeOptions`, which caps a surface that would not fit inside it
+ * at any coordinate. The consumers are the formatting bubble bar, the comment
+ * composer, and the lint callout, so neither the module nor these tests belong
+ * to any one of them.
  *
  * DOM tier because the derivable resolves the `.editor-doc-scroll` ancestor
  * via `closest()` on a rendered tree and reads the overlay-height CSS vars
@@ -22,7 +24,11 @@ import { cleanup, render } from '@testing-library/react';
 import type { Editor } from '@tiptap/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TOOLBAR_HEIGHT } from '../extensions/frozen-table-headers';
-import { deriveEditorClipOptions, deriveEditorShiftOptions } from './editor-visible-region';
+import {
+  deriveEditorClipOptions,
+  deriveEditorShiftOptions,
+  deriveEditorSizeOptions,
+} from './editor-visible-region';
 
 /** Renders the editor-DOM shape the derivable walks: a `.editor-doc-scroll`
  *  scroll container wrapping the ProseMirror mount the editor points at. */
@@ -249,5 +255,77 @@ describe('deriveEditorShiftOptions', () => {
     expect(options.mainAxis).toBe(true);
     expect(options.crossAxis).toBe(true);
     expect(options.padding.top).toBe(TOOLBAR_HEIGHT);
+  });
+});
+
+describe('deriveEditorSizeOptions', () => {
+  const PANE_WIDTH_PX = 300;
+
+  /** jsdom gives every element a zero rect, so the region has to be stated. */
+  function renderEditorInPaneOfWidth(widthPx: number): {
+    editor: Editor;
+    floating: HTMLElement;
+  } {
+    const { editor, scroller } = renderEditorInScroller();
+    scroller.getBoundingClientRect = () => new DOMRect(0, 0, widthPx, 800);
+    return { editor, floating: document.createElement('div') };
+  }
+
+  test('caps the surface at the pane less both gutters', () => {
+    const { editor, floating } = renderEditorInPaneOfWidth(PANE_WIDTH_PX);
+    deriveEditorSizeOptions(editor)().apply({ elements: { floating } });
+    expect(floating.style.maxWidth).toBe(`${PANE_WIDTH_PX - EXPECTED_PANE_GUTTER_PX * 2}px`);
+  });
+
+  test('folds an author cap in with min() rather than replacing it', () => {
+    const { editor, floating } = renderEditorInPaneOfWidth(PANE_WIDTH_PX);
+    // The inline write outranks the stylesheet, so a producer that ignored the
+    // author's ceiling would WIDEN a capped surface on a roomy pane. `min()`
+    // is what keeps this a ceiling in both directions.
+    deriveEditorSizeOptions(editor, { authorMaxWidth: '22rem' })().apply({
+      elements: { floating },
+    });
+    expect(floating.style.maxWidth).toBe(
+      `min(22rem, ${PANE_WIDTH_PX - EXPECTED_PANE_GUTTER_PX * 2}px)`,
+    );
+  });
+
+  test('re-reads the region on every invocation', () => {
+    const { editor, scroller } = renderEditorInScroller();
+    const floating = document.createElement('div');
+    const derive = deriveEditorSizeOptions(editor);
+    scroller.getBoundingClientRect = () => new DOMRect(0, 0, 500, 800);
+    derive().apply({ elements: { floating } });
+    expect(floating.style.maxWidth).toBe(`${500 - EXPECTED_PANE_GUTTER_PX * 2}px`);
+    // The pane resizes under a live surface whenever a session dock is dragged,
+    // which is the very geometry this cap exists for.
+    scroller.getBoundingClientRect = () => new DOMRect(0, 0, 200, 800);
+    derive().apply({ elements: { floating } });
+    expect(floating.style.maxWidth).toBe(`${200 - EXPECTED_PANE_GUTTER_PX * 2}px`);
+  });
+
+  test('never emits a negative cap for a pane narrower than its gutters', () => {
+    const { editor, floating } = renderEditorInPaneOfWidth(4);
+    deriveEditorSizeOptions(editor)().apply({ elements: { floating } });
+    expect(floating.style.maxWidth).toBe('0px');
+  });
+
+  test('clears the cap when no scroll container is resolvable', () => {
+    const { container } = render(<div data-testid="pm-mount" />);
+    const dom = container.querySelector('[data-testid="pm-mount"]') as HTMLElement;
+    const editor = { editorView: { dom } } as unknown as Editor;
+    const floating = document.createElement('div');
+    floating.style.maxWidth = '123px';
+    deriveEditorSizeOptions(editor)().apply({ elements: { floating } });
+    // Cleared, not left stale: a surface that outlived its pane must not stay
+    // pinned to the width that pane used to have.
+    expect(floating.style.maxWidth).toBe('');
+  });
+
+  test('pre-mount editor clears the cap rather than throwing', () => {
+    const floating = document.createElement('div');
+    floating.style.maxWidth = '123px';
+    deriveEditorSizeOptions(preMountEditor())().apply({ elements: { floating } });
+    expect(floating.style.maxWidth).toBe('');
   });
 });
