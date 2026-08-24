@@ -216,13 +216,20 @@ function expectInsideVisibleRegionHorizontally(geometry: SurfaceGeometry, label:
   ).toBe(true);
 }
 
+/**
+ * The vertical half of the containment contract, complementary to
+ * `expectInsideVisibleRegionHorizontally`. The name predates the horizontal
+ * sibling and reads as the two-axis superset it is not, so the failure message
+ * names the axis — several tests now call both side by side, and a report that
+ * said only "escaped the region" would leave the reader to infer which one.
+ */
 function expectInsideVisibleRegion(geometry: SurfaceGeometry, label: string): void {
   const inside =
     geometry.top >= geometry.regionTop - REGION_TOLERANCE_PX &&
     geometry.bottom <= geometry.regionBottom + REGION_TOLERANCE_PX;
   expect(
     !geometry.visible || inside,
-    `${label} escaped the editor's visible content region: rendered ` +
+    `${label} escaped the editor's visible content region vertically: rendered ` +
       `${geometry.top}–${geometry.bottom}, region ${geometry.regionTop}–${geometry.regionBottom}`,
   ).toBe(true);
 }
@@ -1043,6 +1050,14 @@ test('comment composer stays inside the pane when anchored at the text column le
  * so the window is the lever that reaches the same geometry. It is the same
  * lever either way: every assertion here is a function of the pane's own
  * width, never of what occupies the space beyond it.
+ *
+ * TWO of the cap's three consumers are covered here, and the omission is a
+ * reachability limit rather than an oversight: at `MIN_VIEWPORT_WIDTH_PX` the
+ * pane bottoms out around 300px, which is still wider than a lint callout, so
+ * that surface has no overhang for an arm to contain. Its cap is pinned at the
+ * producer tier in `editor-visible-region.dom.test.tsx` instead. Give the
+ * window lever more room — a real dock, or a host that lays out narrower — and
+ * an arm for it belongs here beside these.
  */
 
 /**
@@ -1210,6 +1225,11 @@ test('bubble bar stays inside a pane narrower than the bar', async ({ page, api 
   expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar');
   await expectAnchorInsideRegionHorizontally(page, geometry);
   expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane)');
+  // The cap buys width with HEIGHT: the bar only fits because it wraps to a
+  // second row. That makes the vertical arm part of this contract rather than
+  // a duplicate of the tests above — a wrapped bar tall enough to clear the
+  // region would be the cap's own regression.
+  expectInsideVisibleRegion(geometry, 'bubble bar (narrow pane)');
 });
 
 test('bubble bar stays inside a narrow pane when the plugin repositions it', async ({
@@ -1237,6 +1257,7 @@ test('bubble bar stays inside a narrow pane when the plugin repositions it', asy
   expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar (plugin pass)');
   await expectAnchorInsideRegionHorizontally(page, geometry);
   expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane, plugin pass)');
+  expectInsideVisibleRegion(geometry, 'bubble bar (narrow pane, plugin pass)');
 });
 
 test('comment composer stays inside a pane narrower than the card', async ({ page, api }) => {
@@ -1254,8 +1275,13 @@ test('comment composer stays inside a pane narrower than the card', async ({ pag
 
   const geometry = await readSurfaceGeometry(page, COMMENT_COMPOSER);
   expect(geometry.present, 'comment composer still mounted').toBe(true);
+  // `expectInsideVisibleRegionHorizontally` short-circuits on an unpainted
+  // surface, so without this the arm would pass vacuously the day the card
+  // stops rendering here rather than reporting that it had escaped.
+  expect(geometry.visible, 'composer must be on screen for containment to bite').toBe(true);
   expectPaneNarrowerThan(geometry, naturalWidth, 'comment composer');
   expectInsideVisibleRegionHorizontally(geometry, 'comment composer (narrow pane)');
+  expectInsideVisibleRegion(geometry, 'comment composer (narrow pane)');
 });
 
 /**

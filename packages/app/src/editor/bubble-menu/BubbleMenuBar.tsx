@@ -89,10 +89,14 @@ export function BubbleMenuBar({
           offset(SELECTION_SURFACE_GAP_PX),
           flip(clipOptions),
           shift(shiftOptions),
-          // After the clamp, mirroring where tiptap's plugin fixes `size` in
-          // its own array, so both writers run the same chain in the same
-          // order. `size()` resets the pass when it narrows the bar, so the
-          // clamp above re-runs against the width it actually has.
+          // After the clamp, which is the same RELATIVE slot tiptap's plugin
+          // fixes `size` in — after the clamp, before `hide`. The full chains
+          // still differ in where `offset` runs, which is what
+          // `pendingOffsetPx` below compensates for; `deriveEditorSizeOptions`
+          // is indifferent to that because it measures the region rather than
+          // reading floating-ui's position-dependent `availableWidth`.
+          // `size()` resets the pass when it narrows the bar, so the clamp
+          // above re-runs against the width it actually has.
           size(sizeOptions),
           hide(clipOptions),
         ],
@@ -134,11 +138,12 @@ export function BubbleMenuBar({
       appendTo={() => document.body}
       shouldShow={shouldShowBubbleMenu}
       updateDelay={250}
-      // flip/shift/hide mirror the autoUpdate loop above: the plugin runs its
-      // own computePosition on editor transactions (remote CRDT edits
+      // flip/shift/size/hide mirror the autoUpdate loop above: the plugin runs
+      // its own computePosition on editor transactions (remote CRDT edits
       // included), so both paths must agree on clipping, on the clamp that
-      // keeps the bar inside the clip region, and on when the selection counts
-      // as occluded — the plugin applies `referenceHidden` itself.
+      // keeps the bar inside the clip region, on the width cap that leaves the
+      // clamp something it can place, and on when the selection counts as
+      // occluded — the plugin applies `referenceHidden` itself.
       //
       // `placement` and `offset` are stated rather than inherited from the
       // plugin's defaults because `pendingOffsetPx` below compensates for this
