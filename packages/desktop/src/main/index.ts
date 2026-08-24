@@ -400,6 +400,7 @@ import {
   shouldRevealInactiveNow,
 } from './restore-focus.ts';
 import { handleRevealExternal } from './reveal-external.ts';
+import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
@@ -1469,10 +1470,14 @@ let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 let osShutdownNoted = false;
 
 /**
- * Records the server's last exit (code + Electron process-gone reason) to
+ * Records the server's last exit (timestamp, pid, code, killing signal, which
+ * host observed it, and Electron's process-gone reason where one applies) to
  * `<lockDir>/last-server-exit.json` for bug-report diagnosis. Lazy singleton so
- * the window-manager fork path and the `child-process-gone` listener — which
- * initialize on different boot paths — share one correlator.
+ * all three participants — the window-manager fork path, the `child-process-gone`
+ * listener, and the detached-spawn observer wired at the spawn closure below —
+ * share one correlator rather than each building its own. That sharing is what
+ * `tests/integration/server-exit-wiring.test.ts` pins: a per-path recorder would
+ * split the reason correlation the fork path depends on.
  */
 let serverExitRecorder: ServerExitRecorder | null = null;
 function getServerExitRecorder(): ServerExitRecorder {
@@ -2015,6 +2020,19 @@ function ensureWindowManager() {
             childRef.on('exit', (code, signal) => {
               exitRecord = { code, signal };
             });
+            // `exitRecord` above only ever reaches the boot-time spawn-failure
+            // branches via `readExit()`; once a window has attached, nothing
+            // reads it again. A second listener on the same event persists the
+            // death for a later bug bundle instead, and in a packaged build it
+            // is the only observer of that death — `server-exit-observer.ts`
+            // holds the why, and owns the registration so that the shape of it
+            // is covered by a test rather than by review of this file.
+            // `tests/integration/server-exit-wiring.test.ts` pins the call.
+            attachServerExitObserver(childRef, {
+              lockDir,
+              recordExit: (info) => getServerExitRecorder().recordExit(info),
+              logger: getLogger('server-exit'),
+            });
             childRef.unref();
             const pid = childRef.pid;
             if (pid === undefined) {
@@ -2093,7 +2111,11 @@ function ensureWindowManager() {
     // the `desktop-upgrade-reconcile` upgrade signal, restart — reach
     // `~/.ok/logs/`.
     log: getLogger('window-manager'),
-    recordServerExit: (info) => getServerExitRecorder().recordExit(info),
+    // The adapter, not the dep, names the host: `WindowManagerDeps` stays
+    // narrow (it has no signal and no observer to give), and this is the site
+    // that knows which of the two spawn paths it is wiring.
+    recordServerExit: (info) =>
+      getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
     // Presence-invisible keepalive WS — registers the desktop as an active
     // `/collab*` upgrade for as long as a project window is open, so a brief
     // MCP disconnect does not trip the server's idle-shutdown timer. The

@@ -39,6 +39,7 @@ import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
+import type { ServerExitInfo } from './server-exit-record.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
@@ -879,8 +880,14 @@ export interface WindowManagerDeps {
    * Record why the server just exited to `<lockDir>/last-server-exit.json`, so
    * a later bug-report bundle can tell an unexpected death from a managed
    * shutdown. No-op when omitted (tests, web). See `server-exit-record.ts`.
+   *
+   * Narrowed from the recorder's own payload rather than restated, so the two
+   * cannot drift: the `utilityProcess` exit event this is called from carries
+   * no signal and does not name the observing host, so `index.ts`'s adapter
+   * supplies both. The record's `signal` is only ever filled by the packaged
+   * detached-spawn observer.
    */
-  recordServerExit?(info: { lockDir: string; pid: number | null; code: number | null }): void;
+  recordServerExit?(info: Pick<ServerExitInfo, 'lockDir' | 'pid' | 'code'>): void;
   /**
    * Startup-instrumentation hooks (desktop launch waterfall). All optional and
    * no-op when omitted (tests, web). Wired by `index.ts` only for the FIRST

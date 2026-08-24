@@ -863,9 +863,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       join(stagingDir, 'state', 'last-spawn-error.log'),
     );
 
-    // last-server-exit.json — why the server process last exited (code +
-    // Electron process-gone reason). Lets a bundle tell a crash / OS-kill from
-    // a managed shutdown, which `server-status.txt: not-running` alone cannot.
+    // last-server-exit.json — why the server process last exited (timestamp,
+    // pid, code, killing signal, and Electron's process-gone reason where the
+    // host could observe one; see SERVER_EXIT_LOG for the per-host field
+    // availability). Lets a bundle tell a crash / OS-kill from a managed
+    // shutdown, which `server-status.txt: not-running` alone cannot.
     stageFileIfPresent(join(lockDir, SERVER_EXIT_LOG), join(stagingDir, 'state', SERVER_EXIT_LOG));
 
     // last-server-crash.json — the server's own fatal-crash record (error name/
