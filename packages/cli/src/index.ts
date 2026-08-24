@@ -10,7 +10,12 @@
 // `@inkeep/open-knowledge-server` (alongside the secrets-store), and desktop
 // imports it straight from there. Re-exporting an external package's symbol
 // through this bundled public surface breaks the .d.ts bundler.
-export { detectGh, type GhDetectResult } from './auth/gh-detect.ts';
+export {
+  detectGh,
+  detectGhAccounts,
+  type GhAccount,
+  type GhDetectResult,
+} from './auth/gh-detect.ts';
 export {
   createTokenStore,
   makeLazyProbeTokenStore,

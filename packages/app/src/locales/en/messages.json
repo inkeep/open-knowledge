@@ -947,6 +947,11 @@
     "CGj3gX": ["parse error"],
     "CHfFN_": ["Remove OpenKnowledge from ", ["0"]],
     "CKyk7Q": ["Go back"],
+    "CMd-g-": [
+      "Your remote URL names ",
+      ["declaredLogin"],
+      ", but that account's credentials couldn't be used."
+    ],
     "CMyafZ": [["slot"], " hex value"],
     "COr1Y7": [
       "Pick <0>openknowledge.skill</0> from your <1>Downloads</1> folder. It enables automatically."
@@ -977,7 +982,6 @@
     ],
     "C_cPoW": ["Your GitHub session expired — sign in again to verify push access."],
     "CcaU4i": ["Edits apply live and save automatically to this theme."],
-    "ChAtFg": ["You don't have permission to push to this repo"],
     "ChMshD": ["Quit ", ["appName"]],
     "Ck9XRt": ["Couldn't save the key — please try again."],
     "ClII5l": ["Press the sun or moon on “Custom” above to use this theme."],
@@ -1143,6 +1147,7 @@
       "Your comments are waiting behind the running turn — they stay queued until the agent picks the message up."
     ],
     "Eji13z": ["Toggle highlight formatting."],
+    "EkEFE3": ["Repository not found"],
     "EkH9pt": ["Update"],
     "EkUnmS": ["any"],
     "El7NbA": ["Heading 2"],
@@ -1274,6 +1279,11 @@
     "G8t9NN": ["Add a property"],
     "GA-UkN": [["keyName"], " type: ", ["typeLabel"], ". Click to change."],
     "GAohqx": ["Delete column"],
+    "GBEqoP": [
+      "Your Git configuration names ",
+      ["declaredLogin"],
+      ", but that account's credentials couldn't be used."
+    ],
     "GBQjiV": ["Add skill"],
     "GDvlUT": ["Role"],
     "GGsM4y": ["Selected in graph"],
@@ -2718,6 +2728,7 @@
     "ZGVsOD": ["Push this branch to GitHub before sharing."],
     "ZI8uvA": ["No problems found."],
     "ZJ99sD": ["Insert column left"],
+    "ZKVuLY": ["Authenticated as ", ["login"], "."],
     "ZNK2Tq": ["root"],
     "ZOVgDv": ["Moved ", ["moved"], " skills to Project"],
     "ZQJ1IV": ["Activate the last editor tab."],
@@ -2901,6 +2912,11 @@
     ],
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
     "ak4LLg": ["Clear menu"],
+    "akOe4q": [
+      "Your Git credential configuration names ",
+      ["declaredLogin"],
+      ", but that account's credentials couldn't be used."
+    ],
     "akmOT9": ["Edit this comment"],
     "an0aL5": ["Ask an agent"],
     "anmUZq": ["Missing a feature"],
@@ -3583,6 +3599,7 @@
     "jPUPvG": ["Couldn't resolve the conflict for ", ["filePath"], "."],
     "jRAGrQ": ["Configure agents"],
     "jRHdCz": ["Failed to load PDF"],
+    "jRsjlF": ["Repository not found — it may not exist, or the account used may not have access."],
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],

@@ -121,6 +121,19 @@ describe('SyncStatusSchema', () => {
       }).success,
     ).toBe(true);
   });
+  test('parses a status carrying the identity-ambiguous not-found push error code', () => {
+    // The 404-masquerade code rides the same bounded-enum field as the other
+    // auth codes; a current client must accept it. Skew the other way (an
+    // older client receiving this code) cannot fail at parse time — no client
+    // schema-validates sync status — and render-time degradation is the
+    // formatters' default branch, pinned in SyncStatusBadge.dom.test.tsx.
+    expect(
+      SyncStatusSchema.safeParse({
+        ...validStatus,
+        pushErrorCode: 'auth-not-found-as-identity',
+      }).success,
+    ).toBe(true);
+  });
   test('rejects negative ahead/behind/conflictCount', () => {
     expect(SyncStatusSchema.safeParse({ ...validStatus, ahead: -1 }).success).toBe(false);
     expect(SyncStatusSchema.safeParse({ ...validStatus, behind: -1 }).success).toBe(false);
@@ -221,6 +234,45 @@ describe('PushPermissionSchema', () => {
   test('rejects an unlisted unknownError code', () => {
     expect(
       PushPermissionSchema.safeParse({ checkStatus: 'unknown', unknownError: 'bogus' }).success,
+    ).toBe(false);
+  });
+  test('round-trips a denial naming the authenticated identity and a declared miss', () => {
+    const wire = {
+      checkStatus: 'denied' as const,
+      deniedReason: 'private-no-access' as const,
+      resolvedLogin: 'bob',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    };
+    const parsed = PushPermissionSchema.parse(wire);
+    expect(parsed).toEqual(wire);
+  });
+  test('parses a denial without identity fields (payload from an older server)', () => {
+    const parsed = PushPermissionSchema.parse({
+      checkStatus: 'denied',
+      deniedReason: 'private-no-access',
+    });
+    expect(parsed).toEqual({ checkStatus: 'denied', deniedReason: 'private-no-access' });
+  });
+  test('accepts a declaredSource value it has never heard of', () => {
+    // The declaration mechanism is an open string by contract: a future
+    // server-side source must degrade to generic wording on this client,
+    // not fail the whole sync-status parse.
+    const parsed = PushPermissionSchema.safeParse({
+      checkStatus: 'denied',
+      deniedReason: 'private-no-access',
+      declaredLogin: 'alice',
+      declaredSource: 'owner-map',
+    });
+    expect(parsed.success).toBe(true);
+  });
+  test('rejects a non-string resolvedLogin (typed field, not loose passthrough)', () => {
+    expect(
+      PushPermissionSchema.safeParse({
+        checkStatus: 'denied',
+        deniedReason: 'private-no-access',
+        resolvedLogin: 123,
+      }).success,
     ).toBe(false);
   });
 });

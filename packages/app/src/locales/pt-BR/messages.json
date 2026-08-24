@@ -1100,6 +1100,11 @@
     "CGj3gX": ["erro de análise"],
     "CHfFN_": ["Remover o OpenKnowledge de ", ["0"]],
     "CKyk7Q": ["Voltar"],
+    "CMd-g-": [
+      "Sua URL remota indica ",
+      ["declaredLogin"],
+      ", mas as credenciais dessa conta não puderam ser usadas."
+    ],
     "CMyafZ": ["Valor hexadecimal de ", ["slot"]],
     "COr1Y7": [
       "Escolha <0>openknowledge.skill</0> na sua pasta <1>Downloads</1>. Ela é ativada automaticamente."
@@ -1130,7 +1135,6 @@
     ],
     "C_cPoW": ["Sua sessão do GitHub expirou — entre de novo para verificar o acesso de envio."],
     "CcaU4i": ["As alterações são aplicadas imediatamente e salvas automaticamente neste tema."],
-    "ChAtFg": ["Você não tem permissão para enviar a este repositório"],
     "ChMshD": ["Encerrar o ", ["appName"]],
     "Ck9XRt": ["Não deu para salvar a chave — tente de novo."],
     "ClII5l": ["Pressione o sol ou a lua em “Custom” acima para usar este tema."],
@@ -1318,6 +1322,7 @@
       "Seus comentários estão aguardando atrás do turno em andamento — eles ficam na fila até o agente pegar a mensagem."
     ],
     "Eji13z": ["Liga ou desliga o destaque."],
+    "EkEFE3": ["Repositório não encontrado"],
     "EkH9pt": ["Atualizar"],
     "EkUnmS": ["qualquer"],
     "El7NbA": ["Título 2"],
@@ -1463,6 +1468,11 @@
     "G8t9NN": ["Adicionar uma propriedade"],
     "GA-UkN": ["Tipo de ", ["keyName"], ": ", ["typeLabel"], ". Clique para alterar."],
     "GAohqx": ["Excluir coluna"],
+    "GBEqoP": [
+      "Sua configuração do Git indica ",
+      ["declaredLogin"],
+      ", mas as credenciais dessa conta não puderam ser usadas."
+    ],
     "GBQjiV": ["Adicionar habilidade"],
     "GDvlUT": ["Função"],
     "GGsM4y": ["Selecionado no grafo"],
@@ -3116,6 +3126,7 @@
     "ZGVsOD": ["Envie este ramo para o GitHub antes de compartilhar."],
     "ZI8uvA": ["Nenhum problema encontrado."],
     "ZJ99sD": ["Inserir coluna à esquerda"],
+    "ZKVuLY": ["Autenticado como ", ["login"], "."],
     "ZNK2Tq": ["raiz"],
     "ZOVgDv": [["moved"], " habilidades movidas para Projeto"],
     "ZQJ1IV": ["Ativa a última aba do editor."],
@@ -3310,6 +3321,11 @@
       ". Tente recarregar a página."
     ],
     "ak4LLg": ["Limpar menu"],
+    "akOe4q": [
+      "Sua configuração de credenciais do Git indica ",
+      ["declaredLogin"],
+      ", mas as credenciais dessa conta não puderam ser usadas."
+    ],
     "akmOT9": ["Editar este comentário"],
     "an0aL5": ["Perguntar a um agente"],
     "anmUZq": ["Faltava um recurso"],
@@ -4094,6 +4110,9 @@
     "jPUPvG": ["Não deu para resolver o conflito de ", ["filePath"], "."],
     "jRAGrQ": ["Configurar agentes"],
     "jRHdCz": ["Falha ao carregar o PDF"],
+    "jRsjlF": [
+      "Repositório não encontrado — ele pode não existir, ou a conta usada pode não ter acesso."
+    ],
     "jSO1X5": ["Modelos herdados não podem ser renomeados aqui — renomeie na pasta que os contém."],
     "jSY41h": ["\"", ["docName"], "\" demorou demais. Verifique sua conexão."],
     "jTLWxh": [

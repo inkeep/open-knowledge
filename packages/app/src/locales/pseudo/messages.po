@@ -1955,6 +1955,10 @@ msgstr ""
 msgid "Attachments must total under 3 MB."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr ""
@@ -10819,6 +10823,15 @@ msgid "Repository name"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr ""
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr ""
 
@@ -14799,10 +14812,6 @@ msgstr ""
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr ""
 
@@ -14884,6 +14893,14 @@ msgstr ""
 msgid "Your edits stay on this computer"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr ""
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14919,6 +14936,10 @@ msgstr ""
 
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
 msgstr ""
 
 #: src/components/BugReportSendToast.tsx

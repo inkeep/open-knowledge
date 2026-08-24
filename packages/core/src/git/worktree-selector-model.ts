@@ -144,8 +144,9 @@ export type WorktreeCreateResult =
       /**
        * Set when the fetch failed for want of a usable credential rather than
        * for a network/timeout reason, and re-authenticating could plausibly fix
-       * it (`isLoginFixableGitAuthError` — so not 403, scope-mismatch, or SSH
-       * key failures, which a sign-in doesn't repair).
+       * it (`isLoginFixableGitAuthError` — so not 403, scope-mismatch, SSH key
+       * failures, or the repository-not-found masquerade, none of which a
+       * sign-in repairs).
        *
        * Its own arm rather than a field on the shared failure arm below: only
        * `fetch-failed` reaches git's credential stage, so no other reason can
@@ -154,6 +155,14 @@ export type WorktreeCreateResult =
        * pre-existing behavior.
        */
       readonly authFailed?: true;
+      /**
+       * Set for the repository-not-found masquerade: the remote answered, so
+       * neither the network copy nor a Sign in affordance fits — the repo may
+       * not exist, or the account used may not see it. Same additive contract
+       * as `authFailed`, and mutually exclusive with it by construction (the
+       * masquerade is excluded from login-fixable).
+       */
+      readonly notFoundAsIdentity?: true;
     }
   | {
       readonly ok: false;

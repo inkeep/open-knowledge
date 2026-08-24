@@ -39,9 +39,11 @@ import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowled
 import simpleGit from 'simple-git';
 import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
+import type { GitHandle } from './git-handle.ts';
 import { listNames } from './git-paths.ts';
-import type { DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
+import type { DetectGhAccountsFn, DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
+import type { CredentialUrlMatchReader } from './share/github-account.ts';
 import { classifyFastForwardRefusal, SyncEngine, type SyncState } from './sync-engine.ts';
 
 const execFileAsync = promisify(execFile);
@@ -160,6 +162,9 @@ function makeProbeEngine(opts: {
   syncEnabled?: boolean;
   mode?: SyncMode;
   fakeProbe: FakeProbeRecorder['fn'];
+  detectGhAccounts?: DetectGhAccountsFn;
+  _readCredentialUrlMatch?: CredentialUrlMatchReader;
+  cc1Broadcaster?: ConstructorParameters<typeof SyncEngine>[0]['cc1Broadcaster'];
 }) {
   return new SyncEngine({
     projectDir,
@@ -168,6 +173,9 @@ function makeProbeEngine(opts: {
     syncEnabled: opts.syncEnabled,
     mode: opts.mode,
     checkPushPermissionFn: opts.fakeProbe,
+    detectGhAccounts: opts.detectGhAccounts,
+    _readCredentialUrlMatch: opts._readCredentialUrlMatch,
+    cc1Broadcaster: opts.cc1Broadcaster,
   });
 }
 
@@ -3014,6 +3022,251 @@ describe('SyncEngine push-permission probe', () => {
     });
   });
 
+  test('threads the origin-declared account and the accounts listing into the probe', async () => {
+    await initGitWithOrigin('https://alice@github.com/inkeep/open-knowledge.git');
+    const probe = fakeProbe({ kind: 'allowed' });
+    const accountsFn: DetectGhAccountsFn = () => [{ login: 'alice', active: true }];
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      detectGhAccounts: accountsFn,
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    // The account comes from the same cached resolver the push path reads,
+    // so probe and push cannot resolve different identities for one origin.
+    expect(probe.opts[0]?.account).toMatchObject({ login: 'alice', source: 'remote-url' });
+    expect(probe.opts[0]?.detectGhAccounts).toBe(accountsFn);
+  });
+
+  // When a probe re-runs without a state transition, the equality predicate
+  // is the sole gate on the staleness broadcast — an identity change with an
+  // unchanged deniedReason must still reach the UI, or the popover keeps
+  // naming the previous account after a `gh auth switch`.
+  test('a re-probe that changes only the resolved identity still broadcasts', async () => {
+    await initGitWithOrigin();
+    const signal = vi.fn();
+    const probe = fakeProbe(
+      { kind: 'denied', reason: 'private-no-access', resolvedLogin: 'alice' },
+      { kind: 'denied', reason: 'private-no-access', resolvedLogin: 'bob' },
+    );
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      cc1Broadcaster: { signal },
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const before = signal.mock.calls.length;
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(signal.mock.calls.length).toBeGreaterThan(before);
+    expect(signal.mock.calls.at(-1)?.[0]).toBe('sync-status');
+    await engine.destroy();
+  });
+
+  test('a re-probe that changes only the declared-miss login still broadcasts', async () => {
+    await initGitWithOrigin();
+    const signal = vi.fn();
+    const probe = fakeProbe(
+      {
+        kind: 'denied',
+        reason: 'private-no-access',
+        resolvedLogin: 'bob',
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      },
+      {
+        kind: 'denied',
+        reason: 'private-no-access',
+        resolvedLogin: 'bob',
+        declaredLogin: 'carol',
+        declaredSource: 'remote-url',
+      },
+    );
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      cc1Broadcaster: { signal },
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const before = signal.mock.calls.length;
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(signal.mock.calls.length).toBeGreaterThan(before);
+    await engine.destroy();
+  });
+
+  test('a re-probe that changes only the declaration mechanism still broadcasts', async () => {
+    await initGitWithOrigin();
+    const signal = vi.fn();
+    const probe = fakeProbe(
+      {
+        kind: 'denied',
+        reason: 'private-no-access',
+        resolvedLogin: 'bob',
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      },
+      {
+        kind: 'denied',
+        reason: 'private-no-access',
+        resolvedLogin: 'bob',
+        declaredLogin: 'alice',
+        declaredSource: 'credential-config',
+      },
+    );
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      cc1Broadcaster: { signal },
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const before = signal.mock.calls.length;
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(signal.mock.calls.length).toBeGreaterThan(before);
+    await engine.destroy();
+  });
+
+  test('a re-probe with an identical outcome does not re-broadcast', async () => {
+    await initGitWithOrigin();
+    const signal = vi.fn();
+    const probe = fakeProbe(
+      { kind: 'denied', reason: 'private-no-access', resolvedLogin: 'alice' },
+      { kind: 'denied', reason: 'private-no-access', resolvedLogin: 'alice' },
+    );
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      cc1Broadcaster: { signal },
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const before = signal.mock.calls.length;
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(signal.mock.calls.length).toBe(before);
+    await engine.destroy();
+  });
+
+  // A denied probe must not overwrite an auth park: the park carries a
+  // classified failure and its error code, and the probe cannot see that
+  // code — demoting the pause would strand every surface keyed on the pair.
+  test('a denied probe leaves the repository-not-found park intact', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({ kind: 'allowed' }, { kind: 'denied', reason: 'private-no-access' });
+    const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-not-found-as-identity';
+
+    await engine.refreshPushPermission();
+
+    // Load-bearing: without `start()` the probe returns at its `hasRemote`
+    // gate and the assertions below just echo the fields the test wrote.
+    expect(probe.calls).toBe(2);
+    const status = engine.getStatus();
+    expect(status.pausedReason).toBe('auth-error');
+    expect(status.state).toBe('auth-error');
+    expect(status.pushErrorCode).toBe('auth-not-found-as-identity');
+    await engine.destroy();
+  });
+
+  // The masquerade is the ONLY park the probe must not demote. Every other
+  // auth subclass is better diagnosed by the probe, and `trigger()` never
+  // clears those parks — so blocking the demotion would strand a revoked
+  // collaborator on "Reconnect required" behind a sign-in that can't help.
+  test('a denied probe DOES demote a non-masquerade auth park', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({ kind: 'allowed' }, { kind: 'denied', reason: 'no-collaborator' });
+    const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-403';
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(engine.getStatus().pausedReason).toBe('no-push-permission');
+    await engine.destroy();
+  });
+
+  // The retryable arm transitions to `offline` WITHOUT clearing pausedReason,
+  // so a state-only guard would let the probe demote a masquerade park here.
+  test('the not-found park survives a denied probe even after an offline transition', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({ kind: 'allowed' }, { kind: 'denied', reason: 'private-no-access' });
+    const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    const internal = engine as unknown as InternalState;
+    internal.state = 'offline';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-not-found-as-identity';
+
+    await engine.refreshPushPermission();
+
+    expect(probe.calls).toBe(2);
+    expect(engine.getStatus().pausedReason).toBe('auth-error');
+    await engine.destroy();
+  });
+
+  test('an origin with no declared account probes with no login — the owner is never a selector', async () => {
+    await initGitWithOrigin('https://github.com/inkeep/open-knowledge.git');
+    const probe = fakeProbe({ kind: 'allowed' });
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      _readCredentialUrlMatch: () => null,
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    expect(probe.opts[0]?.account?.source).toBe('active');
+    expect(probe.opts[0]?.account?.login).toBeUndefined();
+  });
+
+  test('a denied probe result carries its identity fields into getStatus()', async () => {
+    await initGitWithOrigin();
+    const probe = fakeProbe({
+      kind: 'denied',
+      reason: 'private-no-access',
+      resolvedLogin: 'bob',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+    const engine = makeProbeEngine({
+      syncEnabled: false,
+      fakeProbe: probe.fn,
+      _readCredentialUrlMatch: () => null,
+    });
+    await engine.start();
+    await waitForPushPermissionResolved(engine);
+    expect(engine.getStatus().pushPermission).toEqual({
+      checkStatus: 'denied',
+      deniedReason: 'private-no-access',
+      resolvedLogin: 'bob',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+  });
+
   test('records `denied` and pauses in-memory when syncEnabled is true', async () => {
     await initGitWithOrigin();
     const probe = fakeProbe({ kind: 'denied', reason: 'no-collaborator' });
@@ -3307,6 +3560,8 @@ interface InternalState {
   pullError?: string;
   pushErrorCode?: string;
   pullErrorCode?: string;
+  pullInFlight: boolean;
+  pushInFlight: boolean;
   gitHandle: () => unknown;
   handleError: (classified: ReturnType<typeof classifyGitError>, op: 'push' | 'pull') => void;
 }
@@ -3394,26 +3649,177 @@ describe('SyncEngine auth-error recovery', () => {
     await engine.notifyCredentialsChanged();
     expect(engine.getStatus().state).toBe(before);
   });
+
+  // The not-found park is the one auth state whose badge withholds Sign in
+  // (sign-in cannot restore a deleted repo), and its repairs — declaring the
+  // right account, restoring the repo — all happen outside the app, firing no
+  // credential-changed signal. A manual trigger is the user's explicit retry
+  // signal, so it must un-park; a re-failure just re-parks.
+  test('a manual trigger clears the identity-ambiguous not-found park', async () => {
+    const engine = makeEngine({ syncEnabled: true });
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-not-found-as-identity';
+    expect(engine.getStatus().state).toBe('auth-error');
+
+    await engine.trigger('sync');
+
+    const status = engine.getStatus();
+    expect(status.state).not.toBe('auth-error');
+    expect(status.pausedReason).toBeUndefined();
+    expect(status.pushErrorCode).toBeUndefined();
+    await engine.destroy();
+  });
+
+  test('a manual trigger keeps every other auth park parked', async () => {
+    const engine = makeEngine({ syncEnabled: true });
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-401';
+
+    await engine.trigger('sync');
+
+    expect(engine.getStatus().state).toBe('auth-error');
+    expect(engine.getStatus().pausedReason).toBe('auth-error');
+    await engine.destroy();
+  });
+
+  test('a pull-side not-found park clears on manual trigger too', async () => {
+    const engine = makeEngine({ syncEnabled: true });
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pullErrorCode = 'auth-not-found-as-identity';
+
+    await engine.trigger('sync');
+
+    const status = engine.getStatus();
+    expect(status.state).not.toBe('auth-error');
+    expect(status.pausedReason).toBeUndefined();
+    expect(status.pullErrorCode).toBeUndefined();
+    await engine.destroy();
+  });
+
+  // Both background loops die when a park lands (the first tick early-returns
+  // before the finally that chains the next timer), and the cycles a trigger
+  // runs re-arm only their own direction. The un-park must revive both — this
+  // drives `trigger('push')` and then watches a PULL actually run, which only
+  // happens if the un-park re-armed the pull loop it never touched directly.
+  test('un-parking via trigger(push) revives the pull loop', async () => {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'README.md'), '# Test\n');
+    await git.add('.');
+    await git.commit('Initial');
+    const bareDir = join(tmpDir, 'unpark-bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+
+    // Short pull interval so the re-armed background loop is observable: the
+    // un-park schedules with the NORMAL delay (an immediate timer would race
+    // the cycles trigger() runs inline), and `trigger('push')` never runs a
+    // pull itself — so a pull completing here can only come from the timer
+    // the un-park re-armed.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+      pullIntervalSeconds: 0.05,
+    });
+    const internal = engine as unknown as InternalState;
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-not-found-as-identity';
+
+    await engine.trigger('push');
+    expect(engine.getStatus().state).not.toBe('auth-error');
+
+    const deadline = Date.now() + 5000;
+    while (engine.getStatus().lastFetchUtc === null) {
+      if (Date.now() > deadline) throw new Error('pull loop never ran after trigger(push)');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await engine.destroy();
+  });
+
+  // The un-park's cache flush is load-bearing: without it the retry replays a
+  // fallback token (and a declared account) cached before the user's
+  // out-of-band fix.
+  test('a manual trigger on the not-found park flushes both identity caches', async () => {
+    await initGitWithOrigin();
+    const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
+    let urlmatchCalls = 0;
+    const probe = fakeProbe({ kind: 'allowed' });
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      // Off-mode: `runPushCycle` returns at its mode gate, so the trigger
+      // below exercises the un-park (and its flush) without reaching git —
+      // no network against the github.com origin the resolver needs.
+      syncEnabled: false,
+      detectGh: detect.fn,
+      _readCredentialUrlMatch: () => {
+        urlmatchCalls++;
+        return null;
+      },
+      checkPushPermissionFn: probe.fn,
+    });
+    const internal = engine as unknown as InternalState;
+
+    internal.gitHandle();
+    const detectAfterPrime = detect.calls();
+    const urlmatchAfterPrime = urlmatchCalls;
+    expect(detectAfterPrime).toBeGreaterThan(0);
+    expect(urlmatchAfterPrime).toBeGreaterThan(0);
+    internal.gitHandle();
+    expect(detect.calls()).toBe(detectAfterPrime);
+    expect(urlmatchCalls).toBe(urlmatchAfterPrime);
+
+    internal.state = 'auth-error';
+    internal.pausedReason = 'auth-error';
+    internal.pushErrorCode = 'auth-not-found-as-identity';
+    await engine.trigger('push');
+
+    internal.gitHandle();
+    expect(detect.calls()).toBeGreaterThan(detectAfterPrime);
+    expect(urlmatchCalls).toBeGreaterThan(urlmatchAfterPrime);
+    await engine.destroy();
+  });
 });
 
 // ─── gh-token credential relay ────────────────────────────────────────────────
 
-/** A `detectGh` recorder: counts calls and captures the host argument. */
-function recordDetectGh(result: ReturnType<DetectGhFn>): {
+/** A `detectGh` recorder: counts calls and captures the host + login arguments. */
+function recordDetectGh(
+  result: ReturnType<DetectGhFn> | ((host?: string, login?: string) => ReturnType<DetectGhFn>),
+): {
   fn: DetectGhFn;
   calls: () => number;
   lastHost: () => string | undefined;
+  logins: () => Array<string | undefined>;
 } {
   let calls = 0;
   let lastHost: string | undefined;
+  const logins: Array<string | undefined> = [];
   return {
-    fn: (host?: string) => {
+    fn: (host?: string, options?: { login?: string }) => {
+      const login = options?.login;
       calls++;
       lastHost = host;
-      return result;
+      logins.push(login);
+      return typeof result === 'function' ? result(host, login) : result;
     },
     calls: () => calls,
     lastHost: () => lastHost,
+    logins: () => logins,
   };
 }
 
@@ -3509,7 +3915,254 @@ describe('SyncEngine gh-token credential relay', () => {
   });
 });
 
-// ─── Sync mode representation ─────────────────────────────────────────────────
+// ─── Declared-account identity resolution ─────────────────────────────────────
+
+describe('SyncEngine declared-account resolution', () => {
+  /** A credential-config lookup whose spawns the test can count. */
+  function countingUrlMatch(response: string | null): {
+    fn: CredentialUrlMatchReader;
+    calls: () => number;
+  } {
+    let calls = 0;
+    return {
+      fn: () => {
+        calls += 1;
+        return response;
+      },
+      calls: () => calls,
+    };
+  }
+
+  function makeAccountEngine(
+    detect: DetectGhFn,
+    readUrlMatch: CredentialUrlMatchReader,
+    detectGhAccounts?: DetectGhAccountsFn,
+  ) {
+    return new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      syncEnabled: true,
+      detectGh: detect,
+      detectGhAccounts,
+      _readCredentialUrlMatch: readUrlMatch,
+    });
+  }
+
+  /** Honors any requested account; answers login-less requests as the active account. */
+  const honorRequested = (_host?: string, login?: string): ReturnType<DetectGhFn> =>
+    login
+      ? { available: true, token: `gho_${login}`, resolvedLogin: login }
+      : { available: true, token: 'gho_active' };
+
+  test('threads the URL-declared account into gh and names it in the relay env', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh(honorRequested);
+    const urlMatch = countingUrlMatch(null);
+    const engine = makeAccountEngine(detect.fn, urlMatch.fn);
+
+    const handle = (engine as unknown as { gitHandle: () => GitHandle }).gitHandle();
+
+    expect(detect.logins()).toEqual(['alice']);
+    expect(detect.lastHost()).toBe('github.com');
+    expect(handle.env.OK_GH_TOKEN).toBe('gho_alice');
+    expect(handle.env.OK_GH_TOKEN_LOGIN).toBe('alice');
+    // The URL names the account outright — the credential-config step never runs.
+    expect(urlMatch.calls()).toBe(0);
+  });
+
+  test('an org-owned origin with no declared account resolves exactly as before', async () => {
+    await initGitWithOrigin('https://github.com/inkeep/kb.git');
+    const detect = recordDetectGh(honorRequested);
+    const urlMatch = countingUrlMatch(null);
+    const engine = makeAccountEngine(detect.fn, urlMatch.fn);
+
+    const handle = (engine as unknown as { gitHandle: () => GitHandle }).gitHandle();
+
+    // The owner ("inkeep") is never an account selector: gh is asked for the
+    // host's active account, exactly as before declared-account resolution.
+    expect(detect.logins()).toEqual([undefined]);
+    expect(detect.lastHost()).toBe('github.com');
+    expect(handle.env.OK_GH_TOKEN).toBe('gho_active');
+    expect('OK_GH_TOKEN_LOGIN' in handle.env).toBe(false);
+  });
+
+  test('the credential-config lookup runs once per window across many handles', async () => {
+    await initGitWithOrigin('https://github.com/inkeep/kb.git');
+    const detect = recordDetectGh(honorRequested);
+    const urlMatch = countingUrlMatch(null);
+    const engine = makeAccountEngine(detect.fn, urlMatch.fn);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+
+    internal.gitHandle();
+    internal.gitHandle();
+    internal.gitHandle();
+
+    expect(urlMatch.calls()).toBe(1);
+    expect(detect.calls()).toBe(1);
+  });
+
+  test('a remote-URL account edit takes effect on the next handle, no restart', async () => {
+    const git = await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh(honorRequested);
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+
+    expect(internal.gitHandle().env.OK_GH_TOKEN_LOGIN).toBe('alice');
+    await git.raw('remote', 'set-url', 'origin', 'https://bob@github.com/mona/kb.git');
+    expect(internal.gitHandle().env.OK_GH_TOKEN_LOGIN).toBe('bob');
+    expect(detect.logins()).toEqual(['alice', 'bob']);
+  });
+
+  test('a declared account gh cannot serve warns once per miss and recovers', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    let honor = false;
+    const detect = recordDetectGh((_host, login) => {
+      if (!login) return { available: true, token: 'gho_active' };
+      return honor
+        ? { available: true, token: 'gho_alice', resolvedLogin: login }
+        : { available: true, token: 'gho_active', fallback: true };
+    });
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+    const logs = captureSyncLogs();
+    const missWarns = () =>
+      logs.entries.filter((e) => e.level === 'warn' && e.msg.includes('declared GitHub account'));
+
+    try {
+      const handle = internal.gitHandle();
+      internal.gitHandle();
+      internal.gitHandle();
+
+      // One warning for the whole burst, naming the miss — and the relay env
+      // does not claim the account that never produced the token.
+      expect(missWarns()).toHaveLength(1);
+      expect(missWarns()[0]?.data).toMatchObject({
+        host: 'github.com',
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      });
+      expect(handle.env.OK_GH_TOKEN).toBe('gho_active');
+      expect('OK_GH_TOKEN_LOGIN' in handle.env).toBe(false);
+
+      // The user signs alice in; a credential change drops the token cache.
+      honor = true;
+      await engine.notifyCredentialsChanged();
+      expect(internal.gitHandle().env.OK_GH_TOKEN_LOGIN).toBe('alice');
+      expect(missWarns()).toHaveLength(1);
+
+      // A later regression is a new episode and earns a new warning.
+      honor = false;
+      await engine.notifyCredentialsChanged();
+      internal.gitHandle();
+      expect(missWarns()).toHaveLength(2);
+    } finally {
+      logs.restore();
+    }
+  });
+
+  // The strictly worse miss: the declared account produced no token AT ALL.
+  // The failure that follows would otherwise carry no record of the
+  // declaration that led there — this warning is that record.
+  test('a declared account with no gh token at all still warns once', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh(() => ({ available: false }));
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+    const logs = captureSyncLogs();
+    const missWarns = () =>
+      logs.entries.filter((e) => e.level === 'warn' && e.msg.includes('declared GitHub account'));
+
+    try {
+      const handle = internal.gitHandle();
+      internal.gitHandle();
+
+      expect(missWarns()).toHaveLength(1);
+      expect(missWarns()[0]?.msg).toContain('no gh token');
+      expect(missWarns()[0]?.data).toMatchObject({
+        host: 'github.com',
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      });
+      expect('OK_GH_TOKEN' in handle.env).toBe(false);
+    } finally {
+      logs.restore();
+    }
+  });
+
+  test('the fallback warning names the active account that answered instead', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh((_host, login) =>
+      login
+        ? { available: true, token: 'gho_active', fallback: true }
+        : { available: true, token: 'gho_active' },
+    );
+    const accounts: DetectGhAccountsFn = () => [{ login: 'bob', active: true }];
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn, accounts);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+    const logs = captureSyncLogs();
+
+    try {
+      internal.gitHandle();
+      const warn = logs.entries.find(
+        (e) => e.level === 'warn' && e.msg.includes('declared GitHub account'),
+      );
+      expect(warn?.data).toMatchObject({ declaredLogin: 'alice', resolvedLogin: 'bob' });
+    } finally {
+      logs.restore();
+    }
+  });
+
+  test('a throwing accounts listing costs the warning its name, not the handle its token', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh((_host, login) =>
+      login
+        ? { available: true, token: 'gho_active', fallback: true }
+        : { available: true, token: 'gho_active' },
+    );
+    const accounts: DetectGhAccountsFn = () => {
+      throw new Error('gh exploded');
+    };
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn, accounts);
+    const internal = engine as unknown as { gitHandle: () => GitHandle };
+    const logs = captureSyncLogs();
+
+    try {
+      const handle = internal.gitHandle();
+      // The token path is unaffected by the diagnostic failure...
+      expect(handle.env.OK_GH_TOKEN).toBe('gho_active');
+      // ...the miss warning still fires, unnamed...
+      const miss = logs.entries.find(
+        (e) => e.level === 'warn' && e.msg.includes('declared GitHub account'),
+      );
+      expect(miss?.data).toMatchObject({ declaredLogin: 'alice' });
+      expect((miss?.data as { resolvedLogin?: string }).resolvedLogin).toBeUndefined();
+      // ...and the listing failure itself is on the record, mirroring the
+      // probe path's twin.
+      const failed = logs.entries.find(
+        (e) => e.level === 'warn' && e.msg.includes('detectGhAccounts failed'),
+      );
+      expect(failed?.data).toMatchObject({ host: 'github.com' });
+    } finally {
+      logs.restore();
+    }
+  });
+
+  test('the auth tier resolves the same declared account as git handles', async () => {
+    await initGitWithOrigin('https://alice@github.com/mona/kb.git');
+    const detect = recordDetectGh(honorRequested);
+    const engine = makeAccountEngine(detect.fn, countingUrlMatch(null).fn);
+
+    const tier = await (
+      engine as unknown as { resolveAuthTier: () => Promise<string> }
+    ).resolveAuthTier();
+
+    // Same resolution, same cache key — a tier probe must not spawn gh a
+    // second time for an account the handles already resolved.
+    expect(tier).toBe('authenticated');
+    expect(detect.logins()).toEqual(['alice']);
+  });
+});
 
 describe('SyncEngine sync mode', () => {
   test('constructing with a mode reports it in status', () => {

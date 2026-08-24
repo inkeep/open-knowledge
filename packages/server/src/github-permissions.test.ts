@@ -398,6 +398,228 @@ describe('checkPushPermission — token resolution', () => {
   });
 });
 
+// ─── Declared-account identity ────────────────────────────────────────────────
+
+/** Recording gh fake: captures each (host, login) request, replays `result`. */
+function ghRecording(result: ReturnType<DetectGhFn>): {
+  fn: DetectGhFn;
+  calls: Array<{ host?: string; login?: string }>;
+} {
+  const calls: Array<{ host?: string; login?: string }> = [];
+  const fn: DetectGhFn = (host, options) => {
+    const login = options?.login;
+    calls.push({ host, login });
+    return result;
+  };
+  return { fn, calls };
+}
+
+describe('checkPushPermission — declared-account identity', () => {
+  test('requests the declared login from gh and names it on a denial', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    const gh = ghRecording({
+      available: true,
+      token: 'ghs_alice_token',
+      resolvedLogin: 'alice',
+      fallback: false,
+    });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'remote-url' },
+      detectGh: gh.fn,
+      _fetchFn: fetch,
+    });
+    expect(gh.calls).toEqual([{ host: 'github.com', login: 'alice' }]);
+    // Honored declaration: the denial names alice and carries no declared-miss
+    // fields — the account was used; the denial is real.
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'private-no-access',
+      resolvedLogin: 'alice',
+    });
+  });
+
+  test('a declared-account fallback names the account actually used, never the declared one', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    // gh could not serve alice: the active account answered (no resolvedLogin).
+    const gh = ghRecording({ available: true, token: 'ghs_bob_token', fallback: true });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'remote-url' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => [
+        { login: 'alice-work', active: false },
+        { login: 'bob', active: true },
+      ],
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'private-no-access',
+      resolvedLogin: 'bob',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+  });
+
+  test('identity reporting degrades to an unnamed denial when gh cannot list accounts', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    const gh = ghRecording({ available: true, token: 'ghs_bob_token', fallback: true });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'credential-config' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => undefined,
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'private-no-access',
+      declaredLogin: 'alice',
+      declaredSource: 'credential-config',
+    });
+    expect(result).not.toHaveProperty('resolvedLogin');
+  });
+
+  test('a throwing accounts listing costs the denial its name, not its classification', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    const gh = ghRecording({ available: true, token: 'ghs_bob_token', fallback: true });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'remote-url' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => {
+        throw new Error('gh exploded');
+      },
+      _fetchFn: fetch,
+    });
+    // Still the real classification — not unknown/network — with the
+    // declared miss intact and only the name missing.
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'private-no-access',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+  });
+
+  test('with no declared account, a denial names the active gh account', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(200, { permissions: { push: false } }));
+    const gh = ghRecording({ available: true, token: 'ghs_active_token' });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { source: 'active' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => [{ login: 'carol', active: true }],
+      _fetchFn: fetch,
+    });
+    expect(gh.calls).toEqual([{ host: 'github.com', login: undefined }]);
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'no-collaborator',
+      resolvedLogin: 'carol',
+    });
+  });
+
+  test('a stored token is named by its own entry login, never a gh account', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    const store: ProbeTokenStore = {
+      get: async () => ({ token: 'gho_stored', login: 'dana' }),
+    };
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      detectGh: ghUnavailable(),
+      // Would name 'eve' if the stored tier ever borrowed the gh listing.
+      detectGhAccounts: () => [{ login: 'eve', active: true }],
+      tokenStore: store,
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'private-no-access',
+      resolvedLogin: 'dana',
+    });
+  });
+
+  test("a stored entry's 'unknown' login sentinel leaves the denial unnamed", async () => {
+    const { fetch } = mockFetch(() => jsonResponse(404));
+    const store: ProbeTokenStore = {
+      get: async () => ({ token: 'gho_stored', login: 'unknown' }),
+    };
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      detectGh: ghUnavailable(),
+      detectGhAccounts: () => [{ login: 'eve', active: true }],
+      tokenStore: store,
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'denied', reason: 'private-no-access' });
+    expect(result).not.toHaveProperty('resolvedLogin');
+  });
+
+  test('an allowed probe carries no identity fields even after a fallback', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(200, { permissions: { push: true } }));
+    const gh = ghRecording({ available: true, token: 'ghs_bob_token', fallback: true });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'remote-url' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => [{ login: 'bob', active: true }],
+      _fetchFn: fetch,
+    });
+    // The pino fallback warning is the sole trace of a push that would
+    // succeed as the wrong identity — the result stays bare.
+    expect(result).toEqual({ kind: 'allowed' });
+  });
+
+  test('signed out entirely with a declared account: the denial carries the declared miss', async () => {
+    const { fetch, calls } = mockFetch(() => jsonResponse(200, {}));
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'alice', source: 'remote-url' },
+      detectGh: ghUnavailable(),
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({
+      kind: 'denied',
+      reason: 'not-authenticated',
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+    expect(result).not.toHaveProperty('resolvedLogin');
+    expect(calls).toHaveLength(0);
+  });
+
+  // GitHub logins are case-insensitive, and hand-written remote URLs carry
+  // whatever casing the user typed — a casing-only difference is the same
+  // account, and claiming it missed would point a correctly-configured user
+  // at a non-problem.
+  test('a casing-only difference between declared and resolved is not a miss', async () => {
+    const { fetch } = mockFetch(() => jsonResponse(200, { permissions: { push: false } }));
+    const gh = ghRecording({ available: true, token: 'ghs_alice_token', fallback: true });
+    const result = await checkPushPermission({
+      owner: 'o',
+      repo: 'r',
+      account: { login: 'Alice', source: 'remote-url' },
+      detectGh: gh.fn,
+      detectGhAccounts: () => [{ login: 'alice', active: true }],
+      _fetchFn: fetch,
+    });
+    expect(result).toMatchObject({ kind: 'denied', resolvedLogin: 'alice' });
+    expect(result).not.toHaveProperty('declaredLogin');
+    expect(result).not.toHaveProperty('declaredSource');
+  });
+});
+
 // ─── Request shape ────────────────────────────────────────────────────────────
 
 describe('checkPushPermission — request shape', () => {
@@ -575,12 +797,14 @@ describe('checkPushPermission — telemetry', () => {
     });
   });
 
-  test('attributes are bounded — never the repo identifier or URL', async () => {
+  test('attributes are bounded — never the repo identifier, URL, or a login', async () => {
     const { fetch } = mockFetch(() => jsonResponse(404));
     await checkPushPermission({
       owner: 'secret-owner-abc',
       repo: 'secret-repo-xyz',
-      detectGh: ghAvailable('secret-token-123'),
+      account: { login: 'secret-declared-login', source: 'remote-url' },
+      detectGh: () => ({ available: true, token: 'secret-token-123', fallback: true }),
+      detectGhAccounts: () => [{ login: 'secret-active-login', active: true }],
       _fetchFn: fetch,
     });
     await harness.flush();
@@ -599,6 +823,8 @@ describe('checkPushPermission — telemetry', () => {
       expect(serialized).not.toContain('secret-owner-abc');
       expect(serialized).not.toContain('secret-repo-xyz');
       expect(serialized).not.toContain('secret-token-123');
+      expect(serialized).not.toContain('secret-declared-login');
+      expect(serialized).not.toContain('secret-active-login');
     }
   });
 });

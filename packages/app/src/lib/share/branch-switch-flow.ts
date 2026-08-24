@@ -584,6 +584,10 @@ export interface ApplyWorktreeCheckoutOutcomeResult {
      *  for sign-in copy plus a Sign in action — retrying without a credential
      *  just fails again. */
     readonly authFailed?: true;
+    /** Set iff `reason === 'fetch-failed'` hit the repository-not-found
+     *  masquerade: the remote answered, so the connection copy is wrong and a
+     *  Sign in cannot fix a repo the account can't see (or that is gone). */
+    readonly notFoundAsIdentity?: true;
   };
 }
 
@@ -632,9 +636,10 @@ export function applyWorktreeCheckoutOutcome(
       kind: 'toast',
       reason: result.reason,
       helper: result.helper,
-      // Only `fetch-failed` carries this (its own arm on WorktreeCreateResult);
+      // Only `fetch-failed` carries these (its own arm on WorktreeCreateResult);
       // every other reason narrows to `undefined` here.
       authFailed: result.reason === 'fetch-failed' ? result.authFailed : undefined,
+      notFoundAsIdentity: result.reason === 'fetch-failed' ? result.notFoundAsIdentity : undefined,
     },
   };
 }

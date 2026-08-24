@@ -353,17 +353,20 @@ function lazyResolveTokenStore(authFile: string | undefined): () => Promise<Toke
 /**
  * Push-permission-probe-shaped token store. Returns immediately; defers
  * the underlying `createTokenStore()` to the first `.get()` call.
- * Structural shape matches the server's `ProbeTokenStore` interface.
+ * Structural shape matches the server's `ProbeTokenStore` interface —
+ * including `login`, which the probe uses to attribute a denial to the
+ * stored account (the store's `'unknown'` placeholder is filtered on the
+ * server side, not here).
  */
 export function makeLazyProbeTokenStore(authFile?: string): {
-  get: (host: string) => Promise<{ token?: string } | null>;
+  get: (host: string) => Promise<{ token?: string; login?: string } | null>;
 } {
   const resolve = lazyResolveTokenStore(authFile);
   return {
     async get(host: string) {
       const store = await resolve();
       const entry = await store.get(host);
-      return entry === null ? null : { token: entry.token };
+      return entry === null ? null : { token: entry.token, login: entry.login };
     },
   };
 }

@@ -1955,6 +1955,10 @@ msgstr "Lampiran"
 msgid "Attachments must total under 3 MB."
 msgstr "Total lampiran harus di bawah 3 MB."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "Diautentikasi sebagai {login}."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."
@@ -10819,6 +10823,15 @@ msgid "Repository name"
 msgstr "Nama repositori"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "Repositori tidak ditemukan"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "Repositori tidak ditemukan — mungkin ia tidak ada, atau akun yang digunakan mungkin tidak punya akses."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "Repositori tidak ditemukan. Mungkin ia sudah diganti nama, dihapus, atau dipindahkan."
 
@@ -14799,10 +14812,6 @@ msgstr "Anda tidak punya akses ke repositori ini."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "Anda tidak punya izin push ke repo ini"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "Anda tidak punya izin push ke repo ini."
 
@@ -14884,6 +14893,14 @@ msgstr "Versi Anda saat ini disimpan lebih dulu, jadi ini bisa dikembalikan."
 msgid "Your edits stay on this computer"
 msgstr "Suntingan Anda tetap di komputer ini"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Konfigurasi Git Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Konfigurasi kredensial Git Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14920,6 +14937,10 @@ msgstr "Salinan lokal cabang <0>{branch}</0> milik Anda tertinggal. Tarik peruba
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "Pesanmu tidak sampai ke {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "URL remote Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

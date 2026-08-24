@@ -27,7 +27,20 @@ export function readCanonicalGitHubRemoteUrl(projectPath: string): string | null
   const origin = inspection.repository.readRemoteUrl('origin');
   if (origin.kind !== 'configured') return null;
 
-  const parsed = parseGitUrl(origin.url);
+  return canonicalizeGitHubRemoteUrl(origin.url);
+}
+
+/**
+ * Re-emit a git remote URL in the canonical `https://<host>/<owner>/<repo>.git`
+ * form, or null when it isn't a GitHub-host URL. The rebuild is from parsed
+ * components only, so no userinfo — a declared account or an embedded
+ * credential — can survive into the output. Also the load-time repair for
+ * `RecentProject.gitRemoteUrl` values persisted by builds whose parser folded
+ * userinfo into the hostname and rebuilt credentialed URLs — an in-memory
+ * heal; the persisted copy is replaced by the next whole-file state save.
+ */
+export function canonicalizeGitHubRemoteUrl(url: string): string | null {
+  const parsed = parseGitUrl(url);
   if (parsed === null) return null;
   // Presume any host that isn't a known non-GitHub forge is github.com or a
   // GHES instance, and re-emit the canonical HTTPS form host-qualified so

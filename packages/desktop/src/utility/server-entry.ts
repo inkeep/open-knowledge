@@ -24,6 +24,7 @@ import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
 import {
   detectGh,
+  detectGhAccounts,
   ensurePiBridge,
   getNativeTomlMcpEditor,
   loadConfig,
@@ -373,6 +374,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         skipAutoInit: true,
         autoInitFn: undefined,
         detectGh,
+        detectGhAccounts,
         tokenStore,
         embeddingsKeyStore,
         mcpTomlEditor: getNativeTomlMcpEditor(),

@@ -42,11 +42,18 @@ import {
 } from './error-classification.ts';
 import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { createGhTokenSource, type GhTokenSource } from './gh-token-source.ts';
-import { applyGitEnv, createGitInstance, type GitHandle, withParentLock } from './git-handle.ts';
+import {
+  applyGitEnv,
+  createGitInstance,
+  type GitHandle,
+  type RelayGhToken,
+  withParentLock,
+} from './git-handle.ts';
 import { resolveGitIdentity } from './git-identity.ts';
 import { listNames } from './git-paths.ts';
 import {
   type CheckPushPermissionOptions,
+  type DetectGhAccountsFn,
   type DetectGhFn,
   checkPushPermission as defaultCheckPushPermission,
   type ProbeTokenStore,
@@ -62,11 +69,17 @@ import {
 } from './mcp-config-reconciler.ts';
 import { toPosix } from './path-utils.ts';
 import {
-  originGitHubHost,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
   type SyncRemoteInfo,
+  sameGitHubLogin,
 } from './share/git-context.ts';
+import {
+  type CachedGitHubAccountResolver,
+  type CredentialUrlMatchReader,
+  createCachedGitHubAccountResolver,
+  type GitHubAccount,
+} from './share/github-account.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 import {
   computeRemainingMs,
@@ -160,7 +173,7 @@ export type SyncState =
  */
 export type PushPermissionStatus =
   | { checkStatus: 'allowed' }
-  | {
+  | ({
       checkStatus: 'denied';
       // Both payload unions derive structurally from the source-of-truth
       // `PushPermission` in github-permissions.ts so a code added there can't
@@ -168,7 +181,10 @@ export type PushPermissionStatus =
       // sync-seed.ts still needs a manual matching update; its round-trip
       // test is the runtime net for that half.
       deniedReason: Extract<PushPermission, { kind: 'denied' }>['reason'];
-    }
+    } & Pick<
+      Extract<PushPermission, { kind: 'denied' }>,
+      'resolvedLogin' | 'declaredLogin' | 'declaredSource'
+    >)
   | {
       checkStatus: 'unknown';
       unknownError?: Extract<PushPermission, { kind: 'unknown' }>['error'];
@@ -177,7 +193,15 @@ export type PushPermissionStatus =
 /** Flatten the tagged `PushPermission` from `github-permissions.ts` to wire shape. */
 function pushPermissionStatusFrom(p: PushPermission): PushPermissionStatus {
   if (p.kind === 'allowed') return { checkStatus: 'allowed' };
-  if (p.kind === 'denied') return { checkStatus: 'denied', deniedReason: p.reason };
+  if (p.kind === 'denied') {
+    return {
+      checkStatus: 'denied',
+      deniedReason: p.reason,
+      ...(p.resolvedLogin !== undefined ? { resolvedLogin: p.resolvedLogin } : {}),
+      ...(p.declaredLogin !== undefined ? { declaredLogin: p.declaredLogin } : {}),
+      ...(p.declaredSource !== undefined ? { declaredSource: p.declaredSource } : {}),
+    };
+  }
   return { checkStatus: 'unknown', unknownError: p.error };
 }
 
@@ -190,7 +214,12 @@ function pushPermissionStatusEqual(
   if (a === null || b === null) return false;
   if (a.checkStatus !== b.checkStatus) return false;
   if (a.checkStatus === 'denied' && b.checkStatus === 'denied') {
-    return a.deniedReason === b.deniedReason;
+    return (
+      a.deniedReason === b.deniedReason &&
+      a.resolvedLogin === b.resolvedLogin &&
+      a.declaredLogin === b.declaredLogin &&
+      a.declaredSource === b.declaredSource
+    );
   }
   if (a.checkStatus === 'unknown' && b.checkStatus === 'unknown') {
     return a.unknownError === b.unknownError;
@@ -327,8 +356,13 @@ interface SyncEngineOptions {
   syncEnabled?: boolean;
   /** Ordered credential config values for simple-git (e.g. ['credential.helper=', 'credential.helper=!…']). */
   credentialConfig?: string[];
-  /** CC1 broadcaster for sync-status channel signals. */
-  cc1Broadcaster?: CC1Broadcaster | null;
+  /**
+   * CC1 broadcaster for sync-status channel signals. Narrowed to the one
+   * member the engine calls so a test can inject `{ signal }` without
+   * casting past the class's private fields; the real broadcaster stays
+   * assignable.
+   */
+  cc1Broadcaster?: Pick<CC1Broadcaster, 'signal'> | null;
   /** Called on every state transition. */
   onStateChange?: (state: SyncState) => void;
   /**
@@ -395,6 +429,18 @@ interface SyncEngineOptions {
    * falls through to Tier B/C or anonymous.
    */
   detectGh?: DetectGhFn;
+  /**
+   * gh account listing for naming the identity behind a probe denial — same
+   * package-cycle seam as `detectGh`. Omit when no auth source is wired;
+   * denials then go unnamed, nothing else changes.
+   */
+  detectGhAccounts?: DetectGhAccountsFn;
+  /**
+   * Injectable `git config --get-urlmatch` reader for the declared-account
+   * resolution behind every git handle, so tests can count or script the one
+   * subprocess that step spawns. Default: the real lookup.
+   */
+  _readCredentialUrlMatch?: CredentialUrlMatchReader;
   /**
    * Tier B/C credential store, structurally compatible with cli's `TokenStore`.
    * Omit when no auth source is wired.
@@ -491,7 +537,7 @@ export class SyncEngine {
    */
   private mode: SyncMode;
   private credentialConfig: string[];
-  private cc1Broadcaster: CC1Broadcaster | null;
+  private cc1Broadcaster: Pick<CC1Broadcaster, 'signal'> | null;
   private onStateChange: ((state: SyncState) => void) | undefined;
   private onContentConflictsDetected: ((files: string[]) => void | Promise<void>) | undefined;
   private onContentConflictsResolved: ((files: string[]) => void | Promise<void>) | undefined;
@@ -505,12 +551,27 @@ export class SyncEngine {
     | undefined;
   private mcpTomlEditor: NativeTomlMcpEditor | undefined;
   private detectGh: DetectGhFn | undefined;
+
+  private detectGhAccounts: DetectGhAccountsFn | undefined;
   /**
    * Resolves + caches the gh token relayed to the credential helper so sync
    * authenticates via the same source clone does (gh-first). Built from the
    * injected `detectGh`; returns null throughout when gh is unavailable.
    */
   private ghTokenSource: GhTokenSource;
+  /**
+   * Resolves + caches which GitHub account the origin declares (remote-URL
+   * userinfo, then `credential.<url>.username`), so the token above is
+   * requested for the account the user bound to this remote rather than for
+   * whichever gh account happens to be active.
+   */
+  private ghAccountResolver: CachedGitHubAccountResolver;
+  /**
+   * Dedup key for the declared-account-miss warning: set while the declared
+   * account is not producing the relayed token, cleared on recovery. Keeps the
+   * warning to one line per continuous miss instead of one per git handle.
+   */
+  private declaredAccountWarnKey: string | undefined;
   private tokenStore: ProbeTokenStore | null | undefined;
   private checkPushPermissionFn: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
   /**
@@ -591,7 +652,11 @@ export class SyncEngine {
     this.checkpointBeforeOverlayRestore = options.checkpointBeforeOverlayRestore;
     this.mcpTomlEditor = options.mcpTomlEditor;
     this.detectGh = options.detectGh;
+    this.detectGhAccounts = options.detectGhAccounts;
     this.ghTokenSource = createGhTokenSource(options.detectGh);
+    this.ghAccountResolver = createCachedGitHubAccountResolver({
+      _readCredentialUrlMatch: options._readCredentialUrlMatch,
+    });
     this.tokenStore = options.tokenStore;
     this.checkPushPermissionFn = options.checkPushPermissionFn ?? defaultCheckPushPermission;
     this.statePath = resolve(getLocalDir(this.projectDir), 'sync-state.json');
@@ -601,31 +666,138 @@ export class SyncEngine {
   }
 
   /**
-   * Host the relayed gh token authenticates: the origin remote's GitHub host
-   * (github.com or GHES), falling back to github.com when the origin is
-   * missing or a non-GitHub forge (the relay is then harmless surplus).
-   * Resolved per handle from `.git/config` — a few small file reads, noise
-   * next to the subprocess each handle spawns — so a remote swap mid-session
-   * is picked up without a restart. The token stays cached per host in
-   * `ghTokenSource`.
+   * The origin's declared GitHub account plus the host the relayed token must
+   * authenticate: the remote's GitHub host (github.com or GHES), falling back
+   * to github.com when the origin is missing or a non-GitHub forge (the relay
+   * is then harmless surplus — the helper only serves it to a matching host).
+   * Resolved per call from `.git/config` — a few small file reads, noise next
+   * to the subprocess each handle spawns — so a remote swap mid-session,
+   * including a userinfo edit that changes the declared account, is picked up
+   * without a restart. The subprocess-backed credential-config step stays
+   * cached per origin URL in `ghAccountResolver`.
    */
-  private syncGhTokenHost(): string {
-    return originGitHubHost(this.projectDir);
+  private syncGhTarget(): { account: GitHubAccount; host: string } {
+    const account = this.ghAccountResolver.resolve(this.projectDir);
+    return { account, host: account.host ?? 'github.com' };
+  }
+
+  /**
+   * The gh token relayed to the credential helper, requested for the origin's
+   * declared account when one is named. A declared account gh cannot serve
+   * degrades to the active account's token (never to no credential), which
+   * `noteDeclaredAccountOutcome` records. The token stays cached per host +
+   * account in `ghTokenSource`.
+   */
+  private resolveRelayGhToken(): RelayGhToken | null {
+    const { account, host } = this.syncGhTarget();
+    const relay = this.ghTokenSource.get(host, account.login);
+    this.noteDeclaredAccountOutcome(account, host, relay);
+    return relay;
+  }
+
+  /**
+   * Warn — once per continuous miss, not once per handle — when the account
+   * the user declared for this origin did not produce the relayed token. Two
+   * shapes of miss: the relay fell back to the active gh account (the push
+   * may then succeed as that identity, making this warning the only trace),
+   * or the declared account produced no token at all (the strictly worse
+   * outcome — the failure that follows would otherwise carry no record of
+   * the declaration that led there). The fallback identity is resolved via
+   * `detectGhAccounts` only on the miss TRANSITION, never per handle — an
+   * account-list spawn per handle is the amplification the token cache
+   * exists to prevent, so a mid-miss active-account switch keeps the
+   * original warning rather than re-warning. Logins are
+   * unbounded-cardinality and belong in pino fields only, never in OTel
+   * span or metric attributes.
+   */
+  private noteDeclaredAccountOutcome(
+    account: GitHubAccount,
+    host: string,
+    relay: RelayGhToken | null,
+  ): void {
+    const declared = account.login;
+    // Resolve the login that actually produced the token BEFORE deciding, the
+    // same ordering `withDeniedIdentity` uses on the probe path: a fallback
+    // relay carries no login, so comparing it directly would report every
+    // fallback as a miss — including the casing-only case, where the active
+    // account IS the declared one and GitHub treats the two as identical.
+    const resolvedLogin = relay === null ? undefined : (relay.login ?? this.activeGhLogin(host));
+    const missed =
+      declared !== undefined && (relay === null || !sameGitHubLogin(resolvedLogin, declared));
+    if (!missed) {
+      this.declaredAccountWarnKey = undefined;
+      return;
+    }
+    const key = `${host}\0${declared}\0${account.source}\0${relay === null ? 'none' : 'fallback'}`;
+    if (key !== this.declaredAccountWarnKey) {
+      if (relay === null) {
+        log.warn(
+          { host, declaredLogin: declared, declaredSource: account.source },
+          '[sync] declared GitHub account produced no gh token — git runs with no relayed credential',
+        );
+      } else {
+        log.warn(
+          {
+            host,
+            declaredLogin: declared,
+            declaredSource: account.source,
+            resolvedLogin,
+          },
+          '[sync] declared GitHub account did not produce the gh token — using the active account',
+        );
+      }
+    }
+    this.declaredAccountWarnKey = key;
+  }
+
+  /**
+   * Parked on the repository-not-found masquerade. Keyed on `pausedReason` as
+   * well as `state` because the retryable arm transitions to `offline`
+   * without clearing the reason, and the UI surfaces key on the reason — so a
+   * `state`-only test would leave `trigger()` unable to un-park exactly the
+   * state the surfaces are already rendering as not-found. Shared by
+   * `trigger()` and the probe-demotion guard so the two cannot drift.
+   */
+  private parkedOnAmbiguousNotFound(): boolean {
+    return (
+      (this.state === 'auth-error' || this.pausedReason === 'auth-error') &&
+      (this.pushErrorCode === 'auth-not-found-as-identity' ||
+        this.pullErrorCode === 'auth-not-found-as-identity')
+    );
+  }
+
+  /**
+   * Best-effort name of the host's active gh account, for the fallback
+   * warning above. Diagnostic only: a listing failure (or an injected
+   * implementation throwing across the package seam) costs the warning its
+   * name, never the handle its token.
+   */
+  private activeGhLogin(host: string): string | undefined {
+    if (!this.detectGhAccounts) return undefined;
+    try {
+      return this.detectGhAccounts(host)?.find((a) => a.active)?.login;
+    } catch (err) {
+      log.warn({ err, host }, '[sync] detectGhAccounts failed — fallback identity stays unnamed');
+      return undefined;
+    }
   }
 
   /**
    * Single construction point for every git handle the engine spawns. Threads
    * the credential config plus the cached gh token (scoped to the origin's
-   * GitHub host) so fetch/push authenticate via gh when available. Local-only
-   * handles (e.g. `remote -v`, `merge --abort`) carry the token harmlessly —
-   * the cache keeps resolution to at most one `gh` spawn per minute
-   * regardless of handle count.
+   * GitHub host and requested for its declared account) so fetch/push
+   * authenticate via gh when available. Local-only handles (e.g. `remote -v`,
+   * `merge --abort`) carry the token harmlessly — the caches keep resolution
+   * to at most one `git config` spawn per minute and one `gh` spawn per token
+   * TTL window regardless of handle count (60s when the requested account
+   * answered; a shorter, escalating window after a declared-account miss —
+   * `gh-token-source.ts` owns that contract).
    */
   private gitHandle(gitIndexFile?: string): GitHandle {
     return createGitInstance(this.projectDir, {
       credentialConfig: this.credentialConfig,
       gitIndexFile,
-      ghToken: this.ghTokenSource.get(this.syncGhTokenHost()) ?? undefined,
+      ghToken: this.resolveRelayGhToken() ?? undefined,
       timeoutMs: GIT_BLOCK_TIMEOUT_MS,
     });
   }
@@ -1045,9 +1217,10 @@ export class SyncEngine {
    * stored token is picked up on the next cycle — but the engine parks in
    * `auth-error`, where both sync cycles early-return, so the engine makes no
    * useful progress while parked until something clears the state. `trigger()`
-   * deliberately does NOT clear `auth-error` (retrying with the same missing
-   * credential just fails again), and `setEnabled(true)` requires toggling sync
-   * off first. This is the dedicated recovery entry point: the auth-login
+   * clears `auth-error` only for the identity-ambiguous not-found park, whose
+   * repairs happen outside the app; for every other subclass a retry with the
+   * same missing credential would just fail again, and `setEnabled(true)`
+   * requires toggling sync off first. This is the dedicated recovery entry point: the auth-login
    * success handler calls it so a reconnect resumes sync without a restart.
    * No-op unless currently parked on an auth error, so a credential change
    * during healthy operation is cheap.
@@ -1059,8 +1232,11 @@ export class SyncEngine {
     // user just signed in / switched accounts). Drop it BEFORE the auth-error
     // gate below so an account switch during HEALTHY sync is picked up on the
     // next already-scheduled cycle, not left stale until the TTL expires. The
-    // resume logic below still only runs when parked on an auth error.
+    // account resolution is flushed with it — requesting a fresh token for a
+    // stale account choice would defeat the flush. The resume logic below
+    // still only runs when parked on an auth error.
     this.ghTokenSource.invalidate();
+    this.ghAccountResolver.invalidate();
 
     if (this.state !== 'auth-error' && this.pausedReason !== 'auth-error') return;
 
@@ -1098,6 +1274,37 @@ export class SyncEngine {
     ) {
       this.pausedReason = undefined;
       this.clearPullError();
+    }
+    // A manual trigger also clears the one auth park a re-sign-in cannot fix:
+    // git's "repository not found" with a credential attached. Every repair
+    // for it happens outside the app (declaring the right account, restoring
+    // the deleted repo) and fires no credential-changed signal, and the badge
+    // withholds the Sign in button for it — without this, the only recovery
+    // is an app restart. Other auth subclasses keep the Sign in button, whose
+    // handler resumes via notifyCredentialsChanged; clearing them here would
+    // just re-run a fetch with the same missing credential. Caches are
+    // flushed like the other recovery entry points, so the retry resolves
+    // fresh instead of replaying a fallback token cached before the user's
+    // out-of-band fix; a re-failure simply re-parks.
+    if (this.parkedOnAmbiguousNotFound()) {
+      this.ghTokenSource.invalidate();
+      this.ghAccountResolver.invalidate();
+      this.pausedReason = undefined;
+      this.clearPushError();
+      this.clearPullError();
+      this.transitionTo('idle');
+      // Both background loops died when the park landed: the first tick after
+      // an auth-error early-returns BEFORE the finally that chains the next
+      // timer. The cycles this trigger runs re-arm only their own direction
+      // (`trigger('push')` never reschedules pull), so re-arm both here —
+      // otherwise the un-parked engine reports idle while one direction
+      // silently never runs again. Normal delays, not the immediate
+      // `schedulePull(0)` the credential-change path uses: this trigger runs
+      // its own cycles inline right after, and a 0ms timer would race them
+      // (the inline cycle would then early-return on `pullInFlight` and
+      // resolve the trigger while the pull it reported was still running).
+      this.schedulePull();
+      this.schedulePush();
     }
     // Manual sync is one of the documented refresh triggers for the
     // push-permission probe (auth-state change, manual sync, project
@@ -1371,6 +1578,10 @@ export class SyncEngine {
       },
       '[sync] push-permission probe dispatching',
     );
+    // The same resolution the push path reads (cached resolver), so the
+    // probe can never authenticate as a different identity than the push
+    // it is predicting.
+    const { account } = this.syncGhTarget();
     let outcome: PushPermission;
     try {
       outcome = await this.checkPushPermissionFn({
@@ -1378,7 +1589,9 @@ export class SyncEngine {
         repo: origin.repo,
         host: origin.host,
         transport: origin.transport,
+        account,
         detectGh: this.detectGh,
+        detectGhAccounts: this.detectGhAccounts,
         tokenStore: this.tokenStore,
       });
     } catch (err) {
@@ -1403,7 +1616,28 @@ export class SyncEngine {
     // persistent-write alternative was rejected at spec time because it
     // would silently mutate the user's preference.
     let transitioned = false;
-    if (next.checkStatus === 'denied' && this.mode === 'full') {
+    // An auth park outranks a probe denial ONLY for the not-found masquerade.
+    // There the park's error code is the more specific diagnosis and the probe
+    // cannot see it. Every other auth subclass is better diagnosed by the
+    // probe — a 403 park plus `denied/no-collaborator` is exactly the
+    // revoked-collaborator case — and `trigger()` clears only the masquerade,
+    // so blocking those demotions would strand the user on "Reconnect
+    // required" behind a sign-in that cannot help. Keyed on `pausedReason` as
+    // well as `state`: the retryable arm transitions to `offline` without
+    // clearing the reason, and the surfaces key on the reason.
+    if (next.checkStatus === 'denied' && this.mode === 'full' && this.parkedOnAmbiguousNotFound()) {
+      // A discarded verdict is otherwise invisible: the park stays, the probe
+      // result is dropped, and nothing records that the two disagreed.
+      log.info(
+        { reason: next.deniedReason, caller },
+        '[sync] probe denial not applied — repository-not-found park is the more specific diagnosis',
+      );
+    }
+    if (
+      next.checkStatus === 'denied' &&
+      this.mode === 'full' &&
+      !this.parkedOnAmbiguousNotFound()
+    ) {
       if (this.pausedReason !== 'no-push-permission' || this.state !== 'disabled') {
         this.pausedReason = 'no-push-permission';
         this.transitionTo('disabled'); // already broadcasts CC1 sync-status
@@ -1693,15 +1927,15 @@ export class SyncEngine {
    * Resolve which credential tier the follower fetches as, mirroring the push
    * probe's gh → token-store → anonymous order. The probe doesn't surface which
    * tier it used, so the engine resolves it from the credential sources it
-   * already holds. gh resolution is cached (at most one spawn per minute); the
-   * token store is read at most once per pull.
+   * already holds. gh resolution is cached per TTL window (`gh-token-source.ts`
+   * owns the contract, including the shorter declared-account-miss window);
+   * the token store is read at most once per pull.
    */
   private async resolveAuthTier(): Promise<PullAuthTier> {
-    const host = this.syncGhTokenHost();
-    if (this.ghTokenSource.get(host) !== null) return 'authenticated';
+    if (this.resolveRelayGhToken() !== null) return 'authenticated';
     if (this.tokenStore) {
       try {
-        const entry = await this.tokenStore.get(host);
+        const entry = await this.tokenStore.get(this.syncGhTarget().host);
         if (entry?.token) return 'authenticated';
       } catch (err) {
         // A token-store backend can throw on read (corrupted keyring, EACCES).
@@ -3793,8 +4027,12 @@ export class SyncEngine {
       // The relayed gh token may be the stale credential that just failed
       // (revoked, or a `gh auth logout` since we cached). Drop the cache so the
       // next cycle re-resolves — picking up a fresh `gh auth login` without
-      // waiting out the TTL.
+      // waiting out the TTL. The account resolution is dropped with it: the
+      // failure may stem from the account choice itself (a fresh
+      // `credential.<url>.username` edit), and re-requesting a token for the
+      // stale choice would waste the flush.
       this.ghTokenSource.invalidate();
+      this.ghAccountResolver.invalidate();
       this.transitionTo('auth-error');
       this.pausedReason = 'auth-error';
     } else if (classified.class === 'semantic' && classified.subclass === 'protected-branch') {

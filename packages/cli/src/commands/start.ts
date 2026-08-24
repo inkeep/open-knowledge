@@ -50,7 +50,7 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { Command, InvalidArgumentError, Option } from 'commander';
 import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
-import { detectGh } from '../auth/gh-detect.ts';
+import { detectGh, detectGhAccounts } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { getNativeTomlMcpEditor } from '../native/toml-config-engine.ts';
@@ -866,6 +866,7 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       host,
       quiet: false,
       detectGh,
+      detectGhAccounts,
       tokenStore,
       embeddingsKeyStore,
       mcpTomlEditor: getNativeTomlMcpEditor(),

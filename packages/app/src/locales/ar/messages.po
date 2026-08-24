@@ -1959,6 +1959,10 @@ msgstr "المرفقات"
 msgid "Attachments must total under 3 MB."
 msgstr "يجب أن يقل إجمالي المرفقات عن 3 ميغابايت."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "تمت المصادقة باسم {login}."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "محتوى مرجعي؛ يُعكس حرفيًا في كل مكان يُشار إليه فيه."
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "اسم المستودع"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "لم يُعثر على المستودع"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "لم يُعثر على المستودع — ربما لا يكون موجودًا، أو ربما لا يملك الحساب المستخدم صلاحية الوصول."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "لم يُعثر على المستودع. ربما أُعيدت تسميته أو حُذف أو نُقل."
 
@@ -14803,10 +14816,6 @@ msgstr "ليس لديك صلاحية الوصول إلى هذا المستودع
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "ليس لديك إذن بالدفع إلى هذا المستودع"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "ليس لديك إذن بالدفع إلى هذا المستودع."
 
@@ -14888,6 +14897,14 @@ msgstr "تُحفظ نسختك الحالية أولًا، فهذا قابل لل
 msgid "Your edits stay on this computer"
 msgstr "تبقى تعديلاتك على هذا الجهاز"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "إعدادات Git لديك تشير إلى {declaredLogin}، لكن تعذّر استخدام بيانات اعتماد ذلك الحساب."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "إعدادات بيانات اعتماد Git لديك تشير إلى {declaredLogin}، لكن تعذّر استخدام بيانات اعتماد ذلك الحساب."
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "نسختك المحلية من الفرع <0>{branch}</0> متأخرة. 
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "لم تصل رسالتك إلى {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "عنوان URL البعيد لديك يشير إلى {declaredLogin}، لكن تعذّر استخدام بيانات اعتماد ذلك الحساب."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

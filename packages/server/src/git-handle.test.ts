@@ -125,6 +125,16 @@ describe('buildGitEnv', () => {
     expect(withToken.OK_GH_TOKEN).toBe('gho_relayed');
     expect(withToken.OK_GH_TOKEN_HOST).toBe('github.com');
   });
+
+  test('emits OK_GH_TOKEN_LOGIN only when the relay names its account', () => {
+    const named = buildGitEnv({ token: 'gho_relayed', host: 'github.com', login: 'alice' });
+    expect(named.OK_GH_TOKEN_LOGIN).toBe('alice');
+
+    // A token the active account answered anonymously carries no login, and the
+    // env must not invent one — a wrong name here misdirects auth diagnostics.
+    const anonymous = buildGitEnv({ token: 'gho_relayed', host: 'github.com' });
+    expect('OK_GH_TOKEN_LOGIN' in anonymous).toBe(false);
+  });
 });
 
 describe('createGitInstance (credential.helper config)', () => {

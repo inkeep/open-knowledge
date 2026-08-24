@@ -1955,6 +1955,10 @@ msgstr "সংযুক্তি"
 msgid "Attachments must total under 3 MB."
 msgstr "সংযুক্তির মোট আকার ৩ MB-র কম হতে হবে।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "{login} হিসেবে প্রমাণীকৃত।"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "প্রামাণিক বিষয়বস্তু; যেখানেই উল্লেখ করা হোক হুবহু প্রতিফলিত।"
@@ -10819,6 +10823,15 @@ msgid "Repository name"
 msgstr "রিপোজিটরির নাম"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "রিপোজিটরি পাওয়া যায়নি"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "রিপোজিটরি পাওয়া যায়নি — হয়তো এটি নেই, অথবা ব্যবহৃত অ্যাকাউন্টের প্রবেশাধিকার নেই।"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "রিপোজিটরি পাওয়া যায়নি। হয়তো এর নাম বদলানো হয়েছে, মুছে ফেলা হয়েছে, বা সরানো হয়েছে।"
 
@@ -14799,10 +14812,6 @@ msgstr "এই রিপোজিটরিতে আপনার প্রবে
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "এই রিপোজিটরিতে পুশ করার অনুমতি আপনার নেই"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "এই রিপোজিটরিতে পুশ করার অনুমতি আপনার নেই।"
 
@@ -14884,6 +14893,14 @@ msgstr "আপনার বর্তমান সংস্করণটি আগ
 msgid "Your edits stay on this computer"
 msgstr "আপনার সম্পাদনা এই কম্পিউটারেই থাকে"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "আপনার Git কনফিগারেশনে {declaredLogin} উল্লেখ করা আছে, কিন্তু সেই অ্যাকাউন্টের ক্রেডেনশিয়াল ব্যবহার করা যায়নি।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "আপনার Git ক্রেডেনশিয়াল কনফিগারেশনে {declaredLogin} উল্লেখ করা আছে, কিন্তু সেই অ্যাকাউন্টের ক্রেডেনশিয়াল ব্যবহার করা যায়নি।"
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14920,6 +14937,10 @@ msgstr "ব্রাঞ্চ <0>{branch}</0>-এর আপনার স্থ�
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "আপনার বার্তা {agentName}-এ পৌঁছায়নি।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "আপনার রিমোট URL-এ {declaredLogin} উল্লেখ করা আছে, কিন্তু সেই অ্যাকাউন্টের ক্রেডেনশিয়াল ব্যবহার করা যায়নি।"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

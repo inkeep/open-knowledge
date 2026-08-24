@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   branchExistsOnOrigin,
   originGitHubHost,
+  parseGitHubOriginUrl,
   readGitHeadBranch,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
+  sameGitHubLogin,
   shouldResetAmbientCredentials,
 } from './git-context.ts';
 
@@ -124,6 +126,29 @@ describe('readOriginGitHubRepo', () => {
     });
   });
 
+  // The origin read deliberately omits the URL-declared login — identity
+  // decisions go through the `github-account.ts` resolvers — so the account
+  // is asserted on the parser and the origin result is pinned login-free.
+  test('the parser surfaces an https userinfo account; the origin read stays login-free', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://alice@github.com/inkeep/open-knowledge.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      transport: 'https',
+    });
+    expect(parseGitHubOriginUrl('https://alice@github.com/inkeep/open-knowledge.git')).toEqual({
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      transport: 'https',
+      login: 'alice',
+    });
+  });
+
   test('parses SSH SCP-style github.com origin URL', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = git@github.com:inkeep/open-knowledge.git\n',
@@ -148,6 +173,117 @@ describe('readOriginGitHubRepo', () => {
       repo: 'open-knowledge',
       transport: 'ssh',
     });
+  });
+
+  test('surfaces the account declared in an ssh:// origin userinfo', () => {
+    expect(parseGitHubOriginUrl('ssh://alice@github.com/inkeep/open-knowledge.git')).toEqual({
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      transport: 'ssh',
+      login: 'alice',
+    });
+  });
+
+  test('surfaces the account declared in an scp-style origin userinfo', () => {
+    expect(parseGitHubOriginUrl('alice@github.com:inkeep/open-knowledge.git')).toEqual({
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      transport: 'ssh',
+      login: 'alice',
+    });
+  });
+
+  // `git@` is the SSH transport's conventional placeholder, not an account, so
+  // reading it as one would send every SSH clone chasing a `git` GitHub user.
+  // `git` is also a reserved name on GitHub, so the same holds on https.
+  test('treats the literal git userinfo as absent on every transport', () => {
+    for (const url of [
+      'git@github.com:inkeep/open-knowledge.git',
+      'ssh://git@github.com/inkeep/open-knowledge.git',
+      'https://git@github.com/inkeep/open-knowledge.git',
+    ]) {
+      const parsed = parseGitHubOriginUrl(url);
+      expect(parsed).toMatchObject({ host: 'github.com' });
+      expect(parsed).not.toHaveProperty('login');
+    }
+  });
+
+  test('percent-decodes an encoded login before validating it', () => {
+    expect(
+      parseGitHubOriginUrl('https://alice%2Dcontoso@github.com/inkeep/open-knowledge.git'),
+    ).toMatchObject({ login: 'alice-contoso' });
+  });
+
+  // GCM documents `alice%40contoso.com@host` for forges whose logins are
+  // emails, but no GitHub login can contain `@` or `.` — the decoded form
+  // fails the login grammar and reads as no declaration rather than becoming
+  // a value gh could never serve.
+  test('an email-shaped decoded userinfo is not a GitHub login', () => {
+    const parsed = parseGitHubOriginUrl(
+      'https://alice%40contoso.com@github.com/inkeep/open-knowledge.git',
+    );
+    expect(parsed).toMatchObject({ host: 'github.com' });
+    expect(parsed).not.toHaveProperty('login');
+  });
+
+  test('a malformed percent escape fails the login grammar and reads as absent', () => {
+    const parsed = parseGitHubOriginUrl('https://ali%zz@github.com/inkeep/open-knowledge.git');
+    expect(parsed).toMatchObject({ host: 'github.com' });
+    expect(parsed).not.toHaveProperty('login');
+  });
+
+  // GitHub's canonical PAT-in-URL form puts the token in the USERNAME half
+  // (`https://ghp_…@github.com/o/r`). Reading it as an account would echo the
+  // credential into `gh auth token --user` argv, warn-log fields, the
+  // sync-status wire, and the sync popover — on every resolution, since the
+  // `--user` lookup can never succeed for it.
+  test('a token-shaped username is never an account', () => {
+    const cases = [
+      `https://ghp_${'a'.repeat(36)}@github.com/inkeep/open-knowledge.git`,
+      `https://gho_${'b'.repeat(36)}@github.com/inkeep/open-knowledge.git`,
+      `https://ghs_${'c'.repeat(36)}@github.com/inkeep/open-knowledge.git`,
+      `https://github_pat_${'d'.repeat(70)}@github.com/inkeep/open-knowledge.git`,
+    ];
+    for (const url of cases) {
+      const parsed = parseGitHubOriginUrl(url);
+      expect(parsed).toMatchObject({ host: 'github.com' });
+      expect(parsed).not.toHaveProperty('login');
+    }
+  });
+
+  // The Actions/App convention (`x-access-token:<token>@`) and its cousins
+  // name the auth scheme, not an account — OK's own publish path mints the
+  // x-access-token form.
+  test('token-auth placeholder usernames are never accounts', () => {
+    for (const user of ['x-access-token', 'x-oauth-basic', 'oauth2', 'token']) {
+      const parsed = parseGitHubOriginUrl(
+        `https://${user}:tok123@github.com/inkeep/open-knowledge.git`,
+      );
+      expect(parsed).toMatchObject({ host: 'github.com' });
+      expect(parsed).not.toHaveProperty('login');
+    }
+  });
+
+  // Enterprise Managed User logins carry an underscore + enterprise
+  // shortcode; the grammar must admit them or EMU users lose the whole
+  // feature.
+  test('an EMU-style login with an underscore is a valid account', () => {
+    expect(
+      parseGitHubOriginUrl('https://mona_acme@github.com/inkeep/open-knowledge.git'),
+    ).toMatchObject({ login: 'mona_acme' });
+  });
+
+  // 39 chars is GitHub's login ceiling; every current token format is ≥40
+  // chars, so length alone keeps arbitrary secrets out even when they avoid
+  // the known prefixes.
+  test('a 40-char opaque string is rejected by the login length cap', () => {
+    const parsed = parseGitHubOriginUrl(
+      `https://${'s'.repeat(40)}@github.com/inkeep/open-knowledge.git`,
+    );
+    expect(parsed).toMatchObject({ host: 'github.com' });
+    expect(parsed).not.toHaveProperty('login');
   });
 
   test('returns ok when repo URL omits the .git suffix', () => {
@@ -281,15 +417,28 @@ describe('readOriginGitHubRepo', () => {
     expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
   });
 
-  test('credential-embedded https URLs classify as non-github (documented limitation)', () => {
-    // The https form deliberately excludes userinfo, matching the cli's
-    // `parseGitUrl` grammar — a `user:pass@host` origin falls through to
-    // `non-github` (and downstream host defaults fall back to github.com),
-    // the same treatment such URLs received for github.com itself.
-    seedRepo(dir, {
-      config: '[remote "origin"]\n\turl = https://user:pass@ghes.corp.example/org/repo.git\n',
+  test('credential-embedded https URL keeps the username as the login and drops the password', () => {
+    const url = 'https://user:pass@ghes.corp.example/org/repo.git';
+    const parsed = parseGitHubOriginUrl(url);
+    expect(parsed).toEqual({
+      host: 'ghes.corp.example',
+      owner: 'org',
+      repo: 'repo',
+      transport: 'https',
+      login: 'user',
     });
-    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
+    // The password must not survive the parse in any field — it would reach
+    // logs and UI labels from here.
+    expect(JSON.stringify(parsed)).not.toContain('pass');
+    // The origin read of the same URL stays login-free.
+    seedRepo(dir, { config: `[remote "origin"]\n\turl = ${url}\n` });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'ghes.corp.example',
+      owner: 'org',
+      repo: 'repo',
+      transport: 'https',
+    });
   });
 
   test('uses the first url= line and ignores subsequent ones', () => {
@@ -411,6 +560,17 @@ describe('shouldResetAmbientCredentials', () => {
     expect(shouldResetAmbientCredentials(dir)).toBe(false);
   });
 
+  // A userinfo origin used to fall out of the parser as `non-github` and so
+  // kept its inherited chain. That was an accident of the grammar, not a
+  // policy: the host is still GitHub and OK can still issue a credential for
+  // it, which is the only question this gate asks.
+  test('https origin with userinfo resets — the host is what decides', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://alice@github.com/inkeep/open-knowledge.git\n',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
+  });
+
   test('no remote resets — nothing ambient to preserve, sync is dormant anyway', () => {
     expect(shouldResetAmbientCredentials(dir)).toBe(true);
   });
@@ -515,6 +675,19 @@ describe('readSyncRemoteInfo', () => {
     });
   });
 
+  // Credential-bearing URLs reach the GitHub branch now that the parser
+  // accepts userinfo, so the browse URL is rebuilt from the normalized host —
+  // a passthrough would publish the password into a clickable link.
+  test('GitHub-host origin with embedded credentials builds a webUrl carrying neither', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://user:pass@ghes.corp.example/org/repo.git\n',
+    });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'ghes.corp.example/org/repo',
+      webUrl: 'https://ghes.corp.example/org/repo',
+    });
+  });
+
   test('known non-github forge yields a readable label and a null webUrl (no link)', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://gitlab.com/team/notes.git\n',
@@ -606,5 +779,28 @@ describe('linked-worktree common-dir resolution', () => {
 
   test('HEAD still resolves from the per-worktree git dir, not the common dir', () => {
     expect(readGitHeadBranch(project)).toBe('feat-bar');
+  });
+});
+
+describe('sameGitHubLogin', () => {
+  // GitHub logins are unique case-insensitively, so a casing difference is the
+  // same person — treating it as a mismatch would report a declared-account
+  // miss for a correctly-configured remote.
+  test('a casing difference is the same account', () => {
+    expect(sameGitHubLogin('Alice', 'alice')).toBe(true);
+    expect(sameGitHubLogin('alice', 'ALICE')).toBe(true);
+    expect(sameGitHubLogin('alice', 'alice')).toBe(true);
+  });
+
+  test('different accounts are not the same', () => {
+    expect(sameGitHubLogin('alice', 'bob')).toBe(false);
+  });
+
+  // An unattributed credential is never "the same account" as a named one —
+  // the absent side must not read as a match and suppress a real miss.
+  test('an absent side is never a match', () => {
+    expect(sameGitHubLogin('alice', undefined)).toBe(false);
+    expect(sameGitHubLogin(undefined, 'alice')).toBe(false);
+    expect(sameGitHubLogin(undefined, undefined)).toBe(false);
   });
 });

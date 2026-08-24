@@ -874,6 +874,35 @@ describe('worktree-service — share-branch checkout', () => {
     expect(await repoSnapshot(handle.mainRepo)).toEqual(before);
   });
 
+  // The repository-not-found masquerade: git said "not found" while a
+  // credential was presented, which covers both a deleted repo and one the
+  // identity can't see. Not login-fixable, so the dialog must NOT offer
+  // Sign in — the dedicated `notFoundAsIdentity` flag routes it to copy naming both
+  // possibilities, matching the badge's withdrawn affordance for the same
+  // classification.
+  test('checkoutShareBranchWorktree does not flag repository-not-found as authFailed', async () => {
+    handle = await makeRepo();
+    const notFoundRemote = join(handle.root, 'not-found-remote.sh');
+    writeFileSync(
+      notFoundRemote,
+      '#!/bin/sh\necho "remote: Repository not found." >&2\necho "fatal: repository \'https://github.com/acme/gone.git/\' not found" >&2\nexit 1\n',
+      { mode: 0o755 },
+    );
+    await git(handle.mainRepo, 'config', 'protocol.ext.allow', 'always');
+    await git(handle.mainRepo, 'remote', 'add', 'origin', `ext::${notFoundRemote}`);
+
+    const res = await checkoutShareBranchWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'any-branch',
+    });
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.reason).toBe('fetch-failed');
+    expect(res.authFailed).toBeUndefined();
+    expect(res.notFoundAsIdentity).toBe(true);
+    expect(res.message).toMatch(/not found/i);
+  });
+
   // fetch-leg hang: an ext:: transport that just sleeps stands in for a
   // stalled network. The injected bound must kill the fetch (classified
   // retryable) long before the transport would give up on its own. The elapsed

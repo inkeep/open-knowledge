@@ -15,14 +15,16 @@
  * before either surface sees the stderr (reusing the share-publish
  * redactor — same threat model, same regex shape).
  *
- * Threat-model inheritance: `redactShareSubprocessStderr` only matches
- * `https?://user:pwd@host` shapes (the form the inline-token push URL
- * uses). Any future clone path that could surface other credential
- * shapes in stderr — bearer tokens, OAuth params, `http.extraHeader`
- * config quoted back — needs the redactor broadened (in
- * `share/publish.ts`) or a clone-specific redactor here. Today's clone
- * flow runs simple-git's `git.clone()` with a plain HTTPS URL and no
- * extra-header config, so the inherited model is sufficient.
+ * Threat-model inheritance: `redactShareSubprocessStderr` covers every
+ * credential-in-URL-userinfo shape — `user:pwd@`, the token-as-username
+ * form GitHub documents (`https://<pat>@host`), and raw-`@` passwords —
+ * so don't add a second clone-local URL redactor. Still open by design:
+ * credential shapes OUTSIDE a URL userinfo (bearer tokens, OAuth params,
+ * `http.extraHeader` config quoted back into stderr) — a future clone
+ * path that could surface those needs the redactor in `share/publish.ts`
+ * broadened. Today's clone flow runs simple-git's `git.clone()` with a
+ * plain HTTPS URL and no extra-header config, so the inherited model is
+ * sufficient.
  */
 
 import { redactShareSubprocessStderr } from '../share/publish.ts';
@@ -50,7 +52,7 @@ const GENERIC_TITLE = 'Clone subprocess reported an error.';
  * and bounded-cardinality discipline applies to anything that lands on
  * Pino structured logs as well.
  */
-const MAX_DETAIL_LEN = 500;
+export const MAX_DETAIL_LEN = 500;
 
 /**
  * Classify a single clone stderr string into envelope shape.
@@ -61,6 +63,12 @@ const MAX_DETAIL_LEN = 500;
  * full line. Order matters: "Authentication failed" can co-occur with
  * "Repository not found" on some auth-shaped 404s; checking auth first
  * would mis-label.
+ *
+ * No identity is named in the 404 title: the login that produced the failed
+ * clone's credential lives in the CLI subprocess, and its `--json` error
+ * event does not carry it across the process boundary — naming an identity
+ * here would require widening that wire. Until then the copy asserts both
+ * 404 possibilities and no account.
  */
 export function classifyCloneError(rawStderr: string): CloneErrorClassification {
   const detail = redactShareSubprocessStderr(rawStderr).trim().slice(0, MAX_DETAIL_LEN);

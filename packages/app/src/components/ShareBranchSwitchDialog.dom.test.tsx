@@ -1201,6 +1201,37 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     expect(calls.open).not.toHaveBeenCalled();
   });
 
+  // The repository-not-found masquerade rides the fetch-failed reason with
+  // its own flag: the remote ANSWERED, so the connection copy is wrong, and
+  // the repo may not exist or the account used may not see it. The surface
+  // must render the not-found copy — a transposition of the two boolean-ish
+  // flags (or dropped threading) would silently fall back to the network
+  // dead end this arm exists to avoid.
+  test('a not-found fetch failure shows the not-found copy, not the connection toast', async () => {
+    const store = createShareReceiveStore();
+    const { bridge } = makeBridge({
+      checkout: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'fetch-failed' as const,
+        notFoundAsIdentity: true as const,
+      })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(toastError).toHaveBeenCalledWith(
+        'Repository not found — it may not exist, or the account used may not have access.',
+      );
+    });
+    expect(toastError).not.toHaveBeenCalledWith('Could not fetch branch. Check your connection.');
+  });
+
   test('a branch deleted upstream dismisses the dialog with the no-longer-exists toast', async () => {
     const store = createShareReceiveStore();
     const { bridge, calls } = makeBridge({

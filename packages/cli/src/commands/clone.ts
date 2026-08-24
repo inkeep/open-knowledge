@@ -10,11 +10,18 @@ import {
 import {
   assertGitAvailable,
   type Config,
+  type CredentialUrlMatchReader,
+  type GitHubAccountSource,
   GitNotAvailableError,
   GitTooOldError,
+  loginShapedUserinfoUser,
+  redactShareSubprocessStderr,
+  resolveGitHubAccountFromUrl,
+  sameGitHubLogin,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
+import type { GhDetectResult } from '../auth/gh-detect.ts';
 import { type ResolvedAuth, resolveAuth } from '../auth/resolve-auth.ts';
 import { makeLazyTokenStore, type TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
@@ -92,6 +99,10 @@ export function buildCloneEnv(sourceEnv: NodeJS.ProcessEnv = process.env): Recor
  * STRIPPED — a stale exported token would otherwise shadow the token store
  * inside the helper, and only this process's own resolution may speak for
  * which credential the clone uses.
+ *
+ * OK_GH_TOKEN_LOGIN names the account behind the token for diagnostics only —
+ * the helper never gates on it. It is set only when this resolution knows the
+ * account, and stripped otherwise for the same stale-inheritance reason.
  */
 export function buildCloneAuthEnv(
   resolved: Pick<ResolvedAuth, 'relayToken'>,
@@ -101,9 +112,12 @@ export function buildCloneAuthEnv(
   if (resolved.relayToken) {
     env.OK_GH_TOKEN = resolved.relayToken.token;
     env.OK_GH_TOKEN_HOST = resolved.relayToken.host;
+    if (resolved.relayToken.login) env.OK_GH_TOKEN_LOGIN = resolved.relayToken.login;
+    else delete env.OK_GH_TOKEN_LOGIN;
   } else {
     delete env.OK_GH_TOKEN;
     delete env.OK_GH_TOKEN_HOST;
+    delete env.OK_GH_TOKEN_LOGIN;
   }
   return env;
 }
@@ -189,6 +203,22 @@ interface CloneOptions {
    * a toast.
    */
   branch?: string | null;
+  /**
+   * Observes which auth the clone actually resolved: the tier plus the login
+   * that produced the credential, when known. The failure path reads this to
+   * name the identity used — re-resolving there could disagree with the
+   * resolution the clone ran with. `login` deliberately mirrors
+   * `RelayGhToken.login` (the resolved, post-fallback account), which is why
+   * it isn't spelled `resolvedLogin` here.
+   */
+  onAuthResolved?: (info: { tier: ResolvedAuth['tier']; login?: string }) => void;
+  /**
+   * gh detector, injectable so a test can drive the tier-A resolution (and the
+   * declared-account miss that rides on it) without a real `gh`. Same seam
+   * `resolveCloneAuth` already exposes; threaded here because the warning it
+   * produces is emitted by this function, not by the resolver.
+   */
+  _detectGhFn?: (host?: string, options?: { login?: string }) => GhDetectResult;
 }
 
 type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
@@ -256,6 +286,140 @@ export function shouldSkipAuthForPublicRepo(
 }
 
 /**
+ * Resolve the auth for a clone as one step: the account the URL (or the
+ * user's own git config) declares, then the token for that account. The
+ * declared login rides into `gh auth token --user <login>`, so cloning
+ * `https://alice@github.com/o/r` authenticates as alice regardless of which
+ * gh account is active; a login gh cannot serve falls back to the active
+ * account inside `detectGh`, never to `tier: 'none'`. This is the only path
+ * that builds a clone's `ResolvedAuth`, keeping account resolution and token
+ * resolution one operation — the identity the clone authenticates as is the
+ * identity the post-clone sync engine resolves from the same stored URL.
+ *
+ * The hostname for gh's `--hostname` scope is derived from `cloneUrl` here
+ * rather than accepted from the caller: two sources for the same fact is how
+ * a clone and its later sync end up authenticating differently.
+ */
+export interface CloneAuthResolution {
+  auth: ResolvedAuth;
+  /**
+   * Set when the URL (or the user's git config) declared an account and the
+   * gh resolution did not produce that account's token — the fallback rescued
+   * the clone with the active account instead. Only the gh tier can prove the
+   * miss: a stored-token or credential-less resolution doesn't say which
+   * account will answer the credential request, and claiming a miss there
+   * could be false, so those tiers stay silent. The caller decides how to
+   * surface it (stderr on the human path; the machine path's trace is the
+   * sync engine's own fallback warning once the project opens).
+   */
+  declaredMiss?: {
+    declaredLogin: string;
+    declaredSource: Exclude<GitHubAccountSource, 'active'>;
+  };
+}
+
+/**
+ * The stderr line warning that a declared account did not answer, or `null`
+ * when there is nothing to say. Pure so the wording and the mechanism
+ * mapping are testable without driving a real clone; the `--json` gate lives
+ * at the call site, matching the sibling stderr writes in `runClone`.
+ *
+ * Human channel only: stdout is the machine wire under `--json`, and that
+ * flow's trace is the sync engine's own fallback warning once the cloned
+ * project is opened.
+ *
+ * The copy asserts only what this process can prove. A fallback means gh did
+ * not confirm the requested account — it does NOT prove another account
+ * answered: gh older than 2.40 rejects `--user` outright, and a casing-only
+ * difference falls back by design, so in both cases the token may well be the
+ * declared person's. Naming the GitHub CLI is safe here (unlike the app's
+ * wire copy, which cannot know the tier) because only the gh tier reports a
+ * miss at all.
+ */
+export function formatDeclaredMissWarning(
+  miss: CloneAuthResolution['declaredMiss'],
+): string | null {
+  if (miss === undefined) return null;
+  const { declaredLogin, declaredSource } = miss;
+  // Exhaustive per source rather than a binary ternary: a source added later
+  // must land on the neutral wording, never silently borrow another
+  // mechanism's sentence.
+  let mechanism: string;
+  switch (declaredSource) {
+    case 'remote-url':
+      mechanism = `The clone URL names ${declaredLogin}`;
+      break;
+    case 'credential-config':
+      mechanism = `Your Git credential configuration names ${declaredLogin}`;
+      break;
+    default:
+      mechanism = `Your Git configuration names ${declaredLogin}`;
+  }
+  // Names the one command that settles it. The process cannot name the
+  // answering account itself without a `detectGhAccounts` spawn this path
+  // deliberately avoids, and the two benign causes (gh below the 2.40
+  // `--user` floor, a casing-only declaration) are indistinguishable here —
+  // so hand the user a check rather than a verdict they cannot falsify.
+  return (
+    `⚠ ${mechanism}, but the GitHub CLI couldn't confirm that account — the clone used its active account.\n` +
+    `  Run \`gh auth status\` to see which account that is. If ${declaredLogin} is listed as active, nothing is wrong; confirming an account by name needs GitHub CLI 2.40 or newer.\n`
+  );
+}
+
+export async function resolveCloneAuth(
+  cloneUrl: string,
+  tokenStore: TokenStore,
+  options: {
+    selfCliArgs?: readonly string[];
+    /**
+     * Directory the `credential.<url>.*` lookup runs in, defaulting to the
+     * process cwd. Every scope git resolves from there applies, including the
+     * local scope of an enclosing repository — `ok clone` run from inside
+     * another checkout inherits that checkout's entries. That is git's own
+     * rule (a plain `git clone` from the same directory resolves
+     * identically), but it means this tier can name a different account
+     * pre-clone than the sync path later resolves from the cloned project's
+     * own directory. The URL's userinfo outranks this tier and survives into
+     * `.git/config`, so a URL-declared account cannot diverge that way.
+     */
+    cwd?: string;
+    _detectGhFn?: (host?: string, options?: { login?: string }) => GhDetectResult;
+    _readCredentialUrlMatch?: CredentialUrlMatchReader;
+  } = {},
+): Promise<CloneAuthResolution> {
+  const parsed = parseGitUrl(cloneUrl);
+  if (!parsed) {
+    // Password-stripped: an unparseable input can still carry an embedded
+    // credential, and this message reaches the terminal.
+    throw new Error(`Invalid git URL: ${stripUrlPassword(cloneUrl)}`);
+  }
+  const account = resolveGitHubAccountFromUrl(cloneUrl, {
+    cwd: options.cwd,
+    _readCredentialUrlMatch: options._readCredentialUrlMatch,
+  });
+  // The account resolver's host when it parsed one, the CLI parse otherwise:
+  // the resolver normalizes (lowercase, www-fold) the same way the post-clone
+  // sync path does, so `gh --hostname`, the relay's host guard, and the sync
+  // engine all speak one host spelling for one remote.
+  const auth = await resolveAuth(
+    account.host ?? parsed.hostname,
+    tokenStore,
+    { selfCliArgs: options.selfCliArgs, login: account.login },
+    options._detectGhFn,
+  );
+  // A gh-tier token that the declared account didn't produce is a proven
+  // fallback (a relayed token always names its account when the request was
+  // honored). See CloneAuthResolution for why other tiers never report one.
+  const declaredMiss =
+    account.login !== undefined &&
+    auth.tier === 'A' &&
+    !sameGitHubLogin(auth.relayToken?.login, account.login)
+      ? { declaredLogin: account.login, declaredSource: account.source }
+      : undefined;
+  return { auth, ...(declaredMiss !== undefined ? { declaredMiss } : {}) };
+}
+
+/**
  * `parseGitUrl` accepts `owner/repo` shorthand, but git itself treats a bare
  * `owner/repo` as a local filesystem path and never contacts GitHub (no
  * `insteadOf` rewrite exists in a standard environment). Reconstruct the
@@ -286,7 +450,7 @@ export async function runClone(
 ): Promise<string> {
   const parsed = parseGitUrl(url);
   if (!parsed) {
-    throw new Error(`Invalid git URL: ${url}`);
+    throw new Error(`Invalid git URL: ${stripUrlPassword(url)}`);
   }
   const cloneUrl = resolveCloneUrl(url, parsed);
 
@@ -335,13 +499,26 @@ export async function runClone(
   // there's no point paying the up-to-5s network round-trip just to discard the result.
   const shouldProbe = parsed.protocol === 'https' && parsed.hostname === 'github.com';
   const isPublic = shouldProbe ? await isGitHubRepoPublic(parsed.owner, parsed.name) : false;
-  const resolved: ResolvedAuth = shouldSkipAuthForPublicRepo(
+  const resolution: CloneAuthResolution = shouldSkipAuthForPublicRepo(
     parsed.protocol,
     parsed.hostname,
     isPublic,
   )
-    ? { tier: 'none', gitConfig: [] }
-    : await resolveAuth(parsed.hostname, tokenStore, { selfCliArgs: resolveSelfCliArgs() });
+    ? { auth: { tier: 'none', gitConfig: [] } }
+    : await resolveCloneAuth(cloneUrl, tokenStore, {
+        selfCliArgs: resolveSelfCliArgs(),
+        cwd,
+        ...(opts._detectGhFn ? { _detectGhFn: opts._detectGhFn } : {}),
+      });
+  const resolved: ResolvedAuth = resolution.auth;
+  opts.onAuthResolved?.({ tier: resolved.tier, login: resolved.relayToken?.login });
+  // Gate at the call site, like the sibling stderr writes below. The
+  // visibility probe short-circuits for any non-github.com host, so a test
+  // can reach this with an injected detector and a loopback URL.
+  if (!opts.json) {
+    const declaredMissWarning = formatDeclaredMissWarning(resolution.declaredMiss);
+    if (declaredMissWarning) process.stderr.write(declaredMissWarning);
+  }
 
   const env = buildCloneAuthEnv(resolved);
 
@@ -468,6 +645,36 @@ export function ensureOkExcludedFromGit(
 
 const SHELL_SAFE_TOKEN = /^[A-Za-z0-9._/:@-]+$/;
 
+/**
+ * Drop every credential a URL's userinfo can carry before it is echoed. The
+ * `:password` half always goes, and the username half goes too when it is
+ * itself credential-shaped — GitHub's canonical PAT-in-URL form is
+ * `https://<token>@github.com/o/r`, so only a login-shaped username (the
+ * user's identity declaration) survives into the message and the suggested
+ * `ok clone` re-run, which then still authenticates as the same account.
+ */
+function stripUrlPassword(url: string): string {
+  // Userinfo is matched greedily up to the LAST `@` before the path, so a
+  // password containing `@` (`user:p@ss@host`) is stripped whole. The class
+  // deliberately does NOT exclude whitespace, unlike the share-publish
+  // redactor: that one scans free-form multi-line stderr with /g, where a
+  // span crossing whitespace would swallow unrelated prose. This one is
+  // `^`-anchored on a single URL argument, so it cannot over-reach — and
+  // excluding `\s` here makes the match FAIL OUTRIGHT on a userinfo
+  // containing a space (`https://foo bar:<token>@host`), echoing the
+  // credential whole instead of stripping it.
+  return url.replace(
+    /^([a-z][a-z0-9+.-]*:\/\/)([^/]*)@/i,
+    (_whole, scheme: string, userinfo: string) => {
+      const colon = userinfo.indexOf(':');
+      const user = colon === -1 ? userinfo : userinfo.slice(0, colon);
+      return user !== '' && loginShapedUserinfoUser(user) !== undefined
+        ? `${scheme}${user}@`
+        : scheme;
+    },
+  );
+}
+
 // `shellSingleQuote` is the canonical, test-covered POSIX quoter from core;
 // `quoteIfNeeded` stays clone-local (it's not duplicated in core) and defers
 // to the canonical quoter for the unsafe case.
@@ -493,14 +700,27 @@ export function formatCloneAuthFailure(opts: {
   branch?: string | null;
   /** Optional GitHub login for the 403 "signed in as @X" hint. */
   principal?: string | null;
+  /**
+   * The login that actually produced the credential the clone ran with, when
+   * known. Appended to the 404 masquerade so the user can spot a
+   * wrong-account mismatch themselves; omitted when unknown — the message
+   * degrades, it never guesses. Named like the wire and server fields for
+   * the same fact: resolved (what answered), in opposition to declared.
+   */
+  resolvedLogin?: string | null;
 }): string | null {
   const classified: ClassifiedGitAuthError = classifyGitAuthError(opts.error);
   if (classified.kind !== 'auth') return null;
 
+  // Every echo of the clone URL — including the copy-pasteable re-run
+  // command — drops the password half. The username stays so the suggested
+  // re-run keeps the user's identity declaration.
+  const displayUrl = stripUrlPassword(opts.url);
+
   if (isLoginFixableGitAuthError(classified)) {
-    const reRun = reconstructCloneCommand(opts.url, opts.branch);
+    const reRun = reconstructCloneCommand(displayUrl, opts.branch);
     return [
-      `✗ Couldn't clone ${opts.url} — authentication is required.`,
+      `✗ Couldn't clone ${displayUrl} — authentication is required.`,
       '',
       '  To fix:',
       '    1. Run: ok auth login',
@@ -513,11 +733,26 @@ export function formatCloneAuthFailure(opts: {
       typeof opts.principal === 'string' && opts.principal.length > 0
         ? ` (signed in as @${opts.principal} — may lack access)`
         : '';
-    return `✗ Access denied when cloning ${opts.url}${principalHint}. Check that your account has access to the repository.`;
+    return `✗ Access denied when cloning ${displayUrl}${principalHint}. Check that your account has access to the repository.`;
   }
 
   if (classified.subclass === 'ssh-auth') {
-    return `✗ Couldn't clone ${opts.url} over SSH — authentication failed. Check that your SSH key is added to your GitHub account and the host key is trusted, or clone the HTTPS URL instead.`;
+    return `✗ Couldn't clone ${displayUrl} over SSH — authentication failed. Check that your SSH key is added to your GitHub account and the host key is trusted, or clone the HTTPS URL instead.`;
+  }
+
+  // GitHub's 404 masquerade: "not found" covers both a missing repo and a
+  // private repo the credential used can't see, so the copy asserts both and
+  // prescribes no recovery command — re-login mints the same account's
+  // credential, and scopes are not the problem. The identity sentence uses
+  // only the login threaded from the resolution the clone actually ran with;
+  // the stored-token principal is never consulted here, since it could name
+  // an account the clone never used.
+  if (classified.subclass === 'not-found-as-identity') {
+    const identity =
+      typeof opts.resolvedLogin === 'string' && opts.resolvedLogin.length > 0
+        ? ` Authenticated as ${opts.resolvedLogin}.`
+        : '';
+    return `✗ Repository not found when cloning ${displayUrl}. It may not exist, or the account used may not have access.${identity}`;
   }
 
   // scope-mismatch. `ok auth login` mints a fixed device-flow scope set that
@@ -528,7 +763,7 @@ export function formatCloneAuthFailure(opts: {
     '  To fix:',
     '    1. Create a token with `repo` scope at https://github.com/settings/tokens',
     '    2. Run: ok auth pat',
-    `    3. Then re-run: ${reconstructCloneCommand(opts.url, opts.branch)}`,
+    `    3. Then re-run: ${reconstructCloneCommand(displayUrl, opts.branch)}`,
   ].join('\n');
 }
 
@@ -538,6 +773,14 @@ export function formatCloneAuthFailure(opts: {
  * desktop/server `runCloneSubprocess` consumers see no behavior change. In
  * interactive mode, an auth failure becomes an actionable instruction; non-
  * auth errors fall through to the today's `✗ <message>` line.
+ *
+ * The raw message is credential-redacted BEFORE the channel branch: both the
+ * `--json` event (rendered verbatim in the desktop clone toast — the IPC
+ * path has no redacting hop of its own) and the interactive fallback line
+ * can otherwise echo a token, since git's disabled-prompt failure quotes the
+ * URL's username half (`could not read Password for 'https://<pat>@…'`),
+ * which is where a bare PAT lives. Classification still reads the
+ * unredacted error — patterns may match the very bytes redaction strips.
  *
  * Dependencies are injected so tests can drive both branches without
  * touching `process.stdout` / `process.stderr`.
@@ -550,8 +793,11 @@ export function emitCloneFailure(opts: {
   emit: (event: Record<string, unknown>) => void;
   printStderr: (text: string) => void;
   principal?: string | null;
+  resolvedLogin?: string | null;
 }): void {
-  const rawMessage = opts.error instanceof Error ? opts.error.message : String(opts.error);
+  const rawMessage = redactShareSubprocessStderr(
+    opts.error instanceof Error ? opts.error.message : String(opts.error),
+  );
   if (opts.json) {
     opts.emit({ type: 'error', message: rawMessage });
     return;
@@ -561,6 +807,7 @@ export function emitCloneFailure(opts: {
     url: opts.url,
     branch: opts.branch,
     principal: opts.principal,
+    resolvedLogin: opts.resolvedLogin,
   });
   opts.printStderr(`${actionable ?? `✗ ${rawMessage}`}\n`);
 }
@@ -581,11 +828,17 @@ export async function resolveClonePrincipal(
 }
 
 /**
- * Route a clone failure to the right channel. Only an interactive 403 consumes
- * the principal hint, so the stored login is resolved just for that case — other
- * failure paths (and the `--json` machine path) skip the lazy keyring init.
- * `resolvePrincipal` is injectable so the 403-only guard is unit-testable
- * without a real keyring or git.
+ * Route a clone failure to the right channel. The identity in hand is
+ * authoritative: with a gh-resolved credential the 403 hint names that login
+ * or nothing, and a `tier: 'none'` clone presented no credential at all, so
+ * its hint names nobody — the stored-token principal is consulted only when
+ * the credential could have come from the store (store tiers, or a caller
+ * that didn't observe the resolution). The hint can therefore never
+ * attribute the failure to an account the clone didn't use. Only an
+ * interactive 403 without gh auth resolves the stored login, so other failure
+ * paths (and the `--json` machine path) skip the lazy keyring init.
+ * `resolvePrincipal` is injectable so the guard is unit-testable without a
+ * real keyring or git.
  */
 export async function handleCloneFailure(opts: {
   error: unknown;
@@ -595,15 +848,25 @@ export async function handleCloneFailure(opts: {
   emit: (event: Record<string, unknown>) => void;
   printStderr: (text: string) => void;
   resolvePrincipal?: (host: string) => Promise<string | null>;
+  /** The auth the clone actually resolved, observed via `onAuthResolved`. */
+  auth?: { tier: ResolvedAuth['tier']; login?: string };
 }): Promise<void> {
   const classified = classifyGitAuthError(opts.error);
+  const ghAuth = opts.auth?.tier === 'A' ? opts.auth : undefined;
   let principal: string | null = null;
   if (!opts.json && classified.kind === 'auth' && classified.subclass === '403') {
-    const target = parseGitUrl(opts.url);
-    if (target) {
-      const resolve =
-        opts.resolvePrincipal ?? ((host) => resolveClonePrincipal(makeLazyTokenStore(), host));
-      principal = await resolve(target.hostname);
+    if (ghAuth) {
+      principal = ghAuth.login ?? null;
+    } else if (opts.auth?.tier !== 'none') {
+      // Skipped for a known credential-less clone: a 403 there (e.g. rate
+      // limiting) authenticated as nobody, and "signed in as @X" would blame
+      // an account the request never carried.
+      const target = parseGitUrl(opts.url);
+      if (target) {
+        const resolve =
+          opts.resolvePrincipal ?? ((host) => resolveClonePrincipal(makeLazyTokenStore(), host));
+        principal = await resolve(target.hostname);
+      }
     }
   }
   emitCloneFailure({
@@ -612,6 +875,7 @@ export async function handleCloneFailure(opts: {
     branch: opts.branch,
     json: opts.json,
     principal,
+    resolvedLogin: ghAuth?.login ?? null,
     emit: opts.emit,
     printStderr: opts.printStderr,
   });
@@ -631,10 +895,18 @@ export function cloneCommand(getConfig: () => Config): Command {
     .action(
       async (url: string, dir: string | undefined, opts: { json: boolean; branch?: string }) => {
         const config = getConfig();
+        let authInfo: { tier: ResolvedAuth['tier']; login?: string } | undefined;
         try {
           const targetDir = await runClone(
             url,
-            { json: opts.json, dir, branch: opts.branch ?? null },
+            {
+              json: opts.json,
+              dir,
+              branch: opts.branch ?? null,
+              onAuthResolved: (info) => {
+                authInfo = info;
+              },
+            },
             config,
           );
           if (opts.json) {
@@ -669,6 +941,7 @@ export function cloneCommand(getConfig: () => Config): Command {
             url,
             branch: opts.branch ?? null,
             json: opts.json,
+            auth: authInfo,
             emit: (event) => emit(true, event),
             printStderr: (text) => process.stderr.write(text),
           });

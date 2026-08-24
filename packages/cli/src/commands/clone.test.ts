@@ -1,11 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { Config } from '@inkeep/open-knowledge-server';
 import simpleGit, { type SimpleGitOptions } from 'simple-git';
 import { afterEach, beforeEach, describe, expect, it, test } from 'vitest';
-import type { TokenStore } from '../auth/token-store.ts';
+import type { ExecFileSyncFn, GhDetectResult } from '../auth/gh-detect.ts';
+import { detectGh } from '../auth/gh-detect.ts';
+import { FileBackend, type TokenStore } from '../auth/token-store.ts';
 import { OK_DIR } from '../constants.ts';
 import {
   buildCloneArgs,
@@ -16,8 +19,10 @@ import {
   emitCloneFailure,
   ensureOkExcludedFromGit,
   formatCloneAuthFailure,
+  formatDeclaredMissWarning,
   handleCloneFailure,
   isBranchNotFoundError,
+  resolveCloneAuth,
   resolveClonePrincipal,
   resolveCloneUrl,
   resolveSelfCliArgs,
@@ -96,6 +101,275 @@ describe('resolveCloneUrl', () => {
       'https://github.com/inkeep/playbooks',
     );
   });
+
+  // The stored remote is the bridge between clone-time and sync-time identity:
+  // `git clone` records the URL argument verbatim, so passing the userinfo
+  // form through unchanged is what lets the sync engine later resolve the
+  // same declared account from `.git/config` with no further configuration.
+  test('passes a userinfo https URL through unchanged (the stored remote keeps the declared account)', () => {
+    const url = 'https://alice@github.com/inkeep/playbooks';
+    expect(resolveCloneUrl(url, parsed('inkeep', 'playbooks'))).toBe(url);
+  });
+});
+
+describe('resolveCloneAuth', () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'ok-clone-auth-'));
+  });
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const SELF: readonly string[] = ['/node', '/cli.mjs'];
+  const makeStore = () => new FileBackend(join(tmpDir, 'auth.yml'));
+
+  /**
+   * A scripted `gh` behind the real `detectGh`, keyed on the full argv so
+   * `--user` handling is observable. An argv with no scripted answer throws
+   * the way a non-zero `gh` exit reaches `execFileSync` — which is how an
+   * unknown account surfaces.
+   */
+  function scriptedGh(script: Record<string, string>): {
+    detect: (host?: string, options?: { login?: string }) => GhDetectResult;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    const exec = ((cmd: string, args: readonly string[]) => {
+      const argv = `${cmd} ${args.join(' ')}`;
+      calls.push(argv);
+      const out = script[argv];
+      if (out === undefined) throw new Error(`gh exited 1: ${argv}`);
+      return out;
+    }) as unknown as ExecFileSyncFn;
+    return {
+      detect: (host?: string, options?: { login?: string }) =>
+        detectGh(host, { login: options?.login, _exec: exec, _fileExists: () => false }),
+      calls,
+    };
+  }
+
+  // Tracer for the whole clone leg: the URL-declared account crosses the
+  // server-side resolver into gh's lookup, and the relay names it.
+  test('a userinfo clone URL authenticates as that account', async () => {
+    const gh = scriptedGh({
+      'gh auth token --hostname github.com --user alice': 'ghs_alice',
+      'gh auth token --hostname github.com': 'ghs_bob_active',
+    });
+    const { auth: resolved, declaredMiss } = await resolveCloneAuth(
+      'https://alice@github.com/o/r',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+      },
+    );
+    expect(resolved.tier).toBe('A');
+    expect(resolved.relayToken).toEqual({ token: 'ghs_alice', host: 'github.com', login: 'alice' });
+    expect(gh.calls).toEqual(['gh auth token --hostname github.com --user alice']);
+    // Honored request — nothing to warn about.
+    expect(declaredMiss).toBeUndefined();
+  });
+
+  test('a credential.<url>.username declaration rides into gh the same way', async () => {
+    const gh = scriptedGh({
+      'gh auth token --hostname github.com --user workbot': 'ghs_workbot',
+    });
+    const { auth: resolved, declaredMiss } = await resolveCloneAuth(
+      'https://github.com/bigcorp/secret',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+        _readCredentialUrlMatch: () =>
+          'credential.helper osxkeychain\ncredential.username workbot\n',
+      },
+    );
+    expect(declaredMiss).toBeUndefined();
+    expect(resolved.relayToken).toEqual({
+      token: 'ghs_workbot',
+      host: 'github.com',
+      login: 'workbot',
+    });
+    expect(gh.calls).toEqual(['gh auth token --hostname github.com --user workbot']);
+  });
+
+  test('no declared account: gh is asked without --user — the repo owner never becomes an account selector', async () => {
+    const gh = scriptedGh({ 'gh auth token --hostname github.com': 'ghs_active' });
+    const { auth: resolved, declaredMiss } = await resolveCloneAuth(
+      'https://github.com/inkeep/some-repo',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+        _readCredentialUrlMatch: () => null,
+      },
+    );
+    expect(resolved.tier).toBe('A');
+    expect(resolved.relayToken).toEqual({ token: 'ghs_active', host: 'github.com' });
+    expect(gh.calls).toEqual(['gh auth token --hostname github.com']);
+    // No declaration — an active-account resolution is never a "miss".
+    expect(declaredMiss).toBeUndefined();
+  });
+
+  test('an unparseable clone URL is rejected the way runClone rejects it', async () => {
+    await expect(resolveCloneAuth('not-a-url', makeStore(), { selfCliArgs: SELF })).rejects.toThrow(
+      'Invalid git URL: not-a-url',
+    );
+  });
+
+  test('a declared account gh cannot serve falls back to the active token, never to tier none', async () => {
+    const gh = scriptedGh({ 'gh auth token --hostname github.com': 'ghs_bob_active' });
+    const { auth: resolved, declaredMiss } = await resolveCloneAuth(
+      'https://alice@github.com/o/r',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+      },
+    );
+    expect(resolved.tier).toBe('A');
+    expect(resolved.relayToken).toEqual({ token: 'ghs_bob_active', host: 'github.com' });
+    expect(resolved.relayToken).not.toHaveProperty('login');
+    expect(gh.calls).toEqual([
+      'gh auth token --hostname github.com --user alice',
+      'gh auth token --hostname github.com',
+    ]);
+    // The proven gh-tier fallback is reported so the caller can leave the
+    // sole trace of a clone that succeeds as the wrong account.
+    expect(declaredMiss).toEqual({ declaredLogin: 'alice', declaredSource: 'remote-url' });
+  });
+
+  // The clone leg's own casing comparison, pinned at the injectable seam: an
+  // implementation that answers a `--user Alice` request under GitHub's
+  // canonical `alice` spelling named the SAME person, so no warning is due.
+  // (The real `detectGh` echoes the requested string, so only an injected or
+  // future implementation exercises this — which is exactly why the seam,
+  // not the caller, is where it has to hold.)
+  test('a resolved login differing only in case is not a declared miss', async () => {
+    const { auth: resolved, declaredMiss } = await resolveCloneAuth(
+      'https://Alice@github.com/o/r',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: () => ({
+          available: true,
+          token: 'ghs_alice',
+          resolvedLogin: 'alice',
+          fallback: false,
+        }),
+      },
+    );
+    expect(resolved.tier).toBe('A');
+    expect(resolved.relayToken?.login).toBe('alice');
+    expect(declaredMiss).toBeUndefined();
+  });
+
+  test('a credential-config declaration gh cannot serve reports the miss with its mechanism', async () => {
+    const gh = scriptedGh({ 'gh auth token --hostname github.com': 'ghs_bob_active' });
+    const { declaredMiss } = await resolveCloneAuth(
+      'https://github.com/bigcorp/secret',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+        _readCredentialUrlMatch: () =>
+          'credential.helper osxkeychain\ncredential.username workbot\n',
+      },
+    );
+    expect(declaredMiss).toEqual({ declaredLogin: 'workbot', declaredSource: 'credential-config' });
+  });
+
+  // One host spelling per remote: the account resolver normalizes
+  // (lowercase, www-fold) exactly as the post-clone sync path does, so gh's
+  // `--hostname` scope and the relay's host guard must receive that
+  // normalized form, not the CLI parse's raw spelling — two spellings is how
+  // a clone and its later sync end up authenticating differently.
+  test('a non-canonical host spelling resolves gh and the relay against the normalized host', async () => {
+    const gh = scriptedGh({
+      'gh auth token --hostname github.com --user alice': 'ghs_alice',
+    });
+    const { auth: resolved } = await resolveCloneAuth(
+      'https://alice@WWW.GitHub.com/o/r',
+      makeStore(),
+      {
+        selfCliArgs: SELF,
+        _detectGhFn: gh.detect,
+      },
+    );
+    expect(resolved.relayToken).toEqual({ token: 'ghs_alice', host: 'github.com', login: 'alice' });
+    expect(gh.calls).toEqual(['gh auth token --hostname github.com --user alice']);
+  });
+
+  test('an unparseable URL with an embedded credential is not echoed into the error', async () => {
+    await expect(
+      resolveCloneAuth('https://user:s3cretpw@%%%bogus', makeStore(), { selfCliArgs: SELF }),
+    ).rejects.toThrow(/^(?!.*s3cretpw).*Invalid git URL/);
+  });
+});
+
+describe('formatDeclaredMissWarning', () => {
+  test('names the remote-URL mechanism', () => {
+    expect(
+      formatDeclaredMissWarning({
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      }),
+    ).toContain(
+      "\u26a0 The clone URL names alice, but the GitHub CLI couldn't confirm that account — the clone used its active account.\n",
+    );
+  });
+
+  test('names the credential-config mechanism', () => {
+    const line = formatDeclaredMissWarning({
+      declaredLogin: 'workbot',
+      declaredSource: 'credential-config',
+    });
+    expect(line).toContain('Your Git credential configuration names workbot');
+    expect(line?.endsWith('\n')).toBe(true);
+  });
+
+  // A declaration mechanism added later must land on neutral wording rather
+  // than silently borrowing another mechanism's sentence.
+  test('an unrecognized mechanism degrades to the generic wording', () => {
+    const line = formatDeclaredMissWarning({
+      declaredLogin: 'alice',
+      declaredSource: 'far-future-mechanism' as 'remote-url',
+    });
+    expect(line).toContain('Your Git configuration names alice');
+    expect(line).not.toContain('clone URL');
+    expect(line).not.toContain('credential configuration');
+  });
+
+  test('an honored declaration produces no warning', () => {
+    expect(formatDeclaredMissWarning(undefined)).toBeNull();
+  });
+
+  // The copy must not claim another account answered: a fallback only proves
+  // gh did not confirm the request (gh < 2.40 rejects --user outright, and a
+  // casing-only difference falls back by design), so the token may well be
+  // the declared person's.
+  test("the copy asserts only that the account wasn't confirmed", () => {
+    const line = formatDeclaredMissWarning({
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+    expect(line).toContain("couldn't confirm that account");
+    expect(line).not.toContain('credentials couldn');
+  });
+
+  // Both benign causes (gh below the 2.40 --user floor, a casing-only
+  // declaration) are indistinguishable from a real miss here, so the copy
+  // must hand the user a check rather than a verdict they cannot falsify.
+  test('the warning names a command that settles the false-alarm cases', () => {
+    const line = formatDeclaredMissWarning({
+      declaredLogin: 'alice',
+      declaredSource: 'remote-url',
+    });
+    expect(line).toContain('gh auth status');
+    expect(line).toContain('2.40');
+    expect(line).toContain('If alice is listed as active');
+  });
 });
 
 describe('handleCloneFailure', () => {
@@ -167,6 +441,88 @@ describe('handleCloneFailure', () => {
     expect(called).toBe(false);
     expect(c.emitted).toEqual([{ type: 'error', message: 'remote: HTTP 403 Forbidden' }]);
     expect(c.stderr).toEqual([]);
+  });
+
+  // When OK supplied a gh-resolved credential, the identity in hand is
+  // authoritative — the stored-token principal can name an account the clone
+  // never used.
+  test('403 with gh-resolved auth names the resolved login and skips the stored principal', async () => {
+    const c = collectors();
+    let called = false;
+    await handleCloneFailure({
+      error: new Error('remote: HTTP 403 Forbidden'),
+      url: 'https://github.com/owner/repo',
+      branch: null,
+      json: false,
+      emit: c.emit,
+      printStderr: c.printStderr,
+      auth: { tier: 'A', login: 'bob' },
+      resolvePrincipal: async () => {
+        called = true;
+        return 'stored-alice';
+      },
+    });
+    expect(called).toBe(false);
+    expect(c.stderr.join('')).toContain('@bob');
+    expect(c.stderr.join('')).not.toContain('stored-alice');
+  });
+
+  test('403 with an unnamed gh credential omits the hint rather than guessing', async () => {
+    const c = collectors();
+    let called = false;
+    await handleCloneFailure({
+      error: new Error('remote: HTTP 403 Forbidden'),
+      url: 'https://github.com/owner/repo',
+      branch: null,
+      json: false,
+      emit: c.emit,
+      printStderr: c.printStderr,
+      auth: { tier: 'A' },
+      resolvePrincipal: async () => {
+        called = true;
+        return 'stored-alice';
+      },
+    });
+    expect(called).toBe(false);
+    expect(c.stderr.join('')).not.toContain('signed in as');
+  });
+
+  test('the 404 masquerade names the account the clone used when known', async () => {
+    const c = collectors();
+    await handleCloneFailure({
+      error: new Error("fatal: repository 'https://github.com/o/private.git/' not found"),
+      url: 'https://github.com/o/private',
+      branch: null,
+      json: false,
+      emit: c.emit,
+      printStderr: c.printStderr,
+      auth: { tier: 'A', login: 'bob' },
+    });
+    expect(c.stderr.join('')).toContain('Authenticated as bob.');
+  });
+
+  // A `tier: 'none'` clone presented no credential (the public-repo
+  // short-circuit), so a 403 — e.g. rate limiting — authenticated as nobody;
+  // "signed in as @<stored>" would blame an account the request never carried.
+  test('403 on a credential-less clone names nobody and skips the stored principal', async () => {
+    const c = collectors();
+    let called = false;
+    await handleCloneFailure({
+      error: new Error('remote: HTTP 403 Forbidden'),
+      url: 'https://github.com/owner/repo',
+      branch: null,
+      json: false,
+      emit: c.emit,
+      printStderr: c.printStderr,
+      auth: { tier: 'none' },
+      resolvePrincipal: async () => {
+        called = true;
+        return 'stored-alice';
+      },
+    });
+    expect(called).toBe(false);
+    expect(c.stderr.join('')).not.toContain('signed in as');
+    expect(c.stderr.join('')).not.toContain('stored-alice');
   });
 });
 
@@ -242,6 +598,31 @@ describe('buildCloneAuthEnv', () => {
     );
     expect(env.OK_GH_TOKEN).toBe('ghs_fresh');
     expect(env.OK_GH_TOKEN_HOST).toBe('ghes.acme.test');
+  });
+
+  // OK_GH_TOKEN_LOGIN is diagnostics-only: it names the account behind the
+  // relayed token for the helper's logs. The helper never gates on it — the
+  // host guard remains the only relay condition.
+  test('relays OK_GH_TOKEN_LOGIN when the relay token names its account', () => {
+    const env = buildCloneAuthEnv(
+      { relayToken: { token: 'ghs_relay', host: 'github.com', login: 'alice' } },
+      { PATH: '/usr/bin' },
+    );
+    expect(env.OK_GH_TOKEN_LOGIN).toBe('alice');
+  });
+
+  test('an anonymous relay token sets no login var and strips an inherited one', () => {
+    const env = buildCloneAuthEnv(
+      { relayToken: { token: 'ghs_relay', host: 'github.com' } },
+      { PATH: '/usr/bin', OK_GH_TOKEN_LOGIN: 'stale-name' },
+    );
+    expect(env.OK_GH_TOKEN).toBe('ghs_relay');
+    expect('OK_GH_TOKEN_LOGIN' in env).toBe(false);
+  });
+
+  test('strips an inherited OK_GH_TOKEN_LOGIN when no relay token was resolved', () => {
+    const env = buildCloneAuthEnv({}, { PATH: '/usr/bin', OK_GH_TOKEN_LOGIN: 'stale-name' });
+    expect('OK_GH_TOKEN_LOGIN' in env).toBe(false);
   });
 });
 
@@ -672,6 +1053,76 @@ describe('isBranchNotFoundError', () => {
 });
 
 describe('formatCloneAuthFailure', () => {
+  // Userinfo clone URLs are a supported input, so a `user:password@` form can
+  // reach a failure message. The password half must not be echoed back into
+  // terminal scrollback — while the username half stays, so the suggested
+  // re-run keeps the identity declaration and still clones as that account.
+  test('an embedded password never reaches the message or the re-run command', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error('fatal: could not read Username for https://github.com'),
+      url: 'https://alice:s3cretpw@github.com/inkeep/playbooks',
+      branch: 'feat-x',
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain('s3cretpw');
+    expect(out).toContain(
+      '2. Then re-run: ok clone https://alice@github.com/inkeep/playbooks -b feat-x',
+    );
+  });
+
+  test('the 404 masquerade echo also drops an embedded password', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error("fatal: repository 'https://github.com/o/private.git/' not found"),
+      url: 'https://alice:s3cretpw@github.com/o/private',
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain('s3cretpw');
+    expect(out).toContain('Repository not found when cloning https://alice@github.com/o/private');
+  });
+
+  // GitHub's canonical PAT-in-URL form puts the token in the USERNAME half —
+  // a credential-shaped username must be dropped, not echoed or promoted.
+  test('a bare token-as-username never reaches the message or the re-run command', () => {
+    const tok = `ghp_${'A'.repeat(36)}`;
+    const out = formatCloneAuthFailure({
+      error: new Error('fatal: could not read Username for https://github.com'),
+      url: `https://${tok}@github.com/o/r`,
+      branch: null,
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain(tok);
+    expect(out).toContain('ok clone https://github.com/o/r');
+  });
+
+  test('a token paired with a placeholder password is dropped, not promoted to the username', () => {
+    const tok = `ghp_${'B'.repeat(36)}`;
+    const out = formatCloneAuthFailure({
+      error: new Error("fatal: repository 'https://github.com/o/r.git/' not found"),
+      url: `https://${tok}:x-oauth-basic@github.com/o/r`,
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain(tok);
+  });
+
+  test('a fine-grained PAT username is dropped', () => {
+    const tok = `github_pat_${'C'.repeat(70)}`;
+    const out = formatCloneAuthFailure({
+      error: new Error('remote: HTTP 401 Unauthorized'),
+      url: `https://${tok}@github.com/o/r`,
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain(tok);
+  });
+
+  test('a real login survives so the re-run keeps the identity declaration', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error('fatal: could not read Username for https://github.com'),
+      url: 'https://Alice-B_c@github.com/o/r',
+      branch: null,
+    });
+    expect(out).toContain('ok clone https://Alice-B_c@github.com/o/r');
+  });
+
   test('returns null for non-auth errors so the caller falls through to the raw git error', () => {
     expect(
       formatCloneAuthFailure({
@@ -751,6 +1202,24 @@ describe('formatCloneAuthFailure', () => {
     expect(out).toContain('may lack access');
   });
 
+  test('repository-not-found (404 masquerade) → not-found-or-no-access copy, no recovery command', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error("fatal: repository 'https://github.com/o/private.git/' not found"),
+      url: 'https://github.com/o/private',
+      branch: 'main',
+    });
+    expect(out).not.toBeNull();
+    expect(out).toContain('Repository not found when cloning https://github.com/o/private');
+    expect(out).toContain('may not exist');
+    expect(out).toContain('may not have access');
+    // Neither recovery flow applies here: re-login mints the same account's
+    // credential, and OAuth scopes are not the problem — offering either
+    // would send the user down a dead end.
+    expect(out).not.toContain('ok auth login');
+    expect(out).not.toContain('ok auth pat');
+    expect(out).not.toContain('scope');
+  });
+
   test('scope-mismatch → actionable PAT recovery (ok auth pat + re-run), not ok auth login', () => {
     const out = formatCloneAuthFailure({
       error: new Error('insufficient scopes'),
@@ -789,6 +1258,132 @@ describe('formatCloneAuthFailure', () => {
       branch: 'feat my idea',
     });
     expect(out).toContain("-b 'feat my idea'");
+  });
+});
+
+// A userinfo containing whitespace is the shape that distinguishes the two
+// redactors: `stripUrlPassword` is `^`-anchored on one URL, so excluding `\s`
+// from its userinfo class makes the whole match FAIL and echoes the credential
+// instead of stripping it. The share-publish redactor genuinely needs that
+// exclusion because it scans free-form stderr with /g. Both call paths here
+// reach the user's terminal and the copy-pasteable re-run command.
+// The sole trace on the clone leg when a fallback SUCCEEDS as the wrong
+// account. The formatter tests cover the wording; only this covers whether the
+// warning is emitted at all and on which channel — stdout is the `--json`
+// machine wire. Hermetic: the visibility probe short-circuits for any
+// non-github.com host, and the clone that follows fails instantly against a
+// closed loopback port (no DNS, no external network).
+describe('runClone declared-miss warning', () => {
+  let tmp: string;
+  let stderrChunks: string[];
+  let stdoutChunks: string[];
+  let restore: (() => void) | null = null;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'ok-clone-warn-'));
+    stderrChunks = [];
+    stdoutChunks = [];
+    const realErr = process.stderr.write.bind(process.stderr);
+    const realOut = process.stdout.write.bind(process.stdout);
+    process.stderr.write = ((c: string) => {
+      stderrChunks.push(String(c));
+      return true;
+    }) as typeof process.stderr.write;
+    process.stdout.write = ((c: string) => {
+      stdoutChunks.push(String(c));
+      return true;
+    }) as typeof process.stdout.write;
+    restore = () => {
+      process.stderr.write = realErr;
+      process.stdout.write = realOut;
+    };
+  });
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  /** gh answers, but never for the requested account — the fallback shape. */
+  const fallbackGh = () => ({ available: true as const, token: 'ghs_active', fallback: true });
+
+  async function cloneAndIgnoreFailure(json: boolean): Promise<void> {
+    await runClone(
+      'https://alice@127.0.0.1:1/o/r.git',
+      { json, dir: join(tmp, 'out'), _detectGhFn: fallbackGh },
+      {} as never,
+      tmp,
+    ).catch(() => {
+      // The clone itself cannot succeed against a closed port; the warning is
+      // emitted before it runs, which is what this asserts.
+    });
+  }
+
+  test('the human path writes the warning to stderr and never to stdout', async () => {
+    await cloneAndIgnoreFailure(false);
+    expect(stderrChunks.join('')).toContain('The clone URL names alice');
+    expect(stdoutChunks.join('')).not.toContain('\u26a0');
+  });
+
+  test('--json suppresses the warning on both channels', async () => {
+    await cloneAndIgnoreFailure(true);
+    expect(stderrChunks.join('')).not.toContain('The clone URL names alice');
+    expect(stdoutChunks.join('')).not.toContain('\u26a0');
+  });
+
+  // Pins the runClone -> resolveCloneAuth junction itself, not just
+  // resolveCloneAuth's internals. Reverting that call site back to a host-only
+  // resolve would leave every other clone test green while silently dropping
+  // the declared account on the clone path, so the probe and the push would
+  // agree on an identity the clone no longer used.
+  test('the URL-declared login reaches detectGh from runClone itself', async () => {
+    const seen: Array<{ host?: string; login?: string }> = [];
+    const recordingGh = (host?: string, options?: { login?: string }) => {
+      seen.push({ host, login: options?.login });
+      return { available: true as const, token: 'ghs_active', fallback: true };
+    };
+    await runClone(
+      'https://alice@127.0.0.1:1/o/r.git',
+      { json: false, dir: join(tmp, 'out'), _detectGhFn: recordingGh },
+      {} as never,
+      tmp,
+    ).catch(() => {
+      // Unreachable port: the clone cannot succeed, but auth resolution has
+      // already run by then, which is what this asserts.
+    });
+
+    expect(seen).toContainEqual({ host: '127.0.0.1', login: 'alice' });
+    expect(seen.every((c) => c.login === 'alice')).toBe(true);
+  });
+});
+
+describe('formatCloneAuthFailure credential redaction', () => {
+  const TOKEN = `ghp_${'a'.repeat(36)}`;
+
+  test('a whitespace-bearing userinfo is still stripped, not echoed', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error("fatal: repository 'https://x/y' not found"),
+      url: `https://foo bar:${TOKEN}@github.com/o/r.git`,
+      branch: null,
+    });
+    expect(out).not.toBeNull();
+    expect(out).not.toContain(TOKEN);
+    expect(out).not.toContain('ghp_');
+    expect(out).not.toContain('foo bar');
+  });
+
+  test('the suggested re-run command carries no credential either', () => {
+    const out = formatCloneAuthFailure({
+      error: new Error('fatal: could not read Username for https://github.com'),
+      url: `https://alice:my ${TOKEN}@github.com/o/r.git`,
+      branch: 'main',
+    });
+    // Login-fixable → the message embeds `ok clone '<url>'` for the user to
+    // paste; the credential must not ride along into a support thread.
+    expect(out).toContain('ok clone');
+    expect(out).not.toContain(TOKEN);
+    expect(out).not.toContain('ghp_');
   });
 });
 
@@ -832,6 +1427,46 @@ describe('emitCloneFailure', () => {
       printStderr: c.printStderr,
     });
     expect(c.emitted[0]).toEqual({ type: 'error', message: 'connection timed out' });
+  });
+
+  // With prompts disabled, git quotes the URL's username half in its failure
+  // ("could not read Password for 'https://<user>@…'") — the slot where a
+  // bare PAT lives. The --json event feeds the desktop clone toast verbatim
+  // (the IPC path has no redacting hop), so the token must die here.
+  test('--json: a token-as-username in the git error is redacted from the event', () => {
+    const c = makeCollectors();
+    emitCloneFailure({
+      error: new Error(
+        "fatal: could not read Password for 'https://ghp_c8Fyj2wXaB1LmQ9zK4tUvNs6RdPeYhG3o5A7@github.com': terminal prompts disabled",
+      ),
+      url: 'https://github.com/o/private',
+      json: true,
+      emit: c.emit,
+      printStderr: c.printStderr,
+    });
+    expect(c.emitted).toHaveLength(1);
+    const message = c.emitted[0]?.message as string;
+    expect(message).not.toContain('ghp_c8Fyj2wXaB1LmQ9zK4tUvNs6RdPeYhG3o5A7');
+    expect(message).toContain('could not read Password');
+    expect(message).toContain('github.com');
+  });
+
+  test('interactive fallback line redacts an embedded credential the same way', () => {
+    const c = makeCollectors();
+    emitCloneFailure({
+      // Non-auth classification, so the interactive branch falls through to
+      // the raw-message line — which must be the redacted one.
+      error: new Error(
+        'fatal: unable to update https://x-access-token:ghp_c8Fyj2wXaB1LmQ9zK4tUvNs6RdPeYhG3o5A7@github.com/o/r',
+      ),
+      url: 'https://github.com/o/r',
+      json: false,
+      emit: c.emit,
+      printStderr: c.printStderr,
+    });
+    const out = c.stderr.join('');
+    expect(out).not.toContain('ghp_c8Fyj2wXaB1LmQ9zK4tUvNs6RdPeYhG3o5A7');
+    expect(out).toContain('x-access-token');
   });
 
   test('interactive + login-fixable: prints the 2-step instruction; does not emit JSON', () => {
@@ -891,6 +1526,48 @@ describe('emitCloneFailure', () => {
     emitCloneFailure({ ...args, emit: c1.emit, printStderr: c1.printStderr });
     emitCloneFailure({ ...args, emit: c2.emit, printStderr: c2.printStderr });
     expect(c1.stderr.join('')).toBe(c2.stderr.join(''));
+  });
+});
+
+// The clone→sync identity bridge: a real `git clone` records the URL argument
+// verbatim in `.git/config` — including its userinfo — so the account declared
+// at clone time is the account the sync engine later resolves from the stored
+// remote. Driven through the same composed pieces `runClone` uses
+// (`buildCloneGitOptions` + `buildCloneAuthEnv` + `git.clone`), with the
+// GitHub-shaped URL redirected to a local seed repo at fetch time via
+// `insteadOf` (a rewrite git applies when contacting the remote, without
+// changing what it records).
+describe('clone stores the remote URL verbatim, userinfo included', () => {
+  test('git clone of a userinfo URL writes that URL into .git/config unchanged', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'ok-clone-userinfo-'));
+    try {
+      const srcDir = join(base, 'seed');
+      mkdirSync(srcDir);
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: srcDir, stdio: 'ignore' });
+      execFileSync('git', ['config', 'user.email', 't@e.com'], { cwd: srcDir });
+      execFileSync('git', ['config', 'user.name', 'T'], { cwd: srcDir });
+      writeFileSync(join(srcDir, 'README.md'), '# seed\n', 'utf-8');
+      execFileSync('git', ['add', '.'], { cwd: srcDir });
+      execFileSync('git', ['commit', '-m', 'seed'], { cwd: srcDir, stdio: 'ignore' });
+
+      const declaredUrl = 'https://alice@github.com/seed-owner/seed-repo';
+      // The rewrite rides the same `-c` config channel runClone's credential
+      // config uses; git applies `insteadOf` when contacting the remote and
+      // still records the original URL.
+      const redirect = `url.${pathToFileURL(srcDir).href}.insteadOf=${declaredUrl}`;
+
+      const targetDir = join(base, 'cloned');
+      const env = buildCloneAuthEnv({}, { PATH: process.env.PATH ?? '' });
+      const git = simpleGit(
+        buildCloneGitOptions(base, [redirect]) as Partial<SimpleGitOptions>,
+      ).env(env);
+      await git.clone(declaredUrl, targetDir, buildCloneArgs(null));
+
+      const config = readFileSync(join(targetDir, '.git', 'config'), 'utf-8');
+      expect(config).toContain(`url = ${declaredUrl}`);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
   });
 });
 

@@ -689,6 +689,21 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
   test('fetch-failed without the flag leaves authFailed unset (network case keeps the retry copy)', () => {
     const result = applyWorktreeCheckoutOutcome(creating, { ok: false, reason: 'fetch-failed' });
     expect(result.sideEffect?.authFailed).toBeUndefined();
+    expect(result.sideEffect?.notFoundAsIdentity).toBeUndefined();
+  });
+
+  // The repository-not-found masquerade is neither a connection problem nor
+  // sign-in-fixable, so it rides its own flag — the toast names what is
+  // actually known instead of blaming the network.
+  test('fetch-failed carrying notFoundAsIdentity propagates the flag for the not-found copy', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'fetch-failed',
+      notFoundAsIdentity: true,
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect?.notFoundAsIdentity).toBe(true);
+    expect(result.sideEffect?.authFailed).toBeUndefined();
   });
 
   test('a non-fetch reason can never carry authFailed through the reducer', () => {

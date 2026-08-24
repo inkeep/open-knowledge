@@ -203,6 +203,20 @@ describe('classifyGitError', () => {
       expect(r.subclass).toBe('unknown-auth');
     });
 
+    test('not-found-as-identity subclass — "repository not found" (404 masquerade)', () => {
+      const r = classifyGitError(
+        mkErr("fatal: repository 'https://github.com/o/private.git/' not found"),
+      );
+      expect(r.class).toBe('auth');
+      expect(r.subclass).toBe('not-found-as-identity');
+      expect(r.retryable).toBe(false);
+      // The message asserts only what the stderr proves: the repo is missing
+      // OR the identity used can't see it — never which, never "wrong account".
+      expect(r.message).toBe(
+        'Repository not found — it may not exist, or the account used may not have access',
+      );
+    });
+
     test('ssh-auth subclass — SSH publickey denied (delegation preserves output)', () => {
       const r = classifyGitError(mkErr('Permission denied (publickey).'));
       expect(r.class).toBe('auth');
@@ -467,6 +481,15 @@ describe('classifyGitError', () => {
       expect(r.class).toBe('semantic');
       expect(r.subclass).toBe('protected-branch');
       expect(r.userFacingCode).toBe('semantic-protected-branch');
+    });
+
+    test('auth/not-found-as-identity → auth-not-found-as-identity code', () => {
+      const r = classifyGitError(
+        mkErr("fatal: repository 'https://github.com/o/r.git/' not found"),
+      );
+      expect(r.class).toBe('auth');
+      expect(r.subclass).toBe('not-found-as-identity');
+      expect(r.userFacingCode).toBe('auth-not-found-as-identity');
     });
 
     test('semantic/non-fast-forward → null (UI falls back to message)', () => {

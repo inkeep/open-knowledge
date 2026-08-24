@@ -56,6 +56,80 @@ describe('runCloneSubprocess', () => {
     }
   });
 
+  // This event is forwarded verbatim to the renderer (clone toast +
+  // share-receive error panel). With prompts disabled git echoes the URL's
+  // username half, which is where a bare PAT lives.
+  test('redacts a credential out of the stderr detail before it reaches the event', async () => {
+    const events: RawCloneEvent[] = [];
+    const token = `ghp_${'a'.repeat(36)}`;
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write("fatal: could not read Password for 'https://${token}@github.com': terminal prompts disabled\\n");
+        process.exit(128);
+      `),
+      url: 'https://github.com/octocat/private.git',
+      dir: '/tmp/private',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toHaveLength(1);
+    // Asserted OUTSIDE the narrowing guard: `toHaveLength` does not constrain
+    // the type, so without this a terminal-event change would skip every
+    // assertion below and report green.
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].message).not.toContain(token);
+      expect(events[0].message).not.toContain('ghp_');
+      // Redacted, not merely absent — the diagnostic still names the host.
+      expect(events[0].message).toContain('***@github.com');
+      expect(events[0].message).toContain('exited with code 128');
+    }
+  });
+
+  // A git crash dump or multi-page submodule error would otherwise be
+  // interpolated whole into a toast and a persistent error panel, pushing the
+  // load-bearing first line out of view.
+  test('caps a very long stderr detail so the toast stays readable', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('x'.repeat(3000) + '\\n');
+        process.exit(128);
+      `),
+      url: 'https://github.com/octocat/huge.git',
+      dir: '/tmp/huge',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].message).toContain('exited with code 128');
+      expect(events[0].message.length).toBeLessThan(600);
+    }
+  });
+
+  // Whitespace-only stderr must not leave a dangling separator with nothing
+  // after it — emptiness is decided on the redacted value.
+  test('whitespace-only stderr produces no dangling detail separator', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        process.stderr.write('   \\n');
+        process.exit(128);
+      `),
+      url: 'https://github.com/octocat/blank.git',
+      dir: '/tmp/blank',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].message).toBe('Clone process exited with code 128');
+      expect(events[0].message).not.toContain('—');
+    }
+  });
+
   test('emits "Clone timed out" error on timeout', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({

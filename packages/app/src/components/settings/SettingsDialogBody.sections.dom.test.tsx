@@ -821,6 +821,136 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     );
   });
 
+  // The not-found masquerade parks as auth-error, whose paused label reads
+  // "Reconnect required" — the prescription the sync badge withdraws for this
+  // subclass. Settings must show the failure's own copy, not the withdrawn fix.
+  test('sync section shows the not-found copy instead of the reconnect prescription', async () => {
+    syncStatus = {
+      state: 'auth-error',
+      hasRemote: true,
+      pausedReason: 'auth-error',
+      pushErrorCode: 'auth-not-found-as-identity',
+      syncEnabled: true,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { enabled: true } };
+
+    await renderBody({ activeId: 'sync' });
+
+    expect(screen.getByTestId('settings-sync-reason').textContent).toBe(
+      'Repository not found — it may not exist, or the account used may not have access.',
+    );
+    expect(screen.queryByText('Reconnect required')).toBeNull();
+  });
+
+  // The ordinary shape of this state carries BOTH signals: the parked engine's
+  // not-found code and a denied probe verdict against the same invisible repo.
+  // The permission-flavored affordances must stay suppressed — the failure is
+  // not a collaborator verdict, and Follow fetches the same invisible repo —
+  // so the not-found copy must win over the push-denied short-circuits.
+  test('sync section keeps the not-found copy when a denied probe verdict is also in hand', async () => {
+    syncStatus = {
+      state: 'auth-error',
+      hasRemote: true,
+      pausedReason: 'auth-error',
+      pushErrorCode: 'auth-not-found-as-identity',
+      pushPermission: {
+        checkStatus: 'denied',
+        deniedReason: 'private-no-access',
+        resolvedLogin: 'bob',
+      },
+      syncEnabled: true,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+
+    await renderBody({ activeId: 'sync' });
+
+    expect(screen.getByTestId('settings-sync-reason').textContent).toBe(
+      'Repository not found — it may not exist, or the account used may not have access.',
+    );
+    expect(screen.queryByTestId('settings-sync-switch-follow')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-denied-hint')).toBeNull();
+    // The notice names an account problem, so it must also name the account —
+    // the badge does, and the docs tell readers the message identifies it.
+    expect(screen.getByTestId('settings-sync-identity').textContent).toBe('Authenticated as bob.');
+    // The mode control is the fourth permission-flavored affordance: greying
+    // Full out behind "you don't have permission" would state a cause the 404
+    // doesn't prove, and would single out Full when Follow fetches the same
+    // unseeable repo. Its tooltip is also the only explanation a pointer user
+    // gets, while the keyboard path relies on the notice above.
+    expect((screen.getByTestId('settings-sync-mode-full') as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(screen.queryByTestId('settings-sync-mode-full-tip')).toBeNull();
+  });
+
+  // The tail is up to TWO sentences — the account used and the declared-account
+  // miss. That pair is the payload this feature exists to surface, and a
+  // per-paragraph testid would make `getByTestId` throw on exactly it.
+  test('sync section renders both identity sentences when the wire carries a declared miss', async () => {
+    syncStatus = {
+      state: 'auth-error',
+      hasRemote: true,
+      pausedReason: 'auth-error',
+      pushErrorCode: 'auth-not-found-as-identity',
+      pushPermission: {
+        checkStatus: 'denied',
+        deniedReason: 'private-no-access',
+        resolvedLogin: 'bob',
+        declaredLogin: 'alice',
+        declaredSource: 'remote-url',
+      },
+      syncEnabled: true,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+
+    await renderBody({ activeId: 'sync' });
+
+    const identity = screen.getByTestId('settings-sync-identity');
+    expect(identity.textContent).toContain('Authenticated as bob.');
+    expect(identity.textContent).toContain(
+      "Your remote URL names alice, but that account's credentials couldn't be used.",
+    );
+  });
+
+  // The retryable arm transitions to `offline` WITHOUT clearing pausedReason,
+  // so state and reason diverge while the not-found code survives. Both this
+  // surface and the badge key on the REASON, so both must still explain it.
+  test('sync section still explains the not-found failure after an offline transition', async () => {
+    syncStatus = {
+      state: 'offline',
+      hasRemote: true,
+      pausedReason: 'auth-error',
+      pushErrorCode: 'auth-not-found-as-identity',
+      pushPermission: { checkStatus: 'denied', deniedReason: 'private-no-access' },
+      syncEnabled: true,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+
+    await renderBody({ activeId: 'sync' });
+
+    expect(screen.getByTestId('settings-sync-reason').textContent).toBe(
+      'Repository not found — it may not exist, or the account used may not have access.',
+    );
+    expect(screen.queryByTestId('settings-sync-switch-follow')).toBeNull();
+    expect(screen.queryByTestId('settings-sync-denied-hint')).toBeNull();
+  });
+
   test('sync empty state offers Publish wizard and keeps the advanced git remote path', async () => {
     syncStatus = { state: 'dormant', hasRemote: false, syncEnabled: false };
 

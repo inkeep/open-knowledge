@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   ArrowUpRight,
   Cloud,
+  CloudAlert,
   CloudOff,
   LogIn,
   Pause,
@@ -133,7 +134,17 @@ function BadgeIcon({ status, paused }: BadgeIconProps) {
     case 'offline':
       return <CloudOff className={`${cls} text-muted-foreground`} />;
     case 'auth-error':
-      return <LogIn className={`${cls} text-destructive`} />;
+      // The not-found masquerade withdraws the sign-in affordance, so the
+      // sign-in glyph would prescribe exactly what the popover withholds.
+      // CloudAlert (not AlertTriangle, which already means conflict/disabled
+      // in amber): the collapsed badge is icon-only for this state, so the
+      // glyph shape — not hue alone — has to distinguish it for users who
+      // can't tell amber from red.
+      return hasNotFoundAsIdentityError(status) ? (
+        <CloudAlert className={`${cls} text-destructive`} />
+      ) : (
+        <LogIn className={`${cls} text-destructive`} />
+      );
     case 'disabled':
       // Reachable only when an auto-disable carries a pausedReason
       // (manual user disable hides the badge via early return below).
@@ -214,17 +225,30 @@ export function formatPausedReason(reason: string): string {
     case 'protected-branch':
       return t`Protected branch — cannot push`;
     case 'no-push-permission':
-      return t`You don't have permission to push to this repo`;
+      return t`You don't have permission to push to this repo.`;
     default:
       return reason;
   }
 }
+
+/** Identity fields the wire's denied push-permission variant may carry. */
+type PushPermissionDeniedIdentity = Pick<
+  Extract<PushPermissionWire, { checkStatus: 'denied' }>,
+  'resolvedLogin' | 'declaredLogin' | 'declaredSource'
+>;
 
 /**
  * Format the cause-specific message for a `denied` push-permission probe.
  * Used when the user has not enabled sync yet (so `pausedReason` is unset)
  * but the probe says they can't push — they should see the same actionable
  * copy as a user whose engine paused after enabling sync.
+ *
+ * When the wire names the identity that was actually authenticated
+ * (`resolvedLogin`, always the post-fallback login), the denial copy ends
+ * with it so the user can spot an account mismatch themselves — for every
+ * denial reason that authenticated at all, since a read-only collaborator
+ * verdict is exactly as account-dependent as a private-repo 404. When it is
+ * absent the sentence is omitted — the message degrades, it never guesses.
  */
 export function formatPushPermissionDenied(
   reason:
@@ -233,19 +257,119 @@ export function formatPushPermissionDenied(
     | 'repo-not-found'
     | 'not-authenticated'
     | undefined,
-): string {
+  identity?: PushPermissionDeniedIdentity,
+): string[] {
+  const sentences: string[] = [];
   switch (reason) {
     case 'not-authenticated':
-      return t`You're signed out — sign in to resume syncing.`;
+      sentences.push(t`You're signed out — sign in to resume syncing.`);
+      break;
     case 'no-collaborator':
-      return t`You don't have permission to push to this repo`;
+      sentences.push(t`You don't have permission to push to this repo.`);
+      break;
     case 'private-no-access':
-      return t`You don't have access to this private repo. Sign in with an account that does.`;
+      sentences.push(
+        t`You don't have access to this private repo. Sign in with an account that does.`,
+      );
+      break;
     case 'repo-not-found':
-      return t`Repository not found. It may have been renamed, deleted, or moved.`;
+      sentences.push(t`Repository not found. It may have been renamed, deleted, or moved.`);
+      break;
     default:
-      return t`You don't have permission to push to this repo`;
+      sentences.push(t`You don't have permission to push to this repo.`);
   }
+  sentences.push(...formatDeniedIdentitySentences(identity));
+  // Returned as sentences, rendered one per line: a hard-coded joiner would
+  // put a Latin space after the CJK full stop in zh catalogs, and separate
+  // lines keep three distinct facts scannable in the narrow popover.
+  return sentences;
+}
+
+/**
+ * Only the identity tail of a denial — the `Authenticated as …` and
+ * declared-miss sentences, without the leading reason sentence. The parked
+ * not-found popover renders this: its error line already carries the full
+ * not-found copy, and every reason sentence either re-prescribes the sign-in
+ * that state withholds (`private-no-access`) or asserts more than the 404
+ * proves, so only the identity facts may ride along there.
+ */
+export function formatDeniedIdentitySentences(identity?: PushPermissionDeniedIdentity): string[] {
+  const sentences: string[] = [];
+  if (identity?.resolvedLogin) {
+    const login = identity.resolvedLogin;
+    sentences.push(t`Authenticated as ${login}.`);
+  }
+  if (identity?.declaredLogin) {
+    sentences.push(formatDeclaredAccountMiss(identity.declaredLogin, identity.declaredSource));
+  }
+  return sentences;
+}
+
+/**
+ * Name the account the user declared but the credential resolution could not
+ * use, and the mechanism they declared it through. The copy asserts only the
+ * miss itself — it does not name a cause (the wire does not say whether the
+ * GitHub CLI was consulted, absent, or outdated, and a desktop install with
+ * no gh at all reaches this path too) and it does not name the substitute
+ * account (the `Authenticated as` sentence carries that when known).
+ * `declaredSource` is an open string on the wire: a payload from a server
+ * with a newer declaration mechanism must degrade to the generic wording,
+ * never fail or guess.
+ *
+ * Deliberately says more than its CLI twin (`formatDeclaredMissWarning`):
+ * this path reaches the wire only after the server resolved the answering
+ * account, so it can contrast the two identities; the clone path has no such
+ * lookup and asserts only that the request went unconfirmed. Don't collapse
+ * one into the other.
+ */
+function formatDeclaredAccountMiss(declaredLogin: string, declaredSource: string | undefined) {
+  switch (declaredSource) {
+    case 'remote-url':
+      return t`Your remote URL names ${declaredLogin}, but that account's credentials couldn't be used.`;
+    case 'credential-config':
+      return t`Your Git credential configuration names ${declaredLogin}, but that account's credentials couldn't be used.`;
+    default:
+      return t`Your Git configuration names ${declaredLogin}, but that account's credentials couldn't be used.`;
+  }
+}
+
+/**
+ * Whether the current sync error is the repository-not-found masquerade:
+ * git's "repository not found" with a credential attached, where GitHub
+ * deliberately hides "private + no access" behind the same answer as
+ * "doesn't exist". The engine parks it as an auth error (sync genuinely
+ * cannot proceed), but unlike every other auth subclass a re-sign-in is not
+ * the prescribed fix — so the badge suppresses the reconnect affordance and
+ * header for it and lets the error line carry the full copy.
+ */
+export function hasNotFoundAsIdentityError(
+  status: Pick<GitSyncStatus, 'pushErrorCode' | 'pullErrorCode'>,
+): boolean {
+  return (
+    status.pushErrorCode === 'auth-not-found-as-identity' ||
+    status.pullErrorCode === 'auth-not-found-as-identity'
+  );
+}
+
+/**
+ * Whether the engine is parked on the repository-not-found masquerade — the
+ * state where the Sign in affordance is withheld because re-auth cannot fix
+ * it. Keyed on `pausedReason` rather than `state`: the engine refuses to let
+ * a probe denial overwrite this park, so the reason survives even when a
+ * later failure moves `state` (the retryable arm transitions to 'offline'
+ * without clearing the reason).
+ *
+ * Shared by the badge and Settings so the two surfaces cannot describe one
+ * status object differently — the defect class that made the composed
+ * identity copy unreachable during this feature's development.
+ */
+export function isParkedOnNotFoundAsIdentity(
+  status:
+    | Pick<GitSyncStatus, 'pausedReason' | 'pushErrorCode' | 'pullErrorCode'>
+    | null
+    | undefined,
+): boolean {
+  return status?.pausedReason === 'auth-error' && hasNotFoundAsIdentityError(status);
 }
 
 /**
@@ -279,6 +403,8 @@ export function formatPushFailureCode(code: SyncErrorCode): string {
       return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
     case 'semantic-protected-branch':
       return t`The default branch is protected — pushes need a pull request.`;
+    case 'auth-not-found-as-identity':
+      return t`Repository not found — it may not exist, or the account used may not have access.`;
     default:
       // Forward-compat: if a future server emits a code this client doesn't
       // recognize (server-client version skew, even though OK ships as a
@@ -305,6 +431,8 @@ export function formatPullFailureCode(code: SyncErrorCode): string {
       return t`Your GitHub token is missing required scopes. Try signing in again.`;
     case 'auth-no-credential':
       return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
+    case 'auth-not-found-as-identity':
+      return t`Repository not found — it may not exist, or the account used may not have access.`;
     default:
       return t`Fetch failed — check the server logs for details.`;
   }
@@ -329,6 +457,8 @@ export function formatSyncFailureCode(code: SyncErrorCode): string {
       return t`GitHub sign-in is missing or expired. Reconnect to resume syncing.`;
     case 'semantic-protected-branch':
       return t`The default branch is protected — pushes need a pull request.`;
+    case 'auth-not-found-as-identity':
+      return t`Repository not found — it may not exist, or the account used may not have access.`;
     default:
       return t`Sync failed — check the server logs for details.`;
   }
@@ -453,6 +583,21 @@ export function shouldDisableSyncSwitch(
   return false;
 }
 
+/**
+ * One home for the state → label rule every plain-state surface reads (the
+ * tooltip tail, the popover header, and the trigger's accessible name), so
+ * the not-found masquerade cannot read "Repository not found" on one surface
+ * while another still prescribes the reconnect it withdrew.
+ */
+function syncStateLabelFor(status: GitSyncStatus, paused: boolean): string {
+  if (paused) return t`Sync paused`;
+  const state = displayState(status);
+  if (state === 'auth-error' && hasNotFoundAsIdentityError(status)) {
+    return t`Repository not found`;
+  }
+  return stateLabel(state, isFollowingMode(status));
+}
+
 export function tooltipLabel(status: GitSyncStatus, paused = false): string {
   if (paused) return t`Sync paused`;
   const following = isFollowingMode(status);
@@ -479,7 +624,7 @@ export function tooltipLabel(status: GitSyncStatus, paused = false): string {
     if (behind > 0) return t`${behind} behind`;
     return t`Synced`;
   }
-  return stateLabel(state, following);
+  return syncStateLabelFor(status, paused);
 }
 
 interface PopoverBodyProps {
@@ -512,12 +657,22 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const following = isFollowingMode(status);
   const state = displayState(status);
   const lastSyncedRelative = formatRelative(status.lastSyncUtc);
+  // The repository-not-found masquerade parks as auth-error but withdraws the
+  // sign-in affordance — see hasNotFoundAsIdentityError.
+  const notFoundAsIdentity = hasNotFoundAsIdentityError(status);
   // The Full/Follow control appears only for a user who can actually choose —
   // a genuine read-only collaborator can only follow, so it's hidden for them
-  // (a signed-out user may gain push after auth, so they keep it).
+  // (a signed-out user may gain push after auth, so they keep it). The
+  // not-found masquerade is excluded: its probe also answers `denied`, but
+  // that is not a collaborator verdict, and this row is the popover's only
+  // mode control — a failure that says nothing about push rights must not
+  // revoke it. (Settings excludes it from the sibling gate for a related but
+  // distinct reason: there only Full greys out, so the exclusion also stops
+  // one mode being singled out.)
   const genuineReadOnly =
     status.pushPermission?.checkStatus === 'denied' &&
-    status.pushPermission.deniedReason !== 'not-authenticated';
+    status.pushPermission.deniedReason !== 'not-authenticated' &&
+    !notFoundAsIdentity;
   const canChooseMode = !genuineReadOnly;
   // The "Review conflicts" affordance navigates to the first conflicted file
   // (so the editor-area DiffViewBoundary mounts via the lifecycle observer).
@@ -525,21 +680,43 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const firstConflict = conflicts[0] ?? null;
 
   const showConflictButton = !paused && state === 'conflict' && firstConflict !== null;
-  const showAuthButton = !paused && state === 'auth-error';
+  const showAuthButton = !paused && state === 'auth-error' && !notFoundAsIdentity;
   const showSyncButton =
     everEnabled && !showConflictButton && !showAuthButton && (paused || state !== 'dormant');
   // A manual sync from a full-active project pushes too; every other case
   // (following, or paused) pulls only.
   const manualSyncOp: 'sync' | 'pull' = active && localMode === 'full' ? 'sync' : 'pull';
 
+  // Which guidance renders under the error lines — one precedence chain,
+  // evaluated once. The signed-out reconnect wins over the button-less
+  // `pausedReason`/`denied` outcomes; a paused engine never falls through to
+  // the mode lines (which would claim edits are syncing while it's parked).
+  // For the parked not-found masquerade, the auth-error paused line would
+  // read "Reconnect required" — the prescription this state withdraws — so
+  // it gets its own outcome and the error line carries the copy instead.
+  const guidance =
+    !following && shouldOfferReconnect(status.pushPermission)
+      ? 'reconnect'
+      : status.pausedReason
+        ? isParkedOnNotFoundAsIdentity(status)
+          ? 'parked-not-found'
+          : 'paused-reason'
+        : following
+          ? 'mode-follow'
+          : active
+            ? 'mode-full'
+            : status.pushPermission?.checkStatus === 'denied'
+              ? 'denied'
+              : shouldOfferSignInAgain(status.pushPermission)
+                ? 'sign-in-again'
+                : 'none';
+
   return (
     <div className="flex flex-col gap-3.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <BadgeIcon status={status} paused={paused} />
-          <span className="text-1sm font-medium truncate">
-            {paused ? t`Sync paused` : stateLabel(state, following)}
-          </span>
+          <span className="text-1sm font-medium truncate">{syncStateLabelFor(status, paused)}</span>
         </div>
         <Switch
           checked={active}
@@ -562,27 +739,77 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
         </p>
       ) : (
         <>
-          {computeSyncErrorLines(status).map((line) => (
-            <p key={line.key} className="text-xs text-destructive">
-              {line.direction === 'push' ? (
-                <>
-                  <span className="font-medium">{t`Push`}: </span>
-                  {line.message}
-                </>
-              ) : line.direction === 'pull' ? (
-                <>
-                  <span className="font-medium">{t`Pull`}: </span>
-                  {line.message}
-                </>
-              ) : (
-                line.message
-              )}
-            </p>
-          ))}
-          {!following && shouldOfferReconnect(status.pushPermission) ? (
-            // Signed-out denial (no credential resolved) — reconnecting resumes
-            // sync, so offer it here. Takes precedence over the button-less
-            // `pausedReason`/`denied` branches below.
+          {/* The live region carries only status text — the error lines and
+              the button-less guidance — so a state flip is announced to an
+              open popover without re-reading button labels or mode sentences
+              (role="status" is implicitly aria-atomic, so any text change
+              re-announces the whole region; keep children non-interactive).
+              The rows carrying a Button, and the steady-state mode sentences,
+              render after it. `empty:sr-only` keeps the region mounted and
+              pre-registered while healthy: a region that appears and fills in
+              one commit is missed on VoiceOver/Safari, and `display:none`
+              (like unmounting) drops it from the accessibility tree
+              entirely. `sr-only` is absolutely positioned, so an empty
+              region is not a flex item and adds no gap. */}
+          <div role="status" aria-live="polite" className="flex flex-col gap-3.5 empty:sr-only">
+            {computeSyncErrorLines(status).map((line) => (
+              <p key={line.key} className="text-xs text-destructive">
+                {line.direction === 'push' ? (
+                  <>
+                    <span className="font-medium">{t`Push`}: </span>
+                    {line.message}
+                  </>
+                ) : line.direction === 'pull' ? (
+                  <>
+                    <span className="font-medium">{t`Pull`}: </span>
+                    {line.message}
+                  </>
+                ) : (
+                  line.message
+                )}
+              </p>
+            ))}
+            {guidance === 'parked-not-found' && status.pushPermission?.checkStatus === 'denied'
+              ? // Identity tail only — see formatDeniedIdentitySentences.
+                formatDeniedIdentitySentences(status.pushPermission).map((sentence) => (
+                  <p key={sentence} className="text-xs text-muted-foreground">
+                    {sentence}
+                  </p>
+                ))
+              : null}
+            {guidance === 'paused-reason' && status.pausedReason ? (
+              <p className="text-xs text-muted-foreground">
+                {formatPausedReason(status.pausedReason)}
+              </p>
+            ) : null}
+            {guidance === 'paused-reason' &&
+            status.pausedReason === 'no-push-permission' &&
+            status.pushPermission?.checkStatus === 'denied'
+              ? // A push-permission pause and a genuine read-only collaborator
+                // render the same sentence, so the identity tail is the only
+                // thing that tells a two-account user which account was used.
+                // Additive to the pause line: the engine really is parked, and
+                // that stays the headline.
+                formatDeniedIdentitySentences(status.pushPermission).map((sentence) => (
+                  <p key={sentence} className="text-xs text-muted-foreground">
+                    {sentence}
+                  </p>
+                ))
+              : null}
+            {guidance === 'denied' && status.pushPermission?.checkStatus === 'denied'
+              ? formatPushPermissionDenied(
+                  status.pushPermission.deniedReason,
+                  status.pushPermission,
+                ).map((sentence) => (
+                  <p key={sentence} className="text-xs text-muted-foreground">
+                    {sentence}
+                  </p>
+                ))
+              : null}
+          </div>
+          {guidance === 'reconnect' ? (
+            // Signed-out denial (no credential resolved) — reconnecting
+            // resumes sync, so offer it here.
             <div className="flex items-start gap-2">
               <p className="text-xs text-muted-foreground flex-1 min-w-0">
                 <Trans>You're signed out — sign in to resume syncing.</Trans>
@@ -593,11 +820,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
                 </Button>
               )}
             </div>
-          ) : status.pausedReason ? (
-            <p className="text-xs text-muted-foreground">
-              {formatPausedReason(status.pausedReason)}
-            </p>
-          ) : following ? (
+          ) : guidance === 'mode-follow' ? (
             // A follower never pushes, so the push-permission verdict is
             // irrelevant — say what the project IS (the mode).
             <p className="text-xs text-muted-foreground" data-testid="sync-popover-mode-line">
@@ -605,17 +828,13 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
                 Follow — updates flow in from your remote; your edits stay on this computer.
               </Trans>
             </p>
-          ) : active ? (
+          ) : guidance === 'mode-full' ? (
             <p className="text-xs text-muted-foreground" data-testid="sync-popover-mode-line">
               <Trans>
                 Full sync — your edits are committed and pushed to your remote automatically.
               </Trans>
             </p>
-          ) : status.pushPermission?.checkStatus === 'denied' ? (
-            <p className="text-xs text-muted-foreground">
-              {formatPushPermissionDenied(status.pushPermission.deniedReason)}
-            </p>
-          ) : shouldOfferSignInAgain(status.pushPermission) ? (
+          ) : guidance === 'sign-in-again' ? (
             // Probe-401 branch: surface a "Sign in again" affordance without
             // disabling sync — the probe couldn't reach a verdict.
             <div className="flex items-start gap-2">
@@ -857,9 +1076,7 @@ export function SyncStatusBadge({ onSignIn, onSetIdentity }: SyncStatusBadgeProp
   }
 
   const label = paused ? '' : badgeLabel(status);
-  const syncStateLabel = paused
-    ? t`Sync paused`
-    : stateLabel(displayState(status), isFollowingMode(status));
+  const syncStateLabel = syncStateLabelFor(status, paused);
   const showIdentityDot = Boolean(status.identityUnresolved);
 
   return (

@@ -23,7 +23,11 @@ import { AuthModal } from '@/components/AuthModal';
 import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
 import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import {
+  formatDeniedIdentitySentences,
   formatPausedReason,
+  formatSyncFailureCode,
+  hasNotFoundAsIdentityError,
+  isParkedOnNotFoundAsIdentity,
   shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
@@ -144,21 +148,53 @@ export function SyncSection() {
   // the full sync the user already consented to, so it takes precedence over
   // the switch-to-pull-only offer (that one is for genuinely revoked access).
   const offerReconnect = shouldOfferReconnect(status?.pushPermission);
+  // The not-found masquerade suppresses every permission-flavored affordance
+  // below: the failure is "repo missing or invisible to the account used",
+  // not a collaborator-permission verdict, and Follow is no way out — an
+  // account that can't see the repo can't fetch it either.
+  const notFoundAsIdentity = status !== null && hasNotFoundAsIdentityError(status);
   const showReconnect = localMode === 'full' && isPushDenied && offerReconnect;
-  const showSwitchToPullOnly = localMode === 'full' && isPushDenied && !offerReconnect;
+  const showSwitchToPullOnly =
+    localMode === 'full' && isPushDenied && !offerReconnect && !notFoundAsIdentity;
+  // The plain-text reason a push is denied. Deliberately carries NO `localMode`
+  // term: it is the only channel that reaches a keyboard user, because Radix
+  // drops a disabled toggle item from the roving tab order and the tooltip
+  // hangs off a non-focusable wrapper. Gating it on mode left a read-only
+  // collaborator already in Follow with no explanation anywhere.
+  const showDeniedHint =
+    !showSwitchToPullOnly && !showReconnect && isPushDenied && !notFoundAsIdentity;
   // Full sync would immediately fail-and-pause for a genuine read-only user, so
   // don't offer it. Signed-out denial is excluded — that user may well have push
-  // access once they authenticate, so Full stays reachable for them.
+  // access once they authenticate, so Full stays reachable for them. The
+  // masquerade is excluded too: its probe also answers `denied`, but greying
+  // Full out behind permission copy would state a cause the 404 doesn't prove
+  // — and it would single out Full when Follow fetches the same unseeable
+  // repo, implying a mode choice can rescue this.
   const genuineReadOnlyDenied =
     status?.pushPermission?.checkStatus === 'denied' &&
-    status.pushPermission.deniedReason !== 'not-authenticated';
-  // A non-permission pause reason (protected-branch, dirty-tree, …) — reachable
-  // only under full sync. Suppressed when the switch-to-pull-only affordance
-  // already explains a paused full-sync engine.
-  const pausedNotice =
-    showSwitchToPullOnly || isPushDenied || !status?.pausedReason
-      ? null
-      : formatPausedReason(status.pausedReason);
+    status.pushPermission.deniedReason !== 'not-authenticated' &&
+    !notFoundAsIdentity;
+  // The masquerade parks as auth-error, whose paused label reads "Reconnect
+  // required" — the prescription every other surface withdraws for it — so it
+  // shows the failure's own copy instead. Keyed on the same (pausedReason,
+  // error-code) pair the badge uses, not on the code alone: a different pause
+  // reason carrying a stale not-found code would otherwise make Settings and
+  // the badge describe one status object differently. It wins over the
+  // push-denied suppression below, since the probe against an unseeable repo
+  // also answers `denied` and would otherwise leave only permission copy.
+  // Shared with the badge so the two surfaces cannot drift apart.
+  const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
+  // Otherwise a non-permission pause reason (protected-branch, dirty-tree, …),
+  // reachable only under full sync — suppressed while a push-denied affordance
+  // already explains the paused engine (`showSwitchToPullOnly` is a strict
+  // refinement of `isPushDenied`, so testing the latter covers both).
+  const pausedNotice = !status?.pausedReason
+    ? null
+    : parkedOnNotFound
+      ? formatSyncFailureCode('auth-not-found-as-identity')
+      : isPushDenied
+        ? null
+        : formatPausedReason(status.pausedReason);
 
   function onModeChange(next: string) {
     // Radix single ToggleGroup emits '' when the active item is re-pressed
@@ -302,14 +338,19 @@ export function SyncSection() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   {/* A disabled button emits no pointer events, so the tooltip
-                      hangs off a wrapper span that still receives hover — the
-                      only way to surface why Full is greyed out. Keyboard users
-                      get the same reason from the read-only hint text below. */}
+                      hangs off a wrapper span that still receives hover. Radix
+                      also drops a disabled item from the roving tab order, so
+                      the tooltip is pointer-only — `aria-describedby` points
+                      at the plain-text reason below so it reaches assistive
+                      tech regardless of which siblings render. */}
                   <span className="inline-flex">
                     <ToggleGroupItem
                       value="full"
                       className={SYNC_SELECTED_TOGGLE_CLASS}
                       disabled
+                      aria-describedby={
+                        showDeniedHint ? 'settings-sync-denied-hint-text' : undefined
+                      }
                       data-testid="settings-sync-mode-full"
                     >
                       <Trans>Full</Trans>
@@ -317,7 +358,7 @@ export function SyncSection() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent data-testid="settings-sync-mode-full-tip">
-                  <Trans>You don't have permission to push to this repo</Trans>
+                  <Trans>You don't have permission to push to this repo.</Trans>
                 </TooltipContent>
               </Tooltip>
             ) : (
@@ -368,18 +409,25 @@ export function SyncSection() {
             </Button>
           </div>
         )}
-        {!showSwitchToPullOnly && !showReconnect && isPushDenied && localMode !== 'follow' && (
-          // Push-denied and not yet following: point the receiver at pull-only,
-          // which the mode control above already offers. Suppressed for the
-          // signed-out shape — permission is unknowable until they sign in.
+        {showDeniedHint && (
+          // Suppressed for the signed-out shape — permission is unknowable
+          // until they sign in — and for the not-found masquerade, where
+          // Follow fails on the same invisible repo. The `id` is what the
+          // disabled Full item points at via `aria-describedby`, so the reason
+          // travels with the control instead of depending on siblings.
           <p
+            id="settings-sync-denied-hint-text"
             className="text-1sm text-muted-foreground mt-2"
             data-testid="settings-sync-denied-hint"
           >
-            <Trans>
-              You don't have permission to push to this repo. Follow can still keep your copy up to
-              date.
-            </Trans>
+            {localMode === 'follow' ? (
+              <Trans>You don't have permission to push to this repo.</Trans>
+            ) : (
+              <Trans>
+                You don't have permission to push to this repo. Follow can still keep your copy up
+                to date.
+              </Trans>
+            )}
           </p>
         )}
         {pausedNotice !== null && (
@@ -387,6 +435,23 @@ export function SyncSection() {
             {pausedNotice}
           </p>
         )}
+        {/* A notice naming an account problem must name the account. Gated on
+            any denial that produced a notice above, not just the masquerade:
+            the badge appends the same tail after EVERY denial reason, on the
+            grounds that a read-only verdict is exactly as account-dependent
+            as a private-repo 404. One testid on the wrapper — the tail is up
+            to two sentences (the account used, and the declared-account
+            miss), which is the shape this feature exists to surface. */}
+        {status?.pushPermission?.checkStatus === 'denied' &&
+        (parkedOnNotFound || showSwitchToPullOnly || showDeniedHint) ? (
+          <div className="mt-2 space-y-1" data-testid="settings-sync-identity">
+            {formatDeniedIdentitySentences(status.pushPermission).map((sentence) => (
+              <p key={sentence} className="text-1sm text-muted-foreground">
+                {sentence}
+              </p>
+            ))}
+          </div>
+        ) : null}
         {shouldOfferSignInAgain(status?.pushPermission) && (
           // Probe-401 ('unknown/token-invalid') surfaces a Sign in again
           // affordance without disabling sync. Mirrors the popover so both

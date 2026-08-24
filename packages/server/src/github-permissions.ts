@@ -18,7 +18,8 @@
 
 import type { Counter, Histogram } from '@opentelemetry/api';
 import { getLogger } from './logger.ts';
-import type { OriginTransport } from './share/git-context.ts';
+import { type OriginTransport, sameGitHubLogin } from './share/git-context.ts';
+import type { GitHubAccountSource } from './share/github-account.ts';
 import { getMeter } from './telemetry.ts';
 
 const log = getLogger('github-permissions');
@@ -51,6 +52,13 @@ type PushPermissionUnknownError =
   | 'ssh-unverified';
 
 /**
+ * Where a user declared an account for a remote: the URL's userinfo or a
+ * `credential.<url>.username` entry. Never `'active'` — an active-account
+ * resolution declares nothing that could go unhonored.
+ */
+type DeclaredAccountSource = Exclude<GitHubAccountSource, 'active'>;
+
+/**
  * Outcome of a single push-permission probe.
  *
  * - `allowed` — the authenticated user can push.
@@ -60,19 +68,86 @@ type PushPermissionUnknownError =
  */
 export type PushPermission =
   | { kind: 'allowed' }
-  | { kind: 'denied'; reason: PushPermissionDeniedReason }
+  | {
+      kind: 'denied';
+      reason: PushPermissionDeniedReason;
+      /**
+       * Login whose credential the probe authenticated with — the one the
+       * token resolution landed on after any fallback, so it can differ from
+       * the account the user declared. Absent when no identity is known
+       * (anonymous, an unattributed stored token, gh unable to report its
+       * accounts). Named to match the internal token-resolution chain, and in
+       * opposition to `declaredLogin`: declared is what was asked for,
+       * resolved is what answered.
+       */
+      resolvedLogin?: string;
+      /**
+       * The declared account and the mechanism that declared it, carried only
+       * when that account did NOT produce the credential used. Never copied
+       * into `resolvedLogin` — a message must not claim an identity the
+       * resolution fell back from.
+       */
+      declaredLogin?: string;
+      declaredSource?: DeclaredAccountSource;
+    }
   | { kind: 'unknown'; error: PushPermissionUnknownError };
 
-/** gh-CLI token detector. Structurally compatible with cli's `detectGh`. */
-export type DetectGhFn = (host?: string) => { available: boolean; token?: string };
+/**
+ * gh-CLI token detector. Structurally compatible with cli's `detectGh`, and
+ * declared here rather than imported to keep `packages/server` free of a
+ * dependency on `packages/cli`. The two shapes must be widened together — a
+ * login this side cannot pass is a login the CLI silently never receives.
+ *
+ * `login` requests a specific gh account; when that account has no token the
+ * implementation falls back to the host's active account rather than returning
+ * nothing, so `resolvedLogin` (not the requested login) names whoever produced
+ * `token`, and `fallback` says the request went unhonored.
+ *
+ * A discriminated union mirroring the CLI's `GhDetectResult` arm for arm:
+ * `available: true` implies a token, so a typed injected implementation
+ * cannot claim availability without producing one. Callers still guard
+ * `result.available && result.token` at runtime — this seam accepts
+ * implementations from untyped callers too, and a tokenless "available"
+ * from one must degrade, not relay `undefined` as a credential.
+ */
+export type DetectGhFn = (
+  host?: string,
+  options?: { login?: string },
+) =>
+  | { available: false }
+  | { available: true; token: string; resolvedLogin?: string; fallback?: boolean };
+
+/**
+ * gh-CLI account listing, structurally compatible with cli's
+ * `detectGhAccounts` and injected for the same package-cycle reason as
+ * `DetectGhFn`. Diagnostic only: it names the active account behind a token
+ * `gh auth token` returned anonymously. Any failure degrades to `undefined`;
+ * it must never take the token path down with it.
+ */
+export type DetectGhAccountsFn = (
+  host?: string,
+) => Array<{ login: string; active: boolean }> | undefined;
 
 /**
  * Read side of the OK credential store, structurally compatible with cli's
  * `TokenStore`. Injected (not imported) for the package-cycle reason above.
+ * `login` names the account the entry was stored for, when the store knows.
  */
 export interface ProbeTokenStore {
-  get(host: string): Promise<{ token?: string } | null>;
+  get(host: string): Promise<{ token?: string; login?: string } | null>;
 }
+
+/**
+ * Declared-account resolution for the origin being probed — the shape
+ * `resolveGitHubAccountFromUrl` returns, minus the host (the probe's host
+ * arrives from the same origin parse; accepting it twice would let the two
+ * drift). A union mirroring `GitHubAccount`, so "an active resolution names
+ * no login" is a compile error here rather than a prose invariant an
+ * injected caller could quietly break.
+ */
+type ProbeAccount =
+  | { source: 'active'; login?: undefined }
+  | { source: DeclaredAccountSource; login: string };
 
 export interface CheckPushPermissionOptions {
   owner: string;
@@ -87,8 +162,20 @@ export interface CheckPushPermissionOptions {
    * cannot see.
    */
   transport?: OriginTransport;
+  /**
+   * The account declared for this origin, from the same resolver the push
+   * path consumes — sharing one resolution is what keeps the probe from
+   * reporting `allowed` as one identity while the push authenticates as
+   * another. Omit for the active-account behavior.
+   */
+  account?: ProbeAccount;
   /** Tier A resolver (`gh` CLI). Defaults to "no gh available". */
   detectGh?: DetectGhFn;
+  /**
+   * Accounts listing for identity reporting on denials. Omit to leave
+   * denials unnamed — classification is unaffected.
+   */
+  detectGhAccounts?: DetectGhAccountsFn;
   /** Tier B/C credential store. Omit to skip stored-token resolution. */
   tokenStore?: ProbeTokenStore | null;
   /** Injectable for tests; defaults to the global `fetch`. */
@@ -192,18 +279,60 @@ async function classify(resp: Response, hadToken: boolean): Promise<PushPermissi
  * the source for diagnostics without leaking the token itself. `'gh'` /
  * `'token-store'` / `'anonymous'` are the only three values; everything else
  * is a contract violation.
+ *
+ * A declared account is requested from gh; `resolvedLogin` names whoever
+ * actually produced the token (the store entry's own login on the stored
+ * tier) and is absent when no source can attribute it.
  */
 async function resolveProbeTokenWithSource(
   host: string,
+  account: ProbeAccount | undefined,
   detectGh: DetectGhFn,
   tokenStore: ProbeTokenStore | null | undefined,
-): Promise<{ token: string | undefined; source: 'gh' | 'token-store' | 'anonymous' }> {
-  const gh = detectGh(host);
-  if (gh.available && gh.token) return { token: gh.token, source: 'gh' };
+  detectGhAccounts: DetectGhAccountsFn | undefined,
+): Promise<{
+  token: string | undefined;
+  source: 'gh' | 'token-store' | 'anonymous';
+  resolvedLogin?: string;
+}> {
+  const gh = detectGh(host, { login: account?.login });
+  if (gh.available && gh.token) {
+    if (account?.login !== undefined && gh.fallback === true) {
+      // Name the account that actually answered before deciding this was a
+      // miss — the same ordering `withDeniedIdentity` uses. A fallback result
+      // carries no `resolvedLogin`, so warning off `fallback` alone would fire
+      // on the casing-only case too, where the active account IS the declared
+      // one (GitHub logins are case-insensitive) and there is nothing to fix.
+      const activeLogin = activeAccountLogin(detectGhAccounts, host);
+      if (!sameGitHubLogin(activeLogin, account.login)) {
+        // The only trace when a fallback probe then reports `allowed`. Logins
+        // are unbounded-cardinality: pino fields only, never OTel attributes.
+        // `declaredSource` (not a bare `source`): the adjacent probe log lines
+        // carry `tokenSource`, and a consumer filtering on `source` must not
+        // confuse the declaration mechanism with the credential tier.
+        log.warn(
+          {
+            host,
+            declaredLogin: account.login,
+            declaredSource: account.source,
+            resolvedLogin: activeLogin,
+          },
+          '[permissions] declared GitHub account did not produce the gh token — probing as the active account',
+        );
+      }
+    }
+    return { token: gh.token, source: 'gh', resolvedLogin: gh.resolvedLogin };
+  }
   if (tokenStore) {
     try {
       const entry = await tokenStore.get(host);
-      if (entry?.token) return { token: entry.token, source: 'token-store' };
+      if (entry?.token) {
+        // 'unknown' is the store's placeholder for entries saved without a
+        // login (cli's `resolveClonePrincipal` filters it the same way) —
+        // a sentinel, not a name to surface.
+        const login = entry.login !== 'unknown' ? entry.login : undefined;
+        return { token: entry.token, source: 'token-store', resolvedLogin: login };
+      }
     } catch (err) {
       // tokenStore.get() shouldn't normally throw — lazy wrapper
       // catches keyring init failures and falls back to FileBackend — but
@@ -217,23 +346,89 @@ async function resolveProbeTokenWithSource(
   return { token: undefined, source: 'anonymous' };
 }
 
+/**
+ * Name the identity behind a denial. `resolvedLogin` is whoever actually
+ * produced the credential: the account the gh resolution reported, else —
+ * for a gh token returned anonymously — the host's active account. A stored
+ * token carries its own entry login or nothing; it is never attributed to a
+ * gh account it did not come from.
+ */
+function withDeniedIdentity(
+  denied: Extract<PushPermission, { kind: 'denied' }>,
+  opts: {
+    account: ProbeAccount | undefined;
+    tokenSource: 'gh' | 'token-store' | 'anonymous';
+    resolvedLogin: string | undefined;
+    detectGhAccounts: DetectGhAccountsFn | undefined;
+    host: string;
+  },
+): Extract<PushPermission, { kind: 'denied' }> {
+  const resolvedLogin =
+    opts.resolvedLogin ??
+    (opts.tokenSource === 'gh' ? activeAccountLogin(opts.detectGhAccounts, opts.host) : undefined);
+  return {
+    ...denied,
+    ...(resolvedLogin !== undefined ? { resolvedLogin } : {}),
+    ...declaredMissFields(opts.account, resolvedLogin),
+  };
+}
+
+/**
+ * The declared account, carried only when it did not produce the credential
+ * used — the failure-path fact the user can act on. A denial that
+ * authenticated as the declared account carries nothing extra: the account
+ * was honored and the denial is real.
+ */
+function declaredMissFields(
+  account: ProbeAccount | undefined,
+  resolvedLogin: string | undefined,
+): Pick<Extract<PushPermission, { kind: 'denied' }>, 'declaredLogin' | 'declaredSource'> {
+  if (account?.login === undefined) return {};
+  // GitHub logins are case-insensitive and unique case-insensitively, so a
+  // casing difference between the declared account and the one that answered
+  // is the same person — reporting it as a miss would be false.
+  if (sameGitHubLogin(account.login, resolvedLogin)) return {};
+  return { declaredLogin: account.login, declaredSource: account.source };
+}
+
+/**
+ * Active-account lookup is diagnostic only: a listing that fails or throws
+ * (an injected implementation crossing the package seam, gh itself absent)
+ * must cost the denial its name, never its classification — an uncaught
+ * throw here would surface as a bogus network error instead.
+ */
+function activeAccountLogin(
+  detectGhAccounts: DetectGhAccountsFn | undefined,
+  host: string,
+): string | undefined {
+  if (!detectGhAccounts) return undefined;
+  try {
+    return detectGhAccounts(host)?.find((a) => a.active)?.login;
+  } catch (err) {
+    log.warn({ err, host }, '[permissions] detectGhAccounts failed — denial stays unnamed');
+    return undefined;
+  }
+}
+
 async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermission> {
   const {
     owner,
     repo,
     host = 'github.com',
     transport = 'https',
+    account,
     detectGh = () => ({ available: false }),
+    detectGhAccounts,
     tokenStore,
     _fetchFn = fetch,
     _timeoutMs = PROBE_TIMEOUT_MS,
   } = opts;
 
-  const { token, source: tokenSource } = await resolveProbeTokenWithSource(
-    host,
-    detectGh,
-    tokenStore,
-  );
+  const {
+    token,
+    source: tokenSource,
+    resolvedLogin,
+  } = await resolveProbeTokenWithSource(host, account, detectGh, tokenStore, detectGhAccounts);
 
   // No credential resolved. What that MEANS depends on the origin transport:
   //
@@ -262,7 +457,11 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
     log.info({ host }, '[permissions] no credential resolved — denying push (read-only)');
     // 'not-authenticated' (not 'no-collaborator'): reconnecting resolves this,
     // so the UI can offer a sign-in affordance rather than a dead-end.
-    return { kind: 'denied', reason: 'not-authenticated' };
+    return {
+      kind: 'denied',
+      reason: 'not-authenticated',
+      ...declaredMissFields(account, undefined),
+    };
   }
 
   const url = `${githubApiBase(host)}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
@@ -282,7 +481,17 @@ async function runProbe(opts: CheckPushPermissionOptions): Promise<PushPermissio
   const timer = setTimeout(() => ac.abort(), _timeoutMs);
   try {
     const resp = await _fetchFn(url, { signal: ac.signal, headers: buildHeaders(token) });
-    const result = await classify(resp, token !== undefined);
+    const classified = await classify(resp, token !== undefined);
+    const result =
+      classified.kind === 'denied'
+        ? withDeniedIdentity(classified, {
+            account,
+            tokenSource,
+            resolvedLogin,
+            detectGhAccounts,
+            host,
+          })
+        : classified;
     log.info(
       {
         host,

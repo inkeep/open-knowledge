@@ -526,7 +526,17 @@ export {
   hasGcLogLatch,
   type ShadowObjectStats,
 } from './shadow-repo-stats.ts';
-export { originGitHubHost } from './share/git-context.ts';
+export {
+  loginShapedUserinfoUser,
+  originGitHubHost,
+  sameGitHubLogin,
+} from './share/git-context.ts';
+export {
+  type CredentialUrlMatchReader,
+  type GitHubAccountSource,
+  resolveGitHubAccountFromUrl,
+} from './share/github-account.ts';
+export { redactShareSubprocessStderr } from './share/publish.ts';
 export {
   createEphemeralProjectDir,
   EPHEMERAL_PROJECT_DIR_PREFIX,

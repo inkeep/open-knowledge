@@ -1144,6 +1144,11 @@
     "CGj3gX": ["erreur d'analyse"],
     "CHfFN_": ["Retirer OpenKnowledge de ", ["0"]],
     "CKyk7Q": ["Retour"],
+    "CMd-g-": [
+      "Votre URL distante indique ",
+      ["declaredLogin"],
+      ", mais les identifiants de ce compte n'ont pas pu être utilisés."
+    ],
     "CMyafZ": ["Valeur hexadécimale de ", ["slot"]],
     "COr1Y7": [
       "Choisissez <0>openknowledge.skill</0> dans votre dossier <1>Téléchargements</1>. Elle s'active automatiquement."
@@ -1178,7 +1183,6 @@
     "CcaU4i": [
       "Les modifications s’appliquent immédiatement et sont automatiquement enregistrées dans ce thème."
     ],
-    "ChAtFg": ["Vous n'avez pas la permission de pousser vers ce dépôt"],
     "ChMshD": ["Quitter ", ["appName"]],
     "Ck9XRt": ["Impossible d'enregistrer la clé — veuillez réessayer."],
     "ClII5l": ["Appuyez sur le soleil ou la lune de « Custom » ci-dessus pour utiliser ce thème."],
@@ -1370,6 +1374,7 @@
       "Vos commentaires attendent derrière le tour en cours : ils restent en file jusqu’à ce que l’agent récupère le message."
     ],
     "Eji13z": ["Bascule la mise en forme surlignée."],
+    "EkEFE3": ["Dépôt introuvable"],
     "EkH9pt": ["Mettre à jour"],
     "EkUnmS": ["quelconque"],
     "El7NbA": ["Titre 2"],
@@ -1512,6 +1517,11 @@
     "G8t9NN": ["Ajouter une propriété"],
     "GA-UkN": ["Type de ", ["keyName"], " : ", ["typeLabel"], ". Cliquez pour changer."],
     "GAohqx": ["Supprimer la colonne"],
+    "GBEqoP": [
+      "Votre configuration Git indique ",
+      ["declaredLogin"],
+      ", mais les identifiants de ce compte n'ont pas pu être utilisés."
+    ],
     "GBQjiV": ["Ajouter une compétence"],
     "GDvlUT": ["Rôle"],
     "GGsM4y": ["Sélectionné dans le graphe"],
@@ -3206,6 +3216,7 @@
     "ZGVsOD": ["Envoyez cette branche sur GitHub avant de partager."],
     "ZI8uvA": ["Aucun problème trouvé."],
     "ZJ99sD": ["Insérer une colonne à gauche"],
+    "ZKVuLY": ["Authentifié en tant que ", ["login"], "."],
     "ZNK2Tq": ["racine"],
     "ZOVgDv": [["moved"], " compétences déplacées vers Projet"],
     "ZQJ1IV": ["Active le dernier onglet de l'éditeur."],
@@ -3408,6 +3419,11 @@
       ". Essayez de recharger la page."
     ],
     "ak4LLg": ["Effacer le menu"],
+    "akOe4q": [
+      "Votre configuration d'identifiants Git indique ",
+      ["declaredLogin"],
+      ", mais les identifiants de ce compte n'ont pas pu être utilisés."
+    ],
     "akmOT9": ["Modifier ce commentaire"],
     "an0aL5": ["Demander à un agent"],
     "anmUZq": ["Une fonctionnalité manquante"],
@@ -4204,6 +4220,9 @@
     "jPUPvG": ["Impossible de résoudre le conflit pour ", ["filePath"], "."],
     "jRAGrQ": ["Configurer les agents"],
     "jRHdCz": ["Échec du chargement du PDF"],
+    "jRsjlF": [
+      "Dépôt introuvable — il n'existe peut-être pas, ou le compte utilisé n'y a peut-être pas accès."
+    ],
     "jSO1X5": [
       "Les modèles hérités ne peuvent pas être renommés ici — renommez-le dans le dossier auquel il appartient."
     ],

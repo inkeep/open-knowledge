@@ -1959,6 +1959,10 @@ msgstr "附件"
 msgid "Attachments must total under 3 MB."
 msgstr "附件總大小必須小於 3 MB。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "已以 {login} 身分驗證。"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "權威內容；在所有被參照的地方逐字鏡像。"
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "儲存庫名稱"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "找不到儲存庫"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "找不到儲存庫——它可能不存在，或所用帳戶可能沒有存取權。"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "找不到儲存庫。它可能已被重新命名、刪除或移動。"
 
@@ -14803,10 +14816,6 @@ msgstr "你沒有這個儲存庫的存取權。"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "你沒有推送到這個儲存庫的權限"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "你沒有推送到這個儲存庫的權限。"
 
@@ -14888,6 +14897,14 @@ msgstr "你目前的版本會先存起來，所以這一步可以回復。"
 msgid "Your edits stay on this computer"
 msgstr "你的編輯會留在這台電腦上"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的 Git 設定中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的 Git 憑證設定中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "你本機的 <0>{branch}</0> 分支副本落後了。請拉取最新的�
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "你的訊息未送達 {agentName}。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的遠端 URL 中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

@@ -1959,6 +1959,10 @@ msgstr "Adjuntos"
 msgid "Attachments must total under 3 MB."
 msgstr "Los adjuntos deben sumar menos de 3 MB."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "Autenticado como {login}."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Contenido autoritativo; se replica literalmente allí donde se referencia."
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "Nombre del repositorio"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "No se encontró el repositorio"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "No se encontró el repositorio: puede que no exista o que la cuenta utilizada no tenga acceso."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "No se encontró el repositorio. Puede que lo hayan renombrado, eliminado o movido."
 
@@ -14803,10 +14816,6 @@ msgstr "No tienes acceso a este repositorio."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "No tienes permiso para hacer push a este repositorio"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "No tienes permiso para hacer push a este repositorio."
 
@@ -14888,6 +14897,14 @@ msgstr "Tu versión actual se guarda primero, así que esto es reversible."
 msgid "Your edits stay on this computer"
 msgstr "Tus ediciones se quedan en este equipo"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Tu configuración de Git indica {declaredLogin}, pero no se pudieron usar las credenciales de esa cuenta."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Tu configuración de credenciales de Git indica {declaredLogin}, pero no se pudieron usar las credenciales de esa cuenta."
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "Tu copia local de la rama <0>{branch}</0> está por detrás. Trae los ú
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "Tu mensaje no llegó a {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Tu URL remota indica {declaredLogin}, pero no se pudieron usar las credenciales de esa cuenta."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

@@ -217,4 +217,73 @@ describe('redactShareSubprocessStderr', () => {
   test('handles empty input', () => {
     expect(redactShareSubprocessStderr('')).toBe('');
   });
+
+  test('redacts a bare token-as-username URL', () => {
+    const tok = `ghp_${'a'.repeat(36)}`;
+    const redacted = redactShareSubprocessStderr(
+      `fatal: unable to access https://${tok}@github.com/o/r.git/`,
+    );
+    expect(redacted).not.toContain(tok);
+    expect(redacted).toContain('https://***@github.com');
+  });
+
+  test('redacts a token username paired with an empty password', () => {
+    const tok = `ghs_${'b'.repeat(36)}`;
+    expect(redactShareSubprocessStderr(`https://${tok}:@github.com/o/r`)).not.toContain(tok);
+  });
+
+  test('redacts a token password with an empty username', () => {
+    const tok = `gho_${'c'.repeat(36)}`;
+    expect(redactShareSubprocessStderr(`https://:${tok}@github.com/o/r`)).not.toContain(tok);
+  });
+
+  test('redacts a fine-grained PAT username', () => {
+    const tok = `github_pat_${'d'.repeat(70)}`;
+    expect(redactShareSubprocessStderr(`https://${tok}@github.com/o/r`)).not.toContain(tok);
+  });
+
+  test('redacts every credentialed URL on a line', () => {
+    const redacted = redactShareSubprocessStderr(
+      `push https://ghp_${'e'.repeat(36)}@github.com/a/b and https://user:s3cret@github.com/c/d`,
+    );
+    expect(redacted).not.toContain('ghp_');
+    expect(redacted).not.toContain('s3cret');
+    expect(redacted).toContain('user:***@github.com');
+  });
+
+  test('leaves a plain account-userinfo URL intact', () => {
+    const stderr = 'fetch https://alice@github.com/o/r failed';
+    expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
+  });
+
+  // The `\\s` exclusion is now the only thing holding the userinfo span to one
+  // token. These three shapes are not producible by git stderr, but they fail
+  // loudly if a future edit widens the class to `[^/]*` — which would swallow
+  // whole sentences of a diagnostic into a `***`.
+  test('a later email on the line is not swallowed into the URL userinfo', () => {
+    const stderr = "fatal: 'https://github.com' — contact alice@corp.example";
+    expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
+  });
+
+  test('a whitespace boundary ends the userinfo span', () => {
+    const stderr = 'https://github.com/o/r and then user@host';
+    expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
+  });
+
+  test('an scp-form remote later on the line is left intact', () => {
+    const stderr = 'tried https://github.com/o/r then git@github.com:o/r.git';
+    expect(redactShareSubprocessStderr(stderr)).toBe(stderr);
+  });
+
+  // The userinfo span runs to the LAST @ before a slash or whitespace, like
+  // the clone side's stripUrlPassword: a raw @ inside a hand-written
+  // password must not split the match early and leave the password's tail.
+  test('redacts the whole password even when it contains a raw @', () => {
+    const redacted = redactShareSubprocessStderr(
+      'fatal: unable to access https://alice:p@ss@github.com/o/r',
+    );
+    expect(redacted).toContain('alice:***@github.com');
+    expect(redacted).not.toContain('p@ss');
+    expect(redacted).not.toContain('ss@github.com');
+  });
 });

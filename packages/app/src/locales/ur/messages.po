@@ -1959,6 +1959,10 @@ msgstr "منسلکات"
 msgid "Attachments must total under 3 MB."
 msgstr "منسلکات کا مجموعی حجم 3 MB سے کم ہونا چاہیے۔"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "{login} کے طور پر تصدیق کی گئی۔"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "مستند مواد؛ جہاں بھی اس کا حوالہ ہو وہاں لفظ بہ لفظ منعکس ہوتا ہے۔"
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "ریپازٹری کا نام"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "ریپازٹری نہیں ملی"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "ریپازٹری نہیں ملی — ہو سکتا ہے وہ موجود نہ ہو، یا استعمال شدہ اکاؤنٹ کو رسائی حاصل نہ ہو۔"
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "ریپازٹری نہیں ملی۔ ہو سکتا ہے اس کا نام بدل گیا ہو، حذف ہو گئی ہو، یا منتقل ہو گئی ہو۔"
 
@@ -14803,10 +14816,6 @@ msgstr "آپ کو اس ریپازٹری تک رسائی نہیں۔"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "آپ کو اس ریپو میں پُش کرنے کی اجازت نہیں"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "آپ کو اس ریپو میں پُش کرنے کی اجازت نہیں۔"
 
@@ -14888,6 +14897,14 @@ msgstr "آپ کا موجودہ ورژن پہلے محفوظ ہو جاتا ہے،
 msgid "Your edits stay on this computer"
 msgstr "آپ کی ترامیم اسی کمپیوٹر پر رہتی ہیں"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "آپ کی Git کنفیگریشن میں {declaredLogin} درج ہے، لیکن اس اکاؤنٹ کی کریڈینشلز استعمال نہیں ہو سکیں۔"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "آپ کی Git کریڈینشل کنفیگریشن میں {declaredLogin} درج ہے، لیکن اس اکاؤنٹ کی کریڈینشلز استعمال نہیں ہو سکیں۔"
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "برانچ <0>{branch}</0> کی آپ کی مقامی نقل پیچھے �
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "آپ کا پیغام {agentName} تک نہیں پہنچا۔"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "آپ کے ریموٹ URL میں {declaredLogin} درج ہے، لیکن اس اکاؤنٹ کی کریڈینشلز استعمال نہیں ہو سکیں۔"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

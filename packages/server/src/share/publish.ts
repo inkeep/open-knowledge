@@ -26,6 +26,7 @@ import type {
   SharePublishResponse,
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
+import { loginShapedUserinfoUser } from './git-context.ts';
 
 // ─── Handler tags + URL keys ─────────────────────────────────────────────────
 
@@ -225,13 +226,25 @@ export function emitSharePublishLog(
 }
 
 /**
- * Strip credentials embedded in URLs of the form
- * `https://x-access-token:<pat>@github.com/...` (the inline-token push URL
- * used by `share publish`). Replaces the token with
- * `***` so a partial git stderr message in a logged subprocess failure
- * doesn't leak the PAT. Also handles the bare `<user>:<pwd>@host` form for
- * completeness.
+ * Strip credentials embedded in URLs before stderr is logged or surfaced.
+ * Covers the inline-token push URL `share publish` mints
+ * (`https://x-access-token:<pat>@github.com/...`), the bare `user:pwd@` form,
+ * and the token-as-username form (`https://<pat>@github.com/...`) — the
+ * password half is always dropped, and the username half survives only when
+ * it is shaped like a login rather than a credential, so `x-access-token`
+ * stays readable while a PAT never does.
+ *
+ * The userinfo span runs greedily to the LAST `@` before a slash or
+ * whitespace, matching `stripUrlPassword` on the clone side: a raw `@`
+ * inside a hand-written password (`user:p@ss@host`) must not split the
+ * match early and leave the password's tail in the output.
  */
 export function redactShareSubprocessStderr(stderr: string): string {
-  return stderr.replace(/(https?:\/\/)([^:@\s/]+):([^@\s/]+)@/g, '$1$2:***@');
+  return stderr.replace(/(https?:\/\/)([^\s/]*)@/g, (whole, scheme: string, userinfo: string) => {
+    const colon = userinfo.indexOf(':');
+    const user = colon === -1 ? userinfo : userinfo.slice(0, colon);
+    const keepUser = user !== '' && loginShapedUserinfoUser(user) !== undefined;
+    if (colon === -1) return keepUser ? whole : `${scheme}***@`;
+    return `${scheme}${keepUser ? user : '***'}:***@`;
+  });
 }

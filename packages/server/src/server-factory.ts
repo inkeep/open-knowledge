@@ -155,6 +155,7 @@ import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts
 import { buildSyncCredentialConfig } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
+  DetectGhAccountsFn,
   DetectGhFn,
   ProbeTokenStore,
   PushPermission,
@@ -395,6 +396,12 @@ export interface ServerOptions {
    * omitted — leaves the probe to anonymous resolution.
    */
   detectGh?: DetectGhFn;
+  /**
+   * gh account listing, wired through `SyncEngine` so probe denials can name
+   * the identity they authenticated as. Same dependency-injection rationale
+   * as `detectGh` above; omitting it only leaves denials unnamed.
+   */
+  detectGhAccounts?: DetectGhAccountsFn;
   /**
    * Tier B/C OK credential store. Wired through `SyncEngine` to the
    * push-permission probe. Same dependency-injection rationale as
@@ -5602,6 +5609,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         // (`server-factory.test.ts > production wiring: push-permission auth`)
         // pins that `createServer(options)` forwards both seams to SyncEngine.
         detectGh: options.detectGh,
+        detectGhAccounts: options.detectGhAccounts,
         tokenStore: options.tokenStore,
         // Test seam — production callers leave this undefined. Forwarded so the
         // wiring test can assert detectGh + tokenStore propagate through without

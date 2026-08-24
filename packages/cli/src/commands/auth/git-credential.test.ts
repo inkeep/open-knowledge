@@ -283,13 +283,16 @@ describe('handleCredentialGet gh-token relay', () => {
   let tmpDir: string;
   let savedToken: string | undefined;
   let savedHost: string | undefined;
+  let savedLogin: string | undefined;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'ok-git-cred-relay-'));
     savedToken = process.env.OK_GH_TOKEN;
     savedHost = process.env.OK_GH_TOKEN_HOST;
+    savedLogin = process.env.OK_GH_TOKEN_LOGIN;
     delete process.env.OK_GH_TOKEN;
     delete process.env.OK_GH_TOKEN_HOST;
+    delete process.env.OK_GH_TOKEN_LOGIN;
   });
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -297,6 +300,8 @@ describe('handleCredentialGet gh-token relay', () => {
     else process.env.OK_GH_TOKEN = savedToken;
     if (savedHost === undefined) delete process.env.OK_GH_TOKEN_HOST;
     else process.env.OK_GH_TOKEN_HOST = savedHost;
+    if (savedLogin === undefined) delete process.env.OK_GH_TOKEN_LOGIN;
+    else process.env.OK_GH_TOKEN_LOGIN = savedLogin;
   });
 
   test('relayed token for a matching host wins over the stored entry', async () => {
@@ -318,6 +323,25 @@ describe('handleCredentialGet gh-token relay', () => {
     process.env.OK_GH_TOKEN = 'gho_relayed';
     process.env.OK_GH_TOKEN_HOST = 'github.com';
     const input = makeStream('protocol=https\nhost=github.com\n\n');
+    const { writable, result } = makeOutput();
+
+    const code = await handleCredentialGet(input, writable, store);
+
+    expect(code).toBe(0);
+    expect(result()).toBe('username=x-access-token\npassword=gho_relayed\n');
+  });
+
+  test('the host is the only relay gate — a username mismatch does not block it', async () => {
+    // git forwards a URL-declared username (`https://bob@…`) with the request,
+    // and the server names the token's account in OK_GH_TOKEN_LOGIN. Neither
+    // may gate the relay: the token was chosen upstream, login-aware, and a
+    // helper-side identity check would re-introduce the stripped-PATH failure
+    // mode that keeps account resolution out of this process.
+    const store = makeStore(tmpDir);
+    process.env.OK_GH_TOKEN = 'gho_relayed';
+    process.env.OK_GH_TOKEN_HOST = 'github.com';
+    process.env.OK_GH_TOKEN_LOGIN = 'alice';
+    const input = makeStream('protocol=https\nhost=github.com\nusername=bob\n\n');
     const { writable, result } = makeOutput();
 
     const code = await handleCredentialGet(input, writable, store);

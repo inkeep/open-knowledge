@@ -936,6 +936,11 @@
     "CGj3gX": ["galat penguraian"],
     "CHfFN_": ["Hapus OpenKnowledge dari ", ["0"]],
     "CKyk7Q": ["Kembali"],
+    "CMd-g-": [
+      "URL remote Anda menyebut ",
+      ["declaredLogin"],
+      ", tetapi kredensial akun itu tidak dapat digunakan."
+    ],
     "CMyafZ": ["Nilai heksa ", ["slot"]],
     "COr1Y7": [
       "Pilih <0>openknowledge.skill</0> dari folder <1>Downloads</1> Anda. Ia aktif otomatis."
@@ -966,7 +971,6 @@
     ],
     "C_cPoW": ["Sesi GitHub Anda kedaluwarsa — masuk lagi untuk memverifikasi akses push."],
     "CcaU4i": ["Suntingan langsung diterapkan dan disimpan otomatis ke tema ini."],
-    "ChAtFg": ["Anda tidak punya izin push ke repo ini"],
     "ChMshD": ["Keluar dari ", ["appName"]],
     "Ck9XRt": ["Kuncinya tidak bisa disimpan — silakan coba lagi."],
     "ClII5l": ["Tekan ikon matahari atau bulan pada “Custom” di atas untuk memakai tema ini."],
@@ -1141,6 +1145,7 @@
       "Komentarmu menunggu di belakang giliran yang sedang berjalan — komentar tetap mengantre sampai agen mengambil pesannya."
     ],
     "Eji13z": ["Menyalakan atau mematikan format sorotan."],
+    "EkEFE3": ["Repositori tidak ditemukan"],
     "EkH9pt": ["Perbarui"],
     "EkUnmS": ["apa saja"],
     "El7NbA": ["Judul 2"],
@@ -1276,6 +1281,11 @@
     "G8t9NN": ["Tambahkan properti"],
     "GA-UkN": ["Tipe ", ["keyName"], ": ", ["typeLabel"], ". Klik untuk mengubah."],
     "GAohqx": ["Hapus kolom"],
+    "GBEqoP": [
+      "Konfigurasi Git Anda menyebut ",
+      ["declaredLogin"],
+      ", tetapi kredensial akun itu tidak dapat digunakan."
+    ],
     "GBQjiV": ["Tambahkan keterampilan"],
     "GDvlUT": ["Peran"],
     "GGsM4y": ["Terpilih di graf"],
@@ -2737,6 +2747,7 @@
     "ZGVsOD": ["Push cabang ini ke GitHub sebelum berbagi."],
     "ZI8uvA": ["Tidak ada masalah ditemukan."],
     "ZJ99sD": ["Sisipkan kolom di kiri"],
+    "ZKVuLY": ["Diautentikasi sebagai ", ["login"], "."],
     "ZNK2Tq": ["akar"],
     "ZOVgDv": [["moved"], " keterampilan dipindahkan ke Proyek"],
     "ZQJ1IV": ["Mengaktifkan tab penyunting terakhir."],
@@ -2916,6 +2927,11 @@
       " tidak bisa dimuat. Coba muat ulang halamannya."
     ],
     "ak4LLg": ["Kosongkan menu"],
+    "akOe4q": [
+      "Konfigurasi kredensial Git Anda menyebut ",
+      ["declaredLogin"],
+      ", tetapi kredensial akun itu tidak dapat digunakan."
+    ],
     "akmOT9": ["Sunting komentar ini"],
     "an0aL5": ["Tanya agen"],
     "anmUZq": ["Ada fitur yang kurang"],
@@ -3615,6 +3631,9 @@
     "jPUPvG": ["Konflik untuk ", ["filePath"], " tidak bisa diselesaikan."],
     "jRAGrQ": ["Atur agen"],
     "jRHdCz": ["Gagal memuat PDF"],
+    "jRsjlF": [
+      "Repositori tidak ditemukan — mungkin ia tidak ada, atau akun yang digunakan mungkin tidak punya akses."
+    ],
     "jSO1X5": [
       "Templat warisan tidak bisa diganti namanya di sini — ganti namanya di folder yang memilikinya."
     ],

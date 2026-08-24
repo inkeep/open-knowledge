@@ -414,9 +414,19 @@ export function isBranchNotFoundGitError(error: unknown): boolean {
  * - `ssh-auth` — SSH transport auth failure (publickey denied, host-key
  *   verification). `ok auth login` mints an HTTPS OAuth credential and cannot
  *   fix SSH keys or host-key trust, so this is NOT login-fixable.
+ * - `not-found-as-identity` — git reported "repository not found" with no
+ *   401/403 signal. GitHub answers 404 for both "doesn't exist" and
+ *   "private + no access" (deliberately, to avoid leaking existence), so the
+ *   stderr alone cannot say which — the repo may be missing, or the identity
+ *   used may not see it. NOT login-fixable: for the repo-gone half a sign-in
+ *   is a dead end, and the classifier cannot tell the halves apart, so no
+ *   surface prescribes one. (A sign-in CAN fix the access half — a
+ *   multi-account user authorizing the other account, or a fine-grained PAT
+ *   replaced by a broader OAuth token — the copy names that possibility
+ *   without prescribing the command.)
  * - `unknown-auth` — generic HTTPS auth wording (authentication/authorization
- *   failed, bad credentials, private-repo "repository not found") without a
- *   401/403 signal; re-auth can mint working credentials (login-fixable).
+ *   failed, bad credentials) without a 401/403 signal; re-auth can mint
+ *   working credentials (login-fixable).
  */
 export type GitAuthFailureSubclass =
   | 'no-credential'
@@ -424,6 +434,7 @@ export type GitAuthFailureSubclass =
   | '403'
   | 'scope-mismatch'
   | 'ssh-auth'
+  | 'not-found-as-identity'
   | 'unknown-auth';
 
 /**
@@ -469,6 +480,13 @@ const GIT_AUTH_SSH_PATTERNS: RegExp[] = [
   /host key verification failed/i,
 ];
 
+// GitHub's 404 masquerade: "repository not found" covers both a missing repo
+// and a private repo the presented credential can't see. Kept in the general
+// bank (it IS an auth-shaped failure) but discriminated into its own subclass
+// after the explicit 401/403 checks, since those statuses are the stronger
+// signal when they co-occur.
+const GIT_AUTH_REPO_NOT_FOUND_PATTERN = /fatal:.*repository.*not found/i;
+
 const GIT_AUTH_GENERAL_PATTERNS: RegExp[] = [
   /\b(401|403)\b/,
   /authentication failed/i,
@@ -478,7 +496,7 @@ const GIT_AUTH_GENERAL_PATTERNS: RegExp[] = [
   /bad credentials/i,
   /token.*expired/i,
   /expired.*token/i,
-  /fatal:.*repository.*not found/i,
+  GIT_AUTH_REPO_NOT_FOUND_PATTERN,
 ];
 
 function gitAuthExtractStderr(error: unknown): string {
@@ -519,6 +537,12 @@ export function classifyGitAuthError(error: unknown): ClassifiedGitAuthError {
     if (/\b403\b/.test(combined)) {
       return { kind: 'auth', subclass: '403' };
     }
+    // Checked after 401/403 (an explicit status is authoritative) but before
+    // the unknown-auth fall-through: auth wording co-occurs on auth-shaped
+    // 404s, and the not-found signal is the more specific of the two.
+    if (GIT_AUTH_REPO_NOT_FOUND_PATTERN.test(combined)) {
+      return { kind: 'auth', subclass: 'not-found-as-identity' };
+    }
     return { kind: 'auth', subclass: 'unknown-auth' };
   }
   return { kind: 'non-auth' };
@@ -530,6 +554,12 @@ export function classifyGitAuthError(error: unknown): ClassifiedGitAuthError {
  * grant new access; `scope-mismatch` is excluded because the device flow
  * mints the same fixed scopes each time; `ssh-auth` is excluded because
  * `ok auth login` mints an HTTPS OAuth credential, not an SSH key.
+ * `not-found-as-identity` is excluded on ambiguity, not impossibility: a
+ * sign-in as a DIFFERENT account (or an OAuth token replacing a narrow
+ * fine-grained PAT) can reveal a private repo, but the stderr cannot
+ * distinguish that case from a deleted/renamed repo where sign-in is a dead
+ * end — so consumers withdraw the affordance and let the copy name both
+ * possibilities.
  */
 export function isLoginFixableGitAuthError(classified: ClassifiedGitAuthError): boolean {
   if (classified.kind !== 'auth') return false;

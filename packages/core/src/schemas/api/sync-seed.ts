@@ -73,6 +73,22 @@ export const PushPermissionSchema = z.discriminatedUnion('checkStatus', [
         'repo-not-found',
         'not-authenticated',
       ]),
+      /**
+       * Login whose credential the probe actually authenticated with — what
+       * the token resolution landed on after any fallback, never a declared
+       * account the resolution fell back from. Absent when no identity is
+       * known; the UI must then omit the identity sentence rather than guess.
+       */
+      resolvedLogin: z.string().optional(),
+      /**
+       * Declared account that did NOT produce the credential used, plus the
+       * mechanism it was declared through — currently `'remote-url'` or
+       * `'credential-config'`. Open strings rather than enums: a payload
+       * from a server with a newer declaration mechanism must degrade to
+       * generic wording, not fail the whole sync-status parse.
+       */
+      declaredLogin: z.string().optional(),
+      declaredSource: z.string().optional(),
     })
     .loose(),
   z
@@ -109,6 +125,13 @@ export const SYNC_ERROR_CODES = [
   // back to a (no-TTY) interactive prompt. Distinct from `auth-401` (a token
   // exists but was rejected): the user must reconnect, not just retry.
   'auth-no-credential',
+  // GitHub's 404 masquerade: git said "repository not found" while a
+  // credential WAS attached. The repo may not exist, or the identity used may
+  // not see it — the stderr cannot say which, so the copy asserts both and
+  // never offers a sign-in as the fix. A client older than this code renders
+  // its formatter's generic fallback (the wire is not schema-validated
+  // client-side; the formatters carry an explicit default branch).
+  'auth-not-found-as-identity',
   'semantic-protected-branch',
 ] as const;
 

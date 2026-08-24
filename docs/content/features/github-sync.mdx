@@ -65,7 +65,7 @@ This will open a dialog where you can choose an owner and repository name. You c
 
 ## Enable GitHub sync
 
-When you open a freshly cloned project, you will be prompted to enable sync. If you have full access to the repository, you will be prompted to enable **Full** sync. If you have read only access, you will be prompted to enable **Follow** sync. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
+When you open a freshly cloned project, you will be prompted to enable sync. If you have full access to the repository, you will be prompted to enable **Full** sync. If you have read-only access, you will be prompted to enable **Follow** sync. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
 
 If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) — one of `off`, `follow`, or `full` — to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo; each machine's own auto-sync choice overrides it.
 
@@ -98,7 +98,19 @@ Manage the connection from **Settings → Account**. **Connect GitHub** authoriz
 
 When a project's `origin` remote points at a GitHub Enterprise Server host, OpenKnowledge resolves credentials and identity for that host automatically: the account shown in settings, the sync token, the push-permission check, and the `ok auth` default `--host` all follow the workspace's remote instead of assuming github.com. Share links work with enterprise remotes too — a recipient opening a GHES share is asked to confirm the server unless they are already signed in to it.
 
-The sync status indicator surfaces an auth-error state when stored credentials stop working, and sync pauses until you reconnect.
+### Which GitHub account is used
+
+If you are signed into multiple accounts with the GitHub CLI, OpenKnowledge will use the account that is active by default. If you want to set a specific account for a project, you can do so by adding a username to the remote URL or a `credential.<url>.username` entry to your [Git configuration](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/multiple-users.md).
+
+OpenKnowledge will choose the GitHub credential to use for a project in the following order of priority:
+
+| Priority | Declaration | Where it lives | How to set it |
+| --- | --- | --- | --- |
+| 1 | A username in the remote URL — `https://alice@github.com/owner/repo` | that clone's `.git/config` | `git remote set-url origin https://alice@github.com/owner/repo.git` |
+| 2 | A `credential.<url>.username` entry | git config, any scope | `git config --global credential.https://github.com.username alice` |
+| 3 | Neither | the GitHub CLI's active account, or the account connected in OpenKnowledge | — |
+
+The username entries above apply to HTTPS remotes only. SSH projects follow the GitHub CLI's active account (switch it with `gh auth switch`), and that account decides only which identity the push-permission check runs as — the push itself authenticates with your SSH key, chosen by your SSH configuration. To pin an SSH project to a declared account, switch it to an HTTPS remote.
 
 ## Sync status and conflicts
 
@@ -129,7 +141,7 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Project isn't on a normal branch
 
 - **The project is parked on a specific commit, not a branch.** This usually means someone checked out an older commit from the terminal to look around. There's no branch to push to, so sync pauses. Switch back to your normal branch (`main`, your working branch, whichever) and sync resumes.
-- **Diverged history.** When the remote has been rewritten (force-push, rebase, branch reset) in a way OpenKnowledge can't reconcile automatically, sync stops and shows the error. This one usually needs a fix from the command line. Ask whoever rewrote the history, or restore from the [Timeline](/docs/features/timeline-and-recovery).
+- **Diverged history.** When the remote has been rewritten (force-push, rebase, branch reset) in a way OpenKnowledge can't reconcile automatically, sync stops and shows the error. This one usually needs a fix from the command line. Ask whoever rewrote the history for help, or restore from the [Timeline](/docs/features/timeline-and-recovery).
 
 ### GitHub-side blockers
 

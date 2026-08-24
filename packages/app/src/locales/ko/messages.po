@@ -1959,6 +1959,10 @@ msgstr "첨부 파일"
 msgid "Attachments must total under 3 MB."
 msgstr "첨부 파일 총 용량은 3MB 미만이어야 합니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "{login}(으)로 인증되었습니다."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "기준 콘텐츠이며, 참조되는 모든 곳에 그대로 미러링됩니다."
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "저장소 이름"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "저장소를 찾을 수 없음"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "저장소를 찾을 수 없습니다 — 존재하지 않거나, 사용된 계정에 접근 권한이 없을 수 있습니다."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "저장소 검색 실패. 이름 변경, 삭제 또는 이동됐을 수 있습니다."
 
@@ -14803,10 +14816,6 @@ msgstr "이 저장소에 접근 권한이 없습니다."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "이 저장소에 푸시할 권한이 없습니다"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "이 저장소에 푸시 권한이 없습니다."
 
@@ -14888,6 +14897,14 @@ msgstr "현재 버전이 먼저 저장되므로 되돌릴 수 있습니다."
 msgid "Your edits stay on this computer"
 msgstr "편집 내용은 이 컴퓨터에 남습니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Git 설정에는 {declaredLogin}이(가) 지정되어 있지만, 해당 계정의 자격 증명을 사용할 수 없었습니다."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Git 자격 증명 설정에는 {declaredLogin}이(가) 지정되어 있지만, 해당 계정의 자격 증명을 사용할 수 없었습니다."
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "브랜치 <0>{branch}</0>의 로컬 사본이 뒤처져 있습니다. �
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "에이전트에 메시지 도달 실패: {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "원격 URL에는 {declaredLogin}이(가) 지정되어 있지만, 해당 계정의 자격 증명을 사용할 수 없었습니다."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

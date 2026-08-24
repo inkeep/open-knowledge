@@ -1959,6 +1959,10 @@ msgstr "Pièces jointes"
 msgid "Attachments must total under 3 MB."
 msgstr "Les pièces jointes doivent totaliser moins de 3 Mo."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "Authentifié en tant que {login}."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Contenu faisant autorité ; reproduit tel quel partout où il est référencé."
@@ -10823,6 +10827,15 @@ msgid "Repository name"
 msgstr "Nom du dépôt"
 
 #: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "Dépôt introuvable"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "Dépôt introuvable — il n'existe peut-être pas, ou le compte utilisé n'y a peut-être pas accès."
+
+#: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
 msgstr "Dépôt introuvable. Il a peut-être été renommé, supprimé ou déplacé."
 
@@ -14803,10 +14816,6 @@ msgstr "Vous n'avez pas accès à ce dépôt."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "Vous n'avez pas la permission de pousser vers ce dépôt"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "Vous n'avez pas la permission de pousser vers ce dépôt."
 
@@ -14888,6 +14897,14 @@ msgstr "Votre version actuelle est enregistrée au préalable, cette opération 
 msgid "Your edits stay on this computer"
 msgstr "Vos modifications restent sur cet ordinateur"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Votre configuration Git indique {declaredLogin}, mais les identifiants de ce compte n'ont pas pu être utilisés."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Votre configuration d'identifiants Git indique {declaredLogin}, mais les identifiants de ce compte n'ont pas pu être utilisés."
+
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
 msgid "Your GitHub session expired — sign in again to verify push access."
@@ -14924,6 +14941,10 @@ msgstr "Votre copie locale de la branche <0>{branch}</0> est en retard. Tirez le
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "Votre message n’est pas parvenu à {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Votre URL distante indique {declaredLogin}, mais les identifiants de ce compte n'ont pas pu être utilisés."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

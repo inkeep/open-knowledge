@@ -40,6 +40,7 @@ import {
   type WorktreeListResult,
   worktreeRelativeDir,
 } from '@inkeep/open-knowledge-core';
+import { redactShareSubprocessStderr } from '@inkeep/open-knowledge-server';
 import { gitSpawnEnv } from './git-spawn-env.ts';
 import { listGitWorktrees } from './list-git-worktrees.ts';
 import { seedWorktreeAutoSync } from './worktree-autosync-inherit.ts';
@@ -368,7 +369,11 @@ async function fetchShareBranch(
     // the elapsed-timeout case apart without correlating wall-clock times.
     const killed = (err as { killed?: boolean }).killed === true;
     const signal = (err as { signal?: string }).signal;
-    const raw = gitErrorText(err).replace(/\s+/g, ' ').slice(0, 280);
+    // Redacted like the clone path's sibling: the error classified here
+    // (`fatal: repository 'https://<user>:<pat>@github.com/o/r.git/' not found`)
+    // is exactly the one where git quotes the credentialed remote back, and this
+    // string becomes a WorktreeCreateResult.message that crosses the IPC boundary.
+    const raw = redactShareSubprocessStderr(gitErrorText(err)).replace(/\s+/g, ' ').slice(0, 280);
     // A credential miss is not a connection problem, and telling the user to
     // check their network when they need to sign in is a dead end — doubly so
     // since `buildShareFetchArgs` pins interactivity off, so no helper will
@@ -377,11 +382,17 @@ async function fetchShareBranch(
     // in again does not repair, and offering it would be the same dead end.
     const classified = classifyGitAuthError(err);
     const authFailed = isLoginFixableGitAuthError(classified);
+    // The not-found masquerade is excluded from login-fixable, but routing it
+    // to the connection copy would be the same dead end — the remote answered.
+    // Flag it so the dialog can name what is actually known.
+    const notFoundAsIdentity =
+      classified.kind === 'auth' && classified.subclass === 'not-found-as-identity';
     return {
       ok: false,
       reason: 'fetch-failed',
       message: killed ? `[timeout signal=${signal ?? 'SIGTERM'}] ${raw}` : raw,
       ...(authFailed ? { authFailed: true as const } : {}),
+      ...(notFoundAsIdentity ? { notFoundAsIdentity: true as const } : {}),
     };
   }
 }

@@ -210,6 +210,7 @@ export interface BootServerOptions
     | 'enableTestRoutes'
     | 'lockKind'
     | 'detectGh'
+    | 'detectGhAccounts'
     | 'tokenStore'
     | 'embeddingsKeyStore'
     | 'singleDocRelPath'
@@ -799,6 +800,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     capabilities: opts.reactShellDistDir ? ['http', 'ws', 'ui'] : ['http', 'ws'],
     skipStateManifestCheck: opts.skipStateManifestCheck,
     detectGh: opts.detectGh,
+    detectGhAccounts: opts.detectGhAccounts,
     tokenStore: opts.tokenStore,
     embeddingsKeyStore: opts.embeddingsKeyStore,
     singleDocRelPath: opts.singleDocRelPath,
