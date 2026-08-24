@@ -792,6 +792,20 @@ function installHandoffAgeMs(handoffAt: number | null, nowMs: number): number | 
 }
 
 /**
+ * The moment the in-flight window is measured from: the handoff a live process
+ * recorded, or the staging moment when none did.
+ *
+ * One function rather than the `??` written at each site, because the verdict
+ * and the log line that reports its inputs have to agree about which moment
+ * they mean. They once did not: the predicate read a field the reconciliation
+ * had already nulled while the log kept printing the pre-clear value, so a
+ * report of the resulting false failure notice read as impossible.
+ */
+function resolveInstallHandoffMoment(state: AppState, stagedAt: number | null): number | null {
+  return state.attemptedInstallHandoffAt ?? stagedAt;
+}
+
+/**
  * Whether an install this app committed to may still have been running at
  * `nowMs` — and, when it may, which version and from what moment.
  *
@@ -815,15 +829,28 @@ function installHandoffAgeMs(handoffAt: number | null, nowMs: number): number | 
  *
  * Returned as a value rather than a boolean so a caller can name the version in
  * a log line without re-reading state that the next moment may have cleared.
+ *
+ * `stagedAt` is a required parameter rather than a read of
+ * `state.versionPendingInstallStagedAt`, and the difference is load-bearing.
+ * The boot reconciliation runs the stale-pending clear BEFORE it reaches this
+ * question, and that clear nulls the staging stamp — so by the time the verdict
+ * is due, the field on `state` no longer holds the moment the artifact was
+ * actually staged. On the shape where nothing else recorded the commit (an
+ * unobserved quit, so no `attemptedInstallHandoffAt`) that field is the only
+ * lower bound left, and reading the cleared one silently condemns an install
+ * that is still running. Passing it in forces each caller to say which snapshot
+ * it means: the reconciliation passes the value it captured before its own
+ * mutation, and a caller reading fresh from disk passes the field as-is.
  */
 export function installMayStillBeRunning(
   state: AppState,
   nowMs: number,
+  stagedAt: number | null,
 ): { attemptedVersion: string; handoffAt: number; recordedHandoff: boolean } | null {
   const attempted = state.attemptedInstall;
   // Nothing was committed to, so nothing can be in flight.
   if (attempted === null) return null;
-  const handoffAt = state.attemptedInstallHandoffAt ?? state.versionPendingInstallStagedAt;
+  const handoffAt = resolveInstallHandoffMoment(state, stagedAt);
   const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
   if (
     handoffAt === null ||
@@ -2338,13 +2365,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // existed, so staging is a sound lower bound on the handoff, just not a
       // tight one, and it degrades further once the reconciliation clears it.
       const reconciledAtMs = now().getTime();
-      const handoffAt = state.attemptedInstallHandoffAt ?? attemptStagedAt;
+      const handoffAt = resolveInstallHandoffMoment(state, attemptStagedAt);
       const handoffAgeMs = installHandoffAgeMs(handoffAt, reconciledAtMs);
       // The predicate itself lives in `installMayStillBeRunning` so crash
       // detection can ask the same question with the same bound; the locals
       // above stay for the log lines, which report the inputs the verdict was
-      // reached from rather than the verdict alone.
-      if (installMayStillBeRunning(state, reconciledAtMs) !== null) {
+      // reached from rather than the verdict alone. Both resolve the moment
+      // through the same helper, so they cannot come to disagree about it.
+      if (installMayStillBeRunning(state, reconciledAtMs, attemptStagedAt) !== null) {
         // Inside the install window, and the hold has boots left: decide
         // nothing about the attempt. `attemptedInstall` stays armed so a later
         // boot still reconciles it as success or as failure,

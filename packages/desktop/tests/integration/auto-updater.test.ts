@@ -2344,6 +2344,59 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED_BETA);
   });
 
+  test('an unobserved commit on a same-MMP beta bump still defers', async () => {
+    // The intersection the two fixtures above each leave open, and the only
+    // state where the pre-clear staging snapshot is load-bearing. The
+    // stale-pending reconciliation nulls `versionPendingInstallStagedAt` on an
+    // MMP-only compare, and an unobserved quit means nothing ever stamped
+    // `attemptedInstallHandoffAt` — so the moment the artifact was staged
+    // survives ONLY in the snapshot taken before that clear. A verdict that
+    // reads the field off the reconciled state instead has no bound left at all
+    // and condemns an install that is still running.
+    //
+    // Neither sibling fixture reaches here: the staging-fallback one uses the
+    // default version pair, so the clear never fires; the same-MMP one commits
+    // by a plain quit, so the handoff is stamped and the fallback is never
+    // consulted.
+    const RUNNING_BETA = '0.54.0-beta.0';
+    const ATTEMPTED_BETA = '0.54.0-beta.1';
+    const rig = reopenAt(
+      await stageAndCommit('unobserved-quit', {
+        running: RUNNING_BETA,
+        attempted: ATTEMPTED_BETA,
+      }),
+      new Date(STAGED_AT.getTime() + 45 * SECOND),
+      RUNNING_BETA,
+    );
+
+    // Both premises, asserted so the test cannot drift off the hazard and start
+    // passing for the wrong reason.
+    expect(rig.dispatches).toContain('stale-pending-cleared' as DispatchKind);
+    expect(rig.state.attemptedInstallHandoffAt).toBeNull();
+
+    expect(failureCards(rig)).toHaveLength(0);
+    expect(rig.dispatches).toContain('install-in-flight-deferred' as DispatchKind);
+    expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
+    expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
+    // WHICH moment the hold leaned on, not merely that it held. Without this the
+    // fixture would pass on a verdict that deferred off some other bound, which
+    // is exactly the failure it exists to catch.
+    expect(rig.logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('defer'),
+      expect.objectContaining({ recordedHandoff: false, handoffAt: STAGED_AT.getTime() }),
+    );
+  });
+
+  // The unobserved-quit counterpart of the second-reopen fixture below. Boot 1's
+  // stale-pending clear nulls the staging stamp on disk, and an unobserved quit
+  // stamps no handoff, so boot 2 reads both witnesses as null and condemns an
+  // install that may still be running. Left as a todo rather than a skip: the
+  // fixture cannot be written honestly until the staging instant lives in a
+  // field no reconciliation clears, which needs a parseAppState schema addition.
+  test.todo(
+    'an unobserved commit on a same-MMP beta bump survives a SECOND reopen (needs PRD-8291)',
+  );
+
   test('a same-MMP beta bump survives a SECOND reopen inside the window', async () => {
     // The same-MMP shape reaches the verdict having just lost a field: the
     // stale-pending reconciliation fires on an MMP-only compare and persists the

@@ -7658,6 +7658,23 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
+  // Read once, here, before anything in this function can touch the state file.
+  //
+  // Crash detection needs to know whether an install this app committed to may
+  // still have been running when the previous session ended, and the updater's
+  // boot reconciliation later in this function CLEARS that record the moment
+  // the running version catches up. Taking the snapshot at the top makes the
+  // answer independent of where either consumer ends up sitting: the two are
+  // ~1000 lines apart today, and a reordering that put the updater first would
+  // otherwise silently disable install-kill suppression while every test stayed
+  // green, because nothing here composes the two boot steps.
+  //
+  // Off disk rather than the module-level `appState`, which is still
+  // `emptyState()` this early: nothing has hydrated it yet at this point in
+  // boot, so reading it here would answer "no install was in flight" for every
+  // session regardless of the truth.
+  const bootStateSnapshot = loadAppState();
+
   // Stand up the renderer-ready mount-ack sink before anything can open a
   // window: the preload invokes `ok:mcp-wiring:renderer-ready` /
   // `ok:onboarding:renderer-ready` on every renderer mount, and the sink's
@@ -7714,19 +7731,21 @@ function bootPrimaryInstance(): void {
     // previous session ended? If so the installer killed it to replace its
     // files, and the dirty sentinel it left behind is not a crash.
     //
-    // Read from disk rather than from the in-memory `appState`, which is not
-    // hydrated this early in boot, and asked of the updater's own predicate so
-    // the bound cannot drift from the one deciding whether to tell the user an
-    // install failed.
+    // Answered from `bootStateSnapshot`, taken at the top of this function
+    // before anything here can mutate the state file, so the verdict does not
+    // depend on this call sitting ahead of the updater's boot reconciliation.
+    // The staging stamp is passed as-is: the snapshot predates the stale-pending
+    // clear, so the field still holds the moment the artifact was staged.
     //
-    // ORDERING: this must run before the updater's boot reconciliation, which
-    // clears `attemptedInstall` the moment the running version catches up — a
-    // field report put that clear 249ms after detection, so the margin is real
-    // but thin. Both calls are in `bootPrimaryInstance` in that order today;
-    // moving updater init ahead of `detectBootCrash()` would silently disable
-    // this class, so the suppression tests in `crash-detection.test.ts` are
-    // the tripwire.
-    installInFlight: () => installMayStillBeRunning(loadAppState(), Date.now()),
+    // Asked of the updater's own predicate rather than re-derived, so the bound
+    // cannot drift from the one deciding whether to tell the user an install
+    // failed.
+    installInFlight: () =>
+      installMayStillBeRunning(
+        bootStateSnapshot,
+        Date.now(),
+        bootStateSnapshot.versionPendingInstallStagedAt,
+      ),
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();
