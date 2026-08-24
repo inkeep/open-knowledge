@@ -791,6 +791,55 @@ function installHandoffAgeMs(handoffAt: number | null, nowMs: number): number | 
   return elapsed < 0 ? null : elapsed;
 }
 
+/**
+ * Whether an install this app committed to may still have been running at
+ * `nowMs` — and, when it may, which version and from what moment.
+ *
+ * Two callers ask the same question for different reasons, which is why it is
+ * a function rather than an inline condition. The boot reconciliation below
+ * asks it to decide whether to condemn an install as failed. Crash detection
+ * asks it to decide whether a session that ended without a clean quit was
+ * killed by the installer rather than by a fault — the installer terminates the
+ * running process to replace its files, which bypasses the quit sequence and
+ * leaves the dirty-shutdown sentinel behind. Both need the claim
+ * bounded the same way; two copies of the bound would drift, and the pair that
+ * drifted would tell the user an install failed while telling them nothing
+ * about the crash it caused, or the reverse.
+ *
+ * The bound is the interesting part, and neither half of it is optional. The
+ * grace window keeps a stale record from claiming an install is in flight
+ * forever; the boot count is what survives electron-updater re-arming
+ * `update-downloaded` from its on-disk cache and clearing the handoff stamp,
+ * which would otherwise make an install that never lands look perpetually
+ * fresh. See both constants' own docs for the calibration.
+ *
+ * Returned as a value rather than a boolean so a caller can name the version in
+ * a log line without re-reading state that the next moment may have cleared.
+ */
+export function installMayStillBeRunning(
+  state: AppState,
+  nowMs: number,
+): { attemptedVersion: string; handoffAt: number; recordedHandoff: boolean } | null {
+  const attempted = state.attemptedInstall;
+  // Nothing was committed to, so nothing can be in flight.
+  if (attempted === null) return null;
+  const handoffAt = state.attemptedInstallHandoffAt ?? state.versionPendingInstallStagedAt;
+  const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
+  if (
+    handoffAt === null ||
+    handoffAgeMs === null ||
+    handoffAgeMs > INSTALL_IN_FLIGHT_GRACE_MS ||
+    state.attemptedInstallDeferredBoots >= INSTALL_DEFER_MAX_BOOTS
+  ) {
+    return null;
+  }
+  return {
+    attemptedVersion: attempted,
+    handoffAt,
+    recordedHandoff: state.attemptedInstallHandoffAt !== null,
+  };
+}
+
 // ————————————————————————————————————————————————————————
 // Main entry
 // ————————————————————————————————————————————————————————
@@ -2288,13 +2337,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // staging moment. The install cannot have begun before the artifact
       // existed, so staging is a sound lower bound on the handoff, just not a
       // tight one, and it degrades further once the reconciliation clears it.
+      const reconciledAtMs = now().getTime();
       const handoffAt = state.attemptedInstallHandoffAt ?? attemptStagedAt;
-      const handoffAgeMs = installHandoffAgeMs(handoffAt, now().getTime());
-      if (
-        handoffAgeMs !== null &&
-        handoffAgeMs <= INSTALL_IN_FLIGHT_GRACE_MS &&
-        state.attemptedInstallDeferredBoots < INSTALL_DEFER_MAX_BOOTS
-      ) {
+      const handoffAgeMs = installHandoffAgeMs(handoffAt, reconciledAtMs);
+      // The predicate itself lives in `installMayStillBeRunning` so crash
+      // detection can ask the same question with the same bound; the locals
+      // above stay for the log lines, which report the inputs the verdict was
+      // reached from rather than the verdict alone.
+      if (installMayStillBeRunning(state, reconciledAtMs) !== null) {
         // Inside the install window, and the hold has boots left: decide
         // nothing about the attempt. `attemptedInstall` stays armed so a later
         // boot still reconciles it as success or as failure,

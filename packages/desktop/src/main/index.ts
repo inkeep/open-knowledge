@@ -184,6 +184,7 @@ import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
+  installMayStillBeRunning,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
@@ -7671,6 +7672,23 @@ function bootPrimaryInstance(): void {
     },
     now: () => new Date(),
     currentBootSessionUuid: readBootSessionUuid,
+    // Was an install this app committed to still possibly running when the
+    // previous session ended? If so the installer killed it to replace its
+    // files, and the dirty sentinel it left behind is not a crash.
+    //
+    // Read from disk rather than from the in-memory `appState`, which is not
+    // hydrated this early in boot, and asked of the updater's own predicate so
+    // the bound cannot drift from the one deciding whether to tell the user an
+    // install failed.
+    //
+    // ORDERING: this must run before the updater's boot reconciliation, which
+    // clears `attemptedInstall` the moment the running version catches up — a
+    // field report put that clear 249ms after detection, so the margin is real
+    // but thin. Both calls are in `bootPrimaryInstance` in that order today;
+    // moving updater init ahead of `detectBootCrash()` would silently disable
+    // this class, so the suppression tests in `crash-detection.test.ts` are
+    // the tripwire.
+    installInFlight: () => installMayStillBeRunning(loadAppState(), Date.now()),
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();

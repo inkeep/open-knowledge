@@ -22,6 +22,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import {
   type CrashDetectionDeps,
   createCrashDetection,
+  type InstallInFlight,
   startLocalCrashReporter,
 } from './crash-detection.ts';
 import { buildMinidump } from './minidump.test-helper.ts';
@@ -76,6 +77,11 @@ interface Rig {
   setRendererAvailable(available: boolean): void;
   /** Swap the kernel boot-session identity, simulating a reboot between sessions. */
   setBootSessionUuid(uuid: string | null): void;
+  /**
+   * Arm (or clear) the updater's "an install may still be running" verdict,
+   * simulating a session the installer killed to swap the binary.
+   */
+  setInstallInFlight(inFlight: InstallInFlight | null): void;
   /** Swap the running app version, simulating an auto-update between sessions. */
   setAppVersion(version: string): void;
   /** Advance and return the fake clock (10s per tick). */
@@ -92,6 +98,7 @@ function makeRig(): Rig {
   const warnings: Record<string, unknown>[] = [];
   let rendererAvailable = true;
   let bootSessionUuid: string | null = 'boot-epoch-a';
+  let installInFlight: InstallInFlight | null = null;
   let clockMs = Date.parse('2026-07-10T00:00:00.000Z');
   const appBundleRoot = join(dir, 'Applications', 'OpenKnowledge.app');
   // A helper process rather than the main binary: renderer/GPU/utility crashes
@@ -133,6 +140,9 @@ function makeRig(): Rig {
     setBootSessionUuid(uuid: string | null) {
       bootSessionUuid = uuid;
     },
+    setInstallInFlight(inFlight: InstallInFlight | null) {
+      installInFlight = inFlight;
+    },
     setAppVersion(version: string) {
       rig.deps.appVersion = version;
     },
@@ -163,6 +173,7 @@ function makeRig(): Rig {
         return new Date(clockMs);
       },
       currentBootSessionUuid: () => bootSessionUuid,
+      installInFlight: () => installInFlight,
       logger: {
         info: () => {},
         warn: (payload) => {
@@ -1912,5 +1923,126 @@ describe('non-crash minidumps', () => {
     expect(logged?.nonCrashDumpsSkipped).toBe(1);
     expect(logged?.foreignDumpsIgnored).toBe(0);
     expect(logged?.unreadableDumpsSkipped).toBe(0);
+  });
+});
+
+describe('auto-update install kill suppression', () => {
+  /** What the updater reports while an install it committed to may still be running. */
+  const IN_FLIGHT: InstallInFlight = {
+    attemptedVersion: '0.61.3',
+    handoffAt: Date.parse('2026-08-23T23:10:28.727Z'),
+    recordedHandoff: true,
+  };
+
+  test('a session the installer killed never prompts', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    // Session A is killed by the installer swapping the binary underneath it:
+    // no quit sequence runs, so the sentinel survives dirty. Same kernel
+    // session, no OS-shutdown marker, no suspend marker, no dump — every
+    // existing suppression class correctly declines, which is why this one
+    // has to exist.
+    rig.setInstallInFlight(IN_FLIGHT);
+
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('suppression logs a breadcrumb naming the attempted version', () => {
+    const rig = makeRig();
+    const infoLines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        infoLines.push(payload);
+      },
+      warn: () => {},
+    };
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.setInstallInFlight(IN_FLIGHT);
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const breadcrumb = infoLines.find(
+      (line) => line.event === 'crash-detection.machine-level-death',
+    );
+    expect(breadcrumb?.reason).toBe('update-install');
+    // Naming the version is the whole point: without it a suppressed boot is
+    // indistinguishable in the logs from one where detection never ran.
+    expect(breadcrumb?.attemptedInstall).toBe('0.61.3');
+    expect(breadcrumb?.recordedHandoff).toBe(true);
+  });
+
+  test('a fresh minidump still prompts through an install kill', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    seedMinidump(rig, 'pending/native-crash.dmp', rig.tick());
+    // The app native-crashed while an install happened to be in flight. A dump
+    // is proof the app itself faulted, and proof outranks every suppression
+    // class — the same rule the reboot path follows.
+    rig.setInstallInFlight(IN_FLIGHT);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(armed?.kind).toBe('boot');
+    if (armed?.kind === 'boot') {
+      expect(armed.context.newMinidumps).toBe(1);
+    }
+  });
+
+  test('a dirty shutdown with no install in flight prompts exactly as before', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    // The no-regression case the reboot class pinned: kill -9 with nothing
+    // staged, same kernel epoch. Nothing about this class may quieten it.
+    rig.setInstallInFlight(null);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(armed?.kind).toBe('boot');
+    if (armed?.kind === 'boot') {
+      expect(armed.context.dirtyShutdown).toBe(true);
+    }
+  });
+
+  test('the win32 installer-swap shape is suppressed', () => {
+    const rig = makeRig();
+    rig.deps.platform = 'win32';
+    rig.setAppVersion('0.58.8');
+    // A session boots on the old binary while the NSIS installer runs, and is
+    // killed mid-swap. The next boot is the newly installed version, so the
+    // versions differ here — but a version delta cannot itself be the
+    // classifier: when an install FAILS the relaunched app is the same version
+    // as the one killed, and the delta is zero on exactly that subset.
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.setInstallInFlight(IN_FLIGHT);
+    rig.setAppVersion('0.61.3');
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('a staging-fallback handoff suppresses too', () => {
+    const rig = makeRig();
+    createCrashDetection(rig.deps).detectBootCrash();
+    // No live process saw the commit (a force-quit, a power loss), so the
+    // updater fell back to the staging moment. The macOS instances this ticket
+    // was opened from take this path — a session killed mid-flight never
+    // quits, so it never stamps a handoff of its own.
+    rig.setInstallInFlight({ ...IN_FLIGHT, recordedHandoff: false });
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('an absent reader leaves every existing verdict unchanged', () => {
+    const rig = makeRig();
+    // Any caller that wires no updater state must behave exactly as before:
+    // fail-open toward prompting.
+    rig.deps.installInFlight = undefined;
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(armed?.kind).toBe('boot');
   });
 });

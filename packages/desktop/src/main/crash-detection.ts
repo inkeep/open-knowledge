@@ -234,7 +234,41 @@ export interface CrashDetectionDeps {
    * toward prompting, i.e. the pre-classification behavior).
    */
   currentBootSessionUuid(): string | null;
+  /**
+   * The updater's verdict that an install it committed to may still have been
+   * running when the previous session ended — the fourth thing that can end a
+   * session without the app having crashed.
+   *
+   * Asked of the updater rather than decided here: the grace window and the
+   * boot bound that make "may still be running" a bounded claim are the
+   * updater's calibration, and a second copy of that judgment would drift from
+   * the one that decides whether to tell the user an install failed.
+   *
+   * Optional, and null when nothing is in flight. An absent reader skips the
+   * classification entirely — fail-open toward prompting, the same posture
+   * `currentBootSessionUuid` takes when the probe is unavailable.
+   */
+  installInFlight?(): InstallInFlight | null;
   logger: CrashLogger;
+}
+
+/**
+ * What the updater knows about an install that had been committed to but had
+ * not yet been observed to land. Carries the version so the suppression
+ * breadcrumb can name it, and the moment so a reader can tell a held verdict
+ * from a stale one.
+ */
+export interface InstallInFlight {
+  /** The version the installer was launched to install. */
+  attemptedVersion: string;
+  /**
+   * Epoch ms at which the install was handed off, or — when no live process
+   * saw the commit — the moment the artifact was staged, which is a sound
+   * lower bound on the handoff.
+   */
+  handoffAt: number;
+  /** False when `handoffAt` is the staging fallback rather than a real stamp. */
+  recordedHandoff: boolean;
 }
 
 export interface CrashDetection {
@@ -749,16 +783,43 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         sentinelPresent &&
         (rebootedBetweenSessions || prevPendingOsShutdownAt !== null || prevSuspendedAt !== null);
 
+      // The fourth way a session ends without the app having crashed, and the
+      // only one the machine did not cause: this app committed to an update,
+      // and the installer terminated the running process to replace its files.
+      // That kill bypasses the quit sequence on both platforms — SIGKILL from
+      // ShipIt, an outright process termination from NSIS — so `will-quit`
+      // never runs, `markCleanQuit()` never clears the sentinel, and without
+      // this class the next boot reports a death the app arranged on purpose.
+      //
+      // Deliberately asked of the updater rather than inferred here. A version
+      // delta between the crashed and detecting sessions is the tempting cheap
+      // test and it is unsound: when the install FAILS, the relaunched app is
+      // the same version as the one that was killed, so the delta is zero on
+      // exactly the subset this class was first reported from.
+      const installInFlight = deps.installInFlight?.() ?? null;
+      const updateInstallDeath = sentinelPresent && installInFlight !== null;
+
       let armed: OkBugReportCrashDetectedEvent | null = null;
-      if (machineLevelDeath && newDumps.length === 0) {
+      if ((machineLevelDeath || updateInstallDeath) && newDumps.length === 0) {
         const reason = rebootedBetweenSessions
           ? 'system-reboot'
           : prevPendingOsShutdownAt !== null
             ? 'os-shutdown'
-            : 'suspended';
+            : prevSuspendedAt !== null
+              ? 'suspended'
+              : 'update-install';
         const breadcrumb = {
           event: 'crash-detection.machine-level-death',
           reason,
+          // Null for the three machine-level reasons. Carried on every line
+          // rather than only the update one so a reader can tell "no install
+          // was in flight" from "this build predates the class".
+          attemptedInstall: installInFlight?.attemptedVersion ?? null,
+          // False when the moment above is the staging fallback rather than a
+          // handoff a live process recorded — the same distinction the
+          // updater's own boot logs draw, and the one that says how tight the
+          // window bounding this suppression actually was.
+          recordedHandoff: installInFlight?.recordedHandoff ?? null,
           detectedAt: detectedAt.toISOString(),
           prevBootId,
           prevBootSessionUuid,
@@ -785,7 +846,9 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             breadcrumb,
             reason === 'system-reboot'
               ? 'previous session was killed by a system reboot — suppressing the report prompt'
-              : 'previous session died asleep without resuming — suppressing the report prompt',
+              : reason === 'suspended'
+                ? 'previous session died asleep without resuming — suppressing the report prompt'
+                : 'previous session was killed by an update install — suppressing the report prompt',
           );
         }
       } else if (sentinelPresent || newDumps.length > 0) {
@@ -796,8 +859,10 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         //
         // A machine-level death with fresh dumps still prompts, but as the
         // dump-driven variant: the reboot ended the session, the dump is the
-        // crash — framing it as an app dirty-shutdown would misattribute.
-        const dumpDriven = !sentinelPresent || machineLevelDeath;
+        // crash — framing it as an app dirty-shutdown would misattribute. An
+        // install kill reads the same way: the installer ended the session,
+        // and a dump that survived it is still the app faulting on its own.
+        const dumpDriven = !sentinelPresent || machineLevelDeath || updateInstallDeath;
         const eventId = dumpDriven
           ? `boot:dump:${Math.max(...newDumps)}`
           : `boot:${prevBootId ?? `unreadable:${detectedAt.getTime()}`}`;
