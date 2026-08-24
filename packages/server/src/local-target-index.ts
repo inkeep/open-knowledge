@@ -484,12 +484,16 @@ export class LocalTargetIndex {
    * Returns the number of sources reassessed (bounded telemetry).
    */
   setFileTarget(relativePath: string, exists: boolean): number {
+    // Deliberately ahead of the span: the dependent-file repair sweep re-checks
+    // every referenced target on a fixed interval, so instrumenting the unflipped
+    // case bills one span per referenced file per sweep on a project that is
+    // doing nothing. Left inside, that volume recycles the local span ring faster
+    // than a user can file a report about anything else.
+    if (this.files.has(relativePath) === exists) return 0;
     const update = instrumentIndexUpdate(
       'local-target',
       'file-target',
       () => {
-        const present = this.files.has(relativePath);
-        if (exists === present) return { affected: 0, occurrences: 0 };
         if (exists) this.files.add(relativePath);
         else this.files.delete(relativePath);
         const occurrences = this.countFileOccurrences(relativePath);
@@ -571,18 +575,25 @@ export class LocalTargetIndex {
 
   /** Replace ordinary-file existence from an authoritative alias-complete snapshot. */
   reconcileFileTargets(fileTargets: Iterable<string>): number {
+    const next = new Set(fileTargets);
+    const changedIdentities = new Set<string>();
+    for (const relativePath of this.files) {
+      if (!next.has(relativePath)) changedIdentities.add(relativePath);
+    }
+    for (const relativePath of next) {
+      if (!this.files.has(relativePath)) changedIdentities.add(relativePath);
+    }
+    // Same discipline as `setFileTarget`: a re-published identical inventory
+    // moved no identity, so it is not an update and is not instrumented as one.
+    // Deciding that ahead of the span also puts the diff outside the timed
+    // region, so the duration histogram measures the reassessment tail rather
+    // than the whole call. Read it that way — as full-call cost it under-reports.
+    if (changedIdentities.size === 0) return 0;
+
     return instrumentIndexUpdate(
       'local-target',
       'file-target',
       () => {
-        const next = new Set(fileTargets);
-        const changedIdentities = new Set<string>();
-        for (const relativePath of this.files) {
-          if (!next.has(relativePath)) changedIdentities.add(relativePath);
-        }
-        for (const relativePath of next) {
-          if (!this.files.has(relativePath)) changedIdentities.add(relativePath);
-        }
         const affected = new Set<string>();
         let occurrences = 0;
         for (const relativePath of changedIdentities) {
