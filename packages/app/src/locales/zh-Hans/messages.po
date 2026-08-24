@@ -1838,6 +1838,10 @@ msgstr "正在应用…"
 msgid "Approve"
 msgstr "批准"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "批准并继续"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "已批准"
@@ -1924,6 +1928,10 @@ msgstr "让 AI 修复 {flatId}"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "询问智能体"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "请求修改…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6799,6 +6807,10 @@ msgstr "在 Git 项目中，Open Knowledge 还添加了一个作用域 .gitattri
 msgid "In the Claude Desktop App"
 msgstr "在 Claude 桌面应用中"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "在上面的计划中，请 "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "位于此仓库中——协作者会通过 git 获得副本。"
@@ -7938,14 +7950,6 @@ msgstr "修改链接目标、锚点和显示标签。"
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "更多"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "更多授权选项"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "更多拒绝选项"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10467,6 +10471,7 @@ msgstr "为 Claude Chat 和 Cowork 重新安装"
 msgid "Reinstalling"
 msgstr "正在重新安装"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "拒绝"

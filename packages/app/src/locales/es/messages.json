@@ -407,6 +407,7 @@
     "4EZrJN": ["Reglas"],
     "4ErgAf": ["OpenKnowledge instaló una habilidad"],
     "4FltCB": ["Elige dónde va tu copia. Al elegir un destino, se crea."],
+    "4GYCwt": ["Aprobar y continuar"],
     "4Gz2wC": ["No se pudo subir el archivo"],
     "4KmEoC": ["Atajos de teclado"],
     "4NC2Ym": ["Ir a la celda siguiente o anterior de la tabla."],
@@ -886,7 +887,6 @@
     "9bCiQ8": ["No hay páginas sin enlaces entrantes en el grafo."],
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir los documentos etiquetados con #", ["chip"]],
-    "9dVehq": ["Más opciones de permiso"],
     "9euN0m": [
       [
         "count",
@@ -2626,6 +2626,7 @@
     ],
     "TTDXD8": ["Worktree nuevo…"],
     "TUzThQ": ["Compartir habilidades"],
+    "T_N0ro": ["Solicitar cambios…"],
     "T_j5G0": ["Esta no es una versión compatible de Slidev."],
     "T_wG4n": ["No pudimos comprobar tu conexión con GitHub."],
     "Ta25TG": ["Todavía no hay historial"],
@@ -3476,6 +3477,7 @@
     ],
     "bpytj4": ["Mover a ", ["0"]],
     "brCtGB": ["El historial no está disponible"],
+    "btNgJP": ["En el plan de arriba, por favor "],
     "buNXgr": ["Cambia entre el editor visual y el de código sin perder tu sitio."],
     "bultyE": [
       "Cuando está activado, el agente abre o actualiza la vista previa después de cada edición. Desactívalo si gestionas tu propia ventana de vista previa (OK Desktop, una pestaña del navegador en otra pantalla, etc.)."
@@ -5503,7 +5505,6 @@
     "xi9KGG": ["Mostrar Terminal"],
     "xiv-dW": ["Todavía no hay archivos."],
     "xk133d": ["Instala la skill en ", ["path"], " — la primera ubicación guarda su propia copia"],
-    "xlQpTE": ["Más opciones de rechazo"],
     "xloBjn": ["Ruta relativa"],
     "xrVr_k": ["No se pudo crear la habilidad: ", ["0"]],
     "xsZhu-": ["Número de página"],

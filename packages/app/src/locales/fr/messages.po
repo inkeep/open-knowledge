@@ -1838,6 +1838,10 @@ msgstr "Application…"
 msgid "Approve"
 msgstr "Approuver"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "Approuver et continuer"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "Approuvé"
@@ -1924,6 +1928,10 @@ msgstr "Demander à l'IA de corriger {flatId}"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "Demander à un agent"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "Demander des modifications…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6799,6 +6807,10 @@ msgstr "Dans les projets Git, Open Knowledge ajoute également une règle .gitat
 msgid "In the Claude Desktop App"
 msgstr "Dans l'application Claude Desktop"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "Dans le plan ci-dessus, veuillez "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "Dans ce dépôt — les collaborateurs reçoivent les copies via git."
@@ -7938,14 +7950,6 @@ msgstr "Modifiez la cible du lien, l'ancre et le libellé affiché."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "Plus"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "Plus d'options d'autorisation"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "Plus d'options de refus"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10467,6 +10471,7 @@ msgstr "Réinstaller pour Claude Chat et Cowork"
 msgid "Reinstalling"
 msgstr "Réinstallation"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "Rejeter"

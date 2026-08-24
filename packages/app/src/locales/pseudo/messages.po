@@ -1834,6 +1834,10 @@ msgstr ""
 msgid "Approve"
 msgstr ""
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr ""
@@ -1919,6 +1923,10 @@ msgstr ""
 
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
+msgstr ""
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
 msgstr ""
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
@@ -6795,6 +6803,10 @@ msgstr ""
 msgid "In the Claude Desktop App"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr ""
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr ""
@@ -7933,14 +7945,6 @@ msgstr ""
 
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
-msgstr ""
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr ""
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
 msgstr ""
 
 #: src/editor/components/PreviewBlockedNotice.tsx
@@ -10463,6 +10467,7 @@ msgstr ""
 msgid "Reinstalling"
 msgstr ""
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr ""

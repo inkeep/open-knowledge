@@ -1838,6 +1838,10 @@ msgstr "جارٍ التطبيق…"
 msgid "Approve"
 msgstr "موافقة"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "موافقة ومتابعة"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "موافق عليه"
@@ -1924,6 +1928,10 @@ msgstr "اطلب من الذكاء الاصطناعي إصلاح {flatId}"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "اسأل وكيلًا"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "طلب تغييرات…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6799,6 +6807,10 @@ msgstr "في مشاريع Git، يضيف Open Knowledge أيضًا قاعدة .g
 msgid "In the Claude Desktop App"
 msgstr "في تطبيق Claude Desktop"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "في الخطة أعلاه، من فضلك "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "في هذا المستودع — يحصل المتعاونون على نسخ عبر git."
@@ -7938,14 +7950,6 @@ msgstr "عدّل وجهة الرابط والمرساة وتسمية العرض.
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "المزيد"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "مزيد من خيارات المنح"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "مزيد من خيارات الرفض"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10467,6 +10471,7 @@ msgstr "إعادة التثبيت لـ Claude Chat وCowork"
 msgid "Reinstalling"
 msgstr "يجري إعادة التثبيت"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "رفض"

@@ -1834,6 +1834,10 @@ msgstr "लागू किया जा रहा है…"
 msgid "Approve"
 msgstr "स्वीकृति दें"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "स्वीकृत करें और आगे बढ़ें"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "स्वीकृत"
@@ -1920,6 +1924,10 @@ msgstr "AI से {flatId} ठीक करने को कहें"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "किसी एजेंट से पूछें"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "बदलाव मांगें…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6795,6 +6803,10 @@ msgstr "Git परियोजनाओं में, Open Knowledge एक स�
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App में"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "ऊपर की योजना में, कृपया "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "इस रिपॉज़िटरी में — सहयोगियों को git के ज़रिए कॉपी मिलती हैं।"
@@ -7934,14 +7946,6 @@ msgstr "लिंक लक्ष्य, एंकर और प्रदर्�
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "और"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "अनुमति के और विकल्प"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "अस्वीकार के और विकल्प"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10463,6 +10467,7 @@ msgstr "Claude Chat और Cowork के लिए फिर से इंस्
 msgid "Reinstalling"
 msgstr "फिर से इंस्टॉल किया जा रहा है"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "अस्वीकारें"

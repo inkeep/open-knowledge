@@ -1834,6 +1834,10 @@ msgstr "Aplicando…"
 msgid "Approve"
 msgstr "Aprovar"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "Aprovar e continuar"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "Aprovado"
@@ -1920,6 +1924,10 @@ msgstr "Pedir à IA para corrigir {flatId}"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "Perguntar a um agente"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "Solicitar alterações…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6795,6 +6803,10 @@ msgstr "Em projetos Git, Open Knowledge também adiciona uma regra .gitattribute
 msgid "In the Claude Desktop App"
 msgstr "No app Claude Desktop"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "No plano acima, por favor "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "Neste repositório — colaboradores recebem cópias via git."
@@ -7934,14 +7946,6 @@ msgstr "Altere o destino do link, a âncora e o texto exibido."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "Mais"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "Mais opções de permissão"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "Mais opções de recusa"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10463,6 +10467,7 @@ msgstr "Reinstalar para o Claude Chat e Cowork"
 msgid "Reinstalling"
 msgstr "Reinstalando"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "Rejeitar"

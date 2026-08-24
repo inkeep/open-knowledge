@@ -421,6 +421,7 @@
     "4EZrJN": ["Règles"],
     "4ErgAf": ["OpenKnowledge a installé une compétence"],
     "4FltCB": ["Choisissez où ira votre copie. Choisir une destination la crée."],
+    "4GYCwt": ["Approuver et continuer"],
     "4Gz2wC": ["Échec de l'envoi du fichier"],
     "4KmEoC": ["Raccourcis clavier"],
     "4NC2Ym": ["Va à la cellule suivante ou précédente du tableau."],
@@ -908,7 +909,6 @@
     "9bCiQ8": ["Aucune page ne manque de liens entrants dans le graphe."],
     "9bG48P": ["Envoi en cours"],
     "9clcD5": ["Ouvrir les documents étiquetés #", ["chip"]],
-    "9dVehq": ["Plus d'options d'autorisation"],
     "9euN0m": [
       [
         "count",
@@ -2648,6 +2648,7 @@
     ],
     "TTDXD8": ["Nouveau worktree…"],
     "TUzThQ": ["Partager les compétences"],
+    "T_N0ro": ["Demander des modifications…"],
     "T_j5G0": ["Cette version de Slidev n'est pas prise en charge."],
     "T_wG4n": ["Nous n'avons pas pu vérifier votre connexion GitHub."],
     "Ta25TG": ["Pas encore d'historique"],
@@ -3497,6 +3498,7 @@
     ],
     "bpytj4": ["Déplacer vers ", ["0"]],
     "brCtGB": ["Historique indisponible"],
+    "btNgJP": ["Dans le plan ci-dessus, veuillez "],
     "buNXgr": [
       "Bascule entre l'éditeur visuel et l'éditeur de source, en conservant votre position."
     ],
@@ -5558,7 +5560,6 @@
       ["path"],
       " — le premier emplacement conserve sa propre copie"
     ],
-    "xlQpTE": ["Plus d'options de refus"],
     "xloBjn": ["Chemin relatif"],
     "xrVr_k": ["Impossible de créer la compétence : ", ["0"]],
     "xsZhu-": ["Numéro de page"],

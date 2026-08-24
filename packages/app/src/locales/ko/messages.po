@@ -1838,6 +1838,10 @@ msgstr "적용 중…"
 msgid "Approve"
 msgstr "승인"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "승인하고 진행"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "승인됨"
@@ -1924,6 +1928,10 @@ msgstr "AI에 {flatId} 수정 요청"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "에이전트에게 질문"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "변경 요청…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6799,6 +6807,10 @@ msgstr "Git 프로젝트에서 Open Knowledge는 다음 재빌드 전에 동시�
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App에서"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "위의 계획에서, "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "이 저장소에 저장 — 협업자는 git을 통해 사본을 받습니다."
@@ -7938,14 +7950,6 @@ msgstr "링크 대상, 앵커, 표시 레이블을 수정합니다."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "더 보기"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "권한 부여 옵션 더 보기"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "거부 옵션 더 보기"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10467,6 +10471,7 @@ msgstr "Claude Chat 및 Cowork용 재설치"
 msgid "Reinstalling"
 msgstr "재설치 중"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "거부"

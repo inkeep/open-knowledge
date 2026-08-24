@@ -403,6 +403,7 @@
     "4EZrJN": ["Regras"],
     "4ErgAf": ["OpenKnowledge instalou uma habilidade"],
     "4FltCB": ["Escolha onde sua cópia vai ficar. Escolher um destino a cria."],
+    "4GYCwt": ["Aprovar e continuar"],
     "4Gz2wC": ["Falha ao enviar o arquivo"],
     "4KmEoC": ["Atalhos de teclado"],
     "4NC2Ym": ["Vai para a próxima célula da tabela ou para a anterior."],
@@ -872,7 +873,6 @@
     "9bCiQ8": ["Nenhuma página está sem links de entrada no grafo."],
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir os documentos com a tag #", ["chip"]],
-    "9dVehq": ["Mais opções de permissão"],
     "9euN0m": [
       [
         "count",
@@ -2584,6 +2584,7 @@
     ],
     "TTDXD8": ["Novo worktree…"],
     "TUzThQ": ["Compartilhar habilidades"],
+    "T_N0ro": ["Solicitar alterações…"],
     "T_j5G0": ["Esta não é uma versão compatível do Slidev."],
     "T_wG4n": ["Não foi possível verificar sua conexão com o GitHub."],
     "Ta25TG": ["Ainda não há histórico"],
@@ -3399,6 +3400,7 @@
     ],
     "bpytj4": ["Mover para ", ["0"]],
     "brCtGB": ["Histórico indisponível"],
+    "btNgJP": ["No plano acima, por favor "],
     "buNXgr": ["Alterna entre o editor visual e o de código, mantendo seu lugar."],
     "bultyE": [
       "Quando está ligado, o agente abre ou atualiza a pré-visualização depois de cada edição. Desligue se você cuida da sua própria janela de pré-visualização (OK Desktop, uma aba do navegador em outra tela, etc.)."
@@ -5384,7 +5386,6 @@
     "xi9KGG": ["Mostrar o Terminal"],
     "xiv-dW": ["Ainda não há arquivos."],
     "xk133d": ["Instala a skill em ", ["path"], " — o primeiro local guarda a própria cópia"],
-    "xlQpTE": ["Mais opções de recusa"],
     "xloBjn": ["Caminho relativo"],
     "xrVr_k": ["Não deu para criar a habilidade: ", ["0"]],
     "xsZhu-": ["Número da página"],

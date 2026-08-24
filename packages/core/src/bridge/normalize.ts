@@ -1,3 +1,4 @@
+
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
 import { bodyEdgeEmpties } from './doc-boundary-space.ts';
 

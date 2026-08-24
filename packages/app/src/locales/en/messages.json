@@ -352,6 +352,7 @@
     "4EZrJN": ["Rules"],
     "4ErgAf": ["OpenKnowledge installed a skill"],
     "4FltCB": ["Pick where your copy goes. Choosing a destination creates it."],
+    "4GYCwt": ["Approve & proceed"],
     "4Gz2wC": ["Failed to upload file"],
     "4KmEoC": ["Hotkeys"],
     "4NC2Ym": ["Move to the next or previous table cell."],
@@ -752,7 +753,6 @@
     "9bCiQ8": ["No pages are missing incoming graph links."],
     "9bG48P": ["Sending"],
     "9clcD5": ["Open documents tagged #", ["chip"]],
-    "9dVehq": ["More grant options"],
     "9euN0m": [
       [
         "count",
@@ -2267,6 +2267,7 @@
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
     "TUzThQ": ["Share skills"],
+    "T_N0ro": ["Ask changes…"],
     "T_j5G0": ["This isn't a supported version of Slidev."],
     "T_wG4n": ["We couldn't check your GitHub connection."],
     "Ta25TG": ["No history yet"],
@@ -2973,6 +2974,7 @@
     "bpMVIA": ["Link target \"", ["shown"], "\" could not be resolved to a project-local target."],
     "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
+    "btNgJP": ["In the plan above, please "],
     "buNXgr": ["Switch between the visual and source editors, keeping your place."],
     "bultyE": [
       "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
@@ -4763,7 +4765,6 @@
     "xi9KGG": ["Show Terminal"],
     "xiv-dW": ["No files yet."],
     "xk133d": ["Installs the skill to ", ["path"], " — the first location holds its own copy"],
-    "xlQpTE": ["More refusal options"],
     "xloBjn": ["Relative Path"],
     "xrVr_k": ["Couldn't create skill: ", ["0"]],
     "xsZhu-": ["Page number"],

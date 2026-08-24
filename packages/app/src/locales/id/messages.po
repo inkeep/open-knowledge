@@ -1834,6 +1834,10 @@ msgstr "Menerapkan…"
 msgid "Approve"
 msgstr "Setujui"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "Setujui dan lanjutkan"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "Disetujui"
@@ -1920,6 +1924,10 @@ msgstr "Minta AI memperbaiki {flatId}"
 #: src/components/BottomComposer.tsx
 msgid "Ask an agent"
 msgstr "Tanya agen"
+
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "Minta perubahan…"
 
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
@@ -6795,6 +6803,10 @@ msgstr "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitatt
 msgid "In the Claude Desktop App"
 msgstr "Di aplikasi Claude Desktop"
 
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "Dalam rencana di atas, tolong "
+
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
 msgstr "Di repositori ini — kolaborator mendapat salinan lewat git."
@@ -7934,14 +7946,6 @@ msgstr "Ubah tujuan tautan, jangkar, dan label tampilannya."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "Lainnya"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "Opsi pemberian izin lainnya"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "Opsi penolakan lainnya"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -10463,6 +10467,7 @@ msgstr "Pasang ulang untuk Claude Chat & Cowork"
 msgid "Reinstalling"
 msgstr "Memasang ulang"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "Tolak"
