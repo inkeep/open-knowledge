@@ -66,15 +66,42 @@ A skill is a **real folder** in your agent's skills directory — `.claude/skill
 
 ## Create, import, and install skills
 
-Open the **Skills** tab to add skills three ways:
+Skills live in **Skills Studio**, which shows up in two places: a dock at the bottom of the file sidebar, where you author and browse, and a page in Settings, where you install the skills OpenKnowledge ships and decide which folders your AI tools share. The Settings side is covered in [Skills Studio in Settings](#skills-studio-in-settings).
 
-- **Explore** searches skills.sh, previews a skill before it lands in your base, and imports it with one click.
-- **Upload** imports a skill from skills.sh, GitHub, a git URL, a local path, a `.zip` / `.skill` archive, or a folder containing `SKILL.md`.
-- **New** asks for a name (the id agents use to invoke it) and a description (what agents match on to decide when to use it), then opens the new `SKILL.md` as an editor tab. The scope comes from the section you create it in.
+### The Skills Studio dock
+
+The dock sits under the file tree as a collapsible **Skills Studio** section, so a file and a skill can be open side by side. It starts collapsed and remembers its state per machine. Expanded, it takes up to 45% of the window and scrolls on its own, so the file tree always keeps a usable body; drag the handle above it to resize, or focus the handle and press Up / Down. Its toolbar shows on hover or keyboard focus, with two actions:
+
+- **New skill** creates a project-scope skill named `new-skill` (then `new-skill-2`, and so on) and opens its `SKILL.md` as an editor tab. Rename it and fill in the description: the name is the id agents use to invoke it, and the description is what agents match on to decide when to use it.
+- **Explore skills** opens the import dialog. **Explore** searches skills.sh, previews a skill before it lands in your base, and imports it with one click. **Upload** imports from skills.sh, GitHub, a git URL, a local path, a `.zip` / `.skill` archive, or a folder containing `SKILL.md`.
+
+The palette's **Skills** command and an unresolved `/skill-name` link reveal the dock rather than opening a separate page. To hide the dock, untick **Skills Studio** in the sidebar's tree view options, run **Skills section** from the command palette, or set `appearance.sidebar.showSkillsSection` to `false`.
 
 Agents use the same marketplace flow over MCP: `skills({ query: "..." })` searches skills.sh, then `import({ source, skill: name })` imports the selected result.
 
-A skill is live for its agent the moment it lands — there is no separate "install" step to flip. The skill's **install** menu instead controls *where* it is available: add or remove editors, flip any editor between a copy and a symlink, or relocate the canonical source. If a source bundles several skills, OpenKnowledge asks which one to import; scripts are stored as versioned content for review and never run during import. **Settings → Skills Studio** is where the skills OpenKnowledge ships get installed or removed — at user scope for the machine-wide ones, at project scope for the skill committed to the repo. The same page lists this project's and your user-level skill folders, and lets you point one editor's skills folder at another's so both read the same set. Per-skill reach lives in each skill's install menu.
+A skill is live for its agent the moment it lands. There is no separate "install" step to flip. The skill's **install** menu instead controls *where* it is available: add or remove editors, flip any editor between a copy and a symlink, or relocate the canonical source. If a source bundles several skills, OpenKnowledge asks which one to import; scripts are stored as versioned content for review and never run during import.
+
+### Grouped by where they came from
+
+Within each scope, the dock groups skills by source: the skills.sh publisher or GitHub repo they were imported from, or the Claude plugin that ships them. Skills you wrote yourself stay ungrouped at the top of their scope, the way your own files carry no label in the file tree; only content from elsewhere gets a row naming its origin. A source with a single skill collapses onto that skill's row instead of earning a group, and grouping is per scope, so one source can group under Project and sit flat under Global. OpenKnowledge's own built-ins publish to `inkeep/open-knowledge-skills` and group under it like anything else.
+
+A group row leads with the publisher's avatar or the plugin's glyph; when the source resolves to a URL, that mark is a link to it. The group's menu offers **Update all from this source**, which re-pulls every skill in the group in one request (the source is cloned once for the whole batch) and reports per skill how many updated, how many were already current, and which failed and why. One skill that cannot be written does not stop the rest.
+
+A skill row's menu offers **Pin to top** to keep it above the groups. Pins follow the skill's scope: a project pin stays with the repo (`appearance.sidebar.pinnedProjectSkills`, per machine), a global pin follows you into every project (`appearance.sidebar.pinnedGlobalSkills`, per user). A pinned skill keeps its normal row too, so its group still lists everything from that source. Turn grouping off with **Group skills by source** in the tree view options (`appearance.sidebar.showSkillGroups`).
+
+## Skills Studio in Settings
+
+**Settings → Skills Studio** exists at both scopes. It carries the skills OpenKnowledge ships, not the ones you author (those live in the dock), and the folders your AI tools read skills from.
+
+**User scope** (under User) lists **Skills from OpenKnowledge**, the machine-wide bundles: `open-knowledge-discovery` (how to set up new projects with OpenKnowledge) and `open-knowledge-write-skill` (how to write a new skill and install it). Each row shows a one-line description written for a person, the AI tools it reaches, and an Install / Uninstall control behind a confirmation that names every path it will touch. Installing one adds it to every AI tool detected on this machine (`~/.agents/skills/` plus each editor's own skills folder). **Manage** opens the skill's preview tab, which shows the full `SKILL.md` (including the agent-facing trigger text the row leaves out), links to its source, and offers **Update** when the published copy differs. Built-ins never update on their own.
+
+Only the discovery skill is offered at first launch. The first time you open Skills Studio, a short dialog explains the page and offers the authoring skill once, with the same disclosure as the install confirmation. **Not now** is remembered on this machine and the row underneath keeps the skill available; a skill you declined at setup is never re-offered.
+
+**Project scope** (under This project) lists the project's own `open-knowledge` skill: how to use OpenKnowledge and its MCP tools. It lives in the project folder (`.claude/skills/`, `.cursor/skills/`, and the other project-local skill dirs), so it installs for everyone who opens the project. When it is missing, the page says so and offers **Install**.
+
+Both scopes end with **Share skills between AI tools**, the folders each AI tool reads skills from. **Link** points one folder at another so both tools see the same skills, and you add a skill once instead of copying it into every tool. **unlink** turns a folder back into a real directory holding a per-skill symlink for each skill it currently sees, so nothing stops working and each skill's install menu manages it from there. **Add custom path** (`~/.myteam/skills`, `.myteam/skills`) includes a folder OpenKnowledge does not detect on its own. Linking refuses when the two folders hold different versions of the same skill, or when the target holds entries that are not skills; a folder that something outside OpenKnowledge changed is shown as it is on disk, and your next Link / unlink wins.
+
+The **AI tools & CLI** page (User) and **AI tools** page (This project) keep only the *connections*: each editor's MCP entry and the `ok` command. They point at Skills Studio for anything skill-shaped.
 
 A skill can also bundle `references/` and `scripts/` files beside its `SKILL.md`; agents read those through the [`skills` MCP tool](../reference/mcp.mdx).
 
@@ -83,7 +110,7 @@ A skill can also bundle `references/` and `scripts/` files beside its `SKILL.md`
 - **Project** skills live in the base, versioned and shared with it like any other content.
 - **Global** skills live in your home editor dirs (`~/.agents/skills`, `~/.claude/skills`, …) and follow you across every project on your machine. Outside any base, they carry no version history.
 
-The skill that makes an agent behave well the moment you connect it (read and write through the tools, cite sources, keep the link graph healthy) is neither: `open-knowledge` is built into the product and never appears in your skills list.
+The skill that makes an agent behave well the moment you connect it (read and write through the tools, cite sources, keep the link graph healthy) is the project's built-in `open-knowledge` skill. OpenKnowledge ships it read-only: it shows in the dock grouped under `inkeep/open-knowledge-skills`, and **Settings → This project → Skills Studio** installs or removes it.
 
 Moving a skill between scopes re-creates it in the destination scope: history does not transfer, but the locations it occupied are re-projected for you.
 
@@ -91,7 +118,7 @@ Moving a skill between scopes re-creates it in the destination scope: history do
 
 Skills you already keep in `.claude/skills`, `.cursor/skills`, and the like are versioned **in place, automatically** — OpenKnowledge reads and versions them where they live. There is no store to opt into and no `ok skills manage` switch.
 
-The Skills sidebar lists what OpenKnowledge found across your other tools: the Claude, Codex, Cursor, OpenCode, Copilot, Pi, and Agents skill dirs, plus Claude plugins. They appear as **Detected** rows. Click one to edit it in place; changes save straight to that editor's own copy. From the CLI, `ok skills installed` lists every skill across your agents (read-only) and `ok skills import <source>` brings a new one in.
+The Skills Studio dock lists what OpenKnowledge found across your other tools: the Claude, Codex, Cursor, OpenCode, Copilot, Pi, and Agents skill dirs, plus Claude plugins. They appear as **Detected** rows. Click one to edit it in place; changes save straight to that editor's own copy. From the CLI, `ok skills installed` lists every skill across your agents (read-only) and `ok skills import <source>` brings a new one in.
 
 <Callout type="warn">
 Skills are an open standard, and a skill can carry scripts that run on your machine. Treat a third-party skill like installing software. Use trusted sources, and read what it does first.
