@@ -2079,6 +2079,10 @@ function ensureWindowManager() {
     // state, so it holds for the whole session. See `firstLaunchAfterUpgrade`.
     isFirstLaunchAfterUpgrade: () => firstLaunchAfterUpgrade,
     setTimeout: (cb, ms) => setTimeout(cb, ms),
+    // Repeating timer for the ephemeral single-file server-liveness watch —
+    // unref'd so it never keeps the event loop alive on its own.
+    setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
     killProbe: (pid, signal) => {
       process.kill(pid, signal as NodeJS.Signals | 0);
     },
@@ -3008,14 +3012,26 @@ async function openEphemeralFile(filePath: string): Promise<void> {
   }
 
   try {
+    // Capture any pre-existing live session BEFORE the call so the log can tell a
+    // focus-dedup from a fresh spawn: `createEphemeralWindow` returns the SAME
+    // context object when it focuses an existing live window, and a NEW one when
+    // it spawns (including when it reaps a dead session and re-spawns).
+    const existingBefore = wm.getWindowFor(plan.canonicalFilePath);
     const ctx = await wm.createEphemeralWindow({
       canonicalFilePath: plan.canonicalFilePath,
       contentDir: plan.contentDir,
       docName: plan.docName,
     });
+    const deduped = existingBefore !== undefined && existingBefore === ctx;
     getLogger('project').info(
-      { file: plan.canonicalFilePath, apiOrigin: ctx.apiOrigin },
-      'ephemeral single-file window created',
+      {
+        file: plan.canonicalFilePath,
+        apiOrigin: ctx.apiOrigin,
+        outcome: deduped ? 'focused-existing' : 'spawned-fresh',
+      },
+      deduped
+        ? 'ephemeral single-file window focused (deduped)'
+        : 'ephemeral single-file window created',
     );
     // The external-link / asset safety net is attached by the window factory
     // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is

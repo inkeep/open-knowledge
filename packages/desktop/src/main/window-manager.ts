@@ -74,6 +74,20 @@ const DEFAULT_SPAWN_STARTUP_DEADLINE_MS = 15_000;
 const SPAWN_WAIT_EXTENSION_FACTOR = 8;
 
 /**
+ * Cadence (ms) of the ephemeral single-file session's server-liveness poll. An
+ * ephemeral server is a DETACHED process whose lifetime is decoupled from its
+ * window's, so it can die (kill / crash / idle-shutdown) while the window stays
+ * open. The spawner observes the child's `'exit'` but exposes it only as a pull
+ * snapshot (`readExit`), not a push signal to this class — so this poll is how
+ * the window manager proactively notices a dead session and reaps it. A few
+ * seconds is well inside human re-open latency while staying a cheap
+ * `process.kill(pid, 0)` probe. Tests inject `deps.setInterval` (see
+ * `wireIntervalTimers` / `tick` in the ephemeral-window test suite) to advance
+ * it deterministically.
+ */
+const EPHEMERAL_SERVER_WATCH_POLL_MS = 3_000;
+
+/**
  * Local mirror of `isValidLockPid` from `@inkeep/open-knowledge-server`. Same
  * import-surface rationale as `isProcessAliveLocal` above.
  *
@@ -752,6 +766,19 @@ export interface WindowManagerDeps {
   isFirstLaunchAfterUpgrade?(): boolean;
   /** Schedule a one-shot timer (test injection for the post-exit liveness probe). */
   setTimeout(cb: () => void, ms: number): unknown;
+  /**
+   * Schedule a repeating timer for the ephemeral single-file session's
+   * server-liveness watch. Kept SEPARATE from `setTimeout` (which
+   * several tests inject as an immediate-firing stub to advance the bounded
+   * spawn-lock poll) because the watch is an UNBOUNDED periodic poll — reusing
+   * an immediate `setTimeout` would recurse forever. Production wires
+   * `setInterval`; when unwired (test harnesses that don't exercise the watch),
+   * the exit-watch is simply not armed and the probe-on-dedup backstop still
+   * repairs the reported symptom. Paired with `clearInterval` (all-or-nothing).
+   */
+  setInterval?(cb: () => void, ms: number): unknown;
+  /** Cancel a timer started by `setInterval`. Wired iff `setInterval` is. */
+  clearInterval?(handle: unknown): void;
   /** `process.kill(pid, signal)` — used in the post-exit liveness probe. */
   killProbe(pid: number, signal: number | NodeJS.Signals): void;
   /**
@@ -1413,6 +1440,31 @@ export class WindowManager {
     } catch (err) {
       return (err as NodeJS.ErrnoException).code === 'EPERM';
     }
+  }
+
+  /**
+   * Whether the detached server backing an ephemeral single-file session is
+   * still live. The ephemeral dedup and the exit-watch must gate on SERVER
+   * liveness, not just WINDOW liveness — a detached server can die (kill /
+   * crash / idle-shutdown) while its window stays open, leaving the cached
+   * `apiOrigin` pointing at nothing.
+   *
+   * Pid liveness is authoritative: `isPidAlive` always has a probe (it falls
+   * back to the required `killProbe` dep), so there is no configuration in which
+   * a dead server reads as alive, and a dead pid is dead regardless of a stale
+   * lock a SIGKILL left behind. When the pid IS alive, a gone or `draining` lock
+   * still counts as dead — that is a server mid-shutdown (the same signal
+   * `pollServerLock` treats as not-ready) whose pid has not exited yet. With no
+   * lock reader wired, the live pid is trusted on its own.
+   */
+  private isEphemeralServerAlive(ctx: ProjectContext): boolean {
+    const eph = ctx.ephemeral;
+    if (eph === undefined) return true; // not an ephemeral ctx — nothing to probe
+    if (!this.isPidAlive(eph.pid)) return false;
+    const reader = this.deps.readServerLock;
+    if (!reader) return true; // pid alive, no lock reader to corroborate — trust it
+    const lock = reader(eph.lockDir);
+    return lock !== null && lock.draining !== true;
   }
 
   /**
@@ -2239,18 +2291,25 @@ export class WindowManager {
 
   /**
    * Open (or focus) an ephemeral single-file editing session for a no-project
-   * file (`ok <file>`). Distinct from `createProjectWindow` in three ways that
-   * make a dedicated method cleaner than threading an `ephemeral` flag through
-   * that 450-line path:
-   *   - **Dedup on the canonical FILE path**: a second `ok <samefile>`
-   *     focuses the existing window rather than spawning a second server on the
-   *     same inode (which would clobber the file). The dedup check runs BEFORE
-   *     any temp-dir creation so a focus never leaks a throwaway dir.
+   * file (`ok <file>`). Distinct from `createProjectWindow` in ways that make a
+   * dedicated method cleaner than threading an `ephemeral` flag through that
+   * 450-line path:
+   *   - **Dedup on the canonical FILE path, gated on SERVER liveness**: a second
+   *     `ok <samefile>` focuses the existing window rather than spawning a second
+   *     server on the same inode (which would clobber the file) — but ONLY when
+   *     that window's detached server is still alive. A dead cached session is
+   *     reaped and re-spawned instead of re-served (see `isEphemeralServerAlive`).
+   *     The dedup check runs BEFORE any temp-dir creation so a focus never leaks
+   *     a throwaway dir.
    *   - **Slim single-file boot** in a throwaway temp `projectDir` (git + MCP
    *     off, content scoped to the one doc): no `.ok/` lands in the user's dir.
    *   - **Deterministic teardown** on window-close: a detached server would
    *     otherwise survive the close. The `'closed'`
    *     handler terminates the pid then removes the temp dir, sequentially.
+   *   - **Server-liveness exit-watch**: because the server is detached, it can
+   *     die while the window stays open; a per-session poll (armed when the
+   *     `setInterval` dep is wired) reaps the dead server's temp dir. It leaves
+   *     the window itself open — the dedup gate above handles the next re-open.
    *
    * Requires the ephemeral deps (`createEphemeralProjectDir`,
    * `spawnDetachedServer`, `removeDir`) to be wired — there is no fallback for an
@@ -2271,15 +2330,43 @@ export class WindowManager {
     const canonicalKey = this.canonicalizeKey(opts.canonicalFilePath);
     const existing = this.windowsByPath.get(canonicalKey);
     if (existing) {
-      if (existing.window.isDestroyed?.() !== true) {
+      const windowAlive = existing.window.isDestroyed?.() !== true;
+      // Dedup only onto a session that is BOTH window-alive AND server-alive. An
+      // ephemeral server is detached and can die while its window stays open; the
+      // pre-fix check trusted window liveness alone and re-served a dead
+      // `apiOrigin`, so `ok open <file>` "succeeded" with no live session.
+      if (windowAlive && this.isEphemeralServerAlive(existing)) {
         this.bringToFront(existing.window);
         return existing;
       }
       this.deps.log?.warn(
-        { canonicalKey },
-        '[window-manager] stale destroyed ephemeral entry — clearing and re-creating',
+        {
+          event: 'desktop-ephemeral-stale-entry',
+          canonicalKey,
+          windowAlive,
+          pid: existing.ephemeral?.pid,
+          apiOrigin: existing.apiOrigin,
+          lockDir: existing.ephemeral?.lockDir,
+        },
+        windowAlive
+          ? '[window-manager] ephemeral entry has a dead server — clearing and re-spawning'
+          : '[window-manager] stale destroyed ephemeral entry — clearing and re-creating',
       );
       this.windowsByPath.delete(canonicalKey);
+      // Reap the dead session's temp dir + (already-dead) pid only when the
+      // window is still open here. A destroyed window already ran its `'closed'`
+      // teardown; teardown is idempotent, but skipping the redundant SIGTERM/rm
+      // keeps the destroyed-window path single-pass, as before.
+      //
+      // The stale window itself is left open, not closed — deliberately, unlike
+      // `restartAttachedServer` (which closes the old window once the replacement
+      // exists). That path has a synchronous in-place replacement; here the user
+      // explicitly re-opened, and gracefully retiring the dead-server window is
+      // the renderer "server gone" affordance's job, not main's. Closing it here
+      // would preempt that and yank a window the user may still be reading.
+      if (windowAlive && existing.ephemeral) {
+        void this.teardownEphemeralSession(existing.ephemeral);
+      }
     }
 
     // A same-file open already in flight (mid spawn/load) → await it and focus
@@ -2488,7 +2575,24 @@ export class WindowManager {
       ephemeral: { projectDir: tempProjectDir, pid: handle.pid, lockDir },
     };
 
+    // Exit-watch handle — shared by the `'closed'` handler (below) and the
+    // liveness poll (further below). The spawner observes the child's `'exit'`
+    // but exposes it only as a pull snapshot (`readExit`), not a push signal to
+    // this class, so the poll is how the manager proactively notices a death;
+    // once the window closes or the session is invalidated, the interval must be
+    // cleared.
+    let watchHandle: unknown;
+    let watchCleared = false;
+    const stopExitWatch = (): void => {
+      if (watchCleared) return;
+      watchCleared = true;
+      if (watchHandle !== undefined) this.deps.clearInterval?.(watchHandle);
+    };
+
     window.on('closed', () => {
+      // Stop the liveness poll first — the session is going away under the normal
+      // teardown path; a straggling poll must not fire a second teardown.
+      stopExitWatch();
       disposeShowGate();
       // Ownership guard — only tear down if THIS window still owns the slot. A
       // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
@@ -2506,6 +2610,70 @@ export class WindowManager {
     });
 
     this.windowsByPath.set(canonicalKey, context);
+
+    // Exit-watch: proactively notice a detached server that dies while its window
+    // is still open (kill / crash / idle-shutdown) and reap its throwaway temp
+    // dir, so it does not linger for the window's whole open lifetime. Armed only
+    // when `setInterval` is wired (production); unwired harnesses rely on the
+    // probe-on-dedup backstop, which alone repairs the reported re-open symptom.
+    //
+    // It deliberately does NOT delete the `windowsByPath` entry (unlike the
+    // utility-fork `on('exit')` path). The entry is what keeps a still-open
+    // window in the session-restore set (`getOpenWindows`); dropping it would
+    // silently exclude the file from next-launch restore. Dedup correctness does
+    // not need the delete — the dedup gate live-probes liveness on the next open
+    // — so leaving the entry costs nothing and preserves restore. The window is
+    // left open; retiring it gracefully is the renderer affordance's job.
+    //
+    // The whole body is wrapped in try/catch: this is the one new call site not
+    // guarded by async/await propagation, and main runs with no
+    // `uncaughtException` handler by design — a throw here (a probe dep, an errno
+    // path) would take down every window, not just this one.
+    if (this.deps.setInterval) {
+      watchHandle = this.deps.setInterval(() => {
+        try {
+          if (watchCleared) return;
+          // Superseded: a focus-dedup re-open or teardown replaced/cleared the
+          // slot. Whoever owns it now runs its own watch — stop quietly.
+          if (this.windowsByPath.get(canonicalKey) !== context) {
+            stopExitWatch();
+            return;
+          }
+          if (this.isEphemeralServerAlive(context)) return;
+          // The detached server died while its window stayed open. Reap its temp
+          // dir and stop; the entry stays for the reasons above.
+          stopExitWatch();
+          const eph = context.ephemeral as NonNullable<ProjectContext['ephemeral']>;
+          this.deps.log?.warn(
+            {
+              event: 'desktop-ephemeral-server-exited',
+              pid: eph.pid,
+              lockDir: eph.lockDir,
+              file: opts.canonicalFilePath,
+            },
+            '[window-manager] ephemeral server exited while its window was open — reaping the dead session temp dir',
+          );
+          // No `recordServerExit` here (unlike the utility-fork `on('exit')`
+          // path): that record lands in `<lockDir>/last-server-exit.json`, and an
+          // ephemeral lockDir lives inside the throwaway temp projectDir that this
+          // teardown removes — a persistent project lock is re-attached and read
+          // by a later bug-report bundle, but a throwaway one never is.
+          void this.teardownEphemeralSession(eph);
+        } catch (err) {
+          this.deps.log?.warn(
+            {
+              event: 'desktop-ephemeral-watch-probe-failed',
+              err,
+              file: opts.canonicalFilePath,
+              pid: context.ephemeral?.pid,
+              lockDir: context.ephemeral?.lockDir,
+            },
+            '[window-manager] ephemeral server-liveness probe threw — skipping this poll cycle',
+          );
+        }
+      }, EPHEMERAL_SERVER_WATCH_POLL_MS);
+    }
+
     return context;
   }
 
@@ -2517,34 +2685,52 @@ export class WindowManager {
    * removing the dir under a live server is a race. Idempotent: a second call
    * (the `'closed'` handler and `stopAllOwnedServers` can both reach a session)
    * hits ESRCH on the already-dead pid and a no-op `force` rm on the gone dir.
+   *
+   * Guaranteed non-rejecting: every caller invokes it fire-and-forget (`void`),
+   * so a rejection would surface as an unhandled rejection — and main runs with
+   * no `unhandledRejection` handler by design, which would crash every window.
+   * The top-level try/catch makes that guarantee structural rather than relying
+   * on each callee (`terminateServerByPid`, `removeDir`) never throwing.
    */
   private async teardownEphemeralSession(session: {
     projectDir: string;
     pid: number;
     lockDir: string;
   }): Promise<void> {
-    const term = await this.terminateServerByPid(session.lockDir, session.pid);
-    if (!term.ok) {
+    try {
+      const term = await this.terminateServerByPid(session.lockDir, session.pid);
+      if (!term.ok) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-ephemeral-teardown',
+            outcome: term.reason,
+            pid: session.pid,
+            projectDir: session.projectDir,
+          },
+          '[window-manager] ephemeral server termination did not confirm; removing temp dir anyway',
+        );
+      }
+      await this.deps.removeDir?.(session.projectDir).catch((err: unknown) => {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-ephemeral-teardown',
+            err,
+            projectDir: session.projectDir,
+          },
+          '[window-manager] failed to remove ephemeral temp dir',
+        );
+      });
+    } catch (err) {
       this.deps.log?.warn(
         {
-          event: 'desktop-ephemeral-teardown',
-          outcome: term.reason,
+          event: 'desktop-ephemeral-teardown-unexpected',
+          err,
           pid: session.pid,
           projectDir: session.projectDir,
         },
-        '[window-manager] ephemeral server termination did not confirm; removing temp dir anyway',
+        '[window-manager] unexpected error tearing down ephemeral session',
       );
     }
-    await this.deps.removeDir?.(session.projectDir).catch((err: unknown) => {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-ephemeral-teardown',
-          err,
-          projectDir: session.projectDir,
-        },
-        '[window-manager] failed to remove ephemeral temp dir',
-      );
-    });
   }
 
   /** Close a specific project window (called by IPC `ok:project:close`). */
