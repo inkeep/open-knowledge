@@ -11,7 +11,7 @@ metadata:
 OpenKnowledge (OK) is a markdown-CRDT collaboration platform exposed via MCP. This skill is the single source of OK agent guidance. Every rule below is a MUST unless marked otherwise. **Depth lives in `references/*.md` — one level deep; load a reference when its task comes up.**
 
 > Skill version tracks `@inkeep/open-knowledge-server`. `cat ~/.ok/skill-state.yml` shows what's installed. `ok seed` needs `@inkeep/open-knowledge` >= 0.4.0; if it errors `unknown command`, `npm install -g @inkeep/open-knowledge`.
-
+>
 > **Setup (not connected yet?).** If the `mcp__open-knowledge__*` tools aren't available in your client, this project isn't wired up on this machine — see [`references/setup.md`](references/setup.md) for the rung ladder (approve `.mcp.json` → `ok start` CLI → optional desktop app) and the canonical quickstart.
 
 ## TL;DR — the 90% case
@@ -77,13 +77,19 @@ KB docs are factual artifacts: every claim traceable, and **the source lives ins
 - **Self-fetched counts.** A URL YOU fetched to ground a claim gets the same ingest — no inline-URL downgrade.
 - **Internal cross-refs** → link the OK doc holding the authoritative claim; that doc cites its own sources (chains terminate in preserved local docs).
 - **No evidence?** Search and ingest the result, OR mark `(TODO: needs source)`, OR don't write the claim. Do NOT fabricate — unsourced speculation rots into untraceable tribal lore.
+
 ## Linking — standard markdown links (MUST)
 
 Link every noun-phrase that names another document — `[text](./relative/path.md)` — and link liberally. **Every link must resolve to a doc that exists by the time you're done** (a same-pass forward-reference you create later in the pass is fine; for one that genuinely won't exist, leave the mention as plain prose + a tracked task). Never backtick a link (`` `[text](./foo.md)` `` is a bug) and never use HTML `<a>`. **Read `brokenLinks` on every `write`/`edit` response: `[]` means all links resolve; a populated list names each broken `href` + `reason` (`no-such-doc` / `no-such-file` / `unresolvable`) — fix them in a follow-up `edit`.** `audit` is the authoritative end-state link check (the editor's red-underline is slug-tolerant and lies, so trust the tool). External web sources are NOT inline body links (see Grounding). Full rule set + the `[[Page]]` legacy note: `references/linking.md`.
 
 ## Folders, frontmatter, templates
 
-Every `.md` / `.mdx` needs YAML frontmatter — `title` + `description` required, `tags` recommended. Two **opt-in, nested** folder mechanisms: folder frontmatter (`<folder>/.ok/frontmatter.yml` — the folder's own open-shape properties; self-only, does NOT cascade into child docs) and templates (`<folder>/.ok/templates/` — what new docs start with). Most folders have NO `.ok/`. A doc's frontmatter is exactly its own on-disk YAML. Structural model + the full pre-write checklist: `references/folder-model.md`. Template authoring + folder editing: `references/template-authoring.md`. Frontmatter-vs-body edit rules: `references/doc-editing.md`.
+Every `.md` / `.mdx` needs YAML frontmatter — `title` + `description` required, `tags` recommended — except OKF-reserved files:
+
+- **Generated `index.md`:** when `contentRules.okf.generate.index` is true, OpenKnowledge generates and replaces these files. Agents must not add `title`/`description` or other concept metadata the generator overwrites. Generated folder indexes have no frontmatter; the content-root index may carry only `okf_version: "0.2"`.
+- **`log.md`:** reserved but authored, not generated. Do not invent one. If it exists, follow `references/cadence-and-logs.md` and OKF date-only `## YYYY-MM-DD` headings with the summary in the entry body.
+
+Two **opt-in, nested** folder mechanisms: folder frontmatter (`<folder>/.ok/frontmatter.yml` — the folder's own open-shape properties; self-only, does NOT cascade into child docs) and templates (`<folder>/.ok/templates/` — what new docs start with). Most folders have NO `.ok/`. A doc's frontmatter is exactly its own on-disk YAML. Structural model + the full pre-write checklist: `references/folder-model.md`. Template authoring + folder editing: `references/template-authoring.md`. Frontmatter-vs-body edit rules: `references/doc-editing.md`.
 
 - **Read the folder before writing (MUST).** Before creating/editing docs in a folder, call `exec("ls -A <folder>")` once per folder per session — it returns the folder's `title`/`description`/`tags` + `templates_available`. Skipping it lands docs that violate folder discipline. (If a folder has no frontmatter AND no templates AND the repo has substantial content elsewhere, it isn't onboarded — run `references/onboard-existing-repo.md` first.)
 - **Use a template when one fits (MUST).** Instantiate via `write({ document: { path, template } })`; inherited templates count. Skip only when none match or the user asked for free-form (note why in chat). Create templates proactively when a shape recurs.

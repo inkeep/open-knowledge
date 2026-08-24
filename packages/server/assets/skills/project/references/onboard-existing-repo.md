@@ -179,9 +179,10 @@ Six sub-passes, each with its own STOP gate.
 
 ### 5c. Dead-link sweep (STOP gate 5c)
 
-1. Run `links({ kind: "dead" })` (no `sourceDocNames` → audits the whole corpus).
-2. For each dead link, propose: a fix candidate (via `search` for the correct target), or deletion (remove the link, or the prose around it). Leaving it as an "intentional redlink" is not an option — every dead link is fixed or removed.
-3. Confirm per dead-link. Apply confirmed fixes via `edit`.
+1. Run `audit` (MCP) or `ok audit` (CLI) for corpus-wide broken-link validation — this is the authoritative end-state check.
+2. Optionally use `links({ kind: "dead" })` to explore the dead-link graph while fixing; it supplements `audit`, it does not replace it.
+3. For each dead link, propose: a fix candidate (via `search` for the correct target), or deletion (remove the link, or the prose around it). Leaving it as an "intentional redlink" is not an option — every dead link is fixed or removed.
+4. Confirm per dead-link. Apply confirmed fixes via `edit`.
 
 ### 5d. Untextualized-reference detection (STOP gate 5d)
 
@@ -232,7 +233,7 @@ After all confirmed proposals are applied:
 1. Re-run `exec("ls -A <folder>")` on every `[KB]` folder. Verify:
    - the folder's descriptive `title`/`description`/`tags` are populated (folder frontmatter landed)
    - `templates_available` includes the new template (template landed)
-2. Re-run the orphan + dead-link audit in one call — `links({ kind: ["orphans", "dead"] })`. Confirm the orphan count dropped vs. the Phase 5a baseline and that fixed dead links no longer report.
+2. Re-run validation — `audit` (or `ok audit`) for broken links; `links({ kind: "orphans" })` to confirm the orphan count dropped vs. the Phase 5a baseline. Fixed dead links must no longer report in `audit`.
 
 If any validation step fails, surface it to the user — do NOT silently pass.
 

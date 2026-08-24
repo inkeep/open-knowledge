@@ -2,7 +2,12 @@
 
 (Core carries the MUST gates: read the folder before writing, use a template when one fits, bake recurring properties into a template. This file is the structural model.)
 
-Every `.md` / `.mdx` file needs YAML frontmatter — `title` + `description` required, `tags` recommended:
+Every `.md` / `.mdx` file needs YAML frontmatter — `title` + `description` required, `tags` recommended — except OKF-reserved files:
+
+- **Generated `index.md`:** when `contentRules.okf.generate.index` is true, OpenKnowledge generates and replaces these files. Agents must not add `title`/`description` or other concept metadata the generator overwrites. Generated folder indexes have no frontmatter; the content-root index may carry only `okf_version: "0.2"`.
+- **`log.md`:** reserved but authored, not generated. Do not invent one. If it exists, follow `cadence-and-logs.md` and OKF date-only `## YYYY-MM-DD` headings with the summary in the entry body.
+
+All other files:
 
 ```yaml
 ---

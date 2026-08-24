@@ -21,7 +21,7 @@ metadata:
 - Use standard Markdown links for portable relationships. Broken links and a missing index are allowed.
 - `index.md` and `log.md` are reserved at every level. Use lowercase filenames.
 - An `index.md` normally has no frontmatter; only the root index may declare `okf_version: "0.2"`.
-- A `log.md` is newest-first; entry headings begin `## YYYY-MM-DD: Summary`.
+- A `log.md` is newest-first; entry headings are date-only (`## YYYY-MM-DD`), with the summary in the entry body (not in the heading).
 - OKF consumers read `.md`, not `.mdx`.
 
 ## Authoring judgment
