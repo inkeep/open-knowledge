@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -1566,5 +1574,53 @@ describe('outsideProject stamp on /api/skills/installed', () => {
     const found = (await fetchInstalled()).skills.find((s) => s.name === 'fromparent');
     expect(found).toBeDefined();
     expect(found?.outsideProject).toBe(true);
+  });
+});
+
+describe('repo-declared plugin identity on /api/skills (no harness registry)', () => {
+  let contentDir: string;
+  let server: TestServer;
+
+  beforeEach(async () => {
+    contentDir = mkdtempSync(join(tmpdir(), 'ok-repo-plugin-'));
+    mkdirSync(join(contentDir, '.claude-plugin'), { recursive: true });
+    writeFileSync(
+      join(contentDir, '.claude-plugin', 'marketplace.json'),
+      JSON.stringify({ name: 'repo-mkt', plugins: [{ name: 'tools', source: './plugins/tools' }] }),
+    );
+    mkdirSync(join(contentDir, '.claude'), { recursive: true });
+    writeFileSync(
+      join(contentDir, '.claude', 'settings.json'),
+      JSON.stringify({ enabledPlugins: { 'tools@repo-mkt': true } }),
+    );
+    mkdirSync(join(contentDir, 'plugins/tools/.claude-plugin'), { recursive: true });
+    writeFileSync(
+      join(contentDir, 'plugins/tools/.claude-plugin/plugin.json'),
+      JSON.stringify({ name: 'tools', repository: 'https://github.com/acme/tools' }),
+    );
+    writeSkill(contentDir, 'plugins/tools/skills/served', '# Served by the plugin');
+    mkdirSync(join(contentDir, '.agents/skills'), { recursive: true });
+    symlinkSync('../../plugins/tools/skills/served', join(contentDir, '.agents/skills/served'));
+    writeSkill(contentDir, '.agents/skills/handmade', '# Hand-authored');
+    server = await createTestServer({ contentDir });
+  });
+  afterEach(async () => {
+    await server.cleanup();
+    rmSync(contentDir, { recursive: true, force: true });
+  });
+
+  test('a symlinked in-repo plugin skill carries the plugin; a hand-authored sibling does not', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/skills?scope=project`);
+    expect(res.status).toBe(200);
+    const { skills } = (await res.json()) as {
+      skills: Array<{ name: string; plugin?: Record<string, unknown> }>;
+    };
+    expect(skills.find((s) => s.name === 'served')?.plugin).toEqual({
+      name: 'tools',
+      marketplace: 'repo-mkt',
+      provider: 'claude',
+      url: 'https://github.com/acme/tools',
+    });
+    expect(skills.find((s) => s.name === 'handmade')?.plugin).toBeUndefined();
   });
 });

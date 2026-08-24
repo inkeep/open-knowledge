@@ -290,8 +290,10 @@ import {
   parseSource,
   pluginRepositoryUrl,
   pluginUpstreamsByName,
+  readRepoMarketplacePlugins,
   readSkillDirMeta,
   readWellKnownIndex,
+  repoMarketplacePluginFor,
   resolvePluginUpdateSource,
   resolveSkillsShImportSource,
   retrofitPackLockEntry,
@@ -14368,11 +14370,14 @@ export function createApiExtension(
     try {
       // Enumeration and hashing are the IO; the join itself is pure and lives in
       // core, where it can be tested without a plugin cache on disk.
+      // Deliberately NOT scoped to the project: a copy of a plugin's skill is a
+      // copy of that plugin wherever the copy sits, and the registry keys
+      // project-scoped installs by absolute checkout path, so scoping left a
+      // second clone of the same repo with no upstream for any of its copies.
       byName = pluginUpstreamsByName(
-        enumerateInstalledSkillsCached({
-          projectDir: identity,
-          ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
-        }).skills,
+        enumerateInstalledSkillsCached(
+          homeDirOverride !== undefined ? { home: homeDirOverride } : {},
+        ).skills,
         (home) => parseSkillDir(home)?.contentHash,
       );
     } catch (err) {
@@ -15162,6 +15167,22 @@ export function createApiExtension(
         // read as untracked. Attributing it to every same-named row would put a
         // Revert button on a skill whose baseline belongs to a different one.
         const projectNameSeen = new Set<string>();
+        // The repo's own marketplace manifest is the second identity source:
+        // the registry join above is keyed by absolute checkout path, so a
+        // second clone of the same repo has no records there and its in-repo
+        // plugin skills would read as hand-authored.
+        const repoPlugins = readRepoMarketplacePlugins(contentDir);
+        const repoPluginIdentity = (dir: string) => {
+          const p = repoMarketplacePluginFor(repoPlugins, dir);
+          return p
+            ? {
+                name: p.name,
+                marketplace: p.marketplace,
+                provider: 'claude',
+                ...(p.url ? { url: p.url } : {}),
+              }
+            : null;
+        };
         const inPlace = projectDir
           ? scanInPlaceSkills(contentDir).map((s) => {
               const tracked = !projectNameSeen.has(s.name);
@@ -15176,7 +15197,8 @@ export function createApiExtension(
               // Identity beats provenance: a skill that IS a plugin's skill
               // carries the plugin, never an origin.
               const selfPlugin = tracked
-                ? pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir)
+                ? (pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir) ??
+                  repoPluginIdentity(skillAbsDir))
                 : null;
               const entry =
                 tracked && selfPlugin === null
@@ -15311,7 +15333,8 @@ export function createApiExtension(
               if (!tracked) return {};
               // Same two synthesized fallbacks as the project site: a built-in
               // carries its skills.sh origin, a copy of a plugin's skill carries
-              // the plugin.
+              // the plugin. The repo-manifest identity is project-only: a global
+              // skill is not tree-local, so no repo can serve it in place.
               const globalAbsDir = resolve(skillsHome, s.dir);
               const selfPluginGlobal = pluginSelfIdentity(s.name, detectedIdentity, globalAbsDir);
               if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };

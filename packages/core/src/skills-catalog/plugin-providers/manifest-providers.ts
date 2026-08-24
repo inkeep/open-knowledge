@@ -149,7 +149,7 @@ export function enumerateAgentPluginsRoot(
 }
 
 /** The manifest's optional `repository` URL, or null. */
-function manifestRepositoryUrl(dir: string, rel: string): string | null {
+export function manifestRepositoryUrl(dir: string, rel: string): string | null {
   try {
     const parsed = JSON.parse(readFileSync(join(dir, rel), 'utf-8')) as { repository?: unknown };
     return typeof parsed.repository === 'string' && parsed.repository.length > 0

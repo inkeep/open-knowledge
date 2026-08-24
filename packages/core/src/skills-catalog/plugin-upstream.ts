@@ -44,9 +44,16 @@ export interface PluginUpstream {
  * their copies are already first-class rows elsewhere — treating one as an
  * upstream would let a skill become its own origin.
  *
- * First writer wins for a duplicated name, matching the order the detected list
- * itself resolves duplicates in, so the two surfaces cannot disagree about which
- * plugin owns a name.
+ * First writer wins for a duplicated name. The `/api/skills` index is built from
+ * the machine-wide enumeration (a copy of a plugin's skill is that plugin's
+ * wherever the copy sits, and the registry keys project installs by checkout
+ * path), while `/api/skills/installed` stays project-scoped, so name-only
+ * consumers may resolve a different plugin for a name than the detected list
+ * would. That covers more than the Modified badge: the synthesized lock entry's
+ * source is the plugin cache dir, and a reimport fetches from it, so a name
+ * collision across project-scoped plugins on one machine could overwrite a
+ * hand-authored skill in another project on an explicit reimport. The
+ * realpath-verified identity path is unaffected.
  */
 export function pluginUpstreamsByName(
   skills: readonly CatalogSkill[],

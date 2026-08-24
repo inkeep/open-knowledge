@@ -94,6 +94,11 @@ export type {
 } from './plugin-providers/types.ts';
 export { type PluginUpstream, pluginUpstreamsByName } from './plugin-upstream.ts';
 export { parseSkillsShPublisherPage } from './publisher.ts';
+export {
+  type RepoMarketplacePlugin,
+  readRepoMarketplacePlugins,
+  repoMarketplacePluginFor,
+} from './repo-marketplace.ts';
 export { parseGitHubRepoSearch, parseOpenGraph, parseSkillsShSearch } from './search.ts';
 export {
   buildSkillRegistry,
