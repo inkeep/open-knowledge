@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnchorSegments, type PlacedAnchor } from './anchor-layers';
+import { buildAnchorSegments, COMMENT_HUE, type PlacedAnchor } from './anchor-layers';
 
 const at = (id: string | null, from: number, to: number): PlacedAnchor => ({ id, from, to });
 
+// Built from the hue rather than restating it: what these assertions are about
+// is the resting/active intensity ladder, which is what separates the thread
+// being read from the rest. The hue itself is a token that may be rebranded,
+// and pinning it here twice only makes that a test edit.
+const ACTIVE_FILL = `rgba(${COMMENT_HUE},0.45)`;
 const RESTING =
-  'border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:rgba(245,158,11,0.22);box-shadow:inset 0 -2px 0 rgba(245,158,11,0.7);';
+  `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:rgba(${COMMENT_HUE},0.22);` +
+  `box-shadow:inset 0 -2px 0 rgba(${COMMENT_HUE},0.7);`;
 const ACTIVE =
-  'border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:rgba(245,158,11,0.45);box-shadow:inset 0 -2px 0 rgba(245,158,11,1);';
+  `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:${ACTIVE_FILL};` +
+  `box-shadow:inset 0 -2px 0 rgba(${COMMENT_HUE},1);`;
 
 describe('buildAnchorSegments', () => {
   it('leaves a lone unattended highlight on its original style', () => {
@@ -64,13 +71,13 @@ describe('buildAnchorSegments', () => {
     const [segment] = buildAnchorSegments([at(null, 0, 8)]);
     expect(segment.threadId).toBeNull();
     expect(segment.style).not.toContain('cursor:pointer');
-    expect(segment.style).toContain('rgba(245,158,11,0.45)');
+    expect(segment.style).toContain(ACTIVE_FILL);
   });
 
   it('stands the draft out from the comment it overlaps', () => {
     const segments = buildAnchorSegments([at('t1', 0, 10), at(null, 6, 16)]);
     expect(segments[0].style).toBe(RESTING);
-    expect(segments[1].style).toContain('rgba(245,158,11,0.45)');
+    expect(segments[1].style).toContain(ACTIVE_FILL);
     expect(segments[2].threadId).toBeNull();
   });
 

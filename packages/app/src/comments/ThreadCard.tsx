@@ -91,7 +91,7 @@ export function ThreadCard({
   cardRef: (el: HTMLElement | null) => void;
   focused: boolean;
   /**
-   * The reader has this thread OPEN. The card answers with the same amber WASH
+   * The reader has this thread OPEN. The card answers with the same blue WASH
    * the passage carries — background only, no border (a border reads as a
    * statement about selection, which the tick owns). Open specifically, not
    * hover: hosts used to pass the pointer-following active thread, and every
@@ -314,14 +314,16 @@ export function ThreadCard({
         'flex flex-col gap-1.5 rounded-lg border p-2.5 transition-[box-shadow,border-color,background-color]',
         cardSelects && 'cursor-pointer',
         isResolved && 'opacity-70',
-        // No card treatment for a lost passage. Amber in this component means
+        // No card treatment for a lost passage. This hue in this component means
         // the passage highlight — the wash a card takes while it is being read,
         // matching the mark on its text in the document. A card tinted for its
         // STATE spent that hue on something the document never echoes, and left
         // every orphan looking permanently hovered.
         // The same hue as the passage's highlight — and like it, a wash with no
-        // outline, so being-read never masquerades as being-selected.
-        active && 'bg-amber-500/10',
+        // outline, so being-read never masquerades as being-selected. Tracks
+        // COMMENT_HUE in `anchor-layers.ts`; recolouring one means recolouring
+        // both, and nothing checks that for you.
+        active && 'bg-blue-600/10',
         focused && 'ring-2 ring-primary',
       )}
     >
@@ -366,7 +368,7 @@ export function ThreadCard({
           )}
           {/* No badge for the lost-passage state. The block below already says
               it in a full sentence, right under the words it is about, and the
-              card carries the amber treatment either way — a badge saying the
+              card carries the blue treatment either way — a badge saying the
               same thing two lines up was the state announced twice. Resolved
               keeps its badge because nothing else on that card says so. */}
           {/* Edit rides beside Delete rather than in a row of its own: the two

@@ -17,9 +17,9 @@ import { COMMENT_ACTIVE_FILL, COMMENT_HUE } from './anchor-layers';
 
 /**
  * Marks the field whose selection is standing in for a comment highlight, so
- * `globals.css` can paint it amber instead of the browser's blue. Cleared on
- * blur — once the reveal is over the field's ordinary selection must look
- * ordinary again.
+ * `globals.css` can paint it the comment hue instead of the browser's ordinary
+ * selection. Cleared on blur — once the reveal is over the field's ordinary
+ * selection must look ordinary again.
  */
 const REVEAL_ATTR = 'data-comment-reveal';
 
@@ -129,7 +129,7 @@ export function locateInValue(
  *
  * Scoped to the reveal because the attribute would otherwise repaint every
  * ordinary selection in that field: someone highlighting text to retype it
- * would see comment-amber and reasonably think they had hit a comment.
+ * would see comment-blue and reasonably think they had hit a comment.
  */
 function paintRevealSelection(control: HTMLTextAreaElement | HTMLInputElement): void {
   control.style.setProperty('--comment-reveal-fill', `rgba(${COMMENT_HUE},${COMMENT_ACTIVE_FILL})`);
