@@ -93,19 +93,38 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
     // Wait for Observer A to sync the user-typed marker into Y.Text('source').
     // Same Observer-A-mediated Y.Text convergence as the content-propagation wait
     // above, so it carries the same 30s budget. The marker round-trips client
-    // keystroke → XmlFragment → server Observer A → Y.Text; across the 3 turns the
-    // doc accumulates to ~3× the fixture, so by the later turns Observer A re-derives
-    // Y.Text from a much larger fragment and that round-trip grows with it. The
-    // marker always lands (it is never dropped — the final assertion below confirms
-    // all three survive), just slowly under accumulating load.
+    // keystroke → XmlFragment → server Observer A → Y.Text against a document
+    // that is ~3× the fixture by the last turn. How many server drains the 15
+    // characters actually produce here is NOT measured — `delay: 5` makes one
+    // drain per keystroke the plausible shape, but the numbers below come from
+    // an offline probe that drove one character per transaction by
+    // construction, so treat per-drain costs as a per-drain figure and not as a
+    // count of this test's drains. The marker always lands (it is never dropped
+    // — the final assertion below confirms all three survive), just slowly.
     //
-    // This budget was once raised from 10s to 30s on the theory that it was merely
-    // ungenerous. That turned out not to be the whole story, so do not read the
-    // current number as a solved problem: this wait STILL times out under load, and
-    // it is the open residual the comment at the top of the loop refers to. The
-    // suspected cost is Observer A re-deriving Y.Text per keystroke against a
-    // fragment that keeps growing, which is a server-side cost no client-side budget
-    // fixes. Measure that re-derive before considering another bump.
+    // The budget was raised 10s → 30s once, on the theory that it was merely
+    // ungenerous. Do NOT raise it again: a third bump hides the mechanism, and the
+    // mechanism has since been measured, so there is nothing left to guess at.
+    //
+    // What it is NOT. The long-standing suspicion was that the cost is Observer A
+    // re-deriving Y.Text from the XmlFragment per keystroke, growing superlinearly
+    // with the fragment. Both halves are wrong. Measured offline (no browser, no
+    // dev server, no websocket) the bare re-derive — yXmlFragmentToProseMirrorRootNode
+    // + serialize — is ~28ms at 231 KB / 1502 children, about 6.6% of the drain, so
+    // even 15 drains of it is under half a second. And the drain scales LINEARLY,
+    // not superlinearly: 135 / 280 / 424 ms at 1× / 2× / 3× the fixture.
+    //
+    // What it is. `computeMapDrivenBodySplice` (packages/server/src/map-driven-splice.ts)
+    // is ~87% of the per-keystroke drain, doing full-document passes whose cost its
+    // own docblock has flagged as unbounded by document size since long before
+    // anyone measured it. One of its two parses is now memoized — a drain's
+    // `oldBody` is the previous drain's `newBody` — removing ~46% of the function's
+    // cost, pinned by parse-count tests in packages/server/src/map-driven-*.test.ts.
+    // The surviving serialize + parse are still O(document) and still why this wait
+    // needs a budget this large. See that docblock for what is left: the parse wants
+    // an incremental parser, while the serialize duplicates one the caller already
+    // did and is reducible under a condition spelled out there. Either way, not by
+    // raising the number below.
     await page.waitForFunction(
       (m: string) => window.__activeProvider?.document?.getText('source')?.toString()?.includes(m),
       marker,

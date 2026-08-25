@@ -75,7 +75,11 @@ import {
   LOSS_EVENT_GUARD_DEFER,
   type LossCaptureRing,
 } from './loss-capture.ts';
-import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
+import {
+  computeMapDrivenBodySplice,
+  createEditorMdastMemo,
+  type EditorMdastMemo,
+} from './map-driven-splice.ts';
 import {
   incrementBridgeMergeCheckpointCreated,
   incrementBridgeMergeContentGrowth,
@@ -329,6 +333,12 @@ interface TryComputeMapDrivenSpliceArgs {
   readonly json: unknown;
   readonly mdManager: MarkdownManager;
   readonly docName: string | undefined;
+  /**
+   * This document's parse memo. Per-document so concurrent editing of two
+   * docs cannot evict each other, and so the retained tree dies with the
+   * observers rather than living as module state.
+   */
+  readonly mdastMemo: EditorMdastMemo;
 }
 
 // Warn-once: the parse-error fallback metric is a bounded-cardinality counter
@@ -355,7 +365,7 @@ function warnOnceMapDrivenParseError(docName: string | undefined, err: unknown):
 function tryComputeMapDrivenSplice(
   args: TryComputeMapDrivenSpliceArgs,
 ): YTextMapDrivenSplice | null {
-  const { currentText, lastSyncedXmlMd, json, mdManager, docName } = args;
+  const { currentText, lastSyncedXmlMd, json, mdManager, docName, mdastMemo } = args;
   if (currentText !== lastSyncedXmlMd) {
     incrementMapDrivenSpliceFallback('text-mismatch');
     return null;
@@ -375,6 +385,7 @@ function tryComputeMapDrivenSplice(
       incrementMapDrivenSpliceFallback(reason);
       if (reason === 'parse-error') warnOnceMapDrivenParseError(docName, err);
     },
+    mdastMemo,
   );
   if (!splice) return null;
 
@@ -1325,6 +1336,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   // change on any residual-bearing doc to Path B.
   let lastSyncedCanonicalMd = '';
   let lastSyncedYTextBytes = '';
+  // This document's splice parse memo. Declared alongside the
+  // witnesses because it has the same lifecycle — created when the observers
+  // attach, dropped when they detach — and the same per-document scope. It is
+  // a pure latency optimisation keyed on body BYTES, so it can never change
+  // which splice is computed: a body it has not seen is a miss and a fresh
+  // parse. Holding it here rather than in module state keeps two concurrently
+  // edited documents from evicting each other's entry.
+  const mdastMemo = createEditorMdastMemo();
   // Coherence flag — true iff BOTH witnesses were recorded together at a
   // real settlement. The router's witness-vs-witness residual-tolerance
   // comparison is only meaningful within one settlement generation:
@@ -2103,15 +2122,21 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
               json,
               mdManager,
               docName: opts.docName,
+              mdastMemo,
             });
       if (mapDrivenSplice) {
         setActiveSpanAttributes({
           'observer.a.path': 'map-driven-splice',
-          // The splice's three full-document passes are the documented
+          // The splice's full-document passes are the documented
           // unbounded-by-doc-size cost on this path (map-driven-splice.ts
           // perf envelope) — stamped so a large-doc drain-latency trace
-          // answers "where did the time go" without reproduction. Integer ms
-          // keeps the attribute bounded-cardinality.
+          // answers "where did the time go" without reproduction. Steady
+          // state here is TWO passes (serialize + one parse): this call site
+          // passes a memo, and during a typing burst the `oldBody` parse hits
+          // it. A drain that shows the third pass took a memo miss — a body
+          // the previous drain did not produce, i.e. an external write, a
+          // resync, or the first drain after attach. Integer ms keeps the
+          // attribute bounded-cardinality.
           'observer.a.splice.compute_ms': Math.round(performance.now() - spliceComputeStart),
         });
       }
