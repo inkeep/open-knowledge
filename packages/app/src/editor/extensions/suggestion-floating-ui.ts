@@ -114,12 +114,21 @@ function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
     // correct wherever in the chain it runs.
     size(() => {
       const { apply: applyWidthCap } = capWidth();
+      // Read BEFORE the two `apply`s below write styles. `applyWidthCap` reads
+      // the region again internally, which is deliberate — `editorRegionWidthPx`
+      // exists so a caller needing the number does not become a second
+      // definition of the region — so this neither makes the pass single-read
+      // nor removes every post-write read: `size` re-enters with
+      // `reset: { rects: true }` when it changed the surface, and that pass
+      // measures again. What it buys is the column decision no longer being
+      // one of the reads that follows a write.
+      const regionWidth = editorRegionWidthPx(editor);
       return {
         ...clipOptions(),
         apply(state: MiddlewareState & { availableHeight: number }) {
           applyWidthCap(state);
           applySize.apply(state);
-          applyColumnCount(popup, editor);
+          applyColumnCount(popup, regionWidth);
         },
       };
     }),
@@ -132,14 +141,12 @@ function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
  *
  * A `data-` attribute plus a CSS rule rather than React state: the menus are
  * rendered into this popup by three different components, the decision is a
- * pure function of a width this positioning pass already measured, and routing
+ * pure function of a width the positioning pass already measured, and routing
  * it back through React would re-render the list on every scroll tick. No
  * resolvable region leaves the attribute alone — same fallback as the cap.
  */
-function applyColumnCount(popup: HTMLDivElement, editor: Editor): void {
-  if (!popup.isConnected) return;
-  const regionWidth = editorRegionWidthPx(editor);
-  if (regionWidth === null) return;
+function applyColumnCount(popup: HTMLDivElement, regionWidth: number | null): void {
+  if (!popup.isConnected || regionWidth === null) return;
   popup.toggleAttribute('data-suggestion-narrow', regionWidth < SUGGESTION_TWO_COLUMN_MIN_PX);
 }
 
@@ -193,6 +200,18 @@ export function createSuggestionPopup(
   // comment composer — would otherwise read a click on `@`-mention results as a
   // click away and close itself mid-pick.
   popup.dataset.suggestionPopup = label;
+  // Marks the popups whose width the editor region caps, and is what the
+  // `globals.css` rule hangs the shrink-propagation off. The cap is a
+  // `max-width` on THIS wrapper, and a `max-width` does not shrink a block
+  // child that carries its own fixed `width` — so a menu root at `w-80` sat
+  // inside a 284px wrapper and painted 320px anyway. Making the popup's
+  // CONTENT yield here rather than per component is what keeps the next
+  // `clipToEditorPane` picker from repeating that: the wrapper already knows
+  // it is clipped, and the menu component does not have to remember. The rule
+  // spans the subtree, not the direct children, and sits in `@layer
+  // components` so a menu that states its own cap still wins — see
+  // `globals.css` for both.
+  if (clipToEditorPane) popup.dataset.suggestionClipped = '';
   popup.style.position = 'fixed';
   // Above every host that can own a suggestion field. At 50 it sat UNDER the
   // comment composer's `z-[60]` card, so `@`-mention results were half-hidden by

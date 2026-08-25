@@ -5719,17 +5719,6 @@ html.electron-mode [data-slot="sidebar-inner"] {
    be clickable and the enter/leave handlers keep the box alive while the
    pointer travels to it, so it also swallows clicks on the region it covers
    (the line above the hovered one). Any keypress retires it. */
-/* One-column suggestion picker.
-
-   `suggestion-floating-ui.ts` sets `data-suggestion-narrow` on the popup when
-   the editor's visible region cannot hold the list AND the preview beside it.
-   Squeezing both columns into a pane that fits neither reads worse than the
-   list alone, and the preview is `aria-hidden` decoration, so it is the column
-   that gives way. */
-[data-suggestion-popup][data-suggestion-narrow] .ok-suggestion-preview {
-  display: none;
-}
-
 .ok-lint-tooltip {
   position: absolute;
   z-index: 50;
@@ -5757,6 +5746,52 @@ html.electron-mode [data-slot="sidebar-inner"] {
   display: none;
 }
 .ok-lint-tooltip[hidden] {
+  display: none;
+}
+
+/* Shrink-propagation for pane-clipped suggestion pickers.
+
+   The pane cap is an inline `max-width` on the portaled wrapper, and a
+   `max-width` does not shrink a block child carrying its own fixed `width`:
+   a `w-80` menu root sat inside a 284px wrapper and still painted 320px,
+   straight over the dock. Making the popup's CONTENT yield lives here, once,
+   rather than as a `max-w-full` every menu component has to remember — the
+   wrapper is the only place that knows it is clipped at all.
+
+   Stated over the whole subtree rather than the direct children because the
+   menu root's depth is not ours to know: tiptap interposes a `.react-renderer`
+   between the wrapper and the component, so a `> *` rule caps that wrapper and
+   leaves the root beneath it painting past the pane. The narrow-pane cases in
+   `selection-surface-pane-clip.e2e.ts` are what hold that.
+
+   LAYERED ON PURPOSE, and specificity is not what does it. The cascade sorts
+   by layer BEFORE it looks at specificity, and unlayered author declarations
+   form an implicit final layer that outranks every named one — so this rule
+   sitting outside a layer beat every `max-w-*` a descendant carries no matter
+   how weak the selector was, which made it a FLOOR. Tailwind emits its
+   utilities into `@layer utilities`, and `components` sorts before that, so
+   from in here a descendant that states its own cap wins and one that states
+   nothing is still capped. That is the ceiling the sibling producer promises
+   when `deriveEditorSizeOptions` folds an `authorMaxWidth` into `min()`.
+
+   Layering costs the fix nothing: `max-width` constrains `width` at the
+   used-value step whichever declaration won the cascade, so a `w-80` root in a
+   284px wrapper shrinks either way. `cascade-position.test.ts` is what holds
+   the layer, because no layout-free tier can observe it. */
+@layer components {
+  [data-suggestion-popup][data-suggestion-clipped] * {
+    max-width: 100%;
+  }
+}
+
+/* One-column suggestion picker.
+
+   `suggestion-floating-ui.ts` sets `data-suggestion-narrow` on the popup when
+   the editor's visible region cannot hold the list AND the preview beside it.
+   Squeezing both columns into a pane that fits neither reads worse than the
+   list alone, and the preview is `aria-hidden` decoration, so it is the column
+   that gives way. */
+[data-suggestion-popup][data-suggestion-narrow] .ok-suggestion-preview {
   display: none;
 }
 
