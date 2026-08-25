@@ -145,6 +145,7 @@ export type DispatchKind =
   | 'stale-pending-cleared'
   | 'attempted-install-reconciled'
   | 'install-in-flight-deferred'
+  | 'install-never-committed-reoffered'
   | 'install-failed-on-boot'
   | 'install-failed-giveup'
   | 'attempted-install-cross-channel'
@@ -384,9 +385,9 @@ export interface StartAutoUpdaterHandle {
    * failed". Wired to `app.on('before-quit')`: with install-on-quit armed an
    * ordinary quit IS the commit point, and it is the last moment a live process
    * can observe it — the swap runs after the exit, in a process no later boot
-   * can see. Without this the boot would have only the staging moment to reason
-   * from, so a background download followed by an afternoon of work would leave
-   * the whole tolerance already spent by the time the user actually quit.
+   * can see. The stamp is also what separates "this install began" from "no
+   * install ever began": without it the boot cannot time the attempt at all and
+   * re-offers the staged update instead of judging it.
    *
    * Stamps once per armed attempt. A quit that re-hands off an attempt an
    * earlier quit already handed off buys no fresh tolerance: otherwise a user
@@ -496,11 +497,12 @@ export const INSTALL_FAILURE_MAX_SURFACES = 3;
  * evidence needed to move it.
  *
  * The window is measured from the handoff both install paths record — the
- * "Relaunch now" click, or the quit install-on-quit commits on. It shrinks only
- * when no live process got to observe the commit (a force-quit, a power loss),
- * where the staging moment is the sole lower bound left and the effective
- * tolerance is this minus however long the artifact sat staged. `recordedHandoff`
- * on the boot logs says which of the two a given verdict used.
+ * "Relaunch now" click, or the quit install-on-quit commits on. The boot
+ * reconciliation reaches this window only with a stamp on record: an attempt
+ * with none never began, so it is re-offered rather than timed. The staging
+ * fallback in `installMayStillBeRunning` therefore matters only to that
+ * function's other caller, crash detection, which asks before the
+ * reconciliation has run.
  */
 const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
 
@@ -2234,9 +2236,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // can clear it. That reconciliation compares major.minor.patch only, so a
   // same-MMP beta bump — the dominant OK update shape — reads as "caught up"
   // and drops the stamp, while the prerelease-aware failed-install verdict
-  // right after still sees an install that never landed. Only the fallback
-  // needs it: a recorded handoff lives in the `attemptedInstall` group, which
-  // this reconciliation does not touch.
+  // right after still sees an install that never landed. Only the re-offer log
+  // line needs it now — it reports how long the artifact has sat staged — so
+  // this is log fidelity rather than verdict soundness: a recorded handoff
+  // lives in the `attemptedInstall` group, which this reconciliation does not
+  // touch.
   const attemptStagedAt = state.versionPendingInstallStagedAt;
 
   // Boot-time stale-pending reconciliation. `versionPendingInstall` is cleared
@@ -2359,19 +2363,23 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // Running did NOT reach the attempted version — which is equally the
       // expected state while the install for it is still underway, so the two
       // have to be separated before either failure verdict below is reachable.
-      // The recorded handoff, or — when no live process saw the commit (a
-      // force-quit, a power loss, a state file predating the stamp) — the
-      // staging moment. The install cannot have begun before the artifact
-      // existed, so staging is a sound lower bound on the handoff, just not a
-      // tight one, and it degrades further once the reconciliation clears it.
+      //
+      // The chain asks two questions in this order, and the order is
+      // load-bearing. FIRST, could an install still be running? While it could,
+      // decide nothing. Only once it provably cannot: was one ever handed off
+      // at all? A no there is not a failure, so it is re-offered rather than
+      // condemned.
       const reconciledAtMs = now().getTime();
+      // Two reads, because those two questions want different things. The
+      // RESOLVED moment (stamp, else the staging snapshot) bounds "may still be
+      // running", and comes from the same helper `installMayStillBeRunning`
+      // uses so the two cannot disagree about it. The RAW stamp answers "was
+      // one ever handed off", which the fallback would erase — an unobserved
+      // quit has no stamp yet still gets a bound, which is the whole point of
+      // the fallback and the whole reason the raw read has to survive it.
+      const handoffStampedAt = state.attemptedInstallHandoffAt;
       const handoffAt = resolveInstallHandoffMoment(state, attemptStagedAt);
       const handoffAgeMs = installHandoffAgeMs(handoffAt, reconciledAtMs);
-      // The predicate itself lives in `installMayStillBeRunning` so crash
-      // detection can ask the same question with the same bound; the locals
-      // above stay for the log lines, which report the inputs the verdict was
-      // reached from rather than the verdict alone. Both resolve the moment
-      // through the same helper, so they cannot come to disagree about it.
       if (installMayStillBeRunning(state, reconciledAtMs, attemptStagedAt) !== null) {
         // Inside the install window, and the hold has boots left: decide
         // nothing about the attempt. `attemptedInstall` stays armed so a later
@@ -2414,8 +2422,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           // artifact had sat staged when it was committed. A deferred boot is
           // silent to the user, so this line is the only record of a held
           // verdict — carrying the inputs is what lets an operator reading a
-          // "my update never installed" report tell a verdict held correctly
-          // from one held off a fallback moment rather than a real handoff.
+          // "my update never installed" report see which handoff moment the
+          // hold was measured from. This arm runs BEFORE the never-committed
+          // check, so it is the one place the staging fallback is still live and
+          // `recordedHandoff` still varies — a hold leaning on the staging
+          // moment reads `false` here.
           handoffAt,
           recordedHandoff: state.attemptedInstallHandoffAt !== null,
           stagingAgeMs: state.attemptedInstallStagingAgeMs,
@@ -2426,6 +2437,101 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           deferredBoots: state.attemptedInstallDeferredBoots,
         });
         onDispatch?.('install-in-flight-deferred');
+      } else if (handoffStampedAt === null) {
+        // No commit point ever ran for this attempt, so no install was ever
+        // STARTED — a different fact from "an install began and we lost track
+        // of when it did". Both commit points persist the handoff stamp BEFORE
+        // handing the artifact to an installer: `relaunch-now` writes it and
+        // returns early if that write fails, and `recordInstallHandoffOnQuit`
+        // runs from `before-quit`, ahead of the swap. A null stamp is therefore
+        // evidence that nothing was handed off, not a gap in the record.
+        //
+        // The shape that produces it in the field is win32: Windows ends the
+        // session with `WM_ENDSESSION` and terminates the process without
+        // running `will-quit`, so install-on-quit never fires. A user who shuts
+        // the machine down rather than quitting the app hits it every time —
+        // and, being the delivery vehicle for its own fixes, the app can never
+        // repair that from a later release.
+        //
+        // Reasoning about install duration here would condemn (or excuse) an
+        // install that does not exist, and charging it against
+        // INSTALL_FAILURE_MAX_SURFACES is worse than a wrong message: three OS
+        // shutdowns spend the budget, the give-up branch drops the record, and
+        // the user is left with no offer at all while the artifact is still
+        // staged on disk. So decline to judge, and put the update that IS still
+        // staged back on offer through the ordinary consented path.
+        //
+        // Three shapes reach here with a stamp that is null for a reason other
+        // than "the session never committed": a `state.json` written by a build
+        // predating the stamp; a quit whose stamp write failed, which
+        // `recordInstallHandoffOnQuit` logs before letting the quit proceed,
+        // since it cannot decline a quit the way `relaunch-now` declines a
+        // click; and electron-updater re-arming `update-downloaded` from its
+        // on-disk cache, which clears the stamp under a live install.
+        //
+        // That third one is why this arm sits AFTER the in-flight deferral
+        // rather than ahead of it: re-offering into an install that is still
+        // running would hand the user a relaunch that aborts the swap already
+        // underway. Past the grace none of them can still be installing, so the
+        // cost collapses — if the install landed, the next boot reconciles it as
+        // success; if it did not, the user is offered the relaunch instead of
+        // being told the install failed, which is the same remedy behind a
+        // truer message.
+        const next = {
+          ...state,
+          // `attemptedInstall` stays ARMED. On non-Linux `relaunch-now` does not
+          // arm it — only the `platform === 'linux'` spread does — so it is the
+          // download-time arming that the post-click failure path depends on.
+          // Withdrawing it here would disarm failed-install detection for the
+          // very click this branch exists to offer: an install that then did not
+          // land would find both gates null on the next boot, surfacing no
+          // notice and no manual-download URL, and the staged-cache reclaim
+          // would delete the artifact underneath it. Leaving it armed also costs
+          // nothing, because the null-stamp test above runs every boot: the
+          // re-offer simply repeats, and the budget stays unspent.
+          //
+          // The artifact is still staged, so re-arm the banner gate the ordinary
+          // download path would have left armed. `stagedInstallerPath` is
+          // deliberately untouched — it is what makes the offer actionable.
+          versionPendingInstall: attempted,
+        };
+        if (persistSafely(next, 'install-never-committed-reoffered')) {
+          state = next;
+          logger.info('no commit point ran for the staged install — re-offering it', {
+            attempted,
+            running: currentVersion,
+            // How long the artifact has been sitting staged and un-installed.
+            // A large value across boots is the stranding signature: sessions
+            // keep ending in a way that never commits, and the sole trace of it
+            // is this line.
+            stagedAgeMs: installHandoffAgeMs(attemptStagedAt, reconciledAtMs),
+          });
+          // Deferred for the same reason as Toast A/B/C: `startAutoUpdater` runs
+          // from `app.whenReady()`, before the first renderer has attached its
+          // update listeners, so a synchronous broadcast would be dropped.
+          const fireReoffer = (): void => {
+            broadcastToAllWindows('ok:update:downloaded', { version: attempted });
+          };
+          if (whenRendererReady) whenRendererReady(fireReoffer);
+          else fireReoffer();
+          onDispatch?.('install-never-committed-reoffered');
+        } else {
+          // Write failed — leave `attemptedInstall` armed so the next boot
+          // re-decides rather than silently losing the record. Version-identified
+          // so a record persisting across boots is traceable, matching the
+          // sibling branches.
+          logger.warn('failed to persist install-never-committed-reoffered', {
+            attempted,
+            running: currentVersion,
+          });
+        }
+        // Past here a handoff IS on record, so an install really was handed to
+        // an installer and the only open question is its age.
+        //
+        // The predicate itself lives in `installMayStillBeRunning` so crash
+        // detection can ask the same question with the same bound; the locals
+        // above stay for the log lines, which report the inputs the verdict was
+        // reached from rather than the verdict alone.
       } else if (state.attemptedInstallSurfacedCount >= INSTALL_FAILURE_MAX_SURFACES) {
         // Budget spent — drop `attemptedInstall` so a persistently-failing
         // ShipIt or an unreachable attempted version (a yanked release, a
@@ -2481,16 +2587,17 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
             attempted,
             running: currentVersion,
             surfaced: next.attemptedInstallSurfacedCount,
-            // Null when no live process saw the install committed — a quit that
-            // never ran its handlers — and a zero would read as an instant
+            // Null when the commit that stamped the handoff left no staging age
+            // behind — the clock moved backwards between staging and the
+            // commit, or a boot's stale-pending reconciliation had already
+            // dropped the staging stamp. A zero would read as an instant
             // install, so unknown is reported as unknown.
             stagingAgeMs: state.attemptedInstallStagingAgeMs,
-            // Pairs with the age below so the two `handoffAgeMs === null`
-            // causes are distinguishable from the line alone: absent here means
-            // no handoff moment survived at all, present with a null age means
-            // the clock moved backwards between the handoff and this boot.
+            // Always present: the reconciliation reaches this line only with a
+            // stamp on record. A null `handoffAgeMs` beside it therefore means
+            // exactly one thing — the clock moved backwards between the handoff
+            // and this boot.
             handoffAt,
-            recordedHandoff: state.attemptedInstallHandoffAt !== null,
             // How long ago the install was handed off, which the staging age
             // cannot say: it measures staged-to-request, not request-to-now.
             // Null means the timing on record could not be reasoned from, and
@@ -2772,11 +2879,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
           stagingAgeMs,
         });
       } else {
-        // The next boot will read `recordedHandoff: false` and fall back to the
-        // staging moment, which can age out faster than the real handoff — so
-        // the lost write is worth a version-identified trace of its own beyond
-        // persistSafely's generic error.
-        logger.warn('failed to persist install handoff moment — next boot uses staging fallback', {
+        // This quit installs anyway — the write failing is no reason to decline
+        // it — so the next boot sees an install that really was handed off
+        // carrying no stamp, and re-offers the update rather than judging the
+        // attempt. That is the benign direction, but it is a false negative for
+        // failed-install detection and the only trace of it is this line.
+        logger.warn('failed to persist install handoff moment — next boot will re-offer', {
           attempted: current.attemptedInstall,
           handoffAt,
           stagingAgeMs,

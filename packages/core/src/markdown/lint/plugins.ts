@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 import { DEFAULT_MARKDOWNLINT_CONFIG, resolveMarkdownlintConfig } from './default-config.ts';
 import {
@@ -22,6 +23,7 @@ import {
   type MarkdownlintSlice,
   type OkfSlice,
 } from './types.ts';
+
 
 const MarkdownlintRuleSettingSchema = z.union([
   z.boolean(),

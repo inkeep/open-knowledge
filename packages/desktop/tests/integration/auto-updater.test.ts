@@ -346,6 +346,19 @@ function makeRig(
 // Constants used across tests
 // ————————————————————————————————————————————————————————
 
+/**
+ * A handoff stamped far outside the in-flight grace, for fixtures that mean "an
+ * install was really committed and really failed".
+ *
+ * `attemptedInstall` alone no longer says that. It is armed at DOWNLOAD time on
+ * non-Linux, so on its own it means only "an artifact is staged" — and a boot
+ * that finds it armed with NO handoff stamp now reads that as "no commit point
+ * ever ran", re-offers the update, and never reaches a failure verdict. Fixtures
+ * predating the handoff stamp were written when the two facts were one, so they
+ * need this to keep exercising the branch their assertions describe.
+ */
+const COMMITTED_LONG_AGO = new Date('2020-01-01T00:00:00.000Z').getTime();
+
 const CLASSIFIED_CODES: readonly string[] = [
   'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND',
   'ERR_UPDATER_LATEST_VERSION_NOT_FOUND',
@@ -759,6 +772,7 @@ describe('staging age — how long the update sat before the install was request
   test('the boot-time failure notice reports the age persisted before the quit', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
       attemptedInstallStagingAgeMs: 2060,
     });
@@ -774,6 +788,7 @@ describe('staging age — how long the update sat before the install was request
   test('reports null rather than zero when no relaunch click preceded the failure', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
     });
     expect(rig.logger.warn).toHaveBeenCalledWith(
@@ -787,7 +802,7 @@ describe('staging age — how long the update sat before the install was request
   // click must not travel with it — a stale non-null number reads as real
   // signal to a triager and is worse than the age simply being absent.
   test('a newly armed version does not inherit an earlier version staging age', async () => {
-    const { rig: session } = makeRig({ platform: 'darwin' });
+    const { rig: session, handle } = makeRig({ platform: 'darwin' });
     session.now = new Date('2026-04-21T12:00:00.000Z');
     session.updater.emit('update-downloaded', { version: '0.3.2' });
     session.now = new Date('2026-04-21T12:00:02.060Z');
@@ -795,9 +810,12 @@ describe('staging age — how long the update sat before the install was request
     expect(session.state.attemptedInstallStagingAgeMs).toBe(2060);
 
     // A newer build lands and is committed by a plain quit — no click, so the
-    // install of 0.3.3 has no request moment of its own.
+    // install of 0.3.3 has no request moment of its own. The quit itself is
+    // what commits it, and stamping the handoff is what makes the next boot
+    // judge the attempt rather than read it as one that never started.
     session.now = new Date('2026-04-21T13:00:00.000Z');
     session.updater.emit('update-downloaded', { version: '0.3.3' });
+    handle.recordInstallHandoffOnQuit();
     expect(session.state.attemptedInstall).toBe('0.3.3');
 
     // 0.3.3 never took: the next boot is still on the old version.
@@ -815,6 +833,7 @@ describe('staging age — how long the update sat before the install was request
     const { rig } = makeRig({
       appVersion: '0.3.1',
       attemptedInstall: '0.3.1',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       attemptedInstallStagingAgeMs: 2060,
     });
     expect(rig.state.attemptedInstall).toBeNull();
@@ -1413,16 +1432,17 @@ describe('boot-time stale versionPendingInstall reconciliation', () => {
 // ————————————————————————————————————————————————————————
 
 describe('boot-time failed-install detection', () => {
-  // Fail-closed case: this fixture carries no staging/handoff timestamps, so
-  // the boot has no basis for judging whether the install could still be
-  // running (legacy or corrupt `state.json` — every path that arms
-  // `attemptedInstall` also stamps `versionPendingInstallStagedAt`). With no
-  // timing to defer to, the detector still speaks. The complementary case —
-  // an attempt whose handoff IS on record and is recent enough that the
-  // install may still be in flight — lives in its own describe block below.
-  test('attempted not reached, no handoff timing on record (same-MMP beta) → relaunch-failed w/ downloadUrl, re-arm, stays armed', () => {
+  // A handoff on record, far enough past the grace that nothing can still be
+  // installing, so the detector speaks. The two complementary cases live in
+  // their own describe block below: an attempt whose handoff is recent enough
+  // that the install may still be in flight, and an attempt with NO handoff on
+  // record at all — which no longer reaches this detector, because a stamp that
+  // was never written means no install was ever started, and the boot re-offers
+  // the staged update instead of judging it.
+  test('handoff on record, long past the grace (same-MMP beta) → relaunch-failed w/ downloadUrl, re-arm, stays armed', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
     });
     const failed = rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
@@ -1449,6 +1469,7 @@ describe('boot-time failed-install detection', () => {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
     };
     const boot = () => {
       const captured: CapturedSend[] = [];
@@ -1487,6 +1508,7 @@ describe('boot-time failed-install detection', () => {
   test('attempted reached (running == attempted) → silently cleared, no failure notice', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.3',
       attemptedInstallSurfacedCount: 2,
     });
@@ -1502,6 +1524,7 @@ describe('boot-time failed-install detection', () => {
   test('attempted reached (running past attempted, stable over beta) → silently cleared', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0',
       attemptedInstallSurfacedCount: 2,
     });
@@ -1536,6 +1559,7 @@ describe('boot-time failed-install detection', () => {
     // branch's own clear of the stale pending marker.
     const { rig } = makeRig({
       attemptedInstall: '0.24.0',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       versionPendingInstall: '0.24.0',
       // Seeded so the clearing assertion below has teeth — a branch that
       // stops nulling it would leave a stale path for the Linux fallback.
@@ -1559,6 +1583,7 @@ describe('boot-time failed-install detection', () => {
     // same-channel failure notice.
     const { rig } = makeRig({
       attemptedInstall: '0.23.0-beta.5',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.22.0',
     });
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
@@ -1570,6 +1595,7 @@ describe('boot-time failed-install detection', () => {
   test('same-channel failure below budget → surfaces AND increments the counter', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
       attemptedInstallSurfacedCount: 1,
     });
@@ -1584,6 +1610,7 @@ describe('boot-time failed-install detection', () => {
     // so the giveup branch must clear it itself.
     const { rig } = makeRig({
       attemptedInstall: '0.17.0-beta.1',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       versionPendingInstall: '0.17.0-beta.1',
       // Seeded so the clearing assertion below has teeth.
       stagedInstallerPath: '/tmp/staged-giveup.deb',
@@ -1607,6 +1634,7 @@ describe('boot-time failed-install detection', () => {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
     };
     const boot = () => {
       const captured: CapturedSend[] = [];
@@ -1655,6 +1683,7 @@ describe('boot-time failed-install detection', () => {
   test('update-downloaded of a NEW version resets the surface counter', () => {
     const { rig } = makeRig({
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
       attemptedInstallSurfacedCount: 1,
     });
@@ -1675,6 +1704,7 @@ describe('boot-time failed-install detection', () => {
     const { rig } = makeRig({
       isPackaged: false,
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.16.0-beta.1',
       attemptedInstallSurfacedCount: 2,
     });
@@ -1692,6 +1722,7 @@ describe('boot-time failed-install detection', () => {
       ...emptyState(),
       lastSeenVersion: '0.23.0-beta.1',
       attemptedInstall: '0.24.0',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
     };
     const dispatches: DispatchKind[] = [];
     startAutoUpdater({
@@ -1718,12 +1749,63 @@ describe('boot-time failed-install detection', () => {
     expect(state.attemptedInstall).toBe('0.24.0');
   });
 
+  test('persist failure on the never-committed re-offer → no dispatch, no toast, record stays armed', () => {
+    // Same guard the sibling branches carry: if a refactor ever moved
+    // `state = next` outside the `persistSafely` gate, a failed disk write would
+    // leave memory claiming the re-offer while `state.json` still holds the old
+    // record — and the next boot would read back the very
+    // record-claims-an-install-that-never-happened inconsistency this branch
+    // exists to resolve.
+    const captured: CapturedSend[] = [];
+    const state: AppState = {
+      ...emptyState(),
+      lastSeenVersion: '0.16.0-beta.1',
+      attemptedInstall: '0.16.0-beta.3',
+      // The shape of the branch under test: armed, with no handoff ever stamped.
+      attemptedInstallHandoffAt: null,
+    };
+    const warn = vi.fn(() => {});
+    const dispatches: DispatchKind[] = [];
+    startAutoUpdater({
+      updater: new FakeUpdater(),
+      ipcMain: makeFakeIpc(),
+      readState: () => state,
+      writeState: () => {
+        throw new Error('EACCES');
+      },
+      getPrimaryWindow: () => makeFakeWindow(captured),
+      getAppVersion: () => '0.16.0-beta.1',
+      isPackaged: true,
+      clock: makeFakeClock(),
+      now: () => new Date(),
+      onDispatch: (k) => dispatches.push(k),
+      logger: {
+        info: vi.fn(() => {}),
+        warn,
+        error: vi.fn(() => {}),
+        debug: vi.fn(() => {}),
+      },
+    });
+
+    expect(dispatches).not.toContain('install-never-committed-reoffered' as DispatchKind);
+    // No toast either: a user offered a relaunch the state cannot back would
+    // click into a gate that was never armed.
+    expect(captured.filter((c) => c.channel === 'ok:update:downloaded')).toHaveLength(0);
+    // The record survives, so the next boot re-decides rather than losing it.
+    expect(state.attemptedInstall).toBe('0.16.0-beta.3');
+    expect(warn).toHaveBeenCalledWith(
+      'failed to persist install-never-committed-reoffered',
+      expect.objectContaining({ attempted: '0.16.0-beta.3', running: '0.16.0-beta.1' }),
+    );
+  });
+
   test('persist failure on the giveup branch → record stays armed, no dispatch', () => {
     const captured: CapturedSend[] = [];
     const state: AppState = {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       attemptedInstallSurfacedCount: INSTALL_FAILURE_MAX_SURFACES,
     };
     const dispatches: DispatchKind[] = [];
@@ -1762,6 +1844,7 @@ describe('boot-time failed-install detection', () => {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.1',
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
     };
     const dispatches: DispatchKind[] = [];
     startAutoUpdater({
@@ -1798,6 +1881,7 @@ describe('boot-time failed-install detection', () => {
       ...emptyState(),
       lastSeenVersion: '0.16.0-beta.3',
       attemptedInstall: '0.16.0-beta.3',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
     };
     const dispatches: DispatchKind[] = [];
     startAutoUpdater({
@@ -1910,8 +1994,11 @@ describe('boot-time failed-install detection — install still in flight', () =>
    * The pre-update session: stage the update, then end the session the way that
    * commits the install — the "Relaunch now" click, or a plain quit that
    * install-on-quit commits on. `'unobserved-quit'` ends the session without
-   * either, modelling the commits no live process gets to record: a force-quit,
-   * a power loss, or a `state.json` written by a build predating the quit stamp.
+   * either, which is the session that commits NOTHING: a Windows shutdown (the
+   * dominant shape — it terminates the process without `will-quit`, so
+   * install-on-quit never fires), a force-quit, or a power loss. It also stands
+   * in for the two benign ways a real commit arrives unstamped: a `state.json`
+   * from a build predating the quit stamp, and a quit whose stamp write failed.
    * Returns the `state.json` that boot reads.
    *
    * `overrides` moves the version pair and the commit moment off the defaults —
@@ -1941,6 +2028,10 @@ describe('boot-time failed-install detection — install still in flight', () =>
 
   const failureCards = (rig: TestRig): CapturedSend[] =>
     rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
+
+  /** The ordinary ready-to-install offer — Toast A's channel. */
+  const reofferCards = (rig: TestRig): CapturedSend[] =>
+    rig.captured.filter((c) => c.channel === 'ok:update:downloaded');
 
   /**
    * A reopen the user does not stay in: boot, let the launch check re-fire
@@ -2069,37 +2160,179 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
   });
 
-  test('a commit no live process observed falls back to the staging moment', async () => {
-    // Nothing recorded the handoff, so the only bound left is that the install
-    // cannot have begun before the artifact existed. Sound, just not tight: the
-    // tolerance now runs from the download, so it is whatever remains of the
-    // window after however long the artifact sat staged.
+  test('a session that recorded no handoff is re-offered once nothing can still be installing', async () => {
+    // Both commit points persist the handoff stamp BEFORE handing anything to
+    // an installer: `relaunch-now` writes it and returns early if that write
+    // fails, and `recordInstallHandoffOnQuit` runs from `before-quit`, ahead of
+    // the swap. So a null stamp is not "we lost track of when the install
+    // began" — it is "no install ever began", which deserves a different answer
+    // than a failure verdict.
+    //
+    // But it is asked SECOND, after the in-flight grace, and the ordering is
+    // load-bearing: electron-updater re-arming `update-downloaded` from its
+    // on-disk cache clears the stamp, so a null one can coexist with an install
+    // genuinely in flight. Re-offering into that would hand the user a relaunch
+    // that aborts the swap already running. Once the grace is spent nothing can
+    // still be installing, and what the state describes is simply an update
+    // sitting staged — so the honest response is the ordinary offer, not a
+    // failure notice. The sibling test below pins the deferral that guards this.
+    const rig = reopenAt(
+      await stageAndCommit('unobserved-quit'),
+      new Date(STAGED_AT.getTime() + 2 * HOUR),
+    );
+
+    expect(rig.dispatches).toContain('install-never-committed-reoffered' as DispatchKind);
+    expect(rig.dispatches).not.toContain('install-in-flight-deferred' as DispatchKind);
+    expect(failureCards(rig)).toHaveLength(0);
+    // The user-visible half: the staged artifact goes back on offer through the
+    // ordinary consented path, which means the same toast the download would
+    // have raised.
+    expect(reofferCards(rig)).toHaveLength(1);
+    expect(reofferCards(rig)[0]?.payload).toEqual({ version: ATTEMPTED });
+    expect(rig.state.versionPendingInstall).toBe(ATTEMPTED);
+    // `attemptedInstall` stays ARMED. On non-Linux the click does not arm it —
+    // only the Linux spread does — so this is the record the post-click failure
+    // path reads. Withdrawing it would disarm failed-install detection for the
+    // very click this branch exists to offer.
+    expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
+    expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
+  });
+
+  test('a never-committed attempt inside the grace defers rather than re-offering', async () => {
+    // The ordering guard. `update-downloaded` re-arming from electron-updater's
+    // on-disk cache clears the handoff stamp, so a null stamp can coexist with
+    // an install that is genuinely mid-flight. Asking "was one ever handed off"
+    // BEFORE "could one still be running" would re-offer into that install, and
+    // the relaunch the user then clicked would abort the swap already underway.
+    //
+    // Nothing else in the suite fails if the two arms are swapped back: the
+    // deferral tests still see their dispatch, because the re-offer arm would
+    // simply never be reached in their fixtures.
     const rig = reopenAt(
       await stageAndCommit('unobserved-quit'),
       new Date(STAGED_AT.getTime() + 45 * SECOND),
     );
 
-    expect(rig.state.attemptedInstallHandoffAt).toBeNull();
-    expect(failureCards(rig)).toHaveLength(0);
     expect(rig.dispatches).toContain('install-in-flight-deferred' as DispatchKind);
-    expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
-    // The log says which moment the verdict leaned on, so a field report can be
-    // read without guessing whether the tolerance was the full window or
-    // whatever was left of it after the artifact sat staged.
-    expect(rig.logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('defer'),
-      expect.objectContaining({ recordedHandoff: false, handoffAt: STAGED_AT.getTime() }),
-    );
+    expect(rig.dispatches).not.toContain('install-never-committed-reoffered' as DispatchKind);
+    // The decisive one: no relaunch is offered while a swap may be running.
+    expect(reofferCards(rig)).toHaveLength(0);
+    expect(failureCards(rig)).toHaveLength(0);
   });
 
-  test('an unobserved commit long after the staging still fires the notice', async () => {
+  test('a session that recorded no handoff never becomes a failure verdict, however long ago', async () => {
+    // The win32 shape this exists for: Windows ends the session with
+    // `WM_ENDSESSION` and terminates without running `will-quit`, so
+    // install-on-quit never fires and nothing is handed off. A user who shuts
+    // the machine down rather than quitting the app hits this every time, and
+    // age is not what distinguishes it — a day-old never-started install is
+    // exactly as un-started as a minute-old one.
     const rig = reopenAt(
       await stageAndCommit('unobserved-quit'),
       new Date(STAGED_AT.getTime() + 24 * HOUR),
     );
 
-    expect(failureCards(rig)).toHaveLength(1);
-    expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
+    expect(failureCards(rig)).toHaveLength(0);
+    expect(rig.dispatches).not.toContain('install-failed-on-boot' as DispatchKind);
+    expect(rig.dispatches).toContain('install-never-committed-reoffered' as DispatchKind);
+    expect(rig.state.versionPendingInstall).toBe(ATTEMPTED);
+    expect(rig.state.attemptedInstallSurfacedCount).toBe(0);
+  });
+
+  test('repeated never-committed boots keep re-offering instead of spending the give-up budget', async () => {
+    // The stranding mechanism, pinned. Charging a never-started install against
+    // `INSTALL_FAILURE_MAX_SURFACES` means that after three OS shutdowns the
+    // record is dropped and the user is told nothing at all — while the update
+    // is still sitting on disk. Whatever the offer is, it has to survive more
+    // boots than the failure budget allows.
+    let state = await stageAndCommit('unobserved-quit');
+    for (let boot = 1; boot <= 4; boot += 1) {
+      const rig = reopenAt(state, new Date(STAGED_AT.getTime() + boot * 24 * HOUR));
+      expect(failureCards(rig)).toHaveLength(0);
+      expect(rig.dispatches).not.toContain('install-failed-giveup' as DispatchKind);
+      expect(reofferCards(rig)).toHaveLength(1);
+      expect(rig.state.versionPendingInstall).toBe(ATTEMPTED);
+      // No re-arming between boots: each one ends the same way the last did, so
+      // the state this boot leaves behind IS the next boot's starting state.
+      // That the loop needs no help is the point — the offer repeats on its own.
+      state = rig.state;
+    }
+  });
+
+  test('a re-offer taken and then failing still produces a failure verdict on the next boot', async () => {
+    // The hazard in keeping the two records separate: the click is the only
+    // thing that turns a re-offer into a real attempt, and on non-Linux it does
+    // not arm `attemptedInstall` itself. If the boot that re-offers had
+    // withdrawn that record, this sequence would end in silence — no notice, no
+    // manual-download URL — and the staged-cache reclaim would delete the
+    // artifact the user is still waiting on.
+    const reoffered = reopenAt(
+      await stageAndCommit('unobserved-quit'),
+      new Date(STAGED_AT.getTime() + 24 * HOUR),
+    );
+    expect(reoffered.dispatches).toContain('install-never-committed-reoffered' as DispatchKind);
+
+    // The user takes the offer. This is the moment the attempt becomes real: the
+    // click stamps the handoff, so the next boot judges it rather than
+    // re-offering.
+    reoffered.now = new Date(STAGED_AT.getTime() + 24 * HOUR + MINUTE);
+    await reoffered.ipc.invoke('ok:update:relaunch-now');
+    expect(reoffered.state.attemptedInstallHandoffAt).not.toBeNull();
+
+    // ...and the install does not land. A day on, nothing is installing.
+    const reclaim = vi.fn();
+    const { rig: afterFailedClick } = makeRig({
+      ...reoffered.state,
+      appVersion: RUNNING,
+      platform: 'darwin',
+      nowAt: new Date(STAGED_AT.getTime() + 48 * HOUR),
+      reclaimStagedUpdateCache: reclaim,
+    });
+
+    expect(afterFailedClick.dispatches).toContain('install-failed-on-boot' as DispatchKind);
+    expect(failureCards(afterFailedClick)).toHaveLength(1);
+    expect(failureCards(afterFailedClick)[0]?.payload).toEqual({
+      version: ATTEMPTED,
+      downloadUrl: STUCK_HINT_DOWNLOAD_URL,
+    });
+    // The artifact survives: an install commitment is still armed, so the
+    // reclaim must not delete what the Retry needs.
+    expect(reclaim).not.toHaveBeenCalled();
+  });
+
+  test('the re-arm is what restores an offer the stale-pending reconciliation cleared', async () => {
+    // Same-MMP beta: the boot's stale-pending reconciliation nulls
+    // `versionPendingInstall` before the attempt is judged, so here the re-arm
+    // is doing real work rather than restating what `...state` already carried.
+    const rig = reopenAt(
+      await stageAndCommit('unobserved-quit', {
+        running: '0.16.0-beta.1',
+        attempted: '0.16.0-beta.3',
+      }),
+      new Date(STAGED_AT.getTime() + 24 * HOUR),
+      '0.16.0-beta.1',
+    );
+
+    expect(rig.dispatches).toContain('stale-pending-cleared' as DispatchKind);
+    expect(rig.dispatches).toContain('install-never-committed-reoffered' as DispatchKind);
+    expect(rig.state.versionPendingInstall).toBe('0.16.0-beta.3');
+    expect(reofferCards(rig)).toHaveLength(1);
+  });
+
+  test('a recorded handoff is still judged on its age — the in-flight grace is untouched', async () => {
+    // Guard against the fix over-reaching. The discriminator is whether a
+    // handoff was recorded, NOT how old it is: a real commit inside the grace
+    // still defers, and the same commit a day later still fails.
+    const committed = await stageAndCommit('plain-quit');
+
+    const early = reopenAt(committed, new Date(HANDED_OFF_AT.getTime() + 45 * SECOND));
+    expect(early.dispatches).toContain('install-in-flight-deferred' as DispatchKind);
+    expect(early.dispatches).not.toContain('install-never-committed-reoffered' as DispatchKind);
+
+    const late = reopenAt(committed, new Date(HANDED_OFF_AT.getTime() + 24 * HOUR));
+    expect(late.dispatches).toContain('install-failed-on-boot' as DispatchKind);
+    expect(late.dispatches).not.toContain('install-never-committed-reoffered' as DispatchKind);
+    expect(failureCards(late)).toHaveLength(1);
   });
 
   test('the uninstall quit claims no handoff', async () => {
@@ -2445,14 +2678,16 @@ describe('boot-time failed-install detection — install still in flight', () =>
     expect(rig.state.attemptedInstall).toBe(ATTEMPTED);
   });
 
-  test('a deferred boot records how long ago the install was handed off, and from what', async () => {
+  test('a deferred boot records how long ago the install was handed off', async () => {
     // A deferred boot is silent to the user by design, so this line is the only
     // place an operator reading a "my update never installed" report can see
     // that the boot considered the attempt and how long ago the handoff was —
     // the number that separates a verdict held too eagerly from one held
-    // correctly. The derived age alone cannot be audited: the two moments it
-    // came from have to travel with it, or a verdict held off a handoff that was
-    // never observed is indistinguishable from one held off a real handoff.
+    // correctly. The derived age alone cannot be audited: the moment it was
+    // measured from has to travel with it.
+    //
+    // The line no longer says WHICH moment, because there is only one it can be:
+    // a boot with no handoff on record never reaches the deferral at all.
     const rig = reopenAt(
       await stageAndCommit('relaunch-click'),
       new Date(HANDED_OFF_AT.getTime() + 62 * SECOND),
@@ -2464,7 +2699,6 @@ describe('boot-time failed-install detection — install still in flight', () =>
         attempted: ATTEMPTED,
         handoffAgeMs: 62 * SECOND,
         handoffAt: HANDED_OFF_AT.getTime(),
-        recordedHandoff: true,
         stagingAgeMs: HANDED_OFF_AT.getTime() - STAGED_AT.getTime(),
       }),
     );
@@ -3617,6 +3851,7 @@ describe('dev-mode guard (isPackaged=false)', () => {
     const { rig } = makeRig({
       isPackaged: false,
       attemptedInstall: '0.5.0',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.4.0',
     });
     expect(rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed')).toHaveLength(0);
@@ -3641,6 +3876,7 @@ describe('dev-mode guard (isPackaged=false)', () => {
       isPackaged: false,
       forceDevBypass: true,
       attemptedInstall: '0.5.0',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       appVersion: '0.4.0',
     });
     const failed = rig.captured.filter((c) => c.channel === 'ok:update:relaunch-failed');
@@ -4223,6 +4459,7 @@ describe('staged-cache reclaim — fires only once every install commitment is s
       appVersion: '0.3.2',
       versionPendingInstall: '0.3.2',
       attemptedInstall: '0.3.2',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       reclaimStagedUpdateCache: reclaim,
     });
     expect(rig.state.versionPendingInstall).toBeNull();
@@ -4249,6 +4486,7 @@ describe('staged-cache reclaim — fires only once every install commitment is s
     const reclaim = vi.fn(() => Promise.resolve());
     const { rig } = makeRig({
       attemptedInstall: '0.9.9',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       reclaimStagedUpdateCache: reclaim,
     });
     expect(rig.dispatches).toContain('install-failed-on-boot' as DispatchKind);
@@ -4259,6 +4497,7 @@ describe('staged-cache reclaim — fires only once every install commitment is s
     const reclaim = vi.fn(() => Promise.resolve());
     const { rig } = makeRig({
       attemptedInstall: '0.9.9',
+      attemptedInstallHandoffAt: COMMITTED_LONG_AGO,
       attemptedInstallSurfacedCount: INSTALL_FAILURE_MAX_SURFACES,
       reclaimStagedUpdateCache: reclaim,
     });
