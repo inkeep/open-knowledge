@@ -6632,6 +6632,7 @@ The following MIT-licensed packages are patched in this repository via pnpm's `p
 | `@pierre/trees@1.0.0-beta.4` | `patches/@pierre%2Ftrees@1.0.0-beta.4.patch` |
 | `@tiptap/extension-drag-handle@3.22.3` | `patches/@tiptap%2Fextension-drag-handle@3.22.3.patch` |
 | `@tiptap/y-tiptap@3.0.3` | `patches/@tiptap%2Fy-tiptap@3.0.3.patch` |
+| `@xterm/xterm@6.0.0` | `patches/@xterm%2Fxterm@6.0.0.patch` |
 | `react-medium-image-zoom@5.4.3` | `patches/react-medium-image-zoom@5.4.3.patch` |
 | `react-resizable-panels@4.12.1` | `patches/react-resizable-panels@4.12.1.patch` |
 | `y-indexeddb@9.0.12` | `patches/y-indexeddb@9.0.12.patch` |
