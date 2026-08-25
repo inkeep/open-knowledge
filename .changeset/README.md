@@ -32,6 +32,6 @@ holds three bits of information:
 
 When `1.0.0` does eventually ship, this convention will be retired and standard semver resumes.
 
-> Authoring tip: run `bun changeset` from anywhere under `public/open-knowledge/` — the CLI walks up to find this folder. Don't hand-create files; the tool's interactive flow asks for bump types in order and writes a well-formed frontmatter block. Per the convention above, only pick `minor` or `patch`.
+> Authoring tip: run `pnpm changeset` from anywhere under `public/open-knowledge/` — the CLI walks up to find this folder. Don't hand-create files; the tool's interactive flow asks for bump types in order and writes a well-formed frontmatter block. Per the convention above, only pick `minor` or `patch`.
 
-> SKILL.md metadata is synced automatically by the VP workflow via [`scripts/sync-skill-version.sh`](../scripts/sync-skill-version.sh). You don't need to bump `packages/server/assets/skills/open-knowledge/SKILL.md`'s `metadata.version:` by hand — `bun changeset version` (in CI) bumps the package.json files, then the sync script propagates the new version into SKILL.md. The same script can be run manually from `public/open-knowledge/` if you ever need to re-sync after a hand edit.
+> SKILL.md metadata is synced automatically by the VP workflow via [`scripts/sync-skill-version.sh`](../scripts/sync-skill-version.sh). You don't need to bump the bundled SKILL.md files' `metadata.version:` by hand — `pnpm exec changeset version` (in CI) bumps the package.json files, then the sync script propagates the new version into SKILL.md. The same script can be run manually from `public/open-knowledge/` if you ever need to re-sync after a hand edit.

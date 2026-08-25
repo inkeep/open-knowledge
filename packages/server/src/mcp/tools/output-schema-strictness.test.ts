@@ -35,13 +35,15 @@ import { join } from 'node:path';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
+import { register as registerAudit } from './audit.ts';
 import { register as registerConfig } from './config.ts';
 import { registerAllTools } from './index.ts';
+import { register as registerLint } from './lint.ts';
 import { register as registerPalette } from './palette.ts';
 import { register as registerSearch } from './search.ts';
-import type { ServerInstance } from './shared.ts';
+import { AUDIT_WARNING_CAP, type ServerInstance } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
@@ -232,6 +234,7 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     'write',
     'links',
     'audit',
+    'lint',
   ]);
 
   test('every registerTool registration declares `text` in its outputSchema', () => {
@@ -279,6 +282,351 @@ describe('MCP outputSchema strictness — auto-discovered registerTool sweep (no
     const validate = validator.getValidator(jsonSchema);
     const probe = { text: 'mirror body' };
     return validate(probe) as { valid: boolean; errorMessage?: string };
+  }
+});
+
+describe('audit and lint emitted coverage validates against the client schema', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const cases = [
+    {
+      name: 'audit',
+      register: registerAudit,
+      args: {},
+      payload: {
+        files: [],
+        fileCount: 1,
+        errorCount: 0,
+        warningCount: 0,
+        warnings: [],
+        ran: ['markdownlint', 'links'],
+      },
+    },
+    {
+      name: 'lint project',
+      register: registerLint,
+      args: {},
+      payload: {
+        files: [],
+        fileCount: 1,
+        errorCount: 0,
+        warningCount: 0,
+        warnings: [],
+        ran: ['markdownlint'],
+      },
+    },
+    {
+      name: 'lint document',
+      register: registerLint,
+      args: { document: 'notes' },
+      payload: { file: 'notes.md', diagnostics: [], warnings: [], ran: ['frontmatter'] },
+    },
+    {
+      name: 'lint fix',
+      register: registerLint,
+      args: { document: 'notes', fix: true },
+      payload: {
+        file: 'notes.md',
+        fixedCount: 0,
+        diagnostics: [],
+        errorCount: 0,
+        warningCount: 0,
+        warnings: [],
+        ran: [],
+      },
+    },
+  ] as const;
+
+  for (const testCase of cases) {
+    test(`${testCase.name}: actual structuredContent admits ran`, async () => {
+      const cwd = newProject();
+      const captured = captureRegistration(testCase.register, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => cwd,
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(testCase.payload)),
+      );
+
+      const result = await captured.handler(testCase.args);
+      expect(result.structuredContent?.ran).toEqual(testCase.payload.ran);
+      const validator = new AjvJsonSchemaValidator();
+      const validate = validator.getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent) as {
+        valid: boolean;
+        errorMessage?: string;
+      };
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    });
+  }
+
+  test('audit text distinguishes clean, findings, empty selection, and degradation', async () => {
+    const captured = captureRegistration(registerAudit, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const call = async (payload: Record<string, unknown>): Promise<string> => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(payload)),
+      );
+      const result = await captured.handler({});
+      return result.content[0]?.text ?? '';
+    };
+    const base = { fileCount: 1, errorCount: 0, warningCount: 0, warnings: [] };
+
+    expect(await call({ ...base, files: [], ran: ['links'] })).toContain(
+      'No problems across 1 document.\nChecks run: links.',
+    );
+
+    const findings = await call({
+      ...base,
+      files: [{ file: 'notes.md', diagnostics: [warningDiagnostic('links')] }],
+      warningCount: 1,
+      ran: ['links'],
+    });
+    expect(findings.endsWith('Checks run: links.')).toBe(true);
+
+    expect(await call({ ...base, files: [], ran: [] })).toContain(
+      'No problems across 1 document.\nNo checks ran.',
+    );
+
+    const degraded = await call({
+      ...base,
+      files: [],
+      ran: ['links'],
+      warnings: ['source family "links" validation failed: unavailable'],
+    });
+    expect(degraded).toContain('No problems found across 1 document');
+    expect(degraded).toContain('Checks run: links.');
+    expect(degraded).toContain('source family "links" validation failed: unavailable');
+  });
+
+  test('lint text distinguishes clean, findings, empty selection, fix, and degradation', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const call = async (
+      args: Record<string, unknown>,
+      payload: Record<string, unknown>,
+    ): Promise<string> => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(payload)),
+      );
+      const result = await captured.handler(args);
+      return result.content[0]?.text ?? '';
+    };
+
+    expect(
+      await call(
+        { document: 'notes' },
+        { file: 'notes.md', diagnostics: [], warnings: [], ran: ['frontmatter'] },
+      ),
+    ).toContain('No problems in notes.md.\nChecks run: frontmatter.');
+
+    const findings = await call(
+      { document: 'notes' },
+      {
+        file: 'notes.md',
+        diagnostics: [warningDiagnostic('frontmatter')],
+        warnings: [],
+        ran: ['frontmatter'],
+      },
+    );
+    expect(findings.endsWith('Checks run: frontmatter.')).toBe(true);
+
+    expect(
+      await call(
+        {},
+        {
+          files: [],
+          fileCount: 1,
+          errorCount: 0,
+          warningCount: 0,
+          warnings: [],
+          ran: [],
+        },
+      ),
+    ).toContain('No problems across 1 document.\nNo checks ran.');
+
+    expect(
+      await call(
+        { document: 'notes', fix: true },
+        {
+          file: 'notes.md',
+          fixedCount: 0,
+          diagnostics: [],
+          errorCount: 0,
+          warningCount: 0,
+          ran: [],
+        },
+      ),
+    ).toContain('No auto-fixable problems in notes.md.\nNo checks ran.');
+
+    // A selected family that degraded is still SELECTED, so the coverage line
+    // below still names it. Without the qualifier on the summary the two most
+    // salient lines both read as reassurance and the only counter-signal is a
+    // bare ⚠ in a channel that also carries benign config nits.
+    const degraded = await call(
+      { document: 'notes' },
+      {
+        file: 'notes.md',
+        diagnostics: [],
+        ran: ['frontmatter'],
+        warnings: ['source "frontmatter" lint failed on "notes.md": unavailable'],
+      },
+    );
+    expect(degraded).toContain(
+      'No problems found in notes.md, but the lint could not fully complete.\nChecks run: frontmatter.',
+    );
+    expect(degraded).toContain('Lint incomplete — 1 warning (findings may be partial):');
+    expect(degraded).toContain('source "frontmatter" lint failed');
+
+    const degradedAudit = await call(
+      {},
+      {
+        files: [],
+        fileCount: 3,
+        errorCount: 0,
+        warningCount: 0,
+        ran: ['markdownlint'],
+        warnings: ['source "markdownlint" lint failed on 3 documents (first: "a.md"): boom'],
+      },
+    );
+    expect(degradedAudit).toContain(
+      'No problems found across 3 documents, but the lint could not fully complete.\nChecks run: markdownlint.',
+    );
+
+    const degradedFix = await call(
+      { document: 'notes', fix: true },
+      {
+        file: 'notes.md',
+        fixedCount: 0,
+        diagnostics: [],
+        errorCount: 0,
+        warningCount: 0,
+        ran: ['markdownlint'],
+        warnings: ['source "markdownlint" fix failed on "notes.md": boom'],
+      },
+    );
+    expect(degradedFix).toContain(
+      'No auto-fixable problems in notes.md, but the lint could not fully complete.',
+    );
+  });
+
+  test('the deprecated fix `warning` rides `warnings` too, and renders once', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const reLint = 'Re-lint after fix failed: boom';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          file: 'notes.md',
+          fixedCount: 1,
+          diagnostics: [],
+          errorCount: 0,
+          warningCount: 0,
+          ran: ['markdownlint'],
+          // The shape the server emits during the deprecation window: the
+          // singular field kept for its existing readers, the same message in
+          // the plural channel so a consumer that reads only `warnings` cannot
+          // mistake a stale-diagnostics response for a clean one. `warning` is
+          // declared in no outputSchema, so `warnings` is the ONLY structured
+          // carrier a schema-driven client can see it through.
+          warning: reLint,
+          warnings: [reLint],
+        }),
+      ),
+    );
+
+    const result = await captured.handler({ document: 'notes', fix: true });
+
+    const structured = result.structuredContent as { warnings?: string[] };
+    expect(structured.warnings).toEqual([reLint]);
+    const text = result.content[0]?.text ?? '';
+    expect(text.split(reLint)).toHaveLength(2);
+
+    const validator = new AjvJsonSchemaValidator();
+    const validate = validator.getValidator(
+      compileOutputSchemaForClient(captured.cfg.outputSchema),
+    );
+    const validation = validate(result.structuredContent) as {
+      valid: boolean;
+      errorMessage?: string;
+    };
+    expect(validation.valid, validation.errorMessage).toBe(true);
+  });
+
+  test('lint audit caps the warning channel the way audit does', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const warnings = Array.from({ length: AUDIT_WARNING_CAP + 5 }, (_, i) =>
+      i === AUDIT_WARNING_CAP + 4 ? 'validator "lint" failed: EACCES' : `warning ${i}`,
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          files: [],
+          fileCount: 1,
+          errorCount: 0,
+          warningCount: 0,
+          ran: ['markdownlint'],
+          warnings,
+        }),
+      ),
+    );
+
+    const result = await captured.handler({});
+
+    // Both channels are agent-context-bound, so both get the cap — the same
+    // invariant the sibling `audit` tool states and enforces.
+    const structured = result.structuredContent as {
+      warnings?: string[];
+      omittedWarningCount?: number;
+    };
+    expect(structured.warnings).toHaveLength(AUDIT_WARNING_CAP);
+    expect(structured.warnings?.[0]).toBe('validator "lint" failed: EACCES');
+    expect(structured.omittedWarningCount).toBe(5);
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('… and 5 more warnings');
+
+    const validator = new AjvJsonSchemaValidator();
+    const validate = validator.getValidator(
+      compileOutputSchemaForClient(captured.cfg.outputSchema),
+    );
+    const validation = validate(result.structuredContent) as {
+      valid: boolean;
+      errorMessage?: string;
+    };
+    expect(validation.valid, validation.errorMessage).toBe(true);
+  });
+
+  function warningDiagnostic(source: string): Record<string, unknown> {
+    return {
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+      severity: 'warning',
+      source,
+      code: 'test',
+      message: 'problem',
+    };
   }
 });
 

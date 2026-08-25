@@ -39,7 +39,7 @@ export function isFrontmatterScoped(diagnostic: Pick<LintDiagnostic, 'frontmatte
   return diagnostic.frontmatterScope !== undefined;
 }
 
-const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;
+export const VALIDATION_SOURCES = [...LINT_PLUGIN_IDS, 'links'] as const;
 export type ValidationSource = (typeof VALIDATION_SOURCES)[number];
 
 export type LocalTargetKind = 'document' | 'file' | 'unknown';

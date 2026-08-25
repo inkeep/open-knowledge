@@ -12,12 +12,13 @@ import {
 } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { AuditDeps } from './audit.ts';
-import { AUDIT_WARNING_CAP, DESCRIPTION, register } from './audit.ts';
+import { DESCRIPTION, register } from './audit.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import type { ServerInstance } from './shared.ts';
 import {
   AUDIT_FILE_CAP,
   AUDIT_FILE_DIAGNOSTIC_CAP,
+  AUDIT_WARNING_CAP,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
 } from './shared.ts';
 
@@ -173,7 +174,7 @@ beforeAll(async () => {
             fileCount: 3,
             errorCount: 0,
             warningCount: 0,
-            warnings: ['links validation unavailable: backlink index is not configured'],
+            warnings: ['source family "links" validation failed: backlink index is not configured'],
           });
         }
         if (path === 'local-targets') {
@@ -208,9 +209,10 @@ beforeAll(async () => {
             fileCount: 20,
             errorCount: 0,
             warningCount: 0,
-            warnings: Array.from(
-              { length: AUDIT_WARNING_CAP + 5 },
-              (_, i) => `could not read dir-${i}: EACCES`,
+            warnings: Array.from({ length: AUDIT_WARNING_CAP + 5 }, (_, i) =>
+              i === AUDIT_WARNING_CAP + 4
+                ? 'source family "okf" validation failed: EACCES'
+                : `could not read dir-${i}: EACCES`,
             ),
           });
         }
@@ -364,12 +366,16 @@ describe('audit — degradation visibility', () => {
     const result = await getTool().handler({ path: 'degraded' });
     const text = result.content[0]?.text ?? '';
     // The warning reaches the text channel (the channel an agent reads)...
-    expect(text).toContain('links validation unavailable: backlink index is not configured');
+    expect(text).toContain(
+      'source family "links" validation failed: backlink index is not configured',
+    );
     // ...and the summary flags the run as incomplete, not a bare "No problems.".
     expect(text).toContain('could not fully complete');
     expect(text).toContain('Audit incomplete');
     const s = result.structuredContent as { warnings?: string[] };
-    expect(s.warnings).toEqual(['links validation unavailable: backlink index is not configured']);
+    expect(s.warnings).toEqual([
+      'source family "links" validation failed: backlink index is not configured',
+    ]);
   });
 
   test('warnings surface alongside problems, not only in the structured channel', async () => {
@@ -388,6 +394,7 @@ describe('audit — degradation visibility', () => {
     const result = await getTool().handler({ path: 'many-warnings' });
     const s = result.structuredContent as { warnings?: string[]; omittedWarningCount?: number };
     expect(s.warnings).toHaveLength(AUDIT_WARNING_CAP);
+    expect(s.warnings?.[0]).toBe('source family "okf" validation failed: EACCES');
     expect(s.omittedWarningCount).toBe(5);
     expect(result.content[0]?.text ?? '').toContain('… and 5 more warnings');
   });

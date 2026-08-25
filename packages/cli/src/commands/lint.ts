@@ -11,6 +11,7 @@ import {
   type LinterConfig,
   type PersistedLinterConfig,
   toEffectiveBase,
+  validationCoverageLines,
 } from '@inkeep/open-knowledge-core';
 import { type Config, resolveContentDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
@@ -103,6 +104,7 @@ export interface LintReportInput {
   errorCount: number;
   warningCount: number;
   fixedCount: number;
+  ran?: string[];
 }
 
 /** Render one file's heading + its diagnostics as report lines. */
@@ -125,9 +127,6 @@ export function formatLintReport(result: LintReportInput): string {
     if (file.diagnostics.length > 0) lines.push(...renderFileBlock(file));
   }
 
-  for (const w of result.warnings) lines.push(yellow(`! ${w}`));
-  if (result.warnings.length > 0) lines.push('');
-
   const problemTotal = result.errorCount + result.warningCount;
   if (problemTotal === 0) {
     lines.push(
@@ -143,6 +142,14 @@ export function formatLintReport(result: LintReportInput): string {
   }
   if (result.fixedCount > 0) {
     lines.push(dim(`Fixed ${result.fixedCount} file${result.fixedCount === 1 ? '' : 's'}.`));
+  }
+  lines.push(...validationCoverageLines(result.ran).map((line) => dim(line)));
+  // Below the summary, not above it: on a large KB a warning block rendered
+  // first scrolls off, leaving a terminal whose last screen reads clean. The
+  // coverage line stays adjacent to the no-problems claim it qualifies.
+  if (result.warnings.length > 0) {
+    lines.push('');
+    for (const w of result.warnings) lines.push(yellow(`! ${w}`));
   }
 
   return lines.join('\n');

@@ -135,6 +135,10 @@ export const DEFAULT_LINTER_CONFIG: LinterConfig = {
   ) as LinterConfig['plugins'],
 };
 
+export function isLintPluginSelected(config: LinterConfig, id: LintPluginId): boolean {
+  return config.enabled && config.plugins[id]?.enabled === true;
+}
+
 export function selectGoverningFrontmatterSchemas(
   config: LinterConfig | null,
   docName: string | undefined,

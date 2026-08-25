@@ -18,8 +18,11 @@
  * worker-thread fan-out or an all-rules superset filtered per active rule set;
  * both are larger changes than this cache.
  *
- * Docs read from a live CRDT overlay are never cached — their bytes move
- * without touching the disk stamp the key rests on.
+ * Two classes are never cached. Docs read from a live CRDT overlay, because
+ * their bytes move without touching the disk stamp the key rests on. And docs
+ * whose lint degraded — a selected plugin threw — because an entry holds
+ * diagnostics alone, so replaying one would drop the failure that says the set
+ * is incomplete and report the doc clean until its stamp or config moves.
  */
 
 import { createHash } from 'node:crypto';

@@ -120,6 +120,7 @@ import {
   type LinterConfig,
   LintFixRequestSchema,
   LintFixResultSchema,
+  type LintPluginFailure,
   type LintViolationWarning,
   LOCAL_DIR,
   LocalOpAuthCancelRequestSchema,
@@ -249,6 +250,7 @@ import {
   scanHeadingLine,
   skillLiveDocName,
   stripFrontmatter,
+  summarizeLintPluginFailures,
   TEMPLATE_NAME_REGEX,
   TemplateDeleteSuccessSchema,
   TemplateGetSuccessSchema,
@@ -22475,11 +22477,15 @@ export function createApiExtension(
           onConfigProblem: (problem) => configWarnings.push(problem),
           liveSourceFor: liveLintSourceFor,
         });
+        // Absent when there is nothing to report, matching the schema's
+        // documented contract and the three sibling lint emitters. `ran` is the
+        // field that is always present; do not carry that rule across to this one.
+        const lintWarnings = [...configWarnings, ...summarizeLintPluginFailures(result.failures)];
         successResponse(
           res,
           200,
           LintDocResultSchema,
-          configWarnings.length > 0 ? { ...result, warnings: configWarnings } : result,
+          { ...result, ...(lintWarnings.length > 0 ? { warnings: lintWarnings } : {}) },
           { handler: 'lint' },
         );
       } catch (e) {
@@ -22741,16 +22747,19 @@ export function createApiExtension(
         // against the bytes we actually mutate. `fixDocument` delegates to
         // upstream markdownlint's `applyFixes` — we author no fix logic.
         const source = session.dc.document.getText('source').toString();
-        const { cfg, before, fixed } = await lintAndFixSource({
+        const configWarnings: string[] = [];
+        const { cfg, before, fixed, ran, failures } = await lintAndFixSource({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig,
           docRelPath,
           source,
+          onConfigProblem: (problem) => configWarnings.push(problem),
         });
 
         let after = before;
         let reLintWarning: string | undefined;
+        const reLintFailures: LintPluginFailure[] = [];
         if (fixed !== source) {
           // Land the fixed bytes through the sanctioned agent-write spine:
           // attributed to the calling agent (never the anonymous `file-system`
@@ -22828,6 +22837,7 @@ export function createApiExtension(
               session.dc.document.getText('source').toString(),
               cfg,
               docRelPath,
+              (failure) => reLintFailures.push(failure),
             );
           } catch (relintErr) {
             reLintWarning = `Re-lint after fix failed: ${relintErr instanceof Error ? relintErr.message : String(relintErr)}`;
@@ -22843,6 +22853,14 @@ export function createApiExtension(
         const warningCount = after.length - errorCount;
         // Net problems the auto-fix resolved (clamped — a fix never nets negative).
         const fixedCount = Math.max(0, before.length - after.length);
+        // One channel for everything that made this run less than complete:
+        // config faults, plugin throws from the fix + re-lint passes, and the
+        // re-lint failure the deprecated singular `warning` also carries.
+        const responseWarnings = [
+          ...configWarnings,
+          ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
+          ...(reLintWarning ? [reLintWarning] : []),
+        ];
 
         successResponse(
           res,
@@ -22854,6 +22872,11 @@ export function createApiExtension(
             diagnostics: after,
             errorCount,
             warningCount,
+            ran,
+            ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
+            // Emitted in parallel with its copy in `warnings` for one
+            // deprecation window: the text header still branches on it, and
+            // dropping it now would break every caller that reads it today.
             ...(reLintWarning ? { warning: reLintWarning } : {}),
           },
           { handler: 'lint-fix' },

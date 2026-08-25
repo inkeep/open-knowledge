@@ -7,8 +7,12 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_LINTER_CONFIG, type LinterConfig } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  DEFAULT_LINTER_CONFIG,
+  LINT_PLUGINS,
+  type LinterConfig,
+} from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { auditProject, lintDoc } from './audit.ts';
 import { AuditCache } from './audit-cache.ts';
 
@@ -36,6 +40,7 @@ beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-audit-')));
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -50,6 +55,8 @@ describe('lintDoc', () => {
     });
     expect(result.file).toBe('a.md');
     expect(result.diagnostics.some((d) => d.code === 'MD010')).toBe(true);
+    expect(result.ran).toEqual(['markdownlint']);
+    expect(result.failures).toEqual([]);
   });
 
   test('honors the native .markdownlint.json (disables a rule)', async () => {
@@ -65,9 +72,100 @@ describe('lintDoc', () => {
     });
     expect(result.diagnostics.some((d) => d.code === 'MD010')).toBe(false);
   });
+
+  test('keeps a selected plugin in ran when it degrades and reports the failure', async () => {
+    write('a.md', DOC_WITH_TAB);
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('boom'));
+
+    const result = await lintDoc({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: base,
+      docRelPath: 'a.md',
+    });
+
+    expect(result.ran).toEqual(['markdownlint']);
+    expect(result.failures).toEqual([
+      { source: 'markdownlint', phase: 'lint', docName: 'a.md', message: 'boom' },
+    ]);
+  });
+
+  test('a degraded lint is not cached — a hit would replay it as clean', async () => {
+    write('a.md', DOC_WITH_TAB);
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const lint = vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('boom'));
+    const cache = new AuditCache();
+
+    const opts = {
+      projectDir: root,
+      contentDir: root,
+      baseConfig: base,
+      docRelPath: 'a.md',
+      cache,
+    };
+    await lintDoc(opts);
+    // Same doc, same config, same stamp: a cached entry would be served here and
+    // would carry the diagnostics without the failure that says they are partial.
+    const second = await lintDoc(opts);
+    expect(second.failures).toHaveLength(1);
+    expect(cache.stats().entries).toBe(0);
+
+    // Once the plugin recovers the walk caches again — the refusal self-heals
+    // rather than sticking to a key nothing invalidates.
+    lint.mockRestore();
+    const recovered = await lintDoc(opts);
+    expect(recovered.failures).toEqual([]);
+    expect(cache.stats().entries).toBe(1);
+  });
 });
 
 describe('auditProject', () => {
+  test('emits an explicit empty selection when linting is disabled', async () => {
+    write('clean.md', CLEAN_DOC);
+    const audit = await auditProject({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: DEFAULT_LINTER_CONFIG,
+    });
+    expect(audit.ran).toEqual([]);
+  });
+
+  test('a plugin failing across the corpus collapses to one counted warning', async () => {
+    for (const name of ['a.md', 'b.md', 'c.md']) write(name, DOC_WITH_TAB);
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('boom'));
+
+    const audit = await auditProject({ projectDir: root, contentDir: root, baseConfig: base });
+
+    // One line for the fault, not one per document it hit — the failure is
+    // systematic, and the agent channels that render this array are capped.
+    expect(audit.warnings).toEqual([
+      'source "markdownlint" lint failed on 3 documents (first: "a.md"): boom',
+    ]);
+    expect(audit.ran).toEqual(['markdownlint']);
+  });
+
+  test('plugin failures stay distinct from generic configuration warnings', async () => {
+    write('a.md', DOC_WITH_TAB);
+    write('.markdownlint.json', '{ invalid json');
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('boom'));
+
+    const audit = await auditProject({ projectDir: root, contentDir: root, baseConfig: base });
+
+    expect(audit.warnings).toContain('source "markdownlint" lint failed on "a.md": boom');
+    expect(audit.warnings.some((warning) => warning.includes('.markdownlint.json'))).toBe(true);
+  });
+
   test('includes only docs that have diagnostics, counts all files', async () => {
     write('dirty.md', DOC_WITH_TAB);
     write('clean.md', CLEAN_DOC);
@@ -76,6 +174,7 @@ describe('auditProject', () => {
     expect(audit.files.map((f) => f.file)).toEqual(['dirty.md']);
     expect(audit.warningCount).toBeGreaterThan(0);
     expect(audit.errorCount).toBe(0);
+    expect(audit.ran).toEqual(['markdownlint']);
   });
 
   test('respects .okignore exclusions', async () => {
@@ -124,6 +223,7 @@ describe('auditProject', () => {
     expect(audit.warnings).toEqual([
       expect.stringContaining('refusing audit scope outside the content directory'),
     ]);
+    expect(audit.ran).toEqual([]);
   });
 
   test('refuses a relative targetPath that escapes the content dir', async () => {
@@ -137,6 +237,7 @@ describe('auditProject', () => {
     expect(audit.warnings).toEqual([
       expect.stringContaining('refusing audit scope outside the content directory'),
     ]);
+    expect(audit.ran).toEqual([]);
   });
 
   test('skips hidden path segments — docs there are not addressable to fix or navigate', async () => {
@@ -166,6 +267,7 @@ describe('auditProject', () => {
     expect(audit.warnings).toEqual([
       expect.stringContaining('refusing audit scope under a hidden path segment'),
     ]);
+    expect(audit.ran).toEqual([]);
   });
 
   test('liveSourceFor overrides disk for loaded docs; null falls back to disk', async () => {

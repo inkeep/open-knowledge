@@ -12,13 +12,20 @@
  * tests in CI would let regressions like the 2xx-with-`type`+`title`
  * misclassification slip through.
  */
+import { summarizeLintPluginFailures } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { z } from 'zod';
 
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
+import {
+  formatValidatorDegradationWarning,
+  formatValidatorFailureWarning,
+} from '../../lint/validation-audit.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
 import {
+  AUDIT_WARNING_CAP,
+  capAuditWarnings,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
   httpPost,
@@ -32,6 +39,36 @@ import {
   textPlusStructured,
   textResult,
 } from './shared.ts';
+
+describe('capAuditWarnings', () => {
+  test('retains late validator-attributed failures ahead of generic warnings', () => {
+    const generic = Array.from({ length: AUDIT_WARNING_CAP }, (_, i) => `could not read ${i}`);
+    const failures = [
+      ...summarizeLintPluginFailures([{ source: 'markdownlint', phase: 'lint', message: 'boom' }]),
+      ...summarizeLintPluginFailures([
+        { source: 'frontmatter', phase: 'lint', docName: 'a.md', message: 'schema exploded' },
+        { source: 'frontmatter', phase: 'lint', docName: 'b.md', message: 'schema exploded' },
+      ]),
+      formatValidatorFailureWarning(
+        { kind: 'source-family', sourceFamily: 'links' },
+        'backlink index is not configured',
+      ),
+      formatValidatorDegradationWarning(
+        'links',
+        'local-target projection unavailable: stale index',
+      ),
+      formatValidatorFailureWarning({ kind: 'validator', id: 'lint' }, 'EACCES'),
+    ];
+
+    const capped = capAuditWarnings([...generic, ...failures]);
+
+    expect(capped.shownWarnings).toEqual([
+      ...failures,
+      ...generic.slice(0, AUDIT_WARNING_CAP - failures.length),
+    ]);
+    expect(capped.omittedWarningCount).toBe(failures.length);
+  });
+});
 
 const TEST_CONFIG: Config = ConfigSchema.parse({ content: { dir: 'content' } });
 

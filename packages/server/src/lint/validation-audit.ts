@@ -13,11 +13,14 @@
 import {
   countDiagnosticsBySource,
   DEFAULT_LINKS_VALIDATION,
+  deriveValidationRunSources,
   type LinksValidationSetting,
   type LinterConfig,
+  type LintPluginId,
   SUPPORTED_DOC_EXTENSIONS,
   type ValidationDiagnostic,
   type ValidationDocCounts,
+  type ValidationSource,
 } from '@inkeep/open-knowledge-core';
 import { isProblemsPlaneExcludedDoc } from '../cc1-broadcast.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
@@ -50,10 +53,15 @@ interface ValidationDerivedIndexReader {
   ): LocalTargetsResult | Promise<LocalTargetsResult>;
 }
 
-interface FileValidationResult {
+export type ValidationDiagnosticFor<Source extends ValidationSource> = Omit<
+  ValidationDiagnostic,
+  'source'
+> & { source: Source };
+
+interface FileValidationResult<Source extends ValidationSource = ValidationSource> {
   /** Path relative to `contentDir`. */
   file: string;
-  diagnostics: ValidationDiagnostic[];
+  diagnostics: ValidationDiagnosticFor<Source>[];
 }
 
 export interface ValidationAuditResult {
@@ -62,6 +70,7 @@ export interface ValidationAuditResult {
   errorCount: number;
   warningCount: number;
   warnings: string[];
+  ran: ValidationSource[];
 }
 
 export interface ValidationAuditCountsResult {
@@ -78,6 +87,10 @@ export interface ValidationAuditCountsResult {
  * (`countDiagnosticsBySource`), only the diagnostic bodies dropped. Callers
  * that keep file-tree tints fresh want the tallies and would discard the
  * bodies immediately; on a large KB those bodies are tens of MB per request.
+ *
+ * `ran` is dropped for the same reason: the only consumer is the tint refresh,
+ * which reads counts and nothing else. Restoring it is additive if a consumer
+ * ever needs coverage off this plane.
  */
 export function toValidationCountsPlane(
   result: ValidationAuditResult,
@@ -99,8 +112,8 @@ export interface ValidationScope {
   targetPath?: string;
 }
 
-interface ValidatorRunResult {
-  files: FileValidationResult[];
+interface ValidatorRunResult<Source extends ValidationSource = ValidationSource> {
+  files: FileValidationResult<Source>[];
   /**
    * In-scope docs this validator scanned as a full-scan authority; 0 when it
    * reads an index instead of walking. The engine keeps the max across
@@ -108,11 +121,67 @@ interface ValidatorRunResult {
    */
   fileCount: number;
   warnings: string[];
+  /**
+   * The families this run actually selected, when they differ from the
+   * validator's declaration — the lint walk narrows to `[]` on its scope
+   * refusals. Omit it and the declaration stands, so a validator cannot vanish
+   * from reported coverage by forgetting to echo what it already declared.
+   */
+  ran?: readonly Source[];
 }
 
-export interface ProjectValidator {
+export interface ProjectValidator<Source extends ValidationSource = ValidationSource> {
   readonly id: string;
-  run(scope: ValidationScope): Promise<ValidatorRunResult>;
+  /**
+   * The public source families this validator selects under the current config.
+   * Required, not optional: the engine reports coverage from it, so a new
+   * validator that omitted it would contribute findings whose `source` never
+   * appears in `ran` — with no type error and no runtime signal.
+   */
+  readonly sourceFamilies: readonly Source[];
+  /**
+   * The family that owns a TOTAL failure of this validator, when it has one.
+   * A static fact, not a config-derived one: the lint validator spans several
+   * families and its walk can fail for reasons that belong to none of them
+   * (a readdir error, a config-composition throw), so it declares nothing and
+   * a failure reports under its own id.
+   */
+  readonly failureSourceFamily?: Source;
+  run(scope: ValidationScope): Promise<ValidatorRunResult<Source>>;
+}
+
+type ValidatorFailureAttribution =
+  | { kind: 'validator'; id: string }
+  | { kind: 'source-family'; sourceFamily: ValidationSource };
+
+/**
+ * Attribute a validator failure in the vocabulary exposed by `ran` whenever a
+ * single source family owns it. MCP `capAuditWarnings` recognizes these
+ * prefixes, so producer wording and cap priority must change together.
+ * Callers that still return findings use `formatValidatorDegradationWarning`.
+ */
+export function formatValidatorFailureWarning(
+  attribution: ValidatorFailureAttribution,
+  message: string,
+): string {
+  return attribution.kind === 'validator'
+    ? `validator "${attribution.id}" failed: ${message}`
+    : `source family "${attribution.sourceFamily}" validation failed: ${message}`;
+}
+
+/**
+ * Attribute a partial degradation when a family produced findings but could
+ * not complete every projection. MCP `capAuditWarnings` recognizes the source
+ * family prefix, while `AUDIT_WARNINGS_DESCRIPTION` quotes the `validation
+ * degraded` suffix; producer wording, cap priority, and field guidance must
+ * change together. This stays cap-safe without claiming the family's whole
+ * contribution is missing.
+ */
+export function formatValidatorDegradationWarning(
+  sourceFamily: ValidationSource,
+  message: string,
+): string {
+  return `source family "${sourceFamily}" validation degraded: ${message}`;
 }
 
 export interface ValidationAuditDeps {
@@ -158,8 +227,10 @@ export async function runValidationAudit(
   // future validator.
   const results = await Promise.all(
     validators.map(async (validator) => {
+      const declared = validator.sourceFamilies;
       try {
-        return await validator.run(scope);
+        const result = await validator.run(scope);
+        return { ...result, ran: result.ran ?? declared };
       } catch (error) {
         // Supersession is not a validator failure — it invalidates the WHOLE
         // plane, so degrading it to a warning would publish the surviving
@@ -172,10 +243,19 @@ export async function runValidationAudit(
           '[audit] validator threw; degrading to a plane warning',
         );
         const message = error instanceof Error ? error.message : String(error);
+        const failureWarning = formatValidatorFailureWarning(
+          validator.failureSourceFamily === undefined
+            ? { kind: 'validator', id: validator.id }
+            : { kind: 'source-family', sourceFamily: validator.failureSourceFamily },
+          message,
+        );
         return {
           files: [],
           fileCount: 0,
-          warnings: [`validator "${validator.id}" failed: ${message}`],
+          warnings: [failureWarning],
+          // Selected-and-attempted stays in `ran`; the warning beside it says
+          // the attempt could not finish.
+          ran: declared,
         } satisfies ValidatorRunResult;
       }
     }),
@@ -183,9 +263,11 @@ export async function runValidationAudit(
 
   const byFile = new Map<string, ValidationDiagnostic[]>();
   const warnings: string[] = [];
+  const ran = new Set<ValidationSource>();
   let fileCount = 0;
   for (const result of results) {
     warnings.push(...result.warnings);
+    for (const source of result.ran ?? []) ran.add(source);
     fileCount = Math.max(fileCount, result.fileCount);
     for (const entry of result.files) {
       const merged = byFile.get(entry.file);
@@ -207,7 +289,7 @@ export async function runValidationAudit(
     }
   }
 
-  return { files, fileCount, errorCount, warningCount, warnings };
+  return { files, fileCount, errorCount, warningCount, warnings, ran: [...ran] };
 }
 
 function byPosition(a: ValidationDiagnostic, b: ValidationDiagnostic): number {
@@ -219,9 +301,11 @@ function byPosition(a: ValidationDiagnostic, b: ValidationDiagnostic): number {
   );
 }
 
-function createLintValidator(deps: ValidationAuditDeps): ProjectValidator {
+function createLintValidator(deps: ValidationAuditDeps): ProjectValidator<LintPluginId> {
+  const sourceFamilies = deriveValidationRunSources(deps.baseConfig, { mode: 'lint' });
   return {
     id: 'lint',
+    sourceFamilies,
     async run(scope) {
       const audit = await auditProject({
         projectDir: deps.projectDir,
@@ -232,15 +316,30 @@ function createLintValidator(deps: ValidationAuditDeps): ProjectValidator {
         cache: deps.cache,
         auditGeneration: deps.auditGeneration,
       });
-      return { files: audit.files, fileCount: audit.fileCount, warnings: audit.warnings };
+      return {
+        files: audit.files,
+        fileCount: audit.fileCount,
+        warnings: audit.warnings,
+        // The one validator that must echo: the walk narrows to `[]` on its
+        // scope refusals, and no family was selected for execution there.
+        ran: audit.ran,
+      };
     },
   };
 }
 
-function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
+function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator<'links'> {
   const setting = deps.linksValidation ?? DEFAULT_LINKS_VALIDATION;
+  // Extract this validator's contribution from the whole-plane roster rather
+  // than independently recomputing whether the family was selected.
+  const sourceFamilies = deriveValidationRunSources(deps.baseConfig, {
+    mode: 'audit',
+    linksValidation: setting,
+  }).filter((source): source is 'links' => source === 'links');
   return {
     id: 'links',
+    sourceFamilies,
+    failureSourceFamily: 'links',
     async run(scope) {
       // 'off' is a clean empty contribution, not a degradation warning — the
       // project chose to silence link validation.
@@ -252,7 +351,12 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
         return {
           files: [],
           fileCount: 0,
-          warnings: ['links validation unavailable: backlink index is not configured'],
+          warnings: [
+            formatValidatorFailureWarning(
+              { kind: 'source-family', sourceFamily: 'links' },
+              'backlink index is not configured',
+            ),
+          ],
         };
       }
       const startGeneration = deps.auditGeneration?.();
@@ -272,8 +376,8 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
       }
       const deadLinks = await deps.derivedDocumentIndex.getDeadLinks(admitted, sourceFilter);
 
-      const byFile = new Map<string, ValidationDiagnostic[]>();
-      const push = (file: string, diagnostic: ValidationDiagnostic): void => {
+      const byFile = new Map<string, ValidationDiagnosticFor<'links'>[]>();
+      const push = (file: string, diagnostic: ValidationDiagnosticFor<'links'>): void => {
         const diagnostics = byFile.get(file) ?? [];
         diagnostics.push(diagnostic);
         byFile.set(file, diagnostics);
@@ -287,7 +391,10 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
       // resolution method, fallback target) and the same create-page
       // `linkTarget`. Reconciling by source form, as this once did, is a
       // hand-maintained rule that drifts the moment either plane learns a form.
-      const localTargetDiagnostics: Array<{ file: string; diagnostic: ValidationDiagnostic }> = [];
+      const localTargetDiagnostics: Array<{
+        file: string;
+        diagnostic: ValidationDiagnosticFor<'links'>;
+      }> = [];
       const documentTargetsFromAssessment = new Set<string>();
       const resolvedTargetsFromAssessment = new Set<string>();
       const warnings: string[] = [];
@@ -323,7 +430,12 @@ function createLinksValidator(deps: ValidationAuditDeps): ProjectValidator {
           '[audit] local-target projection unavailable; preserving graph link findings',
         );
         const message = error instanceof Error ? error.message : String(error);
-        warnings.push(`local-target validation unavailable: ${message}`);
+        warnings.push(
+          formatValidatorDegradationWarning(
+            'links',
+            `local-target projection unavailable: ${message}`,
+          ),
+        );
       }
 
       for (const { target, sources } of deadLinks) {
@@ -404,7 +516,7 @@ function localTargetMessage(assessment: LocalTargetAssessment, shown: string): s
 function toLocalTargetDiagnostic(
   assessment: LocalTargetAssessment,
   severity: 'error' | 'warning',
-): ValidationDiagnostic | null {
+): ValidationDiagnosticFor<'links'> | null {
   // `reason` is null exactly when the target is `exact`, so this both drops
   // resolved targets and narrows `reason` to a concrete failure below.
   if (assessment.reason === null) return null;
@@ -421,7 +533,7 @@ function toLocalTargetDiagnostic(
   const shown = assessment.resolvedTarget ?? occurrence.href;
   const line = occurrence.line;
   const character = occurrence.column;
-  const diagnostic: ValidationDiagnostic = {
+  const diagnostic: ValidationDiagnosticFor<'links'> = {
     range: { start: { line, character }, end: { line, character } },
     severity,
     source: 'links',

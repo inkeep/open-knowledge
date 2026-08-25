@@ -924,6 +924,62 @@ export const AUDIT_FILE_CAP = 10;
 export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;
 
 /**
+ * Degradation warnings (unreadable files/dirs, an unavailable validator, a lint
+ * plugin that threw) are agent-context-bound like the diagnostics, so the same
+ * ceiling applies to both `lint`'s and `audit`'s project shapes — a project with
+ * many unreadable files must not flood the agent through this channel. The HTTP
+ * endpoints stay the uncapped surface for GUI consumers.
+ */
+export const AUDIT_WARNING_CAP = 10;
+
+const ATTRIBUTED_VALIDATION_FAILURE = /^(?:source(?: family)?|validator) "/;
+
+/**
+ * Keep validator-attributed failures visible when the agent-context warning
+ * channel is capped. Those lines are the join between a selected `ran` family
+ * and its degraded execution; generic file-system warnings remain in arrival
+ * order behind them, and the uncapped HTTP response is left untouched. Config
+ * problems deliberately stay generic: they are partial and name the offending
+ * file rather than claiming an entire source family degraded.
+ */
+export function capAuditWarnings(warnings: readonly string[]): {
+  shownWarnings: string[];
+  omittedWarningCount: number;
+} {
+  const attributed: string[] = [];
+  const generic: string[] = [];
+  for (const warning of warnings) {
+    (ATTRIBUTED_VALIDATION_FAILURE.test(warning) ? attributed : generic).push(warning);
+  }
+  const shownWarnings = [...attributed, ...generic].slice(0, AUDIT_WARNING_CAP);
+  return {
+    shownWarnings,
+    omittedWarningCount: warnings.length - shownWarnings.length,
+  };
+}
+
+/**
+ * The degradation warnings rendered for the text channel. A bare `⚠` line
+ * reads as a benign config nit beside the findings; the header states outright
+ * that the findings above may be partial. One renderer for the `lint` and
+ * `audit` tools so the framing can never silently diverge (same contract as
+ * the shared caps above — the caps bound this channel, this shapes it).
+ */
+export function degradationBlock(
+  kind: 'Lint' | 'Audit',
+  shown: readonly string[],
+  omitted = 0,
+): string[] {
+  const total = shown.length + omitted;
+  if (total === 0) return [];
+  return [
+    `${kind} incomplete — ${total} warning${total === 1 ? '' : 's'} (findings may be partial):`,
+    ...shown.map((warning) => `  ⚠ ${warning}`),
+    ...(omitted > 0 ? [`  … and ${omitted} more warning${omitted === 1 ? '' : 's'}`] : []),
+  ];
+}
+
+/**
  * Structural diagnostic shape the `lint` and `audit` text formatters read —
  * the intersection of both tools' wire payload types (all optional, since it
  * describes loosely-deserialized server output). One definition so the two
