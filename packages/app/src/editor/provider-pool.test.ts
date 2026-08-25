@@ -1370,6 +1370,106 @@ describe('ProviderPool server-instance-ID claim (US-001)', () => {
   });
 });
 
+// Every project window in the packaged desktop app loads the
+// renderer through `loadFile` — a single `file://` origin — and
+// `webPreferences.partition` is set only for slides windows, so every open
+// project shares ONE localStorage. A storage key that is not scoped to the
+// project therefore lets a SIBLING project's window decide this window's
+// branch claim: the pool seeds `lastObservedBranch` from the shared key at
+// cold boot, claims the sibling's branch, and the server correctly rejects
+// it. That is the wedge behind the red "the project's server is on a
+// different branch" banner.
+describe('cross-project storage-key isolation', () => {
+  function makeStubStorage(): {
+    stub: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+    store: Map<string, string>;
+  } {
+    const store = new Map<string, string>();
+    const stub = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+      removeItem: (k: string) => {
+        store.delete(k);
+      },
+    };
+    return { stub, store };
+  }
+
+  test("a sibling project's persisted branch does not become this pool's claim", () => {
+    const { stub } = makeStubStorage();
+    // Window A — project A, on `main`, records its branch into the store
+    // both windows share.
+    const poolA = new ProviderPool(3, DUMMY_WS, {
+      storage: stub,
+      storageNamespace: '/Users/dev/code/project-a',
+    });
+    try {
+      poolA.setObservedBranch('main');
+
+      // Window B — a DIFFERENT project, cold boot (empty in-memory cache),
+      // reading that same shared localStorage.
+      const poolB = new ProviderPool(3, DUMMY_WS, {
+        storage: stub,
+        storageNamespace: '/Users/dev/code/project-b',
+      });
+      try {
+        const entry = poolB.open('doc1');
+        if (!entry) throw new Error('expected entry');
+        const parsed = parseHocuspocusAuthToken(entry.provider.configuration.token as string);
+        if (!parsed) throw new Error('expected valid token');
+        // B has never observed a branch of its own, so it must claim
+        // nothing. Claiming A's `main` is exactly what the server rejects.
+        expect(parsed.expectedBranch).toBeUndefined();
+      } finally {
+        poolB.dispose();
+      }
+    } finally {
+      poolA.dispose();
+    }
+  });
+
+  test('an empty namespace is scoped, not treated as a web host', () => {
+    // `''` reaches the pool when an Electron host resolves a workspace with
+    // no contentDir — a broken config. It must not fall through to the
+    // app-wide key that correctly-configured windows would then share.
+    const { stub, store } = makeStubStorage();
+    const broken = new ProviderPool(3, DUMMY_WS, { storage: stub, storageNamespace: '' });
+    try {
+      broken.setObservedBranch('main');
+      expect(store.has('ok-last-observed-branch')).toBe(false);
+      expect(store.get('ok-last-observed-branch:811c9dc5')).toBe('main');
+    } finally {
+      broken.dispose();
+    }
+  });
+
+  test('a project still reads back its OWN branch across a cold boot', () => {
+    // Namespacing must not cost us the fresh-tab defense the key exists for:
+    // same project, new pool, still claims what it persisted.
+    const { stub } = makeStubStorage();
+    const namespace = '/Users/dev/code/project-a';
+    const first = new ProviderPool(3, DUMMY_WS, { storage: stub, storageNamespace: namespace });
+    try {
+      first.setObservedBranch('feature/example');
+    } finally {
+      first.dispose();
+    }
+
+    const second = new ProviderPool(3, DUMMY_WS, { storage: stub, storageNamespace: namespace });
+    try {
+      const entry = second.open('doc1');
+      if (!entry) throw new Error('expected entry');
+      const parsed = parseHocuspocusAuthToken(entry.provider.configuration.token as string);
+      if (!parsed) throw new Error('expected valid token');
+      expect(parsed.expectedBranch).toBe('feature/example');
+    } finally {
+      second.dispose();
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // MECHANISM-ONLY tests for the per-doc lineage-epoch records (the doc-lineage
 // fence's client half): claim derivation, envelope validation, record/drop
@@ -1656,6 +1756,61 @@ describe('ProviderPool doc-lineage epoch records', () => {
     const envelope = JSON.parse(raw) as { epochs: Record<string, string> };
     expect(envelope.epochs[renamedDoc]).toBeUndefined();
     expect(envelope.epochs[deletedDoc]).toBeUndefined();
+  });
+
+  // Cross-project isolation for the envelope key. Both pools here share one
+  // storage stub, one document path and one server instance, and neither has
+  // observed a branch — so the project namespace is the ONLY thing that can
+  // separate them. Drop it and B reads back an epoch minted for A's document.
+  test("a sibling project cannot read back this project's lineage envelope", () => {
+    const { stub, store } = makeStubStorage();
+    const docName = uniqueDocName('pp-lineage-cross-project');
+
+    const projectA = new ProviderPool(3, DUMMY_WS, {
+      storage: stub,
+      storageNamespace: '/Users/dev/code/project-a',
+      persistenceFactory: vi.fn(makePersistenceStub),
+    });
+    try {
+      projectA.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+      const entryA = projectA.open(docName);
+      if (!entryA) throw new Error('expected entry');
+      entryA.provider.document.getMap('lifecycle').set('epoch', 'epoch-project-a');
+      entryA.provider.emit('synced', { state: true });
+      // A's envelope went to its own scoped key, never the app-wide one.
+      expect(store.get(ENVELOPE_KEY)).toBeUndefined();
+    } finally {
+      projectA.dispose();
+    }
+
+    const projectB = new ProviderPool(3, DUMMY_WS, {
+      storage: stub,
+      storageNamespace: '/Users/dev/code/project-b',
+      persistenceFactory: vi.fn(makePersistenceStub),
+    });
+    try {
+      projectB.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+      const entryB = projectB.open(docName);
+      if (!entryB) throw new Error('expected entry');
+      expect(tokenOf(entryB).expectedDocLineageEpoch).toBeUndefined();
+    } finally {
+      projectB.dispose();
+    }
+
+    // ...and the scoping must not cost A its own round-trip.
+    const projectAAgain = new ProviderPool(3, DUMMY_WS, {
+      storage: stub,
+      storageNamespace: '/Users/dev/code/project-a',
+      persistenceFactory: vi.fn(makePersistenceStub),
+    });
+    try {
+      projectAAgain.setExpectedServerInstanceId(TEST_SERVER_INSTANCE_ID);
+      const entryA2 = projectAAgain.open(docName);
+      if (!entryA2) throw new Error('expected entry');
+      expect(tokenOf(entryA2).expectedDocLineageEpoch).toBe('epoch-project-a');
+    } finally {
+      projectAAgain.dispose();
+    }
   });
 });
 

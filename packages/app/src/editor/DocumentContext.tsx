@@ -36,6 +36,7 @@ import {
   shouldSuppressTabSessionRestore,
 } from '@/lib/tab-session-restore-suppression';
 import { useCollabUrl } from '@/lib/use-collab-url';
+import { resolveSyncWorkspace } from '@/lib/use-workspace';
 import { getEditorForDoc } from './active-editor';
 import { handleBranchSwitched } from './branch-invalidation';
 import {
@@ -467,7 +468,13 @@ let pool: ProviderPool | null = null;
 
 export function getPool(collabUrl: string): ProviderPool {
   if (!pool) {
-    pool = new ProviderPool(MAX_POOL, collabUrl);
+    // Scope the pool's localStorage keys to THIS project — `scopedStorageKey`
+    // carries the why. `resolveSyncWorkspace()` is the right resolver here
+    // because it answers synchronously on Electron, the host where the
+    // collision exists, so the very first key this pool touches is scoped.
+    pool = new ProviderPool(MAX_POOL, collabUrl, {
+      storageNamespace: resolveSyncWorkspace()?.contentDir ?? null,
+    });
     // Wire the editor cache to the pool's eviction events. Without this
     // subscription, cached `Editor` / `EditorView` instances would
     // outlive the Y.Doc they're bound to. Single subscription per pool

@@ -2,6 +2,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   addsBlankLines,
   composeWithDerivedBody,
+  fnv1aDigest,
   LINEAGE_EPOCH_KEY,
   MarkdownManager,
   normalizeBridge,
@@ -373,14 +374,59 @@ class StoredEpochPeekTimeoutError extends Error {
  * `ProviderPool` to seed the cross-branch defense's in-memory cache on
  * a fresh tab so the very first auth-token claim is checked against
  * the server's current branch (closes the fresh-tab-with-stale-IDB
- * gap). Single key per origin is fine — a single Hocuspocus server's
- * branch is global to the project.
+ * gap). Scoped per project by `scopedStorageKey` — see that helper for why
+ * one key per ORIGIN is not one key per project.
  */
 const LAST_OBSERVED_BRANCH_KEY = 'ok-last-observed-branch';
 
 /**
+ * Scope a client-persistence storage key to a single project.
+ *
+ * A packaged desktop window loads the renderer through `loadFile`, so every
+ * project window shares the one `file://` origin (`webPreferences.partition`
+ * is set only for slides windows). One key per origin therefore means one key
+ * for EVERY open project, and whichever window wrote last decides what the
+ * next cold boot reads back. For the branch claim that is load-bearing: a
+ * window seeds `lastObservedBranch` from the shared key, claims a sibling
+ * project's branch, and the server correctly rejects it — the doc wedges and
+ * the red branch-mismatch banner goes up.
+ *
+ * `namespace` is the project's content dir, digested so no absolute home path
+ * lands in localStorage. Nothing prunes: the pre-scoping unscoped keys are
+ * left behind once, and one scoped pair accrues per project ever opened.
+ * Both are bounded and inert, which is why this ships without a migration —
+ * adopting the old value would import the sibling-project claim it removes. A null namespace returns the bare key, which is
+ * correct for web hosts: those are served per project on
+ * `http://127.0.0.1:<port>`, so the origin already isolates them.
+ *
+ * **This origin is shared by more than these two keys.** The same cause has
+ * now been mitigated three times independently — `localTabSessionKeyForMode`
+ * in `editor-tabs.ts` opts note windows out of tab persistence, and
+ * `dock-session-persistence.ts` routes through the main process — so a new
+ * storage surface should scope itself here rather than rediscover the bug.
+ * Scoping the ORIGIN instead (a per-project `webPreferences.partition`) was
+ * considered and rejected: it silently bypasses the `defaultSession`-only
+ * `webRequest` hooks and spellchecker config, forks genuinely app-global
+ * prefs such as theme and language, and orphans every existing `ok-ydoc:*`
+ * store.
+ */
+function scopedStorageKey(baseKey: string, namespace: string | null): string {
+  // `null` only — an empty string is a broken Electron config, not a web
+  // host, and it must not fall through to the shared app-wide key. It
+  // digests to a fixed non-bare suffix, so such windows share with each
+  // other rather than with correctly-configured ones.
+  if (namespace === null) return baseKey;
+  return `${baseKey}:${fnv1aDigest(namespace)}`;
+}
+
+/**
  * localStorage key for the persisted per-doc lineage-epoch records.
- * Single envelope per origin:
+ * Scoped per project by `scopedStorageKey`, for the same reason the branch
+ * key is: a sibling project's window shares this origin's localStorage, and
+ * its write would clobber this project's envelope. A clobbered read still
+ * fails safe via the validation below, but the fence it feeds goes silently
+ * dead until the next learned epoch.
+ * Single envelope per project:
  * `{ branch, serverInstanceId, epochs: Record<docName, epoch> }` —
  * validated against the current observed branch + live instance id on
  * load, so a stale envelope (server restarted, branch switched) is
@@ -661,6 +707,14 @@ export class ProviderPool {
    */
   private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
 
+  /**
+   * Project-scoped storage keys, resolved once at construction from
+   * `options.storageNamespace`. See `scopedStorageKey` for why the bare
+   * constants cannot be used directly in a packaged desktop window.
+   */
+  private readonly lastObservedBranchKey: string;
+  private readonly docLineageEpochsKey: string;
+
   constructor(
     maxSize: number,
     wsUrl: string,
@@ -668,6 +722,12 @@ export class ProviderPool {
       recycleDebounceMs?: number;
       clearDataTimeoutMs?: number;
       storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
+      /**
+       * Project identity (the content dir) that scopes this pool's storage
+       * keys. Omit / null on hosts where the origin already isolates
+       * projects. See `scopedStorageKey`.
+       */
+      storageNamespace?: string | null;
       persistenceFactory?: ClientPersistenceFactory;
       peekStoredLineageEpoch?: PeekStoredLineageEpoch;
     },
@@ -689,6 +749,9 @@ export class ProviderPool {
       this.storage =
         typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
     }
+    const storageNamespace = options?.storageNamespace ?? null;
+    this.lastObservedBranchKey = scopedStorageKey(LAST_OBSERVED_BRANCH_KEY, storageNamespace);
+    this.docLineageEpochsKey = scopedStorageKey(DOC_LINEAGE_EPOCHS_KEY, storageNamespace);
   }
 
   /**
@@ -1193,7 +1256,7 @@ export class ProviderPool {
     if (this.lastObservedBranchInitialized) return this.lastObservedBranch;
     this.lastObservedBranchInitialized = true;
     try {
-      const stored = this.storage?.getItem(LAST_OBSERVED_BRANCH_KEY) ?? null;
+      const stored = this.storage?.getItem(this.lastObservedBranchKey) ?? null;
       if (stored !== null && stored.length > 0) {
         this.lastObservedBranch = stored;
       }
@@ -1214,9 +1277,9 @@ export class ProviderPool {
     this.lastObservedBranchInitialized = true;
     try {
       if (branch === null || branch.length === 0) {
-        this.storage?.removeItem(LAST_OBSERVED_BRANCH_KEY);
+        this.storage?.removeItem(this.lastObservedBranchKey);
       } else {
-        this.storage?.setItem(LAST_OBSERVED_BRANCH_KEY, branch);
+        this.storage?.setItem(this.lastObservedBranchKey, branch);
       }
     } catch {
       // Storage write failures are non-fatal — see read-side comment.
@@ -1272,7 +1335,7 @@ export class ProviderPool {
     if (instanceId === null || instanceId.length === 0) return;
     this.docLineageEpochsEnvelopeConsumed = true;
     try {
-      const raw = this.storage?.getItem(DOC_LINEAGE_EPOCHS_KEY) ?? null;
+      const raw = this.storage?.getItem(this.docLineageEpochsKey) ?? null;
       if (raw === null) return;
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) return;
@@ -1323,7 +1386,7 @@ export class ProviderPool {
     if (instanceId === null || instanceId.length === 0) return;
     try {
       this.storage?.setItem(
-        DOC_LINEAGE_EPOCHS_KEY,
+        this.docLineageEpochsKey,
         JSON.stringify({
           branch: this.normalizedObservedBranch(),
           serverInstanceId: instanceId,
