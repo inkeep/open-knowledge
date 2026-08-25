@@ -78,8 +78,9 @@ export const CellInsertionGate = Extension.create({
           // CRDT-origin transactions (remote peers, agent writes, disk load,
           // and y-undo replays) re-enter tagged with ySync meta. Rejecting one
           // would desync this client's PM view from the shared Y.Doc, so the
-          // gate is producer-side only. Same origin discipline the typed
-          // autolink plugin uses.
+          // gate is producer-side only. Deliberately the CRDT arm alone rather
+          // than `isUserIntentOrigin`: this is a budget on what ends up inside
+          // a cell, so a local edit is subject to it whoever issued it.
           if (tr.getMeta(ySyncPluginKey)) return true;
           if (!tr.docChanged) return true;
           // Pre-check keeps ordinary typing (and editing inside an existing

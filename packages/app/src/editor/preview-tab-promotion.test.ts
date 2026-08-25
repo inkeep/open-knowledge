@@ -1,7 +1,11 @@
 import { Annotation, Transaction as CMTransaction, EditorState } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
+import { getSchema } from '@tiptap/core';
+import { EditorState as PMEditorState } from '@tiptap/pm/state';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { markAutonomousFragmentEdit } from './extensions/autonomous-fragment-edit';
+import { sharedExtensions } from './extensions/shared';
 import {
   isUserIntentCmUpdate,
   isUserIntentPmTransaction,
@@ -50,6 +54,24 @@ describe('isUserIntentPmTransaction', () => {
     // Arrow keys and clicks produce these constantly; promoting on them would
     // make every previewed doc permanent the moment it took focus.
     expect(isUserIntentPmTransaction(pmTransaction(false))).toBe(false);
+  });
+
+  test('a NodeView representation swap is not a user edit', () => {
+    // Built through the production stamp on a real transaction rather than a
+    // stub, so the test cannot pass by agreeing with itself about a meta key.
+    // A document holding an unregistered JSX component auto-converts it on
+    // open, so reading one must not make its preview tab permanent.
+    const schema = getSchema(sharedExtensions);
+    const state = PMEditorState.create({
+      doc: schema.node('doc', null, [schema.node('paragraph', null, [schema.text('body')])]),
+    });
+    const swap = markAutonomousFragmentEdit(state.tr.insertText('x', 1));
+
+    expect(swap.docChanged).toBe(true);
+    expect(isUserIntentPmTransaction(swap)).toBe(false);
+    // The same transaction without the stamp still reads as a user edit, so
+    // the stamp is what carries the property.
+    expect(isUserIntentPmTransaction(state.tr.insertText('x', 1))).toBe(true);
   });
 
   test('any present sync meta counts as sync, whatever its shape', () => {

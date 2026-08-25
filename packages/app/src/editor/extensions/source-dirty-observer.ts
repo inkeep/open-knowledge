@@ -4,18 +4,13 @@
  * Watches PM transactions and marks jsxComponent nodes as sourceDirty:true
  * when their content or structured attrs change via user-intent transactions.
  *
- * Deny-listed origins (non-user-intent):
- * - y-prosemirror sync (ySyncPluginKey meta) — covers:
- *   - sync-from-text (Observer B)
- *   - sync-from-tree (Observer A)
- *   - agent-write (server agent-sessions)
- *   - rollback-apply (Timeline rollback)
- *   - remote WebSocket updates
- * - All of these arrive as PM transactions with ySyncPluginKey meta set
- *   to { isChangeOrigin: true } by y-prosemirror's sync plugin.
- *
- * Only user-intent transactions (keyboard, PropPanel, paste, drag-drop)
- * produce PM transactions without ySyncPluginKey meta — these mark dirty.
+ * Two origins are deny-listed, and absence of `ySyncPluginKey` meta alone is
+ * therefore NOT sufficient to call a transaction user-intent: CRDT sync, and a
+ * NodeView's own representation swap. `isUserIntentOrigin` holds the canonical
+ * enumeration of both; `markAutonomousFragmentEdit` holds the consequence of
+ * getting the second one wrong, which lands hardest on this plugin. A
+ * transaction carrying neither marker is the user's (keyboard, PropPanel,
+ * paste, drag-drop) and marks dirty.
  *
  * jsxInline dirty-marking is owned by JsxInlineView's PropPanel commit
  * (position-targeted `setNodeMarkup` with `sourceDirty: true`), not this
@@ -25,17 +20,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Mapping } from '@tiptap/pm/transform';
-// Sourced from @tiptap/y-tiptap (TipTap v3 official path), not y-prosemirror
-// directly. This file's correctness depends on `tr.getMeta(ySyncPluginKey)`
-// returning the meta value the y-prosemirror sync plugin sets when emitting
-// CRDT-origin transactions — which only works if the PluginKey identity is
-// the SAME constant the producer used. `@tiptap/y-tiptap` re-exports the
-// y-prosemirror plugin keys from a single module-level instance; importing
-// directly from `y-prosemirror` here would create a second PluginKey
-// identity and silently make the origin-guard miss every CRDT-origin
-// transaction (incorrectly marking them dirty). Aligns with bridge-id-plugin.ts
-// + editor-cache.ts.
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { isUserIntentOrigin } from './autonomous-fragment-edit.ts';
 
 /**
  * Stable PluginKey so consumers outside this file can locate the plugin
@@ -55,18 +40,11 @@ export const SourceDirtyObserver = Extension.create({
       new Plugin({
         key: sourceDirtyPluginKey,
         appendTransaction(transactions, oldState, newState) {
-          // Skip if any transaction is from CRDT sync (not user-intent)
-          const hasUserTransaction = transactions.some((tr) => {
-            // y-prosemirror sets ySyncPluginKey meta on CRDT-origin transactions
-            const syncMeta = tr.getMeta(ySyncPluginKey);
-            return !syncMeta;
-          });
-
-          if (!hasUserTransaction) return null;
-
-          // Only process transactions that actually changed the doc
-          const docChanged = transactions.some((tr) => tr.docChanged);
-          if (!docChanged) return null;
+          // One predicate over both conditions, so the transaction that admits
+          // the batch has to be the one that changed the document. Tested
+          // separately, a batch pairing a stamped swap with a user
+          // selection-only transaction would satisfy both and mark dirty.
+          if (!transactions.some((tr) => tr.docChanged && isUserIntentOrigin(tr))) return null;
 
           // Build a combined mapping from all transactions to map new-state
           // positions back to old-state positions. Without this, insertions or
@@ -103,13 +81,12 @@ export const SourceDirtyObserver = Extension.create({
             // a verbatim source string — the upgrade path (on-blur
             // rawMdxFallback → jsxComponent), MDX paste, and slash-menu
             // template inserts all produce this shape. Marking these dirty
-            // forces the auto-convert / serialize path to re-emit via the
-            // to-markdown handler's canonical `<Open>\n\n<children>\n\n
-            // <Close>` form, clobbering the user's exact input (e.g.,
-            // `<Foo>\ntext\n</Foo>` serializes to `<Foo>\n\ntext\n\n
-            // </Foo>`). Preserving sourceRaw here maintains the
-            // "pristine → sourceRaw verbatim" invariant for newly-inserted
-            // components.
+            // routes them onto the reconstruct path, which re-spells the
+            // container boundary rather than emitting what the user wrote;
+            // the byte direction lives at `upstreamMdxJsxFlowHandler` in
+            // `to-markdown-handlers.ts`, not restated here. Preserving
+            // sourceRaw maintains the "pristine → sourceRaw verbatim"
+            // invariant for newly-inserted components.
             //
             // This does NOT apply to user edits on existing jsxComponents:
             // a prop edit via `setNodeMarkup` spreads the old attrs

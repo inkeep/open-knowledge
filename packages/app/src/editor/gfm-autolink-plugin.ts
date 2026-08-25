@@ -11,15 +11,16 @@
  * Two properties keep this safe in OK's multi-writer CRDT, and both are
  * structural rather than conventional:
  *
- *  - Origin guard. Peer, agent, disk-load, and observer-echo edits re-enter the
- *    editor as ProseMirror transactions tagged with `ySyncPluginKey` meta.
- *    Linkifying any of those would rewrite another writer's text across every
- *    connected client. The plugin skips the whole batch the moment any member
- *    carries that meta (fail-closed). A pooled, backgrounded editor also
- *    receives those updates and its provider is live even while hidden, so
- *    detection additionally requires the bound view to be the active/focused
- *    one — a stray local write into a hidden editor can never convert. This is
- *    the same `ySyncPluginKey` origin discipline as source-dirty-observer.ts.
+ *  - Origin guard. Anything the local user did not type — see
+ *    `isUserIntentOrigin` for what that covers — must not linkify: rewriting a
+ *    peer's text propagates to every connected client, and rewriting a
+ *    raw-source fallback's bytes destroys the source it exists to preserve.
+ *    The guard is fail-closed over the WHOLE batch: one member that fails the
+ *    predicate disqualifies every transaction dispatched with it. A pooled,
+ *    backgrounded editor also receives those updates and its provider is live
+ *    even while hidden, so detection additionally requires the bound view to be
+ *    the active/focused one — a stray local write into a hidden editor can
+ *    never convert.
  *
  *  - Undo isolation. The mark is added as its OWN ProseMirror dispatch a
  *    microtask after the typing flush, never returned from `appendTransaction`.
@@ -47,7 +48,7 @@ import {
 } from '@tiptap/core';
 import { type EditorState, Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit';
 import { detectGfmLinkToken } from './gfm-link-detector';
 import { isCodeTextblock, rangeHasCodeMark } from './literal-text-context';
 import { dispatchAsOwnUndoStep } from './undo-isolation';
@@ -234,10 +235,11 @@ function gfmAutolinkPlugin(options: GfmAutolinkPluginOptions = {}): Plugin {
       };
     },
     appendTransaction(transactions, oldState, newState) {
-      // Fail-closed origin guard: any CRDT-sync-tagged transaction in the batch
-      // (remote peer, agent, disk load, observer echo) disqualifies the whole
-      // batch. Also honour explicit autolink suppression.
-      if (transactions.some((tr) => tr.getMeta(ySyncPluginKey))) return null;
+      // Fail-closed origin guard: one transaction the user did not author
+      // (remote peer, agent, disk load, observer echo, or a NodeView's own
+      // representation swap) disqualifies the whole batch. Also honour explicit
+      // autolink suppression.
+      if (!transactions.every(isUserIntentOrigin)) return null;
       if (transactions.some((tr) => tr.getMeta(PREVENT_AUTOLINK_META))) return null;
 
       const docChanged = transactions.some((tr) => tr.docChanged) && !oldState.doc.eq(newState.doc);

@@ -37,14 +37,8 @@ import { Transaction as CMTransaction } from '@codemirror/state';
 import type { ViewUpdate } from '@codemirror/view';
 import type { FrontmatterBinding } from '@inkeep/open-knowledge-core';
 import type { Transaction as PMTransaction } from '@tiptap/pm/state';
-// Sourced from `@tiptap/y-tiptap`, never `y-prosemirror` directly: the origin
-// guard below compares against the PluginKey identity the y-prosemirror sync
-// plugin used when it stamped the meta. A second PluginKey instance silently
-// matches nothing, which would classify every CRDT-origin transaction as a user
-// edit and promote tabs on agent writes. Aligns with source-dirty-observer.ts,
-// bridge-id-plugin.ts, and editor-cache.ts.
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { docTabId } from './editor-tabs';
+import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit';
 
 type PreviewTabPromotionListener = (tabId: string) => void;
 
@@ -158,15 +152,20 @@ export function withPreviewTabPromotion(
 /**
  * Whether a ProseMirror transaction is a content change the user made.
  *
- * y-prosemirror stamps `ySyncPluginKey` meta on every transaction it injects
- * from the CRDT — remote peers, agent writes, rollback-apply, and both server
- * observer directions. Only local user intent (typing, paste, drag-drop,
- * node-view commits) arrives without it. Mirrors source-dirty-observer.ts,
- * which uses this same discipline to decide what counts as a user edit.
+ * Origin is `isUserIntentOrigin`'s call, not this module's — sharing it is what
+ * keeps a tab from going permanent on something the user did not do. Both arms
+ * matter here: a CRDT-origin transaction means someone else wrote, and an
+ * autonomous representation swap means nobody wrote at all. A document holding
+ * an unregistered JSX component auto-converts it on open, so without the second
+ * arm merely reading such a document promotes its preview tab.
+ *
+ * `docChanged` is this module's own condition: arrow keys, Escape and Cmd+C all
+ * produce user-origin transactions that leave the document untouched, and a tab
+ * the user only navigated around is still provisional.
  */
 export function isUserIntentPmTransaction(transaction: PMTransaction): boolean {
   if (!transaction.docChanged) return false;
-  return !transaction.getMeta(ySyncPluginKey);
+  return isUserIntentOrigin(transaction);
 }
 
 /**

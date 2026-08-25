@@ -178,4 +178,35 @@ test.describe('preview-tab promotion', () => {
     await sidebarTreeItem(page, `${second}.md`).click();
     await expectOpenTabs(page, [second]);
   });
+
+  test('an unregistered component does NOT promote a tab you are only reading', async ({
+    page,
+    api,
+  }) => {
+    // The editor converts an unregistered component to a raw-source view by
+    // itself, on open, with no user involved. That dispatch changes the
+    // document and carries no CRDT meta, so it is indistinguishable from a
+    // keystroke unless the swap is stamped. Needs the browser: the conversion
+    // runs off the real NodeView effect and its rAF, which no jsdom tier
+    // reaches.
+    const { first, second } = await seedTwoDocs(api, page);
+    await api.replaceDoc(first, '<Steps>\n\n<Step>\n\nContent one.\n\n</Step>\n\n</Steps>\n');
+
+    await sidebarTreeItem(page, `${first}.md`).click();
+    await waitForProvider(page);
+    // Wait on the raw-source view the conversion PRODUCES, not on the body
+    // text: the pre-conversion placeholder renders that text too, so it would
+    // satisfy the assertion even if the auto-convert silently stopped firing
+    // and there were no autonomous transaction left to misclassify.
+    await expect(page.locator('.raw-mdx-fallback-wrapper').first()).toBeAttached({
+      timeout: 10_000,
+    });
+
+    await expectPreviewTab(editorTab(page, `${first}.md`), true);
+
+    // The provisional slot is still reusable, which is what the italic cue
+    // promises.
+    await sidebarTreeItem(page, `${second}.md`).click();
+    await expectOpenTabs(page, [second]);
+  });
 });
