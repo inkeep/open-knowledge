@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-Opening two projects at once no longer wedges one of them behind a red "the project's server is on a different branch than this window" banner. Each window remembers the git branch it last saw so that a freshly restored window can prove to the server which branch its cached content belongs to. That memory was stored under a single key shared by every open project, because it was scoped to the app rather than to the project. Whichever window wrote last decided what the next window read, so a window could start up claiming a completely different project's branch. The server correctly rejected the mismatched claim, the document then failed to load for 30 seconds, and the banner blamed the server even though the server was on the right branch the whole time. This was most visible right after an update, when every window restarts and reads that memory at once. Each project now keeps its own copy, so one project can no longer answer for another. The per-document lineage records, which had the same app-wide scope, are now per project as well.
