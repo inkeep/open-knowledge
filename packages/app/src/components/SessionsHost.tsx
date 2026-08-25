@@ -41,6 +41,7 @@ import {
 import {
   getAgentThreadClient,
   useAgentThreadConnection,
+  useAgentThreadUnread,
   useArchivedAgentThreads,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
@@ -214,10 +215,56 @@ function terminalTabIcon(): ReactNode {
   );
 }
 
-/** The agent avatar + live status dot the strip shows before a thread tab's label. */
-function threadTabIcon(info: ThreadInfo | undefined): ReactNode {
+/**
+ * Palette of per-thread tint ring colors — a fixed 8-hue set so identical
+ * hashes always land on identical colors and Tailwind's JIT can see every
+ * class up front. Small (`ring-1`) to stay quiet against the tab surface.
+ *
+ * Chosen to be DISJOINT from the status-dot palette in `threadStatusDotClass`
+ * (rose/red = error, amber = running/blocked, emerald = ready, sky =
+ * installing) so identity tint and lifecycle status read as two independent
+ * channels inside the same 14px cluster. A "blocked" amber dot next to an
+ * amber identity ring reads as pure alarm.
+ */
+const THREAD_TINT_RINGS: readonly string[] = [
+  'ring-violet-400/60',
+  'ring-fuchsia-400/60',
+  'ring-pink-400/60',
+  'ring-cyan-400/60',
+  'ring-teal-400/60',
+  'ring-lime-400/60',
+  'ring-yellow-400/60',
+  'ring-stone-400/60',
+];
+
+/** Deterministic djb2 hash → palette index. Same threadId → same tint. */
+function threadTintClass(threadId: string): string {
+  let hash = 5381;
+  for (let i = 0; i < threadId.length; i++) {
+    hash = ((hash << 5) + hash + threadId.charCodeAt(i)) >>> 0;
+  }
+  return THREAD_TINT_RINGS[hash % THREAD_TINT_RINGS.length] ?? 'ring-transparent';
+}
+
+/**
+ * The agent avatar + live status dot the strip shows before a thread tab's
+ * label. Reads its own reactive "unread since last view" flag so a settled
+ * `ready` tab can pulse when a background reply lands. A stable per-thread
+ * tint ring gives each thread a persistent visual identity so a strip of
+ * "Claude" tabs no longer relies on truncated title text alone.
+ */
+function ThreadTabIcon({
+  info,
+  threadId,
+}: {
+  info: ThreadInfo | undefined;
+  threadId: string;
+}): ReactNode {
+  const unread = useAgentThreadUnread(threadId);
   return (
-    <span className="relative inline-flex shrink-0">
+    <span
+      className={cn('relative inline-flex shrink-0 rounded-full ring-1', threadTintClass(threadId))}
+    >
       <RegisteredAgentIcon
         agentId={info?.agent.id ?? ''}
         iconUrl={info?.agent.iconUrl}
@@ -228,6 +275,10 @@ function threadTabIcon(info: ThreadInfo | undefined): ReactNode {
           className={cn(
             '-right-0.5 -bottom-0.5 absolute size-1.5 rounded-full ring-1 ring-background',
             threadStatusDotClass(info.status),
+            // A settled tab whose activity outran the last view pulses the
+            // dot — the running/blocked states already carry their own
+            // pulse via `threadStatusDotClass`, so we only opt in on ready.
+            unread && info.status === 'ready' && 'animate-pulse',
           )}
           aria-hidden="true"
         />
@@ -1631,13 +1682,34 @@ export function SessionsHost({
     if (active != null) focusSession(active);
   }, [isShowing]);
 
+  // Mark the active thread tab as viewed — clears its "unread since last view"
+  // pulse. Fires on tab activation AND on incoming activity while the tab is
+  // already active (so ongoing chatter doesn't accumulate a stale unread
+  // flag). Skipped while the whole panel is hidden — activity that lands
+  // then is genuinely unread until the panel re-reveals.
+  const activeThreadIdForView = (() => {
+    const active = sessions.find((s) => s.id === activeSessionId);
+    return active?.kind === 'thread' ? active.threadId : null;
+  })();
+  const activeThreadInfoForView =
+    activeThreadIdForView !== null ? threadInfoById.get(activeThreadIdForView) : undefined;
+  const activeThreadActivityAt = activeThreadInfoForView?.lastActivityAt ?? null;
+  const activeThreadStatus = activeThreadInfoForView?.status ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `activeThreadActivityAt` and `activeThreadStatus` are not read inside the effect body — they are dep-only, so an incoming activity tick OR a status transition (running → ready without a fresh activityAt) both re-fire the mark-viewed call. Without the status dep, a ready-flip on an unchanged activityAt would leave the tab pulsing forever.
+  useEffect(() => {
+    if (!isShowing || activeThreadIdForView === null) return;
+    getAgentThreadClient().markThreadViewed(activeThreadIdForView);
+  }, [activeThreadIdForView, activeThreadActivityAt, activeThreadStatus, isShowing]);
+
   const tabDescriptors: TerminalTabDescriptor[] = sessions.map((session) => ({
     id: session.id,
     label: sessionLabel(session),
     icon:
-      session.kind === 'terminal'
-        ? terminalTabIcon()
-        : threadTabIcon(threadInfoById.get(session.threadId)),
+      session.kind === 'terminal' ? (
+        terminalTabIcon()
+      ) : (
+        <ThreadTabIcon info={threadInfoById.get(session.threadId)} threadId={session.threadId} />
+      ),
   }));
 
   // Panels render in STABLE order (by immutable ordinal), decoupled from tab order:

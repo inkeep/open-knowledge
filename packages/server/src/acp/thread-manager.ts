@@ -2858,7 +2858,7 @@ export class AcpThreadManager {
       // the tab label. One-shot: cleared so later prompts derive from content.
       const source = t.titleHint !== undefined && t.titleHint.trim() !== '' ? t.titleHint : content;
       t.titleHint = undefined;
-      t.info.title = deriveThreadTitle(source);
+      t.info.title = deriveThreadTitle(source, t.info.agent.name);
       this.appendEvent(t, { kind: 'title_changed', title: t.info.title, ts: Date.now() });
       this.emitInfo(t);
     }
