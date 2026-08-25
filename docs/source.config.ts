@@ -12,6 +12,11 @@ export const docs = defineDocs({
       includeProcessedMarkdown: true,
     },
     schema: frontmatterSchema.extend({
+      // Optional short label for this page's row in the docs sidebar, for
+      // titles that would wrap its single-line rows. The page still shows
+      // `title` elsewhere, so prefer a shortening of it over a different name.
+      // The value is trimmed, and a blank one falls back to `title`. Folder
+      // rows and separators come from meta.json instead.
       sidebarTitle: z.string().optional(),
       keywords: z.string().optional(),
       // Set `footer: false` on hub/index pages to hide Fumadocs' prev/next
