@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { DEFAULT_SERVER_HOST } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
   type BrowserWindowLike,
@@ -1195,6 +1196,379 @@ describe('WindowManager', () => {
       expect(env.utilities.length).toBe(0);
     });
 
+    // "Cannot be signalled" and "is not serving" are separate facts, and the
+    // restart path stops at the first one: `terminateServerByPid` reports
+    // `{ ok: false, reason: 'eperm' }` when `killProbe` throws EPERM, and
+    // `restartAttachedServer` returns that verbatim with no fallback. A lock
+    // naming a holder this app cannot signal therefore makes the project
+    // unopenable from inside the app even when the port behind that holder
+    // answers nothing — and the dialog's Stop Server & Retry runs the same
+    // ladder, so there is no user-reachable way out.
+    test('restartAttachedServer breaks a stale lock whose unkillable holder serves nothing', async () => {
+      // The base env's setTimeout only RECORDS timers, which would deadlock the
+      // post-spawn lock poll a successful recreate has to run through.
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const STALE_PID = 870;
+      const FRESH_PID = 22018;
+      const staleLock = { ...liveLock, pid: STALE_PID, port: 42117 };
+      const freshLock = { ...liveLock, pid: FRESH_PID, port: 60222 };
+      let spawned = false;
+      // The stale lock survives until our own respawn replaces it — the
+      // unkillable holder is never going to release it for us.
+      env.deps.readServerLock = () => (spawned ? freshLock : staleLock);
+      // EPERM reads as alive (`isPidAlive`), so liveness cannot break the tie.
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      // 42117 answers nothing; the freshly spawned server does.
+      env.deps.probeWsUpgrade = (url) => Promise.resolve(!url.includes('42117'));
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.spawnDetachedServer = () => {
+        spawned = true;
+        return Promise.resolve({ pid: FRESH_PID });
+      };
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      // Dead-ending on EPERM is the defect: the holder cannot be signalled AND
+      // is not serving, so nothing is lost by breaking its lock.
+      expect(outcome).not.toEqual({ ok: false, reason: 'eperm' });
+      // …and the recreate proceeds onto the freshly spawned server.
+      expect(outcome).toEqual({ ok: true });
+      expect(env.windows.length).toBe(1);
+      const ctx = wm.getContextForBrowserWindow(env.windows[0] as BrowserWindowLike);
+      expect(ctx?.port).toBe(60222);
+      // The break itself, not just its consequence. `readServerLock` is stubbed
+      // to stop returning the stale record once we respawn, so the recreate
+      // would succeed here even if the lock were left on disk — in production it
+      // would not, because the fresh server's own acquire re-reads that file and
+      // its stale detection reads an EPERM pid as alive. Asserting the call
+      // keeps that step from being silently dropped.
+      expect(removeServerLock).toHaveBeenCalledTimes(1);
+      // The LOCK DIR, not the project root. `removeServerLock` unlinks
+      // `<arg>/server.lock` and swallows ENOENT, so handing it the project root
+      // silently turns this entire recovery into a no-op — and an assertion
+      // that merely contains the project path accepts both.
+      expect(removeServerLock.mock.calls[0]?.[0]).toMatch(/[/\\]\.ok[/\\]local$/);
+      expect(removeServerLock.mock.calls[0]?.[0]).toContain('/tmp/dragon');
+      // The identity guard. A health probe stands between the verdict and this
+      // call, which is long enough for the judged holder to exit and a fresh
+      // server to take the lock; the implementation re-reads and unlinks only
+      // if it still names this pid, so the pid has to travel with the request.
+      expect(removeServerLock.mock.calls[0]?.[1]).toEqual({ pid: STALE_PID });
+    });
+
+    // The break can fail for reasons that have nothing to do with the holder:
+    // a read-only `.ok` directory, a file held by something else. This runs on
+    // the path whose whole purpose is to un-wedge a project, so it must degrade
+    // to "could not break it" — replacing a stuck project with a crashed app is
+    // strictly worse. Nothing pinned this, so deleting the try/catch was
+    // invisible to the suite while letting the throw escape an IPC handler.
+    test('restartAttachedServer survives a removeServerLock that throws', async () => {
+      // The graced probe on the break path retries through `deps.setTimeout`,
+      // which the base env only records; drive it so the loop resolves.
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      env.deps.removeServerLock = vi.fn(() => {
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      });
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5151, port: 42117 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      env.deps.probeWsUpgrade = () => Promise.resolve(false);
+      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      env.deps.spawnDetachedServer = spawn;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(spawn).not.toHaveBeenCalled();
+      expect(env.windows.length).toBe(0);
+    });
+
+    // A declined break is not a success. The identity guard can refuse when the
+    // lock no longer names the holder we judged, and treating that as "broken"
+    // would send the recreate at a lock that is still there.
+    test('restartAttachedServer does not proceed when the break is declined', async () => {
+      // The graced probe on the break path retries through `deps.setTimeout`,
+      // which the base env only records; drive it so the loop resolves.
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => false);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5152, port: 42117 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      env.deps.probeWsUpgrade = () => Promise.resolve(false);
+      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      env.deps.spawnDetachedServer = spawn;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(removeServerLock).toHaveBeenCalledTimes(1);
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(spawn).not.toHaveBeenCalled();
+    });
+
+    // The grace on the DESTRUCTIVE path. A transient refusal here deletes a
+    // live server's claim, which is why this path retries rather than acting on
+    // one answer — but every other recovery test stubs a constant probe, so a
+    // reversion to single-shot would be invisible exactly where it costs most.
+    test('the break path retries the probe and stands down when a later attempt answers', async () => {
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5153, port: 42117 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      let probes = 0;
+      // Silent twice, then answers — a holder that was merely slow.
+      env.deps.probeWsUpgrade = () => {
+        probes++;
+        return Promise.resolve(probes >= 3);
+      };
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(probes).toBe(3);
+      // It answered, so it is a live server we merely cannot kill: refuse, and
+      // above all do not break its lock.
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(removeServerLock).not.toHaveBeenCalled();
+    });
+
+    // The guard belongs to the RULE, so both entry states inherit it. Port 0 is
+    // the acquired-but-not-yet-bound sentinel: the probe cannot succeed against
+    // it, and a probe that cannot succeed would read as "not serving" and break
+    // the lock of a server that is merely still coming up.
+    test('restartAttachedServer leaves the lock alone when the holder has not bound a port', async () => {
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      // port 0 — acquired, still booting.
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5154, port: 0 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      const probe = vi.fn(() => Promise.resolve(false));
+      env.deps.probeWsUpgrade = probe;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(removeServerLock).not.toHaveBeenCalled();
+      // Not even probed: there is nothing at port 0 to ask.
+      expect(probe).not.toHaveBeenCalled();
+    });
+
+    // `port` is typed `number` but never validated at runtime — `readProcessLock`
+    // checks only `pid` and casts the rest — so these all arrive in production,
+    // and every one survives a `port <= 0` test (`undefined <= 0` is a NaN
+    // comparison, hence false).
+    //
+    // None of them can denote a listening server, so there is nothing to strand
+    // by breaking the claim — and refusing would wedge the project forever.
+    // `runClean` is not a route out for any of them: its classifier reads only
+    // the pid and the file's parseability, never `port`, so a lock advertising
+    // `Infinity` is `alive` to it and survives every sweep.
+    test.each([
+      ['absent', undefined],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['out of range', 70000],
+      ['non-integer', 1.5],
+      ['a non-numeric string', 'not-a-port'],
+    ])('restartAttachedServer breaks a lock whose port is %s', async (_label, port) => {
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      let spawned = false;
+      env.deps.readServerLock = () =>
+        (spawned
+          ? { ...liveLock, pid: 22018, port: 60222 }
+          : { ...liveLock, pid: 5155, port }) as unknown as ServerLockMetadataLike;
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      env.deps.probeWsUpgrade = () => Promise.resolve(true);
+      env.deps.spawnDetachedServer = () => {
+        spawned = true;
+        return Promise.resolve({ pid: 22018 });
+      };
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: true });
+      expect(removeServerLock).toHaveBeenCalledTimes(1);
+    });
+
+    // `lockApiOrigin` resolves `url` BEFORE `port`, so an undialable port field
+    // on a lock carrying a usable url is not evidence that nothing is behind
+    // it. Breaking without asking would destroy a live server's claim on the
+    // strength of a field we never dial.
+    test('a garbage port does not authorise a break when the lock carries a usable url', async () => {
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () =>
+        ({
+          ...liveLock,
+          pid: 5156,
+          port: Number.POSITIVE_INFINITY,
+          url: 'http://127.0.0.1:42117',
+        }) as unknown as ServerLockMetadataLike;
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      // The url answers: this is a live server we simply cannot kill.
+      const probe = vi.fn(() => Promise.resolve(true));
+      env.deps.probeWsUpgrade = probe;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(removeServerLock).not.toHaveBeenCalled();
+      // Asked, rather than assumed, and asked at the url.
+      expect(probe).toHaveBeenCalled();
+      expect(probe.mock.calls[0]?.[0]).toContain('42117');
+    });
+
+    // The two questions are not the same question. A numeric string cannot be
+    // ATTACHED to — the keepalive is typed on a numeric port — but it renders
+    // into `http://localhost:42117`, which is a live address, so a server can be
+    // behind it. Breaking without asking would destroy a claim we could dial.
+    test('a numeric string port is probed rather than broken, since a server can be behind it', async () => {
+      env.deps.setTimeout = (cb: () => void, _ms: number) => {
+        cb();
+        return null;
+      };
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () =>
+        ({ ...liveLock, pid: 5158, port: '42117' }) as unknown as ServerLockMetadataLike;
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      // It answers: a live server we simply cannot kill.
+      const probe = vi.fn(() => Promise.resolve(true));
+      env.deps.probeWsUpgrade = probe;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      expect(removeServerLock).not.toHaveBeenCalled();
+      expect(probe.mock.calls[0]?.[0]).toContain('42117');
+    });
+
+    // The scoping guard. EPERM is the one termination failure that carries
+    // information about the holder: it exists and is not ours to signal. An
+    // `other` failure carries none, so a dead port alongside it is not evidence
+    // the lock is safe to break. Without this, dropping the `term.reason ===
+    // 'eperm'` conjunct widens lock-breaking to ANY termination failure and
+    // every other test stays green.
+    test('restartAttachedServer does not break a lock when termination failed for a non-EPERM reason', async () => {
+      const removeServerLock = vi.fn(() => true);
+      env.deps.removeServerLock = removeServerLock;
+      env.deps.readServerLock = () => ({ ...liveLock, pid: 5150, port: 42117 });
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      // The port answers nothing — the OTHER half of the rule is satisfied, so
+      // only the reason scoping can hold the line here.
+      env.deps.probeWsUpgrade = () => Promise.resolve(false);
+      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      env.deps.spawnDetachedServer = spawn;
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('kaboom'), { code: 'EIO' });
+      });
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'other' });
+      expect(removeServerLock).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+      expect(env.windows.length).toBe(0);
+    });
+
+    // The guard on the fix above: EPERM is not license to break a lock. When
+    // the unkillable holder is genuinely serving, the eperm refusal is the only
+    // correct answer — the renderer surfaces the "running under a different
+    // account" remedy — because breaking that lock would strand a live server
+    // and the windows connected to it behind a second one on the same project.
+    test('restartAttachedServer still refuses eperm when the unkillable holder IS serving', async () => {
+      const liveHolderLock = {
+        ...liveLock,
+        pid: 7777,
+        protocolVersion: 1,
+        runtimeVersion: '0.8.0',
+      };
+      const spawn = vi.fn(() => Promise.resolve({ pid: 22018 }));
+      env.deps.readServerLock = () => liveHolderLock;
+      env.deps.isProcessAlive = () => true;
+      env.deps.hostname = () => 'my-host';
+      // The port answers: this server is real, just not ours to kill.
+      env.deps.probeWsUpgrade = () => Promise.resolve(true);
+      env.deps.killProbe = vi.fn(() => {
+        throw Object.assign(new Error('operation not permitted'), { code: 'EPERM' });
+      });
+      env.deps.spawnDetachedServer = spawn;
+
+      const wm = new WindowManager(env.deps);
+      const outcome = await wm.restartAttachedServer('/tmp/dragon');
+
+      expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      // Nothing respawned, no second window opened behind the live server.
+      expect(spawn).not.toHaveBeenCalled();
+      expect(env.windows.length).toBe(0);
+      expect(env.utilities.length).toBe(0);
+    });
+
     test('restartAttachedServer keeps the originating window alive when the respawn fails', async () => {
       // Kill succeeds, but the fresh spawn never comes up — the originating
       // window must survive so its invoke resolves with the failure and the
@@ -2288,6 +2662,391 @@ describe('WindowManager', () => {
         expect(env.windows.length).toBe(1);
       });
 
+      // A stale lock is a different failure from a missing one. The file can
+      // name a pid that is alive-or-unkillable while the port it advertises
+      // serves nothing: an MCP-spawned server takes the lock, the desktop's own
+      // server is later stopped by an auto-update relaunch, and the survivor's
+      // lock outlives the port behind it. Every metadata gate still passes, so
+      // only a health probe can tell that lock from a good one — and the attach
+      // path already does exactly that. The spawn path does not, which is how
+      // one field log records both verdicts on the same port 2 ms apart:
+      // `desktop-attach-refused reason=ws-upgrade-failed lockPid=870`, then
+      // `desktop-server-spawned-detached pid=22018 port=42117` /
+      // "detached server ready". The window opens onto a port that answers
+      // nothing, and every retry reproduces it.
+      test('a stale lock our child never replaced is NOT declared ready (dead port)', async () => {
+        enableSyncTimers();
+        const STALE_PID = 870;
+        const OUR_CHILD_PID = 22018;
+        const staleLock: ServerLockMetadataLike = {
+          ...spawnedLock,
+          pid: STALE_PID,
+          port: 42117,
+        };
+        // The holder never releases and our child never publishes its own lock,
+        // so every read — the attach gate's and the spawn poll's — returns the
+        // same record, and `pollServerLock` accepts it on the first iteration.
+        const probed: string[] = [];
+        env.deps.readServerLock = () => staleLock;
+        // Alive-or-unkillable: `isPidAlive` reports EPERM as alive, so liveness
+        // cannot distinguish this holder from a healthy one.
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = (url) => {
+          probed.push(url);
+          return Promise.resolve(false);
+        };
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          killCalls.push({ pid, signal });
+        };
+        // Both tiers kept short: a correct refusal spends the rest of the
+        // window re-polling for a lock that is never going to change.
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        // Discriminated rather than a bare rejects/resolves assertion so a
+        // failure names the port we wrongly attached to.
+        const outcome = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' }).then(
+          (ctx) => ({ kind: 'attached' as const, port: ctx.port }),
+          (err) => ({
+            kind: 'refused' as const,
+            message: (err as Error).message,
+            errKind: (err as Error & { kind?: string }).kind,
+            reason: (err as Error & { reason?: string }).reason,
+            holderPid: (err as Error & { holderPid?: number }).holderPid,
+          }),
+        );
+
+        // Precondition, not the point: the attach gate really did probe this
+        // lock, so a pass here cannot come from the lock never being examined.
+        expect(probed.some((u) => u.includes('42117'))).toBe(true);
+        // The point: the spawn branch must not adopt the lock the attach branch
+        // just refused. Failing the spawn is an acceptable outcome — the user
+        // gets the "Unable to open project" dialog and its Stop Server & Retry
+        // remedy instead of a window wired to a port that answers nothing.
+        expect(outcome).toMatchObject({ kind: 'refused' });
+        expect(env.windows.length).toBe(0);
+        // The refusal has to be diagnosable AS a stale holder, not as a
+        // deadline. `buildSpawnFailureError`'s narrative would blame a timeout
+        // that never elapsed on our own child's pid, and — load-bearing — the
+        // failed-open dialog gates its Stop Server & Retry remedy on this kind,
+        // so a refusal that does not say what it is silently loses the only way
+        // out a user has while the project has no window.
+        expect(outcome).toMatchObject({ errKind: 'stale-lock-holder', holderPid: STALE_PID });
+        // The other half of the discriminator, and the half that carries THIS
+        // scenario — a holder alive but answering nothing. Without it, collapsing
+        // the ternary shows the unusable-lock copy ("it may still be running")
+        // for a holder this code just proved is not serving, and the suite stays
+        // green.
+        expect(outcome).toMatchObject({ reason: 'holder-not-serving' });
+        if (outcome.kind === 'refused') {
+          expect(outcome.message).toContain('not serving on port 42117');
+        }
+        // The orphan reap. Our child is `.unref()`ed with no parent to collect
+        // it, so refusing the holder without SIGTERMing it leaks a server
+        // process for the session's lifetime.
+        expect(killCalls).toContainEqual({ pid: OUR_CHILD_PID, signal: 'SIGTERM' });
+      });
+
+      // Two doors lead into `attachToExistingServer`, and the direct gate is
+      // only one of them. A numeric-string port is refused there, but the
+      // spawn branch then re-derives the same lock through `pollServerLock`,
+      // whose readiness test is `lock.port > 0` — a RELATIONAL compare, so
+      // `'42117' > 0` coerces true. The probe on that lock SUCCEEDS, because a
+      // numeric string renders into a live address, so the health check that
+      // catches the dead-port case cannot catch this one. Without a gate on
+      // this door the session is built on a port typed as a string, and the
+      // keepalive that keeps the server from reaping the project is typed on a
+      // number.
+      test('a numeric-string port is refused at the spawn door too, not just the attach gate', async () => {
+        enableSyncTimers();
+        const FOREIGN_PID = 870;
+        const OUR_CHILD_PID = 22018;
+        const stringPortLock = {
+          ...spawnedLock,
+          pid: FOREIGN_PID,
+          port: '42117',
+        } as unknown as ServerLockMetadataLike;
+        env.deps.readServerLock = () => stringPortLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        // Load-bearing: the holder ANSWERS. This is what separates this case
+        // from the dead-port test above — health cannot be the discriminator,
+        // so only the shape check can refuse it.
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          killCalls.push({ pid, signal });
+        };
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' }).then(
+          (ctx) => ({ kind: 'attached' as const, port: ctx.port }),
+          (err) => ({
+            kind: 'refused' as const,
+            errKind: (err as Error & { kind?: string }).kind,
+            reason: (err as Error & { reason?: string }).reason,
+            holderIsOwnChild: (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild,
+            message: (err as Error).message,
+          }),
+        );
+
+        expect(outcome).toMatchObject({
+          kind: 'refused',
+          errKind: 'stale-lock-holder',
+          reason: 'lock-not-attachable',
+        });
+        // The FOREIGN direction of both discriminators, and the one carrying the
+        // consequence: `holderIsOwnChild` is the second conjunct of the dialog's
+        // may-still-be-running hedge AND of its safe keyboard default, so a
+        // mutant pinning it true reverts both for every stranger's lock.
+        // Asserting only the own-child direction leaves that green.
+        expect(outcome).toMatchObject({ holderIsOwnChild: false });
+        if (outcome.kind === 'refused') {
+          expect(outcome.message).toContain(`Another process (pid ${FOREIGN_PID})`);
+        }
+        // `||` short-circuits, so the holder was never dialed on this arm. The
+        // failed-open dialog quotes this message verbatim, and a user asked to
+        // stop a process on the claim it is already inert would be consenting
+        // under a premise nothing here established.
+        expect(outcome).toMatchObject({ kind: 'refused' });
+        if (outcome.kind === 'refused') {
+          expect(outcome.message).not.toContain('not serving');
+        }
+        expect(env.windows.length).toBe(0);
+        expect(killCalls).toContainEqual({ pid: OUR_CHILD_PID, signal: 'SIGTERM' });
+      });
+
+      // A url arm here would defeat the whole point of the predicate:
+      // `resolveKeepaliveWsOrigin` returns `undefined`
+      // unless `port` is a positive NUMBER whatever the url says, so a session
+      // built on this lock loses its keepalive and idle-shutdown reaps the
+      // server under an open window. A good advertisement does not make a lock
+      // we can HOLD.
+      test('a good loopback url does not rescue a non-numeric port at the attach gate', async () => {
+        enableSyncTimers();
+        const urlLock = {
+          ...spawnedLock,
+          pid: 870,
+          url: 'http://127.0.0.1:59534',
+          port: '59534',
+        } as unknown as ServerLockMetadataLike;
+        env.deps.readServerLock = () => urlLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        // The advertised address answers. Only the shape can refuse this.
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: 22018 });
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' }).then(
+          (ctx) => ({ kind: 'attached' as const, port: ctx.port }),
+          (err) => ({
+            kind: 'refused' as const,
+            reason: (err as Error & { reason?: string }).reason,
+          }),
+        );
+
+        expect(outcome).toMatchObject({ kind: 'refused', reason: 'lock-not-attachable' });
+        expect(env.windows.length).toBe(0);
+      });
+
+      // The one shape that reaches the own-child arm of the holder framing.
+      // `unusableLock` is deliberately not exempted for our own spawn the way
+      // the probe is, so a lock our child wrote with a port we cannot hold a
+      // connection on refuses ITS OWN child — which this method has already
+      // SIGTERMed by the time the message is built. Nothing else in the suite
+      // gets here (every other test of this throw is cross-pid), so without
+      // this the framing reverts to "another process" unnoticed.
+      test('refusing our own child names it as ours, not as another process', async () => {
+        enableSyncTimers();
+        const OUR_CHILD_PID = 22018;
+        const ownLock = {
+          ...spawnedLock,
+          pid: OUR_CHILD_PID,
+          port: '42117',
+        } as unknown as ServerLockMetadataLike;
+        env.deps.readServerLock = () => ownLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        const killCalls: Array<{ pid: number; signal: NodeJS.Signals | number }> = [];
+        env.deps.killProbe = (pid, signal) => {
+          killCalls.push({ pid, signal });
+        };
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' }).then(
+          () => ({ kind: 'attached' as const }),
+          (err) => ({
+            kind: 'refused' as const,
+            message: (err as Error).message,
+            holderIsOwnChild: (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild,
+          }),
+        );
+
+        expect(outcome).toMatchObject({ kind: 'refused', holderIsOwnChild: true });
+        if (outcome.kind === 'refused') {
+          expect(outcome.message).not.toContain('Another process');
+        }
+        // The same reap its same-branch siblings assert: our child is
+        // `.unref()`ed with no parent to collect it, and here the holder IS
+        // that child.
+        expect(killCalls).toContainEqual({ pid: OUR_CHILD_PID, signal: 'SIGTERM' });
+      });
+
+      // The differential partner of the dead-port test above: the same cross-pid shape
+      // with exactly one variable flipped. `pollServerLock` deliberately
+      // accepts a non-draining lock held by a DIFFERENT live pid, because a
+      // concurrent starter that won the acquire is a real server we should
+      // share (see the losing-child test above). Any fix for the stale-lock
+      // case must discriminate on the HEALTH of the advertised port, never on
+      // pid identity — give that test a probe that passes and the attach returns.
+      test('a healthy cross-pid lock-race winner is still attached (probe passes)', async () => {
+        enableSyncTimers();
+        const WINNER_PID = 870;
+        const OUR_CHILD_PID = 22018;
+        const winnerLock: ServerLockMetadataLike = {
+          ...spawnedLock,
+          pid: WINNER_PID,
+          port: 42117,
+        };
+        // Nothing usable at the attach gate; the winner's lock lands on the
+        // first poll read, by which point our child is already gone.
+        let reads = 0;
+        env.deps.readServerLock = () => {
+          reads++;
+          return reads === 1 ? null : winnerLock;
+        };
+        // Our child lost the acquire and exited by design; the winner is alive.
+        env.deps.isProcessAlive = (pid) => pid === WINNER_PID;
+        env.deps.hostname = () => 'my-host';
+        // The winner is genuinely serving — the whole difference from above.
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        const spawn = vi.fn(() => Promise.resolve({ pid: OUR_CHILD_PID }));
+        env.deps.spawnDetachedServer = spawn;
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        // Not vacuous: we went through the spawn branch's poll, not the direct
+        // attach gate (which saw no lock on its single read).
+        expect(spawn).toHaveBeenCalledTimes(1);
+        expect(ctx.port).toBe(42117);
+        expect(ctx.ownsServer).toBe(false);
+        expect(env.windows.length).toBe(1);
+      });
+
+      // The STRICT differential for the stale-lock test: byte-identical setup
+      // with exactly one value changed, the probe's answer. The cross-pid
+      // winner test above is a useful scenario but a loose differential — it
+      // also varies child liveness and the lock-read sequence, so a gate gating
+      // on child liveness rather than port health passes both of them and only
+      // trips over an unrelated pre-existing test. Here liveness is `() => true`
+      // for everyone and the lock never changes, so the probe is the only thing
+      // that can decide, and any implementation reading a different signal
+      // fails one of the pair.
+      test('the same stale-lock shape attaches when the probe answers (only the probe differs)', async () => {
+        enableSyncTimers();
+        const HOLDER_PID = 870;
+        const OUR_CHILD_PID = 22018;
+        const holderLock: ServerLockMetadataLike = {
+          ...spawnedLock,
+          pid: HOLDER_PID,
+          port: 42117,
+        };
+        env.deps.readServerLock = () => holderLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(42117);
+        expect(env.windows.length).toBe(1);
+      });
+
+      // The grace exists for a holder that is up but not yet answering, which is
+      // the whole reason this path retries where the attach gate does not. With
+      // a single shot this attaches to nothing and the open fails; the loop is
+      // otherwise only ever exercised with a constant answer, so nothing would
+      // notice it collapsing back to one attempt.
+      test('a foreign holder that answers only on a later attempt is still attached', async () => {
+        enableSyncTimers();
+        const HOLDER_PID = 870;
+        const OUR_CHILD_PID = 22018;
+        const holderLock: ServerLockMetadataLike = {
+          ...spawnedLock,
+          pid: HOLDER_PID,
+          port: 42117,
+        };
+        env.deps.readServerLock = () => holderLock;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        let probes = 0;
+        // Refuses the first two, then comes up — a server past `listen()` whose
+        // `/collab` is still wiring.
+        env.deps.probeWsUpgrade = () => {
+          probes++;
+          return Promise.resolve(probes >= 3);
+        };
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnLockPollDeadlineMs = 50;
+        env.deps.spawnLockProgressDeadlineMs = 50;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(42117);
+        expect(probes).toBe(3);
+        expect(env.windows.length).toBe(1);
+      });
+
+      // The own-child exemption is a deliberate cost decision, not an accident:
+      // probing a server we just watched come up buys no signal and would put
+      // the probe timeout on every cold project open. Nothing else pins it, so
+      // deleting the exemption is invisible to the suite.
+      test('our own child’s lock is adopted without paying for a probe', async () => {
+        enableSyncTimers();
+        const OUR_CHILD_PID = 44001;
+        let reads = 0;
+        env.deps.readServerLock = () => {
+          reads++;
+          return reads === 1 ? null : { ...spawnedLock, pid: OUR_CHILD_PID, port: 51234 };
+        };
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        const probed: string[] = [];
+        env.deps.probeWsUpgrade = (url) => {
+          probed.push(url);
+          return Promise.resolve(true);
+        };
+        env.deps.spawnDetachedServer = () => Promise.resolve({ pid: OUR_CHILD_PID });
+        env.deps.spawnLockPollDeadlineMs = 500;
+
+        const wm = new WindowManager(env.deps);
+        const ctx = await wm.createProjectWindow({ projectPath: '/tmp/spawned-project' });
+
+        expect(ctx.port).toBe(51234);
+        expect(probed).toHaveLength(0);
+      });
+
       test('a child that exits before binding surfaces its exit code and signal', async () => {
         enableSyncTimers();
         env.deps.readServerLock = () => null;
@@ -2442,7 +3201,7 @@ describe('WindowManager', () => {
     });
 
     describe('forceStopConflictingServer (dialog "Stop Server & Retry")', () => {
-      function seedRawLock(pid: number): string {
+      function seedRawLock(pid: number, overrides?: { port?: number }): string {
         const projectPath = mkdtempSync(join(tmpdir(), 'ok-force-stop-'));
         const lockDir = join(projectPath, '.ok', 'local');
         mkdirSync(lockDir, { recursive: true });
@@ -2454,7 +3213,7 @@ describe('WindowManager', () => {
             pid,
             hostname: 'some-old-hostname',
             machineId: 'not-this-machine',
-            port: 61000,
+            port: overrides?.port ?? 61000,
             startedAt: '2026-07-07T00:00:00.000Z',
             worktreeRoot: projectPath,
             kind: 'interactive',
@@ -2507,6 +3266,203 @@ describe('WindowManager', () => {
         const outcome = await wm.forceStopConflictingServer(projectPath);
 
         expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      });
+
+      // This dialog is the ONLY remedy while the project has no window, so an
+      // EPERM dead-end here is terminal in a way the restart path's is not: the
+      // restart affordance lives on a window that, for a wedged project, never
+      // opens. Both entry states have to clear an unkillable-and-not-serving
+      // holder or the fix only helps projects that were already open.
+      test('EPERM holder that serves nothing has its lock broken so the retry proceeds', async () => {
+        // The graced probe on the break path retries through `deps.setTimeout`,
+        // which the base env only records; drive it so the loop resolves.
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const projectPath = seedRawLock(64323);
+        const removeServerLock = vi.fn(() => true);
+        env.deps.removeServerLock = removeServerLock;
+        env.deps.readServerLock = () => ({ ...liveLock, pid: 64323, port: 61000 });
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        // 61000 answers nothing.
+        env.deps.probeWsUpgrade = () => Promise.resolve(false);
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: true });
+        expect(removeServerLock).toHaveBeenCalledTimes(1);
+        // Same trap as the restart path: the lock dir, not the project root.
+        expect(removeServerLock.mock.calls[0]?.[0]).toBe(join(projectPath, '.ok', 'local'));
+        expect(removeServerLock.mock.calls[0]?.[1]).toEqual({ pid: 64323 });
+      });
+
+      // The production `removeServerLock` wiring, exercised against a real lock
+      // file rather than a spy. The window between deciding and unlinking is a
+      // whole health probe wide, so a successor that acquired the lock in it
+      // must keep it — an unguarded unlink would delete a valid claim on the
+      // strength of a verdict about its predecessor.
+      test('the guarded unlink breaks only the holder it was told about', () => {
+        const projectPath = seedRawLock(70001);
+        const lockDir = join(projectPath, '.ok', 'local');
+        const lockPath = join(lockDir, 'server.lock');
+
+        // A successor took the lock while we were probing the predecessor.
+        expect(breakServerLockHeldBy(lockDir, { pid: 69999 })).toBe(false);
+        expect(existsSync(lockPath)).toBe(true);
+
+        // The holder we actually judged.
+        expect(breakServerLockHeldBy(lockDir, { pid: 70001 })).toBe(true);
+        expect(existsSync(lockPath)).toBe(false);
+
+        // Already gone is the end state we wanted, but not a removal WE did,
+        // and never an error — this runs on the path that un-wedges a project.
+        expect(breakServerLockHeldBy(lockDir, { pid: 70001 })).toBe(false);
+
+        // A corrupt lock is left for `runClean`, not broken on a guess.
+        writeFileSync(lockPath, 'not json', 'utf-8');
+        expect(breakServerLockHeldBy(lockDir, { pid: 70001 })).toBe(false);
+        expect(existsSync(lockPath)).toBe(true);
+      });
+
+      // `seedRawLock` deliberately writes a
+      // foreign hostname and machineId, because the defining feature of this
+      // state is that identity checks refused the holder — that is why this
+      // method reads the lock raw. Sourcing the probe target from
+      // `readServerLock` instead re-imposes that filter and returns null,
+      // silently making the one no-window remedy inert for exactly the cohort
+      // EPERM implies: a holder under another account or a flapped hostname.
+      test('EPERM recovery works on a lock whose identity fields look foreign', async () => {
+        // The graced probe on the break path retries through `deps.setTimeout`,
+        // which the base env only records; drive it so the loop resolves.
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const projectPath = seedRawLock(64325);
+        const removeServerLock = vi.fn(() => true);
+        env.deps.removeServerLock = removeServerLock;
+        // The identity-filtered reader refuses this lock, as it does in the field.
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(false);
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: true });
+        expect(removeServerLock).toHaveBeenCalledTimes(1);
+        expect(removeServerLock.mock.calls[0]?.[1]).toEqual({ pid: 64325 });
+      });
+
+      // Same degrade-don't-crash contract as the restart path, on the entry
+      // state that has no window to fall back to.
+      test('EPERM recovery survives a removeServerLock that throws', async () => {
+        // The graced probe on the break path retries through `deps.setTimeout`,
+        // which the base env only records; drive it so the loop resolves.
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const projectPath = seedRawLock(64326);
+        env.deps.removeServerLock = vi.fn(() => {
+          throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+        });
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(false);
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      });
+
+      // Symmetry with the restart path: a declined break is not a success here
+      // either, and this is the entry state with no window to fall back to.
+      test('EPERM recovery does not report success when the break is declined', async () => {
+        const projectPath = seedRawLock(64327);
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const removeServerLock = vi.fn(() => false);
+        env.deps.removeServerLock = removeServerLock;
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(false);
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(removeServerLock).toHaveBeenCalledTimes(1);
+        expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+      });
+
+      // The other half of the port-0 guard. Pinning it from the restart path
+      // alone proves the rule holds it, not that this caller reaches the rule.
+      test('EPERM recovery leaves the lock alone when the holder has not bound a port', async () => {
+        const projectPath = seedRawLock(64328, { port: 0 });
+        env.deps.setTimeout = (cb: () => void, _ms: number) => {
+          cb();
+          return null;
+        };
+        const removeServerLock = vi.fn(() => true);
+        env.deps.removeServerLock = removeServerLock;
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        const probe = vi.fn(() => Promise.resolve(false));
+        env.deps.probeWsUpgrade = probe;
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+        expect(removeServerLock).not.toHaveBeenCalled();
+        expect(probe).not.toHaveBeenCalled();
+      });
+
+      // The guard on the test above, and the reason the rule asks two questions
+      // rather than one: breaking a serving holder's lock would strand it and
+      // put a second server on the same project.
+      test('EPERM holder that IS serving keeps its lock and still fails', async () => {
+        const projectPath = seedRawLock(64324);
+        const removeServerLock = vi.fn(() => true);
+        env.deps.removeServerLock = removeServerLock;
+        env.deps.readServerLock = () => ({ ...liveLock, pid: 64324, port: 61000 });
+        env.deps.isProcessAlive = () => true;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.killProbe = () => {
+          throw Object.assign(new Error('eperm'), { code: 'EPERM' });
+        };
+
+        const wm = new WindowManager(env.deps);
+        const outcome = await wm.forceStopConflictingServer(projectPath);
+
+        expect(outcome).toEqual({ ok: false, reason: 'eperm' });
+        expect(removeServerLock).not.toHaveBeenCalled();
       });
 
       test('never signals a hostile lock pid (0/1/self)', async () => {

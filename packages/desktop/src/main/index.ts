@@ -402,6 +402,7 @@ import {
 import { handleRevealExternal } from './reveal-external.ts';
 import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
+import { breakServerLockHeldBy } from './server-lock-break.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
@@ -444,6 +445,7 @@ import {
   type UpdateChannel,
   windowRestoreKey,
 } from './state-store.ts';
+import { quoteStopCommandPath } from './stop-command.ts';
 import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
@@ -2091,6 +2093,17 @@ function ensureWindowManager() {
     // contentDir, window-manager reads the lock + verifies liveness and
     // connects the renderer directly instead of trying to spawn a duplicate.
     readServerLock: (lockDir) => readServerLock(lockDir),
+    // Break a stale claim whose holder is both unkillable and not serving —
+    // see `removeServerLock` in WindowManagerDeps for when that is reached.
+    // Unlinked directly rather than through the server's refcounted
+    // `releaseServerLock`, which only releases a lock this process owns.
+    //
+    // Read-compare-unlink, mirroring `process-lock.ts`'s `registerExitUnlink`:
+    // the caller's verdict is about a specific holder and a health probe stands
+    // between that verdict and this call, so a successor that acquired the lock
+    // meanwhile must keep it. A missing or unparseable file is the desired end
+    // state either way.
+    removeServerLock: (lockDir, expected) => breakServerLockHeldBy(lockDir, expected),
     isProcessAlive: (pid) => isProcessAlive(pid),
     hostname: () => osHostname(),
     probeWsUpgrade: (url, timeoutMs) => probeWsUpgrade(url, timeoutMs),
@@ -2839,6 +2852,18 @@ async function openProjectOrFallbackToNavigator(
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
     const holderPid = (err as Error & { holderPid?: number }).holderPid;
+    // Which of the two refusals this is. `stale-lock-holder` covers both a
+    // holder that answered nothing and a lock whose port we cannot hold a
+    // connection open on, and only the second can involve a LIVE holder.
+    // Both are only meaningful on `stale-lock-holder`; other kinds reach the
+    // shared remedy copy below and must not read a `reason` that is not theirs.
+    const isStaleLockHolder = kind === 'stale-lock-holder';
+    const staleLockReason = isStaleLockHolder
+      ? (err as Error & { reason?: string }).reason
+      : undefined;
+    const holderIsOwnChild =
+      isStaleLockHolder &&
+      (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild === true;
     // Route through pino, not only `console.error`: a failure reported solely
     // to the native dialog leaves nothing in `~/.ok/logs/desktop.*.log`, so a
     // user who hits this can send logs that contain their successful opens and
@@ -2883,6 +2908,18 @@ async function openProjectOrFallbackToNavigator(
     } else if (kind === 'lock-collision') {
       dialogTitle = 'OpenKnowledge is already running for this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
+    } else if (kind === 'stale-lock-holder') {
+      // Distinct from `lock-collision`: that one means a real server has the
+      // project and we should not fight it. On the probed arm the holder
+      // answered nothing on the port it advertises, so "already running" would
+      // be the wrong thing to tell someone whose project has been unopenable
+      // for days. The unusable-lock arm never dialed anyone, so it must not
+      // borrow that claim — its holder may be perfectly healthy.
+      dialogTitle =
+        staleLockReason === 'lock-not-attachable'
+          ? 'This project\u2019s server lock cannot be used'
+          : 'A stopped server is still holding this project';
+      dialogBody = `${projectPath}\n\n${errorMessage}`;
     }
     // A spawn that timed out because a holder is in the way (fail-closed
     // collision — visible in the child's stderr tail), or a direct lock
@@ -2890,7 +2927,10 @@ async function openProjectOrFallbackToNavigator(
     // retry. Everything else keeps the plain error box.
     const holderInTheWay =
       kind === 'lock-collision' ||
+      kind === 'stale-lock-holder' ||
       (kind === 'spawn-lock-timeout' && errorMessage.includes('already running'));
+    // The one arm whose holder was never dialed, so it may be a live server.
+    const warnsHolderMayBeLive = staleLockReason === 'lock-not-attachable' && !holderIsOwnChild;
     if (holderInTheWay) {
       const { response } = await dialog.showMessageBox({
         type: 'warning',
@@ -2898,9 +2938,18 @@ async function openProjectOrFallbackToNavigator(
         message: dialogTitle,
         detail:
           `${dialogBody}\n\n` +
-          `OpenKnowledge can stop the conflicting server process and retry opening the project.`,
+          (warnsHolderMayBeLive
+            ? `OpenKnowledge can stop that process and retry opening the project. It may still be ` +
+              `running, so stop it only if you do not need it.`
+            : holderIsOwnChild
+              ? `OpenKnowledge already asked that server to stop during this open. It can make ` +
+                `sure it is gone and try again.`
+              : `OpenKnowledge can stop the conflicting server process and retry opening the project.`),
         buttons: ['Stop Server & Retry', 'Cancel'],
-        defaultId: 0,
+        // Enter lands on the safe path. Everywhere else that is Stop, because
+        // the holder is known inert; on the arm that just told the user their
+        // process may still be running, the safe path is the other button.
+        defaultId: warnsHolderMayBeLive ? 1 : 0,
         cancelId: 1,
       });
       if (response === 0) {
@@ -2945,6 +2994,59 @@ async function openProjectOrFallbackToNavigator(
               (stop.reason === 'eperm'
                 ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
                 : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
+          );
+        }
+      } else {
+        // Every kind that reaches this dialog gets a decline record. The BOX is
+        // scoped narrower on purpose — the collision arms self-remedy in their
+        // own message text — but the record's reader is not the box's reader:
+        // to an operator reading a bundle, "kind=lock-collision, then silence"
+        // cannot distinguish a decline from an app quit mid-modal.
+        getLogger('project').info(
+          {
+            projectPath,
+            kind,
+            ...(isStaleLockHolder ? { reason: staleLockReason, holderIsOwnChild } : {}),
+            holderPid,
+          },
+          'user declined the stop-and-retry remedy',
+        );
+        if (isStaleLockHolder) {
+          // Three holder states reach here, not two. On the own-child arm this
+          // method signalled that pid during the open the user just asked for,
+          // so "nothing was stopped" would be wrong there — but SIGTERM is a
+          // request, and the child releases the lock on receiving it, so that
+          // arm must not claim the stop completed OR that the lock survived.
+          //
+          // Quoted because this is a command the user is told to paste: `ok stop`
+          // rejoins its own argv, but never sees what the shell already ate. An
+          // apostrophe in a folder name hangs at a continuation prompt, and an
+          // `&` silently runs against a truncated path and reports success. The
+          // quoting is per-platform and lives in its own module, because POSIX
+          // single quotes are not a grouping character on `cmd.exe`.
+          //
+          // The target is the PROJECT PATH, never the pid: `ok stop <path>`
+          // resolves the same lockDir this refusal was computed from and stops
+          // it without reading `port`, while `ok stop <pid>` goes through a
+          // heuristic process scan that can miss, and matches a port before a
+          // pid — so on a machine where another project's port equals this
+          // holder's pid it stops the wrong one.
+          const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
+          dialog.showErrorBox(
+            dialogTitle,
+            `${dialogBody}\n\n` +
+              (holderIsOwnChild
+                ? `OpenKnowledge has signalled that server to stop. Open the project again. If ` +
+                  `this keeps happening, the server is advertising a port it cannot serve on — ` +
+                  `there is no way around that from here, so please send a report from ` +
+                  `Help > Report a bug.`
+                : warnsHolderMayBeLive
+                  ? `Nothing was stopped. If you need that process, leave it running and open a ` +
+                    `different project; if you do not, run \`ok stop ${stopCommandTarget}\` and ` +
+                    `open the project again, or reopen and choose Stop Server & Retry.`
+                  : `Nothing was stopped. Run \`ok stop ${stopCommandTarget}\` and open the ` +
+                    `project again, or reopen and choose Stop Server & Retry to have ` +
+                    `OpenKnowledge do it.`),
           );
         }
       }

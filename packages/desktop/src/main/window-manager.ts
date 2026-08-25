@@ -74,6 +74,58 @@ const DEFAULT_SPAWN_STARTUP_DEADLINE_MS = 15_000;
 const SPAWN_WAIT_EXTENSION_FACTOR = 8;
 
 /**
+ * How many times a foreign lock is probed before a caller acts on the answer,
+ * and how long it waits between tries. Shared by the detached-spawn gate and
+ * the recovery that breaks a stale claim. See `probeForeignLockWithGrace`.
+ */
+const FOREIGN_LOCK_PROBE_ATTEMPTS = 3;
+const FOREIGN_LOCK_PROBE_RETRY_MS = 500;
+
+/**
+ * Which decision a health probe is informing. The `desktop-attach-refused`
+ * event predates every caller but the attach gate, so without this a bundle
+ * reads a restart-recovery refusal and an attach-gate refusal as the same
+ * verdict twice on one port.
+ */
+type ProbePhase = 'attach' | 'spawn-foreign-lock' | 'restart-recovery' | 'force-stop-recovery';
+
+/**
+ * Whether a lock's `port` is something we can actually dial.
+ *
+ * `lock.port` is TYPED `number` but never validated at runtime on this path:
+ * `readProcessLock` checks only `pid` and then casts. So `undefined`, `Infinity`,
+ * `70000`, `1.5` and even a string all reach us, and every one of them survives
+ * a `port <= 0` test — `undefined <= 0` is a NaN comparison, hence `false`.
+ * Each then formats into `http://localhost:undefined`-shaped garbage, the probe
+ * throws, `probeAttachableLock` swallows it as "not serving", and a lock we had
+ * no business touching gets unlinked. Testing dialability rather than sign is
+ * what closes that.
+ */
+function isDialablePort(port: unknown): port is number {
+  return typeof port === 'number' && Number.isInteger(port) && port > 0 && port <= 65535;
+}
+
+/** The two entry states that can meet an unkillable lock holder. */
+type RecoveryCaller = 'restart' | 'force-stop';
+
+/**
+ * Pairs each recovery entry state's log event with its probe phase, so the two
+ * cannot drift apart. Not the single source of the event NAME — the same
+ * literals are set independently at the other log sites in these two methods;
+ * this owns only the pairing.
+ */
+const RECOVERY_CALLERS: Record<
+  RecoveryCaller,
+  { event: 'desktop-server-restart' | 'desktop-force-stop-conflicting-server'; phase: ProbePhase }
+> = {
+  restart: { event: 'desktop-server-restart', phase: 'restart-recovery' },
+  'force-stop': {
+    event: 'desktop-force-stop-conflicting-server',
+    phase: 'force-stop-recovery',
+  },
+};
+
+/**
  * Cadence (ms) of the ephemeral single-file session's server-liveness poll. An
  * ephemeral server is a DETACHED process whose lifetime is decoupled from its
  * window's, so it can die (kill / crash / idle-shutdown) while the window stays
@@ -313,38 +365,84 @@ export interface ServerLockMetadataLike {
 }
 
 /**
+ * The loopback origin a lock's `url` field yields, or `null` when it yields
+ * none. Extracted so `lockApiOrigin` and anything reasoning about whether a
+ * lock is dialable at all read the SAME precedence — a second copy of this
+ * check drifting from the first is how a lock with a good `url` and a garbage
+ * `port` came to look unreachable.
+ */
+function loopbackOriginFromUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
+  const host = parsed.hostname;
+  const loopback =
+    host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  return loopback ? parsed.origin : null;
+}
+
+/**
+ * Whether anything could be listening at what this lock names — the question
+ * the BREAK path asks, because breaking without a probe is only safe when the
+ * answer is no.
+ *
+ * Deliberately permissive about `port`. `lockApiOrigin` renders a numeric
+ * STRING into `http://localhost:42117`, which is a perfectly live address, so
+ * a server can be behind a lock that shape. Treating it as nothing-there would
+ * destroy a claim we could have dialed.
+ */
+function lockMayHaveServer(lock: { port?: unknown; url?: unknown }): boolean {
+  if (loopbackOriginFromUrl(lock.url) !== null) return true;
+  const port = typeof lock.port === 'string' ? Number(lock.port) : lock.port;
+  return isDialablePort(port);
+}
+
+/**
+ * Whether we can ATTACH to what this lock names — a strictly narrower question
+ * than `lockMayHaveServer`, and the reason the two exist separately.
+ *
+ * A numeric string can have a server behind it, but the session we would build
+ * on top cannot carry it: `resolveKeepaliveWsOrigin` returns `undefined` unless
+ * `port` is a positive NUMBER, so idle-shutdown reaps the server under an open
+ * window. That requirement is unconditional, which is why a good `url` does not
+ * rescue a bad `port` here the way it does for `lockMayHaveServer` — dialing
+ * once and holding the server alive are different needs, and only the second
+ * one is what attaching commits us to. Both doors into attach ask this; the
+ * break path asks the looser question and probes rather than assuming dead.
+ * `createEphemeralWindow` polls too and is exempt by design, not by omission —
+ * its lockDir is freshly synthesized under `os.tmpdir()`, so no foreign lock
+ * can ever be there to refuse.
+ */
+function lockIsAttachable(lock: { port?: unknown }): boolean {
+  return isDialablePort(lock.port);
+}
+
+/**
  * Base HTTP origin to dial for a lock holder — prefers the lock's `url`
- * (validated: http(s) + loopback hostname only, since the string comes off
- * disk and becomes renderer arguments), falling back to `port` for locks
- * written by binaries predating the field or whose `url` fails validation.
+ * (validated: http(s) + loopback hostname only, since the string comes off disk
+ * and becomes renderer arguments), falling back to `port` for locks written by
+ * binaries predating the field or whose `url` fails validation.
  *
  * Drift warning: mirrors `lockBaseUrl`/`dialableLockOrigin` in the server
  * package's `process-lock.ts`. This module is deliberately structurally
  * independent of that package (see `ServerLockMetadataLike`), so TypeScript
- * cannot catch divergence — parity is pinned by
- * `tests/main/lock-api-origin-parity.test.ts`. One deliberate difference:
- * the canonical helper returns `null` when nothing is dialable (`port` 0,
- * no usable `url`); this one returns `http://localhost:0` — safe because
- * every caller reaches it with a post-listen lock (`port > 0` guaranteed),
- * also pinned by the parity test.
+ * cannot catch divergence — both arms are pinned by
+ * `tests/main/lock-api-origin-parity.test.ts`. One deliberate difference, also
+ * pinned there: the canonical helper returns `null` when nothing is dialable;
+ * this one returns `http://localhost:0`, which is safe only because it is a
+ * string for argv and never a reachability claim.
  */
-export function lockApiOrigin(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
-  if (typeof lock.url === 'string' && lock.url.length > 0) {
-    let parsed: URL | null = null;
-    try {
-      parsed = new URL(lock.url);
-    } catch {
-      parsed = null;
-    }
-    if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
-      // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
-      const host = parsed.hostname;
-      const loopback =
-        host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
-      if (loopback) return parsed.origin;
-    }
-  }
-  return `http://localhost:${lock.port}`;
+export function lockApiOrigin(lock: { port?: unknown; url?: unknown }): string {
+  // Total by construction: callers that only need a string for argv always get
+  // one. It is NOT a claim that the origin is reachable — the decision paths ask
+  // `lockMayHaveServer` or `lockIsAttachable`, never this.
+  return loopbackOriginFromUrl(lock.url) ?? `http://localhost:${lock.port}`;
 }
 
 /**
@@ -376,7 +474,7 @@ export function collabUrlFromApiOrigin(apiOrigin: string): string {
 }
 
 /** `/collab` WebSocket endpoint derived from the same origin as `lockApiOrigin`. */
-export function lockCollabUrl(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
+export function lockCollabUrl(lock: { port?: unknown; url?: unknown }): string {
   return collabUrlFromApiOrigin(lockApiOrigin(lock));
 }
 
@@ -824,6 +922,35 @@ export interface WindowManagerDeps {
    * effectively disabled and every call spawns a fresh utility.
    */
   readServerLock?(lockDir: string): ServerLockMetadataLike | null;
+  /**
+   * Delete a project's `server.lock` outright, breaking a holder's claim
+   * without its cooperation. Deliberately NOT the server's `releaseServerLock`,
+   * which is refcounted for the OWNING process and no-ops for anyone else.
+   *
+   * Reached from the two recovery entry states — `restartAttachedServer` (from an
+   * open window) and `forceStopConflictingServer` (from the failed-open dialog),
+   * once a holder has proven BOTH unkillable (EPERM) and not serving. Both
+   * halves are load-bearing: a live server's lock must never be broken, or two
+   * servers end up bound to one project.
+   *
+   * `expected` is the holder the caller decided about, and the implementation
+   * MUST re-read the file and unlink only if it still names that pid. The
+   * decision takes hundreds of milliseconds (a health probe), and the holder
+   * can exit and a fresh server acquire the lock inside that window — an
+   * unguarded unlink would delete the newcomer's valid claim on the strength of
+   * a verdict about its predecessor. `process-lock.ts`'s `registerExitUnlink`
+   * is the same read-compare-unlink shape for the same reason.
+   *
+   * Returns whether THIS call removed the lock, so the caller logs what happened
+   * rather than what it intended.
+   *
+   * Optional only for back-compat with tests that never reach the recovery.
+   * Whether to break a lock is a fact about the HOLDER, so leaving this unwired
+   * does not change that verdict — it just makes the break a no-op, and the
+   * recreate that follows then fails loudly on the stale lock rather than
+   * silently wiring a window to it.
+   */
+  removeServerLock?(lockDir: string, expected: { pid: number }): boolean;
   /**
    * Check whether a pid is alive on this host (EPERM counts as alive per the
    * `process.kill(pid, 0)` semantics in `isProcessAlive`). Production:
@@ -1620,6 +1747,170 @@ export class WindowManager {
   }
 
   /**
+   * The one rule for an unkillable lock holder, shared by both entry states
+   * that can meet one: `restartAttachedServer` (reached from an OPEN project
+   * window) and `forceStopConflictingServer` (reached from the failed-open
+   * dialog, when there is no window). Keeping a single rule is the point — a
+   * holder that is unrecoverable from one entry state and recoverable from the
+   * other is the shape that left a real project unopenable for three days.
+   *
+   * "Cannot be signalled" and "is serving" are separate facts. EPERM only says
+   * the holder exists and is not ours to kill: an MCP-spawned server, or a pid
+   * the OS has reused. Nothing else clears that lock either — `runClean` prunes
+   * only dead-pid and corrupt locks, and its classifier reads EPERM as alive.
+   *
+   * So ask the holder — but only once it names somewhere to ask. A lock naming
+   * no dialable origin at all is broken outright and breaks without a probe;
+   * past that there are three outcomes, not two. A holder that has not bound
+   * yet (the `port: 0` boot sentinel) is left
+   * alone, because a probe that cannot succeed is not evidence of anything. A
+   * holder that answers is a live server we simply do not own; refuse, and let
+   * the caller surface the cross-account remedy, because breaking that lock
+   * would strand a running server and put a second one on the same project. A
+   * holder that answers nothing is stale in effect however alive its pid looks,
+   * so break the claim and let the caller proceed.
+   *
+   * Returns whether the lock was broken. Scoped to `eperm` by the callers: an
+   * `other` termination failure says nothing about whether the holder serves.
+   */
+  private async breakUnservingHolderLock(args: {
+    lockDir: string;
+    // Only what the decision needs: the identity to guard the unlink on, and
+    // enough to address the port. Narrower than `ServerLockMetadataLike` so the
+    // force-stop caller, which reads the lock raw precisely because the
+    // identity-filtered reader refuses these holders, can pass what it actually
+    // parsed instead of casting a partial object into a full one.
+    lock: Pick<ServerLockMetadataLike, 'pid' | 'url'> & { port: unknown };
+    projectPath: string;
+    // ONE discriminator for one fact. The log event and the probe phase are two
+    // views of "which entry state is asking", so taking them separately lets a
+    // caller pair a restart event with a force-stop phase and nothing would
+    // notice. Mapped once, exhaustively, below.
+    caller: RecoveryCaller;
+  }): Promise<boolean> {
+    const { lockDir, lock, projectPath, caller } = args;
+    const { event, phase } = RECOVERY_CALLERS[caller];
+    // A port of 0 is the acquired-but-not-yet-bound sentinel a lock carries
+    // during boot. The probe cannot succeed against it, so it would read as
+    // "not serving" and break the lock of a server that is still coming up.
+    //
+    // This lives in the RULE, not at a caller. The whole point of this helper is
+    // that both entry states decide the same way, and a guard installed at one
+    // of them leaves the other free to do the damage.
+    const port = lock.port;
+    // Two different states hide behind "the port is not dialable", and treating
+    // them alike gets one of them wrong.
+    //
+    // `0` is the acquired-but-not-yet-bound sentinel: a server mid-boot, which
+    // will have a real port shortly. Leave it alone — it is the one case where
+    // waiting is correct.
+    //
+    // A lock that names nowhere to dial (absent, `Infinity`, out of range, a
+    // fraction) cannot denote a listening server at all, so there is nothing to
+    // strand and no reason to keep the claim. Refusing here would be worse than
+    // useless: nothing else prunes these, so the project would stay wedged —
+    // the exact failure this whole change exists to end. A numeric STRING is
+    // NOT in this set: it renders into a live address, so it goes to the probe.
+    if (!lockMayHaveServer(lock)) {
+      if (port === 0) {
+        this.deps.log?.warn(
+          {
+            event,
+            outcome: 'eperm-stale-lock-break-skipped',
+            reason: 'booting',
+            pid: lock.pid,
+            projectPath,
+          },
+          '[window-manager] holder has not bound a port yet — leaving its lock alone',
+        );
+        return false;
+      }
+      this.deps.log?.warn(
+        // Port carried raw: for a lock this shape the value IS the diagnosis.
+        // A DECISION, not the result: the unlink below can still decline or
+        // fail, and `-broken` is the value that means it did not.
+        {
+          event,
+          outcome: 'eperm-stale-lock-break-decided',
+          reason: 'unservable-origin',
+          pid: lock.pid,
+          port,
+          projectPath,
+        },
+        '[window-manager] holder names nowhere that could serve — breaking its stale lock',
+      );
+      return this.unlinkHolderLock({ lockDir, lock, projectPath, event });
+    }
+    const dialable = { pid: lock.pid, port, url: lock.url };
+    // The graced probe, not a single shot. This path is the DESTRUCTIVE one —
+    // it deletes another process's claim — so it should not settle for less
+    // confidence than the spawn path, which only declines to adopt. A transient
+    // refusal here breaks a live server's lock; there it costs a retry.
+    if (await this.probeForeignLockWithGrace(dialable, phase)) return false;
+    // Identity-guarded: the verdict above is about THIS holder, and the probe
+    // it rests on took long enough for that holder to exit and a fresh server
+    // to take the lock.
+    //
+    // Reporting what HAPPENED, not what was intended. The dep is optional, its
+    // identity guard can decline, and the unlink can fail on a read-only or
+    // otherwise hostile `.ok` directory — claiming "broken" through any of those
+    // would tell the next diagnosis the lock is gone when it is still there, the
+    // same false-record failure the recovery rule one branch over avoids. It
+    // also must not
+    // throw: this is the recovery path for a wedged project, and replacing a
+    // stuck project with a crashed app is a strictly worse outcome.
+    return this.unlinkHolderLock({ lockDir, lock, projectPath, event });
+  }
+
+  /**
+   * The unlink half of the rule: identity-guarded, non-throwing, and honest
+   * about whether it actually removed anything. Shared by both break paths so
+   * neither can drift from the other.
+   */
+  private unlinkHolderLock(args: {
+    lockDir: string;
+    lock: Pick<ServerLockMetadataLike, 'pid'> & { port?: unknown };
+    projectPath: string;
+    event: string;
+  }): boolean {
+    const { lockDir, lock, projectPath, event } = args;
+    let broke = false;
+    try {
+      broke = this.deps.removeServerLock?.(lockDir, { pid: lock.pid }) ?? false;
+    } catch (err) {
+      this.deps.log?.warn(
+        { event, outcome: 'eperm-stale-lock-break-failed', err, pid: lock.pid, projectPath },
+        '[window-manager] could not break the stale lock',
+      );
+      return false;
+    }
+    if (!broke) {
+      this.deps.log?.warn(
+        { event, outcome: 'eperm-stale-lock-break-declined', pid: lock.pid, projectPath },
+        // Deliberately does not name a cause: the break declines on an identity
+        // mismatch, an already-gone file, or a failed unlink, and this layer
+        // cannot tell which. Asserting one would be the same false-record
+        // failure this path exists to avoid.
+        '[window-manager] stale lock was not broken',
+      );
+      return false;
+    }
+    this.deps.log?.warn(
+      {
+        event,
+        outcome: 'eperm-stale-lock-broken',
+        pid: lock.pid,
+        port: lock.port,
+        projectPath,
+      },
+      // Neutral about WHY: the caller has already logged whether the holder
+      // failed its probe or advertised a port nothing could serve.
+      "[window-manager] broke the unkillable holder's stale lock",
+    );
+    return true;
+  }
+
+  /**
    * Explicit-user-consent recovery: stop whatever process holds this
    * project's server.lock so a fresh open can proceed. Reached from the
    * "Unable to open project" dialog's "Stop Server & Retry" button after a
@@ -1640,9 +1931,17 @@ export class WindowManager {
   ): Promise<{ ok: true } | { ok: false; reason: 'eperm' | 'other' }> {
     const lockDir = getLocalDir(resolve(projectPath));
     let pid: unknown;
+    let rawPort: unknown;
+    let rawUrl: unknown;
     try {
-      pid = (JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8')) as { pid?: unknown })
-        ?.pid;
+      const raw = JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8')) as {
+        pid?: unknown;
+        port?: unknown;
+        url?: unknown;
+      };
+      pid = raw?.pid;
+      rawPort = raw?.port;
+      rawUrl = raw?.url;
     } catch {
       // No lock / unreadable — nothing to stop; the retry will proceed.
       return { ok: true };
@@ -1651,6 +1950,29 @@ export class WindowManager {
       return { ok: true };
     }
     const term = await this.terminateServerByPid(lockDir, pid);
+    // The dialog behind this call is the ONLY remedy a user has while the
+    // project has no window, so an EPERM dead-end here is terminal in a way the
+    // restart path's is not. Same two-fact rule, same safety argument: a holder
+    // that answers its port is still refused.
+    //
+    // The probe target is built from the RAW fields above, NOT `readServerLock`.
+    // That reader applies the machine-identity filter this whole method exists
+    // to bypass, and it would refuse exactly the holders EPERM implies — a
+    // different account, a foreign-looking machineId, a hostname flap — leaving
+    // the one no-window remedy silently inert for its most likely cohort.
+    if (!term.ok && term.reason === 'eperm') {
+      const broke = await this.breakUnservingHolderLock({
+        lockDir,
+        lock: {
+          pid,
+          port: rawPort,
+          ...(typeof rawUrl === 'string' ? { url: rawUrl } : {}),
+        },
+        projectPath,
+        caller: 'force-stop',
+      });
+      if (broke) return { ok: true };
+    }
     this.deps.log?.info(
       {
         event: 'desktop-force-stop-conflicting-server',
@@ -1692,28 +2014,45 @@ export class WindowManager {
     if (lock && isValidLockPidLocal(lock.pid)) {
       const term = await this.terminateServerByPid(lockDir, lock.pid);
       if (!term.ok) {
-        this.deps.log?.warn(
+        // Scoped to `eperm` — see `breakUnservingHolderLock` for the rule, and
+        // why an `other` failure keeps the conservative refusal.
+        const broke =
+          term.reason === 'eperm' &&
+          (await this.breakUnservingHolderLock({
+            lockDir,
+            lock,
+            projectPath: resolved,
+            caller: 'restart',
+          }));
+        if (!broke) {
+          this.deps.log?.warn(
+            {
+              event: 'desktop-server-restart',
+              outcome: term.reason,
+              pid: lock.pid,
+              projectPath: resolved,
+            },
+            '[window-manager] server restart could not terminate the attached server',
+          );
+          return term;
+        }
+      } else {
+        // Only the genuine kill reports `terminated`. The lock-broken path above
+        // falls through to the same recreate but terminated nothing, and saying
+        // otherwise would misreport the one event a future diagnosis reads to
+        // learn whether the old server actually went away.
+        this.deps.log?.info(
           {
             event: 'desktop-server-restart',
-            outcome: term.reason,
+            outcome: 'terminated',
+            escalated: term.escalated,
             pid: lock.pid,
+            appRuntime: this.deps.selfRuntimeVersion ?? null,
             projectPath: resolved,
           },
-          '[window-manager] server restart could not terminate the attached server',
+          '[window-manager] terminated attached server for restart',
         );
-        return term;
       }
-      this.deps.log?.info(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'terminated',
-          escalated: term.escalated,
-          pid: lock.pid,
-          appRuntime: this.deps.selfRuntimeVersion ?? null,
-          projectPath: resolved,
-        },
-        '[window-manager] terminated attached server for restart',
-      );
     }
     // Detach the originating window from the map (so the recreate spawns a new
     // window instead of focusing the old) but keep it open until the new one
@@ -2118,8 +2457,135 @@ export class WindowManager {
           childExited,
         });
       }
+      // A lock our child did not write is an UNVERIFIED claim, and the readiness
+      // this branch is about to declare rests on it. `pollServerLock` accepts a
+      // foreign holder deliberately — a concurrent starter that won the acquire
+      // is a real server worth sharing, which the losing-child path depends on —
+      // but a STALE holder passes every metadata gate that acceptance rests on:
+      // right host, valid pid, non-draining, real port, and (because EPERM reads
+      // as alive) a liveness check it cannot fail. Only asking the port
+      // separates the two, and `spawnProjectWindow`'s attach gate already asks
+      // it about this very lock. Not asking here is how one field log recorded
+      // both verdicts on the same port 2 ms apart — `desktop-attach-refused`
+      // with `reason: 'ws-upgrade-failed'`, then this line calling it ready —
+      // and the window opened onto a port answering nothing.
+      //
+      // Our OWN child is exempt: we watched it come up, so a probe would buy no
+      // signal and cost every cold start its timeout.
+      const adoptedForeignLock = lock.pid !== handle.pid;
+      // Two doors lead into `attachToExistingServer`, and gating only the direct
+      // one leaves the other open. `pollServerLock` admits on `lock.port > 0` —
+      // a RELATIONAL compare, so `'42117' > 0` coerces true — and this branch
+      // then attaches whatever it returned. A lock we cannot carry has to be
+      // refused at both doors or the stricter predicate is decoration.
+      const unusableLock = !lockIsAttachable(lock);
+      if (unusableLock || (adoptedForeignLock && !(await this.probeForeignLockWithGrace(lock)))) {
+        // Our child may still be alive here (it can lose the publish race
+        // without losing the acquire), and it is `.unref()`ed, so refusing the
+        // holder without reaping it leaks an orphan with no parent to reap it —
+        // the same hazard the lock-timeout branch above handles, for the same
+        // reason. ESRCH just means it already exited.
+        const childExited = this.deps.isProcessAlive
+          ? !this.deps.isProcessAlive(handle.pid)
+          : undefined;
+        const childExit = handle.readExit?.() ?? null;
+        try {
+          this.deps.killProbe(handle.pid, 'SIGTERM');
+        } catch (signalErr) {
+          const code = (signalErr as NodeJS.ErrnoException).code;
+          if (code !== 'ESRCH') {
+            this.deps.log?.warn(
+              {
+                event: 'desktop-spawn-orphan-sigterm-failed',
+                err: signalErr,
+                code,
+                pid: handle.pid,
+                projectPath,
+              },
+              '[window-manager] SIGTERM on orphan after refusing a stale lock failed',
+            );
+          }
+        }
+        this.spawnedDetachedPids.delete(canonicalKey);
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-spawn-refused-stale-lock',
+            reason: unusableLock ? 'lock-not-attachable' : 'holder-not-serving',
+            pid: handle.pid,
+            lockPid: lock.pid,
+            port: lock.port,
+            // `port` alone cannot name which shape refused this. Under pino's
+            // JSON semantics `undefined` drops the key and `Infinity` becomes
+            // `null`, so a bundle showing `"port": null` cannot distinguish a
+            // writer that set nothing from one that computed `Infinity` — two
+            // different upstream bugs. These two survive serialization.
+            portType: typeof lock.port,
+            rawPort: String(lock.port),
+            lockDir,
+            projectPath,
+          },
+          '[window-manager] refusing to attach the spawn to a lock we cannot use',
+        );
+        // Its OWN error kind, deliberately not `buildSpawnFailureError`. That
+        // one narrates a deadline and the child's exit, and nothing here is a
+        // deadline: `pollServerLock` returned on its first read, so reporting
+        // the tier that was never served would blame a 15 s timeout that did
+        // not elapse, on our own healthy child's pid, and never mention the
+        // holder. It also would not reach the remedy — the failed-open dialog
+        // gates Stop Server & Retry on the kind, so a refusal that wants that
+        // button has to say what it actually is.
+        // `||` short-circuits, so on the unusable-lock arm the holder was never
+        // dialed. Reporting "is not serving" there states a probe result that
+        // does not exist, and the failed-open dialog quotes this message
+        // verbatim — the user would consent to stopping a process on the claim
+        // it is already inert. The holder framing has to move too: `unusableLock`
+        // is deliberately not exempted for our own child the way the probe is,
+        // so "another process" can be our own healthy spawn.
+        const holder = adoptedForeignLock
+          ? `Another process (pid ${lock.pid})`
+          : `The server OpenKnowledge just started (pid ${lock.pid})`;
+        throw Object.assign(
+          new Error(
+            unusableLock
+              ? `${holder} holds this project's server lock, but the lock does not name a port ` +
+                  `OpenKnowledge can keep a connection open on (${String(lock.port)}).`
+              : `${holder} holds this project's server lock but is not serving on port ${lock.port}.`,
+          ),
+          {
+            name: 'StaleLockHolderError',
+            kind: 'stale-lock-holder' as const,
+            reason: unusableLock
+              ? ('lock-not-attachable' as const)
+              : ('holder-not-serving' as const),
+            // The unusable arm is not exempted for our own spawn the way the
+            // probe is, so the holder here can be the child this method just
+            // SIGTERMed. Asking the user whether they still need a process we
+            // killed for them, from the request they just made, has no answer
+            // they could act on — the dialog drops that clause when this is set.
+            holderIsOwnChild: !adoptedForeignLock,
+            holderPid: lock.pid,
+            holderPort: lock.port,
+            pid: handle.pid,
+            childExited,
+            exitCode: childExit?.code ?? null,
+            exitSignal: childExit?.signal ?? null,
+          },
+        );
+      }
       this.deps.log?.info(
-        { event: 'desktop-server-spawned-detached', pid: handle.pid, port: lock.port, lockDir },
+        {
+          event: 'desktop-server-spawned-detached',
+          pid: handle.pid,
+          // `pid` and `port` come from different sources — our child handle and
+          // whoever holds the lock. Recording `lockPid` and how the claim was
+          // established keeps the pair auditable: without them this record
+          // cannot distinguish "our child came up" from "we adopted a
+          // stranger's lock", which is precisely the confusion it caused.
+          lockPid: lock.pid,
+          readiness: adoptedForeignLock ? 'foreign-lock-probe-verified' : 'own-child',
+          port: lock.port,
+          lockDir,
+        },
         '[window-manager] detached server ready',
       );
       // Startup waterfall: the detached server's lock is now readable — carry
@@ -2366,10 +2832,10 @@ export class WindowManager {
       });
     }
 
-    // (The dev reclaim path used to deliver a "started a fresh server" notice
-    // here; both it and the packaged upgrade reconcile now terminate + respawn
-    // silently, so no server-lifecycle toast is delivered on this dev/test-only
-    // utility-fork branch.)
+    // (No "started a fresh server" notice here: the dev reclaim path and the
+    // packaged upgrade reconcile both terminate + respawn silently, so no
+    // server-lifecycle toast is delivered on this dev/test-only utility-fork
+    // branch.)
 
     // Defer OS-level window display until both first-paint AND chrome-theme
     // signals arrive — `show: false` in DEFAULT_WIN_OPTS hides the native
@@ -3188,12 +3654,51 @@ export class WindowManager {
     // Attaching would bind the window to a dying backend — fall through to
     // spawn mode, whose `ok start` child waits out the drain.
     if (lock.draining === true) return refuse('lock-draining');
-    if (lock.port <= 0) return refuse('lock-port-zero');
+    // A STRICTER question than the recovery rule's: not whether anything could
+    // be there, but whether we could HOLD it. A numeric string passes the first
+    // and fails this one. Deliberately decided on `port` alone even when the
+    // `url` is perfectly good, because the keepalive reads the port and nothing
+    // else; `port <= 0` would not do, since it admits `Infinity` to be formatted
+    // into a probe URL nothing can answer.
+    if (!lockIsAttachable(lock)) return refuse('lock-not-attachable');
     if (lock.kind === undefined) return refuse('legacy-lock-no-kind');
     if (lock.capabilities !== undefined && !lock.capabilities.includes('ws')) {
       return refuse('capabilities-missing-ws');
     }
     return lock;
+  }
+
+  /**
+   * `probeAttachableLock` with a bounded grace, for the callers whose verdict on
+   * a failed probe is one-way: the detached-spawn gate fails the open, and the
+   * recovery path deletes the holder's claim.
+   *
+   * The attach path can afford a single shot: a refusal there falls through to
+   * spawning our own server, so a false negative costs a redundant spawn. The
+   * detached-spawn path has already spawned, so its refusal fails the open —
+   * and the lock it is judging belongs to a concurrent starter caught at its
+   * youngest. The port-0 sentinel means `port > 0` implies `listen()` has
+   * bound, but binding is not the same as serving `/collab`: a hung or
+   * mid-wiring upgrade path is the exact symptom `probeAttachableLock` exists
+   * for. One 500 ms shot at that moment would refuse healthy winners.
+   *
+   * Retries are cheap here because the failure they guard against is expensive
+   * and one-way, and because a genuinely dead port fails fast on connection
+   * refused rather than burning the timeout.
+   */
+  private async probeForeignLockWithGrace(
+    lock: { pid: number; port?: unknown; url?: unknown },
+    phase: ProbePhase = 'spawn-foreign-lock',
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= FOREIGN_LOCK_PROBE_ATTEMPTS; attempt++) {
+      if (await this.probeAttachableLock(lock, phase)) return true;
+      if (attempt < FOREIGN_LOCK_PROBE_ATTEMPTS) {
+        await new Promise<void>((resolveSleep) => {
+          this.deps.setTimeout(() => resolveSleep(), FOREIGN_LOCK_PROBE_RETRY_MS);
+        });
+      }
+    }
+    return false;
   }
 
   /**
@@ -3207,7 +3712,13 @@ export class WindowManager {
    * the probe (thrown rejections) are treated as failures — defensive
    * stance, since we cannot prove the server is healthy.
    */
-  private async probeAttachableLock(lock: ServerLockMetadataLike): Promise<boolean> {
+  private async probeAttachableLock(
+    // Only the fields the probe reads: the address to dial and the pid to name
+    // in the refusal. Narrow so callers holding a partially-parsed lock can ask
+    // without fabricating the rest.
+    lock: { pid: number; port?: unknown; url?: unknown },
+    phase: ProbePhase = 'attach',
+  ): Promise<boolean> {
     const probe = this.deps.probeWsUpgrade;
     if (!probe) return true;
     const url = `${lockCollabUrl(lock)}/__attach_probe__`;
@@ -3219,7 +3730,17 @@ export class WindowManager {
     }
     if (!upgradeOk) {
       this.deps.log?.warn(
-        { event: 'desktop-attach-refused', reason: 'ws-upgrade-failed', lockPid: lock.pid },
+        {
+          event: 'desktop-attach-refused',
+          reason: 'ws-upgrade-failed',
+          lockPid: lock.pid,
+          // Which decision this probe was informing. The event name predates
+          // the second caller, and a bundle that cannot tell an attach-gate
+          // refusal from a spawn-path one reads as the same verdict twice on
+          // one port — the exact confusion that made this class hard to
+          // diagnose from logs in the first place.
+          phase,
+        },
         '[window-manager] refusing attach',
       );
     }
