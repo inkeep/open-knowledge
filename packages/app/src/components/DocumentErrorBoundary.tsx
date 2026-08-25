@@ -179,6 +179,10 @@ function DocumentErrorFallback({
   const canGoBack = !!previousDocName && !!onNavigateBack;
   const retryRef = useRef<HTMLButtonElement>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  // Same in-flight guard as the sidebar's restart affordance: the call spawns
+  // a process and tears this window down, so a second click while it is
+  // outstanding dispatches a second spawn.
+  const [restarting, setRestarting] = useState(false);
   // Desktop only, and only for reach failures: "Try again" recycles the
   // provider against the SAME server, which never succeeds once that server
   // has stopped. Restart spawns a fresh one. `ok ui` (browser) mode has no
@@ -221,7 +225,9 @@ function DocumentErrorFallback({
         {restartBridge ? (
           <Button
             variant="outline-mono"
+            disabled={restarting}
             onClick={() => {
+              setRestarting(true);
               restartCollabServer(restartBridge)
                 .then((result) => {
                   // Success: main tears this window down and recreates it.
@@ -236,7 +242,8 @@ function DocumentErrorFallback({
                 })
                 // The invoke can reject when main destroys this window mid-call
                 // (the success path) — nothing to surface.
-                .catch(() => {});
+                .catch(() => {})
+                .finally(() => setRestarting(false));
             }}
           >
             <Trans>Restart server</Trans>

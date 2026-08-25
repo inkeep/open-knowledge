@@ -15,14 +15,21 @@
 
 import { statSync } from 'node:fs';
 
-/** Global root options that consume the following token as their value. */
-const VALUE_TAKING_GLOBAL_FLAGS = new Set(['--cwd', '--log-level']);
+/**
+ * Options that consume the FOLLOWING token as their value. Includes the
+ * subcommand flags this scan can meet before Commander parses: an unlisted
+ * value-taking flag makes its value look like a positional operand, which is
+ * how an explicit `--project <dir>` was silently dropped on the diverted path.
+ */
+const VALUE_TAKING_FLAGS = new Set(['--cwd', '--log-level', '--project', '--scope']);
 
 export interface ScannedRootArgv {
-  /** Positional operands, in order, with global options stripped. */
+  /** Positional operands, in order, with options + their values stripped. */
   readonly operands: string[];
   /** `--cwd <dir>` (or `--cwd=<dir>`) when present — used to resolve relative file paths. */
   readonly cwd: string | null;
+  /** `--project <dir>` (or `--project=<dir>`) when present — the explicit project override. */
+  readonly project: string | null;
   /** True when a terminal/help flag (`-h`/`--help`/`-V`/`--version`) appeared before any operand. */
   readonly sawTerminalFlag: boolean;
 }
@@ -36,6 +43,7 @@ export interface ScannedRootArgv {
 export function scanRootArgv(argv: string[]): ScannedRootArgv {
   const operands: string[] = [];
   let cwd: string | null = null;
+  let project: string | null = null;
   let sawTerminalFlag = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -44,8 +52,10 @@ export function scanRootArgv(argv: string[]): ScannedRootArgv {
       sawTerminalFlag = true;
       break;
     }
-    if (tok === '--cwd' || tok === '--log-level') {
-      if (tok === '--cwd') cwd = argv[i + 1] ?? null;
+    if (VALUE_TAKING_FLAGS.has(tok)) {
+      const value = argv[i + 1] ?? null;
+      if (tok === '--cwd') cwd = value;
+      if (tok === '--project') project = value;
       i++; // consume the value token
       continue;
     }
@@ -53,18 +63,19 @@ export function scanRootArgv(argv: string[]): ScannedRootArgv {
       cwd = tok.slice('--cwd='.length);
       continue;
     }
-    if (tok.startsWith('--log-level=')) continue;
-    if (tok === '--no-color' || tok === '--color') continue;
+    if (tok.startsWith('--project=')) {
+      project = tok.slice('--project='.length);
+      continue;
+    }
     if (tok.startsWith('-')) {
-      // An unrecognized option before any operand — let Commander parse + report.
-      // (Known value-taking flags are handled above.)
-      if (VALUE_TAKING_GLOBAL_FLAGS.has(tok)) i++;
+      // Any other option (including `--scope=x`, `--no-color`, an unknown flag)
+      // carries its own value or takes none — let Commander parse + report.
       continue;
     }
     operands.push(tok);
   }
 
-  return { operands, cwd, sawTerminalFlag };
+  return { operands, cwd, project, sawTerminalFlag };
 }
 
 export interface DecideSingleFileOptions {
@@ -139,4 +150,43 @@ export function isFileishTarget(absPath: string, token: string): boolean {
     }
     return false;
   }
+}
+
+export interface RootDispatch {
+  /** Absolute path of the markdown file to open. */
+  readonly absPath: string;
+  /** Explicit `--project` override, resolved absolute, or null when absent. */
+  readonly projectRoot: string | null;
+}
+
+export interface ResolveRootDispatchOptions {
+  readonly knownSubcommands: ReadonlySet<string>;
+  /** Directory relative operands resolve against (`--cwd` or `process.cwd()`). */
+  readonly cwd: string;
+  readonly isFileish: (absPath: string, token: string) => boolean;
+  readonly resolvePath: (base: string, token: string) => string;
+}
+
+/**
+ * The whole bare-`ok <file>` pre-dispatch decision as one pure function: scan
+ * argv, decide the target, and carry the explicit project override through.
+ * `cli.ts` is a thin caller so the dispatch matrix — including every accepted
+ * `--project` syntax and position — is testable without a filesystem.
+ */
+export function resolveRootDispatch(
+  argv: string[],
+  opts: ResolveRootDispatchOptions,
+): RootDispatch | null {
+  const scanned = scanRootArgv(argv);
+  if (scanned.sawTerminalFlag) return null;
+  const baseDir = scanned.cwd ? opts.resolvePath(opts.cwd, scanned.cwd) : opts.cwd;
+  const target = decideSingleFileTarget(scanned.operands, {
+    knownSubcommands: opts.knownSubcommands,
+    isFileish: (t) => opts.isFileish(opts.resolvePath(baseDir, t), t),
+  });
+  if (target === null) return null;
+  return {
+    absPath: opts.resolvePath(baseDir, target),
+    projectRoot: scanned.project === null ? null : opts.resolvePath(baseDir, scanned.project),
+  };
 }

@@ -124,7 +124,12 @@ import {
   type DerivedDocumentIndexBranchTransition,
 } from './derived-document-index.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
-import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc-extensions.ts';
+import {
+  canonicalDocName,
+  docNameToRelativePath,
+  getDocExtension,
+  stripDocExtension,
+} from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
@@ -310,6 +315,13 @@ export interface ServerOptions {
    * exposed in production. Enable only in tests.
    */
   enableTestRoutes?: boolean;
+  /**
+   * Live `/collab` WebSocket client count, disclosed on `GET /api/server-info`.
+   * Wired by `bootServer` (which owns the HTTP server the counter attaches to);
+   * omitted by the dev-server / plugin path, where the field is left off the
+   * response rather than reported as a possibly-wrong zero.
+   */
+  getCollabClientCount?: () => number;
   /** Shadow repo handle — passed to persistence. */
   shadowRepo?: ShadowHandle;
   /** Content root relative to project dir. */
@@ -2426,6 +2438,25 @@ export function createServer(options: ServerOptions): ServerInstance {
       extensions: [persistence.extension],
     });
 
+    // Server-side room access converges on `openDirectConnection`, so an
+    // extension-qualified name is collapsed before it can key a SECOND room
+    // over the same file on disk. Two rooms over one file persist
+    // independently and the later write overwrites the earlier one with no
+    // merge and no conflict surfaced.
+    //
+    // Deliberately NOT wrapping `createDocument`: overriding that method
+    // perturbs the collaboration server's own internals and broke sync
+    // conflict resolution even for names this guard leaves untouched. The
+    // names that reach a room converge instead at the surfaces that accept
+    // them from outside: the HTTP document read and write routes here, and
+    // the client's own navigation and tab-restore paths.
+    const openDirect = hocuspocus.openDirectConnection.bind(hocuspocus);
+    hocuspocus.openDirectConnection = ((documentName: string, context?: unknown) =>
+      openDirect(
+        canonicalDocName(documentName),
+        context,
+      )) as typeof hocuspocus.openDirectConnection;
+
     // Workload observable gauges (loaded docs, persistence queue depths,
     // bridge drain backlog). Providers are sampled only at metric-export
     // time; registering them is a Set add and safe when OTel is disabled.
@@ -3007,6 +3038,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       // server has flushed nothing yet, matching the schema's
       // empty-object case.
       getDiskAckSVs: () => cc1Broadcaster?.getLatestDiskAckSVsAsBase64() ?? {},
+      getCollabClientCount: options.getCollabClientCount,
       contentRoot,
       derivedDocumentIndex,
       signalChannel,

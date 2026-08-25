@@ -82,6 +82,108 @@ function stripMarkdownTabExtension(path: string): string | null {
     : null;
 }
 
+/**
+ * True when another id in the session is extension-qualified under the same stem
+ * as `tabId` — `foo.md` alongside `foo.mdx`.
+ *
+ * A doc name is its on-disk path with one markdown extension removed, so a
+ * QUALIFIED doc name belongs to a file carrying a second markdown extension of
+ * its own (`foo.md.md`, `foo.mdx.md`). Two of those under one stem are two
+ * DISTINCT files, and stripping either would merge both into a single tab. This
+ * is not the same-stem `.md` + `.mdx` case: that pair is indexed under one bare
+ * stem, so only its winning half ever becomes a tab id. An extension-carrying id
+ * whose only relative is the bare stem is the opposite case — one file
+ * addressed twice.
+ */
+function sharesStemWithAnotherQualifiedTab(
+  tabId: string,
+  siblingTabIds: readonly string[],
+): boolean {
+  const stem = stripMarkdownTabExtension(tabId);
+  if (stem === null) return false;
+  return siblingTabIds.some(
+    (other) => other !== tabId && stripMarkdownTabExtension(other) === stem,
+  );
+}
+
+/**
+ * Collapse a doc tab id onto the name that keys exactly ONE collaboration room.
+ *
+ * A doc tab's id IS its docName, so an extension-carrying id addresses the same
+ * file on disk as its stripped twin while keying a second room over that file.
+ * The two rooms diverge permanently and both write to it, so the loser's edits
+ * are overwritten with no merge. Strips repeatedly, so `foo.md.md` lands on
+ * `foo` rather than on the still-qualified `foo.md`.
+ *
+ * Folder, asset, and skill-viewer ids address a path rather than a room, so they
+ * keep their extension; so does any doc name without a markdown extension,
+ * including the synthetic system and config docs.
+ */
+function canonicalTabId(tabId: string, siblingTabIds: readonly string[] = []): string {
+  if (parseEditorTabId(tabId).kind !== 'doc') return tabId;
+  if (sharesStemWithAnotherQualifiedTab(tabId, siblingTabIds)) return tabId;
+  let docName = tabId;
+  let stripped = stripMarkdownTabExtension(docName);
+  while (stripped !== null && stripped.length > 0) {
+    docName = stripped;
+    stripped = stripMarkdownTabExtension(docName);
+  }
+  return docName;
+}
+
+function canonicalTabIdList(value: unknown, siblingTabIds: readonly string[]): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((item) =>
+    typeof item === 'string' ? canonicalTabId(item, siblingTabIds) : item,
+  );
+}
+
+/** Every persisted tab id across the session's panes, in pane order. */
+function persistedTabIds(panes: readonly unknown[]): string[] {
+  return panes.flatMap((pane) => {
+    if (typeof pane !== 'object' || pane === null) return [];
+    const openTabs = (pane as Record<string, unknown>).openTabs;
+    if (!Array.isArray(openTabs)) return [];
+    return openTabs.filter((tabId): tabId is string => typeof tabId === 'string');
+  });
+}
+
+/**
+ * Rewrite persisted tab identifiers to their canonical form before the pane
+ * parser reads them.
+ *
+ * Nothing normalized these ids on the way in, so a profile that ever opened an
+ * extension-carrying doc name re-mints that second room on every launch:
+ * normalizing only what is written from here on would leave those profiles
+ * broken indefinitely. Repair happens on the read side of BOTH stores (browser
+ * local storage and the desktop bridge), which share this parse.
+ *
+ * Entries are mapped rather than dropped — dropping one would close a tab the
+ * user left open. The pane parser's own de-duplication then folds a repaired id
+ * into an already-open canonical one, so a session holding both shapes restores
+ * as one tab instead of two over the same file.
+ */
+function repairPersistedTabIds(record: Record<string, unknown>): Record<string, unknown> {
+  const repaired: Record<string, unknown> = { ...record };
+  const siblingTabIds = Array.isArray(record.panes) ? persistedTabIds(record.panes) : [];
+  if (Array.isArray(record.panes)) {
+    repaired.panes = record.panes.map((pane) => {
+      if (typeof pane !== 'object' || pane === null) return pane;
+      const entry = pane as Record<string, unknown>;
+      return {
+        ...entry,
+        openTabs: canonicalTabIdList(entry.openTabs, siblingTabIds),
+        pinnedTabIds: canonicalTabIdList(entry.pinnedTabIds, siblingTabIds),
+        activeTabId:
+          typeof entry.activeTabId === 'string'
+            ? canonicalTabId(entry.activeTabId, siblingTabIds)
+            : entry.activeTabId,
+      };
+    });
+  }
+  return repaired;
+}
+
 function isValidTabId(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.includes('\u0000doc-tab:')) {
     return false;
@@ -846,7 +948,7 @@ export function parseEditorTabSessionState(value: unknown): EditorTabSessionStat
   if (typeof value !== 'object' || value === null) {
     return emptyTabSessionState();
   }
-  const record = value as Record<string, unknown>;
+  const record = repairPersistedTabIds(value as Record<string, unknown>);
   if (!Array.isArray(record.panes)) return emptyTabSessionState();
   const workspace = parsePersistedEditorWorkspace(record);
   return sessionStateFromWorkspace(

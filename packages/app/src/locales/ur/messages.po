@@ -11035,8 +11035,8 @@ msgid "Resources"
 msgstr "وسائل"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "سرور دوبارہ چلائیں"
@@ -11054,7 +11054,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "دوبارہ چل پڑا — اب v{appRuntime} چل رہا ہے۔"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "دوبارہ چلایا جا رہا ہے"
 

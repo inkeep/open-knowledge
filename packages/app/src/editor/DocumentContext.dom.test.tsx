@@ -41,9 +41,9 @@ vi.doMock('@/hooks/use-skills', () => ({
 
 const { DocumentProvider, useDocumentContext } = await import('./DocumentContext');
 
-const PINNED_TAB_ID = docTabId('Pinned.md');
-const OTHER_TAB_ID = docTabId('Other.md');
-const THIRD_TAB_ID = docTabId('Third.md');
+const PINNED_TAB_ID = docTabId('Pinned');
+const OTHER_TAB_ID = docTabId('Other');
+const THIRD_TAB_ID = docTabId('Third');
 const LICENSE_TAB_ID = assetTabId('LICENSE');
 const SKILL_TAB_ID = skillFileTabId({ scope: 'project', name: 'example', path: 'SKILL.md' });
 const originalFetch = globalThis.fetch;
@@ -317,14 +317,14 @@ function CloseActiveHarness() {
       <button type="button" onClick={() => ctx.focusPane('pane-right')}>
         Focus right
       </button>
-      <button type="button" onClick={() => ctx.openDocument('Other.md')}>
+      <button type="button" onClick={() => ctx.openDocument('Other')}>
         Open other
       </button>
       <button
         type="button"
         onClick={() =>
           ctx.openTarget(
-            { kind: 'doc', target: 'Other.md', docName: 'Other.md' },
+            { kind: 'doc', target: 'Other', docName: 'Other' },
             { disposition: 'permanent', consumeActiveNewTab: true },
           )
         }
@@ -432,7 +432,7 @@ function PaneWorkspaceHarness() {
         type="button"
         onClick={() =>
           ctx.openTarget(
-            { kind: 'doc', target: 'Third.md', docName: 'Third.md' },
+            { kind: 'doc', target: 'Third', docName: 'Third' },
             { disposition: 'permanent', consumeActiveNewTab: true },
           )
         }
@@ -878,9 +878,9 @@ describe('DocumentContext tab close force contract', () => {
   });
 });
 
-const REORDER_A = docTabId('A.md');
-const REORDER_B = docTabId('B.md');
-const REORDER_C = docTabId('C.md');
+const REORDER_A = docTabId('A');
+const REORDER_B = docTabId('B');
+const REORDER_C = docTabId('C');
 
 function seedReorderSession() {
   window.localStorage.setItem(
@@ -1556,7 +1556,7 @@ describe('DocumentContext tab restore', () => {
       ),
     );
     window.okDesktop = stub.bridge;
-    window.location.hash = '#/Other.md';
+    window.location.hash = '#/Other';
 
     render(<CloseActiveHarness />, { wrapper: ProviderHarness });
 
@@ -1598,7 +1598,7 @@ describe('DocumentContext pane workspace', () => {
 
     expect(screen.getByTestId('focused-pane').textContent).toBe('pane-left');
     expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
-    expect(window.location.hash).toBe('#/Other.md');
+    expect(window.location.hash).toBe('#/Other');
   });
 
   test('activates the first tab when a reloaded pane has no valid active tab', () => {
@@ -1630,7 +1630,7 @@ describe('DocumentContext pane workspace', () => {
 
     expect(screen.getByTestId('focused-pane').textContent).toBe('pane-right');
     expect(screen.getByTestId('active-pane-tab').textContent).toBe(THIRD_TAB_ID);
-    expect(screen.getByTestId('pane-tabs').textContent?.match(/Third\.md/g)).toHaveLength(1);
+    expect(screen.getByTestId('pane-tabs').textContent?.match(/Third/g)).toHaveLength(1);
   });
 
   test('splits a tab into a focused pane without duplicating its target', async () => {
@@ -1643,7 +1643,7 @@ describe('DocumentContext pane workspace', () => {
     expect(screen.getByTestId('pane-count').textContent).toBe('3');
     expect(screen.getByTestId('focused-pane').textContent).toBe('pane-1');
     expect(screen.getByTestId('active-pane-tab').textContent).toBe(OTHER_TAB_ID);
-    expect(screen.getByTestId('pane-tabs').textContent?.match(/Other\.md/g)).toHaveLength(1);
+    expect(screen.getByTestId('pane-tabs').textContent?.match(/Other/g)).toHaveLength(1);
   });
 
   // The acceptance test for unifying the Files/Skills surfaces. `skillFocused`
@@ -1702,9 +1702,9 @@ describe('DocumentContext pane workspace', () => {
   });
 });
 
-const RENAME_FOO = docTabId('foo.md');
-const RENAME_BAR = docTabId('bar.md');
-const RENAME_BAZZ = docTabId('bazz.md');
+const RENAME_FOO = docTabId('foo');
+const RENAME_BAR = docTabId('bar');
+const RENAME_BAZZ = docTabId('bazz');
 
 function seedRenameSession() {
   window.localStorage.setItem(
@@ -1767,7 +1767,7 @@ describe('DocumentContext local rename reconciliation — preserves tab position
     // reconcileVisibleTabOrder, which dropped the stale `foo` id and re-appended
     // the new `bazz` id at the end, producing [bar, bazz].
     seedRenameSession();
-    render(<RenameHarness fromDocName="foo.md" toDocName="bazz.md" />, {
+    render(<RenameHarness fromDocName="foo" toDocName="bazz" />, {
       wrapper: ProviderHarness,
     });
 
@@ -1788,7 +1788,7 @@ describe('DocumentContext local rename reconciliation — preserves tab position
     // the tab itself was remapped, leaving the editor's active-tab UI desynced
     // from the rendered tab strip.
     seedRenameSession();
-    render(<RenameHarness fromDocName="foo.md" toDocName="bazz.md" />, {
+    render(<RenameHarness fromDocName="foo" toDocName="bazz" />, {
       wrapper: ProviderHarness,
     });
 

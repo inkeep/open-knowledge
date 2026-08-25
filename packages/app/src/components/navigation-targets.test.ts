@@ -157,9 +157,12 @@ describe('resolveNavigationTarget', () => {
     });
   });
 
-  test('preserves extension-qualified document targets when the exact page exists', () => {
+  test('two double-extension files under one stem keep their qualified names', () => {
+    // `docs/guide.md.md` and `docs/guide.mdx.md` on disk: each indexes as a page
+    // whose own name still ends in a markdown extension, and nothing owns the
+    // bare `docs/guide`, so a strip would merge the two onto a name for neither.
     const resolved = resolveNavigationTarget('docs/guide.md', {
-      pages: new Set(['docs/guide.md', 'docs/guide.mdx', 'docs/guide']),
+      pages: new Set(['docs/guide.md', 'docs/guide.mdx']),
       folderPaths: new Set(['docs']),
     });
 
@@ -167,6 +170,19 @@ describe('resolveNavigationTarget', () => {
       kind: 'doc',
       target: 'docs/guide.md',
       docName: 'docs/guide.md',
+    });
+  });
+
+  test('an extension-less page outranks a qualified entry for the same stem', () => {
+    const resolved = resolveNavigationTarget('docs/guide.md', {
+      pages: new Set(['docs/guide.md', 'docs/guide.mdx', 'docs/guide']),
+      folderPaths: new Set(['docs']),
+    });
+
+    expect(resolved).toEqual({
+      kind: 'doc',
+      target: 'docs/guide',
+      docName: 'docs/guide',
     });
   });
 
@@ -815,5 +831,82 @@ describe('editable text docs resolve as doc targets', () => {
       assetPaths: new Set<string>(['src/util.ts']),
     } as never);
     expect(target).toMatchObject({ kind: 'doc', docName: 'src/util.ts' });
+  });
+});
+
+describe('markdown-extension normalization keeps one room per file', () => {
+  test('a managed-artifact skill reference normalizes before the early return', () => {
+    expect(
+      resolveNavigationTarget('__skill__/global/my-skill/references/guide.md', {
+        pages: new Set<string>(),
+      }),
+    ).toEqual({
+      kind: 'doc',
+      target: '__skill__/global/my-skill/references/guide',
+      docName: '__skill__/global/my-skill/references/guide',
+    });
+  });
+
+  test('an external-skill bundle reference normalizes too', () => {
+    expect(
+      resolveNavigationTarget('__extskill__/my-skill/references/guide.mdx', {
+        pages: new Set<string>(),
+      }),
+    ).toMatchObject({
+      kind: 'doc',
+      docName: '__extskill__/my-skill/references/guide',
+    });
+  });
+
+  test('the stripped twin wins over an extension-qualified index entry', () => {
+    const pages = new Set(['specs/demo/SPEC', 'specs/demo/SPEC.md']);
+    expect(resolveNavigationTarget('specs/demo/SPEC.md', { pages })).toEqual({
+      kind: 'doc',
+      target: 'specs/demo/SPEC',
+      docName: 'specs/demo/SPEC',
+    });
+  });
+
+  test('repeated extensions collapse to the stem', () => {
+    const pages = new Set(['notes/idea']);
+    expect(resolveNavigationTarget('notes/idea.md.md', { pages })).toMatchObject({
+      kind: 'doc',
+      docName: 'notes/idea',
+    });
+  });
+
+  test('a file whose own name ends in .md keeps that extension', () => {
+    // `specs/demo/NOTE.md.md` on disk indexes as the page `specs/demo/NOTE.md`.
+    // No page owns `specs/demo/NOTE`, so stripping addresses nothing.
+    const pages = new Set(['specs/demo/NOTE.md']);
+    expect(resolveNavigationTarget('specs/demo/NOTE.md', { pages })).toEqual({
+      kind: 'doc',
+      target: 'specs/demo/NOTE.md',
+      docName: 'specs/demo/NOTE.md',
+    });
+  });
+
+  test('system and config doc names pass through untouched', () => {
+    const synthetic = [
+      '__system__',
+      '__config__/project',
+      '__local__/project',
+      '__user__/config.yml',
+    ];
+    for (const docName of synthetic) {
+      expect(resolveNavigationTarget(docName, { pages: new Set([docName]) })).toEqual({
+        kind: 'doc',
+        target: docName,
+        docName,
+      });
+      expect(resolveNavigationTarget(docName, { pages: new Set<string>() }).target).toBe(docName);
+    }
+  });
+
+  test('non-markdown doc names keep their extension', () => {
+    expect(resolveNavigationTarget('assets/flow.mmd', { pages: new Set<string>() })).toMatchObject({
+      kind: 'doc',
+      docName: 'assets/flow.mmd',
+    });
   });
 });

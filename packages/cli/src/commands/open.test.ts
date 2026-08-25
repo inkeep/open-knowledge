@@ -20,6 +20,9 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
       opened.push(t);
       return { ok: true };
     },
+    findAncestorProject: () => null,
+    isProjectRoot: () => true,
+    enclosingProject: () => null,
     log: (m) => logs.push(m),
     error: (m) => errors.push(m),
     ...overrides,
@@ -242,5 +245,175 @@ describe('createRealOpenDeps wiring', () => {
       bundlePath: '/Applications/OpenKnowledge.app',
     }));
     expect(deps.detectBundlePath()).toBe('/Applications/OpenKnowledge.app');
+  });
+});
+
+describe('resolved-project disclosure', () => {
+  test('doc open names the absolute project root', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+    });
+    const code = await runOpen('specs/foo/SPEC', { project: '/abs/proj' }, deps);
+    expect(code).toBe(0);
+    expect(logs).toContain('Project: /abs/proj');
+  });
+
+  test('folder open names the absolute project root', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => null,
+      resolveBaseUrl: () => 'http://localhost:5173',
+      classifyName: () => 'folder',
+    });
+    const code = await runOpen('specs/foo', { project: '/abs/proj' }, deps);
+    expect(code).toBe(0);
+    expect(logs).toContain('Project: /abs/proj');
+  });
+
+  test('skill open names the absolute project root', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+    });
+    const code = await runOpen('my-skill', { skill: true, project: '/abs/proj' }, deps);
+    expect(code).toBe(0);
+    expect(logs).toContain('Project: /abs/proj');
+  });
+
+  test('a failed open discloses nothing (no false project claim)', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      openTarget: async () => ({ ok: false, reason: 'not-installed' }),
+    });
+    const code = await runOpen('doc', { project: '/abs/proj' }, deps);
+    expect(code).toBe(1);
+    expect(logs).toEqual([]);
+  });
+
+  test('a nested project root names BOTH roots, once', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      findAncestorProject: () => '/abs',
+    });
+    const code = await runOpen('doc', { project: '/abs/nested' }, deps);
+    expect(code).toBe(0);
+    const nested = logs.filter((l) => l.startsWith('Note:'));
+    expect(nested).toHaveLength(1);
+    expect(nested[0]).toContain('/abs/nested');
+    expect(nested[0]).toContain('/abs');
+  });
+
+  test('a non-nested project root says nothing extra', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      findAncestorProject: () => null,
+    });
+    await runOpen('doc', { project: '/abs/proj' }, deps);
+    expect(logs.filter((l) => l.startsWith('Note:'))).toHaveLength(0);
+  });
+});
+
+describe('explicit --project validation', () => {
+  test('refuses an override that does not name a project, without opening anything', async () => {
+    const { deps, opened, errors } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      isProjectRoot: () => false,
+    });
+    const code = await runOpen('README', { project: '/tmp/not-a-project' }, deps);
+    expect(code).toBe(1);
+    expect(opened).toEqual([]);
+    expect(errors.join('\n')).toContain('not an OpenKnowledge project');
+  });
+
+  test('honors an override that does name a project', async () => {
+    const { deps, opened } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      isProjectRoot: () => true,
+    });
+    const code = await runOpen('README', { project: '/tmp/real-project' }, deps);
+    expect(code).toBe(0);
+    expect(opened[0]).toContain(encodeURIComponent('/tmp/real-project'));
+  });
+
+  test('an absent override keeps the cwd default and is never validated', async () => {
+    let consulted = false;
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      isProjectRoot: () => {
+        consulted = true;
+        return false;
+      },
+    });
+    const code = await runOpen('README', {}, deps);
+    expect(code).toBe(0);
+    expect(consulted).toBe(false);
+    // No project encloses the cwd here, so the fallback directory must not be
+    // reported as one.
+    expect(logs.filter((l) => l.startsWith('Project:'))).toHaveLength(0);
+    expect(logs.join('\n')).toContain('not an OpenKnowledge project');
+  });
+});
+
+describe('running outside any project', () => {
+  test('does not call the cwd fallback a project', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      enclosingProject: () => null,
+    });
+    const code = await runOpen('notes', {}, deps);
+    expect(code).toBe(0);
+    expect(logs.some((l) => l.startsWith('Project:'))).toBe(false);
+    expect(logs.some((l) => l.startsWith('Working directory:'))).toBe(true);
+  });
+
+  test('does not derive a nested-project note from a non-project directory', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      enclosingProject: () => null,
+      // A real project DOES sit above the cwd, but the cwd is not a project, so
+      // there is no nesting to report.
+      findAncestorProject: () => '/repo/root',
+    });
+    await runOpen('notes', {}, deps);
+    expect(logs.filter((l) => l.startsWith('Note:'))).toHaveLength(0);
+  });
+});
+
+describe('running from a subdirectory of a project', () => {
+  test('acts on the enclosing project, not the subdirectory it was run from', async () => {
+    const { deps, opened, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      // cwd is <root>/specs; the project is <root>.
+      enclosingProject: () => '/repo/root',
+      findAncestorProject: () => null,
+    });
+    const code = await runOpen('notes', {}, deps);
+    expect(code).toBe(0);
+    expect(opened[0]).toContain(encodeURIComponent('/repo/root'));
+    expect(logs.join('\n')).toContain('/repo/root');
+  });
+
+  test('does not claim a nested topology just because it ran below the root', async () => {
+    const { deps, logs } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      enclosingProject: () => '/repo/root',
+      // Nothing encloses the real project root.
+      findAncestorProject: () => null,
+    });
+    await runOpen('notes', {}, deps);
+    expect(logs.join('\n').toLowerCase()).not.toContain('nested');
+  });
+
+  test('an explicit --project is never overridden by the cwd lookup', async () => {
+    let consulted = false;
+    const { deps, opened } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      enclosingProject: () => {
+        consulted = true;
+        return '/repo/root';
+      },
+      isProjectRoot: () => true,
+    });
+    await runOpen('notes', { project: '/other/project' }, deps);
+    expect(consulted).toBe(false);
+    expect(opened[0]).toContain(encodeURIComponent('/other/project'));
   });
 });

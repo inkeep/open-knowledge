@@ -11035,8 +11035,8 @@ msgid "Resources"
 msgstr "리소스"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "서버 재시작"
@@ -11054,7 +11054,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "다시 시작했습니다. 현재 v{appRuntime}을 실행 중입니다."
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "재시작 중"
 

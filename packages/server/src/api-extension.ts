@@ -570,6 +570,7 @@ import {
   isDerivedDocumentIndexClosedError,
 } from './derived-document-index.ts';
 import {
+  canonicalDocName,
   docNameToRelativePath,
   extensionlessDocTreePath,
   forgetDocExtension,
@@ -2570,6 +2571,14 @@ export interface ApiExtensionOptions {
    * server). Values are base64-encoded `Uint8Array` state vectors.
    */
   getDiskAckSVs?: () => Record<string, string>;
+  /**
+   * Live `/collab` WebSocket client count — editor windows and agents alike.
+   * Disclosed on `GET /api/server-info` so a caller about to terminate this
+   * server can ask whether anything is using it. Omitted (field absent) when
+   * the boot path did not wire a counter; a reader must treat absence as
+   * "unknown", never as zero.
+   */
+  getCollabClientCount?: () => number;
   contentRoot?: string;
   derivedDocumentIndex?: DerivedDocumentIndexApiPort;
   // `comments` joins main's narrowed channel union: the comment views are
@@ -2918,6 +2927,7 @@ export function createApiExtension(
     flushContributors,
     getCurrentBranch,
     getDiskAckSVs,
+    getCollabClientCount,
     contentRoot,
     derivedDocumentIndex,
     signalChannel: rawSignalChannel,
@@ -5561,7 +5571,11 @@ export function createApiExtension(
         const position = body.position ?? 'append';
         const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'agent-write-md');
         if (effectiveDocName === null) return;
-        const resolvedDocName = resolveAlias(effectiveDocName);
+        // Collapse an extension-qualified spelling before it reaches the room
+        // or the file index. Without this a write addressed as `notes.md`
+        // leaves a second index row for the one file it actually wrote, and
+        // that row then shadows the real one for later lookups.
+        const resolvedDocName = canonicalDocName(resolveAlias(effectiveDocName));
 
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
@@ -7565,7 +7579,13 @@ export function createApiExtension(
     async (req, res) => {
       try {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const docName = resolveAlias(url.searchParams.get('docName') ?? 'test-doc');
+        // Collapse an extension-qualified spelling onto the document it names.
+        // The room lookup below is a direct read, so without this a caller
+        // asking for `notes.md` is answered from a room that never converged
+        // with the `notes` room backing the same file.
+        const docName = canonicalDocName(
+          resolveAlias(url.searchParams.get('docName') ?? 'test-doc'),
+        );
 
         // Path traversal guard — reuse the canonical validator from persistence.ts.
         // Throws `Invalid document name: ${docName}` for names that escape contentDir;
@@ -8514,6 +8534,7 @@ export function createApiExtension(
         // `.optional()` keeps the response valid. All bounded numbers — safe to
         // disclose (per-process timing, no paths/content).
         const boot = getBootTimings();
+        const collabClients = getCollabClientCount?.();
         // `Cache-Control: no-store` matches the disclosure semantics: every
         // field is per-process / per-moment state. A back/forward-cached
         // 304 carrying a stale `currentDiskAckSVs` could silently corrupt
@@ -8527,6 +8548,7 @@ export function createApiExtension(
             currentBranch,
             ...(currentDiskAckSVs !== undefined ? { currentDiskAckSVs } : {}),
             ...(boot !== undefined ? { boot } : {}),
+            ...(collabClients !== undefined ? { collabClients } : {}),
           },
           {
             handler: 'server-info',

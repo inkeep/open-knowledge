@@ -41,6 +41,7 @@ import {
   ensureProjectGit,
   initContent,
   makeLazyEmbeddingsKeyStore,
+  type ServerExitReason,
 } from '@inkeep/open-knowledge-server';
 import { type KeyringSmokeResult, runKeyringSmoke } from './keyring-smoke.ts';
 
@@ -233,13 +234,31 @@ export type PrepareBootEnvironment = (
   ipcOpts: UtilityInitMessage['opts'],
 ) => Promise<PreparedBootEnvironment>;
 
+/** Every path that tears this utility down. */
+export type UtilityShutdownReason = 'parent-died' | 'shutdown-ipc' | 'SIGTERM' | 'SIGINT';
+
+/**
+ * Utility lifecycle reasons projected onto the server's own exit taxonomy.
+ * The server records only what it is handed, so a reason that stops here
+ * leaves every desktop-hosted shutdown logged as `unspecified` — the one
+ * class of shutdown a bundle can never explain after the fact. Window close
+ * and a dead parent are both "the host went away"; a signal is someone
+ * outside the topology.
+ */
+const SERVER_EXIT_REASONS: Record<UtilityShutdownReason, ServerExitReason> = {
+  'parent-died': 'parent-exit',
+  'shutdown-ipc': 'parent-exit',
+  SIGTERM: 'external-signal',
+  SIGINT: 'external-signal',
+};
+
 export interface UtilityHandle {
   /** Resolves once the utility has booted (after `ready` IPC fired). Tests await this. */
   readyPromise: Promise<UtilityReadyMessage>;
   /** Cancel the parent-death polling interval (called on shutdown). */
   stopParentPoll(): void;
   /** Run the drain sequence + exit. Idempotent. */
-  shutdown(reason: string): Promise<void>;
+  shutdown(reason: UtilityShutdownReason): Promise<void>;
 }
 
 /**
@@ -293,14 +312,14 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     parentPollHandle = null;
   }
 
-  async function shutdown(reason: string): Promise<void> {
+  async function shutdown(reason: UtilityShutdownReason): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     stopParentPoll();
     let drainOk = true;
     if (booted) {
       try {
-        await booted.destroy();
+        await booted.destroy(SERVER_EXIT_REASONS[reason]);
       } catch (err) {
         // Report via IPC AND exit non-zero. The parent correlates the error
         // IPC with the non-zero exit code; silently exiting 0 on a failed

@@ -34,6 +34,7 @@ import { type Config, ConfigSchema, trustSystemCertificates } from '@inkeep/open
  * Config loaded via preAction hook: CLI > ENV > project > user > Zod defaults.
  */
 import { Command } from 'commander';
+import { getCliLogger, initCliLogger } from './cli-logger.ts';
 import { auditCommand } from './commands/audit.ts';
 import { authCommand } from './commands/auth/index.ts';
 import { bugReportCommand } from './commands/bug-report.ts';
@@ -58,11 +59,7 @@ import { repairSkillsCommand } from './commands/repair-skills.ts';
 import { seedCommand } from './commands/seed.ts';
 import { shareCommand } from './commands/share/index.ts';
 import { sharingCommand } from './commands/sharing/index.ts';
-import {
-  decideSingleFileTarget,
-  isFileishTarget,
-  scanRootArgv,
-} from './commands/single-file-dispatch.ts';
+import { isFileishTarget, resolveRootDispatch } from './commands/single-file-dispatch.ts';
 import { createRealSingleFileOpenDeps, runSingleFileOpen } from './commands/single-file-open.ts';
 import { skillsCommand } from './commands/skills.ts';
 import { runStartCommand, startCommand } from './commands/start.ts';
@@ -77,17 +74,8 @@ import { buildVersionNotice } from './version-notice.ts';
 
 const program = new Command();
 
-import { createFileLogger } from '@inkeep/open-knowledge-server';
-
-import type { Logger as PinoLoggerInstance } from 'pino';
-
 // Shared state populated by preAction hook
 let resolvedConfig: Config;
-let cliLogger: PinoLoggerInstance | undefined;
-
-export function getCliLogger(): PinoLoggerInstance | undefined {
-  return cliLogger;
-}
 
 program
   .name('open-knowledge')
@@ -193,11 +181,11 @@ program
     resolvedConfig = config;
 
     const commandName = thisCommand.args?.[0] ?? thisCommand.name() ?? 'cli';
-    cliLogger = createFileLogger({
-      name: 'cli',
-      project: (config as { project?: { name?: string } }).project?.name ?? undefined,
+    initCliLogger({
+      command: commandName,
+      cwd: process.cwd(),
+      configuredProjectName: (config as { project?: { name?: string } }).project?.name ?? undefined,
     });
-    cliLogger.info({ command: commandName, cwd: process.cwd() }, 'cli command started');
   });
 
 // `ok` (no positional args) — desktop dispatch with fallback to start.
@@ -362,21 +350,25 @@ Examples:
 // ext-less `ok open <doc>` contract untouched). Everything else falls through
 // to Commander unchanged.
 {
-  const scanned = scanRootArgv(process.argv.slice(2));
-  if (!scanned.sawTerminalFlag) {
-    const baseDir = scanned.cwd ? resolve(scanned.cwd) : process.cwd();
-    const knownSubcommands = new Set(program.commands.map((c) => c.name()));
-    const target = decideSingleFileTarget(scanned.operands, {
-      knownSubcommands,
-      isFileish: (t) => isFileishTarget(resolve(baseDir, t), t),
+  const dispatch = resolveRootDispatch(process.argv.slice(2), {
+    knownSubcommands: new Set(program.commands.map((c) => c.name())),
+    cwd: process.cwd(),
+    isFileish: isFileishTarget,
+    resolvePath: (base, token) => resolve(base, token),
+  });
+  if (dispatch !== null) {
+    // This path exits before Commander's preAction hook runs, so it owns its
+    // own logger creation — otherwise the one route that diverts here is the
+    // one route that leaves no file-log record.
+    initCliLogger({ command: 'open-file', cwd: process.cwd() });
+    getCliLogger()?.info(
+      { file: dispatch.absPath, projectOverride: dispatch.projectRoot },
+      'single-file open dispatch',
+    );
+    const code = await runSingleFileOpen(dispatch.absPath, createRealSingleFileOpenDeps(), {
+      projectRoot: dispatch.projectRoot ?? undefined,
     });
-    if (target !== null) {
-      const code = await runSingleFileOpen(
-        resolve(baseDir, target),
-        createRealSingleFileOpenDeps(),
-      );
-      process.exit(code);
-    }
+    process.exit(code);
   }
 }
 

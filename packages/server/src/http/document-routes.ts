@@ -25,7 +25,7 @@ import {
 import { collectReferencedAssets } from '../asset-references.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import type { ContentFilter } from '../content-filter.ts';
-import { getDocExtension } from '../doc-extensions.ts';
+import { canonicalDocName, getDocExtension } from '../doc-extensions.ts';
 import type { FileIndexEntry, FolderIndexEntry } from '../file-watcher.ts';
 import type { PinoLogger } from '../logger.ts';
 import { extractPageIcon, extractPageTitle } from '../page-identity.ts';
@@ -206,7 +206,11 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
           });
           return;
         }
-        const docName = resolveAlias(rawDocName);
+        // Collapse an extension-qualified spelling onto the document it names.
+        // The room lookup below is a direct map read, so without this a caller
+        // asking for `notes.md` misses the `notes` room and is answered from a
+        // separate one that never converged with it.
+        const docName = canonicalDocName(resolveAlias(rawDocName));
         if (isSystemDoc(docName) || isConfigDoc(docName)) {
           errorResponse(
             res,

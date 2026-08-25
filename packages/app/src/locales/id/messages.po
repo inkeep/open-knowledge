@@ -11031,8 +11031,8 @@ msgid "Resources"
 msgstr "Sumber daya"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "Mulai ulang server"
@@ -11050,7 +11050,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "Dimulai ulang — kini menjalankan v{appRuntime}."
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "Memulai ulang"
 

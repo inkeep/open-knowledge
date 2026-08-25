@@ -80,6 +80,12 @@ export const ServerInfoSuccessSchema = z
     currentBranch: z.string().min(1).optional(),
     currentDiskAckSVs: z.record(z.string().min(1), z.string().min(1)).optional(),
     boot: ServerInfoBootSchema.optional(),
+    /**
+     * Live `/collab` WebSocket clients — editor windows and agents alike.
+     * Optional: absent means the server did not wire a counter, which a
+     * reader must treat as unknown rather than as zero.
+     */
+    collabClients: z.number().int().nonnegative().optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type ServerInfoSuccess = z.infer<typeof ServerInfoSuccessSchema>;

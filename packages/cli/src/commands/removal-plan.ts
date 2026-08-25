@@ -51,7 +51,7 @@ import { ALL_EDITOR_IDS, EDITOR_TARGETS, type EditorId } from './editors.ts';
 import { existingFileMode } from './jsonc-surgical.ts';
 import { removeOwnLaunchEntry } from './launch-json-removal.ts';
 import { removeOwnMcpEntry } from './mcp-config-removal.ts';
-import { runStop } from './stop.ts';
+import { probeCollabClients, runStop } from './stop.ts';
 
 // ---------------------------------------------------------------------------
 // Op model
@@ -465,10 +465,10 @@ export interface RunRemovalDeps {
    * (EPERM, etc.) by return value, not by throwing, so the executor must inspect
    * `failed` to avoid deleting files out from under a still-running server.
    */
-  stopServer?: (lockDir: string) => {
+  stopServer?: (lockDir: string) => Promise<{
     stopped: number;
     failed: Array<{ pid: number; error: string }>;
-  };
+  }>;
 }
 
 /**
@@ -483,8 +483,11 @@ export async function runRemoval(
   const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearAllEmbeddingsKeys;
   const stopServer =
     deps.stopServer ??
-    ((lockDir: string) => {
-      const outcome = runStop({ lockDir, log: () => {}, error: () => {} });
+    (async (lockDir: string) => {
+      // `force` because the removal verbs disclose attached clients in the plan
+      // the user already confirmed; a second refusal here would double-prompt
+      // one decision.
+      const outcome = await runStop({ lockDir, force: true, log: () => {}, error: () => {} });
       return {
         stopped: outcome.stopped.length,
         failed: outcome.failed.map((f) => ({ pid: f.target.pid, error: f.error })),
@@ -511,12 +514,37 @@ export async function runRemoval(
   };
 }
 
+/**
+ * One line per server in the plan that still has clients attached, for the
+ * plan the user confirms. Disclosure only — `deinit`/`uninstall` remove the
+ * `.ok/` those windows depend on, so a restart cannot bring them back and a
+ * second confirmation would only re-ask the decision the plan prompt asks.
+ */
+export async function describeAttachedClients(
+  plan: RemovalPlan,
+  probe: (lockDir: string) => Promise<number | null> = probeCollabClients,
+): Promise<string[]> {
+  const lines: string[] = [];
+  for (const op of plan.ops) {
+    if (op.kind !== 'stop-server') continue;
+    const clients = await probe(op.lockDir);
+    if (clients === null || clients === 0) continue;
+    lines.push(
+      `${clients} collaboration client${clients === 1 ? '' : 's'} ` +
+        `(editor window${clients === 1 ? '' : 's'} or agents) ${clients === 1 ? 'is' : 'are'} ` +
+        `connected to the server at ${op.lockDir}. Those windows will stop working, and ` +
+        'restarting will NOT recover them — this removes the project state they depend on.',
+    );
+  }
+  return lines;
+}
+
 type ResolvedDeps = Required<RunRemovalDeps>;
 
 async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpResult> {
   switch (op.kind) {
     case 'stop-server': {
-      const { stopped, failed } = deps.stopServer(op.lockDir);
+      const { stopped, failed } = await deps.stopServer(op.lockDir);
       if (failed.length > 0) {
         // A SIGTERM that failed (EPERM, foreign-host live PID) means a process
         // may still be holding the files this run is about to remove. Surface it

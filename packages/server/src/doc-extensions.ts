@@ -107,6 +107,17 @@ function rank(ext: DocExtension): number {
 const docExtensionByName = new Map<string, string>();
 
 /**
+ * The LOSING extension when a docName has both `.md` and `.mdx` on disk.
+ *
+ * `docExtensionByName` records only the winner, so without this the fact that
+ * a second file exists under the same stem is computed at registration and
+ * then discarded. That fact is what makes an extension-qualified docName
+ * meaningful: `foo.md` addresses a real, distinct file only while `foo`
+ * resolves to `foo.mdx`.
+ */
+const shadowedExtByName = new Map<string, string>();
+
+/**
  * Record the on-disk extension for a docName. The caller passes the actual
  * observed extension (e.g. `.MD` or `.mdx`); the casing is preserved verbatim
  * so a later `getDocExtension` round-trip yields the same path on disk.
@@ -131,6 +142,7 @@ export function registerDocExtension(
   const existing = docExtensionByName.get(docName);
   if (!existing) {
     docExtensionByName.set(docName, observedExt);
+    shadowedExtByName.delete(docName);
     return { effective: observedExt, changed: true, shadowed: null };
   }
   const existingCanonical = canonicalize(existing);
@@ -138,6 +150,7 @@ export function registerDocExtension(
     // Defensive: an entry stored without going through this function. Replace
     // it with the freshly observed (well-formed) extension and report change.
     docExtensionByName.set(docName, observedExt);
+    shadowedExtByName.set(docName, existing);
     return { effective: observedExt, changed: true, shadowed: existing };
   }
   if (existingCanonical === canonical) {
@@ -148,8 +161,10 @@ export function registerDocExtension(
   // Different canonical extensions — apply precedence.
   if (rank(canonical) < rank(existingCanonical)) {
     docExtensionByName.set(docName, observedExt);
+    shadowedExtByName.set(docName, existing);
     return { effective: observedExt, changed: true, shadowed: existing };
   }
+  shadowedExtByName.set(docName, observedExt);
   return { effective: existing, changed: false, shadowed: observedExt };
 }
 
@@ -177,6 +192,55 @@ export function getDocExtension(docName: string): string {
 export function isRegisteredMarkdownDocName(docName: string): boolean {
   const recorded = docExtensionByName.get(docName);
   return recorded === '.md' || recorded === '.mdx';
+}
+
+/**
+ * Collapse an extension-qualified markdown docName onto its extension-less
+ * twin unless the extension is load-bearing.
+ *
+ * Extension-qualified markdown docNames are legitimate for exactly one case:
+ * same-stem `.md` and `.mdx` files that both exist on disk, which the disk
+ * walk registers so each stays independently addressable. Those are the names
+ * `isRegisteredMarkdownDocName` knows about, and they pass through untouched.
+ *
+ * Every other extension-carrying markdown name is a stray that would resolve
+ * to the same file as its extension-less twin while keying a SEPARATE
+ * collaboration room. Two rooms over one file diverge permanently and both
+ * write to it, so the loser's edits are overwritten with no merge and no
+ * conflict. Collapsing here is what keeps one file backed by one document.
+ *
+ * Non-markdown docNames (mermaid, excalidraw, editable-text) carry their
+ * extension as part of their identity and are returned unchanged.
+ *
+ * Strips repeatedly so `foo.md.md` collapses to `foo` rather than to the
+ * still-qualified `foo.md`.
+ */
+export function canonicalDocName(docName: string): string {
+  if (!isSupportedDocFile(docName)) return docName;
+  if (addressesShadowedSibling(docName)) return docName;
+  let candidate = docName;
+  while (isSupportedDocFile(candidate)) {
+    candidate = stripDocExtension(candidate);
+  }
+  return candidate;
+}
+
+/**
+ * True when `docName`'s extension addresses a file that would otherwise be
+ * unreachable: the SHADOWED half of a same-stem `.md` + `.mdx` pair.
+ *
+ * The extension-less stem resolves to the winning file, so only the loser
+ * needs its extension to stay addressable. Consulting the recorded shadow is
+ * what ties this to files that actually exist — the registry keys stems, not
+ * qualified names, so asking whether the qualified name is "registered" can
+ * never be true for anything the watcher produced.
+ */
+function addressesShadowedSibling(docName: string): boolean {
+  const stem = stripDocExtension(docName);
+  if (stem === docName) return false;
+  const shadowed = shadowedExtByName.get(stem);
+  if (shadowed === undefined) return false;
+  return docName.slice(stem.length).toLowerCase() === shadowed.toLowerCase();
 }
 
 /**
@@ -222,10 +286,12 @@ export function extensionlessDocTreePath(fullPath: string, docName: string): str
 
 /** Clear the recorded extension for a docName (e.g. on file delete). */
 export function forgetDocExtension(docName: string): void {
+  shadowedExtByName.delete(docName);
   docExtensionByName.delete(docName);
 }
 
 /** Test hook — reset the map between tests that share the module scope. */
 export function _resetDocExtensionsForTests(): void {
+  shadowedExtByName.clear();
   docExtensionByName.clear();
 }

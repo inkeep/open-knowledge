@@ -131,6 +131,55 @@ function extensionlessTargetPath(target: string): string {
   return normalizeDocNameInput(target).replace(/\/+$/g, '');
 }
 
+const MARKDOWN_TARGET_EXTENSION = /\.(md|mdx)$/i;
+
+/**
+ * Drop every trailing markdown extension, so `foo.md.md` lands on `foo` rather
+ * than on the still-qualified `foo.md`. A name that is nothing but an extension
+ * is left as-is — there is no stem to fall back to.
+ */
+function stripMarkdownTargetExtensions(target: string): string {
+  let candidate = target;
+  while (MARKDOWN_TARGET_EXTENSION.test(candidate)) {
+    const next = candidate.replace(MARKDOWN_TARGET_EXTENSION, '');
+    if (!next) return candidate;
+    candidate = next;
+  }
+  return candidate;
+}
+
+/**
+ * The name every branch of the resolver works from, with a stray markdown
+ * extension removed.
+ *
+ * A doc name IS the collaboration room key, and an extension-carrying name
+ * addresses the same file on disk as its stripped twin while keying a SEPARATE
+ * room. Two rooms over one file diverge permanently and both write to it, so
+ * the loser's edits are overwritten with no merge and no conflict signal.
+ * Normalizing here — ahead of the managed-artifact and structural early
+ * returns, which hand back a docName without ever consulting the page index —
+ * is what stops those paths minting one.
+ *
+ * The extension is identity in exactly one shape: a file whose OWN name ends in
+ * a markdown extension ahead of the one the index strips, so `foo.md.md` on disk
+ * is the page `foo.md`. There the trailing extension belongs to the file, and
+ * stripping it would address a different file or none at all. That shape is
+ * recognisable as a qualified page whose stripped stem is NOT itself a page.
+ * Anything else qualified in the index is a stray row for a file already listed
+ * ext-less, and must not be allowed to defeat the strip. A same-stem `.md` +
+ * `.mdx` pair on disk never arrives here as two pages: the index keys by stem
+ * and carries only the winning half. Folder-shaped targets key no room and pass
+ * through; so does any name without a markdown extension, including the
+ * synthetic system and config docs, whose suffix (or lack of one) is identity.
+ */
+function canonicalNavigationTarget(target: string, pages: ReadonlySet<string>): string {
+  const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
+  if (expectsFolder || !MARKDOWN_TARGET_EXTENSION.test(normalizedTarget)) return target;
+  const stripped = stripMarkdownTargetExtensions(normalizedTarget);
+  if (pages.has(normalizedTarget) && !pages.has(stripped)) return target;
+  return stripped;
+}
+
 export function deriveKnownFolderPaths(docNames: Iterable<string>): Set<string> {
   const folderPaths = new Set<string>();
   for (const docName of docNames) {
@@ -248,7 +297,7 @@ export function okContentNavigationTarget(
 }
 
 export function resolveNavigationTarget(
-  target: string,
+  requestedTarget: string,
   options: {
     pages: ReadonlySet<string>;
     folderPaths?: ReadonlySet<string>;
@@ -256,6 +305,7 @@ export function resolveNavigationTarget(
     pagesByBasename?: ReadonlyMap<string, string>;
   },
 ): ResolvedContentTarget {
+  const target = canonicalNavigationTarget(requestedTarget, options.pages);
   // Managed-artifact docs (skills) are real docs addressed by their exact
   // synthetic name, but they live OUTSIDE the page list — so the membership
   // checks below would mark them 'missing'. Resolve them directly as a doc
@@ -333,14 +383,10 @@ export function resolveNavigationTarget(
   }
   const extensionlessTarget = extensionlessTargetPath(target);
 
-  if (!expectsFolder && options.pages.has(normalizedTarget)) {
-    return {
-      kind: 'doc',
-      target: normalizedTarget,
-      docName: normalizedTarget,
-    };
-  }
-
+  // The stripped twin is tested FIRST. An index that has picked up an
+  // extension-qualified row for a file it already lists ext-less would
+  // otherwise redirect navigation onto the second room that row stands for,
+  // which is exactly the divergence the canonicalization above prevents.
   if (
     !expectsFolder &&
     extensionlessTarget !== normalizedTarget &&
@@ -350,6 +396,14 @@ export function resolveNavigationTarget(
       kind: 'doc',
       target: extensionlessTarget,
       docName: extensionlessTarget,
+    };
+  }
+
+  if (!expectsFolder && options.pages.has(normalizedTarget)) {
+    return {
+      kind: 'doc',
+      target: normalizedTarget,
+      docName: normalizedTarget,
     };
   }
 

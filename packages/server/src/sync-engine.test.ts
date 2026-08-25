@@ -3654,6 +3654,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     test('stages the project-root shareable set alongside subfolder content', async () => {
       const { git } = await initSharedRepoWithBareRemote();
       mkdirSync(join(projectDir, 'content', 'docs', '.ok'), { recursive: true });
+      mkdirSync(join(projectDir, 'content', 'guides', '.ok'), { recursive: true });
       mkdirSync(join(projectDir, 'content', '.ok', 'schemas'), { recursive: true });
       mkdirSync(join(projectDir, 'content', '.ok', 'templates'), { recursive: true });
       mkdirSync(join(projectDir, '.ok', 'schemas'), { recursive: true });
@@ -3667,8 +3668,13 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       writeFileSync(join(projectDir, 'content', '.ok', 'schemas', 'nested.json'), '{}\n');
       writeFileSync(join(projectDir, 'content', '.ok', 'templates', 'daily.md'), '# Daily\n');
       writeFileSync(join(projectDir, 'content', 'note.md'), '# Note\n');
+      // `content/docs` carries the project marker, so it is a descendant
+      // project: nothing under it belongs to this project's scope. Folder
+      // metadata with no marker beside it (`content/guides`) is an ordinary
+      // folder rule and still stages.
       writeFileSync(join(projectDir, 'content', 'docs', '.ok', 'config.yml'), 'not: project\n');
       writeFileSync(join(projectDir, 'content', 'docs', '.ok', 'frontmatter.yml'), 'icon: book\n');
+      writeFileSync(join(projectDir, 'content', 'guides', '.ok', 'frontmatter.yml'), 'icon: map\n');
 
       const engine = makeSubfolderEngine();
       try {
@@ -3687,7 +3693,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
           '.ok/templates/meeting.md',
           'content/.ok/templates/daily.md',
           'content/note.md',
-          'content/docs/.ok/frontmatter.yml',
+          'content/guides/.ok/frontmatter.yml',
         ]) {
           expect(headPaths).toContain(path);
         }
@@ -3695,6 +3701,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
         expect(headPaths).not.toContain('content/.ok/.gitignore');
         expect(headPaths).not.toContain('content/.ok/schemas/nested.json');
         expect(headPaths).not.toContain('content/docs/.ok/config.yml');
+        expect(headPaths).not.toContain('content/docs/.ok/frontmatter.yml');
 
         const remoteHead = (await git.revparse(['origin/main'])).trim();
         expect(remoteHead).toBe((await git.revparse(['HEAD'])).trim());

@@ -47,6 +47,7 @@ import {
   lockAdvertisesUi,
   type PinoLogger,
   prepareSingleFileOpen,
+  type ServerExitReason,
 } from '@inkeep/open-knowledge-server';
 import { Command, InvalidArgumentError, Option } from 'commander';
 import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
@@ -606,7 +607,7 @@ export interface BootedStartServer {
   /** The bound HTTP server listening on `port`. */
   httpServer: HttpServer;
   /** Composite shutdown — closes httpServer, detaches idle-shutdown, destroys the Hocuspocus server (which releases server.lock). */
-  destroy: () => Promise<void>;
+  destroy: (reason?: ServerExitReason) => Promise<void>;
   /** Absolute path to `<projectDir>/.ok/local` — runtime-state anchor. */
   lockDir: string;
   /** Resolved content directory (`resolveContentDir(config, cwd)`). */
@@ -1373,7 +1374,7 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
       console.log(dim(`  ${line}`));
     }
     try {
-      await booted.destroy();
+      await booted.destroy('external-signal');
     } catch (err) {
       console.error(
         `${error('destroy() failed:')} ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,

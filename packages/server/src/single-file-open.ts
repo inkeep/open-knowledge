@@ -18,11 +18,11 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
-import { findEnclosingProjectRoot } from './fs/find-project-root.ts';
+import { findEnclosingProjectRoot, isProjectRoot } from './fs/find-project-root.ts';
 
 /** The file passed to `ok <file>` does not exist on disk. */
 export class SingleFileNotFoundError extends Error {
@@ -37,6 +37,21 @@ export class SingleFileNotAFileError extends Error {
   constructor(readonly filePath: string) {
     super(`Not a file: ${filePath}. \`ok <file>\` opens a single markdown file.`);
     this.name = 'SingleFileNotAFileError';
+  }
+}
+
+/**
+ * An explicit `--project` override could not be honored (the path is not an
+ * OpenKnowledge project root, or the file does not live under it). Callers
+ * exit non-zero rather than silently resolving a different project.
+ */
+export class SingleFileProjectOverrideError extends Error {
+  constructor(
+    readonly projectRoot: string,
+    reason: string,
+  ) {
+    super(`Cannot open with --project ${projectRoot}: ${reason}`);
+    this.name = 'SingleFileProjectOverrideError';
   }
 }
 
@@ -76,7 +91,20 @@ export type SingleFileOpenPlan =
  * message). REALPATHS the file first, then runs project detection on the
  * canonical parent dir.
  */
-export function prepareSingleFileOpen(filePath: string): SingleFileOpenPlan {
+export interface PrepareSingleFileOpenOptions {
+  /**
+   * Explicit project root (the `--project` override). When given, the ancestor
+   * walk is skipped entirely and the named root is used — or the call fails
+   * loudly. Never a silent fallback: an override that cannot be honored is a
+   * wrong-project open waiting to happen.
+   */
+  readonly projectRoot?: string;
+}
+
+export function prepareSingleFileOpen(
+  filePath: string,
+  options: PrepareSingleFileOpenOptions = {},
+): SingleFileOpenPlan {
   // Validate the markdown extension on the user-supplied path before touching
   // the filesystem — a clear, fast rejection for `ok notes.txt`.
   if (!isSupportedDocFile(filePath)) {
@@ -98,6 +126,31 @@ export function prepareSingleFileOpen(filePath: string): SingleFileOpenPlan {
   }
 
   const fileDir = dirname(canonicalFilePath);
+
+  if (options.projectRoot !== undefined) {
+    const projectRoot = resolve(options.projectRoot);
+    if (!isProjectRoot(projectRoot)) {
+      throw new SingleFileProjectOverrideError(
+        projectRoot,
+        'no .ok/config.yml there, so it is not an OpenKnowledge project root',
+      );
+    }
+    const projectContentDir = resolveProjectContentDir(projectRoot);
+    const relPath = relative(projectContentDir, canonicalFilePath);
+    if (relPath.startsWith('..') || isAbsolute(relPath)) {
+      throw new SingleFileProjectOverrideError(
+        projectRoot,
+        `${canonicalFilePath} is not inside that project's content directory`,
+      );
+    }
+    return {
+      mode: 'project',
+      projectRoot,
+      docName: stripDocExtension(relPath.split(sep).join('/')),
+      canonicalFilePath,
+    };
+  }
+
   const hit = findEnclosingProjectRoot(fileDir);
   if (hit) {
     const projectRoot = hit.rootPath;

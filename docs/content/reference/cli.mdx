@@ -56,15 +56,19 @@ Idle shutdown is on by default at 30 minutes — a server with no connected clie
 
 For a complete list of every file OpenKnowledge creates or changes — during install, at runtime, and in the desktop app — see [What OpenKnowledge writes to your system](/docs/reference/what-open-knowledge-writes).
 
-## Editing a single file
+## Open a doc, folder, or file
 
-If you don't have a project initialized, you can still open a file directly in the editor.
+`ok open` takes a doc name, a folder, or a path to a Markdown file.
 
 ```bash
 ok open <path-to-your-file.md>
 ```
 
-This opens your file directly in the WYSIWYG/source editor without any of the version history or `open with AI` frills.
+The output names the absolute project root OpenKnowledge resolved for the argument you gave, so you can tell which project it acted on without running a second command. When the resolved root itself sits inside another project, the output names both, once.
+
+To choose the project yourself, pass `--project <dir>`. It is honored wherever it appears: `--project <dir>` or `--project=<dir>`, before or after the target, and with or without the `.md` extension on the path. If it cannot be honored, the command exits non-zero with a message saying why instead of quietly resolving somewhere else.
+
+If you don't have a project initialized, this still works. The file opens directly in the WYSIWYG/source editor without any of the version history or `open with AI` frills.
 
 ## Clone from GitHub
 
@@ -114,7 +118,7 @@ Each project runs its own local server. These commands let you see and stop them
 | --- | --- |
 | `ok status` | Show whether a server and UI are running for the current project |
 | `ok ps` | List every running OpenKnowledge server on your machine |
-| `ok stop` | Stop the server for the current directory — or pass a port, path, or PID to stop a specific server, or `all` to stop every server |
+| `ok stop` | Stop the server for the current directory — or pass a port, path, or PID to stop a specific server, or `all` to stop every server. Declines when something is still connected to the target, naming how many clients are attached; pass `--force` to stop it anyway. A server it cannot reach is stopped without the check |
 | `ok clean` | Remove stale lock files left behind by a crash (never touches live servers) |
 
 ## Remote Control

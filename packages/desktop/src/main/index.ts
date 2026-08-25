@@ -6638,8 +6638,11 @@ function registerIpcHandlers() {
         // Route runStop's own log through the structured logger (not stdout) so
         // the success path — which PIDs were SIGTERM'd before `.git` deletion —
         // is captured for incident forensics, not silently dropped.
-        const outcome = runStop({
+        const outcome = await runStop({
           lockDir: resolveLockDir(gitRoot),
+          // The worktree and its `.git` are going away regardless, so the
+          // in-use decline would only strand the server it is about to orphan.
+          force: true,
           log: (msg) => getLogger('project').info({ gitRoot }, `[remove-git-folder] ${msg}`),
         });
         getLogger('project').info(

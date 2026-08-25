@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { getCliLogger } from '../cli.ts';
+import { getCliLogger } from '../cli-logger.ts';
 import { collectReportBundle } from '../report-bundle.ts';
 import { defaultBugReportZipPath } from './bug-report-bundle.ts';
 import { revealBundle } from './bug-report-reveal.ts';

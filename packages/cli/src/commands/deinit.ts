@@ -11,9 +11,14 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { isHomeDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { accent, dim, error as errorColor } from '../ui/colors.ts';
+import { accent, dim, error as errorColor, warning } from '../ui/colors.ts';
 import { confirmDestructive } from '../ui/confirm.ts';
-import { buildDeinitPlan, type RunRemovalDeps, runRemoval } from './removal-plan.ts';
+import {
+  buildDeinitPlan,
+  describeAttachedClients,
+  type RunRemovalDeps,
+  runRemoval,
+} from './removal-plan.ts';
 import {
   formatRemovalOutcome,
   formatRemovalPlan,
@@ -30,6 +35,8 @@ export interface DeinitOptions {
   json?: boolean;
   /** Test-only stdin override for the confirmation prompt. */
   confirmStream?: NodeJS.ReadableStream;
+  /** Live-client probe seam (hits the running server over HTTP in production). */
+  probeClients?: (lockDir: string) => Promise<number | null>;
   /** Test-only: stub the machine-touching removal primitives (stop-server, etc.)
    *  so the failed-exit branch is exercisable without real side effects. */
   runRemovalDeps?: RunRemovalDeps;
@@ -77,13 +84,16 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
   }
 
   const plan = buildDeinitPlan(projectRoot, home);
+  const attached = await describeAttachedClients(plan, opts.probeClients);
+  const attachedBlock =
+    attached.length > 0 ? `\n\n${attached.map((l) => warning(l)).join('\n')}` : '';
 
   if (opts.dryRun) {
     return {
       status: 'dry-run',
       message: opts.json
-        ? JSON.stringify(removalPlanToJson(plan), null, 2)
-        : `${accent('Would remove (dry-run — no changes made):')}\n\n${formatRemovalPlan(plan)}`,
+        ? JSON.stringify(removalPlanToJson(plan, attached), null, 2)
+        : `${accent('Would remove (dry-run — no changes made):')}\n\n${formatRemovalPlan(plan)}${attachedBlock}`,
       exitCode: 0,
     };
   }
@@ -98,7 +108,7 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
 
   if (!opts.yes) {
     process.stderr.write(
-      `${accent(`Remove OpenKnowledge from ${projectRoot}:`)}\n\n${formatRemovalPlan(plan)}\n\n`,
+      `${accent(`Remove OpenKnowledge from ${projectRoot}:`)}\n\n${formatRemovalPlan(plan)}${attachedBlock}\n\n`,
     );
     const confirmed = await confirmDestructive(
       `${accent('Remove these?')} ${dim('[y/N] ')}`,
@@ -113,7 +123,7 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
   return {
     status: outcome.failed.length > 0 ? 'failed' : 'done',
     message: opts.json
-      ? JSON.stringify(removalOutcomeToJson('deinit', outcome), null, 2)
+      ? JSON.stringify(removalOutcomeToJson('deinit', outcome, attached), null, 2)
       : formatRemovalOutcome(outcome),
     exitCode: outcome.failed.length > 0 ? 1 : 0,
   };

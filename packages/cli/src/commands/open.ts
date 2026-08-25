@@ -28,12 +28,13 @@
  * platform-native URL handler rather than `launchDesktop`.
  */
 import { statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { MANAGED_ARTIFACT_SCOPES, type SkillScope } from '@inkeep/open-knowledge-core';
 import {
   encodeDocName,
   encodeFolderRoute,
   encodeSkillRoute,
+  findEnclosingProjectRoot,
   resolveLockDir,
   resolveUiInfo,
 } from '@inkeep/open-knowledge-server';
@@ -68,6 +69,28 @@ export interface OpenDeps {
   classifyName: (projectDir: string, name: string) => 'doc' | 'folder';
   /** Hand a URL or `openknowledge://` deep link to the OS to open. */
   openTarget: (target: string) => Promise<SpawnDetachedScrubbedOutcome>;
+  /**
+   * Nearest project root STRICTLY above `projectDir`, or null. Drives the
+   * nested-project disclosure — a resolved root that sits inside another
+   * project is the topology behind silent misrouting, so it is named rather
+   * than left for a second command to discover.
+   */
+  findAncestorProject: (projectDir: string) => string | null;
+  /**
+   * True when `dir` is itself an OpenKnowledge project root. Only consulted for
+   * an EXPLICIT `--project`: an override that names a non-project must fail
+   * loudly, because proceeding would open a different project than the caller
+   * asked for and report success while doing it.
+   */
+  isProjectRoot: (dir: string) => boolean;
+  /**
+   * The project root enclosing `dir`, or `dir` itself when it is one; null when
+   * no project encloses it. Used for the cwd default: running from a
+   * subdirectory of a project must act on the PROJECT, not on the
+   * subdirectory, which is neither a valid deep-link target nor a truthful
+   * thing to print.
+   */
+  enclosingProject: (dir: string) => string | null;
   log: (message: string) => void;
   error: (message: string) => void;
 }
@@ -103,6 +126,10 @@ export function createRealOpenDeps(
       }
     },
     openTarget: openTargetReal,
+    findAncestorProject: (projectDir) =>
+      findEnclosingProjectRoot(dirname(resolve(projectDir)))?.rootPath ?? null,
+    isProjectRoot: (dir) => findEnclosingProjectRoot(dir)?.distance === 0,
+    enclosingProject: (dir) => findEnclosingProjectRoot(resolve(dir))?.rootPath ?? null,
     log: (message) => process.stdout.write(`${message}\n`),
     error: (message) => process.stderr.write(`${message}\n`),
   };
@@ -122,9 +149,22 @@ function noTargetError(deps: OpenDeps): number {
   return 1;
 }
 
+/**
+ * The one reporting point for every CLI open entry point (subcommand and the
+ * bare-file dispatch, which routes through `runOpen`): the resolved absolute
+ * directory is named on success so no caller can drift into opening silently,
+ * and a nested resolution names both roots once.
+ *
+ * `isProject` is threaded rather than re-derived: the caller already knows
+ * whether the directory is a project root, and calling it a "project" when it
+ * is only a cwd fallback is the same class of confidently-wrong output this
+ * surface exists to prevent.
+ */
 async function openAndReport(
   target: string,
   successMessage: string,
+  projectDir: string,
+  isProject: boolean,
   deps: OpenDeps,
 ): Promise<number> {
   const outcome = await deps.openTarget(target);
@@ -133,6 +173,21 @@ async function openAndReport(
     return 1;
   }
   deps.log(successMessage);
+  // Nothing encloses the working directory, so there is no project to name and
+  // no nesting to describe — a nested-project note derived from a non-project
+  // would assert a topology that does not exist.
+  if (!isProject) {
+    deps.log(`Working directory: ${projectDir} (not an OpenKnowledge project).`);
+    return 0;
+  }
+  deps.log(`Project: ${projectDir}`);
+  const ancestor = deps.findAncestorProject(projectDir);
+  if (ancestor !== null) {
+    deps.log(
+      `Note: this project (${projectDir}) is nested inside another OpenKnowledge project at ${ancestor}. ` +
+        'Pass --project to choose explicitly.',
+    );
+  }
   return 0;
 }
 
@@ -144,8 +199,30 @@ async function openAndReport(
  * lands on the renderer route, which resolves missing targets.
  */
 export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps): Promise<number> {
-  const projectDir = resolve(options.project ?? process.cwd());
+  // An explicit override is taken as given (and validated below). Otherwise
+  // resolve the project that ENCLOSES the working directory: `ok open` is
+  // routinely run from a subdirectory, and treating that subdirectory as the
+  // project both misroutes the deep link and makes the disclosure line — and
+  // the nested-project note derived from it — untrue.
+  const explicitProject = options.project !== undefined;
+  const cwdProject = explicitProject ? null : deps.enclosingProject(process.cwd());
+  const projectDir = resolve(options.project ?? cwdProject ?? process.cwd());
+  // An explicit override is validated as a project root below; a cwd default is
+  // one only when a project actually encloses the working directory. Everything
+  // else is a bare directory, and the reporting must not claim otherwise.
+  const isProject = explicitProject || cwdProject !== null;
   const cleanName = name.replace(/\/+$/, '');
+
+  // An explicit override that does not name a project is refused rather than
+  // silently resolved elsewhere — a wrong project that reports success is the
+  // failure this whole surface exists to prevent. An absent override keeps the
+  // cwd default, which resolves normally.
+  if (explicitProject && !deps.isProjectRoot(projectDir)) {
+    deps.error(
+      `Cannot open with --project ${projectDir}: no .ok/config.yml there, so it is not an OpenKnowledge project.`,
+    );
+    return 1;
+  }
 
   if (!cleanName) {
     deps.error(
@@ -186,6 +263,8 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       return openAndReport(
         deepLink,
         `Opening skill ${cleanName} (${scope}) in the OpenKnowledge desktop app.`,
+        projectDir,
+        isProject,
         deps,
       );
     }
@@ -195,6 +274,8 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       return openAndReport(
         url,
         `Opening skill ${cleanName} (${scope}) in your browser: ${url}`,
+        projectDir,
+        isProject,
         deps,
       );
     }
@@ -213,13 +294,21 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       return openAndReport(
         deepLink,
         `Opening folder ${cleanName} in the OpenKnowledge desktop app.`,
+        projectDir,
+        isProject,
         deps,
       );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
     if (baseUrl) {
       const url = `${baseUrl}/#/${encodeFolderRoute(cleanName)}`;
-      return openAndReport(url, `Opening folder ${cleanName} in your browser: ${url}`, deps);
+      return openAndReport(
+        url,
+        `Opening folder ${cleanName} in your browser: ${url}`,
+        projectDir,
+        isProject,
+        deps,
+      );
     }
     return noTargetError(deps);
   }
@@ -229,12 +318,24 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
     const deepLink = `openknowledge://open?project=${encodeURIComponent(
       projectDir,
     )}&doc=${encodeURIComponent(cleanName)}`;
-    return openAndReport(deepLink, `Opening ${cleanName} in the OpenKnowledge desktop app.`, deps);
+    return openAndReport(
+      deepLink,
+      `Opening ${cleanName} in the OpenKnowledge desktop app.`,
+      projectDir,
+      isProject,
+      deps,
+    );
   }
   const baseUrl = deps.resolveBaseUrl(projectDir);
   if (baseUrl) {
     const url = `${baseUrl}/#/${encodeDocName(cleanName)}`;
-    return openAndReport(url, `Opening ${cleanName} in your browser: ${url}`, deps);
+    return openAndReport(
+      url,
+      `Opening ${cleanName} in your browser: ${url}`,
+      projectDir,
+      isProject,
+      deps,
+    );
   }
   return noTargetError(deps);
 }
@@ -255,7 +356,10 @@ export function openCommand(): Command {
       `Skill scope when --skill is set: ${MANAGED_ARTIFACT_SCOPES.join(' | ')}`,
       'project',
     )
-    .option('--project <dir>', 'Project root (defaults to the current directory)')
+    .option(
+      '--project <dir>',
+      'Project root (defaults to the project enclosing the current directory)',
+    )
     .action(async (name: string, options: OpenOptions) => {
       process.exitCode = await runOpen(name, options, createRealOpenDeps());
     });

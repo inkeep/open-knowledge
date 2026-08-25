@@ -26,7 +26,12 @@ import { readPathInstallMarker } from '../integrations/path-shim.ts';
 import { accent, dim, error as errorColor, info, success, warning } from '../ui/colors.ts';
 import { confirmDestructive } from '../ui/confirm.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
-import { buildUninstallPlan, type RunRemovalDeps, runRemoval } from './removal-plan.ts';
+import {
+  buildUninstallPlan,
+  describeAttachedClients,
+  type RunRemovalDeps,
+  runRemoval,
+} from './removal-plan.ts';
 import {
   formatRemovalOutcome,
   formatRemovalPlan,
@@ -323,6 +328,8 @@ interface UninstallDeps {
   runRemovalDeps?: RunRemovalDeps;
   /** Prompt + transport seams for the post-confirm churn survey. */
   feedback?: Pick<UninstallFeedbackPromptDeps, 'collect' | 'submit'>;
+  /** Live-client probe seam (hits each running server over HTTP in production). */
+  probeClients?: (lockDir: string) => Promise<number | null>;
 }
 
 export interface UninstallOptions {
@@ -399,6 +406,10 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
     purgeContent,
   });
 
+  const attached = await describeAttachedClients(plan, opts.deps?.probeClients);
+  const attachedBlock =
+    attached.length > 0 ? `\n\n${attached.map((l) => warning(l)).join('\n')}` : '';
+
   const fallbackNote = dim(
     'Individual projects are only removed when you select them (or pass --all-projects). ' +
       'To remove OpenKnowledge from one project, run `ok deinit` inside it.',
@@ -416,11 +427,11 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
   if (opts.dryRun) {
     // The app-removal callout goes LAST so it doesn't get buried in the plan.
     const body = opts.json
-      ? JSON.stringify(removalPlanToJson(plan), null, 2)
+      ? JSON.stringify(removalPlanToJson(plan, attached), null, 2)
       : [
           accent('Would remove (dry-run — no changes made):'),
           '',
-          formatRemovalPlan(plan),
+          `${formatRemovalPlan(plan)}${attachedBlock}`,
           '',
           fallbackNote,
           '',
@@ -447,7 +458,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
       };
     }
     process.stderr.write(
-      `${accent('This will remove OpenKnowledge from your machine:')}\n\n${formatRemovalPlan(plan)}\n\n${warning('This cannot be undone.')}\n\n`,
+      `${accent('This will remove OpenKnowledge from your machine:')}\n\n${formatRemovalPlan(plan)}${attachedBlock}\n\n${warning('This cannot be undone.')}\n\n`,
     );
     const confirmed = await confirmDestructive(
       `${accent('Remove all of the above?')} ${dim('[y/N] ')}`,
@@ -482,7 +493,7 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
 
   const parts = [
     opts.json
-      ? JSON.stringify(removalOutcomeToJson('uninstall', outcome), null, 2)
+      ? JSON.stringify(removalOutcomeToJson('uninstall', outcome, attached), null, 2)
       : formatRemovalOutcome(outcome),
   ];
   if (!opts.json) {

@@ -36,6 +36,7 @@ import ignore, { type Ignore } from 'ignore';
 import { isReservedForUserTree } from './cc1-broadcast.ts';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
+import { isProjectRoot } from './fs/find-project-root.ts';
 import { getLogger } from './logger.ts';
 import { toPosix } from './path-utils.ts';
 import { withSpan } from './telemetry.ts';
@@ -732,6 +733,74 @@ function isSingleDocAncestorDir(relativeDir: string, singleDocRelPath: string): 
   return singleDocRelPath === relativeDir || singleDocRelPath.startsWith(`${relativeDir}/`);
 }
 
+/**
+ * Gate that keeps a descendant project's content out of the enclosing
+ * project's scope.
+ *
+ * A directory carrying `.ok/config.yml` is its own project root, so a server
+ * anchored there owns those files. Indexing them from the enclosing project as
+ * well gives one file on disk two owners that reconcile only through disk
+ * writes. `isProjectRoot` is the marker check, and it is also what keeps a
+ * nested `.ok/` holding folder rules (`frontmatter.yml`, `templates/`) but no
+ * `config.yml` admitted — folder metadata is not a project.
+ *
+ * Consulted by both `isExcluded` and `isDirExcluded` so a walker pruning
+ * directories and a caller classifying a single path agree (precedent #55).
+ *
+ * Inert in single-file scope: an ephemeral single-doc filter has no enclosing
+ * project, and the one admitted doc must stay admitted wherever it lives.
+ */
+function createDescendantProjectGate(
+  projectDir: string,
+  contentDir: string,
+  singleDocRelPath: string | undefined,
+): {
+  isInside: (relativePath: string, syncScope?: { pathBase: 'content' | 'project' }) => boolean;
+  reset: () => void;
+} {
+  const enabled = singleDocRelPath === undefined;
+  // Memoized on the ABSOLUTE dir, so the two path bases a caller can use
+  // (contentDir-relative by default, projectDir-relative under a project sync
+  // scope) share one set of answers instead of drifting. Cleared on ignore
+  // rebuild, so a project created under contentDir at runtime is recognized
+  // from that point rather than immediately.
+  const cache = new Map<string, boolean>();
+
+  function isRoot(absoluteDir: string): boolean {
+    const cached = cache.get(absoluteDir);
+    if (cached !== undefined) return cached;
+    let hit: boolean;
+    try {
+      hit = isProjectRoot(absoluteDir);
+    } catch {
+      // EACCES / ELOOP / EMFILE, or a race with a concurrent write: fall
+      // through to the ordinary rules rather than excluding content we could
+      // not classify — but do NOT cache it. "Could not tell" is not "not a
+      // project"; memoizing it would admit a real descendant project for the
+      // life of the filter on the strength of one transient error.
+      return false;
+    }
+    cache.set(absoluteDir, hit);
+    return hit;
+  }
+
+  return {
+    isInside(relativePath: string, syncScope?: { pathBase: 'content' | 'project' }): boolean {
+      if (!enabled || relativePath === '') return false;
+      const base = syncScope?.pathBase === 'project' ? projectDir : contentDir;
+      let prefix = base;
+      for (const segment of relativePath.split('/')) {
+        prefix = join(prefix, segment);
+        if (isRoot(prefix)) return true;
+      }
+      return false;
+    },
+    reset(): void {
+      cache.clear();
+    },
+  };
+}
+
 /** File names recognized as ignore-pattern sources, in load order. */
 const IGNORE_FILE_NAMES = ['.gitignore', '.okignore'] as const;
 
@@ -1177,6 +1246,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
   const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
+  const descendantProjects = createDescendantProjectGate(projectDir, contentDir, singleDocRelPath);
 
   // Precompute the contentDir-to-projectDir prefix for path conversion.
   // When contentDir is outside projectDir, the relative path starts with ".."
@@ -1409,6 +1479,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       if (isSecretBearingFile(relativePath)) return true;
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
 
+      // Descendant-project floor — a directory carrying `.ok/config.yml` is
+      // another project's root, and its content is that project's to own.
+      // Ahead of the skills / templates carve-outs so a nested project's `.ok`
+      // leaves are not re-admitted here as this project's content.
+      if (descendantProjects.isInside(relativePath, opts?.syncScope)) return true;
+
       // (0b) Skills-as-content carve-out — project skill files under
       // `.ok/skills/**` are real content. Admit supported docs + linkable
       // assets (no sibling-`.md` requirement), overriding the blanket `.ok`
@@ -1551,6 +1627,11 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
       // skills carve-out: a secret dir nested under a skill (`.ok/skills/x/.ssh`)
       // would otherwise be kept descendable by the ancestor carve-out.
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
+      // Descendant-project floor — prune another project's root so the walk
+      // never enters it. Mirrors the file-level floor in `isExcluded`
+      // (precedent #55) and precedes the skills / templates carve-outs, which
+      // would otherwise keep a nested project's `.ok` descendable.
+      if (descendantProjects.isInside(relativePath, opts?.syncScope)) return true;
       // Skills- and templates-as-content: keep `.ok`, `.ok/skills[/**]`, and
       // any `<folder>/.ok/templates` descendable so the NORMAL index walk
       // reaches skill + template leaves; the file-level predicates keep the rest
@@ -1717,6 +1798,12 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         return rebuildInFlight;
       };
       const runRebuild = async (): Promise<RebuildResult> => {
+        // Project roots can appear or vanish between walks, so the memoized
+        // descendant answers must not outlive a rebuild. Reset per RUN rather
+        // than at the entry point: callers arriving mid-flight piggyback on a
+        // walk already in progress, and clearing under it would refill the
+        // cache from a half-finished snapshot.
+        descendantProjects.reset();
         // Refresh the in-place skill allow-list first (live re-scan): the new
         // set governs the dirCount refresh + every predicate after the swap. A
         // provider throw keeps the previous set (fail-soft, matching the
@@ -2114,6 +2201,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     opts.attachmentFolderPath ?? DEFAULT_ATTACHMENT_FOLDER_PATH,
   );
   const skillRootPaths: ReadonlySet<string> = opts.skillRootPaths ?? new Set();
+  const descendantProjects = createDescendantProjectGate(projectDir, contentDir, singleDocRelPath);
 
   const contentRelPrefix = toPosix(relative(projectDir, contentDir));
   const contentOutsideProject = contentRelPrefix.startsWith('..');
@@ -2274,6 +2362,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // asset extension), so the floor wins over skill-asset admission.
       if (isSecretBearingFile(relativePath)) return true;
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
+      // Descendant-project floor — a directory carrying `.ok/config.yml` is
+      // another project's root, and its content is that project's to own.
+      // Ahead of the skills / templates carve-outs so a nested project's `.ok`
+      // leaves are not re-admitted here as this project's content.
+      if (descendantProjects.isInside(relativePath, opts?.syncScope)) return true;
       // Skills-as-content carve-out — admit project skill docs + linkable assets
       // under `.ok/skills/**` (see sync variant for rationale, incl. the
       // `!bypassFilters` gate that mirrors `isDirExcluded`).
@@ -2353,6 +2446,11 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
       // MUST precede the skills carve-out so a secret dir nested under a skill
       // (`.ok/skills/x/.ssh`) isn't kept descendable by the ancestor carve-out.
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
+      // Descendant-project floor — prune another project's root so the walk
+      // never enters it. Mirrors the file-level floor in `isExcluded`
+      // (precedent #55) and precedes the skills / templates carve-outs, which
+      // would otherwise keep a nested project's `.ok` descendable.
+      if (descendantProjects.isInside(relativePath, opts?.syncScope)) return true;
       // Skills- and templates-as-content: keep `.ok` / `.ok/skills[/**]` and any
       // `<folder>/.ok/templates` descendable for the NORMAL index walk only (see
       // sync variant); under bypass the always-skip floor below keeps `.ok`
@@ -2491,6 +2589,12 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         return rebuildInFlight;
       };
       const runRebuild = async (): Promise<RebuildResult> => {
+        // Project roots can appear or vanish between walks, so the memoized
+        // descendant answers must not outlive a rebuild. Reset per RUN rather
+        // than at the entry point: callers arriving mid-flight piggyback on a
+        // walk already in progress, and clearing under it would refill the
+        // cache from a half-finished snapshot.
+        descendantProjects.reset();
         // Refresh the in-place skill allow-list first (live re-scan) — mirrors
         // the sync factory; a provider throw keeps the previous set.
         if (opts.rescanInPlaceSkillDirs) {

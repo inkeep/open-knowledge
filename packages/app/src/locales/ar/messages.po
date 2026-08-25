@@ -11035,8 +11035,8 @@ msgid "Resources"
 msgstr "الموارد"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "إعادة تشغيل الخادم"
@@ -11054,7 +11054,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "أُعيد التشغيل — يعمل الآن بالإصدار v{appRuntime}."
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "تجري إعادة التشغيل"
 

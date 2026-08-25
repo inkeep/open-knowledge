@@ -11035,8 +11035,8 @@ msgid "Resources"
 msgstr "Resources"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "Restart server"
@@ -11054,7 +11054,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "Restarted — now running v{appRuntime}."
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "Restarting"
 
