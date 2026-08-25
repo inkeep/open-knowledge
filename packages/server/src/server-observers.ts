@@ -1789,11 +1789,21 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
    * serialize). A fresh parse of the bytes we are about to persist must
    * reconstruct the same authored CONTENT: markdown never legitimately drops
    * text on a round-trip, so a content-loss verdict means the serializer emitted
-   * corrupt bytes that only a fresh parser sees. Container-shatter is
-   * deliberately NOT a fire condition — some shatters are inherent CommonMark
-   * round-trip limits (a blockquote nested in a Callout re-merges on parse), a
-   * fidelity gap the offline I22 property test owns; firing on them here would
-   * cry wolf on legal-but-lossy nestings. Dev/test throw loud; packaged reports.
+   * corrupt bytes that only a fresh parser sees.
+   *
+   * One carve-out beyond the shatter one below: the guard declares
+   * `rawSourceSide: 'expected'`, without which it fired on every drain of any
+   * document holding an unrecognized component, which is no signal at all. The
+   * cost is sensitivity, not just precision: a loss inside a `rawMdxFallback`,
+   * and — in a document whose fallback the reparse consumed — a loss outside
+   * one, are both rejected by the comparator at another level, which this guard
+   * does not fire on. What that does and does not cover lives at the L1a site.
+   *
+   * Container-shatter is deliberately NOT a fire condition — some shatters are
+   * inherent CommonMark round-trip limits (a blockquote nested in a Callout
+   * re-merges on parse), a fidelity gap the offline I22 property test owns;
+   * firing on them here would cry wolf on legal-but-lossy nestings. Dev/test
+   * throw loud; packaged reports.
    */
   const runProducerGuard = (json: PmStructuralNode, body: string): void => {
     if (body === lastGuardedBody) return;
@@ -1801,7 +1811,10 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
     if (!fragmentContainsDangerSpace(json)) return;
 
     const reparsed = mdManager.parseWithFallback(body, observerParseOpts) as PmStructuralNode;
-    const verdict = comparePmStructural(json, reparsed);
+    // `json` is the live fragment. `reparsed` can hold a `rawMdxFallback` too —
+    // `parseWithFallback` mints them — so this declares an orientation, it does
+    // not assert that either side is fallback-free.
+    const verdict = comparePmStructural(json, reparsed, { rawSourceSide: 'expected' });
     // Narrow to the failure branch, then to the one reason the guard fires on.
     // The union makes `reason`/`detail` reachable only here, and `detail`
     // required — no optional-fallback crutch.
