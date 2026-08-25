@@ -138,16 +138,6 @@ msgstr "(terbuka di tab baru)"
 msgid "(optional)"
 msgstr "(opsional)"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "(proyek + pengguna)"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "(hanya tingkat proyek)"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "(hanya-baca — untuk sekarang, sunting di mode sumber)"
@@ -163,11 +153,6 @@ msgstr "(sebagian mungkin sudah disembunyikan oleh aturan lain)"
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "(symlink)"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "(hanya tingkat pengguna)"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -1556,8 +1541,8 @@ msgstr "Menambahkan blok terkelola ke"
 msgid "Adds a managed block to {0}"
 msgstr "Menambahkan blok terkelola ke {0}"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "Menambahkan entri MCP OpenKnowledge dan keterampilan proyek ke <0>{toolList}</0> agar agen Anda dapat membaca dan mengedit berkas Anda."
 
@@ -1579,7 +1564,7 @@ msgstr "Menambahkan keterampilan OpenKnowledge ke <0>aplikasi Claude Desktop</0>
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "Menambahkan keterampilan ke {rootRel} — juga dibaca oleh {0}"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "Menambahkan berkas ini"
 
@@ -2565,7 +2550,7 @@ msgstr "Memeriksa keterampilan"
 msgid "Checking source"
 msgstr "Memeriksa sumber"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "Memeriksa alat AI yang Anda miliki"
 
@@ -3167,10 +3152,6 @@ msgstr "Hubungkan alat AI yang Anda pakai ke proyek ini secara khusus. Berkas-be
 msgid "Connect this project to GitHub to share."
 msgstr "Hubungkan proyek ini ke GitHub untuk membagikannya."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "Hubungkan ke alat AI"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "Hubungkan ke GitHub"
@@ -3188,8 +3169,8 @@ msgstr "Hubungkan alat"
 msgid "Connect your AI tools"
 msgstr "Hubungkan alat AI Anda"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "Hubungkan alat AI Anda ke proyek ini"
 
@@ -8486,7 +8467,7 @@ msgstr "Tidak ada agen AI yang terpasang"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Alat AI & CLI."
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Proyek ini."
 
@@ -14863,10 +14844,6 @@ msgstr "Worktree"
 #: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Membungkus baris panjang di penyunting sumber markdown."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "Menulis konfigurasi MCP proyek untuk setiap alat yang dipilih."
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"

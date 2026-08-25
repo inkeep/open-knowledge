@@ -158,7 +158,6 @@ import type {
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
-  McpWiringEditorId,
   MenuDispatchCommand,
   MenuDispatchRole,
   OnboardingShowPayload,
@@ -2515,14 +2514,6 @@ async function openProject(
       gitState: discovery.gitState,
       gitRootPromoted: discovery.gitRootPromoted,
       warnings: validation.warnings.map((w) => ({ kind: w.kind })),
-      editorOptions: ALL_EDITOR_IDS.map((id) => ({
-        id: id as McpWiringEditorId,
-        label: EDITOR_TARGETS[id].label,
-        hasProjectConfig: EDITOR_TARGETS[id].projectConfigPath !== undefined,
-        // Pi is the first project-scope-only editor; without the user-side
-        // signal the badge would misread as "(project + user)".
-        hasUserConfig: EDITOR_TARGETS[id].scope === 'global',
-      })),
     };
     const decision = await requestUserConsent(
       {
@@ -2549,10 +2540,12 @@ async function openProject(
     contentDirChanged = request.contentDir !== discovery.defaultContentDir;
     // Customized vs default — telemetry attribute distinguishes the two
     // so the team can answer "how often do users tweak the dialog?"
+    // The AI-tool row offers only the tools detected on this machine, so its
+    // id count carries no signal about whether the user touched it — an
+    // untouched row on a two-tool machine submits two ids, and on a machine
+    // with no tools submits none. The checkbox the user left is the answer.
     flowKind =
-      contentDirChanged ||
-      request.additionalIgnores.trim().length > 0 ||
-      request.editorIds.length !== ALL_EDITOR_IDS.length
+      contentDirChanged || request.additionalIgnores.trim().length > 0 || !request.connectEditors
         ? 'fresh-customized'
         : 'fresh-default';
     if (

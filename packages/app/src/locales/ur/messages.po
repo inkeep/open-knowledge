@@ -138,16 +138,6 @@ msgstr "(نئے ٹیب میں کھلتا ہے)"
 msgid "(optional)"
 msgstr "(اختیاری)"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "(پروجیکٹ + صارف)"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "(صرف پروجیکٹ کی سطح پر)"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "(صرف پڑھنے کے لیے — فی الحال سورس موڈ میں ترمیم کریں)"
@@ -163,11 +153,6 @@ msgstr "(کچھ پہلے ہی دوسرے قواعد سے چھپے ہو سکتے 
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "(سِم لنک)"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "(صرف صارف کی سطح پر)"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -1560,8 +1545,8 @@ msgstr "منظم بلاک شامل کرتا ہے اِس میں"
 msgid "Adds a managed block to {0}"
 msgstr "{0} میں منظم بلاک شامل کرتا ہے"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "<0>{toolList}</0> میں OpenKnowledge کا MCP اندراج اور پروجیکٹ Skill شامل کرتا ہے تاکہ آپ کے ایجنٹس آپ کی فائلیں پڑھ اور ترمیم کر سکیں۔"
 
@@ -1583,7 +1568,7 @@ msgstr "OpenKnowledge مہارت کو <0>Claude Desktop App</0> میں شامل 
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "مہارت کو {rootRel} میں شامل کرتا ہے — اسے {0} بھی پڑھتا ہے"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "یہ فائلیں شامل کرتا ہے"
 
@@ -2569,7 +2554,7 @@ msgstr "جانچ پڑتال کی مہارت"
 msgid "Checking source"
 msgstr "ماخذ جانچا جا رہا ہے"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "دیکھا جا رہا ہے کہ آپ کے پاس کون سے AI ٹولز ہیں"
 
@@ -3171,10 +3156,6 @@ msgstr "اپنے استعمال کے AI ٹولز کو اسی مخصوص پروج
 msgid "Connect this project to GitHub to share."
 msgstr "شیئر کرنے کے لیے اس پروجیکٹ کو GitHub سے منسلک کریں۔"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "AI ٹولز سے منسلک ہوں"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "GitHub سے منسلک ہوں"
@@ -3192,8 +3173,8 @@ msgstr "ٹولز منسلک کریں"
 msgid "Connect your AI tools"
 msgstr "اپنے AI ٹولز منسلک کریں"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "اپنے AI ٹولز کو اس پروجیکٹ سے جوڑیں"
 
@@ -8490,7 +8471,7 @@ msgstr "کوئی AI ایجنٹ نصب نہیں"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "ابھی تک کوئی AI ٹول نہیں ملا۔ ایک انسٹال کرنے کے بعد اسے ترتیبات > AI ٹولز اور CLI سے جوڑیں۔"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "ابھی تک کوئی AI ٹول نہیں ملا۔ ایک انسٹال کرنے کے بعد اسے ترتیبات > یہ پروجیکٹ سے جوڑیں۔"
 
@@ -14867,10 +14848,6 @@ msgstr "ورک ٹریز"
 #: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Markdown سورس ایڈیٹر میں لمبی سطریں لپیٹیں۔"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "ہر منتخب ٹول کے لیے پروجیکٹ کی MCP کنفیگ لکھتا ہے۔"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"

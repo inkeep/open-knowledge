@@ -86,7 +86,6 @@
     "0NkNB5": [["0"], "mo ago"],
     "0QVrvp": ["Maximum agents already running"],
     "0TnCvC": ["Rename ", ["0"]],
-    "0YEbfk": ["Connect to AI tools"],
     "0YUS3Q": ["Subfolder under current folder"],
     "0_J12R": [
       "New file from template \"",
@@ -2238,7 +2237,6 @@
       "\" could not be cleared in time. Reload to retry."
     ],
     "ScwcF2": ["A project already exists at this location. Pick a different parent folder."],
-    "SfxQX8": ["Writes a project-MCP config for each selected tool."],
     "Sg-6Bo": [["errorCount", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "SgKLfA": ["Not connected to GitHub."],
     "Sh3Qkg": ["No matching branches."],
@@ -3018,7 +3016,6 @@
       "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
     ],
     "cIptmH": ["In the Claude Desktop App"],
-    "cKjLuT": ["(project + user)"],
     "cLP0Lf": ["Remote skill source"],
     "cLn264": ["This theme file couldn’t be read"],
     "cMMb6H": ["Installed ", ["imported"], ", but ", ["failed"], " failed: ", ["failedNames"]],
@@ -3245,7 +3242,6 @@
     "fMsFdZ": ["Couldn't save the auto-update setting: ", ["0"]],
     "fNr-MX": ["Disable semantic search"],
     "fOzzSV": ["Link target \"", ["shown"], "\" does not resolve to an existing file."],
-    "fR-Kdc": ["(project-level only)"],
     "fRVBiq": [
       "Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted)."
     ],
@@ -3989,7 +3985,6 @@
     "nWS2gQ": ["Published by ", ["publisher"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
     "nXHOFU": ["Couldn't update from ", ["0"], ": ", ["1"]],
-    "nYKerc": ["(user-level only)"],
     "nYeBmY": [["hours"], "h ago"],
     "n_I-da": ["View source"],
     "nbLQ_9": ["Choose where to send these comments"],

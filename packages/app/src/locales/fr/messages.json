@@ -104,7 +104,6 @@
     "0NkNB5": ["il y a ", ["0"], " mois"],
     "0QVrvp": ["Nombre maximal d'agents déjà en cours d'exécution"],
     "0TnCvC": ["Renommer ", ["0"]],
-    "0YEbfk": ["Connecter aux outils IA"],
     "0YUS3Q": ["Sous-dossier du dossier actuel"],
     "0_J12R": [
       "Nouveau fichier à partir du modèle « ",
@@ -2606,7 +2605,6 @@
       " » n'ont pas pu être effacées à temps. Rechargez pour réessayer."
     ],
     "ScwcF2": ["Un projet existe déjà à cet emplacement. Choisissez un autre dossier parent."],
-    "SfxQX8": ["Écrit une configuration MCP de projet pour chaque outil sélectionné."],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -3548,7 +3546,6 @@
       "Tant que vous êtes déconnecté, les mises à jour sont recherchées au plus toutes les 3 minutes, quel que soit ce réglage."
     ],
     "cIptmH": ["Dans l'application Claude Desktop"],
-    "cKjLuT": ["(projet + utilisateur)"],
     "cLP0Lf": ["Source de compétence distante"],
     "cLn264": ["Impossible de lire ce fichier de thème"],
     "cMMb6H": [["imported"], " installées, mais ", ["failed"], " ont échoué : ", ["failedNames"]],
@@ -3821,7 +3818,6 @@
     "fMsFdZ": ["Impossible d'enregistrer le réglage de mise à jour automatique : ", ["0"]],
     "fNr-MX": ["Désactiver la recherche sémantique"],
     "fOzzSV": ["La cible du lien « ", ["shown"], " » ne correspond à aucun fichier existant."],
-    "fR-Kdc": ["(niveau projet uniquement)"],
     "fRVBiq": [
       "Ajoute la télémétrie, l'état du serveur et les informations d'exécution lorsqu'elles sont disponibles. Les identifiants sont toujours supprimés ; les noms de documents, s'ils sont inclus, apparaissent en clair (non masqués)."
     ],
@@ -4653,7 +4649,6 @@
     "nWS2gQ": ["Publié par ", ["publisher"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],
     "nXHOFU": ["Impossible de mettre à jour depuis ", ["0"], " : ", ["1"]],
-    "nYKerc": ["(niveau utilisateur uniquement)"],
     "nYeBmY": ["il y a ", ["hours"], " h"],
     "n_I-da": ["Voir la source"],
     "nbLQ_9": ["Choisissez où envoyer ces commentaires"],

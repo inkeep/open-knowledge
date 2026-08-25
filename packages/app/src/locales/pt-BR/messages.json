@@ -100,7 +100,6 @@
     "0NkNB5": ["há ", ["0"], " meses"],
     "0QVrvp": ["Já está no número máximo de agentes em execução"],
     "0TnCvC": ["Renomear ", ["0"]],
-    "0YEbfk": ["Conectar a ferramentas de IA"],
     "0YUS3Q": ["Subpasta dentro da pasta atual"],
     "0_J12R": [
       "Novo arquivo a partir do modelo \"",
@@ -2538,7 +2537,6 @@
       "\". Recarregue para tentar de novo."
     ],
     "ScwcF2": ["Já existe um projeto neste local. Escolha outra pasta acima."],
-    "SfxQX8": ["Grava uma configuração MCP de projeto para cada ferramenta selecionada."],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -3436,7 +3434,6 @@
       "Enquanto você estiver desconectado, as atualizações são verificadas no máximo a cada 3 minutos, independentemente desta configuração."
     ],
     "cIptmH": ["No app Claude Desktop"],
-    "cKjLuT": ["(projeto + usuário)"],
     "cLP0Lf": ["Fonte remota de habilidades"],
     "cLn264": ["Não foi possível ler este arquivo de tema"],
     "cMMb6H": [["imported"], " instaladas, mas ", ["failed"], " falharam: ", ["failedNames"]],
@@ -3707,7 +3704,6 @@
     "fMsFdZ": ["Não deu para salvar a configuração de atualização automática: ", ["0"]],
     "fNr-MX": ["Desativar a busca semântica"],
     "fOzzSV": ["O destino do link \"", ["shown"], "\" não corresponde a um arquivo existente."],
-    "fR-Kdc": ["(somente no nível do projeto)"],
     "fRVBiq": [
       "Adiciona telemetria, estado do servidor e informações de execução quando disponíveis. As credenciais são sempre removidas; os nomes de documento, se incluídos, aparecem em texto simples (sem ocultação)."
     ],
@@ -4523,7 +4519,6 @@
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],
     "nXHOFU": ["Não foi possível atualizar de ", ["0"], ": ", ["1"]],
-    "nYKerc": ["(somente no nível do usuário)"],
     "nYeBmY": ["há ", ["hours"], " h"],
     "n_I-da": ["Ver fonte"],
     "nbLQ_9": ["Escolha para onde enviar estes comentários"],

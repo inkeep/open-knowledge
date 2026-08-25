@@ -138,16 +138,6 @@ msgstr ""
 msgid "(optional)"
 msgstr ""
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr ""
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr ""
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr ""
@@ -162,11 +152,6 @@ msgstr ""
 
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
-msgstr ""
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
 msgstr ""
 
 #. placeholder {0}: preview.backlinkCount
@@ -1556,8 +1541,8 @@ msgstr ""
 msgid "Adds a managed block to {0}"
 msgstr ""
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr ""
 
@@ -1579,7 +1564,7 @@ msgstr ""
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr ""
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr ""
 
@@ -2565,7 +2550,7 @@ msgstr ""
 msgid "Checking source"
 msgstr ""
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr ""
 
@@ -3167,10 +3152,6 @@ msgstr ""
 msgid "Connect this project to GitHub to share."
 msgstr ""
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr ""
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr ""
@@ -3188,8 +3169,8 @@ msgstr ""
 msgid "Connect your AI tools"
 msgstr ""
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr ""
 
@@ -8486,7 +8467,7 @@ msgstr ""
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr ""
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr ""
 
@@ -14862,10 +14843,6 @@ msgstr ""
 
 #: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
-msgstr ""
-
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
 msgstr ""
 
 #: src/components/McpConsentDialogBody.tsx

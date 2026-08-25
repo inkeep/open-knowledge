@@ -75,10 +75,6 @@ const samplePayload: OkOnboardingShowPayload = {
   gitState: 'absent',
   gitRootPromoted: false,
   warnings: [],
-  editorOptions: [
-    { id: 'claude', label: 'Claude', hasProjectConfig: true },
-    { id: 'cursor', label: 'Cursor', hasProjectConfig: true },
-  ],
 };
 
 const sampleConfirm: OkOnboardingConfirmRequest = {
@@ -86,6 +82,7 @@ const sampleConfirm: OkOnboardingConfirmRequest = {
   contentDir: '.',
   additionalIgnores: '',
   editorIds: ['claude'],
+  connectEditors: true,
 };
 
 describe('createConsentStore — install', () => {

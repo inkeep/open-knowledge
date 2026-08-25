@@ -86,7 +86,6 @@
     "0NkNB5": [["0"], " bln lalu"],
     "0QVrvp": ["Jumlah agen yang berjalan sudah maksimal"],
     "0TnCvC": ["Ganti nama ", ["0"]],
-    "0YEbfk": ["Hubungkan ke alat AI"],
     "0YUS3Q": ["Subfolder di bawah folder saat ini"],
     "0_J12R": [
       "Berkas baru dari templat \"",
@@ -2241,7 +2240,6 @@
       "\" tidak dapat dibersihkan tepat waktu. Muat ulang untuk mencoba lagi."
     ],
     "ScwcF2": ["Sudah ada proyek di lokasi ini. Pilih folder induk lain."],
-    "SfxQX8": ["Menulis konfigurasi MCP proyek untuk setiap alat yang dipilih."],
     "Sg-6Bo": [["errorCount", "plural", { "other": ["#", " galat"] }]],
     "SgKLfA": ["Tidak terhubung ke GitHub."],
     "Sh3Qkg": ["Tidak ada cabang yang cocok."],
@@ -3048,7 +3046,6 @@
       "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
     ],
     "cIptmH": ["Di aplikasi Claude Desktop"],
-    "cKjLuT": ["(proyek + pengguna)"],
     "cLP0Lf": ["Sumber keterampilan remote"],
     "cLn264": ["Berkas tema ini tidak dapat dibaca"],
     "cMMb6H": [["imported"], " dipasang, tetapi ", ["failed"], " gagal: ", ["failedNames"]],
@@ -3269,7 +3266,6 @@
     "fMsFdZ": ["Pengaturan pembaruan otomatis tidak bisa disimpan: ", ["0"]],
     "fNr-MX": ["Nonaktifkan pencarian semantik"],
     "fOzzSV": ["Target tautan \"", ["shown"], "\" tidak merujuk ke file yang ada."],
-    "fR-Kdc": ["(hanya tingkat proyek)"],
     "fRVBiq": [
       "Menambahkan telemetri, keadaan server, dan info runtime bila tersedia. Kredensial selalu dihapus; nama dokumen, jika disertakan, muncul sebagai teks biasa (tidak disunting)."
     ],
@@ -4017,7 +4013,6 @@
     "nWS2gQ": ["Diterbitkan oleh ", ["publisher"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
     "nXHOFU": ["Tidak dapat memperbarui dari ", ["0"], ": ", ["1"]],
-    "nYKerc": ["(hanya tingkat pengguna)"],
     "nYeBmY": [["hours"], " j lalu"],
     "n_I-da": ["Lihat sumber"],
     "nbLQ_9": ["Pilih ke mana komentar ini dikirim"],

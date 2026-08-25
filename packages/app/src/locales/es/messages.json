@@ -102,7 +102,6 @@
     "0NkNB5": ["hace ", ["0"], " meses"],
     "0QVrvp": ["Ya hay el máximo de agentes en marcha"],
     "0TnCvC": ["Renombrar ", ["0"]],
-    "0YEbfk": ["Conectar con herramientas de IA"],
     "0YUS3Q": ["Subcarpeta dentro de la carpeta actual"],
     "0_J12R": [
       "Archivo nuevo a partir de la plantilla \"",
@@ -2582,7 +2581,6 @@
       "\". Recarga para reintentarlo."
     ],
     "ScwcF2": ["Ya existe un proyecto en esta ubicación. Elige otra carpeta superior."],
-    "SfxQX8": ["Escribe una configuración MCP de proyecto para cada herramienta seleccionada."],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -3515,7 +3513,6 @@
       "Mientras tengas la sesión cerrada, las actualizaciones se buscan como mucho cada 3 minutos, independientemente de este ajuste."
     ],
     "cIptmH": ["En la aplicación Claude Desktop"],
-    "cKjLuT": ["(proyecto + usuario)"],
     "cLP0Lf": ["Origen remoto de habilidades"],
     "cLn264": ["No se pudo leer este archivo de tema"],
     "cMMb6H": [
@@ -3793,7 +3790,6 @@
     "fMsFdZ": ["No se pudo guardar el ajuste de actualización automática: ", ["0"]],
     "fNr-MX": ["Desactivar la búsqueda semántica"],
     "fOzzSV": ["El destino del enlace «", ["shown"], "» no corresponde a un archivo existente."],
-    "fR-Kdc": ["(solo a nivel de proyecto)"],
     "fRVBiq": [
       "Añade telemetría, estado del servidor e información de ejecución cuando está disponible. Las credenciales siempre se eliminan; los nombres de documento, si se incluyen, aparecen en texto plano (sin ocultar)."
     ],
@@ -4621,7 +4617,6 @@
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gestiona los archivos ocultos en Ajustes → Patrones de exclusión."],
     "nXHOFU": ["No se pudo actualizar desde ", ["0"], ": ", ["1"]],
-    "nYKerc": ["(solo a nivel de usuario)"],
     "nYeBmY": ["hace ", ["hours"], " h"],
     "n_I-da": ["Ver la fuente"],
     "nbLQ_9": ["Elige a dónde enviar estos comentarios"],

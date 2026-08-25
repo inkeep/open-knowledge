@@ -768,14 +768,6 @@ export interface OkOnboardingShowPayload {
   readonly gitState: OkOnboardingGitState;
   readonly gitRootPromoted: boolean;
   readonly warnings: readonly { readonly kind: OkOnboardingWarningKind }[];
-  readonly editorOptions: readonly {
-    readonly id: OkMcpWiringEditorId;
-    readonly label: string;
-    readonly hasProjectConfig: boolean;
-    /** Optional for back-compat; absent reads as `true`. `false` = the editor
-     *  has no user-global config surface (Pi — project-scope only). */
-    readonly hasUserConfig?: boolean;
-  }[];
 }
 
 export interface OkOnboardingConfirmRequest {
@@ -783,6 +775,10 @@ export interface OkOnboardingConfirmRequest {
   readonly contentDir: string;
   readonly additionalIgnores: string;
   readonly editorIds: readonly OkMcpWiringEditorId[];
+  /** The AI-tools checkbox as the user left it. `editorIds` alone cannot say:
+   *  an empty list means "declined" on a machine with tools and "nothing to
+   *  offer" on one without, and the two are different answers. */
+  readonly connectEditors: boolean;
   readonly sharing: 'shared' | 'local-only';
 }
 

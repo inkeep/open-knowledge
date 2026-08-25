@@ -138,16 +138,6 @@ msgstr "（在新分頁中開啟）"
 msgid "(optional)"
 msgstr "（選填）"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "（專案 + 使用者）"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "（僅專案層級）"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "（唯讀——目前請在原始碼模式中編輯）"
@@ -163,11 +153,6 @@ msgstr "（其中有些可能已被其他規則隱藏）"
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "（符號連結）"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "（僅使用者層級）"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -1560,8 +1545,8 @@ msgstr "加入一個受管理的區塊到"
 msgid "Adds a managed block to {0}"
 msgstr "加入一個受管理的區塊到 {0}"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "向 <0>{toolList}</0> 新增 OpenKnowledge 的 MCP 項目與專案技能，讓你的智慧代理可以讀取並編輯你的檔案。"
 
@@ -1583,7 +1568,7 @@ msgstr "把 OpenKnowledge 技能加到 <0>Claude Desktop App</0>，這樣在 Cha
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "把技能加到 {rootRel}——{0} 也會讀取該處"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "新增這些檔案"
 
@@ -2569,7 +2554,7 @@ msgstr "檢查技能"
 msgid "Checking source"
 msgstr "正在檢查來源"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "正在檢查你安裝了哪些 AI 工具"
 
@@ -3171,10 +3156,6 @@ msgstr "把你用的 AI 工具連接到這個特定專案。這些檔案放在�
 msgid "Connect this project to GitHub to share."
 msgstr "把這個專案連接到 GitHub 才能分享。"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "連接 AI 工具"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "連接到 GitHub"
@@ -3192,8 +3173,8 @@ msgstr "連接工具"
 msgid "Connect your AI tools"
 msgstr "連接你的 AI 工具"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "將你的 AI 工具連接到這個專案"
 
@@ -8490,7 +8471,7 @@ msgstr "沒有安裝任何 AI 代理"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > AI 工具與 CLI」中連接。"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > 這個專案」中連接。"
 
@@ -14867,10 +14848,6 @@ msgstr "Worktree"
 #: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
 msgstr "在 markdown 原始碼編輯器中把過長的行自動換行。"
-
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "為每個選取的工具寫入一份專案層級的 MCP 設定。"
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"

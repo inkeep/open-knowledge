@@ -138,16 +138,6 @@ msgstr "(se abre en una pestaña nueva)"
 msgid "(optional)"
 msgstr "(opcional)"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "(proyecto + usuario)"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "(solo a nivel de proyecto)"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "(solo lectura: por ahora edítalo en modo código)"
@@ -163,11 +153,6 @@ msgstr "(puede que otras reglas ya oculten algunos)"
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "(enlace simbólico)"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "(solo a nivel de usuario)"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -1560,8 +1545,8 @@ msgstr "Añade un bloque gestionado a"
 msgid "Adds a managed block to {0}"
 msgstr "Añade un bloque gestionado a {0}"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "Añade una entrada MCP de OpenKnowledge y la habilidad del proyecto a <0>{toolList}</0> para que tus agentes puedan leer y editar tus archivos."
 
@@ -1583,7 +1568,7 @@ msgstr "Añade la habilidad de OpenKnowledge a la <0>aplicación Claude Desktop<
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "Añade la habilidad a {rootRel}, que también lee {0}"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "Añade estos archivos"
 
@@ -2569,7 +2554,7 @@ msgstr "Comprobando habilidad"
 msgid "Checking source"
 msgstr "Comprobando el origen"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "Comprobando qué herramientas de IA tienes"
 
@@ -3171,10 +3156,6 @@ msgstr "Conecta a este proyecto concreto las herramientas de IA que usas. Estos 
 msgid "Connect this project to GitHub to share."
 msgstr "Conecta este proyecto a GitHub para compartirlo."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "Conectar con herramientas de IA"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "Conectar con GitHub"
@@ -3192,8 +3173,8 @@ msgstr "Conectar herramientas"
 msgid "Connect your AI tools"
 msgstr "Conecta tus herramientas de IA"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "Conectar tus herramientas de IA a este proyecto"
 
@@ -8490,7 +8471,7 @@ msgstr "No hay agentes de IA instalados"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "Todavía no se ha detectado ninguna herramienta de IA. Cuando instales una, conéctala desde Ajustes > Herramientas de IA y CLI."
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "Todavía no se ha detectado ninguna herramienta de IA. Cuando instales una, conéctala desde Ajustes > Este proyecto."
 
@@ -14867,10 +14848,6 @@ msgstr "Worktrees"
 #: src/components/settings/settings-fields.ts
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Ajusta las líneas largas en el editor de código markdown."
-
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "Escribe una configuración MCP de proyecto para cada herramienta seleccionada."
 
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
