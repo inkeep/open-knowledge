@@ -9,7 +9,7 @@
  * first place — they launch Electron, poke the renderer, and read main-process
  * state.
  *
- * Three categories now exist, and the distinction is deliberate:
+ * Three admission gates cover most specs, and the distinction is deliberate:
  *
  *   - CROSS-PLATFORM specs gate on {@link PLATFORM_SUPPORTED}. They run on
  *     every OS the harness can drive. A spec belongs here when nothing in it
@@ -22,8 +22,16 @@
  *     Event URL delivery or the darwin chrome stack (vibrancy / hiddenInset
  *     traffic lights).
  *
- * Moving a spec between categories is a one-line change; prefer growing the
- * cross-platform set over adding platform branches inside a spec.
+ * A gate can also EXCLUDE a platform rather than admit one — `test.skip(DARWIN,
+ * …)` for a describe that only means anything off macOS, `test.skip(WINDOWS, …)`
+ * for a POSIX-only mechanism. Those are not a fourth category so much as the
+ * same constants read the other way round, and the roster below records them
+ * verbatim so the direction is never in doubt.
+ *
+ * Prefer growing the cross-platform set over adding platform branches inside a
+ * spec. Every gate each spec carries is recorded in
+ * {@link SPEC_PLATFORM_GATES} below, so a move is a deliberate two-place edit
+ * rather than a one-line skip swap.
  */
 
 import { join } from 'node:path';
@@ -37,7 +45,7 @@ export const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
  * this set exists so an exotic host (freebsd, aix) skips with a clear reason
  * instead of failing deep inside a launch.
  */
-const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(['darwin', 'win32', 'linux']);
+export const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(['darwin', 'win32', 'linux']);
 
 /** True on every platform a cross-platform spec is expected to pass on. */
 export const PLATFORM_SUPPORTED = SUPPORTED_PLATFORMS.has(process.platform);
@@ -80,3 +88,70 @@ export function homeEnv(tmpHome: string): Record<string, string> {
 export function userDataDirFor(tmpHome: string): string {
   return join(tmpHome, 'electron-userdata');
 }
+
+/**
+ * Every platform gate each smoke spec carries, in source order, as the exact
+ * condition text of the `test.skip` / `test.fixme` call that expresses it.
+ *
+ * The categories above describe how to CHOOSE a gate; this roster records which
+ * gates each file actually has. `platform-gate.test.ts` re-derives every entry
+ * from that spec's own syntax tree and fails when a derived list stops matching,
+ * so a spec cannot be widened onto new platforms as a silent side effect of a
+ * change that never names it.
+ *
+ * It is the condition TEXT rather than a category name because the corpus gates
+ * in more shapes than a category vocabulary can hold: `!DARWIN` (run only on
+ * macOS) and `DARWIN` (run everywhere BUT macOS) are opposite constraints, and
+ * `WINDOWS || TARGET.mode === 'packaged'` is neither. Pinning the text describes
+ * all of them exactly and needs no vocabulary to grow when a new shape appears.
+ *
+ * It is the whole SEQUENCE because a spec may gate its describes separately, and
+ * deleting one of them widens that block alone. The cost is that adding or
+ * removing a gated describe also bumps the entry; that is the intended trade,
+ * since a new gated block is itself a statement about where tests run.
+ *
+ * Editing an entry is the point: widen a spec only alongside a run of that spec,
+ * green, on the platforms you are widening it to, and say where that run is in
+ * the pull request. Narrowing an entry is cheap and needs no run.
+ */
+export const SPEC_PLATFORM_GATES = {
+  '_nav-empty-840x600.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  '_nav-size-screenshots.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'agent-patch-divergence-probe.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'background-throttle.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'cold-single-file-launch.e2e.ts': ['!DARWIN'],
+  'consent-dialog.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'create-new-project.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'deep-link.e2e.ts': ['!DARWIN'],
+  'external-link.e2e.ts': ['!DARWIN'],
+  'mcp-wiring.e2e.ts': ['!PLATFORM_SUPPORTED', 'WINDOWS', "WINDOWS || TARGET.mode === 'packaged'"],
+  'navigator-close-on-open.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'navigator-return.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'note-window.e2e.ts': ['!PLATFORM_SUPPORTED', '!DARWIN'],
+  'okf-rule-toggle.e2e.ts': ['!DARWIN'],
+  'qa-create-new-extended.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'rename-divergence-probe.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'report-bug.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'saved-theme-paint.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'share-receive-miss-terminal.e2e.ts': ['!PLATFORM_SUPPORTED'],
+  'share-receive-multi-worktree.e2e.ts': ['!DARWIN'],
+  'sidebar-create-rename-editable.e2e.ts': ['!DARWIN'],
+  'sidebar-pill-lockstep-fade.e2e.ts': ['!DARWIN'],
+  'skill-scope-roundtrip.e2e.ts': ['!DARWIN'],
+  'skills-studio.e2e.ts': ['!DARWIN'],
+  'terminal-dock-state.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-dock.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-links.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-movement.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-process-restart.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-tabs.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-window.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'theme-sync.e2e.ts': ['!DARWIN'],
+  'uninstall-ipc-bridge.e2e.ts': ['!DARWIN'],
+  'uninstall-notice.e2e.ts': ['!DARWIN'],
+  'uninstall-picker.e2e.ts': ['!DARWIN'],
+  'uninstall-survey.e2e.ts': ['!DARWIN'],
+  'uninstall-window-chrome.e2e.ts': ['!DARWIN'],
+  'window-chrome.e2e.ts': ['!PLATFORM_SUPPORTED', 'DARWIN', '!PLATFORM_SUPPORTED'],
+  'window-min-size.e2e.ts': ['!PLATFORM_SUPPORTED'],
+} as const satisfies Record<string, readonly string[]>;
