@@ -5769,15 +5769,38 @@ html.electron-mode [data-slot="sidebar-inner"] {
    form an implicit final layer that outranks every named one — so this rule
    sitting outside a layer beat every `max-w-*` a descendant carries no matter
    how weak the selector was, which made it a FLOOR. Tailwind emits its
-   utilities into `@layer utilities`, and `components` sorts before that, so
-   from in here a descendant that states its own cap wins and one that states
-   nothing is still capped. That is the ceiling the sibling producer promises
-   when `deriveEditorSizeOptions` folds an `authorMaxWidth` into `min()`.
+   utilities into `@layer utilities`, and `components` sorts before that, so a
+   descendant stating its own cap as a UTILITY wins and one stating nothing is
+   still capped. The scoping is real: `.tag` a few blocks down is unlayered and
+   renders inside the slash-command Tag preview, so it outranks this rule by
+   the same law — invisibly today, since it also says `100%`.
+
+   That is a ceiling, but it is NOT the `min()` the sibling producer composes.
+   `deriveEditorSizeOptions` writes `min(authorMaxWidth, regionWidth)`, where
+   the narrower wins in both directions. A cascade override REPLACES this
+   declaration outright, wider included: a root carrying `max-w-96` beside a
+   fixed `width` inside a 284px wrapper resolves to 384px, which constrains
+   nothing and paints straight past the pane — the exact failure the first
+   paragraph describes. A picker that wants its own ceiling AND the clip has
+   to compose it, `max-w-[min(28rem,100%)]`, one character from the classes
+   this rule replaced.
+
+   The token the height axis uses (`--suggestion-menu-max-width`, consumed as
+   an inline `min(...)` at each root) is the one option that composes natively
+   and outranks every layer, which is why the producer chose it there. Kept a
+   rule here because it needs no per-component consumption; recorded so the
+   next reader does not re-derive the trade.
+
+   Unlike the reduced-transparency and composer-prosemirror blocks, which stay
+   unlayered so they always win, this one must be OVERRIDABLE — hence the
+   layer. Both policies are right for their surface.
 
    Layering costs the fix nothing: `max-width` constrains `width` at the
    used-value step whichever declaration won the cascade, so a `w-80` root in a
-   284px wrapper shrinks either way. `cascade-position.test.ts` is what holds
-   the layer, because no layout-free tier can observe it. */
+   284px wrapper shrinks either way. `globals.suggestion-clip-cascade.test.ts`
+   holds the layer, because no LAYOUT-FREE tier can observe it; a Playwright
+   probe injecting a capped descendant would pin it harder and is the rung not
+   bought yet. */
 @layer components {
   [data-suggestion-popup][data-suggestion-clipped] * {
     max-width: 100%;
