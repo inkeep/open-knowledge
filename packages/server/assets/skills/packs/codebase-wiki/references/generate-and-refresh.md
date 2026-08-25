@@ -102,10 +102,10 @@ Atomic pages for domain terms and core abstractions (one term each): definition,
 ### Phase 7 — Link-graph activation + audit
 
 1. Confirm **OVERVIEW links every page** (it is the nav hub). Add any missing nav links. This is OVERVIEW's check — it's a *source* (high out-degree), verified by forward links here, not by the `hubs` view below.
-2. Run `links({ kind: ["orphans", "hubs"] })`, then `audit` for dead links:
+2. Run `links({ kind: ["orphans", "hubs"] })`, then `audit`:
    - **orphans** — pages nothing links to. Adopt each by linking it from OVERVIEW or a relevant section page (or, rarely, justify it as intentionally standalone).
    - **hubs** — ranks by *inbound* links. Confirm your **concept/module pages** show up here — that's the signal cross-linking actually happened. Don't expect `OVERVIEW`: a freshly authored nav page has almost no inbound links, so it won't appear (and that's correct — its coverage was checked in step 1).
-   - **dead** (`audit`) — fix or remove every dead link. (Source-file links don't appear in this graph — only `.md`/`.mdx` edges are tracked — but they ARE validated by `brokenLinks` on each write/edit, per the code-reference rule above.)
+   - **`audit`** — returns clean (every lint violation + broken internal link) — fix every finding. (This covers links to source files too, not just `.md`/`.mdx`: it's the `orphans`/`hubs` graph above that tracks doc-to-doc edges only. `brokenLinks` on each write/edit is the same check per-write, per the code-reference rule above.)
 3. Append a `wiki/log.md` entry (see *Log discipline*).
 4. Tell the user the wiki is ready and surface the OVERVIEW preview URL.
 

@@ -179,7 +179,7 @@ Six sub-passes, each with its own STOP gate.
 
 ### 5c. Dead-link sweep (STOP gate 5c)
 
-1. Run `audit` (the authoritative end-state link check; it covers the whole corpus). `links({ kind: "dead" })` is the graph-navigation view of the same data, useful for browsing but not the validation step.
+1. Run `audit` (the authoritative end-state link check; it covers the whole corpus — caveats in `references/linking.md`). `links({ kind: "dead" })` is the graph reader, not the validation step; it is a superset on the source side (it also lists dead links whose source is a skill-bundle doc, which `audit` skips).
 2. For each dead link, propose: a fix candidate (via `search` for the correct target), or deletion (remove the link, or the prose around it). Leaving it as an "intentional redlink" is not an option — every dead link is fixed or removed.
 3. Confirm per dead-link. Apply confirmed fixes via `edit`.
 

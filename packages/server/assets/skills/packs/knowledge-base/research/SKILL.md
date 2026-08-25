@@ -336,7 +336,7 @@ Run this checklist before marking complete:
 - File exists at the chosen path under the content directory
 - Frontmatter has `title`, `description`, `type: research-note`, `status: draft`, `date`, and an object-shaped `sources:` list
 - `exec("ls -A <dir>")` lists the new file with frontmatter enrichment
-- `audit({ path: "<doc-path>.md" })` returns clean — zero dead links (fix or remove every one)
+- `audit({ path: "<doc-path>.md" })` returns clean (every lint violation + broken internal link) — fix every finding
 - Every factual claim in Findings cites a source inline
 - Linked source files from Step 3 all exist (broken source links → ingest went wrong somewhere)
 - At least 1-2 neighbor docs now link to this research (per Step 6's "After writing, update ..." rule)
