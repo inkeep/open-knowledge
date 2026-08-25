@@ -63,8 +63,37 @@ interface KnownTabTargets {
    * target — the cold-start race evicts before that resolution runs.
    */
   keepHashDocName?: string | null;
+  /**
+   * Folders the caller is currently displaying, kept even when absent from
+   * `folderPaths`. Only the server's folder listing can carry an EMPTY folder,
+   * since nothing derives one from `pages`, and unlike `pages` that listing has
+   * no optimistic bridge. A folder therefore stays unknown here for the whole
+   * create or rename round-trip, and a sync landing inside that window would
+   * otherwise prune the folder tab the user had just navigated into. Folder counterpart of
+   * `keepHashDocName`. Order-independent with respect to a rename, because the
+   * caller reads a target the commit re-derived from the pane's own tab id (see
+   * `paneWithResolvedTarget`), so this matches whether the prune runs before or
+   * after the remap.
+   *
+   * A SET of paths rather than one name, because the caller resolves this from
+   * the panes' active targets, not from the hash: a folder reached by wiki link
+   * carries no trailing slash and is indistinguishable from a doc by shape, and
+   * a split workspace can display more than one folder at once.
+   *
+   * This DEFERS a close rather than preventing one, and only for folders on
+   * screen. In-app deletion closes these tabs by id through
+   * `reconcileLocalRemoval`, so that path is unaffected. An EXTERNAL delete
+   * (agent, MCP, another client) has no folder equivalent of the provider pool's
+   * `doc-deleted` signal, which is what lets the doc branch above lean on a
+   * deletion path, so for folders this prune is the only closer and such a tab
+   * survives while its folder is displayed. A folder tab holds no collaboration
+   * provider, so a stale one cannot diverge a room the way a stale doc tab
+   * could.
+   */
+  keepFolderPaths?: ReadonlySet<string>;
 }
 
+const EMPTY_FOLDER_PATHS: ReadonlySet<string> = new Set<string>();
 const LOCAL_TAB_SESSION_PREFIX = 'ok-editor-tabs-v1:';
 const FOLDER_TAB_PREFIX = '\u0000folder:';
 const ASSET_TAB_PREFIX = '\u0000asset:';
@@ -739,11 +768,14 @@ export function filterOpenTabsForKnownTargets(
     filePaths,
     keepMissingDocName = null,
     keepHashDocName = null,
+    keepFolderPaths = EMPTY_FOLDER_PATHS,
   }: KnownTabTargets,
 ): string[] {
   return normalizeOpenTabs(tabs, Number.MAX_SAFE_INTEGER).filter((tabId) => {
     const tab = parseEditorTabId(tabId);
-    if (tab.kind === 'folder') return folderPaths.has(tab.folderPath);
+    if (tab.kind === 'folder') {
+      return folderPaths.has(tab.folderPath) || keepFolderPaths.has(tab.folderPath);
+    }
     if (tab.kind === 'asset') {
       return assetPaths.has(tab.assetPath) || filePaths?.has(tab.assetPath) === true;
     }

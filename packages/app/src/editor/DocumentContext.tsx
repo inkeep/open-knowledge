@@ -626,6 +626,21 @@ function resolvedTargetForTabId(tabId: string): ResolvedNavigationTarget {
   }
 }
 
+/**
+ * Re-derive a pane's `activeTarget` from its own `activeTabId`.
+ *
+ * The workspace invariant this establishes: every pane in `workspaceRef.current`
+ * carries a target derived from ITS OWN `activeTabId`. `commitWorkspace` is the
+ * single site that assigns that ref, and it maps this over every pane first, so
+ * no reader can observe a target belonging to some other tab, or a null one left
+ * behind by a transition.
+ *
+ * That is load-bearing because transitions do NOT carry a target across a tab-id
+ * change: `remapWorkspaceTabs` NULLS `activeTarget` whenever the id moves rather
+ * than remapping it, and this re-derive is what puts it back. Readers that key
+ * off `activeTarget` depend on this invariant, not on ids and targets moving
+ * together — they do not.
+ */
 function paneWithResolvedTarget(pane: EditorPaneState): EditorPaneState {
   if (pane.activeNewTabId !== null || pane.activeTabId === null) {
     return pane.activeTarget === null ? pane : { ...pane, activeTarget: null };
@@ -2168,6 +2183,23 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       // can race ahead of.
       const keepHashDocName =
         typeof window !== 'undefined' ? docNameFromHash(window.location.hash) : null;
+      // Folder counterpart of the insurance above, read from the panes' RESOLVED
+      // targets rather than from the hash.
+      //
+      // Hash SHAPE cannot answer this. A folder opened from a wiki link or the
+      // Links panel is addressed by `hashFromDocName`, which emits no trailing
+      // slash, so `#/notes` is byte-identical whether `notes` is a doc or a
+      // folder. What tells them apart is `resolveNavigationTarget`, and it does
+      // so by consulting `folderPaths` — the very set that is stale here. The
+      // target a pane already resolved is the only non-circular answer, and
+      // reading it also avoids a second hash decoder that could drift from
+      // `tabIdFromHash`. Rebuilt per sync, so it tracks whatever the panes
+      // currently display.
+      const keepFolderPaths = new Set(
+        workspaceRef.current.panes.flatMap((pane) =>
+          pane.activeTarget?.kind === 'folder' ? [pane.activeTarget.folderPath] : [],
+        ),
+      );
       const allOpenTabs = flattenWorkspaceTabs(workspaceRef.current);
       const nextOpenTabs = filterOpenTabsForKnownTargets(allOpenTabs, {
         pages: new Set([...pages, ...missingDocNames]),
@@ -2176,6 +2208,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         filePaths,
         keepMissingDocName: null,
         keepHashDocName,
+        keepFolderPaths,
       });
       if (nextOpenTabs.length === allOpenTabs.length) return;
 

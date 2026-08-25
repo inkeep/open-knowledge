@@ -210,6 +210,39 @@ describe('editor tab state', () => {
     ).toEqual(['docs/a', folderTabId('hello')]);
   });
 
+  test('filterOpenTabsForKnownTargets keeps a displayed folder absent from folderPaths', () => {
+    // Folder twin of the `keepHashDocName` case. Why an existing folder can be
+    // missing from `folderPaths` at all is on the `keepFolderPaths` JSDoc.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set(['hello']),
+      }),
+    ).toEqual([folderTabId('hello')]);
+    // It spares ONLY the folders passed in. A blanket folder exemption would
+    // satisfy the assertion above while disabling folder pruning outright, so
+    // pin that stale siblings still go.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello'), folderTabId('old-folder')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set(['hello']),
+      }),
+    ).toEqual([folderTabId('hello')]);
+    // And with no displayed folder there is no exemption at all.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set<string>(),
+      }),
+    ).toEqual([]);
+  });
+
   test('filterOpenTabsForKnownTargets keeps the SKILL doc that left the page list', () => {
     // A scope move deletes the source bundle BEFORE its response lands, so the
     // source doc stops being a page mid-move. Pruning it there closed the tab
