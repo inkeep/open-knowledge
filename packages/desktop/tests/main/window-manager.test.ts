@@ -1232,6 +1232,172 @@ describe('WindowManager', () => {
       expect(env.windows.length).toBe(1);
     });
 
+    /**
+     * Wire an attach-mode restart whose respawn parks until `release` (or
+     * `fail`) is called, so a test can observe the window manager while the
+     * originating window is detached from `windowsByPath` and its replacement
+     * does not exist yet. The respawned server publishes a lock on port 60000.
+     */
+    function parkedRestart(): {
+      release: () => void;
+      fail: (err: Error) => void;
+      awaitParked: () => Promise<void>;
+    } {
+      env.deps.selfProtocolVersion = 1;
+      env.deps.selfRuntimeVersion = '0.8.2';
+      let killed = false;
+      let spawned = false;
+      const oldLock = { ...liveLock, pid: 5555, protocolVersion: 1, runtimeVersion: '0.8.0' };
+      const freshLock = {
+        ...liveLock,
+        pid: 6666,
+        port: 60000,
+        protocolVersion: 1,
+        runtimeVersion: '0.8.2',
+      };
+      enableAttachProbe({
+        readServerLock: () => (spawned ? freshLock : killed ? null : oldLock),
+        isProcessAlive: (pid) => (pid === 5555 ? !killed : true),
+      });
+      env.deps.killProbe = vi.fn((_pid: number, signal: string) => {
+        if (signal === 'SIGTERM') killed = true;
+      });
+      let resolveSpawn: (() => void) | undefined;
+      let rejectSpawn: ((err: Error) => void) | undefined;
+      env.deps.spawnDetachedServer = async () => {
+        await new Promise<void>((resolve, reject) => {
+          resolveSpawn = resolve;
+          rejectSpawn = reject;
+        });
+        spawned = true;
+        return { pid: 6666 };
+      };
+      return {
+        release: () => resolveSpawn?.(),
+        fail: (err) => rejectSpawn?.(err),
+        awaitParked: async () => {
+          await vi.waitFor(() => {
+            expect(resolveSpawn).toBeDefined();
+          });
+        },
+      };
+    }
+
+    test('a window mid-server-restart still resolves to its project', async () => {
+      // The restart detaches the originating window from `windowsByPath` so the
+      // recreate spawns a new window instead of focusing the old one, and only
+      // restores or closes it once `createProjectWindow` settles. Across that
+      // span — terminate poll, detached spawn, lock poll, renderer load — the
+      // originating window is on screen and focusable, so the application menu
+      // acts on it while nothing would admit which project it belongs to.
+      // Terminal -> New Terminal Window resolved no project and opened a
+      // HOME-cwd, project-less window.
+      const parked = parkedRestart();
+      const wm = new WindowManager(env.deps);
+      const attached = await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      const originating = env.windows[0];
+      if (!originating) throw new Error('no originating window');
+
+      const restart = wm.restartAttachedServer('/tmp/dragon');
+      await parked.awaitParked();
+
+      // The same object the authoritative entry held — including the port of the
+      // server this restart just terminated. `getContextForBrowserWindow`
+      // documents why that is the right answer for this span.
+      expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)).toBe(attached);
+
+      parked.release();
+      await expect(restart).resolves.toEqual({ ok: true });
+    });
+
+    test('a completed restart leaves no entry behind for the window it closed', async () => {
+      // Release pin. `windowsByPath` holds the RECREATED window under this
+      // project's key, so the only thing that could still answer for the closed
+      // originating window is an unreleased publish — a permanent Map entry
+      // pinning a destroyed BrowserWindow.
+      const parked = parkedRestart();
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      const originating = env.windows[0];
+      if (!originating) throw new Error('no originating window');
+
+      // Sample the answer for the dying window from inside the close. That is
+      // the only point where the two orderings differ: once `closeAndAwait`
+      // resolves, the end state is identical whether the release ran before the
+      // close or in the trailing bracket. A `'closed'` listener also covers the
+      // force-`destroy()` route, which stubbing `close` would miss.
+      let closeTimeAnswer: unknown = 'unsampled';
+      originating.on('closed', () => {
+        closeTimeAnswer = wm.getContextForBrowserWindow(originating as BrowserWindowLike);
+      });
+
+      const restart = wm.restartAttachedServer('/tmp/dragon');
+      await parked.awaitParked();
+      parked.release();
+      await expect(restart).resolves.toEqual({ ok: true });
+
+      expect(originating.isDestroyed?.()).toBe(true);
+      expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)).toBeUndefined();
+      // The release lands BEFORE the close, not in the trailing `finally`: the
+      // replacement already owns the authoritative entry by then, and
+      // `closeAndAwait` grants a grace the old renderer stays interactive for.
+      // Sampled from the close itself, the only observation point inside it.
+      expect(closeTimeAnswer).toBeUndefined();
+      // The replacement still resolves — releasing must not take the
+      // authoritative entry with it.
+      const recreated = env.windows[1];
+      if (!recreated) throw new Error('no recreated window');
+      expect(wm.getContextForBrowserWindow(recreated as BrowserWindowLike)?.port).toBe(60000);
+    });
+
+    test('a failed restart whose window survives releases on the later close', async () => {
+      // The third exit branch, and the one the other two pins cannot reach: a
+      // recreate failure with the originating window still alive restores it to
+      // `windowsByPath`, and since `getContextForBrowserWindow` reads that map
+      // first, the restore MASKS whether the publish was released. Step one
+      // past the restart — the window's own close drops the authoritative entry
+      // through its ownership guard, leaving an unreleased publish as the only
+      // thing that could still answer.
+      const parked = parkedRestart();
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      const originating = env.windows[0];
+      if (!originating) throw new Error('no originating window');
+
+      const restart = wm.restartAttachedServer('/tmp/dragon');
+      await parked.awaitParked();
+      parked.fail(new Error('spawn failed to bind'));
+      await expect(restart).resolves.toEqual({ ok: false, reason: 'other' });
+
+      // Masked: the restore alone satisfies this, released or not.
+      expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)?.projectPath).toBe(
+        '/tmp/dragon',
+      );
+
+      originating.fireClose();
+      expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)).toBeUndefined();
+    });
+
+    test('a failed restart whose window died meanwhile leaves no entry behind', async () => {
+      // The other release pin. A recreate failure restores the originating
+      // window to `windowsByPath` only while it is alive; when it is not, that
+      // restore is skipped, so an unreleased publish would be the sole surviving
+      // reference to a destroyed window.
+      const parked = parkedRestart();
+      const wm = new WindowManager(env.deps);
+      await wm.createProjectWindow({ projectPath: '/tmp/dragon' });
+      const originating = env.windows[0];
+      if (!originating) throw new Error('no originating window');
+
+      const restart = wm.restartAttachedServer('/tmp/dragon');
+      await parked.awaitParked();
+      originating.markDestroyed();
+      parked.fail(new Error('spawn failed to bind'));
+      await expect(restart).resolves.toEqual({ ok: false, reason: 'other' });
+
+      expect(wm.getContextForBrowserWindow(originating as BrowserWindowLike)).toBeUndefined();
+    });
+
     test('reclaimForeignServerInDev terminates a foreign server and spawns fresh via utility-fork, SILENTLY (no notice)', async () => {
       env.deps.reclaimForeignServerInDev = true;
       let killed = false;

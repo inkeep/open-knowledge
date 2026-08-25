@@ -1033,24 +1033,54 @@ export class WindowManager {
   private readonly windowsByPath = new Map<string, ProjectContext>();
 
   /**
-   * BrowserWindow → its ProjectContext for windows still loading their
-   * renderer. Read only through `getContextForBrowserWindow`.
+   * BrowserWindow → its ProjectContext for two of the spans in which no
+   * authoritative `windowsByPath` entry answers for a window the user can see
+   * and act on. Other such spans exist and do not use this map; the ones worth
+   * knowing about are named below. Neither list is exhaustive. Read only
+   * through `getContextForBrowserWindow`.
    *
-   * `windowsByPath` is authoritative but its entry lands only AFTER
-   * `await loadFile` resolves, whereas the window — and the application menu
-   * acting on it — exists from the moment `createWindow` returns. Every field
-   * of the context is known before that call, so for the whole renderer load
-   * this class owned a project window it would not admit to owning, and
-   * anything asking "which project is this window's?" got `undefined`.
+   * The two spans this map covers, both seconds long:
    *
-   * The user-visible cost was Terminal → New Terminal Window during load:
-   * `resolveTerminalWindowProject` saw no editor context and opened a
+   *   - A newly created window. Its `windowsByPath` entry lands only AFTER
+   *     `await loadFile` resolves, whereas the window — and the application
+   *     menu acting on it — exists from the moment `createWindow` returns, and
+   *     every field of the context is known before that call.
+   *   - A window mid-`restartAttachedServer`. That path deliberately detaches
+   *     the originating window from `windowsByPath` so the recreate spawns a
+   *     new window instead of focusing the old one, and keeps the old one open
+   *     and on screen until the replacement exists.
+   *
+   * `createEphemeralWindow`'s stale-entry sweep does NOT publish, and must not.
+   * It drops the entry for a superseded single-file window it deliberately
+   * leaves open, and that window is a tombstone rather than one awaiting a
+   * replacement: its server is dead with nothing coming, its temp dir has been
+   * reaped, and the file now belongs to the fresh window the user just asked
+   * for. There is also no bounded span to release on — the sweep invalidates
+   * the ownership guard in that window's own `'closed'` handler, so a publish
+   * made there would never be released at all.
+   *
+   * The utility-fork `on('exit')` handler also drops the entry under a window
+   * that stays open, on the dev-only spawn path. It does not publish today, and
+   * this docblock does not rule on whether it should: the ephemeral exit-watch
+   * declines that very drop, on the grounds that the entry is what keeps a
+   * still-open window in the session-restore set.
+   *
+   * In the two published spans, this class owned a project window it would not
+   * admit to owning: anything asking "which project is this window's?" got
+   * `undefined`. The user-visible cost was Terminal → New Terminal Window,
+   * where `resolveTerminalWindowProject` saw no editor context and opened a
    * project-less HOME-cwd window with an empty collab URL, silently.
    *
    * Deliberately keyed by window rather than project: this answers the
-   * window→project question only, and must not widen `windowsByPath`'s
-   * meaning (a completed, dedupable, restorable window) to include windows
-   * that may still fail to load.
+   * window→project question only. Widening `windowsByPath` instead would
+   * change its meaning — a completed, dedupable, restorable window — to admit
+   * one that may still fail to load. That reason covers the create span, not
+   * the restart span, whose window was all three of those things a moment
+   * earlier. So the restart span leaves a known residual on the reverse
+   * direction: `getOpenWindows`, `getOpenProjectPaths` and `getWindowFor` read
+   * `windowsByPath` alone, and a quit landing inside a restart therefore writes
+   * a restore snapshot with that project missing. Closing that needs the two
+   * spans told apart, which is a separate change.
    */
   private readonly loadingContextByWindow = new Map<BrowserWindowLike, ProjectContext>();
 
@@ -1212,40 +1242,60 @@ export class WindowManager {
    * stale-state race between `createProjectWindow` resolving and
    * `addRecentProject` persisting.
    *
-   * Falls back to `loadingContextByWindow` so a window whose renderer is still
-   * loading resolves too — see that field for why the authoritative map cannot
-   * answer during that span. Both maps hold the SAME context object, so callers
-   * cannot tell which one answered.
+   * Falls back to `loadingContextByWindow` so a window with no authoritative
+   * entry resolves too — still loading its renderer, or detached by a server
+   * restart. See that field for both spans. Both maps hold the SAME context
+   * object, so callers cannot tell which one answered.
    *
-   * Still returns `undefined` for a window mid-`restartAttachedServer`: that
-   * path deliberately detaches the originating window from `windowsByPath`, and
-   * its context carries the terminated server's `port`/`apiOrigin`. Tracked
-   * separately; do not read this function as covering it.
+   * A window detached by a restart answers with the `port`/`apiOrigin` of the
+   * server that restart just terminated. Deliberate: `projectPath` is what
+   * nearly every caller reads and it does not change across a restart, and the
+   * recreate-failure branch restores this very context — dead origin and all —
+   * into `windowsByPath` for as long as the failure stands, provided the window
+   * survived the wait. If it was destroyed meanwhile nothing is restored and
+   * this answers `undefined` again, which no caller can observe because the
+   * window is gone. So the in-flight span agrees with the state on either side
+   * of it rather than inventing a third. On a SUCCESSFUL recreate, a note
+   * window opened against it is rebuilt on the fresh origin by
+   * `onProjectServerRestarted`; that hook sits past the failure return, so a
+   * failed recreate rebuilds nothing. A terminal window is never rebuilt on
+   * either outcome, and keeps the dead collab URL for its lifetime.
+   *
+   * The restart answer stops the moment the replacement's authoritative entry
+   * lands, so one project is never answered for by two windows at once.
    */
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {
     for (const ctx of this.windowsByPath.values()) {
       if (ctx.window === win) return ctx;
     }
-    // Still loading its renderer — same context object the completed entry
-    // will hold, so callers cannot tell the two apart (and must not).
+    // No authoritative entry: still loading its renderer, or detached by a
+    // server restart. The docblock above says how the two differ.
     return this.loadingContextByWindow.get(win);
   }
 
   /**
-   * Publish a freshly-created window's context until its authoritative
-   * `windowsByPath` entry lands, and hand back the release.
+   * Publish a window's context for as long as no authoritative `windowsByPath`
+   * entry answers for it, and hand back the release.
    *
-   * The bracket MUST enclose `windowsByPath.set`, NOT just the load. A
-   * `finally` wrapped around only the `await` releases the moment the load
-   * settles — before the authoritative entry exists — which reopens the exact
-   * window this map was added to close, in the one function that implements the
-   * fix. Bracket the whole span: publish, load, `set`, release.
+   * On a create path the bracket MUST enclose `windowsByPath.set`, NOT just the
+   * load. A `finally` wrapped around only the `await` releases the moment the
+   * load settles — before the authoritative entry exists — which reopens the
+   * exact window this map was added to close, in the one function that
+   * implements the fix. Bracket the whole span: publish, load, `set`, release.
    *
    * Releasing after `set` is safe because both maps hold the SAME object and
    * `getContextForBrowserWindow` reads `windowsByPath` first, so the overlap is
    * invisible. Release is idempotent, so a path that must also release early
    * (the ephemeral reap, which stops a `destroy()`ed window resolving before it
    * awaits teardown) can do that and still keep the bracket as its backstop.
+   *
+   * The server-restart publisher brackets a different span — the detach of the
+   * originating window until the replacement owns the authoritative entry, or,
+   * on failure, until the restore puts the old one back. It releases explicitly
+   * on the success path, ahead of the close, so one project is never answered
+   * for by two windows; the bracket then covers the failure return and anything
+   * the close throws. An unreleased publish is a permanent entry pinning a
+   * destroyed BrowserWindow.
    */
   private publishLoadingContext(context: ProjectContext): () => void {
     this.loadingContextByWindow.set(context.window, context);
@@ -1626,6 +1676,10 @@ export class WindowManager {
    * not closed — so its pending invoke resolves with `{ ok:false }` and the
    * renderer can surface the remedy on a surviving window. The originating
    * window is closed only after the new one is successfully created.
+   *
+   * The originating window stays on screen and focusable for the whole
+   * recreate, so its context is published for that span (see
+   * `getContextForBrowserWindow`) and released on every exit.
    */
   async restartAttachedServer(
     projectPath: string,
@@ -1663,65 +1717,87 @@ export class WindowManager {
     }
     // Detach the originating window from the map (so the recreate spawns a new
     // window instead of focusing the old) but keep it open until the new one
-    // exists — see the failure branch below.
+    // exists — see the failure branch below. It stays on screen and focusable
+    // for that whole span, so publish its context: without it the menu acting
+    // on that window resolves no project at all. The release brackets every
+    // exit below, including the failure return — a publish left behind pins a
+    // destroyed BrowserWindow forever.
     const originating = this.windowsByPath.get(canonicalKey);
-    if (originating) this.windowsByPath.delete(canonicalKey);
-    let recreated: ProjectContext;
+    let releaseOriginatingContext: (() => void) | undefined;
+    if (originating) {
+      this.windowsByPath.delete(canonicalKey);
+      releaseOriginatingContext = this.publishLoadingContext(originating);
+    }
     try {
-      recreated = await this.createProjectWindow({
-        projectPath: resolved,
-        pendingServerRestartedToast: true,
-        localOpCliArgs: opts?.localOpCliArgs,
-      });
-    } catch (err) {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'recreate-failed',
-          // Full error (stack + name), not just the message — a respawn failure
-          // is a rare, important diagnostic.
-          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+      let recreated: ProjectContext;
+      try {
+        recreated = await this.createProjectWindow({
           projectPath: resolved,
-        },
-        '[window-manager] server restart killed the old server but could not respawn',
-      );
-      // Restore the originating window as the project's window so its pending
-      // invoke resolves with the failure below; its still-live renderer then
-      // surfaces `restartFailureMessage('other')`.
-      if (originating && originating.window.isDestroyed?.() !== true) {
-        this.windowsByPath.set(canonicalKey, originating);
+          pendingServerRestartedToast: true,
+          localOpCliArgs: opts?.localOpCliArgs,
+        });
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-restart',
+            outcome: 'recreate-failed',
+            // Full error (stack + name), not just the message — a respawn failure
+            // is a rare, important diagnostic.
+            err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+            projectPath: resolved,
+          },
+          '[window-manager] server restart killed the old server but could not respawn',
+        );
+        // Restore the originating window as the project's window so its pending
+        // invoke resolves with the failure below; its still-live renderer then
+        // surfaces `restartFailureMessage('other')`.
+        if (originating && originating.window.isDestroyed?.() !== true) {
+          this.windowsByPath.set(canonicalKey, originating);
+        }
+        return { ok: false, reason: 'other' };
       }
-      return { ok: false, reason: 'other' };
-    }
-    // The project window is back on the fresh server. Note windows are not in
-    // `windowsByPath`, so they were not recreated above and still hold argv
-    // pointing at the terminated server — recreate them before the old window
-    // closes, so the pop-outs come back with the project rather than lingering
-    // as permanently disconnected windows.
-    //
-    // Isolated in its own try/catch: the note-window recreate is a SECONDARY
-    // concern, so a throw in the injected callback (a `BrowserWindow`
-    // constructor failure under memory pressure, say) must not skip the
-    // `closeAndAwait` teardown below and strand the old window as a zombie
-    // pointing at the terminated server.
-    try {
-      this.deps.onProjectServerRestarted?.({
-        projectPath: resolved,
-        apiOrigin: recreated.apiOrigin,
-      });
-    } catch (err) {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'note-recreate-failed',
-          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+      // The replacement now holds the authoritative entry for this project, so
+      // the originating window must stop answering for it — otherwise one
+      // project has two answers while the old window is torn down, and the
+      // per-project state its renderer can still write (session state, terminal
+      // dock, sharing) would clobber what the replacement just restored.
+      // `closeAndAwait` grants a two-second grace and a `beforeunload` veto can
+      // consume all of it, so that overlap is not instantaneous. Releasing early
+      // is the shape `publishLoadingContext` sanctions; the outer bracket stays
+      // as the backstop.
+      releaseOriginatingContext?.();
+      // The project window is back on the fresh server. Note windows are not in
+      // `windowsByPath`, so they were not recreated above and still hold argv
+      // pointing at the terminated server — recreate them before the old window
+      // closes, so the pop-outs come back with the project rather than lingering
+      // as permanently disconnected windows.
+      //
+      // Isolated in its own try/catch: the note-window recreate is a SECONDARY
+      // concern, so a throw in the injected callback (a `BrowserWindow`
+      // constructor failure under memory pressure, say) must not skip the
+      // `closeAndAwait` teardown below and strand the old window as a zombie
+      // pointing at the terminated server.
+      try {
+        this.deps.onProjectServerRestarted?.({
           projectPath: resolved,
-        },
-        '[window-manager] project window recreated, but a note-window recreate threw',
-      );
+          apiOrigin: recreated.apiOrigin,
+        });
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-restart',
+            outcome: 'note-recreate-failed',
+            err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+            projectPath: resolved,
+          },
+          '[window-manager] project window recreated, but a note-window recreate threw',
+        );
+      }
+      if (originating) await this.closeAndAwait(originating.window);
+      return { ok: true };
+    } finally {
+      releaseOriginatingContext?.();
     }
-    if (originating) await this.closeAndAwait(originating.window);
-    return { ok: true };
   }
 
   /**
