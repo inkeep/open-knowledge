@@ -1,10 +1,10 @@
 /**
- * `open-knowledge stop` — SIGTERM the live server (plus a lingering legacy
- * `ok ui` holder, a one-release reap); leave stale locks untouched (they belong
- * to `ok clean`).
+ * `open-knowledge stop` — SIGTERM the live server; leave stale locks untouched
+ * (they belong to `ok clean`).
  *
  * Single-responsibility split from lock pruning. Exits 0 when there's
- * nothing live; exits 1 only when a SIGTERM fails (EPERM, etc).
+ * nothing live; exits 1 when a SIGTERM fails (EPERM, etc) or when the stop is
+ * declined because live collaboration clients are attached without `--force`.
  */
 
 import { resolve } from 'node:path';
@@ -19,7 +19,7 @@ import type { Logger as PinoLoggerInstance } from 'pino';
 import { getCliLogger } from '../cli-logger.ts';
 import { getInvocationCwd } from '../project-anchor.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
-import { inspectLegacyUiLock, inspectLock, type LockState } from './lock-state.ts';
+import { inspectLock, type LockState } from './lock-state.ts';
 import { runPs } from './ps.ts';
 
 /** How long to wait for the target server to answer the in-use probe. */
@@ -84,7 +84,7 @@ export async function probeCollabClients(
 }
 
 interface StopTargetPlan {
-  name: 'server' | 'ui';
+  name: 'server';
   pid: number;
   port: number;
 }
@@ -100,32 +100,21 @@ interface BuildStopPlanDeps {
 }
 
 /**
- * Pure plan builder — from two inspected lock states, list which pids to
- * SIGTERM. `alive` states produce a target unconditionally. `foreign-host`
- * states produce a target only when the PID is locally live: macOS hostname
+ * Pure plan builder — from the inspected server lock state, list which pids to
+ * SIGTERM. An `alive` state produces a target unconditionally. A `foreign-host`
+ * state produces a target only when the PID is locally live: macOS hostname
  * drift (BonjourName ↔ FQDN across DHCP/VPN/sleep) routinely flips
  * same-machine entries to `foreign-host`, and refusing to stop them strands
  * the process. Truly-cross-host locks fail the liveness check and are left
  * alone. `missing` / `corrupt` / `dead-pid` belong to `ok clean`.
  */
-export function buildStopPlan(
-  server: LockState,
-  ui: LockState,
-  deps: BuildStopPlanDeps = {},
-): StopPlan {
+export function buildStopPlan(server: LockState, deps: BuildStopPlanDeps = {}): StopPlan {
   const isAlive = deps.isAlive ?? isProcessAlive;
-  const targets: StopTargetPlan[] = [];
-  for (const [name, state] of [
-    ['server', server],
-    ['ui', ui],
-  ] as const) {
-    if (state.status === 'alive') {
-      targets.push({ name, pid: state.lock.pid, port: state.lock.port });
-    } else if (state.status === 'foreign-host' && isAlive(state.lock.pid)) {
-      targets.push({ name, pid: state.lock.pid, port: state.lock.port });
-    }
-  }
-  return { targets };
+  return {
+    targets: isStoppableState(server, isAlive)
+      ? [{ name: 'server', pid: server.lock.pid, port: server.lock.port }]
+      : [],
+  };
 }
 
 interface RunStopDeps {
@@ -136,7 +125,7 @@ interface RunStopDeps {
    * gets without opting in.
    */
   force?: boolean;
-  inspect?: (name: 'server' | 'ui') => LockState;
+  inspect?: () => LockState;
   kill?: (pid: number, signal: NodeJS.Signals) => void;
   isAlive?: (pid: number) => boolean;
   log?: (msg: string) => void;
@@ -158,25 +147,19 @@ interface StopOutcome {
 /**
  * Execute a stop plan. Exported for tests so they can drive it without
  * going through Commander. The Commander action wraps this and translates
- * `failed.length > 0` into `process.exitCode = 1`.
+ * `failed.length > 0` — or a decline for live clients — into
+ * `process.exitCode = 1`.
  */
 export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
-  // The `ui` slot is the one-release legacy reap: `inspectLegacyUiLock` peeks a
-  // leftover pre-migration `ok ui` holder so a live one still gets SIGTERM'd.
-  // The current binary writes no `ui.lock`, so `server` is the only live slot.
-  const inspect =
-    deps.inspect ??
-    ((name) =>
-      name === 'ui' ? inspectLegacyUiLock(deps.lockDir) : inspectLock(deps.lockDir, name));
+  const inspect = deps.inspect ?? (() => inspectLock(deps.lockDir, 'server'));
   const kill = deps.kill ?? ((pid, signal) => process.kill(pid, signal));
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));
   const probeClients = deps.probeClients ?? probeCollabClients;
   const logger = deps.logger ?? getCliLogger();
 
-  const serverState = inspect('server');
-  const uiState = inspect('ui');
-  const plan = buildStopPlan(serverState, uiState, { isAlive: deps.isAlive });
+  const serverState = inspect();
+  const plan = buildStopPlan(serverState, { isAlive: deps.isAlive });
 
   if (plan.targets.length === 0) {
     log('No running open-knowledge processes.');
@@ -237,10 +220,9 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
 }
 
 /**
- * True if this lock state should be considered stoppable by `ok stop`.
- * `alive` is unconditional. `foreign-host` matches when the PID is locally
- * live — same hostname-drift logic as `buildStopPlan`. `dead-pid` /
- * `missing` / `corrupt` never match.
+ * True if this lock state should be considered stoppable by `ok stop`:
+ * `alive` unconditionally, `foreign-host` when the PID is locally live (the
+ * hostname-drift case). `dead-pid` / `missing` / `corrupt` never match.
  */
 function isStoppableState(
   state: LockState,
@@ -252,7 +234,7 @@ function isStoppableState(
 }
 
 /**
- * Find the lock dir matching a port or PID (either server or UI slot).
+ * Find the lock dir matching a port or PID.
  * Port is checked before PID; returns null if nothing matches. Considers
  * both `alive` and same-machine `foreign-host` (hostname-drift) states.
  */
@@ -264,13 +246,9 @@ async function findLockDirByNumber(
   let pidMatch: string | null = null;
   for (const lockDir of lockDirs) {
     const server = inspectLock(lockDir, 'server');
-    const ui = inspectLegacyUiLock(lockDir);
-    if (isStoppableState(server, isAlive) && server.lock.port === n) return lockDir;
-    if (isStoppableState(ui, isAlive) && ui.lock.port === n) return lockDir;
-    if (pidMatch === null) {
-      if (isStoppableState(server, isAlive) && server.lock.pid === n) pidMatch = lockDir;
-      else if (isStoppableState(ui, isAlive) && ui.lock.pid === n) pidMatch = lockDir;
-    }
+    if (!isStoppableState(server, isAlive)) continue;
+    if (server.lock.port === n) return lockDir;
+    if (pidMatch === null && server.lock.pid === n) pidMatch = lockDir;
   }
   return pidMatch;
 }
@@ -318,12 +296,7 @@ async function countOtherRunningServers(exceptLockDir: string): Promise<number> 
   let count = 0;
   for (const lockDir of lockDirs) {
     if (lockDir === exceptLockDir) continue;
-    if (
-      isStoppableState(inspectLock(lockDir, 'server'), isProcessAlive) ||
-      // Legacy `ok ui` holder: the current binary writes no `ui.lock`, so this
-      // only matches a leftover pre-migration process.
-      isStoppableState(inspectLegacyUiLock(lockDir), isProcessAlive)
-    ) {
+    if (isStoppableState(inspectLock(lockDir, 'server'), isProcessAlive)) {
       count++;
     }
   }
@@ -383,10 +356,7 @@ export function stopCommand(getConfig: () => Config): Command {
         for (const lockDir of lockDirs) {
           // Skip lockDirs with nothing stoppable to avoid noisy "no processes" messages.
           // `foreign-host` with a locally-live PID counts (hostname drift).
-          const server = inspectLock(lockDir, 'server');
-          const ui = inspectLegacyUiLock(lockDir);
-          if (!isStoppableState(server, isProcessAlive) && !isStoppableState(ui, isProcessAlive))
-            continue;
+          if (!isStoppableState(inspectLock(lockDir, 'server'), isProcessAlive)) continue;
           await executeStop(lockDir, force);
           stopped++;
         }

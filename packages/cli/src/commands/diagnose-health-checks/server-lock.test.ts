@@ -55,7 +55,7 @@ describe('server-lock check', () => {
   test('passes when .ok/local exists but no server.lock', async () => {
     const cwd = makeProjectWithLockDir();
     const def = makeServerLockCheck({
-      inspect: (_lockDir, _name): LockState => ({ status: 'missing', lockPath: '' }),
+      inspect: (): LockState => ({ status: 'missing', lockPath: '' }),
     });
     const result = await def.run({ cwd });
     expect(result.status).toBe('pass');
@@ -65,7 +65,7 @@ describe('server-lock check', () => {
   test('fails when a live server holds the lock', async () => {
     const cwd = makeProjectWithLockDir();
     const def = makeServerLockCheck({
-      inspect: (_lockDir, _name): LockState => ({
+      inspect: (): LockState => ({
         status: 'alive',
         lockPath: '/x/server.lock',
         lock: makeLockMeta(),
@@ -82,7 +82,7 @@ describe('server-lock check', () => {
   test('warns on foreign-host', async () => {
     const cwd = makeProjectWithLockDir();
     const def = makeServerLockCheck({
-      inspect: (_lockDir, _name): LockState => ({
+      inspect: (): LockState => ({
         status: 'foreign-host',
         lockPath: '/x/server.lock',
         lock: makeLockMeta({ hostname: 'other-host' }),
@@ -97,7 +97,7 @@ describe('server-lock check', () => {
   test('warns on dead-pid', async () => {
     const cwd = makeProjectWithLockDir();
     const def = makeServerLockCheck({
-      inspect: (_lockDir, _name): LockState => ({
+      inspect: (): LockState => ({
         status: 'dead-pid',
         lockPath: '/x/server.lock',
         lock: makeLockMeta({ pid: 999999 }),
@@ -112,7 +112,7 @@ describe('server-lock check', () => {
   test('warns on corrupt lockfile', async () => {
     const cwd = makeProjectWithLockDir();
     const def = makeServerLockCheck({
-      inspect: (_lockDir, _name): LockState => ({
+      inspect: (): LockState => ({
         status: 'corrupt',
         lockPath: '/x/server.lock',
       }),

@@ -6721,8 +6721,8 @@ function registerIpcHandlers() {
   // the per-session `recentGitRoots` membership set.
   handle('ok:fs:remove-git-folder', async (_event, gitRoot) => {
     // Primary teardown: deterministically stop this worktree's OWN collab
-    // server (+ ui sibling) BEFORE removing its `.git`, so a deleted worktree
-    // doesn't leave an orphaned server holding a now-dangling lockDir. Reuses
+    // server BEFORE removing its `.git`, so a deleted worktree doesn't leave
+    // an orphaned server holding a now-dangling lockDir. Reuses
     // the path-addressable `runStop` against the worktree's lockDir. Scoped to
     // the same `recentGitRoots` membership set that gates the delete itself, so
     // a fabricated path can't drive a stray SIGTERM. Best-effort: a worktree

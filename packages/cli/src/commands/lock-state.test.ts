@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { inspectLegacyUiLock, inspectLock } from './lock-state.ts';
+import { inspectLock } from './lock-state.ts';
 
 function freshLockDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ok-lock-state-'));
@@ -20,14 +20,10 @@ describe('inspectLock', () => {
 
   test('corrupt JSON', () => {
     const dir = freshLockDir();
-    writeFileSync(join(dir, 'ui.lock'), 'not-json{{{', 'utf-8');
-    // `inspectLegacyUiLock` is the one-release reap's only `ui.lock` reader.
-    // Reading it here proves LEGACY_UI_LOCK_FILENAME + the path join resolve to
-    // `ui.lock` (a wrong filename would classify it 'missing', silently
-    // skipping the reap in `ok stop` / `ok clean`).
-    const result = inspectLegacyUiLock(dir);
+    writeFileSync(join(dir, 'server.lock'), 'not-json{{{', 'utf-8');
+    const result = inspectLock(dir, 'server');
     expect(result.status).toBe('corrupt');
-    expect(result.lockPath.endsWith('/ui.lock')).toBe(true);
+    expect(result.lockPath.endsWith('/server.lock')).toBe(true);
   });
 
   test('valid JSON but missing pid is treated as corrupt', () => {
@@ -138,7 +134,7 @@ describe('inspectLock', () => {
   test('dead pid on same host', () => {
     const dir = freshLockDir();
     writeFileSync(
-      join(dir, 'ui.lock'),
+      join(dir, 'server.lock'),
       JSON.stringify({
         pid: 999999,
         hostname: hostname(),
@@ -148,7 +144,7 @@ describe('inspectLock', () => {
       }),
       'utf-8',
     );
-    const result = inspectLegacyUiLock(dir, { isAlive: () => false });
+    const result = inspectLock(dir, 'server', { isAlive: () => false });
     expect(result.status).toBe('dead-pid');
     if (result.status === 'dead-pid') {
       expect(result.lock.pid).toBe(999999);

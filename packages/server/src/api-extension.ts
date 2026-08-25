@@ -10570,14 +10570,13 @@ export function createApiExtension(
 
   /**
    * Ensure a live project server at `dir` and return its browser-navigable
-   * port. Resolution goes through `resolveUiRedirectPort` — server.lock
-   * (`ui` capability) first, the still-supported `ui.lock` advertisement
-   * second — so this surface agrees with `resolveUiInfo` on what "no UI"
-   * means through the ui.lock compatibility window.
+   * port. Resolution goes through `resolveUiRedirectPort` — `server.lock`'s
+   * `ui` capability is the only source — so this surface agrees with
+   * `resolveUiInfo` on what "no UI" means.
    *
    * Three cases:
    *   1. a live UI origin resolves → reuse its port.
-   *   2. definitive no-UI (`--only server` holder, no sibling) → error.
+   *   2. definitive no-UI (`--only server` holder, or a degraded API-only boot) → error.
    *   3. Nothing live → spawn `ok start` detached (it serves the shell by
    *      default) and poll for a bound ui-capable port.
    *

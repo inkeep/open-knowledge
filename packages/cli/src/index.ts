@@ -94,10 +94,11 @@ export {
   type PiTrustWriteAction,
   probePiBridgeState,
 } from './commands/pi-acp-bridge.ts';
-// `runStop` is the path-addressable stop primitive (SIGTERM the server + ui
-// pids recorded in `<lockDir>/{server,ui}.lock`). Desktop's
-// `ok:fs:remove-git-folder` IPC reuses it to deterministically tear down a
-// worktree's own collab server before deleting its `.git`.
+// `runStop` is the path-addressable stop primitive: SIGTERM the server pid
+// recorded in `<lockDir>/server.lock`, unless live collaboration clients are
+// attached — pass `force: true` to terminate anyway. Desktop's
+// `ok:fs:remove-git-folder` IPC reuses it (with `force`) to deterministically
+// tear down a worktree's own collab server before deleting its `.git`.
 export { runStop } from './commands/stop.ts';
 export { type LoadConfigResult, loadConfig } from './config/loader.ts';
 export { type PreviewResult, previewContent } from './content/preview.ts';

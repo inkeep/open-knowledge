@@ -14,11 +14,11 @@ import { inspectLock, type LockState } from '../lock-state.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
 interface ServerLockCheckDeps {
-  inspect?: (lockDir: string, name: 'server') => LockState;
+  inspect?: (lockDir: string) => LockState;
 }
 
 export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefinition {
-  const inspect = deps.inspect ?? inspectLock;
+  const inspect = deps.inspect ?? ((dir) => inspectLock(dir, 'server'));
   return {
     name: 'server-lock',
     run: async (ctx: CheckContext): Promise<CheckResult> => {
@@ -30,7 +30,7 @@ export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefini
           summary: 'no server lock (no `.ok/local/` yet)',
         };
       }
-      const state = inspect(lockDir, 'server');
+      const state = inspect(lockDir);
       switch (state.status) {
         case 'missing':
           return {

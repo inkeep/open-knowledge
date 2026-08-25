@@ -50,27 +50,17 @@ function foreign(pid: number, port: number): LockState {
 }
 
 describe('buildStopPlan', () => {
-  test('both alive → both targeted', () => {
-    const plan = buildStopPlan(aliveLock(100, 3001), aliveLock(200, 3000));
-    expect(plan.targets).toEqual([
-      { name: 'server', pid: 100, port: 3001 },
-      { name: 'ui', pid: 200, port: 3000 },
-    ]);
-  });
-
-  test('neither alive → no targets', () => {
-    const plan = buildStopPlan(missing(), dead(999));
-    expect(plan.targets).toEqual([]);
-  });
-
-  test('only server alive → only server targeted', () => {
-    const plan = buildStopPlan(aliveLock(100, 3001), dead(999));
+  test('alive is targeted even when the pid probe reports dead', () => {
+    const plan = buildStopPlan(aliveLock(100, 3001), { isAlive: () => false });
     expect(plan.targets).toEqual([{ name: 'server', pid: 100, port: 3001 }]);
   });
 
-  test('only ui alive → only ui targeted', () => {
-    const plan = buildStopPlan(missing(), aliveLock(200, 3000));
-    expect(plan.targets).toEqual([{ name: 'ui', pid: 200, port: 3000 }]);
+  test('missing → no targets', () => {
+    expect(buildStopPlan(missing()).targets).toEqual([]);
+  });
+
+  test('dead-pid → no targets', () => {
+    expect(buildStopPlan(dead(999)).targets).toEqual([]);
   });
 });
 
@@ -92,31 +82,27 @@ describe('runStop', () => {
     expect(logs).toEqual(['No running open-knowledge processes.']);
   });
 
-  test('both alive → SIGTERM both, log stopped summary', async () => {
+  test('alive → SIGTERM sent, log stopped summary', async () => {
     const logs: string[] = [];
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? aliveLock(100, 3001) : aliveLock(200, 3000)),
+      inspect: () => aliveLock(100, 3001),
       kill: (pid, sig) => killed.push([pid, sig]),
       log: (msg) => logs.push(msg),
       error: () => {},
     });
-    expect(killed).toEqual([
-      [100, 'SIGTERM'],
-      [200, 'SIGTERM'],
-    ]);
-    expect(outcome.stopped.map((t) => t.name)).toEqual(['server', 'ui']);
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+    expect(outcome.stopped.map((t) => t.name)).toEqual(['server']);
     expect(outcome.failed).toEqual([]);
     expect(logs.at(0)).toContain('server (pid=100, port=3001)');
-    expect(logs.at(0)).toContain('ui (pid=200, port=3000)');
   });
 
   test('EPERM on kill → failure reported, outcome.failed populated', async () => {
     const errors: string[] = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? aliveLock(100, 3001) : missing()),
+      inspect: () => aliveLock(100, 3001),
       kill: () => {
         throw new Error('EPERM');
       },
@@ -130,35 +116,17 @@ describe('runStop', () => {
     expect(errors.at(0)).toContain('server (pid=100)');
   });
 
-  test('mix of success + failure — reports both', async () => {
-    const logs: string[] = [];
-    const errors: string[] = [];
-    const outcome = await runStop({
-      lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? aliveLock(100, 3001) : aliveLock(200, 3000)),
-      kill: (pid) => {
-        if (pid === 200) throw new Error('EPERM');
-      },
-      log: (msg) => logs.push(msg),
-      error: (msg) => errors.push(msg),
-    });
-    expect(outcome.stopped.map((t) => t.pid)).toEqual([100]);
-    expect(outcome.failed.map((f) => f.target.pid)).toEqual([200]);
-    expect(logs.some((l) => l.includes('server (pid=100'))).toBe(true);
-    expect(errors.some((e) => e.includes('ui (pid=200)'))).toBe(true);
-  });
-
   test('dead/corrupt locks are not killed (ok clean will prune them)', async () => {
     const killed: number[] = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? dead(999) : aliveLock(200, 3000)),
+      inspect: () => dead(999),
       kill: (pid) => killed.push(pid),
       log: () => {},
       error: () => {},
     });
-    expect(killed).toEqual([200]);
-    expect(outcome.stopped.map((t) => t.pid)).toEqual([200]);
+    expect(killed).toEqual([]);
+    expect(outcome.hadTargets).toBe(false);
   });
 });
 
@@ -168,48 +136,15 @@ describe('runStop', () => {
 
 describe('buildStopPlan with foreign-host states', () => {
   test('foreign-host + locally-live PID → targeted (hostname drift)', () => {
-    const plan = buildStopPlan(foreign(100, 3001), foreign(200, 3000), {
-      isAlive: () => true,
-    });
-    expect(plan.targets).toEqual([
-      { name: 'server', pid: 100, port: 3001 },
-      { name: 'ui', pid: 200, port: 3000 },
-    ]);
-  });
-
-  test('foreign-host + dead PID → skipped (truly cross-host or stale)', () => {
-    const plan = buildStopPlan(foreign(100, 3001), foreign(200, 3000), {
-      isAlive: () => false,
-    });
-    expect(plan.targets).toEqual([]);
-  });
-
-  test('mix: alive + foreign-host-live → both targeted', () => {
-    const plan = buildStopPlan(aliveLock(100, 3001), foreign(200, 3000), {
-      isAlive: () => true,
-    });
-    expect(plan.targets).toEqual([
-      { name: 'server', pid: 100, port: 3001 },
-      { name: 'ui', pid: 200, port: 3000 },
-    ]);
-  });
-
-  test('mix: alive + foreign-host-dead → only alive targeted', () => {
-    const plan = buildStopPlan(aliveLock(100, 3001), foreign(200, 3000), {
-      isAlive: () => false,
-    });
+    // Probe answers only for the pid, so this also pins that `isStoppableState`
+    // passes the lock's pid rather than its port.
+    const plan = buildStopPlan(foreign(100, 3001), { isAlive: (pid) => pid === 100 });
     expect(plan.targets).toEqual([{ name: 'server', pid: 100, port: 3001 }]);
   });
 
-  test('isAlive is consulted per-pid, not once', () => {
-    const checked: number[] = [];
-    buildStopPlan(foreign(100, 3001), foreign(200, 3000), {
-      isAlive: (pid) => {
-        checked.push(pid);
-        return pid === 200;
-      },
-    });
-    expect(checked).toEqual([100, 200]);
+  test('foreign-host + dead PID → skipped (truly cross-host or stale)', () => {
+    const plan = buildStopPlan(foreign(100, 3001), { isAlive: () => false });
+    expect(plan.targets).toEqual([]);
   });
 });
 
@@ -218,24 +153,21 @@ describe('runStop with foreign-host states', () => {
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? foreign(100, 3001) : foreign(200, 3000)),
+      inspect: () => foreign(100, 3001),
       kill: (pid, sig) => killed.push([pid, sig]),
       isAlive: () => true,
       log: () => {},
       error: () => {},
     });
-    expect(killed).toEqual([
-      [100, 'SIGTERM'],
-      [200, 'SIGTERM'],
-    ]);
-    expect(outcome.stopped.map((t) => t.pid)).toEqual([100, 200]);
+    expect(killed).toEqual([[100, 'SIGTERM']]);
+    expect(outcome.stopped.map((t) => t.pid)).toEqual([100]);
   });
 
   test('foreign-host + dead PID → no targets, no SIGTERM', async () => {
     const killed: number[] = [];
     const outcome = await runStop({
       lockDir: '/tmp/x',
-      inspect: (name) => (name === 'server' ? foreign(100, 3001) : foreign(200, 3000)),
+      inspect: () => foreign(100, 3001),
       kill: (pid) => killed.push(pid),
       isAlive: () => false,
       log: () => {},
@@ -247,17 +179,16 @@ describe('runStop with foreign-host states', () => {
 });
 
 describe('runStop in-use guard', () => {
-  const twoAlive = () => ({
+  const oneAlive = () => ({
     lockDir: '/tmp/guard',
-    inspect: (name: 'server' | 'ui') =>
-      name === 'server' ? aliveLock(100, 3001) : aliveLock(200, 3000),
+    inspect: () => aliveLock(100, 3001),
   });
 
   test('declines when the target reports live collaboration clients', async () => {
     const killed: Array<[number, string]> = [];
     const errors: string[] = [];
     const outcome = await runStop({
-      ...twoAlive(),
+      ...oneAlive(),
       kill: (pid, sig) => killed.push([pid, sig]),
       log: () => {},
       error: (msg) => errors.push(msg),
@@ -275,7 +206,7 @@ describe('runStop in-use guard', () => {
   test('--force terminates despite live clients', async () => {
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
-      ...twoAlive(),
+      ...oneAlive(),
       force: true,
       kill: (pid, sig) => killed.push([pid, sig]),
       log: () => {},
@@ -283,40 +214,37 @@ describe('runStop in-use guard', () => {
       probeClients: async () => 5,
     });
 
-    expect(killed).toEqual([
-      [100, 'SIGTERM'],
-      [200, 'SIGTERM'],
-    ]);
+    expect(killed).toEqual([[100, 'SIGTERM']]);
     expect(outcome.declined).toBeUndefined();
-    expect(outcome.stopped).toHaveLength(2);
+    expect(outcome.stopped).toHaveLength(1);
   });
 
   test('an unreachable server (probe returns null) proceeds — it is already gone', async () => {
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
-      ...twoAlive(),
+      ...oneAlive(),
       kill: (pid, sig) => killed.push([pid, sig]),
       log: () => {},
       error: () => {},
       probeClients: async () => null,
     });
 
-    expect(killed).toHaveLength(2);
+    expect(killed).toHaveLength(1);
     expect(outcome.declined).toBeUndefined();
   });
 
   test('zero reported clients proceeds', async () => {
     const killed: Array<[number, string]> = [];
     const outcome = await runStop({
-      ...twoAlive(),
+      ...oneAlive(),
       kill: (pid, sig) => killed.push([pid, sig]),
       log: () => {},
       error: () => {},
       probeClients: async () => 0,
     });
 
-    expect(killed).toHaveLength(2);
-    expect(outcome.stopped).toHaveLength(2);
+    expect(killed).toHaveLength(1);
+    expect(outcome.stopped).toHaveLength(1);
   });
 });
 
@@ -339,7 +267,7 @@ describe('runStop durable record', () => {
     const { logger, records } = captureLogger();
     await runStop({
       lockDir: '/tmp/target/.ok/local',
-      inspect: (name) => (name === 'server' ? aliveLock(100, 3001) : aliveLock(200, 3000)),
+      inspect: () => aliveLock(100, 3001),
       kill: () => {},
       log: () => {},
       error: () => {},
@@ -350,10 +278,7 @@ describe('runStop durable record', () => {
     const record = records.find((r) => r.msg === 'stop signalled processes');
     expect(record).toBeDefined();
     expect(record?.obj.lockDir).toBe('/tmp/target/.ok/local');
-    expect(record?.obj.signalled).toEqual([
-      { name: 'server', pid: 100, port: 3001 },
-      { name: 'ui', pid: 200, port: 3000 },
-    ]);
+    expect(record?.obj.signalled).toEqual([{ name: 'server', pid: 100, port: 3001 }]);
     expect(record?.obj.forced).toBe(false);
   });
 
@@ -361,7 +286,7 @@ describe('runStop durable record', () => {
     const { logger, records } = captureLogger();
     await runStop({
       lockDir: '/tmp/other/.ok/local',
-      inspect: (name) => (name === 'server' ? aliveLock(7, 3001) : missing()),
+      inspect: () => aliveLock(7, 3001),
       kill: () => {},
       log: () => {},
       error: () => {},

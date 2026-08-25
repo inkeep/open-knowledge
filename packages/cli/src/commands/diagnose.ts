@@ -281,7 +281,7 @@ function summarizeProfile(profileJson: string): string {
 
 interface DiagnoseProcessDeps {
   discover?: () => Promise<string[]>;
-  inspect?: (lockDir: string, name: 'server') => LockState;
+  inspect?: (lockDir: string) => LockState;
   resolveCommand?: (pid: number) => string | null;
   resolveUsage?: (pid: number) => ProcessUsage | null;
   collectLsofFn?: (pid: number) => string | null;
@@ -317,7 +317,7 @@ export async function runDiagnose(
   const { pid, cpuProfileSecs = 15, noInspector = false } = opts;
   const log = deps.log ?? ((m: string) => console.log(m));
   const discover = deps.discover ?? discoverLockDirs;
-  const inspect = deps.inspect ?? inspectLock;
+  const inspect = deps.inspect ?? ((dir) => inspectLock(dir, 'server'));
   const resolveCmd = deps.resolveCommand ?? processCommand;
   const resolveUsage = deps.resolveUsage ?? processUsage;
   const lsofFn = deps.collectLsofFn ?? collectLsof;
@@ -353,7 +353,7 @@ export async function runDiagnose(
   let contentDir: string | null = null;
   let lockInfo: unknown = null;
   for (const lockDir of lockDirs) {
-    const s = inspect(lockDir, 'server');
+    const s = inspect(lockDir);
     if (s.status !== 'missing' && s.status !== 'corrupt' && s.lock.pid === pid) {
       contentDir = s.lock.worktreeRoot;
       lockInfo = { lockDir, state: s.status, lockPath: s.lockPath, lock: s.lock };

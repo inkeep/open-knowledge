@@ -1,5 +1,5 @@
 /**
- * `open-knowledge clean` — prune stale / corrupt lock files; never touch live
+ * `open-knowledge clean` — prune a stale / corrupt lock file; never touch live
  * or foreign-host locks.
  *
  * Split from `ok stop` so lock-hygiene is a distinct step. "Stale" here means
@@ -12,10 +12,10 @@
 import { unlinkSync } from 'node:fs';
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { inspectLegacyUiLock, inspectLock, type LockState } from './lock-state.ts';
+import { inspectLock, type LockState } from './lock-state.ts';
 
 interface PruneTarget {
-  name: 'server' | 'ui';
+  name: 'server';
   lockPath: string;
   reason: 'dead-pid' | 'corrupt';
 }
@@ -28,19 +28,17 @@ interface CleanPlan {
  * Pure plan builder — decides which lock files should be removed. `alive`,
  * `missing`, and `foreign-host` states are all left alone.
  */
-export function buildCleanPlan(server: LockState, ui: LockState): CleanPlan {
+export function buildCleanPlan(server: LockState): CleanPlan {
   const prune: PruneTarget[] = [];
-  for (const [name, state] of [['server', server] as const, ['ui', ui] as const]) {
-    if (state.status === 'dead-pid' || state.status === 'corrupt') {
-      prune.push({ name, lockPath: state.lockPath, reason: state.status });
-    }
+  if (server.status === 'dead-pid' || server.status === 'corrupt') {
+    prune.push({ name: 'server', lockPath: server.lockPath, reason: server.status });
   }
   return { prune };
 }
 
 interface RunCleanDeps {
   lockDir: string;
-  inspect?: (name: 'server' | 'ui') => LockState;
+  inspect?: () => LockState;
   unlink?: (path: string) => void;
   log?: (msg: string) => void;
   error?: (msg: string) => void;
@@ -52,18 +50,12 @@ interface CleanOutcome {
 }
 
 export function runClean(deps: RunCleanDeps): CleanOutcome {
-  // The `ui` slot is the one-release legacy reap: prune a leftover pre-migration
-  // `ui.lock` (dead-pid / corrupt) for upgrade goodwill. The current binary
-  // writes no `ui.lock`, so `server` is the only slot it can create.
-  const inspect =
-    deps.inspect ??
-    ((name) =>
-      name === 'ui' ? inspectLegacyUiLock(deps.lockDir) : inspectLock(deps.lockDir, name));
+  const inspect = deps.inspect ?? (() => inspectLock(deps.lockDir, 'server'));
   const unlink = deps.unlink ?? ((path) => unlinkSync(path));
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));
 
-  const plan = buildCleanPlan(inspect('server'), inspect('ui'));
+  const plan = buildCleanPlan(inspect());
 
   if (plan.prune.length === 0) {
     log('No stale locks.');
@@ -97,7 +89,7 @@ export function runClean(deps: RunCleanDeps): CleanOutcome {
 
 export function cleanCommand(getConfig: () => Config): Command {
   return new Command('clean')
-    .description('Prune stale / corrupt open-knowledge lock files (never touches live locks)')
+    .description('Prune a stale / corrupt open-knowledge lock file (never touches live locks)')
     .action(() => {
       // Lock anchor is the project root (cwd), not contentDir — see
       // server-factory.ts. Loading config still surfaces project-config errors.

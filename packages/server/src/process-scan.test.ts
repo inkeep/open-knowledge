@@ -405,7 +405,7 @@ describe('discoverLockDirs', () => {
     expect(dirs).toHaveLength(0);
   });
 
-  it('discovers cwd-derived lock dirs when only ui.lock is present', async () => {
+  it('does not discover lock dirs holding only a legacy ui.lock', async () => {
     const projectPath = '/Users/mike/notes';
     const lockDir = `${projectPath}/.ok/local`;
 
@@ -422,7 +422,7 @@ describe('discoverLockDirs', () => {
     existsSyncSpy.mockImplementation((p: unknown) => p === lockDir || p === `${lockDir}/ui.lock`);
 
     const dirs = await discoverLockDirs();
-    expect(dirs).toEqual([lockDir]);
+    expect(dirs).toHaveLength(0);
   });
 
   it('ignores Electron marker with empty payload', async () => {

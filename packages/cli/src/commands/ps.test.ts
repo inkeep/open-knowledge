@@ -79,12 +79,12 @@ function makeForeignServer(overrides?: {
 
 const missingLock: LockState = {
   status: 'missing',
-  lockPath: '/tmp/notes/.ok/ui.lock',
+  lockPath: '/tmp/notes/.ok/server.lock',
 };
 
 const corruptLock: LockState = {
   status: 'corrupt',
-  lockPath: '/tmp/notes/.ok/ui.lock',
+  lockPath: '/tmp/notes/.ok/server.lock',
 };
 
 // ---------------------------------------------------------------------------
