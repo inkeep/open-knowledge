@@ -2,7 +2,6 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   addsBlankLines,
   composeWithDerivedBody,
-  fnv1aDigest,
   LINEAGE_EPOCH_KEY,
   MarkdownManager,
   normalizeBridge,
@@ -17,6 +16,7 @@ import { buildAuthToken } from '../lib/auth-token';
 import { readNumericOverride } from '../lib/perf/env-override';
 import { mark } from '../lib/perf/mark';
 import { emitColdMountChild } from '../lib/perf/otel-spans';
+import { projectDigest, scopedStorageKey } from '../lib/storage-scope';
 import {
   type ClientPersistenceProvider,
   captureStateVector,
@@ -380,46 +380,6 @@ class StoredEpochPeekTimeoutError extends Error {
 const LAST_OBSERVED_BRANCH_KEY = 'ok-last-observed-branch';
 
 /**
- * Scope a client-persistence storage key to a single project.
- *
- * A packaged desktop window loads the renderer through `loadFile`, so every
- * project window shares the one `file://` origin (`webPreferences.partition`
- * is set only for slides windows). One key per origin therefore means one key
- * for EVERY open project, and whichever window wrote last decides what the
- * next cold boot reads back. For the branch claim that is load-bearing: a
- * window seeds `lastObservedBranch` from the shared key, claims a sibling
- * project's branch, and the server correctly rejects it — the doc wedges and
- * the red branch-mismatch banner goes up.
- *
- * `namespace` is the project's content dir, digested so no absolute home path
- * lands in localStorage. Nothing prunes: the pre-scoping unscoped keys are
- * left behind once, and one scoped pair accrues per project ever opened.
- * Both are bounded and inert, which is why this ships without a migration —
- * adopting the old value would import the sibling-project claim it removes. A null namespace returns the bare key, which is
- * correct for web hosts: those are served per project on
- * `http://127.0.0.1:<port>`, so the origin already isolates them.
- *
- * **This origin is shared by more than these two keys.** The same cause has
- * now been mitigated three times independently — `localTabSessionKeyForMode`
- * in `editor-tabs.ts` opts note windows out of tab persistence, and
- * `dock-session-persistence.ts` routes through the main process — so a new
- * storage surface should scope itself here rather than rediscover the bug.
- * Scoping the ORIGIN instead (a per-project `webPreferences.partition`) was
- * considered and rejected: it silently bypasses the `defaultSession`-only
- * `webRequest` hooks and spellchecker config, forks genuinely app-global
- * prefs such as theme and language, and orphans every existing `ok-ydoc:*`
- * store.
- */
-function scopedStorageKey(baseKey: string, namespace: string | null): string {
-  // `null` only — an empty string is a broken Electron config, not a web
-  // host, and it must not fall through to the shared app-wide key. It
-  // digests to a fixed non-bare suffix, so such windows share with each
-  // other rather than with correctly-configured ones.
-  if (namespace === null) return baseKey;
-  return `${baseKey}:${fnv1aDigest(namespace)}`;
-}
-
-/**
  * localStorage key for the persisted per-doc lineage-epoch records.
  * Scoped per project by `scopedStorageKey`, for the same reason the branch
  * key is: a sibling project's window shares this origin's localStorage, and
@@ -715,6 +675,13 @@ export class ProviderPool {
   private readonly lastObservedBranchKey: string;
   private readonly docLineageEpochsKey: string;
 
+  /**
+   * Project identity handed to every replay-outbox call. Held raw rather than
+   * pre-scoped because the outbox composes its own database name around the
+   * digest; see `outboxDbName`.
+   */
+  private readonly storageNamespace: string | null;
+
   constructor(
     maxSize: number,
     wsUrl: string,
@@ -750,6 +717,7 @@ export class ProviderPool {
         typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
     }
     const storageNamespace = options?.storageNamespace ?? null;
+    this.storageNamespace = storageNamespace;
     this.lastObservedBranchKey = scopedStorageKey(LAST_OBSERVED_BRANCH_KEY, storageNamespace);
     this.docLineageEpochsKey = scopedStorageKey(DOC_LINEAGE_EPOCHS_KEY, storageNamespace);
   }
@@ -1431,9 +1399,9 @@ export class ProviderPool {
   private recoveryTelemetryBase(
     docName: string,
     staleClaimOverride?: string | undefined,
-  ): { docName: string; branch: string; serverInstanceId?: string } {
+  ): { docName: string; branch: string; serverInstanceId?: string; project?: string } {
     const branch = this.normalizedObservedBranch();
-    const base: { docName: string; branch: string; serverInstanceId?: string } = {
+    const base: { docName: string; branch: string; serverInstanceId?: string; project?: string } = {
       docName,
       branch,
     };
@@ -1441,6 +1409,18 @@ export class ProviderPool {
       staleClaimOverride !== undefined ? staleClaimOverride : this.recoveryMismatchStaleClaim;
     if (stale !== undefined && stale.length > 0) {
       base.serverInstanceId = stale;
+    }
+    // `docName` + `branch` are exactly the key two projects legitimately
+    // share, so without this a cross-project report has nothing to correlate
+    // on and a project-specific storage fault reads as a global one. Carries
+    // the DIGEST, not the path: these events go through `console.warn` into
+    // diagnostic bundles, and the raw namespace is an absolute path that can
+    // contain the OS username. Routed through `projectDigest` — the same step
+    // `scopedStorageKey` embeds — so the value stays comparable to the
+    // database name's project segment by construction rather than because two
+    // call sites happen to hash alike.
+    if (this.storageNamespace !== null) {
+      base.project = projectDigest(this.storageNamespace);
     }
     return base;
   }
@@ -2457,7 +2437,11 @@ export class ProviderPool {
         tokenBacked = buffered.durable;
       } else {
         try {
-          const durable = await readReplayOutboxEntry(branch, docName);
+          const durable = await readReplayOutboxEntry({
+            branch,
+            docName,
+            namespace: this.storageNamespace,
+          });
           if (durable === null) return;
           source = durable;
           tokenBacked = true;
@@ -2478,11 +2462,13 @@ export class ProviderPool {
       // At-most-once in the tiny [consumed → server-synced] tail (matching the
       // RAM buffer, and past the crash window the outbox exists to close).
       //
-      // The consume is also the CROSS-TAB claim: same-origin tabs share one
-      // `(branch, docName)` record, so losing the claim means another tab
-      // already replayed this edit and this one must stand down. That covers
-      // both orders — the other tab consuming before we read (we never see a
-      // record) and after (we see one but cannot claim it).
+      // The consume is also the CROSS-TAB claim: tabs of the SAME project
+      // share one `(namespace, branch, docName)` record, so losing the claim
+      // means another tab of this project already replayed this edit and this
+      // one must stand down. A window of a DIFFERENT project never contends
+      // for it. That covers both orders — the other tab consuming before we
+      // read (we never see a record) and after (we see one but cannot claim
+      // it).
       //
       // Only attempt it when a durable record actually backs this replay. An
       // unconditional consume would, on a RAM-only buffer, throw its way into
@@ -2492,7 +2478,11 @@ export class ProviderPool {
       if (tokenBacked) {
         let claimed: boolean;
         try {
-          claimed = await consumeReplayOutboxEntry(tokenBranch, docName);
+          claimed = await consumeReplayOutboxEntry({
+            branch: tokenBranch,
+            docName,
+            namespace: this.storageNamespace,
+          });
         } catch (err: unknown) {
           // Bail rather than apply: the record is still there, so a later
           // clean open recovers the edit instead of risking a double-apply.
@@ -2561,13 +2551,17 @@ export class ProviderPool {
       // on an UNEXPECTED throw — which, once a carrier has been consumed, is a
       // silent in-process loss. Emit it (like this file's other fire-and-forget
       // recovery paths) rather than swallow, while still keeping the rejection
-      // out of the `synced` emitter. Kept minimal (no telemetry-base helper) so
-      // the fallback itself can never throw its way back out.
+      // out of the `synced` emitter. It carries the full telemetry base: this
+      // is the highest-value event on the buffer-replay path for a
+      // cross-project incident, so omitting `branch` and `project` here is
+      // exactly the wrong place to economize. Safe to call — the base's only
+      // fallible step (storage read) already swallows, and the digest is a
+      // pure function.
       provider.off('synced', onSyncedReplay);
       void runReplay().catch((err: unknown) => {
         this.emitStructuredClientRecoveryEvent({
           event: 'ok-buffer-replay-unexpected-error',
-          docName,
+          ...this.recoveryTelemetryBase(docName),
           errorName: err instanceof Error ? err.name : 'non-error-throw',
           errorMessage: err instanceof Error ? err.message : String(err),
         });
@@ -2819,10 +2813,10 @@ export class ProviderPool {
         // for a live token.
         if (fullStateForBuffer !== null) {
           outboxWrites.push(
-            writeReplayOutboxEntry(recoveryBranch, docName, {
-              delta: unsynced,
-              fullState: fullStateForBuffer,
-            })
+            writeReplayOutboxEntry(
+              { branch: recoveryBranch, docName, namespace: this.storageNamespace },
+              { delta: unsynced, fullState: fullStateForBuffer },
+            )
               .then((persisted) => {
                 if (persisted) buffered.durable = true;
                 else {
@@ -3406,7 +3400,11 @@ export class ProviderPool {
     const buffered = this.bufferedUpdates.get(docName);
     this.bufferedUpdates.delete(docName);
     if (buffered === undefined || !buffered.durable) return;
-    void consumeReplayOutboxEntry(buffered.branch, docName).catch((err: unknown) => {
+    void consumeReplayOutboxEntry({
+      branch: buffered.branch,
+      docName,
+      namespace: this.storageNamespace,
+    }).catch((err: unknown) => {
       this.emitStructuredClientRecoveryEvent({
         event: 'ok-buffer-replay-outbox-discard-failed',
         ...this.recoveryTelemetryBase(docName),

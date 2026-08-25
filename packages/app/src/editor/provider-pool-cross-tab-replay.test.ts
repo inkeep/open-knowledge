@@ -1,11 +1,11 @@
 /**
  * Cross-tab exactly-once for the durable replay outbox.
  *
- * The outbox record is keyed `(branch, docName)` with no tab component, so
- * every same-origin tab (a browser preview and the desktop shell both sit on
- * `127.0.0.1:PORT`) sees ONE record. That record is therefore the cross-tab
- * claim token: whichever tab consumes it owns the replay and the others must
- * stand down.
+ * The outbox record is keyed `(namespace, branch, docName)` with no tab
+ * component, so every tab of one project (a browser preview and the desktop
+ * shell both sit on `127.0.0.1:PORT`) sees ONE record. That record is
+ * therefore the cross-tab claim token: whichever tab consumes it owns the
+ * replay and the others must stand down.
  *
  * They must stand down because `replayBufferedContent` is not re-entrant. It
  * decides which CRDT surface holds the un-delivered edit by asking which
@@ -80,7 +80,10 @@ describe('ProviderPool cross-tab replay claim', () => {
     // durable mirror has committed, exactly as `handleServerInstanceMismatch`
     // leaves things.
     expect(
-      await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState }),
+      await writeReplayOutboxEntry(
+        { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+        { delta, fullState },
+      ),
     ).toBe(true);
     const tabA = newPool();
     const entryA = tabA.open(docName);
@@ -102,7 +105,13 @@ describe('ProviderPool cross-tab replay claim', () => {
     expect(
       await waitFor(() => entryB.provider.document.getText('source').toString() === marker),
     ).toBe(true);
-    expect(await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)).toBeNull();
+    expect(
+      await readReplayOutboxEntry({
+        branch: UNKNOWN_BRANCH_SENTINEL,
+        docName,
+        namespace: null,
+      }),
+    ).toBeNull();
 
     // The recovered content reaches tab A the ordinary way (server → peers).
     entryA.provider.document.getText('source').insert(0, marker);
@@ -126,7 +135,10 @@ describe('ProviderPool cross-tab replay claim', () => {
     const docName = uniqueDocName();
     const marker = `race-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     // Neither tab has a RAM buffer: both are post-crash reopens racing the one
     // durable record.
@@ -160,7 +172,13 @@ describe('ProviderPool cross-tab replay claim', () => {
     // would show up as the marker landing on both.
     expect([textA, textB].filter((t) => t === marker)).toHaveLength(1);
     expect([textA, textB].filter((t) => t === '')).toHaveLength(1);
-    expect(await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)).toBeNull();
+    expect(
+      await readReplayOutboxEntry({
+        branch: UNKNOWN_BRANCH_SENTINEL,
+        docName,
+        namespace: null,
+      }),
+    ).toBeNull();
   });
 
   it('a RAM-only buffer (no durable mirror) still replays', async () => {

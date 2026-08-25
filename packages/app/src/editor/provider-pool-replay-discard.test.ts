@@ -55,7 +55,10 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     const docName = uniqueDocName();
     const marker = `closed-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open(docName);
@@ -72,7 +75,13 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     expect(pool.__test_hasBufferedUpdate(docName)).toBe(false);
     // The durable half has to go too, or the next open resurrects the edit.
     await vi.waitFor(async () => {
-      expect(await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)).toBeNull();
+      expect(
+        await readReplayOutboxEntry({
+          branch: UNKNOWN_BRANCH_SENTINEL,
+          docName,
+          namespace: null,
+        }),
+      ).toBeNull();
     });
 
     // End-to-end: reopening replays nothing.
@@ -88,7 +97,10 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
     const docName = uniqueDocName();
     const authoringBranch = `feature-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState('branch-a edit');
-    await writeReplayOutboxEntry(authoringBranch, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: authoringBranch, docName, namespace: null },
+      { delta, fullState },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     // The branch-switch flow runs AFTER the observed branch has already moved,
@@ -104,7 +116,9 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
 
     expect(pool.__test_bufferedUpdatesSize()).toBe(0);
     await vi.waitFor(async () => {
-      expect(await readReplayOutboxEntry(authoringBranch, docName)).toBeNull();
+      expect(
+        await readReplayOutboxEntry({ branch: authoringBranch, docName, namespace: null }),
+      ).toBeNull();
     });
   });
 
@@ -136,7 +150,10 @@ describe('ProviderPool replay-buffer discard reaches the durable mirror', () => 
   it('reports the in-process loss when the entry is replaced mid-consume', async () => {
     const docName = uniqueDocName();
     const { delta, fullState } = buildSourceOnlyState(`abandoned-${randomUUID()}`);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open(docName);

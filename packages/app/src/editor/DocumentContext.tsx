@@ -468,10 +468,11 @@ let pool: ProviderPool | null = null;
 
 export function getPool(collabUrl: string): ProviderPool {
   if (!pool) {
-    // Scope the pool's localStorage keys to THIS project — `scopedStorageKey`
-    // carries the why. `resolveSyncWorkspace()` is the right resolver here
+    // Scope the pool's localStorage keys AND the replay-outbox's IndexedDB
+    // database name to THIS project — see `lib/storage-scope.ts` for the
+    // shared-origin why. `resolveSyncWorkspace()` is the right resolver here
     // because it answers synchronously on Electron, the host where the
-    // collision exists, so the very first key this pool touches is scoped.
+    // collision exists, so the very first name this pool touches is scoped.
     pool = new ProviderPool(MAX_POOL, collabUrl, {
       storageNamespace: resolveSyncWorkspace()?.contentDir ?? null,
     });

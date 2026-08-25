@@ -62,7 +62,10 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     const docName = `qa001-${randomUUID()}`;
     const marker = `crash-before-consume-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     // Reopen (fresh tab, no in-memory buffer): the durable read path fires.
     pool = new ProviderPool(3, DUMMY_WS);
@@ -74,17 +77,26 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     await waitFor(() => entry.provider.document.getText('source').toString().includes(marker));
     const src = entry.provider.document.getText('source').toString();
     expect(count(src, marker)).toBe(1); // EXACTLY once, not merely present
-    expect(await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)).toBeNull(); // consumed
+    expect(
+      await readReplayOutboxEntry({
+        branch: UNKNOWN_BRANCH_SENTINEL,
+        docName,
+        namespace: null,
+      }),
+    ).toBeNull(); // consumed
   });
 
   it('WINDOW: consume happens but apply fails (corrupt = the between-consume-and-apply tail) -> content ABSENT (count 0), entry gone, NEVER doubled', async () => {
     const docName = `qa001-${randomUUID()}`;
     const real = buildSourceOnlyState('real content that will be truncated');
     const truncated = real.fullState.slice(0, 4);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, {
-      delta: truncated,
-      fullState: truncated,
-    });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      {
+        delta: truncated,
+        fullState: truncated,
+      },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open(docName);
@@ -97,7 +109,12 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     // returns a truthy Promise and would pass vacuously).
     let consumed = false;
     for (let i = 0; i < 60 && !consumed; i += 1) {
-      consumed = (await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)) === null;
+      consumed =
+        (await readReplayOutboxEntry({
+          branch: UNKNOWN_BRANCH_SENTINEL,
+          docName,
+          namespace: null,
+        })) === null;
       if (!consumed) await wait(10);
     }
     expect(consumed).toBe(true);
@@ -110,7 +127,10 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     const docName = `qa001-${randomUUID()}`;
     const marker = `double-fire-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open(docName);
@@ -130,7 +150,10 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     const docName = `qa001-${randomUUID()}`;
     const marker = `reopen-once-${randomUUID()}`;
     const { delta, fullState } = buildSourceOnlyState(marker);
-    await writeReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName, { delta, fullState });
+    await writeReplayOutboxEntry(
+      { branch: UNKNOWN_BRANCH_SENTINEL, docName, namespace: null },
+      { delta, fullState },
+    );
 
     pool = new ProviderPool(3, DUMMY_WS);
     const e1 = pool.open(docName);
@@ -149,6 +172,12 @@ describe('QA-001 crash-window sweep (occurrence-count oracle, ratified consume-f
     e2.provider.emit('synced', { state: true });
     await wait(80);
     expect(count(e2.provider.document.getText('source').toString(), marker)).toBe(0);
-    expect(await readReplayOutboxEntry(UNKNOWN_BRANCH_SENTINEL, docName)).toBeNull();
+    expect(
+      await readReplayOutboxEntry({
+        branch: UNKNOWN_BRANCH_SENTINEL,
+        docName,
+        namespace: null,
+      }),
+    ).toBeNull();
   });
 });
