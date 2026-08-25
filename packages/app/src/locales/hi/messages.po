@@ -518,10 +518,6 @@ msgid "{basename} — text editor"
 msgstr "{basename} — टेक्स्ट संपादक"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr "{behind, plural, one {# कमिट पीछे} other {# कमिट पीछे}}"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr "{behind} पीछे"
 
@@ -615,6 +611,14 @@ msgstr "{count, plural, one {# समस्या तुरंत ठीक क�
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, one {# फ़ाइल से मेल खाता है} other {# फ़ाइलों से मेल खाता है}}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr "{count} आगे"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
+msgstr "{count} पीछे"
 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "{count} skills"
@@ -811,14 +815,11 @@ msgstr "{displayLine} पंक्ति पर {localizedMessage}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {# मिनट पहले} other {# मिनट पहले}}"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr "{minutes} मिनट पहले"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes} मिनट पहले"
 
@@ -909,6 +910,10 @@ msgstr "{propertyCount, plural, one {# प्रॉपर्टी} other {# प
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} प्रॉपर्टी"
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
+msgstr "{seconds} सेकंड"
 
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1122,6 +1127,26 @@ msgstr "📝 या assets/icon.png"
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
 msgstr "0/0"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr "1 घंटा"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr "1 मिनट"
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr "15 मिनट"
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr "30 सेकंड"
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
+msgstr "5 मिनट"
 
 #: src/components/ImportSkillForm.tsx
 msgid "A .zip or .skill archive."
@@ -1517,6 +1542,7 @@ msgstr "इस संदेश में अपनी टिप्पणिय�
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "जोड़ा गया"
 
@@ -1561,11 +1587,13 @@ msgstr "ये फ़ाइलें जोड़ता है"
 msgid "Adds these folders"
 msgstr "ये फ़ोल्डर जोड़ता है"
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "उन्नत"
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr "उन्नत सेटिंग"
 
@@ -1975,6 +2003,24 @@ msgstr "आधिकारिक सामग्री; जहाँ भी स�
 msgid "Authorize in browser"
 msgstr "ब्राउज़र में प्राधिकृत करें"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr "स्वचालित (खींचें और भेजें)"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr "स्वचालित (केवल खींचें)"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr "स्वचालित (केवल खींचें) आपके git रिमोट रिपॉज़िटरी से अपडेट लाता है और आपकी कॉपी को अपने आप आगे बढ़ाता है। आपके स्थानीय संपादन इसी कंप्यूटर पर रहते हैं और कभी पुश नहीं होते।"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr "स्वचालित (केवल खींचें) आपके स्थानीय बदलावों को कभी पुश या कमिट नहीं करता। वे केवल इसी मशीन पर रहते हैं।"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr "स्वत: स्वीकृति सेटिंग अभी लोड नहीं हुई — कुछ देर बाद फिर कोशिश करें"
@@ -2008,21 +2054,13 @@ msgstr "स्वत: सुधार केवल उन्हीं समस�
 msgid "Auto-save"
 msgstr "स्वत: सहेजना"
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "इस वर्कट्री के लिए स्वत: सिंक बंद है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "इस वर्कट्री के लिए स्वत: सिंक चालू है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "स्वत: सिंक रुका हुआ है — फिर से शुरू करने के लिए साइन इन करें।"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-msgstr "स्वत: सिंक रुका हुआ है — आपके पास इस रिपॉज़िटरी में पुश करने की अनुमति नहीं है। अपडेट पाते रहने के लिए Follow पर जाएँ।"
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+msgstr "स्वचालित सिंक रुका हुआ है: आपके पास इस रिपॉज़िटरी में पुश करने की अनुमति नहीं है। अपडेट पाते रहने के लिए स्वचालित (केवल खींचें) पर जाएँ।"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2420,8 +2458,13 @@ msgid "Change the embeddings provider?"
 msgstr "एम्बेडिंग प्रदाता बदलें?"
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
 msgstr "बदला गया"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
+msgstr "यहाँ और रिमोट दोनों पर बदले गए"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -2446,6 +2489,10 @@ msgstr "बदलाव अपने आप सहेज दिए गए।"
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "अपडेट देखें"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
+msgstr "अपडेट जाँचने की आवृत्ति"
 
 #: src/components/AppMenubar.tsx
 msgid "Check for updates…"
@@ -2966,6 +3013,10 @@ msgstr "इस कोड ब्लॉक पर टिप्पणी करे�
 msgid "Comments"
 msgstr "टिप्पणियाँ"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr "कमिट करें और सिंक करें"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "बदलने के लिए बदलाव कमिट या स्टैश करें:"
@@ -3267,6 +3318,7 @@ msgstr "बदला जा रहा है…"
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr "कॉपी किया गया"
@@ -3882,6 +3934,10 @@ msgstr "भेजे जाने की प्रतीक्षा में �
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "भेजे जाने की प्रतीक्षा में मौजूद टिप्पणियाँ नहीं पढ़ी जा सकीं: {0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr "वर्किंग ट्री नहीं पढ़ा जा सका। सर्वर लॉग देखें।"
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4455,6 +4511,10 @@ msgstr "यह चैट हटाएं?"
 msgid "Delete this comment"
 msgstr "यह टिप्पणी हटाएँ"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr "हटाया गया"
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4549,6 +4609,10 @@ msgstr "विवरण टोकन"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "डिज़ाइन"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
+msgstr "अलग किया गया HEAD"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4922,6 +4986,10 @@ msgstr "हर AI टूल स्किल अपने ही फ़ोल्�
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "हर पैक आपके प्रोजेक्ट को तैयार फ़ोल्डर और टेम्पलेट के साथ ढाँचा देता है।"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr "हर पुश आपके रिमोट पर एक कमिट है।"
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5170,25 +5238,25 @@ msgstr "{id} सक्षम करें"
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
-msgstr "स्वत: सिंक सक्षम करें"
+msgid "Enable Auto (Pull and Push)"
+msgstr "स्वचालित (खींचें और भेजें) चालू करें"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
+msgstr "स्वचालित (खींचें और भेजें) चालू करें?"
+
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Auto (Pull only)"
+msgstr "स्वचालित (केवल खींचें) चालू करें"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull only)?"
+msgstr "स्वचालित (केवल खींचें) चालू करें?"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Enable external link previews"
 msgstr "बाहरी लिंक पूर्वावलोकन सक्षम करें"
-
-#: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
-msgstr "Follow सक्षम करें"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
-msgstr "Follow सक्षम करें?"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
-msgstr "git स्वत: सिंक सक्षम करें?"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
@@ -5784,6 +5852,10 @@ msgstr "एम्बेडिंग प्रदाता अपडेट कर
 msgid "Failed to update the project sync default — {detail}"
 msgstr "प्रोजेक्ट सिंक डिफ़ॉल्ट अपडेट करने में विफल — {detail}"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr "सिंक अंतराल अपडेट नहीं हो सका — {detail}"
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "फ़ाइल अपलोड करने में विफल"
@@ -6043,28 +6115,6 @@ msgstr "फ़ोल्डर साझा करने का लिंक क�
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "फ़ोल्डर लक्ष्य: {linkTitle}. सिंहावलोकन खोलने के लिए क्लिक करें।"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr "Follow"
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr "Follow — अपडेट आपके रिमोट से आते रहते हैं; आपके संपादन इसी कंप्यूटर पर रहते हैं।"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr "Follow आपकी रिमोट git रिपॉज़िटरी से अपडेट लाता है और आपकी प्रति को अपने आप आगे बढ़ा देता है। आपके स्थानीय संपादन इसी कंप्यूटर पर रहते हैं और कभी नहीं भेजे जाते।"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "इस वर्कट्री के लिए Follow चालू है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr "Follow आपके स्थानीय बदलाव कभी नहीं भेजता या कमिट करता। वे केवल इसी मशीन पर रहते हैं।"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr "एजेंट के संपादन का अनुसरण करें"
@@ -6155,11 +6205,6 @@ msgstr "वह frontmatter जिससे इस टेम्पलेट स�
 msgid "Frontmatter schemas"
 msgstr "Frontmatter स्कीमा"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr "पूर्ण"
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr "पूरी मार्गदर्शिका"
@@ -6172,14 +6217,6 @@ msgstr "पूरा पथ"
 #: src/components/skill-actions.tsx
 msgid "Full Path"
 msgstr "पूरा पथ"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr "पूर्ण सिंक — आपके कमिट भेजे जाते हैं और रिमोट बदलाव अपने आप आ जाते हैं।"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
-msgstr "पूर्ण सिंक — आपके संपादन अपने आप कमिट होकर आपके रिमोट पर भेज दिए जाते हैं।"
 
 #: src/components/OkBlobRunner.tsx
 msgid "Game over · press <0>Space</0> to play again"
@@ -6239,6 +6276,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr "Git को एक सहायक टूल (जैसे git-lfs) चाहिए जो इंस्टॉल नहीं है या मिला नहीं। इसे इंस्टॉल करें, फिर कोशिश करें।"
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr "Git सिंक"
 
@@ -6616,6 +6654,10 @@ msgstr "साझाकरण कैसे काम करता है?"
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "गायब प्रोजेक्ट-स्थानीय दस्तावेज़ों, फ़ाइलों और इमेज को समस्याएँ, एडिटर डायग्नोस्टिक्स, ऑडिट और एजेंट टूल में कैसे रिपोर्ट किया जाता है।"
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr "यह कंप्यूटर आपके रिमोट से कितनी बार बदलाव खींचता है।"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "हाथ से कैसे भेजें"
@@ -6700,6 +6742,10 @@ msgstr "अनदेखा करने के पैटर्न"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
 msgstr "अनदेखा करने के पैटर्न (कच्चा पाठ)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
+msgstr "अनदेखा किया गया"
 
 #: src/components/LinksPanel.tsx
 msgid "Image {identity}. Go to reference."
@@ -7297,8 +7343,8 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr "नाम 64 अक्षरों या उससे कम रखें।"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-msgstr "इस प्रोजेक्ट को अपने git रिमोट के साथ तालमेल में रखें। Follow बिना भेजे अपडेट लाता है; पूर्ण सिंक आपके कमिट भी भेजता है। सिंक चालू करने के लिए पुष्टि ज़रूरी है।"
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+msgstr "इस प्रोजेक्ट को अपने git रिमोट के साथ सिंक में रखें। स्वचालित (केवल खींचें) बिना पुश किए अपडेट लाता है; स्वचालित (खींचें और भेजें) आपके संपादन भी भेजता है। स्वचालित सिंक चालू करने के लिए पुष्टि ज़रूरी है।"
 
 #: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7778,6 +7824,11 @@ msgstr "इस बिल्ड में AI टूल सँभालना उ�
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "इस बिल्ड में प्रोजेक्ट के AI टूल सँभालना उपलब्ध नहीं है।"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr "मैन्युअल"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "संरचना का नक्शा बनाएँ"
@@ -7916,10 +7967,6 @@ msgstr "पैलेट के रंग मौजूद नहीं हैं"
 msgid "Missing theme name"
 msgstr "थीम का नाम मौजूद नहीं है"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr "मोड"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr "मॉडल"
@@ -7936,6 +7983,7 @@ msgstr "मॉडल का डिफ़ॉल्ट प्रयास स्�
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr "संशोधित"
 
@@ -8227,10 +8275,6 @@ msgstr "सफ़ाई के दौरान नेटवर्क त्र�
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "नेटवर्क सेटिंग्स अभी लोड नहीं हुई हैं। कुछ ही देर में फिर से प्रयास करें।"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
-msgstr "कभी नहीं"
 
 #: src/components/FolderOverview.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -8846,9 +8890,21 @@ msgstr "कुछ नहीं ({0} किसी दस्तावेज़ स
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "कुछ नहीं ({0} एक मान्य पैटर्न नहीं है)"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr "जब तक आप न कहें, कुछ नहीं चलेगा — सिंक मेनू से खींचें और भेजें।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr "जब तक आप न कहें, कुछ नहीं चलेगा।"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "अभी कुछ भी सेट नहीं।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
+msgstr "कमिट करने को कुछ नहीं: वर्किंग ट्री साफ़ है।"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
@@ -8882,10 +8938,6 @@ msgstr "{0} में से"
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
 msgstr "{totalPages} में से"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
-msgstr "बंद"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Off — external links show only their URL. No requests leave this computer."
@@ -9641,6 +9693,10 @@ msgstr "बाहर जाने वाले"
 msgid "Outline"
 msgstr "रूपरेखा"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr "Open Knowledge जो कमिट करता है उसके दायरे से बाहर।"
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "{budgetLabel} टोकन बजट से अधिक"
@@ -9850,10 +9906,6 @@ msgstr "पैटर्न वाक्यविन्यास त्रुट�
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
 msgstr "पैटर्न चेतावनियाँ: {summary}"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
-msgstr "सिंक रोकें"
 
 #: src/components/acp/ThreadView.tsx
 msgid "pending"
@@ -10248,9 +10300,25 @@ msgstr "प्रकाशित किया जा रहा है…"
 msgid "Pull"
 msgstr "खींचें"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr "खींचें और भेजें"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr "खींचें से आएगा"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
 msgstr "नवीनतम बदलाव खींचें"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr "{pulled} खींचा"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
+msgstr "{pulled} खींचा · {pushed} भेजा"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -10277,9 +10345,25 @@ msgstr "साझा करने से पहले ब्रांच {branch
 msgid "Push failed — check the server logs for details."
 msgstr "भेजना विफल — विवरण के लिए सर्वर लॉग देखें।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr "भेजें में शामिल"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr "मेरे संपादन भेजने की आवृत्ति"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr "भेजें में शामिल नहीं"
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
 msgstr "साझा करने से पहले इस ब्रांच को GitHub पर पुश करें।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
+msgstr "{pushed} भेजा"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -10354,6 +10438,10 @@ msgstr "किसी दूसरे दस्तावेज़ के MirrorSo
 msgid "Read-only file in the {name} skill"
 msgstr "{name} स्किल में केवल पढ़ने योग्य फ़ाइल"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr "वर्किंग ट्री पढ़ी जा रही है"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "पढ़ा जा रहा है…"
@@ -10406,6 +10494,10 @@ msgstr "अनुशंसित एजेंट कौशल"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "फिर से जुड़ना ज़रूरी"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
+msgstr "सिंक जारी रखने के लिए फिर से कनेक्ट करना ज़रूरी है।"
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -10673,6 +10765,10 @@ msgstr "स्किल का नाम बदलें"
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "नाम बदल गया पर साइडबार पुराना हो सकता है — फिर से सिंक करने के लिए ताज़ा करें"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr "नाम बदला गया"
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10824,7 +10920,6 @@ msgstr "जिन रिपॉज़िटरी को आप पहले ह�
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr "रिपॉज़िटरी"
 
@@ -10906,6 +11001,10 @@ msgstr "स्किल पैनल का आकार बदलें"
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "अपने टर्मिनल में टकराव सुलझाएँ"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
+msgstr "टर्मिनल में हल करें"
 
 #: src/components/FileTree.tsx
 msgid "Resolve the conflict on {files} before deleting."
@@ -11022,10 +11121,6 @@ msgstr "{0} वाले संस्करण पर बहाल किया 
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "परिणाम सीमित — इस कार्यक्षेत्र में खोज के अनुक्रमण से ज़्यादा फ़ाइलें हैं। कोई अनुपस्थित फ़ाइल इस सीमा का नतीजा हो सकती है, वर्तनी की ग़लती नहीं।"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr "सिंक फिर से शुरू करें"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "चैट फिर से शुरू हो रही है"
@@ -11097,8 +11192,8 @@ msgid "Reverting"
 msgstr "वापस लिया जा रहा है"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
-msgstr "टकराव देखें"
+msgid "Review"
+msgstr "समीक्षा करें"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
@@ -12244,6 +12339,10 @@ msgstr "Slidev शुरू होने में बहुत समय लग
 msgid "Small section heading."
 msgstr "छोटा अनुभाग शीर्षक।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr "कुछ फ़ाइलें सूचीबद्ध नहीं हैं: वर्किंग ट्री में बहुत अधिक बदलाव हैं।"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "कुछ सहेजी गई थीम नहीं दिखाई जा रही हैं क्योंकि थीम फ़ोल्डर स्कैन सीमा से बड़ा है।"
@@ -12435,6 +12534,10 @@ msgstr "एजेंट शुरू किया जा रहा है…"
 msgid "status"
 msgstr "स्थिति"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr "स्थिति"
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12582,8 +12685,8 @@ msgid "Switch to a branch to share."
 msgstr "साझा करने के लिए किसी ब्रांच पर स्विच करें।"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
-msgstr "Follow पर जाएँ"
+msgid "Switch to Auto (Pull only)"
+msgstr "स्वचालित (केवल खींचें) पर जाएँ"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -12622,7 +12725,6 @@ msgid "Symlinks the skill to {path}"
 msgstr "स्किल को {path} पर सिमलिंक करता है"
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "सिंक"
 
@@ -12632,10 +12734,6 @@ msgid "Sync & sharing"
 msgstr "सिंक और साझाकरण"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
-msgstr "सिंक अक्षम"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync failed — check the server logs for details."
 msgstr "सिंक विफल — विवरण के लिए सर्वर लॉग देखें।"
 
@@ -12643,13 +12741,21 @@ msgstr "सिंक विफल — विवरण के लिए सर्
 msgid "Sync is failing. See the sync status for details."
 msgstr "सिंक विफल हो रहा है। विवरण के लिए सिंक स्थिति देखें।"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
-msgstr "सिंक बंद है — जब तक आप हाथ से कमिट और पुश नहीं करते तब तक आपके संपादन इसी कंप्यूटर पर रहते हैं।"
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+msgstr "सिंक रुका हुआ है। जारी रखने के लिए इन स्थानीय संपादनों को कमिट करें, या टर्मिनल में इन्हें निपटाएँ।"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
-msgstr "सिंक रुका हुआ है। फिर से शुरू करने के लिए इसे वापस चालू करें।"
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "इस वर्कट्री के लिए सिंक “स्वचालित (खींचें और भेजें)” पर सेट है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "इस वर्कट्री के लिए सिंक “स्वचालित (केवल खींचें)” पर सेट है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "इस वर्कट्री के लिए सिंक “मैन्युअल” पर सेट है, जो {project} से विरासत में मिला है। इसे Settings → Sync में बदलें।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -12661,16 +12767,8 @@ msgid "Sync now"
 msgstr "अभी सिंक करें"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr "सिंक बंद"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "सिंक रुका हुआ"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
-msgstr "सिंक रुका हुआ — फिर से शुरू करने के लिए टकराव सुलझाएँ।"
 
 #: src/hooks/use-no-push-permission-toast.ts
 msgid "Sync paused — you don't have permission to push to this repo"
@@ -12705,10 +12803,6 @@ msgstr "सिंक स्थिति: {syncStateLabel} — git पहचा�
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
 msgstr "सिंक हो गया"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
-msgstr "{lastSyncedRelative} सिंक हुआ"
 
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
@@ -12932,6 +13026,10 @@ msgstr "रिपोर्ट के लिए धन्यवाद!"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "वह ब्रांच पहले से किसी दूसरे वर्कट्री में खुली है।"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
+msgstr "यह पूरा नहीं हुआ। सर्वर लॉग देखें और फिर से कोशिश करें।"
 
 #: src/comments/reveal-comment.ts
 msgid "That document didn't open in time. Try again once it has synced."
@@ -13968,6 +14066,10 @@ msgstr "कमांड देखने के लिए '/' टाइप कर
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "कोई क्वेरी लिखें, फिर अपने पेज अर्थ के आधार पर खोजने के लिए <0>↵</0> दबाएँ।"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr "प्रकार बदला गया"
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr "संपादित करने के लिए लिखें; <0>Cmd/Ctrl+Enter</0> सहेजता है, <1>Esc</1> रद्द करता है।"
@@ -14096,6 +14198,10 @@ msgstr "सभी टिप्पणियों का चयन हटाए�
 msgid "Unmark every comment in {0}"
 msgstr "{0} की सभी टिप्पणियाँ अचिह्नित करें"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr "मर्ज नहीं हुआ"
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr "आइटम की अक्रमित सूची।"
@@ -14135,6 +14241,10 @@ msgstr "हल न की जा सकने वाला चित्र {iden
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "बिना शीर्षक रिपोर्ट"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
+msgstr "ट्रैक नहीं किया गया"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
@@ -14183,8 +14293,8 @@ msgid "Updated \"{name}\" from {0}"
 msgstr "\"{name}\" को {0} से अपडेट किया गया"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
-msgstr "{lastSyncedRelative} अपडेट हुआ"
+msgid "Updated {updatedRelative}"
+msgstr "{updatedRelative} अपडेट हुआ"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
@@ -14197,6 +14307,11 @@ msgstr "संस्करण {version} पर अपडेट किया ग�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "अपडेट आते रहते हैं"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
+msgstr "अपडेट आपके रिमोट से आते हैं; आपके संपादन इसी कंप्यूटर पर रहते हैं।"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Updates from the source apply automatically (unless edited locally)"
@@ -14650,6 +14765,10 @@ msgstr "यह कहाँ रहना चाहिए?"
 msgid "Which skill"
 msgstr "कौन सी स्किल"
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr "जब तक आप साइन आउट हैं, इस सेटिंग के बावजूद अपडेट अधिकतम हर 3 मिनट में जाँचे जाते हैं।"
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "रिक्त स्थान"
@@ -14826,8 +14945,8 @@ msgid "You don't have permission to push to this repo."
 msgstr "आपके पास इस रिपॉज़िटरी में पुश करने की अनुमति नहीं है।"
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-msgstr "आपके पास इस रिपॉज़िटरी में पुश करने की अनुमति नहीं है। Follow फिर भी आपकी प्रति को अद्यतित रख सकता है।"
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+msgstr "आपके पास इस रिपॉज़िटरी में पुश करने की अनुमति नहीं है। स्वचालित (केवल खींचें) फिर भी आपकी कॉपी अद्यतित रख सकता है।"
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "You don't have write access to this repo."
@@ -14898,6 +15017,11 @@ msgstr "ब्रांच <0>{shareBranch}</0> की आपकी प्रत
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "आपका मौजूदा संस्करण पहले सहेजा जाता है, इसलिए यह वापस लिया जा सकता है।"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
+msgstr "आपके संपादन अपने आप कमिट होकर आपके रिमोट पर भेज दिए जाते हैं।"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"

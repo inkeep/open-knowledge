@@ -518,10 +518,6 @@ msgid "{basename} — text editor"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr ""
 
@@ -614,6 +610,14 @@ msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
 msgstr ""
 
 #: src/components/SkillBulkDeleteDialog.tsx
@@ -811,14 +815,11 @@ msgstr ""
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr ""
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr ""
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr ""
 
@@ -908,6 +909,10 @@ msgstr ""
 
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
 msgstr ""
 
 #: src/components/ActivityModeContent.tsx
@@ -1121,6 +1126,26 @@ msgstr ""
 
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
 msgstr ""
 
 #: src/components/ImportSkillForm.tsx
@@ -1517,6 +1542,7 @@ msgstr ""
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr ""
 
@@ -1561,11 +1587,13 @@ msgstr ""
 msgid "Adds these folders"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr ""
 
@@ -1975,6 +2003,24 @@ msgstr ""
 msgid "Authorize in browser"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr ""
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr ""
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr ""
@@ -2008,20 +2054,12 @@ msgstr ""
 msgid "Auto-save"
 msgstr ""
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr ""
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr ""
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
@@ -2420,7 +2458,12 @@ msgid "Change the embeddings provider?"
 msgstr ""
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
+msgstr ""
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
 msgstr ""
 
 #: src/components/ChangedOutsideBadge.tsx
@@ -2445,6 +2488,10 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -2966,6 +3013,10 @@ msgstr ""
 msgid "Comments"
 msgstr ""
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr ""
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr ""
@@ -3267,6 +3318,7 @@ msgstr ""
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr ""
@@ -3882,6 +3934,10 @@ msgstr ""
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr ""
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4455,6 +4511,10 @@ msgstr ""
 msgid "Delete this comment"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr ""
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4548,6 +4608,10 @@ msgstr ""
 
 #: src/components/ExploreSkills.tsx
 msgid "Design"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -4922,6 +4986,10 @@ msgstr ""
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5170,24 +5238,24 @@ msgstr ""
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
+msgid "Enable Auto (Pull and Push)"
 msgstr ""
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
 msgstr ""
 
 #: src/components/AutoSyncOnboardingDialog.tsx
 #: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
+msgid "Enable Auto (Pull only)"
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
+msgid "Enable Auto (Pull only)?"
 msgstr ""
 
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "Enable external link previews"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -5784,6 +5852,10 @@ msgstr ""
 msgid "Failed to update the project sync default — {detail}"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr ""
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr ""
@@ -6043,28 +6115,6 @@ msgstr ""
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr ""
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr ""
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr ""
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr ""
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr ""
@@ -6155,11 +6205,6 @@ msgstr ""
 msgid "Frontmatter schemas"
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr ""
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr ""
@@ -6171,14 +6216,6 @@ msgstr ""
 
 #: src/components/skill-actions.tsx
 msgid "Full Path"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
 msgstr ""
 
 #: src/components/OkBlobRunner.tsx
@@ -6239,6 +6276,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr ""
 
@@ -6616,6 +6654,10 @@ msgstr ""
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr ""
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr ""
@@ -6699,6 +6741,10 @@ msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
 msgstr ""
 
 #: src/components/LinksPanel.tsx
@@ -7297,7 +7343,7 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
 msgstr ""
 
 #: src/lib/pack-copy.ts
@@ -7778,6 +7824,11 @@ msgstr ""
 msgid "Managing project AI tools is unavailable in this build."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr ""
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr ""
@@ -7916,10 +7967,6 @@ msgstr ""
 msgid "Missing theme name"
 msgstr ""
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr ""
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr ""
@@ -7936,6 +7983,7 @@ msgstr ""
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr ""
 
@@ -8226,10 +8274,6 @@ msgstr ""
 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Network settings not yet loaded. Try again in a moment."
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
 msgstr ""
 
 #: src/components/FolderOverview.tsx
@@ -8846,8 +8890,20 @@ msgstr ""
 msgid "nothing ({0} is not a valid pattern)"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr ""
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
 msgstr ""
 
 #: src/components/BugReportSendToast.tsx
@@ -8881,10 +8937,6 @@ msgstr ""
 
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
-msgstr ""
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
 msgstr ""
 
 #: src/components/settings/LinkPreviewsSection.tsx
@@ -9641,6 +9693,10 @@ msgstr ""
 msgid "Outline"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr ""
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr ""
@@ -9849,10 +9905,6 @@ msgstr ""
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -10248,8 +10300,24 @@ msgstr ""
 msgid "Pull"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr ""
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
 msgstr ""
 
 #: src/components/share-receive-miss-content.tsx
@@ -10277,8 +10345,24 @@ msgstr ""
 msgid "Push failed — check the server logs for details."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr ""
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -10354,6 +10438,10 @@ msgstr ""
 msgid "Read-only file in the {name} skill"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr ""
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr ""
@@ -10405,6 +10493,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
 msgstr ""
 
 #: src/presence/use-sync-toasts.ts
@@ -10673,6 +10765,10 @@ msgstr ""
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr ""
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10824,7 +10920,6 @@ msgstr ""
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr ""
 
@@ -10905,6 +11000,10 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
+msgstr ""
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
 msgstr ""
 
 #: src/components/FileTree.tsx
@@ -11022,10 +11121,6 @@ msgstr ""
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr ""
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr ""
-
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr ""
@@ -11097,7 +11192,7 @@ msgid "Reverting"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
+msgid "Review"
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
@@ -12244,6 +12339,10 @@ msgstr ""
 msgid "Small section heading."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr ""
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr ""
@@ -12435,6 +12534,10 @@ msgstr ""
 msgid "status"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr ""
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12582,7 +12685,7 @@ msgid "Switch to a branch to share."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
+msgid "Switch to Auto (Pull only)"
 msgstr ""
 
 #: src/components/command-palette-commands.ts
@@ -12622,17 +12725,12 @@ msgid "Symlinks the skill to {path}"
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr ""
 
 #: src/components/settings/SettingsDialogBody.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Sync & sharing"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -12643,12 +12741,20 @@ msgstr ""
 msgid "Sync is failing. See the sync status for details."
 msgstr ""
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
 msgstr ""
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr ""
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr ""
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -12661,15 +12767,7 @@ msgid "Sync now"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
 msgstr ""
 
 #: src/hooks/use-no-push-permission-toast.ts
@@ -12704,10 +12802,6 @@ msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
-msgstr ""
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
 msgstr ""
 
 #: src/components/TimelinePanel.tsx
@@ -12931,6 +13025,10 @@ msgstr ""
 #: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
+msgstr ""
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
 msgstr ""
 
 #: src/comments/reveal-comment.ts
@@ -13968,6 +14066,10 @@ msgstr ""
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr ""
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr ""
@@ -14096,6 +14198,10 @@ msgstr ""
 msgid "Unmark every comment in {0}"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr ""
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr ""
@@ -14134,6 +14240,10 @@ msgstr ""
 
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -14183,7 +14293,7 @@ msgid "Updated \"{name}\" from {0}"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
+msgid "Updated {updatedRelative}"
 msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
@@ -14196,6 +14306,11 @@ msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
 msgstr ""
 
 #: src/components/SkillOriginInline.tsx
@@ -14650,6 +14765,10 @@ msgstr ""
 msgid "Which skill"
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr ""
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr ""
@@ -14826,7 +14945,7 @@ msgid "You don't have permission to push to this repo."
 msgstr ""
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
 msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
@@ -14897,6 +15016,11 @@ msgstr ""
 #: src/components/TimelineDiffPane.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
+msgstr ""
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
 msgstr ""
 
 #: src/components/AutoSyncEnableWarning.tsx

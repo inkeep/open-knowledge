@@ -518,10 +518,6 @@ msgid "{basename} — text editor"
 msgstr "{basename} — 文本编辑器"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr "{behind, plural, other {落后 # 个提交}}"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr "落后 {behind} 个"
 
@@ -615,6 +611,14 @@ msgstr "{count, plural, other {立即修复有已知自动修复方案的 # 个�
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {匹配 # 个文件}}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr "领先 {count} 个提交"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
+msgstr "落后 {count} 个提交"
 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "{count} skills"
@@ -811,14 +815,11 @@ msgstr "第 {displayLine} 行：{localizedMessage}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr "{minutes} 分钟前"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes} 分钟前"
 
@@ -909,6 +910,10 @@ msgstr "{propertyCount, plural, other {# 项属性}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} 属性"
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
+msgstr "{seconds} 秒"
 
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1126,6 +1131,26 @@ msgstr "📝 或 assets/icon.png"
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
 msgstr "0/0"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr "1 小时"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr "1 分钟"
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr "15 分钟"
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr "30 秒"
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
+msgstr "5 分钟"
 
 #: src/components/ImportSkillForm.tsx
 msgid "A .zip or .skill archive."
@@ -1521,6 +1546,7 @@ msgstr "把你的评论写在这条消息里"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "已添加"
 
@@ -1565,11 +1591,13 @@ msgstr "添加这些文件"
 msgid "Adds these folders"
 msgstr "添加这些文件夹"
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "高级"
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr "高级设置"
 
@@ -1979,6 +2007,24 @@ msgstr "权威内容；在所有被引用的地方逐字镜像。"
 msgid "Authorize in browser"
 msgstr "在浏览器中授权"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr "自动（拉取和推送）"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr "自动（仅拉取）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr "自动（仅拉取）从你的 git 远程仓库获取更新并自动快进你的副本。你的本地编辑只保留在这台电脑上，永远不会被推送。"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr "自动（仅拉取）永远不会推送或提交你的本地更改。它们只保留在这台机器上。"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr "自动批准设置尚未加载——请稍后再试"
@@ -2012,21 +2058,13 @@ msgstr "自动修复只作用于有已知机械修复方案的问题。"
 msgid "Auto-save"
 msgstr "自动保存"
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "这个 worktree 的自动同步已关闭，继承自 {project}。可在「设置 → 同步」中更改。"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "这个 worktree 的自动同步已开启，继承自 {project}。可在「设置 → 同步」中更改。"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "自动同步已暂停——请登录以继续。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-msgstr "自动同步已暂停——你没有推送到这个仓库的权限。切换到「跟随」以继续接收更新。"
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+msgstr "自动同步已暂停：你没有向此仓库推送的权限。切换到自动（仅拉取）以继续接收更新。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2424,8 +2462,13 @@ msgid "Change the embeddings provider?"
 msgstr "要更换嵌入服务提供方吗？"
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
 msgstr "已修改"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
+msgstr "本地和远程都有改动"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -2450,6 +2493,10 @@ msgstr "更改已自动保存。"
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "检查更新"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
+msgstr "检查更新的频率"
 
 #: src/components/AppMenubar.tsx
 msgid "Check for updates…"
@@ -2970,6 +3017,10 @@ msgstr "对此代码块发表评论或询问 AI"
 msgid "Comments"
 msgstr "评论"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr "提交并同步"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "提交或暂存改动后才能切换："
@@ -3271,6 +3322,7 @@ msgstr "正在转换…"
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr "已复制"
@@ -3886,6 +3938,10 @@ msgstr "无法读取等待发送的评论——什么都没有发送。"
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "无法读取等待发送的评论：{0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr "无法读取工作区。请查看服务器日志。"
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4459,6 +4515,10 @@ msgstr "删除此对话？"
 msgid "Delete this comment"
 msgstr "删除这条评论"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr "已删除"
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4553,6 +4613,10 @@ msgstr "描述 token"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "设计"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
+msgstr "分离的 HEAD"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4926,6 +4990,10 @@ msgstr "每个 AI 工具都从各自的文件夹读取技能。将一个文件�
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "每个包都会用现成的文件夹和模板为你的项目搭好骨架。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr "每次推送就是向你的远程仓库提交一次。"
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5174,25 +5242,25 @@ msgstr "启用 {id}"
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
-msgstr "启用自动同步"
+msgid "Enable Auto (Pull and Push)"
+msgstr "启用自动（拉取和推送）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
+msgstr "启用自动（拉取和推送）？"
+
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Auto (Pull only)"
+msgstr "启用自动（仅拉取）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull only)?"
+msgstr "启用自动（仅拉取）？"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Enable external link previews"
 msgstr "开启外部链接预览"
-
-#: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
-msgstr "启用「跟随」"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
-msgstr "要启用「跟随」吗？"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
-msgstr "要启用 git 自动同步吗？"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
@@ -5788,6 +5856,10 @@ msgstr "更新嵌入服务提供方失败——{detail}"
 msgid "Failed to update the project sync default — {detail}"
 msgstr "更新项目同步默认值失败——{detail}"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr "更新同步间隔失败 — {detail}"
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "上传文件失败"
@@ -6047,28 +6119,6 @@ msgstr "已复制文件夹共享链接。"
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "目标文件夹：{linkTitle}。点击可打开总览。"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr "跟随"
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr "跟随——更新从你的远程流入；你的编辑留在这台电脑上。"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr "「跟随」会从你的远程 git 仓库获取更新，并自动快进你的副本。你的本地编辑留在这台电脑上，永远不会被推送。"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "这个 worktree 的「跟随」已开启，继承自 {project}。可在「设置 → 同步」中更改。"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr "「跟随」从不推送或提交你的本地改动。它们只留在这台电脑上。"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr "跟随智能体的编辑"
@@ -6159,11 +6209,6 @@ msgstr "用这个模板创建的每个文档都以这段 frontmatter 开头。�
 msgid "Frontmatter schemas"
 msgstr "frontmatter 架构"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr "完整"
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr "完整指南"
@@ -6176,14 +6221,6 @@ msgstr "完整路径"
 #: src/components/skill-actions.tsx
 msgid "Full Path"
 msgstr "完整路径"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr "完全同步——你的提交会自动推送，远程改动会自动拉取。"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
-msgstr "完全同步——你的编辑会自动提交并推送到你的远程仓库。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "Game over · press <0>Space</0> to play again"
@@ -6243,6 +6280,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr "Git 需要一个辅助工具（例如 git-lfs），但它未安装或找不到。请先安装再重试。"
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr "Git 同步"
 
@@ -6620,6 +6658,10 @@ msgstr "共享是怎么运作的？"
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "如何在“问题”、编辑器诊断、审计和代理工具中报告缺失的项目本地文档、文件和图像。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr "这台电脑从你的远程仓库拉取更改的频率。"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "如何手动推送"
@@ -6704,6 +6746,10 @@ msgstr "忽略模式"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
 msgstr "忽略模式（纯文本）"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
+msgstr "已忽略"
 
 #: src/components/LinksPanel.tsx
 msgid "Image {identity}. Go to reference."
@@ -7301,8 +7347,8 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr "名称请控制在 64 个字符以内。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-msgstr "让这个项目与你的 git 远程保持同步。「跟随」只获取更新而不推送；完全同步也会推送你的提交。开启同步需要确认。"
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+msgstr "让此项目与你的 git 远程仓库保持同步。自动（仅拉取）只带来更新而不推送；自动（拉取和推送）还会发送你的编辑。开启自动同步需要确认。"
 
 #: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7782,6 +7828,11 @@ msgstr "这个版本不支持管理 AI 工具。"
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "这个版本不支持管理项目的 AI 工具。"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr "手动"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "梳理架构"
@@ -7920,10 +7971,6 @@ msgstr "缺少调色板颜色"
 msgid "Missing theme name"
 msgstr "缺少主题名称"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr "模式"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr "模型"
@@ -7940,6 +7987,7 @@ msgstr "模型默认的推理强度"
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr "已修改"
 
@@ -8231,10 +8279,6 @@ msgstr "清理过程中出现网络错误"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "网络设置尚未加载。请稍后重试。"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
-msgstr "从不"
 
 #: src/components/FolderOverview.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -8850,9 +8894,21 @@ msgstr "无（{0} 无法匹配任何文档）"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "无（{0} 不是有效的模式）"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr "在你发起操作之前不会有任何变动——请在同步菜单中拉取和推送。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr "在你发起操作之前不会有任何变动。"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "还没有设置任何内容。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
+msgstr "没有需要提交的内容：工作区是干净的。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
@@ -8886,10 +8942,6 @@ msgstr "共 {0}"
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
 msgstr "共 {totalPages}"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
-msgstr "关闭"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Off — external links show only their URL. No requests leave this computer."
@@ -9645,6 +9697,10 @@ msgstr "出链"
 msgid "Outline"
 msgstr "大纲"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr "不在 Open Knowledge 的提交范围内。"
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "超出 {budgetLabel} token 预算"
@@ -9854,10 +9910,6 @@ msgstr "模式语法错误：{message}"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
 msgstr "模式警告：{summary}"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
-msgstr "暂停同步"
 
 #: src/components/acp/ThreadView.tsx
 msgid "pending"
@@ -10252,9 +10304,25 @@ msgstr "正在发布…"
 msgid "Pull"
 msgstr "拉取"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr "拉取并推送"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr "拉取带来"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
 msgstr "拉取最新改动"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr "{pulled}拉取"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
+msgstr "{pulled}拉取 · {pushed}推送"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -10281,9 +10349,25 @@ msgstr "共享前请先将分支 {branch} 推送到 GitHub。"
 msgid "Push failed — check the server logs for details."
 msgstr "推送失败——详情请查看服务器日志。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr "推送包含"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr "推送我的编辑的频率"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr "推送跳过"
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
 msgstr "共享前请先将此分支推送到 GitHub。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
+msgstr "{pushed}推送"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -10358,6 +10442,10 @@ msgstr "来自另一个文档的 MirrorSource 块的只读副本。在来源处�
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 技能中的只读文件"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr "正在读取工作区"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "正在阅读…"
@@ -10410,6 +10498,10 @@ msgstr "推荐代理技能"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "需要重新连接"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
+msgstr "需要重新连接才能继续同步。"
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -10677,6 +10769,10 @@ msgstr "重命名技能"
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "重命名成功，但侧边栏可能不是最新的——请刷新以重新同步"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr "已重命名"
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10828,7 +10924,6 @@ msgstr "即使你断开连接，你已经克隆的仓库也可能继续通过 gi
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr "仓库"
 
@@ -10910,6 +11005,10 @@ msgstr "调整「技能」面板大小"
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "在你的终端中解决冲突"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
+msgstr "在终端中解决"
 
 #: src/components/FileTree.tsx
 msgid "Resolve the conflict on {files} before deleting."
@@ -11026,10 +11125,6 @@ msgstr "已恢复到 {0} 的版本"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "结果已被截断——这个工作区的文件数超出了搜索可索引的上限。找不到某个文件可能是上限造成的，而不是拼写错误。"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr "恢复同步"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "正在恢复对话"
@@ -11101,8 +11196,8 @@ msgid "Reverting"
 msgstr "正在还原"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
-msgstr "查看冲突"
+msgid "Review"
+msgstr "查看"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
@@ -12248,6 +12343,10 @@ msgstr "Slidev 启动超时。请重试。"
 msgid "Small section heading."
 msgstr "小号章节标题。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr "部分文件未列出：工作区的更改过多。"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "因为主题文件夹超出扫描限制，部分已保存的主题未显示。"
@@ -12439,6 +12538,10 @@ msgstr "正在启动智能体…"
 msgid "status"
 msgstr "状态"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr "状态"
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12586,8 +12689,8 @@ msgid "Switch to a branch to share."
 msgstr "请切换到某个分支后再共享。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
-msgstr "切换到「跟随」"
+msgid "Switch to Auto (Pull only)"
+msgstr "切换到自动（仅拉取）"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -12626,7 +12729,6 @@ msgid "Symlinks the skill to {path}"
 msgstr "把技能符号链接到 {path}"
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "同步"
 
@@ -12636,10 +12738,6 @@ msgid "Sync & sharing"
 msgstr "同步与共享"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
-msgstr "同步已禁用"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync failed — check the server logs for details."
 msgstr "同步失败——详情请查看服务器日志。"
 
@@ -12647,13 +12745,21 @@ msgstr "同步失败——详情请查看服务器日志。"
 msgid "Sync is failing. See the sync status for details."
 msgstr "同步正在失败。详情请查看同步状态。"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
-msgstr "同步已关闭——在你手动提交并推送之前，你的编辑只留在这台电脑上。"
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+msgstr "同步已暂停。提交这些本地编辑以继续，或在终端中处理它们。"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
-msgstr "同步已暂停。重新开启即可继续。"
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "这个 worktree 的同步已设为「自动（拉取和推送）」，继承自 {project}。可在「设置 → 同步」中更改。"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "这个 worktree 的同步已设为「自动（仅拉取）」，继承自 {project}。可在「设置 → 同步」中更改。"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "这个 worktree 的同步已设为「手动」，继承自 {project}。可在「设置 → 同步」中更改。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -12665,16 +12771,8 @@ msgid "Sync now"
 msgstr "立即同步"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr "同步已关闭"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "同步已暂停"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
-msgstr "同步已暂停——解决冲突后即可继续。"
 
 #: src/hooks/use-no-push-permission-toast.ts
 msgid "Sync paused — you don't have permission to push to this repo"
@@ -12709,10 +12807,6 @@ msgstr "同步状态：{syncStateLabel} —— 未设置 git 身份"
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
 msgstr "已同步"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
-msgstr "{lastSyncedRelative}同步"
 
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
@@ -12936,6 +13030,10 @@ msgstr "感谢你的报告！"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "那个分支已经在另一个 worktree 中打开了。"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
+msgstr "操作没有成功。请查看服务器日志后重试。"
 
 #: src/comments/reveal-comment.ts
 msgid "That document didn't open in time. Try again once it has synced."
@@ -13972,6 +14070,10 @@ msgstr "输入“/”打开命令"
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "输入查询内容，然后按 <0>↵</0> 按语义搜索你的页面。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr "类型已更改"
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr "输入即可编辑；<0>Cmd/Ctrl+Enter</0> 保存，<1>Esc</1> 取消。"
@@ -14100,6 +14202,10 @@ msgstr "取消勾选全部评论"
 msgid "Unmark every comment in {0}"
 msgstr "取消勾选 {0} 中的所有评论"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr "未合并"
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr "不带编号的项目列表。"
@@ -14139,6 +14245,10 @@ msgstr "无法解析图片 {identity}。转到引用位置。"
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "未命名报告"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
+msgstr "未跟踪"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
@@ -14187,8 +14297,8 @@ msgid "Updated \"{name}\" from {0}"
 msgstr "已从 {0} 更新“{name}”"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
-msgstr "{lastSyncedRelative}更新"
+msgid "Updated {updatedRelative}"
+msgstr "更新于 {updatedRelative}"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
@@ -14201,6 +14311,11 @@ msgstr "已更新到版本 {version}"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "更新会自动流入"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
+msgstr "更新会从远程仓库流入；你的编辑只保留在这台电脑上。"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Updates from the source apply automatically (unless edited locally)"
@@ -14654,6 +14769,10 @@ msgstr "它应该保存在哪里？"
 msgid "Which skill"
 msgstr "哪个技能"
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr "在你退出登录期间，无论此设置如何，更新最多每 3 分钟检查一次。"
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "空白字符"
@@ -14830,8 +14949,8 @@ msgid "You don't have permission to push to this repo."
 msgstr "你没有推送到这个仓库的权限。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-msgstr "你没有推送到这个仓库的权限。「跟随」仍然可以让你的副本保持最新。"
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+msgstr "你没有向此仓库推送的权限。自动（仅拉取）仍可让你的副本保持最新。"
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "You don't have write access to this repo."
@@ -14902,6 +15021,11 @@ msgstr "你本地的 <0>{shareBranch}</0> 分支副本有改动尚未推送到 G
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "你当前的版本会先被保存，因此这一步可以撤销。"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
+msgstr "你的编辑会自动提交并推送到远程仓库。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"

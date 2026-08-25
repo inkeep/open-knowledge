@@ -83,6 +83,18 @@ if (domWindow?.HTMLElement) {
   domWindow.HTMLElement.prototype.scrollIntoView ||= () => {};
 }
 
+// jsdom implements no part of the Pointer Capture API. Radix's Select calls
+// `hasPointerCapture` on the trigger while deciding whether a pointerdown
+// opened the listbox; the resulting TypeError is swallowed by React's event
+// delegation, so the menu simply never opens and the test failure reads as
+// "unable to find role=option" with no hint at the cause. Stub the trio so any
+// Radix menu built on pointer capture is drivable under jsdom.
+if (domWindow?.HTMLElement) {
+  domWindow.HTMLElement.prototype.hasPointerCapture ||= () => false;
+  domWindow.HTMLElement.prototype.setPointerCapture ||= () => {};
+  domWindow.HTMLElement.prototype.releasePointerCapture ||= () => {};
+}
+
 // jsdom has no layout, so the geometry pair ProseMirror needs to place a
 // selection is missing on some node types. `singleRect` calls
 // `target.getClientRects()` and falls back to `target.getBoundingClientRect()`,

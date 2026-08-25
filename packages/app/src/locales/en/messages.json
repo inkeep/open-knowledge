@@ -27,11 +27,7 @@
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
-    "-f2Ogn": [
-      "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-    ],
     "-g6KIS": ["Unrecognized link"],
-    "-imiMK": ["Follow — updates flow in from your remote; your edits stay on this computer."],
     "-kKdCC": ["Installed ", ["imported"], " skills from ", ["0"]],
     "-kbIAr": ["Links & images"],
     "-ksoxk": [
@@ -133,7 +129,6 @@
     "0wswKc": ["Horizontal rule that divides sections."],
     "0xnQ_X": ["Updates flow in"],
     "0xnmlQ": ["Repository name"],
-    "0yL--g": ["Review conflicts"],
     "0ySP5u": ["Changes save automatically to this theme."],
     "0zAhu6": ["every doc"],
     "1-flC9": ["Local server port"],
@@ -169,6 +164,7 @@
     "1NgrlY": ["Other ways to install"],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
+    "1TA-aJ": ["Pulled ", ["pulled"], " · pushed ", ["pushed"]],
     "1TNIig": ["Open"],
     "1Ta7Fd": ["Open ", ["basename"]],
     "1V17kO": ["Loading both versions"],
@@ -241,6 +237,11 @@
       "Project-level pages ordered by inbound link count, up to ",
       ["FULLSCREEN_HUB_LIMIT"],
       " results."
+    ],
+    "2okwy4": [
+      "Sync is set to Auto (Pull only) for this worktree, inherited from ",
+      ["project"],
+      ". Change it in Settings → Sync."
     ],
     "2pR7ad": ["Embeddings API key"],
     "2q_Q7x": ["Visibility"],
@@ -347,7 +348,6 @@
     "4A3Yzu": ["Code block"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Project folder created, but git init failed. Try again."],
-    "4DcimZ": ["Updated ", ["lastSyncedRelative"]],
     "4E9jPa": ["Create your first project"],
     "4EZrJN": ["Rules"],
     "4ErgAf": ["OpenKnowledge installed a skill"],
@@ -375,6 +375,7 @@
     "4m-xuX": ["Auto-fix — nothing to fix"],
     "4mDIcg": ["Pick the skills to install. Each one lands as an editable skill you own."],
     "4mLBx9": ["Subscriptions aren't available right now."],
+    "4mbrAq": ["1 minute"],
     "4mp6Tv": ["OpenKnowledge listed the installed skills"],
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
@@ -384,11 +385,6 @@
     "4uNLmk": ["Pulling"],
     "4v2Yyz": ["Select every visible file-tree row when focus is in the Files sidebar."],
     "4xtLTl": ["Hidden folder “", ["basename"], "”"],
-    "4zEZS5": [
-      "Auto-sync is on for this worktree, inherited from ",
-      ["project"],
-      ". Change it in Settings → Sync."
-    ],
     "4zGlN_": ["Paste image URL or click upload"],
     "4z_1j2": ["Rendered"],
     "5-FeN2": ["Share URL"],
@@ -456,6 +452,7 @@
     ],
     "5hFl0U": ["Copy reference"],
     "5jEnaB": ["Not available on this platform"],
+    "5k0NLb": ["Review"],
     "5kWklo": ["(some may already be hidden by other rules)"],
     "5lWFkC": ["Sign in"],
     "5mksg0": ["Failed to disable semantic search — ", ["detail"]],
@@ -490,6 +487,7 @@
       "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
     ],
     "6Aih4U": ["Offline"],
+    "6EoD0z": ["Resolve in terminal"],
     "6FCixu": ["Reopen a past chat"],
     "6HCOwA": ["Failed to open."],
     "6KCH4m": ["Hidden files"],
@@ -547,6 +545,11 @@
     "6u9LvN": [["days", "plural", { "one": ["#", " day ago"], "other": ["#", " days ago"] }]],
     "6ur2Mk": ["Help your agents discover and use OpenKnowledge in any project."],
     "6vEr3W": ["Link target"],
+    "6xPJIj": [
+      "Sync is set to Manual for this worktree, inherited from ",
+      ["project"],
+      ". Change it in Settings → Sync."
+    ],
     "6xeZX9": ["Edits apply live. Light or dark comes from the theme."],
     "6zzhQL": ["Send your report by email"],
     "72xhRD": ["Diagram view mode"],
@@ -689,7 +692,6 @@
     "8qgfac": ["MCP servers"],
     "8rZ1pk": ["Enable ", ["id"]],
     "8ruqQi": ["Broken internal links"],
-    "8sMErm": ["Enable Follow?"],
     "8t9CRE": ["Starting ", ["agentName"], "…"],
     "8t9T3-": ["No skills found."],
     "8tjQCz": ["Explore"],
@@ -743,6 +745,7 @@
       ["0", "plural", { "one": ["Install ", "#", " skill"], "other": ["Install ", "#", " skills"] }]
     ],
     "9Y6cCI": ["Failed to load pages"],
+    "9ZxzfT": [["count"], " ahead"],
     "9_2oe6": [
       "Turn ",
       ["0"],
@@ -822,11 +825,6 @@
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
     "AYoYhU": ["Update failed: ", ["0"]],
-    "AaaESH": [
-      "Auto-sync is off for this worktree, inherited from ",
-      ["project"],
-      ". Change it in Settings → Sync."
-    ],
     "AcK_r0": ["Claude CLI"],
     "AczYxH": ["Custom open-knowledge entry — not managed by OpenKnowledge"],
     "AdcGcG": ["Applying your change"],
@@ -901,6 +899,7 @@
     "BVkqD9": [
       "Index maintenance is paused because another Git attribute controls index.md. Update .gitattributes so the scoped index.md paths use merge=union, then try again."
     ],
+    "BWTzAb": ["Manual"],
     "BY-g4_": ["Add pattern"],
     "Ba4D2x": ["Template imported"],
     "Bdha5y": ["Publishing..."],
@@ -934,6 +933,7 @@
     ],
     "C0Ciaj": ["Imported as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
     "C0hoX6": ["Always included"],
+    "C2abof": ["Untracked"],
     "C3Zc44": ["Explore skills"],
     "C62P6b": ["Editor selection"],
     "C7PKTv": ["Send checked comments to chat"],
@@ -962,9 +962,6 @@
     "CTJLpz": ["\"", ["trimmed"], "\" already exists here"],
     "CU3AiE": ["Switching branches"],
     "CUmCwI": ["Insert row below"],
-    "CVRM5N": [
-      "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-    ],
     "CWjM1r": ["docs directly in ", ["0"], "/"],
     "CWzc2T": [
       "<0>~/.ok/bin</0> and <1>~/.ok/env.sh</1> stay either way — the app always maintains them."
@@ -1001,6 +998,7 @@
       "In Git projects, Open Knowledge adds a scoped rule to the repository-root .gitattributes file so concurrent index changes combine."
     ],
     "CxVk-w": ["Comment on ", ["address"]],
+    "Cz-K13": ["15 minutes"],
     "D-NlUC": ["System"],
     "D-Oh1s": ["How to set up ", ["0"], " (opens in browser)"],
     "D-_B7l": ["Connected — this endpoint returns ", ["0"], "-dimension vectors."],
@@ -1060,7 +1058,6 @@
     "DmkTrb": ["Couldn’t create this theme. Try again."],
     "Dnn2XG": ["Automatic"],
     "DpjYd6": ["Jump to the anchored text"],
-    "DrYM2Z": ["Sync disabled"],
     "DsDwR-": [["0", "plural", { "one": ["#", " error"], "other": ["#", " errors"] }]],
     "DskIkK": ["Sign-in stream ended without confirmation — please try again"],
     "DuCPiG": [
@@ -1254,6 +1251,7 @@
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
     "Fqx38P": ["What got in the way?"],
     "Fr8JGg": ["Zip file"],
+    "FsEXax": ["That did not go through. Check the server logs and try again."],
     "Fsx78O": ["Add the <0>ok</0> command to your terminal"],
     "FvMSms": ["Renaming changes the file on disk and the id agents use to pick this template."],
     "Fx9aOF": ["OpenKnowledge edited a document"],
@@ -1369,6 +1367,9 @@
     "H0WlWQ": ["Grid of rows and columns with a header row."],
     "H1TmTu": ["Stopped fixing. Files already fixed stay fixed."],
     "H3oH0g": ["Redo"],
+    "H4doZt": [
+      "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+    ],
     "H86f9p": ["Collapse"],
     "H8DVOJ": ["Identical in both — ", ["pick"], " still reads them."],
     "HAkEqR": ["Recent files"],
@@ -1451,6 +1452,7 @@
     "IWGfGF": ["Checking your GitHub connection"],
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
     "IX_uXB": ["my-feature"],
+    "IXiG0B": ["Auto (Pull and Push)"],
     "IYciRC": ["Thanks for the report!"],
     "IajAbS": ["Add a starter pack"],
     "If0crP": ["Open with AI ", ["targetDisplayName"], ", ", ["hint"]],
@@ -1501,6 +1503,7 @@
     "JLzQi_": ["Close ", ["accessibleLabel"]],
     "JM_aq-": ["Use an https:// URL — http:// is only allowed for localhost."],
     "JOcPqH": ["Bring a remote repository onto this machine."],
+    "JOhCT9": ["Push includes"],
     "JWsZlx": ["Open a project to edit."],
     "JZ8cO6": ["Light, dark, or follow the OS."],
     "J_jZ5z": [
@@ -1590,6 +1593,9 @@
     "KjTmeO": ["Update OpenKnowledge to open this share."],
     "KkEAud": ["Create a file from the current document or folder context."],
     "KkRyMI": ["Could not classify the merge — try again."],
+    "KmVekT": [
+      "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+    ],
     "KmydK6": ["Bold"],
     "KnoB--": ["Will be saved as <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Enable external link previews"],
@@ -1597,6 +1603,7 @@
     "KsAPaB": ["This branch is checked out in:"],
     "KtACeE": ["Default: <0>", ["0"], "</0>"],
     "KujtjC": ["Find"],
+    "KvwJv8": ["Some files are not listed — the working tree has too many changes."],
     "Kx881F": ["Restored ", ["0"], "."],
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
@@ -1614,6 +1621,7 @@
     "L83DKQ": ["PATH install failed: ", ["summary"]],
     "L8fKuc": ["Run this in your terminal"],
     "L9Y9Om": ["Top linked pages"],
+    "L9ox9k": ["Couldn't read the working tree. Check the server logs."],
     "LAR9ub": ["Replaces the existing OpenKnowledge entry in ", ["0"]],
     "LBv_TR": ["Convert locations to symlinks"],
     "LBwUR6": ["Branch switch timed out — try opening the ", ["targetNoun"], " manually."],
@@ -1637,7 +1645,6 @@
       ]
     ],
     "LKOLNn": ["No AI agents installed"],
-    "LNum6A": [["minutes"], " min ago"],
     "LPAv9E": [["days"], "d ago"],
     "LQdLio": ["New schema"],
     "LQsCPn": ["Local commits are keeping this copy from updating"],
@@ -1724,7 +1731,6 @@
     "MCjC9A": ["Delete ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Hard to use"],
     "MDZSJe": ["When the agent runs its scheduled work."],
-    "MGBNwj": ["Pause sync"],
     "MGb89P": [
       "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
     ],
@@ -1733,7 +1739,6 @@
     "MIF36T": ["Couldn't resolve the fork: ", ["0"]],
     "MILoeL": ["Services"],
     "MJuO1q": ["Context window:"],
-    "MKEPCY": ["Follow"],
     "MLVPcm": [["0"], " version ", ["1"]],
     "MOAoFO": ["No agent folders yet"],
     "MPpSAg": ["Create new project from ", ["selectedPackName"]],
@@ -1796,6 +1801,7 @@
     ],
     "N5rzKJ": ["Delete ", ["0"], " skills"],
     "N6j2JH": ["Edit ", ["0"]],
+    "N7Lau6": ["Commit and sync"],
     "NBdIgR": ["Comment"],
     "NErvOX": ["Saved to"],
     "NEzPEh": ["Create a new branch, or check out an existing one, in its own window."],
@@ -1823,6 +1829,7 @@
     "Nay2Yr": ["No agents match your search."],
     "NcUznW": [["0"], ", No workspace"],
     "NcurBF": ["Pan down"],
+    "NcwbBM": ["Pull brings in"],
     "NeQ_0G": ["Work through these comments"],
     "NeY1Np": ["Slidev timed out while starting. Try again."],
     "NfraGd": ["Other ways to install Slidev"],
@@ -1866,6 +1873,7 @@
     "O6yEPk": ["Create a new OpenKnowledge project in the folder of your choice."],
     "O7_W_a": ["Open with AI"],
     "O9oQJS": ["Send report"],
+    "OBdkpo": ["detached HEAD"],
     "OD0FCX": ["Hidden “", ["basename"], "”"],
     "ODGGlj": ["Folder name: ", ["detail"]],
     "OEEQKT": ["Good"],
@@ -1923,6 +1931,7 @@
     "Oo_WWc": ["No pages found"],
     "Oos8fo": ["Copy command"],
     "OplnBG": ["Managing AI tools is unavailable in this build."],
+    "OqqecQ": ["30 seconds"],
     "OsSaYm": ["Clone failed: ", ["title"]],
     "OuQezS": ["Applies when you pick this conversation back up"],
     "OuY8t9": ["Open in current branch"],
@@ -1957,7 +1966,9 @@
     "PBwmDJ": ["Searching by meaning"],
     "PBxg_E": ["Not now"],
     "PCSkw2": ["Skills"],
+    "PEGxvo": ["5 minutes"],
     "PGPGsL": ["Add description"],
+    "PGRnbw": ["Updates flow in from your remote; your edits stay on this computer."],
     "PHHEuH": ["Hide resolved comments (", ["0"], ")"],
     "PIMM5l": ["You're subscribed!"],
     "PKLY-1": ["Opening..."],
@@ -1970,7 +1981,6 @@
     "PRgIJh": ["Couldn't update ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["of ", ["0"]],
     "PTUuoc": ["Couldn't unmark that comment — it's still waiting to send."],
-    "PTb1Nx": ["Sync is paused. Turn it back on to resume."],
     "PVSwOe": ["Steering — waiting for the current run to stop…"],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
@@ -2017,6 +2027,7 @@
     "PrWQiT": ["Move Terminal to right"],
     "PrhzDE": ["Pan up"],
     "Pw5PTU": ["External origin"],
+    "PxZCNM": ["Outside what Open Knowledge commits."],
     "Q-DKvr": ["Install from ", ["source"]],
     "Q1mtyd": ["Hide sidebar"],
     "Q5fqMz": ["Connection error — try again"],
@@ -2060,6 +2071,7 @@
       " with ",
       ["childCount", "plural", { "one": ["#", " item"], "other": ["#", " items"] }]
     ],
+    "QeREu8": ["Renamed"],
     "QfFBdJ": ["The template's filename (without `.md`)."],
     "Qft6eW": ["Move ", ["0"], " to Global"],
     "Qj4RL5": ["Completed:"],
@@ -2245,13 +2257,9 @@
     "Sr9xtj": ["Pick folders this schema applies to"],
     "SrOuyg": ["Document panels"],
     "SvBFYA": ["No recent projects"],
-    "Sxx_Zz": [
-      "Follow is on for this worktree, inherited from ",
-      ["project"],
-      ". Change it in Settings → Sync."
-    ],
     "T-654M": ["Loading PDF"],
     "T0OVm7": ["The default branch is protected — pushes need a pull request."],
+    "T1fMJ6": ["How often this computer pulls changes from your remote."],
     "T2fvhw": ["Unmark every comment in ", ["0"]],
     "T3Mld1": ["Window"],
     "T3j-7o": ["e.g. Switching projects while a sync was running"],
@@ -2299,10 +2307,10 @@
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Full guide"],
     "U3RIJu": ["Local files"],
-    "U4nTfu": ["Enable Follow"],
     "U5Spo9": ["Content directory must be inside the project"],
     "U6Mdhd": ["Let's get set up."],
     "U6wmNc": ["Sync paused"],
+    "U7Iesw": [["seconds"], " seconds"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
     "UBv8UK": ["Delete Permanently"],
@@ -2338,9 +2346,6 @@
     "URmyfc": ["Details"],
     "UTNVyS": ["Select the full source document."],
     "UTZ97u": ["Selection must be inside the project"],
-    "UVDasf": [
-      "Sync is off — your edits stay on this computer until you commit and push manually."
-    ],
     "UVLlMV": ["Couldn't reach GitHub. Try again?"],
     "UW2Fg3": [
       "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
@@ -2381,6 +2386,7 @@
     "UhpfxY": ["Pan left"],
     "UkQGhd": ["Hide replace"],
     "UlVARL": ["Enable Slidev"],
+    "Uo2Rj7": ["Enable Auto (Pull and Push)?"],
     "Uobeu9": ["Adds the skill to ", ["rootRel"], " — also read by ", ["0"]],
     "Up2_7p": ["Copy full path"],
     "UpCz01": ["This doc"],
@@ -2448,6 +2454,7 @@
     "VdXv4D": ["Clone from GitHub"],
     "VeVIIk": ["Loading skills"],
     "Vftef5": ["Common markdown issues — hard tabs, heading increments, list markers, and more."],
+    "Vl1H8I": ["Reconnect required to keep syncing."],
     "Vlc75q": ["Keep file deleted"],
     "VmJT51": ["Loading your reports"],
     "VmXASo": ["(symlink)"],
@@ -2469,6 +2476,7 @@
       ["rootPath"],
       "</0>. Choose a location outside it, or open that project instead."
     ],
+    "W7mERj": ["Enable Auto (Pull only)?"],
     "W8vpBM": ["starter pack"],
     "W9NSe0": ["Checking links"],
     "W9_Bub": ["Local changes overlap with incoming sync"],
@@ -2486,6 +2494,7 @@
       " selected items? Folders and all files inside them will be deleted. This action cannot be undone."
     ],
     "WMsoIm": ["Already signed in?"],
+    "WOfp4H": ["Failed to update the sync interval — ", ["detail"]],
     "WOr-hW": ["tokens"],
     "WPwDin": ["Open folder on disk"],
     "WR0y2O": ["Share folder"],
@@ -2504,6 +2513,7 @@
     "Wcv-Zi": ["Make this knowledge base available as a Claude Skill."],
     "We7h2I": ["📝 or assets/icon.png"],
     "Weq9zb": ["General"],
+    "WfcERq": ["Nothing to commit — working tree clean."],
     "Wfy3rU": ["Agent settings"],
     "Wgmlsw": ["Fetching"],
     "Wh0im4": ["editing [[", ["realCurrentDoc"], "]]"],
@@ -2557,7 +2567,6 @@
     "XRuL0i": ["Create page"],
     "XSb9HS": ["Discard local edits, restore the installed version"],
     "XT-L4j": ["Turn on an agent to create with AI"],
-    "XU0OXn": ["Enable auto-sync"],
     "XU5AOg": ["Input"],
     "XV5sC0": ["Open worktree"],
     "XW18jo": ["Page headings response did not match success schema"],
@@ -2606,6 +2615,7 @@
     "Xp7Kq4": ["Another sync operation is in progress. Try again in a moment."],
     "Xp94R1": ["Try one more time"],
     "XpIZmv": ["Fenced code block with monospace text."],
+    "Xs1kjx": ["Check for updates every"],
     "Xs7IcT": ["Couldn't reach ", ["displayName"], " — try again?"],
     "XszXjc": ["Renamed to ", ["0"]],
     "XtRoxT": ["Page ", ["pageNumber"]],
@@ -2638,6 +2648,7 @@
       "Lint plugins — which rule families run and their per-rule settings — are configured on their own tab under This project → Plugins."
     ],
     "YEP3X2": ["Delete a table when the active table cell selection covers the full table."],
+    "YEzhIr": ["Pull and Push"],
     "YGIi_c": ["Reinstall"],
     "YGNRB5": ["— except"],
     "YGt-0e": ["Reading…"],
@@ -2675,9 +2686,6 @@
       "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
     ],
     "Yp-Hi_": ["Open settings"],
-    "YsEYYS": [
-      ["behind", "plural", { "one": ["#", " commit behind"], "other": ["#", " commits behind"] }]
-    ],
     "YvwwqC": ["Where"],
     "YwPUUP": ["This pack is already set up here."],
     "YxZDGh": [
@@ -2779,7 +2787,6 @@
     "ZscwQ0": ["Couldn't switch to Only me"],
     "Zt7Ktx": ["The path can't leave the skill (no . or ..)"],
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
-    "Zul8Ry": ["never"],
     "ZvzbDF": ["Add it directly to this project."],
     "ZwpggY": ["OpenKnowledge read the project settings"],
     "_0JUKX": ["Bug reporting needs the OpenKnowledge desktop app."],
@@ -2908,9 +2915,6 @@
     "ai40UJ": ["New best · press <0>Space</0> to play again"],
     "aiArms": ["We couldn't clone this repository."],
     "aiOceC": ["Enable indexes"],
-    "ajHi4O": [
-      "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-    ],
     "ajz9F8": ["Couldn't load conflict content for ", ["filePath"], ". Try reloading the page."],
     "ak4LLg": ["Clear menu"],
     "akOe4q": [
@@ -2927,7 +2931,6 @@
     "arUUsK": ["Product updates"],
     "ax9kie": ["Link preview settings not yet loaded — try again in a moment"],
     "axQ1h6": ["Anything you'd like to add? (optional)"],
-    "az8lvo": ["Off"],
     "b18t0_": ["Close diff"],
     "b1FDss": ["Scroll to start"],
     "b2ezG_": ["Kept both — \"", ["0"], "\" is its own skill now"],
@@ -3011,6 +3014,9 @@
     ],
     "cH0dkG": ["It was missing a feature I needed"],
     "cHhH3i": ["a required git tool"],
+    "cIFYZn": [
+      "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+    ],
     "cIptmH": ["In the Claude Desktop App"],
     "cKjLuT": ["(project + user)"],
     "cLP0Lf": ["Remote skill source"],
@@ -3080,6 +3086,8 @@
     "ct2kv5": ["No headings in ", ["pageTarget"]],
     "cuA8QW": ["Organize specs"],
     "cuHhjo": ["Create & edit"],
+    "cyoNqf": ["Unmerged"],
+    "czQDKY": ["Each push is one commit to your remote."],
     "d-GtJt": ["View in Source Markdown"],
     "d1JjXo": [
       "Your local copy of branch <0>",
@@ -3173,6 +3181,9 @@
     "eGUbmF": ["Copy selected file or folder"],
     "eJitUk": ["Upload from computer"],
     "eKThTQ": ["Failed to reorder"],
+    "eNOyTV": [
+      "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+    ],
     "eNQGRb": ["Inline LaTeX math rendered with KaTeX."],
     "eNhWUl": ["A PR reviewer, a release-notes writer, a deploy checklist..."],
     "ePK91l": ["Edit"],
@@ -3202,6 +3213,7 @@
     "emMrXQ": ["Server returned a malformed duplicate response."],
     "emgiet": ["Authoritative content; mirrored verbatim everywhere it's referenced."],
     "enPTnx": ["line ", ["displayLine"]],
+    "eolhcI": ["Reading working tree"],
     "eps54V": ["Removed"],
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
@@ -3209,9 +3221,6 @@
     "erenF-": ["Cannot delete files with unresolved conflicts"],
     "euGaS0": ["Couldn't read ", ["fileName"], "."],
     "euc6Ns": ["Duplicate"],
-    "evHlIg": [
-      "Follow never pushes or commits your local changes. They stay only on this machine."
-    ],
     "evs0iw": ["Tags matching \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Shell session"],
     "ezUmoU": ["Allowed element values (empty = any)"],
@@ -3292,7 +3301,6 @@
         }
       ]
     ],
-    "g2Tj8R": ["Full"],
     "g3UF2V": ["Accept"],
     "g4WlQK": ["Project AI tool management is only available in the OpenKnowledge desktop app."],
     "g4XBm0": ["Small section heading."],
@@ -3308,7 +3316,6 @@
       ["display"],
       ". That folder becomes a symlink to this one, so its agent reads everything placed here. This folder stays real. Conflicting skills abort the merge."
     ],
-    "g85bAo": ["Synced ", ["lastSyncedRelative"]],
     "g9Nj4l": ["// note"],
     "gAhHu7": ["Auto-fix applies only to problems with a known mechanical fix."],
     "gBbxn_": ["Checking sign-in status"],
@@ -3380,6 +3387,7 @@
     "gwEcOD": ["Your local copy is behind."],
     "gwykHF": ["This doc hasn't synced to GitHub yet. The link will work after the next sync."],
     "gyHDWC": ["Fix all with AI (", ["count"], ")"],
+    "gyYvCN": ["Push my edits every"],
     "h-AdvS": ["The folders and templates are already here, so there's nothing to add."],
     "h06R3C": ["No pages are missing outgoing graph links."],
     "h16FyT": ["Lists"],
@@ -3455,7 +3463,6 @@
     "hwFOFD": ["Settings failed to load"],
     "hxBHxQ": ["A line with a footnote<0><1>[1]</1></0> and a definition shown below."],
     "hxEUVJ": ["Initialize ", ["selectedPackName"]],
-    "hxYFzm": ["Full sync — your commits push and remote changes pull automatically."],
     "hxnF0I": [["0"], " Properties"],
     "hyCxJY": ["Open that worktree instead"],
     "hynz2K": ["Download started"],
@@ -3466,7 +3473,6 @@
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
     "i3f2kh": ["No matching commands."],
-    "i6ng22": ["Switch to Follow"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],
     "i94lQe": ["OpenKnowledge checked for conflicts"],
     "i9OyGp": ["Undo or redo"],
@@ -3554,11 +3560,11 @@
     ],
     "iqugog": ["Initialize failed: ", ["errorDetail"]],
     "irFGwu": ["Template list"],
+    "irnKr_": ["Updated ", ["updatedRelative"]],
     "irrm_E": ["Remove selection"],
     "isRobC": ["New"],
     "iuTKci": ["No edits yet."],
     "iv452l": ["Documentation for ", ["0"], " (opens in browser)"],
-    "iy64Li": ["Full sync — your edits are committed and pushed to your remote automatically."],
     "iycx_A": ["Pushing"],
     "iz1LdD": [
       "Changed outside OK since it last wrote here — the state shown is what's on disk now"
@@ -3606,6 +3612,7 @@
     "jSO1X5": ["Inherited templates can't be renamed here — rename it in the folder that owns it."],
     "jSY41h": ["\"", ["docName"], "\" took too long. Check your connection."],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
+    "jTUxaN": ["Enable Auto (Pull only)"],
     "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
     "j_Z6g7": ["Shared default"],
@@ -3698,13 +3705,15 @@
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
     ],
     "kSiB3X": ["Couldn't move to ", ["trashNoun"]],
-    "kUn-CN": ["Sync off"],
     "kV2YZv": [
       "Don't see <0>Skills</0>? Enable <1>Settings <2/> Capabilities <3/> Code execution and file creation</1> first."
     ],
     "kVS5tE": ["Maintain generated indexes in every folder?"],
     "kVgQUA": ["Delete this chat?"],
     "kVzuTI": ["Recommended agent skill"],
+    "kXNv8P": [
+      "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+    ],
     "kYL1lH": ["Agent activity"],
     "k_Dqw1": [
       [
@@ -3794,6 +3803,7 @@
     "lM4c-I": [
       "A path inside the skill — any folder works (e.g. references/notes.md). Folders in the path are created for you."
     ],
+    "lPkjpD": ["Pushed ", ["pushed"]],
     "lPzyrU": ["All hunks resolved"],
     "lS83Sg": ["Couldn’t reach the clipboard."],
     "lScd1O": ["Slidev decks open in the OpenKnowledge desktop app only."],
@@ -4116,6 +4126,7 @@
     "pJ7XCo": ["This page references no local files or images."],
     "pMPnZv": ["Deleted ", ["deleted"], " skills"],
     "pOo4Aa": ["Plain text"],
+    "pPiV8s": ["Enable Auto (Pull and Push)"],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
     "pTyA_t": ["tags"],
@@ -4181,6 +4192,7 @@
     "qAx7xG": ["Fixed folder in content root"],
     "qBi_YG": ["Install OpenKnowledge in your AI tools"],
     "qC7PwZ": ["Failed to remove the field"],
+    "qD3krc": ["Nothing moves until you ask."],
     "qEEfPk": ["Bug report ", ["0"]],
     "qEIFZu": ["Key ending in ", ["keyHint"]],
     "qEue6Q": [" or "],
@@ -4189,6 +4201,9 @@
     "qIJIrD": ["Testing"],
     "qJSo0_": ["What is the difference between copies and symlinks?"],
     "qKMfPp": ["Hide skill nodes"],
+    "qLXJTB": [
+      "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+    ],
     "qNOgUu": ["Edits at the source land here — no copy-paste drift."],
     "qQi_um": ["Theme imported."],
     "qRZh7J": ["Let Tab leave the source editor instead of indenting."],
@@ -4204,7 +4219,6 @@
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publish to GitHub"],
     "qZv5ZR": ["Config sharing toggle failed"],
-    "q_9EcE": ["Enable git auto-sync?"],
     "q_Q1-i": [
       [
         "count",
@@ -4305,7 +4319,6 @@
       ["boldName"],
       " — a built-in skill shipped with Open Knowledge. It's read-only."
     ],
-    "rn7n0G": ["Resume sync"],
     "rnX-1S": ["Enable plugins"],
     "rnrdEX": ["primary"],
     "roAe2K": ["Link URL"],
@@ -4349,6 +4362,7 @@
     "sJK6pq": ["Permission denied"],
     "sJWhgo": ["Unknown component: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Send to chat"],
+    "sKHiNR": [["count"], " behind"],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
@@ -4372,6 +4386,7 @@
     "scyoP9": [
       "Index documents carry no frontmatter, except the one at your knowledge base's root. Log documents are not covered — OKF does not constrain their frontmatter."
     ],
+    "sdvHp3": ["Changed here and on the remote"],
     "se-tU0": ["Could not fix ", ["0"], " of ", ["total"], " files."],
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
@@ -4387,6 +4402,9 @@
     "snrVQ7": ["probe failed"],
     "sq4WQH": ["Use ", ["0"], " as the light theme"],
     "sqUrlK": ["Musing…"],
+    "srdlOs": [
+      "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+    ],
     "ssk6rl": [
       "The skill's own folder (",
       ["path"],
@@ -4406,12 +4424,12 @@
     "szy9BS": ["Use lowercase letters, numbers, and hyphens only"],
     "t-JXbf": ["Notion-style inline row for a downloadable file. Drag-drop also works."],
     "t18QYR": ["Unpin ", ["accessibleLabel"]],
-    "t2TkQ3": ["Sync paused — resolve conflicts to resume."],
     "t4sFKC": [
       "New branch <0>",
       ["trimmed"],
       "</0> will be created from the current commit, in its own worktree under <1>.ok/worktrees/</1>."
     ],
+    "t5I7P_": ["Nothing moves until you ask — pull and push from the sync menu."],
     "t6w1cq": ["Open a blank editor tab."],
     "t7YoBO": ["Send this comment"],
     "t9Qn8y": ["No agents enabled"],
@@ -4456,6 +4474,7 @@
       ["alreadyImported"],
       " were already present)"
     ],
+    "tlGXxX": ["Auto (Pull only)"],
     "tnG-m6": ["Auto-sync is paused — sign in to resume."],
     "toyw51": ["Mermaid diagram controls"],
     "tqQBwN": ["Any scripts are shown for review, never run."],
@@ -4482,6 +4501,7 @@
     "u779EG": ["Use an http:// or https:// origin."],
     "u7H-Wn": ["Show panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Link the selected text, or edit the link under the caret."],
+    "uAQUqI": ["Status"],
     "uA_jXp": ["Switch and update branch"],
     "uBAxNB": ["Editor"],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
@@ -4510,9 +4530,6 @@
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."
     ],
     "uUCrBv": ["symlink"],
-    "uUiiyC": [
-      "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-    ],
     "uVbUP8": ["Settings…"],
     "uY5Z7P": ["Game over · press <0>Space</0> to play again"],
     "uYZTcW": ["This GitHub URL can't be shared."],
@@ -4558,6 +4575,7 @@
     "v15iQB": [
       "The attested-computation contract. Only applies to documents typed Attested Computation, where OKF requires a runtime; ordinary concepts are unaffected."
     ],
+    "v16Pzh": ["Switch to Auto (Pull only)"],
     "v2ZW0K": ["Enable terminal"],
     "v2a04T": ["markdownlint rules"],
     "v41fCm": ["File not found"],
@@ -4576,6 +4594,7 @@
     "vF68cg": ["Fields"],
     "vGQxBT": ["Updates from the source apply automatically (unless edited locally)"],
     "vGeNNQ": ["Copy a prompt and paste it into your agent to set up your project."],
+    "vGjmyl": ["Deleted"],
     "vHlhDc": ["Double-click to edit"],
     "vIxrEk": ["Fit width"],
     "vLyv1R": ["Hide"],
@@ -4626,8 +4645,10 @@
         }
       ]
     ],
+    "vp5vfW": ["1 hour"],
     "vppAju": ["Where newly added attachments are placed."],
     "vqJXNe": ["Install the <0>open-knowledge-discovery</0> skill"],
+    "vsFXfP": ["Push skips"],
     "vv7kpg": ["Cancelled"],
     "vvWZnu": ["Diff unavailable"],
     "vwV-kH": ["Fixing files stopped unexpectedly."],
@@ -4692,6 +4713,11 @@
     "wdzBgi": ["Config sharing is now Only me."],
     "weP6me": ["Couldn't load docs — type @ again to retry"],
     "wgNoIs": ["Select all"],
+    "wk_v1X": [
+      "Sync is set to Auto (Pull and Push) for this worktree, inherited from ",
+      ["project"],
+      ". Change it in Settings → Sync."
+    ],
     "wlwXUk": [
       "You picked ~/Downloads. Files there are usually transient — consider a stable folder instead."
     ],
@@ -4733,6 +4759,7 @@
     "xCdTnb": ["Close new tab"],
     "xDBki3": ["Heading suggestions"],
     "xDEcka": ["The provider is rate-limiting this key. Try again in a moment."],
+    "xDKOFk": ["Ignored"],
     "xEb24l": ["Let us follow up by email"],
     "xFQRu4": ["I already have it locally"],
     "xG4tb6": ["Lost connection to \"", ["docName"], "\"."],
@@ -4744,6 +4771,7 @@
     "xOTzt5": ["just now"],
     "xSVO3J": ["What gets created"],
     "xV5sXw": [["0"], "w ago"],
+    "xW5AUw": ["Pulled ", ["pulled"]],
     "xWEvuo": ["Ask AI"],
     "xWomUD": ["Use ", ["editor"], " version"],
     "xXo8FT": ["Save failed: ", ["error"]],
@@ -4881,6 +4909,7 @@
     "zAJzIg": ["Problems in ", ["0"]],
     "zAsDLY": ["Graph visualization of document links"],
     "zBUqvf": ["Set up OpenKnowledge integrations…"],
+    "zBiFZh": ["Your edits are committed and pushed to your remote automatically."],
     "zC5jrM": ["Will be created as <0>", ["effective"], "</0>"],
     "zD1Nqf": [["count", "plural", { "one": ["#", " doc"], "other": ["#", " docs"] }]],
     "zFH7iU": ["Couldn't fully clear network settings, but exposure is turning off. ", ["0"]],
@@ -4892,6 +4921,7 @@
     "zLak8b": ["Activate new tab"],
     "zMmwh4": ["Pick a theme or create your own."],
     "zQBg2C": ["Move the current block up or down one position."],
+    "zWZBPx": ["Type changed"],
     "zXj1rA": ["Search by meaning"],
     "zYp8Sr": [
       "A <0>Modified</0> badge marks rules your config sets explicitly — directly, or inherited through <1>extends</1>. Unmarked rules keep their default state."
@@ -4932,7 +4962,6 @@
       ". Pick a folder cloned from ",
       ["expectedHost"],
       "?"
-    ],
-    "zz_Wd_": ["Mode"]
+    ]
   }
 }

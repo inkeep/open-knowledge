@@ -36,6 +36,7 @@ import {
   type Principal,
   parseGlobalSkillBundleDoc,
   parseManagedArtifactName,
+  resolveAutoSyncIntervals,
   resolveLocalAutoSyncMode,
   type SyncMode,
   type SyncModeChangeSource,
@@ -852,6 +853,27 @@ export function createServer(options: ServerOptions): ServerInstance {
     };
   }
 
+  /**
+   * Per-machine scheduled-cycle cadence for this project. Project-local only:
+   * unlike `mode`, there is no committed seed — how hard one machine polls is
+   * not something a maintainer sets for everyone through git.
+   *
+   * An unreadable config falls back to the shipped defaults rather than
+   * throwing. `resolveAutoSyncIntervals` clamps, so a hand-edited out-of-range
+   * value degrades to the nearest legal cadence instead of taking sync down.
+   */
+  function readProjectAutoSyncIntervals(): {
+    pullIntervalSeconds: number;
+    pushIntervalSeconds: number;
+  } {
+    const local = readConfigSafely({
+      absPath: resolveConfigPath('project-local', projectDir),
+      sideline: false,
+      warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
+    });
+    return resolveAutoSyncIntervals(local.value.autoSync);
+  }
+
   // Project-scope base linter config, read FRESH per request so a config edit
   // (project `.ok/config.yml` → contentRules.*) takes effect without a restart.
   function readLinterBaseConfig(): LinterConfig {
@@ -997,6 +1019,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           '[sync] failed to apply autoSync mode from config',
         );
       });
+      // Cadence rides the same persist. `setMode` is not awaited and awaits a
+      // remote probe before it arms anything, so this lands FIRST on a mode
+      // flip — which is harmless: it only stores the new interval fields, and
+      // setMode's own schedule calls then read them. On a cadence-only edit the
+      // timers are already armed and this re-arms them. Idempotent, so the
+      // producer-notify + watcher-echo double-fire this function documents is
+      // safe.
+      const intervals = readProjectAutoSyncIntervals();
+      syncEngine?.setIntervals(intervals.pullIntervalSeconds, intervals.pushIntervalSeconds);
     }
     // Re-evaluate semantic search on every config-doc store. `readSemanticSearchConfig`
     // resolves the project-local layer only, so only a project-local `search.semantic.*`
@@ -5580,6 +5611,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       resetAmbient: resetAmbientCredentials,
     });
     const bootAutoSyncMode = readProjectAutoSyncMode();
+    const bootAutoSyncIntervals = readProjectAutoSyncIntervals();
     if (bootAutoSyncMode.mode !== 'off') {
       // A never-asked machine booting into a committed-default mode is the main
       // way pull-only activates silently; log it (with the resolution source) so
@@ -5597,8 +5629,13 @@ export function createServer(options: ServerOptions): ServerInstance {
         contentRoot,
         mcpTomlEditor: options.mcpTomlEditor,
         mode: bootAutoSyncMode.mode,
-        pullIntervalSeconds: options.pullIntervalSeconds,
-        pushIntervalSeconds: options.pushIntervalSeconds,
+        // The explicit option stays the test DI seam (the harness passes a huge
+        // value so no background timer races a scenario); production leaves it
+        // undefined and picks up the user's configured cadence.
+        pullIntervalSeconds:
+          options.pullIntervalSeconds ?? bootAutoSyncIntervals.pullIntervalSeconds,
+        pushIntervalSeconds:
+          options.pushIntervalSeconds ?? bootAutoSyncIntervals.pushIntervalSeconds,
         credentialConfig: syncCredentialConfig,
         cc1Broadcaster,
         // Push-permission probe auth seam — production callers (CLI `ok start`)

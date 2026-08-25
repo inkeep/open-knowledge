@@ -508,6 +508,10 @@ function isTemplateContentAncestorDir(relativePath: string): boolean {
  *   - `<folder>/.ok/frontmatter.yml` at any depth — root included, because
  *     the project root's own folder metadata lives at `.ok/frontmatter.yml`
  *
+ * Exported because the symlink guard's `.ok` write exemption must consult
+ * THIS predicate on the resolved path (precedent #55: one predicate for
+ * "is this in sync scope", never a parallel copy that can drift).
+ *
  * The folder-scoped shapes inherit the templates family's skip-dir bound:
  * these predicates are consulted on flat full paths (head listings, raw
  * watcher events), not only via the top-down walk that prunes skip-dir roots
@@ -515,7 +519,7 @@ function isTemplateContentAncestorDir(relativePath: string): boolean {
  * `.ok/worktrees/<wt>/…`, whose prefix contains the skip-dir `.ok` — must
  * not leak in.
  */
-function isShareableOkArtifact(relativePath: string): boolean {
+export function isShareableOkArtifact(relativePath: string): boolean {
   const segments = relativePath.split('/');
   const n = segments.length;
   if (segments[0] === OK_DIR) {

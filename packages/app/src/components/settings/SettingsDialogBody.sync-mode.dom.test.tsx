@@ -7,9 +7,9 @@
  * mode -> the consent dialog opens with the right copy -> confirming patches
  * `autoSync.mode` on the project-local binding.
  */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createContext, type ReactNode, use } from 'react';
+import { createContext, type ReactNode, StrictMode, use } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
@@ -27,7 +27,12 @@ type SyncStatus = {
 
 let syncStatus: SyncStatus = null;
 let projectLocalConfig: {
-  autoSync?: { enabled?: boolean; mode?: 'off' | 'follow' | 'full' };
+  autoSync?: {
+    enabled?: boolean;
+    mode?: 'off' | 'follow' | 'full';
+    pullIntervalSeconds?: number;
+    pushIntervalSeconds?: number;
+  };
 } | null = null;
 let projectConfig: {
   autoSync?: { default?: boolean | string | null };
@@ -75,8 +80,13 @@ vi.doMock('@/components/ui/button', () => ({
   ),
 }));
 
+// Content renders unconditionally so section tests need not open every
+// disclosure, but `open` is reflected onto `data-state` so a test CAN assert
+// expanded-vs-collapsed where that is the behavior under test.
 vi.doMock('@/components/ui/collapsible', () => ({
-  Collapsible: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  Collapsible: ({ children, open }: { children?: ReactNode; open?: boolean }) => (
+    <div data-state={open === true ? 'open' : 'closed'}>{children}</div>
+  ),
   CollapsibleContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
   CollapsibleTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
@@ -105,12 +115,61 @@ vi.doMock('@/components/ui/input', () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
 }));
 
+// Recorder Select, same shape as the ToggleGroup recorder below: forwards the
+// item value to the REAL onValueChange, keeps `data-testid` on the trigger, and
+// renders the selected item's label through SelectValue so a test can assert
+// what the control DISPLAYS, not just what it would write. Radix's real Select
+// portals its content and needs pointer capabilities jsdom lacks.
+const SelectHandlerCtx = createContext<
+  { onValueChange?: (value: string) => void; value?: string } | undefined
+>(undefined);
 vi.doMock('@/components/ui/select', () => ({
-  Select: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
+  Select: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children?: ReactNode;
+    value?: string;
+    onValueChange?: (value: string) => void;
+  }) => (
+    <SelectHandlerCtx.Provider value={{ onValueChange, value }}>
+      <div data-value={value}>{children}</div>
+    </SelectHandlerCtx.Provider>
+  ),
   SelectContent: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  SelectValue: () => null,
+  SelectItem: ({
+    children,
+    value,
+    ...props
+  }: {
+    children?: ReactNode;
+    value?: string;
+    [key: string]: unknown;
+  }) => {
+    const ctx = use(SelectHandlerCtx);
+    return (
+      <button
+        type="button"
+        role="option"
+        aria-selected={ctx?.value === value}
+        onClick={() => ctx?.onValueChange?.(value as string)}
+        {...props}
+      >
+        {children}
+      </button>
+    );
+  },
+  SelectTrigger: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => (
+    <div {...props}>{children}</div>
+  ),
+  // The real SelectValue renders the selected item's label. Reproduced by
+  // reading the selected value off the context — otherwise every display
+  // assertion would be vacuous.
+  SelectValue: () => {
+    const ctx = use(SelectHandlerCtx);
+    return <span data-slot="select-value">{ctx?.value ?? ''}</span>;
+  },
 }));
 
 // Recorder ToggleGroup: reliable, deterministic clicks that forward the item
@@ -184,9 +243,9 @@ vi.doMock('@/lib/config-provider', () => ({
 // while keeping the REAL sync hooks + REAL EnableSyncConfirmDialog. RTL itself
 // depends on none of the mocked modules, so it stays a static top-level import
 // (the Tier-3 filename contract requires it).
-async function renderSyncSection() {
+async function renderSyncSection({ strict = false }: { strict?: boolean } = {}) {
   const { SettingsDialogBody } = await import('./SettingsDialogBody');
-  render(
+  const tree = (
     <TooltipProvider>
       <SettingsDialogBody
         activeId="sync"
@@ -194,8 +253,9 @@ async function renderSyncSection() {
         okignoreBinding={null as never}
         okignoreSynced={false}
       />
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+  render(strict ? <StrictMode>{tree}</StrictMode> : tree);
 }
 
 describe('Settings Sync section — three-way mode control (real hooks + dialog)', () => {
@@ -226,11 +286,11 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     fireEvent.click(screen.getByTestId('settings-sync-mode-follow'));
 
     // The real pull-variant confirmation renders; no write yet.
-    expect(screen.getByRole('button', { name: 'Enable Follow' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull only)' })).not.toBeNull();
     expect(screen.getByRole('note').textContent ?? '').toContain('Updates flow in');
     expect(localPatchCalls).toEqual([]);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enable Follow' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull only)' }));
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'follow', enabled: null } }]);
   });
 
@@ -239,10 +299,10 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
 
     fireEvent.click(screen.getByTestId('settings-sync-mode-full'));
 
-    expect(screen.getByRole('button', { name: 'Enable auto-sync' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     expect(screen.getByRole('note').textContent ?? '').toContain('Commits happen automatically');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto-sync' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'full', enabled: null } }]);
   });
 
@@ -283,7 +343,7 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
       screen.getByText("You have 2 changes you haven't shared. They will stay on this computer."),
     ).not.toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Enable Follow' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull only)' }));
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'follow', enabled: null } }]);
   });
 
@@ -328,5 +388,221 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect((screen.getByTestId('settings-sync-mode-full') as HTMLButtonElement).disabled).toBe(
       false,
     );
+  });
+});
+
+describe('Settings Sync section — cycle cadence controls', () => {
+  beforeEach(() => {
+    cleanup();
+    localPatchCalls = [];
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'follow',
+      ahead: 0,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: 'assets' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+  });
+
+  test('Manual hides the cadence card entirely', async () => {
+    // Nothing is scheduled in Manual, so a disabled control would imply the
+    // setting applies here and is merely blocked.
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    syncStatus = { ...syncStatus, syncMode: 'off' } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-intervals')).toBeNull();
+  });
+
+  test('the cadence controls sit behind the Advanced disclosure', async () => {
+    // The module-level Collapsible stub renders its content unconditionally, so
+    // this asserts the TRIGGER exists rather than open/close behavior — enough
+    // to catch a regression that drops the disclosure and leaves the controls
+    // with no way in.
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-advanced-trigger')).not.toBeNull();
+  });
+
+  test('Manual hides the disclosure along with the controls', async () => {
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    syncStatus = { ...syncStatus, syncMode: 'off' } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-advanced-trigger')).toBeNull();
+  });
+
+  test('Pull-only shows the pull cadence and hides the push one', async () => {
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-pull-interval')).not.toBeNull();
+    // A follower never pushes on a schedule, so the push knob would be inert.
+    expect(screen.queryByTestId('settings-sync-push-interval')).toBeNull();
+  });
+
+  test('Pull and Push shows both cadence controls', async () => {
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    syncStatus = { ...syncStatus, syncMode: 'full' } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-pull-interval')).not.toBeNull();
+    expect(screen.queryByTestId('settings-sync-push-interval')).not.toBeNull();
+  });
+
+  /** The recorder Select stores the selected value on the wrapper it renders. */
+  function selectedSeconds(testId: string): string | null | undefined {
+    return screen.getByTestId(testId).closest('[data-value]')?.getAttribute('data-value');
+  }
+
+  test('an unset cadence selects the shipped default rather than nothing', async () => {
+    // A control opening on no value renders an empty trigger and writes nothing
+    // until touched, which reads as "sync has no cadence".
+    await renderSyncSection();
+
+    expect(selectedSeconds('settings-sync-pull-interval')).toBe('30');
+  });
+
+  test('a stored cadence is the selected one', async () => {
+    projectLocalConfig = { autoSync: { mode: 'follow', pullIntervalSeconds: 900 } };
+
+    await renderSyncSection();
+
+    expect(selectedSeconds('settings-sync-pull-interval')).toBe('900');
+  });
+
+  test('presets render as human durations, not raw seconds', async () => {
+    // Guards the label formatter: a missing case would surface "900 seconds".
+    await renderSyncSection();
+
+    const labels = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(labels).toEqual(['30 seconds', '1 minute', '5 minutes', '15 minutes', '1 hour']);
+  });
+
+  test('changing one leg writes both, leaving the other at its resolved value', async () => {
+    // Both legs ride one patch so the engine re-arms from a single config
+    // persist; the untouched leg must carry its current value, not undefined.
+    projectLocalConfig = { autoSync: { mode: 'full', pushIntervalSeconds: 900 } };
+    syncStatus = { ...syncStatus, syncMode: 'full' } as SyncStatus;
+    const user = userEvent.setup();
+
+    await renderSyncSection();
+    const pullCard = screen.getByTestId('settings-sync-pull-interval').closest('[data-value]');
+    if (pullCard === null || pullCard === undefined) throw new Error('expected a pull select');
+    await user.click(within(pullCard as HTMLElement).getByRole('option', { name: '5 minutes' }));
+
+    expect(localPatchCalls).toContainEqual({
+      autoSync: { pullIntervalSeconds: 300, pushIntervalSeconds: 900 },
+    });
+  });
+
+  test('a signed-out follower is told the anonymous floor overrides the setting', async () => {
+    // Otherwise the control claims a 30 s cadence the server will not honor.
+    syncStatus = {
+      ...syncStatus,
+      pushPermission: { checkStatus: 'denied', deniedReason: 'not-authenticated' },
+    } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).not.toBeNull();
+  });
+
+  test('a signed-in follower sees no anonymous-floor caption', async () => {
+    syncStatus = { ...syncStatus, pushPermission: { checkStatus: 'allowed' } } as SyncStatus;
+
+    await renderSyncSection();
+
+    expect(screen.queryByTestId('settings-sync-anon-floor-hint')).toBeNull();
+  });
+});
+
+describe('Settings Sync section — Advanced disclosure intent', () => {
+  beforeEach(() => {
+    cleanup();
+    syncStatus = {
+      state: 'idle',
+      hasRemote: true,
+      syncEnabled: true,
+      syncMode: 'follow',
+      ahead: 0,
+      remote: {
+        label: 'inkeep/open-knowledge',
+        webUrl: 'https://github.com/inkeep/open-knowledge',
+      },
+    };
+    projectLocalConfig = { autoSync: { mode: 'follow' } };
+    projectConfig = { autoSync: { default: null }, content: { attachmentFolderPath: 'assets' } };
+    projectLocalSynced = true;
+    projectSynced = true;
+  });
+
+  /** The disclosure's open state, read off the recorder Collapsible. */
+  function disclosureState(): string | null | undefined {
+    return screen
+      .getByTestId('settings-sync-intervals')
+      .closest('[data-state]')
+      ?.getAttribute('data-state');
+  }
+
+  test('arriving with no intent leaves the disclosure collapsed', async () => {
+    // Reaching Sync any other way — header gear, sidebar, plain #settings/sync —
+    // must not expand it, which is the point of calling it Advanced.
+    await renderSyncSection();
+
+    expect(disclosureState()).toBe('closed');
+  });
+
+  test('the popover deep link lands on Sync with the disclosure expanded', async () => {
+    // The link names the cadence, so it must put the user ON the control rather
+    // than on a collapsed row they still have to find.
+    const { openSyncSettings } = await import('@/lib/use-settings-route');
+    openSyncSettings({ advanced: true });
+
+    await renderSyncSection();
+
+    expect(disclosureState()).toBe('open');
+  });
+
+  test('the deep link still lands expanded under StrictMode', async () => {
+    // The app mounts under StrictMode (main.tsx), so the deep link has to work
+    // with every render-phase hook double-invoked and every mount effect run
+    // twice against a flag that only one read can win.
+    //
+    // SCOPE: this does NOT distinguish consuming the flag in an effect from
+    // consuming it in a `useState` initializer — measured on React 19.2, the
+    // initializer is invoked twice but React commits the FIRST call's value,
+    // so both spellings land expanded. The effect is preferred for render
+    // purity (see SyncSection), not because this test can tell them apart.
+    const { openSyncSettings } = await import('@/lib/use-settings-route');
+    openSyncSettings({ advanced: true });
+
+    await renderSyncSection({ strict: true });
+
+    expect(disclosureState()).toBe('open');
+  });
+
+  test('the intent is one-shot — a later visit to Sync is collapsed again', async () => {
+    // A flag that stuck would make every subsequent Sync visit open, turning a
+    // deliberate deep link into permanent state.
+    const { openSyncSettings } = await import('@/lib/use-settings-route');
+    openSyncSettings({ advanced: true });
+    await renderSyncSection();
+    expect(disclosureState()).toBe('open');
+
+    cleanup();
+    await renderSyncSection();
+
+    expect(disclosureState()).toBe('closed');
   });
 });

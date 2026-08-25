@@ -21,12 +21,12 @@ export function AutoSyncEnableDialogIntro({ variant = 'full' }: SyncVariantProps
     return (
       <>
         <DialogTitle>
-          <Trans>Enable Follow?</Trans>
+          <Trans>Enable Auto (Pull only)?</Trans>
         </DialogTitle>
         <DialogDescription>
           <Trans>
-            Follow fetches updates from your remote git repository and fast-forwards your copy
-            automatically. Your local edits stay on this computer and are never pushed.
+            Auto (Pull only) fetches updates from your remote git repository and fast-forwards your
+            copy automatically. Your local edits stay on this computer and are never pushed.
           </Trans>
         </DialogDescription>
       </>
@@ -35,7 +35,7 @@ export function AutoSyncEnableDialogIntro({ variant = 'full' }: SyncVariantProps
   return (
     <>
       <DialogTitle>
-        <Trans>Enable git auto-sync?</Trans>
+        <Trans>Enable Auto (Pull and Push)?</Trans>
       </DialogTitle>
       <DialogDescription>
         <Trans>
@@ -112,7 +112,8 @@ function PullOnlyBullets() {
         title={<Trans>Your edits stay on this computer</Trans>}
         body={
           <Trans>
-            Follow never pushes or commits your local changes. They stay only on this machine.
+            Auto (Pull only) never pushes or commits your local changes. They stay only on this
+            machine.
           </Trans>
         }
       />

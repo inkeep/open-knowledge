@@ -92,6 +92,8 @@ import {
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemasListSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
+  type GitWorktreeOpenTarget,
+  GitWorktreeStatusSuccessSchema,
   type HeadingEntry,
   HistorySuccessSchema,
   HistoryVersionSuccessSchema,
@@ -237,6 +239,8 @@ import {
   SYSTEM_DOC_NAME,
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
+  SyncResolveBlockingRequestSchema,
+  SyncResolveBlockingSuccessSchema,
   SyncResolveConflictRequestSchema,
   SyncResolveConflictSuccessSchema,
   SyncStatusSchema,
@@ -558,6 +562,7 @@ import {
   listManagedDocNamesUnderFolder,
 } from './content/managed-doc-enum.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { isShareableOkArtifact } from './content-filter.ts';
 import { safeContentPath } from './content-path.ts';
 import {
   type DerivedDocumentIndexApiPort,
@@ -613,6 +618,7 @@ import {
 import { CHECKOUT_HANDLER_TAG, runCheckoutFlow } from './git-checkout.ts';
 import { buildSyncCredentialConfig, withParentLock } from './git-handle.ts';
 import { writeGitIdentity } from './git-identity.ts';
+import { readWorktreeStatus } from './git-worktree-status.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { catchErrors } from './http/catch-errors.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
@@ -11796,6 +11802,76 @@ export function createApiExtension(
     }
   }
 
+  /**
+   * Where a project-relative working-tree path opens, or undefined when it
+   * opens nowhere. Resolves to the same two routes the Files sidebar uses, so
+   * a row in the sync popover behaves like the same file in the tree.
+   *
+   * Order is the whole design. File-index membership decides `doc` — the index
+   * holds exactly what the editor owns, so a gitignored `.md` falls through to
+   * the asset viewer rather than opening an editable surface it is not indexed
+   * for. Everything else that survives the filter's FLOORS is an `asset`: the
+   * text-view endpoint has no extension gate, so `.gitignore`, `opencode.json`
+   * and `.ok/config.yml` all render, and the viewer's own fallback pane covers
+   * whatever it cannot draw. `bypassFilters` + `showOk` reduce the filter to
+   * exactly those floors — secret-bearing files, `.git`, `node_modules`,
+   * `.ok/local`, reserved synthetic names — which is the same set the sidebar
+   * refuses to show under Show All Files. Without a content filter there is no
+   * floor to enforce, so nothing is offered.
+   */
+  function toOpenTarget(projectRelPath: string): GitWorktreeOpenTarget | undefined {
+    const absPath = join(projectDir ?? contentDir, projectRelPath);
+    const contentRelPath = toPosix(relative(contentDir, absPath));
+    if (!contentRelPath || contentRelPath.startsWith('..')) return undefined;
+    const docName = stripDocExtension(contentRelPath);
+    if (getFileIndex().has(docName)) return { kind: 'doc', docName };
+    if (!contentFilter) return undefined;
+    if (contentFilter.isExcluded(contentRelPath, { bypassFilters: true, showOk: true })) {
+      return undefined;
+    }
+    // A deletion, or an incoming file that has not landed yet: the viewer would
+    // open on nothing. Docs skip this check — index membership implies the file.
+    if (!existsSync(absPath)) return undefined;
+    return { kind: 'asset', path: contentRelPath };
+  }
+
+  /**
+   * `GET /api/git/worktree-status` — the `git status` view the sync popover
+   * renders under its action buttons.
+   *
+   * Kept off the `sync-status` payload deliberately: that one is pushed over
+   * CC1 on every engine transition, and a working-tree listing does not belong
+   * on a hot broadcast channel. This is polled by the popover while it is open.
+   */
+  async function handleGitWorktreeStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!checkLocalOpSecurity(req, res, { handler: 'git-worktree-status' })) return;
+    if (req.method !== 'GET') {
+      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
+        handler: 'git-worktree-status',
+        extraHeaders: { Allow: 'GET' },
+      });
+      return;
+    }
+    try {
+      const engine = getSyncEngine?.();
+      // Without an engine there is no admission predicate to mark scope with.
+      // Report every path as out-of-scope rather than guessing in-scope: an
+      // unmarked path the user then watches Push ignore is the worse failure.
+      const isSyncScoped = engine
+        ? (relPath: string) => engine.isSyncScopedPath(relPath)
+        : () => false;
+      const status = await readWorktreeStatus(projectDir ?? contentDir, isSyncScoped, toOpenTarget);
+      successResponse(res, 200, GitWorktreeStatusSuccessSchema, status, {
+        handler: 'git-worktree-status',
+      });
+    } catch (e) {
+      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+        handler: 'git-worktree-status',
+        cause: e,
+      });
+    }
+  }
+
   const handleSyncTrigger = withValidation(
     SyncTriggerRequestSchema,
     async (_req, res, body) => {
@@ -11812,7 +11888,11 @@ export function createApiExtension(
       const op = body.op ?? 'sync';
       // Fire-and-return: 202 Accepted immediately, trigger runs in background.
       successResponse(res, 202, SyncTriggerSuccessSchema, { op }, { handler: 'sync-trigger' });
-      void engine.trigger(op);
+      // `.catch` is mandatory on every fire-and-forget trigger: the response has
+      // already been sent, so a rejection has nowhere to go but the process.
+      void engine.trigger(op).catch((err) => {
+        log.error({ err, op }, '[sync] fire-and-forget trigger failed');
+      });
     },
     {
       handler: 'sync-trigger',
@@ -11828,6 +11908,81 @@ export function createApiExtension(
         }
         return true;
       },
+    },
+  );
+
+  /**
+   * `POST /api/sync/resolve-blocking` — clear a pre-merge overlap pause by
+   * committing the local edits that caused it, then resume.
+   *
+   * The body names an ACTION and nothing else. The paths come from the
+   * engine's blocking set, so this cannot be aimed: a body-supplied path list
+   * would make `discard` a general-purpose "throw away this file's edits"
+   * endpoint reachable from any page the user's browser has open. Empty set →
+   * 409 rather than a silent success, because a UI offering these buttons
+   * against a pause that already cleared is showing the user stale state.
+   *
+   * The follow-up trigger is the point of the button: `commit` runs a full
+   * sync, because the commit it just authored is now outgoing work.
+   *
+   * `commit` is the only action the schema admits. A `discard` verb is
+   * deliberately withheld until a recoverable snapshot exists behind it —
+   * restoring the blocking paths leaves no reflog entry to recover from.
+   */
+  const handleSyncResolveBlocking = withValidation(
+    SyncResolveBlockingRequestSchema,
+    // `body` is unread: the schema admits exactly one action, and the paths come
+    // from engine state rather than the request (see the docblock above).
+    async (_req, res, _body) => {
+      const engine = getSyncEngine?.();
+      if (!engine) {
+        errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
+          handler: 'sync-resolve-blocking',
+        });
+        return;
+      }
+      if (engine.getBlockingPaths().length === 0) {
+        errorResponse(
+          res,
+          409,
+          'urn:ok:error:no-blocking-changes',
+          'No local changes are blocking a merge.',
+          {
+            handler: 'sync-resolve-blocking',
+          },
+        );
+        return;
+      }
+      try {
+        // `commit` is the only action. A `discard` verb was deliberately not
+        // shipped: reverting uncommitted work is unrecoverable (git keeps no
+        // reflog for it), and the destructive verb waits on a recoverable
+        // snapshot landing first. The schema rejects anything else before this
+        // point, so there is no second branch to fall through to.
+        const paths = engine.getBlockingPaths();
+        const commitSha = await engine.commitBlockingPaths();
+        successResponse(
+          res,
+          200,
+          SyncResolveBlockingSuccessSchema,
+          { action: 'commit', paths, ...(commitSha !== null ? { commitSha } : {}) },
+          { handler: 'sync-resolve-blocking' },
+        );
+        void engine.trigger('sync').catch((err) => {
+          log.error({ err }, '[sync] resolve-blocking follow-up sync failed');
+        });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: 'sync-resolve-blocking',
+          cause: e,
+        });
+      }
+    },
+    {
+      handler: 'sync-resolve-blocking',
+      method: 'POST',
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: 'sync-resolve-blocking' }),
     },
   );
 
@@ -12062,7 +12217,15 @@ export function createApiExtension(
           // disclosing a foreign file. A SymlinkEscapeError propagates to the
           // outer catch → 500; the inner catch still handles the benign ENOENT
           // of a genuine delete overlay.
-          assertRealpathWithinDir(join(projectDir, file), projectDir);
+          // `allowShareableOkArtifact` matches the write sites in conflict-storage.
+          // Without it a root-`.ok` conflict (now pinnable — `.ok/templates/*` is a
+          // shareable artifact) throws SymlinkEscapeError here and surfaces as a
+          // 500, wedging the project: the push gate holds while conflicts exist and
+          // the conflict cannot be inspected to resolve it. `docs/.ok/...` was
+          // unaffected, so a nested fixture would not have caught it.
+          assertRealpathWithinDir(join(projectDir, file), projectDir, {
+            allowShareableOkArtifact: isShareableOkArtifact,
+          });
           try {
             ours = readFileSync(join(projectDir, file), 'utf-8');
             oursPresent = true;
@@ -23002,6 +23165,7 @@ export function createApiExtension(
     '/api/share/construct-url': handleShareConstructUrl,
     '/api/share/target-status': handleShareTargetStatus,
     '/api/git/branch-info': handleBranchInfo,
+    '/api/git/worktree-status': handleGitWorktreeStatus,
     '/api/git/checkout': handleCheckout,
     '/api/share/publish/owners': handleSharePublishOwners,
     '/api/share/publish/name-check': handleSharePublishNameCheck,
@@ -23014,6 +23178,7 @@ export function createApiExtension(
     '/api/sync/conflicts': handleSyncConflicts,
     '/api/sync/conflict-content': handleSyncConflictContent,
     '/api/sync/resolve-conflict': handleSyncResolveConflict,
+    '/api/sync/resolve-blocking': handleSyncResolveBlocking,
     '/api/local-op/clone': handleLocalOpClone,
     '/api/local-op/ok-init': handleLocalOpOkInit,
     '/api/local-op/auth/login': handleLocalOpAuthLogin,
@@ -23076,6 +23241,7 @@ export function createApiExtension(
     '/api/rollback',
     '/api/sync/trigger',
     '/api/sync/resolve-conflict',
+    '/api/sync/resolve-blocking',
     '/api/git/checkout',
     '/api/test-reset',
     '/api/test-flush-git',

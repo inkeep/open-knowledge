@@ -65,7 +65,9 @@ describe('useWorktreeAutoSyncNotice', () => {
     };
     render(<Probe />);
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
-    expect(lastToastText()).toContain('Follow is on for this worktree, inherited from my-repo');
+    expect(lastToastText()).toContain(
+      'Sync is set to Auto (Pull only) for this worktree, inherited from my-repo',
+    );
   });
 
   test('phrases the notice for an inherited off worktree via the legacy enabled seed', async () => {
@@ -74,7 +76,7 @@ describe('useWorktreeAutoSyncNotice', () => {
     };
     render(<Probe />);
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(1));
-    expect(lastToastText()).toContain('Auto-sync is off for this worktree');
+    expect(lastToastText()).toContain('Sync is set to Manual for this worktree');
   });
 
   test('does nothing when the flag is not set', () => {

@@ -20,7 +20,7 @@
  */
 
 /** Commands a UI surface may ask the terminal to run. Closed by design. */
-export type TerminalCommandId = 'install-slidev';
+export type TerminalCommandId = 'install-slidev' | 'git-status';
 
 /**
  * The command each id maps to.
@@ -33,6 +33,12 @@ export type TerminalCommandId = 'install-slidev';
  */
 const TERMINAL_COMMANDS: Record<TerminalCommandId, string> = {
   'install-slidev': 'npm install -g @slidev/cli @slidev/theme-default',
+  // The sync panel's "Resolve in terminal": land the user in the project with
+  // the state of the working tree already printed, rather than in a bare shell
+  // they have to orient themselves in. Read-only by construction — resolving is
+  // theirs to drive, and a constant keeps the closed-union contract (no path,
+  // no branch name, nothing interpolated into shell text).
+  'git-status': 'git status',
 };
 
 /** The shell text for `id`, or undefined when the id is not in the union (a

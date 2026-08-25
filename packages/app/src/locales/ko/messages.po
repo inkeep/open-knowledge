@@ -518,10 +518,6 @@ msgid "{basename} — text editor"
 msgstr "{basename} 텍스트 편집기"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr "{behind, plural, other {커밋 #개 뒤처짐}}"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr "{behind}개 뒤처져 있음"
 
@@ -615,6 +611,14 @@ msgstr "{count, plural, other {자동 수정이 알려진 문제 #개를 즉시 
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {파일 #개와 일치}}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr "{count}개 앞섬"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
+msgstr "{count}개 뒤처짐"
 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "{count} skills"
@@ -811,14 +815,11 @@ msgstr "{localizedMessage}, 줄 {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {#분 전}}"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr "{minutes}분 전"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes}분 전"
 
@@ -909,6 +910,10 @@ msgstr "{propertyCount, plural, other {속성 #개}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} 속성"
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
+msgstr "{seconds}초"
 
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1126,6 +1131,26 @@ msgstr "📝 또는 assets/icon.png"
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
 msgstr "0/0"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr "1시간"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr "1분"
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr "15분"
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr "30초"
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
+msgstr "5분"
 
 #: src/components/ImportSkillForm.tsx
 msgid "A .zip or .skill archive."
@@ -1521,6 +1546,7 @@ msgstr "이 메시지에 댓글 남기기"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "추가됨"
 
@@ -1565,11 +1591,13 @@ msgstr "다음 파일을 추가합니다"
 msgid "Adds these folders"
 msgstr "다음 폴더를 추가합니다"
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "고급"
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr "고급 설정"
 
@@ -1979,6 +2007,24 @@ msgstr "기준 콘텐츠이며, 참조되는 모든 곳에 그대로 미러링�
 msgid "Authorize in browser"
 msgstr "브라우저에서 인증"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr "자동(풀 및 푸시)"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr "자동(풀만)"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr "자동(풀만)은 원격 git 저장소에서 업데이트를 가져와 사본을 자동으로 최신 상태로 만듭니다. 로컬 편집 내용은 이 컴퓨터에 남으며 절대 푸시되지 않습니다."
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr "자동(풀만)은 로컬 변경 사항을 절대 푸시하거나 커밋하지 않습니다. 이 기기에만 남습니다."
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
 msgstr "자동 승인 설정을 아직 불러오지 못했습니다. 잠시 후 다시 시도합니다."
@@ -2012,21 +2058,13 @@ msgstr "자동 수정은 기계적으로 수정할 수 있는 문제가 알려�
 msgid "Auto-save"
 msgstr "자동 저장"
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "이 워크트리의 자동 동기화가 꺼져 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "이 워크트리의 자동 동기화가 켜져 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "자동 동기화가 일시 중지되었습니다. 계속하려면 로그인합니다."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-msgstr "자동 동기화가 일시 중지되었습니다. 이 저장소에 푸시할 권한이 없습니다. 계속 업데이트를 받으려면 팔로우로 전환합니다."
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+msgstr "자동 동기화가 일시 중지되었습니다. 이 저장소에 푸시할 권한이 없습니다. 계속 업데이트를 받으려면 자동(풀만)으로 전환하세요."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2424,8 +2462,13 @@ msgid "Change the embeddings provider?"
 msgstr "임베딩 제공업체를 변경하시겠습니까?"
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
 msgstr "변경됨"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
+msgstr "여기와 원격 모두에서 변경됨"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -2450,6 +2493,10 @@ msgstr "변경사항이 자동으로 저장되었습니다."
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "업데이트 확인"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
+msgstr "업데이트 확인 주기"
 
 #: src/components/AppMenubar.tsx
 msgid "Check for updates…"
@@ -2970,6 +3017,10 @@ msgstr "이 코드 블록에 댓글을 남기거나 AI에 질문"
 msgid "Comments"
 msgstr "댓글"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr "커밋하고 동기화"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "전환하려면 변경 사항을 커밋하거나 스태시하세요:"
@@ -3271,6 +3322,7 @@ msgstr "변환 중…"
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr "복사됨"
@@ -3886,6 +3938,10 @@ msgstr "전송 대기 댓글을 읽지 못했습니다. 전송된 댓글 없음.
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "전송 대기 댓글을 읽지 못했습니다: {0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr "작업 트리를 읽지 못했습니다. 서버 로그를 확인하세요."
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4459,6 +4515,10 @@ msgstr "채팅 삭제?"
 msgid "Delete this comment"
 msgstr "이 댓글 삭제"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr "삭제됨"
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4553,6 +4613,10 @@ msgstr "설명 토큰"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "디자인"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
+msgstr "분리된 HEAD"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4926,6 +4990,10 @@ msgstr "각 AI 도구는 자체 폴더에서 스킬을 읽습니다. 한 폴더�
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "각 팩은 바로 사용할 수 있는 폴더와 템플릿으로 프로젝트의 뼈대를 만듭니다."
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr "푸시 한 번이 원격에 커밋 하나입니다."
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5174,25 +5242,25 @@ msgstr "{id} 활성화"
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
-msgstr "자동 동기화 사용"
+msgid "Enable Auto (Pull and Push)"
+msgstr "자동(풀 및 푸시) 활성화"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
+msgstr "자동(풀 및 푸시)을 활성화할까요?"
+
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Auto (Pull only)"
+msgstr "자동(풀만) 활성화"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull only)?"
+msgstr "자동(풀만)을 활성화할까요?"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Enable external link previews"
 msgstr "외부 링크 미리보기 사용"
-
-#: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
-msgstr "팔로우 사용"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
-msgstr "팔로우를 사용하시겠습니까?"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
-msgstr "git 자동 동기화를 사용하시겠습니까?"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
@@ -5788,6 +5856,10 @@ msgstr "임베딩 제공업체를 업데이트하지 못했습니다: {detail}"
 msgid "Failed to update the project sync default — {detail}"
 msgstr "프로젝트 동기화 기본값을 업데이트하지 못했습니다: {detail}"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr "동기화 주기를 업데이트하지 못했습니다 — {detail}"
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "파일을 업로드하지 못했습니다"
@@ -6047,28 +6119,6 @@ msgstr "폴더 공유 링크가 복사되었습니다."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "폴더 대상: {linkTitle}. 클릭하여 개요를 엽니다."
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr "팔로우"
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr "팔로우 — 원격 변경 사항을 가져오고 편집 내용은 이 컴퓨터에 유지합니다."
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr "팔로우는 원격 git 저장소에서 업데이트를 가져와 사본을 자동으로 fast-forward합니다. 로컬 편집 내용은 이 컴퓨터에만 남고 절대 푸시되지 않습니다."
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "이 워크트리의 팔로우가 켜져 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr "팔로우는 로컬 변경 사항을 푸시하거나 커밋하지 않습니다. 이 컴퓨터에만 남습니다."
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr "에이전트 변경 내용 따라가기"
@@ -6159,11 +6209,6 @@ msgstr "이 템플릿으로 만든 모든 문서는 이 frontmatter로 시작합
 msgid "Frontmatter schemas"
 msgstr "Frontmatter 스키마"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr "전체"
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr "전체 안내서"
@@ -6176,14 +6221,6 @@ msgstr "전체 경로"
 #: src/components/skill-actions.tsx
 msgid "Full Path"
 msgstr "전체 경로"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr "전체 동기화, 커밋을 푸시하고 원격 변경사항을 자동으로 가져옵니다."
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
-msgstr "전체 동기화. 편집 내용이 원격에 자동으로 커밋되고 푸시됩니다."
 
 #: src/components/OkBlobRunner.tsx
 msgid "Game over · press <0>Space</0> to play again"
@@ -6243,6 +6280,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr "필요한 Git 도우미 도구(예: git-lfs)를 찾을 수 없습니다. 설치한 후 다시 시도하세요."
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr "Git 동기화"
 
@@ -6620,6 +6658,10 @@ msgstr "공유는 어떻게 작동하나요?"
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "프로젝트 로컬 문서, 파일, 이미지의 누락을 Problems, 편집기 진단, 감사, 에이전트 도구에서 보고하는 방식을 설정합니다."
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr "이 컴퓨터가 원격에서 변경 사항을 가져오는 주기입니다."
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "수동으로 푸시하는 방법"
@@ -6704,6 +6746,10 @@ msgstr "무시 패턴"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
 msgstr "무시 패턴 (원문)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
+msgstr "무시됨"
 
 #: src/components/LinksPanel.tsx
 msgid "Image {identity}. Go to reference."
@@ -7301,8 +7347,8 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr "이름은 64자 이하로 유지하세요."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-msgstr "이 프로젝트를 git 원격 저장소와 동기화합니다. 팔로우는 푸시하지 않고 업데이트를 가져오며, 전체 동기화는 커밋도 푸시합니다. 동기화를 켜려면 확인이 필요합니다."
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+msgstr "이 프로젝트를 git 원격과 동기화 상태로 유지합니다. 자동(풀만)은 푸시 없이 업데이트를 가져오고, 자동(풀 및 푸시)은 편집 내용도 보냅니다. 자동 동기화를 켜려면 확인이 필요합니다."
 
 #: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7782,6 +7828,11 @@ msgstr "이 빌드에서는 AI 도구를 관리할 수 없습니다."
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "이 빌드에서는 프로젝트 AI 도구를 관리할 수 없습니다."
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr "수동"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "아키텍처 매핑"
@@ -7920,10 +7971,6 @@ msgstr "팔레트 색상 누락"
 msgid "Missing theme name"
 msgstr "테마 이름 누락"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr "모드"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr "모델"
@@ -7940,6 +7987,7 @@ msgstr "모델 기본 작업 수준"
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr "수정됨"
 
@@ -8231,10 +8279,6 @@ msgstr "정리 중 네트워크 오류가 발생했습니다."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "네트워크 설정이 아직 로드되지 않았습니다. 잠시 후 다시 시도하세요."
-
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
-msgstr "없음"
 
 #: src/components/FolderOverview.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
@@ -8850,9 +8894,21 @@ msgstr "없음 ({0}로는 문서와 일치하지 않음)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "없음 ({0}로는 유효한 패턴이 아님)"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr "요청하기 전까지는 아무것도 움직이지 않습니다. 동기화 메뉴에서 풀과 푸시를 실행하세요."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr "요청하기 전까지는 아무것도 움직이지 않습니다."
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "아직 설정된 항목 없음."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
+msgstr "커밋할 내용이 없습니다. 작업 트리가 깨끗합니다."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
@@ -8886,10 +8942,6 @@ msgstr "{0} 중"
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
 msgstr "{totalPages}페이지 중"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
-msgstr "꺼짐"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Off — external links show only their URL. No requests leave this computer."
@@ -9645,6 +9697,10 @@ msgstr "나가는 링크"
 msgid "Outline"
 msgstr "개요"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr "Open Knowledge가 커밋하는 범위 밖입니다."
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "{budgetLabel} 토큰 예산 초과"
@@ -9854,10 +9910,6 @@ msgstr "패턴 구문 오류: {message}"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
 msgstr "패턴 경고: {summary}"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
-msgstr "동기화 일시 중지"
 
 #: src/components/acp/ThreadView.tsx
 msgid "pending"
@@ -10252,9 +10304,25 @@ msgstr "게시 중…"
 msgid "Pull"
 msgstr "풀"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr "풀 및 푸시"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr "풀로 들어옴"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
 msgstr "최신 변경 사항 풀"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr "{pulled} 풀"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
+msgstr "{pulled} 풀 · {pushed} 푸시"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -10281,9 +10349,25 @@ msgstr "공유하기 전에 {branch}를 GitHub에 푸시하세요."
 msgid "Push failed — check the server logs for details."
 msgstr "푸시 실패. 자세한 내용은 서버 로그를 확인하세요."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr "푸시에 포함됨"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr "내 편집 내용 푸시 주기"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr "푸시에서 제외됨"
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
 msgstr "공유 전에 이 브랜치를 GitHub에 푸시하세요."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
+msgstr "{pushed} 푸시"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -10358,6 +10442,10 @@ msgstr "다른 문서의 MirrorSource 블록을 읽기 전용으로 복사한 �
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 스킬의 읽기 전용 파일"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr "작업 트리를 읽는 중"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "읽는 중…"
@@ -10410,6 +10498,10 @@ msgstr "권장 에이전트 스킬"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "다시 연결 필요"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
+msgstr "계속 동기화하려면 다시 연결해야 합니다."
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -10677,6 +10769,10 @@ msgstr "스킬 이름 변경"
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "이름 변경은 성공했지만 사이드바가 최신 상태가 아닐 수 있습니다. 다시 동기화하려면 새로 고침하세요."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr "이름 변경됨"
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10828,7 +10924,6 @@ msgstr "이미 클론한 저장소는 연결을 해제한 후에도 git에 저�
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr "저장소"
 
@@ -10910,6 +11005,10 @@ msgstr "스킬 패널 크기 조절"
 #: src/components/SyncStatusBadge.tsx
 msgid "Resolve conflict in your terminal"
 msgstr "터미널에서 충돌 해결"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
+msgstr "터미널에서 해결"
 
 #: src/components/FileTree.tsx
 msgid "Resolve the conflict on {files} before deleting."
@@ -11026,10 +11125,6 @@ msgstr "{0} 버전으로 복원했습니다"
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "결과가 제한되었습니다. 이 워크스페이스에는 검색에서 색인할 수 있는 파일보다 더 많은 파일이 있습니다. 누락된 파일은 오타가 아니라 제한으로 인해 빠진 것일 수 있습니다."
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr "동기화 재개"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
 msgstr "채팅 재개 중"
@@ -11101,8 +11196,8 @@ msgid "Reverting"
 msgstr "되돌리는 중"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
-msgstr "충돌 검토"
+msgid "Review"
+msgstr "검토"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
@@ -12248,6 +12343,10 @@ msgstr "Slidev 시작 시간이 초과되었습니다. 다시 시도하세요."
 msgid "Small section heading."
 msgstr "작은 섹션 제목입니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr "일부 파일이 표시되지 않았습니다. 작업 트리의 변경 사항이 너무 많습니다."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "테마 폴더가 스캔 한도를 초과해 일부 저장된 테마가 나타나지 않습니다."
@@ -12439,6 +12538,10 @@ msgstr "에이전트 시작 중…"
 msgid "status"
 msgstr "상태"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr "상태"
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12586,8 +12689,8 @@ msgid "Switch to a branch to share."
 msgstr "공유하려면 브랜치로 전환하세요."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
-msgstr "팔로우로 전환"
+msgid "Switch to Auto (Pull only)"
+msgstr "자동(풀만)으로 전환"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -12626,7 +12729,6 @@ msgid "Symlinks the skill to {path}"
 msgstr "{path}에 스킬을 심볼릭 링크합니다"
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "동기화"
 
@@ -12636,10 +12738,6 @@ msgid "Sync & sharing"
 msgstr "동기화 및 공유"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
-msgstr "동기화 사용 안 함"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync failed — check the server logs for details."
 msgstr "동기화 실패. 자세한 내용은 서버 로그를 확인하세요."
 
@@ -12647,13 +12745,21 @@ msgstr "동기화 실패. 자세한 내용은 서버 로그를 확인하세요."
 msgid "Sync is failing. See the sync status for details."
 msgstr "동기화에 실패하고 있습니다. 자세한 내용은 동기화 상태를 확인하세요."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
-msgstr "동기화가 꺼져 있어 커밋하고 수동으로 푸시할 때까지 편집 내용이 이 컴퓨터에만 남습니다."
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+msgstr "동기화가 일시 중지되었습니다. 계속하려면 이 로컬 편집 내용을 커밋하거나 터미널에서 정리하세요."
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
-msgstr "동기화가 일시 중지되었습니다. 재개하려면 다시 켜세요."
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "이 워크트리의 동기화가 자동(풀 및 푸시)으로 설정되어 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "이 워크트리의 동기화가 자동(풀만)으로 설정되어 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "이 워크트리의 동기화가 수동으로 설정되어 있습니다. {project}에서 상속되었습니다. 설정 → 동기화에서 변경하세요."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -12665,16 +12771,8 @@ msgid "Sync now"
 msgstr "지금 동기화"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr "동기화 끔"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "동기화 일시 중지됨"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
-msgstr "동기화가 일시 중지되었습니다. 재개하려면 충돌을 해결하세요."
 
 #: src/hooks/use-no-push-permission-toast.ts
 msgid "Sync paused — you don't have permission to push to this repo"
@@ -12709,10 +12807,6 @@ msgstr "동기화 상태: {syncStateLabel}. git 사용자 정보가 설정되지
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
 msgstr "동기화됨"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
-msgstr "동기화됨 {lastSyncedRelative}"
 
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
@@ -12936,6 +13030,10 @@ msgstr "보고서 감사합니다!"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "해당 브랜치는 다른 워크트리에서 이미 열려 있습니다."
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
+msgstr "처리되지 않았습니다. 서버 로그를 확인한 뒤 다시 시도하세요."
 
 #: src/comments/reveal-comment.ts
 msgid "That document didn't open in time. Try again once it has synced."
@@ -13972,6 +14070,10 @@ msgstr "명령을 사용하려면 '/' 입력"
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "쿼리를 입력한 다음 <0>↵</0> 키를 눌러 페이지를 의미로 검색합니다."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr "유형 변경됨"
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr "입력하여 편집하세요. <0>Cmd/Ctrl+Enter</0>로 저장하고 <1>Esc</1>로 취소합니다."
@@ -14100,6 +14202,10 @@ msgstr "모든 댓글 전송 표시 해제"
 msgid "Unmark every comment in {0}"
 msgstr "{0}의 모든 댓글 전송 표시 해제"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr "병합 안 됨"
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr "글머리 기호 목록입니다."
@@ -14139,6 +14245,10 @@ msgstr "해결할 수 없는 이미지 {identity}. 참조로 이동합니다."
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "제목 없는 보고서"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
+msgstr "추적 안 됨"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
@@ -14187,8 +14297,8 @@ msgid "Updated \"{name}\" from {0}"
 msgstr "\"{name}\"을 {0}에서 업데이트했습니다"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
-msgstr "업데이트됨 {lastSyncedRelative}"
+msgid "Updated {updatedRelative}"
+msgstr "{updatedRelative} 업데이트됨"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
@@ -14201,6 +14311,11 @@ msgstr "버전 {version}으로 업데이트됨"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "업데이트가 들어옴"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
+msgstr "업데이트는 원격에서 들어오고, 편집 내용은 이 컴퓨터에 남습니다."
 
 #: src/components/SkillOriginInline.tsx
 msgid "Updates from the source apply automatically (unless edited locally)"
@@ -14654,6 +14769,10 @@ msgstr "어디에 둘까요?"
 msgid "Which skill"
 msgstr "어떤 스킬"
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr "로그아웃 상태에서는 이 설정과 관계없이 업데이트를 최대 3분에 한 번만 확인합니다."
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "공백"
@@ -14830,8 +14949,8 @@ msgid "You don't have permission to push to this repo."
 msgstr "이 저장소에 푸시 권한이 없습니다."
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-msgstr "이 저장소에 푸시할 권한이 없습니다. 팔로우를 사용하면 복사본을 최신 상태로 유지할 수 있습니다."
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+msgstr "이 저장소에 푸시할 권한이 없습니다. 자동(풀만)으로도 사본을 최신 상태로 유지할 수 있습니다."
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "You don't have write access to this repo."
@@ -14902,6 +15021,11 @@ msgstr "브랜치 <0>{shareBranch}</0> 사본에 GitHub에 없는 변경 사항�
 #: src/components/TimelinePanel.tsx
 msgid "Your current version is saved first, so this is reversible."
 msgstr "현재 버전이 먼저 저장되므로 되돌릴 수 있습니다."
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
+msgstr "편집 내용이 자동으로 커밋되어 원격에 푸시됩니다."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"

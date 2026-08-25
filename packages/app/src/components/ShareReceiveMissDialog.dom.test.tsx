@@ -213,7 +213,9 @@ describe('ShareReceiveMissDialog', () => {
     // place AND dismisses the miss dialog (regression guard: the dialog must
     // dismiss on confirm).
     fireEvent.click(screen.getByTestId('share-receive-miss-enable-sync'));
-    fireEvent.click(within(openConsentDialog()).getByRole('button', { name: 'Enable auto-sync' }));
+    fireEvent.click(
+      within(openConsentDialog()).getByRole('button', { name: 'Enable Auto (Pull and Push)' }),
+    );
 
     expect(autoSyncWrites).toEqual([{ mode: 'full', enabled: true }]);
     await waitFor(() => {
@@ -631,7 +633,7 @@ describe('ShareReceiveMissDialog follow-mode offer', () => {
     expect(window.location.hash).toBe('');
     expect(autoSyncWrites).toEqual([]);
 
-    fireEvent.click(within(consent).getByRole('button', { name: 'Enable Follow' }));
+    fireEvent.click(within(consent).getByRole('button', { name: 'Enable Auto (Pull only)' }));
 
     // Follow mode lands, and the legacy boolean is cleared so an older app can't
     // read the project as full-sync and start pushing this receiver's copy.
@@ -707,7 +709,7 @@ describe('ShareReceiveMissDialog follow-mode offer', () => {
     setSyncStatus(pullableSyncStatus({ lastPullUtc: 'p1', lastPullOutcome: 'succeeded' }));
 
     const consent = await waitFor(() => openConsentDialog());
-    fireEvent.click(within(consent).getByRole('button', { name: 'Enable Follow' }));
+    fireEvent.click(within(consent).getByRole('button', { name: 'Enable Auto (Pull only)' }));
 
     // The failed write raises its own toast; it must not cost the receiver the
     // document the pull already fetched for them.

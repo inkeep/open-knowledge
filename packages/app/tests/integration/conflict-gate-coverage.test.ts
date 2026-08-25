@@ -317,7 +317,19 @@ const EXEMPT_HANDLERS = new Set([
   // `withParentLock` (serialized with sync-engine writes); `handleBranchInfo`
   // is a read endpoint with no lock per the lock-free-reads contract.
   'handleBranchInfo',
+  // `/api/git/worktree-status` — read-only `git status` view for the sync
+  // popover (porcelain + tracking refs + incoming diff). Parent-git reads
+  // only, never Y.Doc content; lock-free-reads contract, same posture as
+  // `handleBranchInfo`.
+  'handleGitWorktreeStatus',
   'handleCheckout',
+  // `/api/sync/resolve-blocking` — commits the tracked paths whose
+  // local edits overlap an incoming merge, then resumes sync. Parent-git only
+  // (`add`/`commit`/`restore` under `withParentLock`); the paths it touches are
+  // by definition NOT Y.Doc content in conflict, since a content conflict
+  // routes to the ConflictStore instead of pausing the merge. Same posture as
+  // `handleCheckout`.
+  'handleSyncResolveBlocking',
   // `/api/share/target-status` — receive-side git verdict (fetch + rename
   // detection). Updates only remote-tracking refs, never Y.Doc content, so the
   // per-doc conflict gate does not apply. Same posture as `handleBranchInfo`.

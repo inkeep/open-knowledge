@@ -99,7 +99,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true });
+  // A just-destroyed engine's git subprocess can still hold a file while the
+  // sweep runs, which surfaces as ENOTEMPTY on macOS and fails the test in
+  // teardown after every assertion passed. Node's built-in retry absorbs the
+  // handful of milliseconds the process needs to exit.
+  rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
 function makeEngine(
@@ -662,7 +666,9 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     const engine = makeEngineForConflict();
     try {
       await engine.start();
-      await engine.trigger('pull');
+      // The classic merge machinery belongs to the Sync verb now (the Pull
+      // verb never commits, so it refuses diverged history outright).
+      await engine.pullOnce('sync');
 
       const status = engine.getStatus();
       // Partition fix: `.mcp.json` (not .md/.mdx) takes the non-content
@@ -701,7 +707,9 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     const engine = makeEngineForConflict();
     try {
       await engine.start();
-      const outcome = await engine.pullOnce();
+      // Sync verb — the only pull flavor that commits (and can thus hit a
+      // commit failure).
+      const outcome = await engine.pullOnce('sync');
 
       // The commit was rejected and the merge aborted: the outcome must be the
       // error class (not 'succeeded'), pullError must surface it, and no
@@ -723,7 +731,7 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     const engine = makeEngineForConflict();
     try {
       await engine.start();
-      await engine.trigger('pull');
+      await engine.pullOnce('sync');
 
       const status = engine.getStatus();
       // Partition routes `.mcp.json` to non-content auto-resolve;
@@ -761,14 +769,16 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
     const engine = makeEngineForConflict();
     try {
       await engine.start();
-      await engine.trigger('pull');
+      await engine.pullOnce('sync');
       expect(engine.getStatus().pausedReason).toBe('non-content-merge-failure');
 
       const projectGit = simpleGit(projectDir);
       await projectGit.rm('.mcp.json');
       await projectGit.commit('resolve modify/delete locally');
 
-      await engine.trigger('pull');
+      // trigger() clears the transient reason regardless of op; the Sync verb
+      // is the one whose retry re-attempts the merge.
+      await engine.trigger('sync');
       const status = engine.getStatus();
       expect(status.pausedReason).toBeUndefined();
       expect(status.conflictCount).toBe(0);
@@ -840,7 +850,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     }
   });
 
-  test('full sync keeps a locally newer launcher without stash conflicts', async () => {
+  test('full sync keeps a locally newer launcher reconciled as overlay (no interim commit)', async () => {
     const bareDir = join(tmpDir, 'mcp-newer-overlap.git');
     const sisterDir = join(tmpDir, 'mcp-newer-overlap-sister');
     mkdirSync(bareDir, { recursive: true });
@@ -896,12 +906,16 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
       const project = simpleGit(projectDir);
       const raw = readFileSync(join(projectDir, '.mcp.json'), 'utf8');
       expect(raw).not.toContain('<<<<<<<');
+      // The reconciled OUTCOME is unchanged from the merge-path era: the newer
+      // local launcher entry survives, the unowned shell (theme) takes theirs.
+      // What changed is the mechanism — the result now lives as working-tree
+      // overlay instead of an engine-authored commit; the next push cycle is
+      // what commits it. Asserting a commit here would pin the mechanism this
+      // change removes (pull never commits).
       expect(JSON.parse(raw)).toEqual(JSON.parse(config('# ok-mcp-v99', 'incoming')));
       expect((await project.raw(['diff', '--name-only', '--diff-filter=U'])).trim()).toBe('');
-      expect((await project.status()).isClean()).toBe(true);
-      expect((await project.log({ maxCount: 1 })).latest?.message).toBe(
-        'Update OpenKnowledge MCP launcher',
-      );
+      // Fast-forwarded to origin's tip; no local commit was authored.
+      expect((await project.log({ maxCount: 1 })).latest?.message).toBe('incoming launcher');
       expect((await project.raw(['stash', 'list'])).trim()).toBe('');
     } finally {
       await engine.destroy();
@@ -1285,6 +1299,527 @@ describe('SyncEngine getStatus()', () => {
   });
 });
 
+// ─── pushOnce() — the manual-mode push primitive ──────────────────────────────
+//
+// Manual mode (`off`) has no push loop, so a user-pressed Push runs a one-shot
+// cycle instead. The consent guarantee moves with it: `follow` must never reach
+// the push subprocess on ANY path, scheduled or manual, because its user chose
+// one-directional sync. `off` is not that choice — it means "nothing moves
+// until I ask", and pressing Push is the asking.
+
+describe('SyncEngine push gating — scheduled vs explicit', () => {
+  /**
+   * A project wired to a LOCAL bare origin, so a push either lands or fails for
+   * a real reason — never on network timing. Returns the project handle, the
+   * unpushed local HEAD, and origin's tip before the push.
+   */
+  async function projectWithUnpushedCommit() {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'README.md'), '# seed\n');
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+    const originBefore = (await git.revparse(['origin/main'])).trim();
+
+    writeFileSync(join(projectDir, 'README.md'), '# seed\n\nlocal edit\n');
+    await git.add('.');
+    await git.commit('local commit not pushed');
+    const localHead = (await git.revparse(['HEAD'])).trim();
+
+    return { git, localHead, originBefore };
+  }
+
+  test.each([
+    'off',
+    'follow',
+  ] as const)("%s never pushes on the engine's own initiative", async (mode) => {
+    // The scheduled gate. Anything reaching the push subprocess without a
+    // user asking is Open Knowledge pushing for someone who did not choose it.
+    const { git, originBefore } = await projectWithUnpushedCommit();
+    const engine = makeEngine({ mode });
+    await engine.refreshRemote();
+    try {
+      // `runPushCycle` is the scheduled loop's body and is private; reaching
+      // it by cast pins the gate at its real call site rather than widening
+      // the production surface with a test-only entry point.
+      await (engine as unknown as { runPushCycle: () => Promise<void> }).runPushCycle();
+
+      expect((await git.revparse(['origin/main'])).trim()).toBe(originBefore);
+      expect(engine.getStatus().lastPushedSha).toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test.each([
+    'off',
+    'follow',
+  ] as const)('%s pushes when the user explicitly asks, without arming a loop', async (mode) => {
+    // The mode selector governs the automation. A button press is the user
+    // acting for themselves, and both non-full modes must honor it.
+    const { git, localHead } = await projectWithUnpushedCommit();
+    const engine = makeEngine({ mode });
+    await engine.refreshRemote();
+    try {
+      await engine.pushOnce();
+
+      expect((await git.revparse(['origin/main'])).trim()).toBe(localHead);
+      expect(engine.getStatus().lastPushedSha).toBe(localHead);
+      // The mode is what arms the scheduled loop, so an unchanged mode is the
+      // observable proof no background push was started.
+      expect(engine.getStatus().syncMode).toBe(mode);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('refuses when there is no remote to push to', async () => {
+    const engine = makeEngine({ mode: 'off' });
+    const states: SyncState[] = [];
+    engine.onStateChange = (s) => states.push(s);
+
+    await engine.pushOnce();
+
+    expect(states).not.toContain('pushing');
+  });
+});
+
+describe('SyncEngine lastRunUtc — "Updated N ago"', () => {
+  /** Project tracking a local bare origin, already current with it. */
+  async function currentProject() {
+    const bare = join(tmpDir, 'bare.git');
+    mkdirSync(bare, { recursive: true });
+    await simpleGit(bare).init(true);
+    await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', bare);
+    await git.push(['--set-upstream', 'origin', 'main']);
+    return git;
+  }
+
+  test('a pull that finds nothing new still counts as a run', async () => {
+    // The exact case that made the panel read "18h ago" right after a working
+    // Pull: nothing changed, so `lastSyncUtc` stays put — but the op DID run.
+    await currentProject();
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      const before = engine.getStatus();
+      expect(before.lastRunUtc).toBeNull();
+
+      await engine.pullOnce();
+
+      const after = engine.getStatus();
+      expect(after.lastRunUtc).not.toBeNull();
+      // Content did not move, so the change-time is untouched — the two fields
+      // are answering different questions and must not be conflated.
+      expect(after.lastSyncUtc).toBe(before.lastSyncUtc);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('an explicit push counts as a run', async () => {
+    await currentProject();
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      await engine.pushOnce();
+      expect(engine.getStatus().lastRunUtc).not.toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('the panel-open fetch does NOT count as a run', async () => {
+    // It fires whenever the user opens the popover, so counting it would pin
+    // "Updated" to "just now" forever. The fetch still refreshes the counts.
+    await currentProject();
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      expect(await engine.fetchOnly()).toBe(true);
+      expect(engine.getStatus().lastRunUtc).toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a push cycle that exits without landing does not stamp a run', async () => {
+    // The retry-exhausted non-fast-forward path exits WITHOUT recording an
+    // error (it defers to the next pull cycle), so success must never be
+    // inferred from error-absence — only the explicit landed flag stamps.
+    // Simulated at the seam: a cycle body that neither errors nor lands.
+    await currentProject();
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      (engine as unknown as { doPushCycle: () => Promise<void> }).doPushCycle = async () => {
+        // exhausted-retry shape: no error recorded, no landed flag set
+      };
+      await engine.pushOnce();
+      expect(engine.getStatus().lastRunUtc).toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a failed op does not stamp a run', async () => {
+    // "Updated just now" sitting above a red error line is a contradiction.
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', join(tmpDir, 'nope.git'));
+
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      await engine.fetchOnly();
+      expect(engine.getStatus().lastRunUtc).toBeNull();
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine unified pull — B1 in every mode', () => {
+  /** Project on a local bare origin; sister advances it. Returns handles. */
+  async function projectWithSister() {
+    const bare = join(tmpDir, 'bare.git');
+    mkdirSync(bare, { recursive: true });
+    await simpleGit(bare).init(true);
+    await simpleGit(bare).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(
+      join(projectDir, 'doc.md'),
+      'TOP\n\n\n\n\n\n\n\n\n\nMIDDLE\n\n\n\n\n\n\n\n\n\nBOTTOM\n',
+    );
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', bare);
+    await git.push(['--set-upstream', 'origin', 'main']);
+
+    const sisterDir = join(tmpDir, 'sister');
+    await simpleGit(tmpDir).clone(bare, sisterDir);
+    const sister = simpleGit(sisterDir);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    return { git, sister, sisterDir };
+  }
+
+  /**
+   * Engine whose contentDir IS the project root, so `doc.md` classifies as a
+   * content doc (the harness-level `contentDir` is a sibling directory, which
+   * would classify every fixture file as non-content and silently exercise the
+   * keep-mine-verbatim branch instead of the combine/conflict ones).
+   */
+  function makeRootContentEngine(mode: SyncMode) {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode,
+    });
+  }
+
+  test('a full-mode pull never authors a commit from the dirty tree (FR-1)', async () => {
+    const { git, sister, sisterDir } = await projectWithSister();
+    writeFileSync(join(sisterDir, 'other.md'), 'teammate\n');
+    await sister.add('.');
+    await sister.commit('teammate adds other.md');
+    await sister.push();
+
+    // Dirty local doc — the exact input the old path committed as
+    // "Auto-save: interim before merge".
+    writeFileSync(join(projectDir, 'doc.md'), 'TOP-mine\n');
+
+    const engine = makeRootContentEngine('full');
+    await engine.refreshRemote();
+    try {
+      expect(await engine.pullOnce()).toBe('succeeded');
+
+      const log = await git.log();
+      expect(log.all.some((c) => c.message === 'Auto-save: interim before merge')).toBe(false);
+      expect(log.latest?.message).toBe('teammate adds other.md');
+      // The dirty edit survives as overlay; the incoming file landed.
+      expect(readFileSync(join(projectDir, 'doc.md'), 'utf-8')).toBe('TOP-mine\n');
+      expect(readFileSync(join(projectDir, 'other.md'), 'utf-8')).toBe('teammate\n');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('full-mode separated edits to one file auto-combine without a conflict (FR-2)', async () => {
+    const { sister, sisterDir } = await projectWithSister();
+    const seeded = readFileSync(join(sisterDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(sisterDir, 'doc.md'), seeded.replace('TOP', 'TOP-THEIRS'));
+    await sister.add('.');
+    await sister.commit('teammate edits top');
+    await sister.push();
+
+    const local = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(projectDir, 'doc.md'), local.replace('BOTTOM', 'BOTTOM-MINE'));
+
+    const engine = makeRootContentEngine('full');
+    await engine.refreshRemote();
+    try {
+      expect(await engine.pullOnce()).toBe('succeeded');
+
+      const merged = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+      expect(merged).toContain('TOP-THEIRS');
+      expect(merged).toContain('BOTTOM-MINE');
+      expect(engine.getStatus().conflictCount).toBe(0);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test.each([
+    'off',
+    'follow',
+    'full',
+  ] as const)('diverged committed history: Pull refuses, Pull-and-Push merges — mode %s (FR-5)', async (mode) => {
+    // Buttons are verbs, mode-independent. Reconciling diverged COMMITTED
+    // history requires authoring a merge commit: Pull never authors commits,
+    // so it refuses identically everywhere; the Sync verb merges identically
+    // everywhere.
+    const { git, sister, sisterDir } = await projectWithSister();
+    writeFileSync(join(sisterDir, 'theirs.md'), 'theirs\n');
+    await sister.add('.');
+    await sister.commit('teammate commit');
+    await sister.push();
+
+    writeFileSync(join(projectDir, 'mine.md'), 'mine\n');
+    await git.add('.');
+    await git.commit('local commit');
+
+    const engine = makeRootContentEngine(mode);
+    await engine.refreshRemote();
+    try {
+      expect(await engine.pullOnce()).toBe('refused');
+      // Uniform in every mode — including Manual, whose resting-posture
+      // restore deliberately spares this reason: it is the visible answer to
+      // the click the user just made.
+      expect(engine.getStatus().pausedReason).toBe('diverged-local-commits');
+
+      await engine.pullOnce('sync');
+
+      expect(engine.getStatus().pausedReason).toBeUndefined();
+      expect(existsSync(join(projectDir, 'theirs.md'))).toBe(true);
+      expect(existsSync(join(projectDir, 'mine.md'))).toBe(true);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test.each([
+    'off',
+    'follow',
+    'full',
+  ] as const)('the Sync verb keeps the classic commit+merge machinery — mode %s', async (mode) => {
+    // The Pull-and-Push button's pull leg (and full mode's scheduled loop):
+    // catches dirt, commits it first (the interim commit is in-contract for
+    // syncing), merges. Identical in every mode — the button is a verb.
+    const { git, sister, sisterDir } = await projectWithSister();
+    const seeded = readFileSync(join(sisterDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(sisterDir, 'doc.md'), seeded.replace('TOP', 'TOP-THEIRS'));
+    await sister.add('.');
+    await sister.commit('teammate edits top');
+    await sister.push();
+
+    const local = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(projectDir, 'doc.md'), local.replace('BOTTOM', 'BOTTOM-MINE'));
+
+    const engine = makeRootContentEngine(mode);
+    await engine.refreshRemote();
+    try {
+      expect(await engine.pullOnce('sync')).toBe('succeeded');
+
+      const merged = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+      expect(merged).toContain('TOP-THEIRS');
+      expect(merged).toContain('BOTTOM-MINE');
+      // The interim commit exists here — this is the machinery the explicit
+      // Pull path must never reach (its never-commits pin is the sibling test
+      // above).
+      const log = await git.log();
+      expect(log.all.some((c) => c.message === 'Auto-save: interim before merge')).toBe(true);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('follow mode keeps a local artifact edit that origin also changed (the phantom-offline fix)', async () => {
+    // Both halves of the mode-dependent disposition are contracts: full takes
+    // theirs (auto-push would broadcast a kept tweak team-wide); follow keeps
+    // mine (nothing leaves the machine). This fixture is also the exact shape
+    // that used to die in the symlink guard and surface as a fake "offline".
+    const { sister, sisterDir } = await projectWithSister();
+    mkdirSync(join(sisterDir, '.ok'), { recursive: true });
+    writeFileSync(join(sisterDir, '.ok', 'config.yml'), 'shared: remote\n');
+    await sister.add(['.ok/config.yml']);
+    await sister.commit('teammate edits config');
+    await sister.push();
+
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), 'shared: local\n');
+
+    const engine = makeRootContentEngine('follow');
+    try {
+      await engine.start();
+      // start() arms follow's scheduled loop, whose boot pull can be mid-flight
+      // when an explicit trigger lands (the one-shot then declines on the
+      // single-flight guard). Poll for the settled outcome instead of racing.
+      await vi.waitFor(
+        () => {
+          expect(engine.getStatus().behind).toBe(0);
+        },
+        { timeout: 10_000, interval: 100 },
+      );
+
+      const status = engine.getStatus();
+      expect(status.state).not.toBe('offline');
+      expect(status.pullError).toBeUndefined();
+      expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe('shared: local\n');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('pending ledger conflicts gate the push cycle', async () => {
+    // B1 keeps the engine idle while conflicts wait, so the old
+    // state==='conflict' push gate never fires — the ledger gate must hold
+    // instead: unresolved keep-mine bytes are the resolver's call, never the
+    // push loop's.
+    const { sister, sisterDir } = await projectWithSister();
+    const seeded = readFileSync(join(sisterDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(sisterDir, 'doc.md'), seeded.replace('MIDDLE', 'MIDDLE-THEIRS'));
+    await sister.add('.');
+    await sister.commit('teammate edits middle');
+    await sister.push();
+
+    const local = readFileSync(join(projectDir, 'doc.md'), 'utf-8');
+    writeFileSync(join(projectDir, 'doc.md'), local.replace('MIDDLE', 'MIDDLE-MINE'));
+
+    const engine = makeRootContentEngine('full');
+    await engine.refreshRemote();
+    try {
+      await engine.pullOnce();
+      expect(engine.getStatus().conflictCount).toBe(1);
+
+      const states: SyncState[] = [];
+      engine.onStateChange = (st) => states.push(st);
+      await engine.pushOnce();
+      expect(states).not.toContain('pushing');
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine fetchOnly() — the read-only op', () => {
+  test('refreshes tracking refs and counts without touching the working tree', async () => {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', bareDir);
+    await git.push(['--set-upstream', 'origin', 'main']);
+    const localHead = (await git.revparse(['HEAD'])).trim();
+
+    // A sister advances origin, leaving this project one commit behind.
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.clone(bareDir, sisterDir);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'doc.md'), 'v1\nv2\n');
+    await sister.add('.');
+    await sister.commit('sister edit');
+    await sister.push();
+
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      expect(await engine.fetchOnly()).toBe(true);
+
+      // The counts caught up...
+      expect(engine.getStatus().behind).toBe(1);
+      // ...and nothing moved: HEAD, the working tree, and the index are as they
+      // were. This is what makes it safe on a passive panel open.
+      expect((await git.revparse(['HEAD'])).trim()).toBe(localHead);
+      expect(readFileSync(join(projectDir, 'doc.md'), 'utf-8')).toBe('v1\n');
+      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a failed fetch stays quiet — no error surfaced, no pause', async () => {
+    // An unreachable origin is the offline case. The user opened a panel; they
+    // did not ask to sync, so this must not become a red error state.
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    writeFileSync(join(projectDir, 'doc.md'), 'v1\n');
+    await git.add('.');
+    await git.commit('seed');
+    await git.addRemote('origin', join(tmpDir, 'does-not-exist.git'));
+
+    const engine = makeEngine({ mode: 'off' });
+    await engine.refreshRemote();
+    try {
+      expect(await engine.fetchOnly()).toBe(false);
+
+      const status = engine.getStatus();
+      expect(status.pullError).toBeUndefined();
+      expect(status.pullErrorCode).toBeUndefined();
+      expect(status.pausedReason).toBeUndefined();
+      expect(status.state).not.toBe('auth-error');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('declines without a remote rather than shelling out', async () => {
+    const engine = makeEngine({ mode: 'off' });
+    expect(await engine.fetchOnly()).toBe(false);
+  });
+});
+
 // ─── No-remote detection ──────────────────────────────────────────────────────
 
 describe('SyncEngine no-remote detection', () => {
@@ -1601,6 +2136,459 @@ describe('SyncEngine pull-only cadence (auth-conditional)', () => {
     const delayMs = await scheduledPullDelayMs(engine);
     expect(delayMs).toBeGreaterThanOrEqual(AUTHENTICATED_BAND.min);
     expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
+  });
+});
+
+describe('SyncEngine lastRunUtc survives a restart', () => {
+  test('a restored engine reports the run stamp its legs restored', async () => {
+    // Regression: `lastRunUtc` was a third stored field that saveStateNow never
+    // persisted, so after a restart the two per-direction legs came back while
+    // the combined stamp read null. Deriving it makes that unrepresentable.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    });
+    const internals = engine as unknown as {
+      lastPullOkUtc: string | null;
+      lastPushOkUtc: string | null;
+      saveStateNow(): void;
+    };
+    try {
+      internals.lastPullOkUtc = '2026-08-24T10:00:00.000Z';
+      internals.lastPushOkUtc = '2026-08-24T09:00:00.000Z';
+      // Later of the two legs, not whichever was written last.
+      expect(engine.getStatus().lastRunUtc).toBe('2026-08-24T10:00:00.000Z');
+      internals.saveStateNow();
+    } finally {
+      await engine.destroy();
+    }
+
+    const restored = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+    });
+    try {
+      // loadState runs inside start(), which is what a real restart does.
+      await restored.start();
+      const status = restored.getStatus();
+      expect(status.lastPullOkUtc).toBe('2026-08-24T10:00:00.000Z');
+      expect(status.lastRunUtc).toBe('2026-08-24T10:00:00.000Z');
+    } finally {
+      await restored.destroy();
+    }
+  });
+});
+
+describe('SyncEngine unborn-HEAD guard', () => {
+  // A repo created but never committed to has a HEAD pointing at a branch ref
+  // that does not exist. Both one-shot paths refuse there: `git merge` and
+  // `git push` against an unborn branch fail with messages that would surface
+  // as generic sync errors and park the badge, when the honest answer is
+  // simply that there is nothing to sync yet.
+  async function initRepoWithOrigin(withCommit: boolean) {
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    // A LOCAL bare remote, not a github.com URL: once the guard lets a
+    // committed repo through, the cycle runs `git fetch origin` for real. A
+    // real URL would reach the network from a suite that is otherwise fully
+    // hermetic — passing on a runner with internet, hanging or failing wherever
+    // egress is restricted.
+    const bareDir = join(tmpDir, 'unborn-bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    await simpleGit(bareDir).init(true);
+    await simpleGit(bareDir).raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+    await git.addRemote('origin', bareDir);
+    if (withCommit) {
+      writeFileSync(join(projectDir, 'README.md'), 'seed\n', 'utf-8');
+      await git.add('.');
+      await git.commit('seed');
+    }
+  }
+
+  function makeEngine() {
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'off',
+    });
+    // `hasRemote` is only computed inside `start()`, which would reach the
+    // network. Setting it directly is what isolates the unborn check — left at
+    // its `false` default, BOTH cases below would refuse on the sibling
+    // `!hasRemote` guard and the pair would prove nothing.
+    (engine as unknown as { hasRemote: boolean }).hasRemote = true;
+    return engine;
+  }
+
+  test('pullOnce refuses on an unborn HEAD even with a remote configured', async () => {
+    await initRepoWithOrigin(false);
+    const engine = makeEngine();
+    try {
+      expect(await engine.pullOnce()).toBe('refused');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a repo with one commit is no longer unborn and gets past the guard', async () => {
+    // Control: without it the refusal above could come from any sibling guard.
+    await initRepoWithOrigin(true);
+    const engine = makeEngine();
+    try {
+      // The bare remote is empty, so the cycle finds nothing to pull — the
+      // point is only that it RAN instead of being refused by the guard.
+      expect(await engine.pullOnce()).not.toBe('refused');
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine one-shot push guards', () => {
+  // These guards are what stop an EXPLICIT push (new in this changeset for
+  // `off`/`follow`) from racing a background cycle, pushing over an unresolved
+  // B1 conflict, or pushing while parked on an auth error. They are written
+  // independently of `runPushCycle`'s, so the full-mode tests do not cover them.
+  type PushInternals = {
+    pushInFlight: boolean;
+    pullInFlight: boolean;
+    conflictCount: number;
+    state: string;
+    hasRemote: boolean;
+    doPushCycle(retriesLeft?: number): Promise<void>;
+    runOneShotPush(): Promise<void>;
+  };
+
+  function makeOneShotEngine(mode: SyncMode = 'follow') {
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode,
+    });
+    const internals = engine as unknown as PushInternals;
+    // Past the remote/unborn guard so each test isolates the guard it names.
+    internals.hasRemote = true;
+    internals.state = 'idle';
+    const cycles: number[] = [];
+    internals.doPushCycle = async (retriesLeft = 0) => {
+      cycles.push(retriesLeft);
+    };
+    return { engine, internals, cycles };
+  }
+
+  test('refuses while a pull is in flight rather than racing it', async () => {
+    const { engine, internals, cycles } = makeOneShotEngine();
+    try {
+      internals.pullInFlight = true;
+      await engine.pushOnce();
+      expect(cycles).toEqual([]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('refuses while conflicts hold the tree', async () => {
+    // The resolver owns keep-mine bytes until the user resolves; pushing here
+    // would send them over a teammate's version.
+    const { engine, internals, cycles } = makeOneShotEngine();
+    try {
+      internals.conflictCount = 1;
+      await engine.pushOnce();
+      expect(cycles).toEqual([]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('refuses while parked on an auth error', async () => {
+    const { engine, internals, cycles } = makeOneShotEngine();
+    try {
+      internals.state = 'auth-error';
+      await engine.pushOnce();
+      expect(cycles).toEqual([]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('pushes when nothing blocks it — the control', async () => {
+    // Without this the three assertions above pass on a method that never runs.
+    const { engine, cycles } = makeOneShotEngine();
+    try {
+      await engine.pushOnce();
+      expect(cycles).toHaveLength(1);
+    } finally {
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine push chain survives a B1 conflict', () => {
+  type ChainInternals = {
+    schedulePush(overrideDelayMs?: number): void;
+    pushTimer: ReturnType<typeof setTimeout> | null;
+    conflictCount: number;
+    runPushCycle(): Promise<void>;
+  };
+
+  test('a push tick with ledger conflicts re-arms the chain instead of ending it', async () => {
+    // Regression: the `conflictCount > 0` guard returned before the try/finally
+    // that owns the only schedulePush() chain call, and the fired timer was
+    // already cleared — so one B1 conflict killed auto-push for the process
+    // lifetime. Every visible signal stayed green (mode `full`, state `idle`,
+    // no error) while commits accumulated locally and never reached the remote.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    });
+    const internals = engine as unknown as ChainInternals;
+    const rearms: Array<number | undefined> = [];
+    internals.schedulePush = (d?: number) => {
+      rearms.push(d);
+    };
+    // B1's shape: conflicts recorded in the ledger while the engine sits idle.
+    // A fresh engine starts `dormant`, which returns at an earlier guard.
+    (internals as unknown as { state: string }).state = 'idle';
+    internals.conflictCount = 1;
+
+    await internals.runPushCycle();
+
+    expect(rearms).toHaveLength(1);
+  });
+
+  test('an emptied ledger restarts both legs even though B1 left the state idle', async () => {
+    // The resolver's re-arm used to require `state === 'conflict'`, which B1
+    // never sets — so resolving the conflict did not revive the loop either.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    });
+    const internals = engine as unknown as ChainInternals & {
+      state: string;
+      conflictStore: {
+        list(): Array<{ file: string; variant: string }>;
+        removeConflict(file: string): void;
+        count(): number;
+      };
+      schedulePull(overrideDelayMs?: number): void;
+      reconcileConflictsFromGit(): Promise<void>;
+    };
+    const pushRearms: Array<number | undefined> = [];
+    const pullRearms: Array<number | undefined> = [];
+    internals.schedulePush = (d?: number) => {
+      pushRearms.push(d);
+    };
+    internals.schedulePull = (d?: number) => {
+      pullRearms.push(d);
+    };
+    internals.state = 'idle';
+    internals.conflictCount = 2;
+    // One merge-native entry, and the fixture has no MERGE_HEAD — so the
+    // no-merge-in-progress branch clears it without needing a git probe.
+    internals.conflictStore = {
+      list: () => [{ file: 'a.md', variant: 'merge' }],
+      removeConflict: () => {},
+      count: () => 0,
+    };
+
+    await internals.reconcileConflictsFromGit();
+
+    expect(pushRearms).toHaveLength(1);
+    expect(pullRearms).toHaveLength(1);
+  });
+});
+
+describe('SyncEngine enable schedules both legs immediately', () => {
+  type EnableInternals = {
+    schedulePull(overrideDelayMs?: number): void;
+    schedulePush(overrideDelayMs?: number): void;
+    probeRemote(): Promise<boolean>;
+    probePushPermissionInternal(reason: string): Promise<void>;
+  };
+
+  test('enabling full sync schedules the push at 0, not a full interval out', async () => {
+    // Regression: the pull was scheduled at 0 while the push waited a FULL
+    // interval, so enabling Auto pulled at once, stamped the freshness line, and
+    // left pending edits local for the whole interval. Harmless at the old
+    // hardcoded 60 s; up to an hour once the cadence became configurable.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'off',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 3600,
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    });
+    const internals = engine as unknown as EnableInternals;
+    // Force the enable path past its remote probe; the fixture repo has none, and
+    // a dormant demote would skip scheduling entirely and pass vacuously.
+    internals.probeRemote = async () => true;
+    internals.probePushPermissionInternal = async () => {};
+    const pullDelays: Array<number | undefined> = [];
+    const pushDelays: Array<number | undefined> = [];
+    internals.schedulePull = (d?: number) => {
+      pullDelays.push(d);
+    };
+    internals.schedulePush = (d?: number) => {
+      pushDelays.push(d);
+    };
+
+    await engine.setMode('full');
+
+    expect(pullDelays).toEqual([0]);
+    expect(pushDelays).toEqual([0]);
+  });
+});
+
+describe('SyncEngine setIntervals()', () => {
+  type IntervalInternals = {
+    effectivePullDelayMs(): number;
+    pullIntervalSeconds: number;
+    pushIntervalSeconds: number;
+    pullTimer: ReturnType<typeof setTimeout> | null;
+    pushTimer: ReturnType<typeof setTimeout> | null;
+    schedulePull(overrideDelayMs?: number): void;
+  };
+
+  /** ±15% jitter, so assert on the band around a base interval. */
+  function band(seconds: number) {
+    return { min: seconds * 0.85 * 1000, max: seconds * 1.15 * 1000 };
+  }
+
+  function makeIntervalEngine(mode: SyncMode) {
+    return new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode,
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    });
+  }
+
+  test('a new pull interval changes the delay the engine would schedule', async () => {
+    const engine = makeIntervalEngine('follow');
+    const internals = engine as unknown as IntervalInternals;
+    engine.setIntervals(900, 60);
+    const delayMs = internals.effectivePullDelayMs();
+    expect(delayMs).toBeGreaterThanOrEqual(band(900).min);
+    expect(delayMs).toBeLessThanOrEqual(band(900).max);
+  });
+
+  test('pull and push move independently', () => {
+    const engine = makeIntervalEngine('full');
+    const internals = engine as unknown as IntervalInternals;
+    engine.setIntervals(30, 3600);
+    expect(internals.pullIntervalSeconds).toBe(30);
+    expect(internals.pushIntervalSeconds).toBe(3600);
+  });
+
+  test('a same-value call does not re-arm the timers', () => {
+    // The config re-apply path fires twice for one change (producer notify +
+    // watcher echo). A non-idempotent setter would cancel and restart the
+    // timers on the echo, indefinitely deferring the cycle under a stream of
+    // unrelated config writes. Armed directly rather than via start(), which
+    // parks a remote-less fixture in `dormant` with nothing scheduled.
+    const engine = makeIntervalEngine('follow');
+    const internals = engine as unknown as IntervalInternals;
+    internals.schedulePull();
+    try {
+      const pullTimerBefore = internals.pullTimer;
+      expect(pullTimerBefore).not.toBeNull();
+      engine.setIntervals(30, 60);
+      expect(internals.pullTimer).toBe(pullTimerBefore);
+    } finally {
+      engine.stop();
+    }
+  });
+
+  test('a changed interval re-arms an armed timer rather than waiting it out', () => {
+    // A user moving 1 hour → 30 s expects the next pull in 30 s, not up to an
+    // hour later.
+    const engine = makeIntervalEngine('follow');
+    const internals = engine as unknown as IntervalInternals;
+    internals.schedulePull();
+    try {
+      const pullTimerBefore = internals.pullTimer;
+      engine.setIntervals(3600, 60);
+      expect(internals.pullTimer).not.toBe(pullTimerBefore);
+      expect(internals.pullTimer).not.toBeNull();
+    } finally {
+      engine.stop();
+    }
+  });
+
+  test('an unarmed timer stays unarmed — a cadence change must not start a loop', () => {
+    // `off` never schedules. If the setter armed unconditionally it would start
+    // a pull loop for a project the user put in Manual, from nothing more than
+    // a config write.
+    const engine = makeIntervalEngine('off');
+    const internals = engine as unknown as IntervalInternals;
+    expect(internals.pullTimer).toBeNull();
+    engine.setIntervals(300, 300);
+    expect(internals.pullTimer).toBeNull();
+    expect(internals.pushTimer).toBeNull();
+  });
+
+  test('the anonymous floor still outranks a shorter configured pull interval', async () => {
+    // The floor protects the remote from aggregate anonymous read pressure, so
+    // a per-machine preference must not be able to undercut it.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    }); // no gh, no token store → anonymous
+    const internals = engine as unknown as IntervalInternals & {
+      refreshAuthTier(): Promise<void>;
+    };
+    engine.setIntervals(30, 60);
+    await internals.refreshAuthTier();
+    const delayMs = internals.effectivePullDelayMs();
+    expect(delayMs).toBeGreaterThanOrEqual(band(180).min);
+    expect(delayMs).toBeLessThanOrEqual(band(180).max);
+  });
+
+  test('a longer configured interval is honored for an anonymous follower', async () => {
+    // The floor is a minimum, not a fixed cadence — choosing gentler must work.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'follow',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    });
+    const internals = engine as unknown as IntervalInternals & {
+      refreshAuthTier(): Promise<void>;
+    };
+    engine.setIntervals(3600, 60);
+    await internals.refreshAuthTier();
+    const delayMs = internals.effectivePullDelayMs();
+    expect(delayMs).toBeGreaterThanOrEqual(band(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(band(3600).max);
   });
 });
 
@@ -2289,6 +3277,67 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
   });
 
   test.runIf(process.getuid?.() !== 0)(
+    'a one-shot push reports a staging failure instead of rejecting',
+    async () => {
+      // Covers the NEW surface — `pushOnce()` in a mode that never pushes on a
+      // schedule — against a diverged remote. `pushOnce` resolves rather than
+      // rejecting, which matters because every caller in `api-extension.ts`
+      // invokes it as `void engine.trigger(...)`, where a rejection is an
+      // unhandled one.
+      //
+      // SCOPE: the staging error here is raised by doPushCycle's own
+      // `gatherContentFilesSync()` and handled by its OUTER catch. The inner
+      // catch's `ShareableOkEnumerationError` branch (the one the crash fix
+      // touched) is NOT reached by this test, nor by the sibling below —
+      // verified by instrumenting that branch and observing zero hits from
+      // either. Reaching it needs the RETRY's `commitDirtyContentFilesToHead`
+      // to enumerate and fail, and the outer push has already committed the
+      // tree by then. That branch is currently uncovered; do not read this
+      // test as guarding it.
+      const { bareDir } = await initSharedRepoWithBareRemote();
+
+      mkdirSync(join(projectDir, '.ok', 'schemas'), { recursive: true });
+      writeFileSync(join(projectDir, '.ok', 'schemas', 'frontmatter.json'), '{}\n');
+
+      const engine = makeShareableEngine('off');
+      const internal = engine as unknown as {
+        commitDirtyContentFilesToHead: (handle: unknown) => Promise<void>;
+      };
+      const commitDirty = internal.commitDirtyContentFilesToHead.bind(engine);
+      internal.commitDirtyContentFilesToHead = async (handle) => {
+        chmodSync(join(projectDir, '.ok', 'schemas'), 0o311);
+        await commitDirty(handle);
+      };
+
+      try {
+        // Start FIRST: attach reconciles against origin, so a teammate who
+        // pushed before this point would already be merged in and the push
+        // would fast-forward cleanly.
+        await engine.start();
+
+        const { sister, sisterDir } = await cloneAsTeammate(bareDir);
+        writeFileSync(join(sisterDir, 'remote.md'), '# Remote\n');
+        await sister.add(['remote.md']);
+        await sister.commit('advance remote');
+        await sister.push(['origin', 'main']);
+        writeFileSync(join(projectDir, 'local.md'), '# Local\n');
+
+        await expect(engine.pushOnce()).resolves.toBeUndefined();
+
+        const status = engine.getStatus();
+        // A staging failure is the push leg failing to assemble what it would
+        // send, so it belongs on `pushError`. Landing it on `pullError` would
+        // put it on the wrong half of the popover and leave Push looking fine.
+        expect(status.pushError).toContain('Shareable .ok subtree ".ok/schemas"');
+        expect(status.pullError).toBeUndefined();
+      } finally {
+        chmodSync(join(projectDir, '.ok', 'schemas'), 0o755);
+        await engine.destroy();
+      }
+    },
+  );
+
+  test.runIf(process.getuid?.() !== 0)(
     'reports retry staging failures as push errors',
     async () => {
       const { bareDir } = await initSharedRepoWithBareRemote();
@@ -2441,9 +3490,10 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     }
   });
 
-  test('pull with locally edited shareable artifacts commits them before merging', async () => {
-    // Exercises the second staging path: the pre-merge dirty-content commit,
-    // not the push cycle, is what stages the artifact here.
+  test('pull keeps local shareable-artifact edits as overlay without committing them', async () => {
+    // The dirty artifact does not overlap the incoming change, so it rides
+    // through the B1 overlay untouched — and a pull must not author a commit
+    // from it on the user's behalf.
     const { git, bareDir } = await initSharedRepoWithBareRemote();
     const { sister, sisterDir } = await cloneAsTeammate(bareDir);
     writeFileSync(join(sisterDir, 'from-teammate.md'), '# Teammate\n');
@@ -2464,16 +3514,20 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       expect(status.state).toBe('idle');
       expect(existsSync(join(projectDir, 'from-teammate.md'))).toBe(true);
 
-      const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
-      expect(headPaths).toContain('.ok/config.yml');
-      const blob = await git.raw(['show', 'HEAD:.ok/config.yml']);
-      expect(blob).toBe('sync:\n  mode: full\n');
+      // The local edit survives on disk as overlay; nothing committed it.
+      expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe(
+        'sync:\n  mode: full\n',
+      );
+      const lastMessage = (await git.log({ maxCount: 1 })).latest?.message;
+      expect(lastMessage).toBe('teammate note');
+      const log = await git.log();
+      expect(log.all.some((c) => c.message === 'Auto-save: interim before merge')).toBe(false);
     } finally {
       await engine.destroy();
     }
   });
 
-  test('auto-resolves non-document artifacts but preserves template content conflicts', async () => {
+  test('keeps local artifact edits and pins template conflicts without merging', async () => {
     const { git, bareDir } = await initSharedRepoWithBareRemote();
     mkdirSync(join(projectDir, '.ok', 'schemas'), { recursive: true });
     mkdirSync(join(projectDir, '.ok', 'templates'), { recursive: true });
@@ -2516,48 +3570,44 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       await engine.start();
       await engine.trigger('pull');
 
-      // Non-document artifacts take theirs, while templates keep the ordinary
-      // content-conflict lifecycle because users can resolve them in the editor.
+      // The Pull VERB's disposition, identical in every mode: keep mine.
+      // Nothing is committed, nothing is silently overwritten — the teammate's
+      // versions stay in history, and the Sync verb (whose classic path
+      // resolves non-document artifacts to theirs, warn-logged) is pinned by
+      // the .mcp.json merge-machinery tests. Templates keep the resolvable
+      // lifecycle as ledger entries rather than a MERGE_HEAD, so the repo
+      // keeps flowing while they wait (the push gate holds until resolved).
       const status = engine.getStatus();
-      expect(status.state).toBe('conflict');
+      expect(status.state).toBe('idle');
       expect(status.pausedReason).toBeUndefined();
       expect(status.conflictCount).toBe(2);
-      expect(
-        engine
-          .getConflicts()
-          .map((conflict) => conflict.file)
-          .sort(),
-      ).toEqual(['.ok/templates/project.md', 'docs/.ok/templates/folder.md']);
-      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
-      expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe('shared: remote\n');
-      expect(readFileSync(join(projectDir, '.ok', 'schemas', 'lint.json'), 'utf-8')).toBe(
-        '{"a":99}\n',
-      );
-
-      const unmerged = await git.raw(['diff', '--name-only', '--diff-filter=U']);
-      expect(unmerged.trim().split('\n').sort()).toEqual([
+      const conflicts = engine.getConflicts();
+      expect(conflicts.map((conflict) => conflict.file).sort()).toEqual([
         '.ok/templates/project.md',
         'docs/.ok/templates/folder.md',
       ]);
+      // Ledger conflicts pin theirs for the resolver; no merge is in progress.
+      expect(conflicts.every((c) => c.theirsSha)).toBe(true);
+      expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
 
-      const configResolves = cap.entries.filter(
-        (e) => e.msg.includes('auto-resolved') && e.data.file === '.ok/config.yml',
+      // Keep-mine on every dirty artifact — the Pull verb never destroys work.
+      expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe('shared: local\n');
+      expect(readFileSync(join(projectDir, '.ok', 'schemas', 'lint.json'), 'utf-8')).toBe(
+        '{"a":2}\n',
       );
-      expect(configResolves).toHaveLength(1);
-      expect(configResolves[0]?.level).toBe('warn');
-      expect(configResolves[0]?.msg).toContain('local project config edits were overwritten');
+      expect(readFileSync(join(projectDir, '.ok', 'templates', 'project.md'), 'utf-8')).toBe(
+        '# Local project\n',
+      );
 
-      const schemaResolves = cap.entries.filter(
-        (e) => e.msg.includes('auto-resolved') && e.data.file === '.ok/schemas/lint.json',
+      // The repo itself fast-forwarded — conflicts never stall the tip.
+      expect((await git.log({ maxCount: 1 })).latest?.message).toBe(
+        'teammate edits config and schema',
       );
-      expect(schemaResolves).toHaveLength(1);
-      expect(schemaResolves[0]?.level).toBe('info');
-      expect(schemaResolves[0]?.msg).toBe('[sync] auto-resolved non-content conflict with theirs');
-
-      const templateResolves = cap.entries.filter(
-        (e) => e.msg.includes('auto-resolved') && String(e.data.file).includes('/templates/'),
+      // Nothing overwritten, so no overwrite breadcrumb fires on this verb.
+      const overwriteWarnings = cap.entries.filter((e) =>
+        e.msg.includes('local project config edits were overwritten'),
       );
-      expect(templateResolves).toEqual([]);
+      expect(overwriteWarnings).toEqual([]);
     } finally {
       cap.restore();
       await engine.destroy();
@@ -4298,7 +5348,7 @@ describe('SyncEngine pull-only mode', () => {
     }
   });
 
-  test('never pushes local commits (push cycle is gated off)', async () => {
+  test('never pushes local commits on its own, but honors an explicit push', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
     await git.raw('config', 'user.name', 'Test');
@@ -4312,12 +5362,12 @@ describe('SyncEngine pull-only mode', () => {
     await git.push(['--set-upstream', 'origin', 'main']);
     const originBefore = (await git.revparse(['origin/main'])).trim();
 
-    // A local commit the project has not pushed. Full sync would push it; a
-    // pull-only project must leave it local.
+    // A local commit the project has not pushed.
     writeFileSync(join(projectDir, 'README.md'), '# seed\n\nlocal edit\n');
     await git.add('.');
     await git.commit('local commit not pushed');
-    expect((await git.revparse(['HEAD'])).trim()).not.toBe(originBefore);
+    const localHead = (await git.revparse(['HEAD'])).trim();
+    expect(localHead).not.toBe(originBefore);
 
     const engine = new SyncEngine({
       projectDir,
@@ -4327,17 +5377,20 @@ describe('SyncEngine pull-only mode', () => {
     });
     try {
       await engine.start();
-      // Both a direct push trigger and a full sync (push-then-pull) must leave
-      // origin untouched — the push gate makes the push cycle a no-op.
-      await engine.trigger('push');
-      await engine.trigger('sync');
 
+      // Starting the engine arms the pull loop and nothing else: pull-only
+      // never sends the local commit on the product's own initiative.
       expect((await git.revparse(['origin/main'])).trim()).toBe(originBefore);
-      const status = engine.getStatus();
-      expect(status.lastPushedSha).toBeNull();
-      // protected-branch is a push-rejection pause; with the push cycle gated
-      // off it can never be classified, so it is structurally unreachable here.
-      expect(status.pausedReason).not.toBe('protected-branch');
+      expect(engine.getStatus().lastPushedSha).toBeNull();
+
+      // An explicit press is the user acting for themselves, and it lands. The
+      // mode governs what runs on a timer, not what the user may do.
+      await engine.trigger('push');
+
+      expect((await git.revparse(['origin/main'])).trim()).toBe(localHead);
+      expect(engine.getStatus().lastPushedSha).toBe(localHead);
+      // Still pull-only afterwards — an explicit push must not arm a push loop.
+      expect(engine.getStatus().syncMode).toBe('follow');
     } finally {
       await engine.destroy();
     }
@@ -5976,6 +7029,265 @@ describe('SyncEngine telemetry', () => {
       expect(entry?.data).toMatchObject({ choice: 'theirs' });
     } finally {
       cap.restore();
+      await engine.destroy();
+    }
+  });
+});
+
+describe('SyncEngine blocking-change resolution', () => {
+  /**
+   * A real overlap: the remote advanced a tracked file that is ALSO dirty
+   * locally and uncommitted. That is exactly what `prepareForMerge` refuses to
+   * merge over, and the state the popover's Commit button acts on.
+   */
+  async function setupOverlap(): Promise<void> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'settings.json'), '{"a":1}\n', 'utf-8');
+    // A second out-of-scope tracked file the remote never touches — the
+    // "unrelated dirt" the commit action must leave alone.
+    writeFileSync(join(sisterDir, 'keep.json'), '{"keep":1}\n', 'utf-8');
+    writeFileSync(join(sisterDir, 'foo.md'), 'base\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Project');
+    await project.raw('config', 'user.email', 'project@test.com');
+
+    writeFileSync(join(sisterDir, 'settings.json'), '{"a":99}\n', 'utf-8');
+    await sister.add('settings.json');
+    await sister.commit('remote edit');
+    await sister.push('origin', 'main');
+
+    // Dirty and UNCOMMITTED locally — the overlap the pre-merge gate catches.
+    writeFileSync(join(projectDir, 'settings.json'), '{"a":2}\n', 'utf-8');
+  }
+
+  /**
+   * Markdown-only content scope, which is what makes the overlap reachable at
+   * all: the push leg commits content-scoped dirt BEFORE the merge, so a file
+   * the filter admits never survives to block anything. The paths that do block
+   * are the out-of-scope ones — editor and tool config, exactly the set in the
+   * bug report (`.claude/launch.json`, `.codex/config.toml`, …).
+   */
+  const markdownOnlyFilter = {
+    isExcluded: (path: string) => !path.endsWith('.md'),
+    isDirExcluded: (_path: string) => false,
+  };
+
+  function makeOverlapEngine(mode: SyncMode = 'full') {
+    return new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: markdownOnlyFilter,
+      mode,
+    });
+  }
+
+  test('Manual mode publishes the blocking paths too, not just full', async () => {
+    // Regression: `runOneShotPull`'s finally restored the resting pause when
+    // the mode is `off`, discarding the one the cycle had just raised. The
+    // panel gates on `external-changes-pending` surviving, so in Manual — the
+    // DEFAULT resting mode, and the one whose primary affordance is this very
+    // button — the blocked-changes panel never rendered at all. Silent: no log,
+    // no error, just the pre-feature single sentence.
+    //
+    // Drives `trigger`, not `pullOnce`, so the pre-clear at the top of trigger()
+    // is in the path exactly as a button press has it.
+    await setupOverlap();
+    const engine = makeOverlapEngine('off');
+    try {
+      await engine.start();
+      await engine.trigger('sync');
+
+      expect(engine.getStatus().pausedReason).toBe('external-changes-pending');
+      expect(engine.getStatus().blockingPaths).toEqual(['settings.json']);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a pause resolved outside the app is retracted by the next successful pull', async () => {
+    // Regression: no success path cleared the pause, so a user who resolved the
+    // overlap in a terminal — which the panel's own handoff tells them to do —
+    // left a fully-synced, idle engine advertising a resolved pause and a stale
+    // file list indefinitely.
+    await setupOverlap();
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      await engine.pullOnce('sync');
+      expect(engine.getStatus().blockingPaths).toEqual(['settings.json']);
+
+      // The user unblocks it themselves in a terminal — reverting the local
+      // edit, which is one of the two things the panel's handoff sends them to
+      // do — so the next pull merges cleanly.
+      await simpleGit(projectDir).checkout(['--', 'settings.json']);
+      await engine.pullOnce('sync');
+
+      expect(engine.getStatus().pausedReason).toBeUndefined();
+      expect(engine.getStatus().blockingPaths).toBeUndefined();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a restored pause does not outlive the paths it needs', async () => {
+    // `blockingPaths` is memory-only. A persisted `external-changes-pending`
+    // therefore came back advertising a pause the panel cannot render and the
+    // resolve endpoint 409s on — a dead-end the user cannot clear from the UI.
+    await setupOverlap();
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      await engine.pullOnce('sync');
+      expect(engine.getStatus().pausedReason).toBe('external-changes-pending');
+      await engine.destroy();
+
+      const restored = makeOverlapEngine();
+      try {
+        await restored.start();
+        expect(restored.getStatus().pausedReason).not.toBe('external-changes-pending');
+      } finally {
+        await restored.destroy();
+      }
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('pausing on an overlap publishes the blocking paths, and resuming retracts them', async () => {
+    await setupOverlap();
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      await engine.pullOnce('sync');
+
+      expect(engine.getStatus().pausedReason).toBe('external-changes-pending');
+      expect(engine.getStatus().blockingPaths).toEqual(['settings.json']);
+      expect(engine.getBlockingPaths()).toEqual(['settings.json']);
+
+      // The paths are readable only while the pause that produced them holds:
+      // a resumed engine advertising a stale set would arm two destructive
+      // buttons against files that are no longer blocking anything.
+      await engine.commitBlockingPaths();
+      expect(engine.getStatus().blockingPaths).toBeUndefined();
+      expect(engine.getBlockingPaths()).toEqual([]);
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('commit takes exactly the blocking paths and leaves the rest of the tree dirty', async () => {
+    await setupOverlap();
+    // An unrelated dirty file: "Commit and sync" named the blocking files, so
+    // sweeping this one into the same commit would be a different action.
+    writeFileSync(join(projectDir, 'keep.json'), '{"keep":2}\n', 'utf-8');
+
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      await engine.pullOnce('sync');
+      expect(engine.getBlockingPaths()).toEqual(['settings.json']);
+
+      const sha = await engine.commitBlockingPaths();
+      expect(sha).toMatch(/^[0-9a-f]{40}$/);
+
+      const git = simpleGit(projectDir);
+      const committed = await git.raw(['show', '--name-only', '--format=', 'HEAD']);
+      expect(committed.trim()).toBe('settings.json');
+      const status = await git.status();
+      expect(status.modified).toContain('keep.json');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('the engine exposes no way to discard the blocking paths', async () => {
+    // Guards the deliberate omission. A `discardBlockingPaths` sibling would
+    // restore the paths to HEAD, destroying uncommitted work with no reflog and
+    // no stash object — the verb waits on a recoverable snapshot. A future
+    // re-add that skips the snapshot fails here.
+    const engine = makeOverlapEngine();
+    try {
+      expect((engine as unknown as Record<string, unknown>).discardBlockingPaths).toBeUndefined();
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('a scoped probe is not fooled by content the user staged by hand', async () => {
+    // Regression: the emptiness probe was `git diff --cached` with NO pathspec,
+    // so unrelated pre-staged content made it pass even when the add staged
+    // nothing for the blocking paths — and `git commit -- <paths>` then failed,
+    // surfacing as a generic 500 while the user's staging was silently altered.
+    await setupOverlap();
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      await engine.pullOnce('sync');
+      expect(engine.getBlockingPaths()).toEqual(['settings.json']);
+
+      const pg = simpleGit(projectDir);
+      // The user resolves the overlap by hand (nothing left to stage for the
+      // blocking path) but has OTHER work staged.
+      await pg.checkout(['--', 'settings.json']);
+      writeFileSync(join(projectDir, 'keep.json'), '{"staged":"by hand"}\n', 'utf-8');
+      await pg.add('keep.json');
+
+      expect(await engine.commitBlockingPaths()).toBeNull();
+      // Their staging survives untouched.
+      const staged = await pg.raw(['diff', '--cached', '--name-only']);
+      expect(staged.trim()).toBe('keep.json');
+    } finally {
+      await engine.destroy();
+    }
+  });
+
+  test('the display cap does not leak into the action or hide the true set size', () => {
+    // Regression: the stored set was pre-capped at 50, so one Commit press
+    // cleared only the first 50 overlaps, re-paused on the remainder with a
+    // different file list, and read as a product bug. The cap bounds the CC1
+    // status payload only.
+    const engine = makeOverlapEngine();
+    const internals = engine as unknown as {
+      blockingPaths: string[];
+      pausedReason?: string;
+    };
+    internals.pausedReason = 'external-changes-pending';
+    internals.blockingPaths = Array.from({ length: 60 }, (_, i) => `file-${i}.json`);
+
+    expect(engine.getBlockingPaths()).toHaveLength(60);
+    expect(engine.getStatus().blockingPaths).toHaveLength(50);
+  });
+
+  test('commit declines when nothing is blocking', async () => {
+    // The endpoint's authority is this guard: it acts on engine state, never on
+    // a caller-supplied path list, so an unpaused engine must do nothing at all.
+    await setupOverlap();
+    const engine = makeOverlapEngine();
+    try {
+      await engine.start();
+      expect(engine.getBlockingPaths()).toEqual([]);
+      expect(await engine.commitBlockingPaths()).toBeNull();
+      expect(readFileSync(join(projectDir, 'settings.json'), 'utf-8')).toBe('{"a":2}\n');
+    } finally {
       await engine.destroy();
     }
   });

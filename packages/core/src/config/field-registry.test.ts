@@ -313,6 +313,8 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.sidebar.showSkillsSection',
       'autoSync.enabled',
       'autoSync.mode',
+      'autoSync.pullIntervalSeconds',
+      'autoSync.pushIntervalSeconds',
       'autoSync.resumeMode',
       'linkPreviews.enabled',
       'search.semantic.baseUrl',

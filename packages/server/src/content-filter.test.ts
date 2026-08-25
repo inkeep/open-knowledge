@@ -56,6 +56,48 @@ describe('ContentFilter', () => {
     await rm(xdgDir, { recursive: true, force: true });
   });
 
+  describe('sync-popover open-target admission', () => {
+    // The sync popover offers a row to the asset viewer when the filter admits
+    // it under `bypassFilters` + `showOk` — the reduction to FLOORS ONLY. The
+    // text-view endpoint has no extension or ignore gate of its own, so this
+    // predicate is the whole guard on what one click can read.
+    const openable = (filter: ContentFilter, relPath: string): boolean =>
+      !filter.isExcluded(relPath, { bypassFilters: true, showOk: true });
+
+    test('admits the config and dotfiles the sidebar shows', () => {
+      writeFileSync(join(projectDir, '.gitignore'), 'ignored-note.md\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      expect(openable(filter, 'opencode.json')).toBe(true);
+      expect(openable(filter, '.gitignore')).toBe(true);
+      expect(openable(filter, '.ok/config.yml')).toBe(true);
+      // Skill docs are the exception: the reserved-doc gate holds them out of
+      // the user tree under every bypass, because their surface is the Skills
+      // section, not the asset viewer. A projected SKILL.md row therefore stays
+      // plain text in the popover.
+      expect(openable(filter, '.claude/skills/reviewer/SKILL.md')).toBe(false);
+      // Gitignored is not hidden here: the user can already see it under Show
+      // All Files, and it is their own note.
+      expect(openable(filter, 'ignored-note.md')).toBe(true);
+    });
+
+    test('refuses the floors — secrets first', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      // A dirty `.env` shows up in a git listing by name; one click must not
+      // turn that listing into a reader for its contents.
+      expect(openable(filter, '.env')).toBe(false);
+      expect(openable(filter, '.env.local')).toBe(false);
+      expect(openable(filter, 'deploy/prod.pem')).toBe(false);
+      expect(openable(filter, '.ssh/id_rsa')).toBe(false);
+      expect(openable(filter, '.aws/credentials')).toBe(false);
+      // Machine-local OK state and VCS/dependency internals stay closed too.
+      expect(openable(filter, '.ok/local/server.lock')).toBe(false);
+      expect(openable(filter, '.git/config')).toBe(false);
+      expect(openable(filter, 'node_modules/pkg/index.js')).toBe(false);
+    });
+  });
+
   describe('gitignore filtering', () => {
     test('excludes files matching .gitignore patterns', () => {
       writeFileSync(join(projectDir, '.gitignore'), 'dist/\ntmp/\n');

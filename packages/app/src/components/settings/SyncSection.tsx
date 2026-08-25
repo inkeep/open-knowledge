@@ -12,12 +12,14 @@
 import {
   isSyncMode,
   modeFromCommittedDefault,
+  resolveAutoSyncIntervals,
   resolveLocalAutoSyncMode,
+  SYNC_INTERVAL_PRESET_SECONDS,
   type SyncMode,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AuthModal } from '@/components/AuthModal';
 import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
@@ -33,15 +35,24 @@ import {
 } from '@/components/SyncStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   useSyncDefaultWriter,
+  useSyncIntervalWriter,
   useSyncModeSelection,
   useSyncModeWriter,
 } from '@/hooks/use-enable-sync-with-confirm';
 import { useGitSyncStatus } from '@/hooks/use-git-sync-status';
 import { useConfigContext } from '@/lib/config-provider';
+import { consumeSyncAdvancedIntent } from '@/lib/use-settings-route';
 import { ScopeBadge } from './ScopeBadge';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
@@ -58,6 +69,30 @@ export function SyncSection() {
     useConfigContext();
   const modeWriter = useSyncModeWriter();
   const defaultWriter = useSyncDefaultWriter();
+  const intervalWriter = useSyncIntervalWriter();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  // Consumed in an EFFECT, not a `useState` initializer. `consumeSyncAdvancedIntent`
+  // mutates module state, and render must stay pure: React may call a component
+  // (and its state initializers) more times than it commits — StrictMode does so
+  // today, and a discarded or restarted render would silently swallow the intent
+  // under future concurrent behavior. An effect runs after commit, so the flag is
+  // consumed exactly as many times as the component actually mounts; its own
+  // StrictMode double-run re-reads an already-cleared flag and no-ops.
+  //
+  // Not a bug fix — today both spellings open the disclosure. Measured on React
+  // 19.2: StrictMode invokes the initializer twice but commits the FIRST call's
+  // value, so the burned flag never reaches the committed state. This is about
+  // not depending on that.
+  //
+  // This section renders only while `sync` is the active settings id, so the
+  // consume fires exactly when the user lands on Sync — never on some other
+  // section that happens to mount first.
+  useEffect(() => {
+    if (consumeSyncAdvancedIntent()) setAdvancedOpen(true);
+  }, []);
+  // Absent leaves resolve to the shipped 30 s / 60 s, so a project whose config
+  // predates these keys shows today's cadence rather than an empty control.
+  const intervals = resolveAutoSyncIntervals(projectLocalConfig?.autoSync);
   // Per-machine mode: an explicit `autoSync.mode` wins, else derive from the
   // legacy `enabled` boolean; never-answered resolves to off for display (the
   // committed shared default has its own control below).
@@ -174,6 +209,13 @@ export function SyncSection() {
     status?.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason !== 'not-authenticated' &&
     !notFoundAsIdentity;
+  // No credentials at all — the same condition the server resolves as the
+  // anonymous pull tier, which floors this machine's pull cadence. Used only to
+  // caption the interval control, so a proxy off the push probe is enough; the
+  // tier itself is resolved server-side and not carried in the status payload.
+  const isSignedOut =
+    status?.pushPermission?.checkStatus === 'denied' &&
+    status.pushPermission.deniedReason === 'not-authenticated';
   // The masquerade parks as auth-error, whose paused label reads "Reconnect
   // required" — the prescription every other surface withdraws for it — so it
   // shows the failure's own copy instead. Keyed on the same (pausedReason,
@@ -249,6 +291,58 @@ export function SyncSection() {
     }
   }
 
+  /**
+   * Preset labels. A switch over the fixed preset list rather than a plural
+   * macro: five known values give translators five natural strings instead of
+   * a unit-plus-number template that reads awkwardly in several locales.
+   */
+  function intervalLabel(seconds: number): string {
+    switch (seconds) {
+      case 30:
+        return t`30 seconds`;
+      case 60:
+        return t`1 minute`;
+      case 300:
+        return t`5 minutes`;
+      case 900:
+        return t`15 minutes`;
+      case 3600:
+        return t`1 hour`;
+      default:
+        // Reached via `intervalOptions` when a hand-edited config carries an
+        // off-preset value (the schema admits any integer in range). Showing
+        // the raw number keeps the control honest instead of snapping the
+        // display to a preset the file does not say.
+        return t`${seconds} seconds`;
+    }
+  }
+
+  /**
+   * The presets, plus the stored value when it is off-preset. Without the
+   * extra entry a hand-edited `pullIntervalSeconds: 45` matched no item, and
+   * Radix fills the trigger by portaling the SELECTED item's text — no item,
+   * no text: a blank control with no indication of the cadence in effect,
+   * where touching the other leg would silently rewrite this one.
+   */
+  function intervalOptions(current: number): number[] {
+    return (SYNC_INTERVAL_PRESET_SECONDS as readonly number[]).includes(current)
+      ? [...SYNC_INTERVAL_PRESET_SECONDS]
+      : [...SYNC_INTERVAL_PRESET_SECONDS, current].sort((a, b) => a - b);
+  }
+
+  function onIntervalChange(leg: 'pull' | 'push', raw: string): void {
+    const seconds = Number(raw);
+    if (!Number.isFinite(seconds) || intervalWriter === null) return;
+    const result = intervalWriter({
+      pullIntervalSeconds: leg === 'pull' ? seconds : intervals.pullIntervalSeconds,
+      pushIntervalSeconds: leg === 'push' ? seconds : intervals.pushIntervalSeconds,
+    });
+    if (!result.ok) {
+      const detail = result.error;
+      toast.error(t`Failed to update the sync interval — ${detail}`);
+    }
+  }
+
   return (
     <section aria-labelledby="settings-sync-title" className="space-y-3">
       <SettingsSectionHeader
@@ -258,8 +352,9 @@ export function SyncSection() {
         level="block"
       >
         <Trans>
-          Keep this project in sync with your git remote. Follow fetches updates without pushing;
-          full sync pushes your commits too. Turning sync on requires confirmation.
+          Keep this project in sync with your git remote. Auto (Pull only) brings in updates without
+          pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires
+          confirmation.
         </Trans>
       </SettingsSectionHeader>
       <div className="rounded-md border p-3">
@@ -270,15 +365,13 @@ export function SyncSection() {
             </div>
             <p className="text-muted-foreground text-1sm" data-testid="settings-sync-body">
               {localMode === 'full' ? (
-                <Trans>Full sync — your commits push and remote changes pull automatically.</Trans>
+                <Trans>Your edits are committed and pushed to your remote automatically.</Trans>
               ) : localMode === 'follow' ? (
-                <Trans>
-                  Follow — updates flow in from your remote; your edits stay on this computer.
-                </Trans>
+                <Trans>Updates flow in from your remote; your edits stay on this computer.</Trans>
               ) : (
-                <Trans>
-                  Sync is off — your edits stay on this computer until you commit and push manually.
-                </Trans>
+                // Manual is a resting mode with in-app actions, not a dead end —
+                // the old "until you commit and push manually" implied a terminal.
+                <Trans>Nothing moves until you ask — pull and push from the sync menu.</Trans>
               )}
             </p>
             {status?.remote ? (
@@ -325,14 +418,14 @@ export function SyncSection() {
               className={SYNC_SELECTED_TOGGLE_CLASS}
               data-testid="settings-sync-mode-off"
             >
-              <Trans>Off</Trans>
+              <Trans>Manual</Trans>
             </ToggleGroupItem>
             <ToggleGroupItem
               value="follow"
               className={SYNC_SELECTED_TOGGLE_CLASS}
               data-testid="settings-sync-mode-follow"
             >
-              <Trans>Follow</Trans>
+              <Trans>Auto (Pull only)</Trans>
             </ToggleGroupItem>
             {genuineReadOnlyDenied ? (
               <Tooltip>
@@ -353,7 +446,7 @@ export function SyncSection() {
                       }
                       data-testid="settings-sync-mode-full"
                     >
-                      <Trans>Full</Trans>
+                      <Trans>Auto (Pull and Push)</Trans>
                     </ToggleGroupItem>
                   </span>
                 </TooltipTrigger>
@@ -367,7 +460,7 @@ export function SyncSection() {
                 className={SYNC_SELECTED_TOGGLE_CLASS}
                 data-testid="settings-sync-mode-full"
               >
-                <Trans>Full</Trans>
+                <Trans>Auto (Pull and Push)</Trans>
               </ToggleGroupItem>
             )}
           </ToggleGroup>
@@ -394,8 +487,8 @@ export function SyncSection() {
           <div className="mt-2 flex items-start gap-2" data-testid="settings-sync-switch-follow">
             <p className="text-1sm text-muted-foreground flex-1 min-w-0">
               <Trans>
-                Auto-sync is paused — you don't have permission to push to this repo. Switch to
-                Follow to keep receiving updates.
+                Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto
+                (Pull only) to keep receiving updates.
               </Trans>
             </p>
             <Button
@@ -405,7 +498,7 @@ export function SyncSection() {
               onClick={() => onModeSelect('follow')}
               data-testid="settings-sync-switch-follow-action"
             >
-              <Trans>Switch to Follow</Trans>
+              <Trans>Switch to Auto (Pull only)</Trans>
             </Button>
           </div>
         )}
@@ -424,8 +517,8 @@ export function SyncSection() {
               <Trans>You don't have permission to push to this repo.</Trans>
             ) : (
               <Trans>
-                You don't have permission to push to this repo. Follow can still keep your copy up
-                to date.
+                You don't have permission to push to this repo. Auto (Pull only) can still keep your
+                copy up to date.
               </Trans>
             )}
           </p>
@@ -471,6 +564,109 @@ export function SyncSection() {
           </div>
         )}
       </div>
+      {/* Cadence is meaningless in Manual — nothing is scheduled — so the card
+          is absent rather than disabled: a greyed control implies the setting
+          applies here and is merely blocked. */}
+      {localMode !== 'off' && (
+        <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="group gap-1 px-1.5 text-muted-foreground"
+              data-testid="settings-sync-advanced-trigger"
+            >
+              <ChevronRight
+                className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
+                aria-hidden
+              />
+              <Trans>Advanced</Trans>
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="pt-2">
+            <div className="rounded-md border p-3 space-y-3" data-testid="settings-sync-intervals">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div id="settings-sync-pull-interval-label" className="text-sm font-medium">
+                    <Trans>Check for updates every</Trans>
+                  </div>
+                  <p className="text-muted-foreground text-1sm">
+                    <Trans>How often this computer pulls changes from your remote.</Trans>
+                  </p>
+                </div>
+                <Select
+                  value={String(intervals.pullIntervalSeconds)}
+                  onValueChange={(v) => onIntervalChange('pull', v)}
+                  disabled={!projectLocalSynced}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="w-40 shrink-0"
+                    aria-labelledby="settings-sync-pull-interval-label"
+                    data-testid="settings-sync-pull-interval"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {intervalOptions(intervals.pullIntervalSeconds).map((seconds) => (
+                      <SelectItem key={seconds} value={String(seconds)}>
+                        {intervalLabel(seconds)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {isSignedOut && (
+                // The anonymous pull floor is enforced server-side, so a signed-out
+                // follower who picks 30 s silently keeps polling at the floor. Say so
+                // rather than letting the control claim a cadence it will not get.
+                <p
+                  className="text-1sm text-muted-foreground"
+                  data-testid="settings-sync-anon-floor-hint"
+                >
+                  <Trans>
+                    While you're signed out, updates are checked at most every 3 minutes regardless
+                    of this setting.
+                  </Trans>
+                </p>
+              )}
+              {localMode === 'full' && (
+                <div className="flex items-start justify-between gap-4 border-t pt-3">
+                  <div className="min-w-0 flex-1">
+                    <div id="settings-sync-push-interval-label" className="text-sm font-medium">
+                      <Trans>Push my edits every</Trans>
+                    </div>
+                    <p className="text-muted-foreground text-1sm">
+                      <Trans>Each push is one commit to your remote.</Trans>
+                    </p>
+                  </div>
+                  <Select
+                    value={String(intervals.pushIntervalSeconds)}
+                    onValueChange={(v) => onIntervalChange('push', v)}
+                    disabled={!projectLocalSynced}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      className="w-40 shrink-0"
+                      aria-labelledby="settings-sync-push-interval-label"
+                      data-testid="settings-sync-push-interval"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {intervalOptions(intervals.pushIntervalSeconds).map((seconds) => (
+                        <SelectItem key={seconds} value={String(seconds)}>
+                          {intervalLabel(seconds)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
       <div className="rounded-md border p-3 space-y-2" data-testid="settings-sync-default">
         <div className="space-y-0.5">
           {/* The block heading is per-machine, but this one control is committed.
@@ -511,21 +707,21 @@ export function SyncSection() {
             className={SYNC_SELECTED_TOGGLE_CLASS}
             data-testid="settings-sync-default-off"
           >
-            <Trans>Off</Trans>
+            <Trans>Manual</Trans>
           </ToggleGroupItem>
           <ToggleGroupItem
             value="follow"
             className={SYNC_SELECTED_TOGGLE_CLASS}
             data-testid="settings-sync-default-follow"
           >
-            <Trans>Follow</Trans>
+            <Trans>Auto (Pull only)</Trans>
           </ToggleGroupItem>
           <ToggleGroupItem
             value="full"
             className={SYNC_SELECTED_TOGGLE_CLASS}
             data-testid="settings-sync-default-full"
           >
-            <Trans>Full</Trans>
+            <Trans>Auto (Pull and Push)</Trans>
           </ToggleGroupItem>
         </ToggleGroup>
       </div>

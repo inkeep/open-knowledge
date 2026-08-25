@@ -289,6 +289,13 @@ vi.doMock('@/hooks/use-enable-sync-with-confirm', () => ({
     syncDefaultWriterCalls.push(next);
     return { ok: true };
   },
+  // Accept-and-discard stub: this file exercises section dispatch, not the
+  // cadence controls — those are covered against the real hook in
+  // SettingsDialogBody.sync-mode.dom.test.tsx.
+  useSyncIntervalWriter:
+    () => (_next: { pullIntervalSeconds: number; pushIntervalSeconds: number }) => ({
+      ok: true as const,
+    }),
   // Thin recorder mirroring the real hook's gating so the section's wiring is
   // exercised (deep confirm-flow behavior is covered against the real hook in
   // SettingsDialogBody.sync-mode.dom.test.tsx and the hook's own test).

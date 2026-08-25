@@ -34,6 +34,7 @@ import type { CC1Broadcaster } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
 import type { ContentFilter } from './content-filter.ts';
+import { isShareableOkArtifact } from './content-filter.ts';
 import { isSupportedDocFile } from './doc-extensions.ts';
 import {
   type ClassifiedError,
@@ -231,6 +232,16 @@ function pushPermissionStatusEqual(
 interface SyncStatus {
   state: SyncState;
   lastSyncUtc: string | null;
+  lastRunUtc: string | null;
+  /**
+   * Per-direction companions to `lastRunUtc`, which collapses both directions
+   * into one stamp and so cannot say WHICH ran. Same admission rule as
+   * `lastRunUtc` — the op reached the remote, whether or not anything moved —
+   * split so the panel can report the two legs separately. Neither is a
+   * content-changed signal; that is `lastSyncUtc`.
+   */
+  lastPullOkUtc: string | null;
+  lastPushOkUtc: string | null;
   lastFetchUtc: string | null;
   lastPushedSha: string | null;
   /**
@@ -322,10 +333,56 @@ const CONTENT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'content' } } as con
 const PROJECT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'project' } } as const;
 type SyncStagingScope = typeof CONTENT_SYNC_STAGING_SCOPE | typeof PROJECT_SYNC_STAGING_SCOPE;
 
+/**
+ * Which VERB asked for this pull. Buttons are mode-independent (user-directed:
+ * the same click does the same thing whatever the sync-mode dropdown says; the
+ * mode only chooses what runs on the timer):
+ *
+ *   - `'explicit'` — the Pull verb: the Pull button in any mode, and the
+ *     pull-only automation (follow's scheduled loop). Runs the B1 overlay
+ *     cycle and never commits; diverged committed history refuses rather than
+ *     merging, because merging requires authoring a commit.
+ *   - `'sync'` — the Sync verb: the Pull-and-Push button in any mode, and
+ *     full mode's scheduled loop. Keeps the classic commit+merge machinery —
+ *     syncing is the act of committing your work.
+ */
+type PullInvocation = 'explicit' | 'sync';
+
+/**
+ * Cap on the overlapping-path set carried in the status payload. The list is a
+ * UI affordance, not a report: past a few dozen the user is not picking through
+ * rows, and the payload rides the CC1 status broadcast.
+ */
+const BLOCKING_PATHS_CAP = 50;
+
+/**
+ * Pauses a one-shot cycle may RAISE and keep, rather than having rolled back by
+ * the Manual-mode posture restore.
+ *
+ * Both are the visible answer to a click the user just made. Rolling them back
+ * left Manual — the default resting mode — showing nothing at all: the
+ * blocked-changes panel gates on `external-changes-pending` surviving, so
+ * without it the flagship affordance never rendered in the mode that most needs
+ * it, silently and with no log line.
+ */
+const FORWARD_ONLY_PAUSES: ReadonlySet<string | undefined> = new Set([
+  'diverged-local-commits',
+  'external-changes-pending',
+]);
+
+/** Commit subject for the user-pressed "commit the blocking files" action. */
+const COMMIT_BLOCKING_MESSAGE = 'Commit local changes before syncing';
+
 /** Persisted state (sync-state.json). */
 interface PersistedSyncState {
   version: 1;
   lastSyncUtc: string | null;
+  /**
+   * Optional so a state file written before these existed still loads — a
+   * missing leg reads as "never", which is honest for a restored engine.
+   */
+  lastPullOkUtc?: string | null;
+  lastPushOkUtc?: string | null;
   lastFetchUtc: string | null;
   lastPushedSha: string | null;
   consecutiveFailures: number;
@@ -529,11 +586,17 @@ export class SyncEngine {
   private pullIntervalSeconds: number;
   private pushIntervalSeconds: number;
   /**
-   * The single source of truth for what direction (if any) this engine syncs.
-   * `off` = inactive, `pull` = fetch + fast-forward only (never pushes), `full`
-   * = bidirectional. Push is structurally impossible unless this is `full` (the
-   * gate lives at the push routine entrance), so no scheduling path can push for
-   * a pull-only project.
+   * The single source of truth for what this engine does ON A SCHEDULE.
+   * `off` = nothing scheduled, `follow` = scheduled fetch + fast-forward only,
+   * `full` = scheduled both directions. (`pull` is a legacy alias for
+   * `follow`.)
+   *
+   * SCHEDULED push is structurally impossible unless this is `full` — the gate
+   * is at `runPushCycle`'s entrance — so no timer can publish commits for a
+   * follower. It is NOT a capability gate: `pushOnce()` runs in every mode,
+   * including `off`, because a button the user pressed is its own consent. Read
+   * `ConfigSchema`'s `autoSync.mode` description as the user-facing contract;
+   * the two must not drift.
    */
   private mode: SyncMode;
   private credentialConfig: string[];
@@ -600,6 +663,52 @@ export class SyncEngine {
 
   // Runtime state
   private lastSyncUtc: string | null = null;
+  /**
+   * When a sync operation last completed successfully — a push or a pull,
+   * scheduled or user-pressed, whether or not anything actually moved.
+   *
+   * Excludes the read-only fetch on panel open: that fires whenever the user
+   * looks, so counting it would pin this to "just now" permanently.
+   *
+   * Distinct from `lastSyncUtc`, which advances only when CONTENT changed (a
+   * merge landed, a commit was pushed). That distinction is invisible to a user
+   * who just pressed Pull on an already-current repo: nothing changed, so
+   * `lastSyncUtc` stayed put and the panel read "18h ago", which looks like the
+   * button did nothing. This is the timestamp the UI shows.
+   */
+  /**
+   * Derived, never stored: the later of the two per-direction legs.
+   *
+   * It used to be a third field assigned alongside each leg, which meant
+   * `saveStateNow` persisted the legs but not it — so after a restart the legs
+   * restored while this read `null`. Deriving makes that asymmetry
+   * unrepresentable. ISO-8601 UTC is fixed-width, so lexicographic max is
+   * chronological max.
+   */
+  private get lastRunUtc(): string | null {
+    if (this.lastPullOkUtc === null) return this.lastPushOkUtc;
+    if (this.lastPushOkUtc === null) return this.lastPullOkUtc;
+    return this.lastPullOkUtc > this.lastPushOkUtc ? this.lastPullOkUtc : this.lastPushOkUtc;
+  }
+  /**
+   * The same successful-run signal as `lastRunUtc`, kept per direction so the
+   * panel can distinguish "pulled a moment ago" from "pushed a moment ago".
+   * `lastRunUtc` derives from these two and stays the single-value fallback for
+   * a client that predates the split.
+   */
+  private lastPullOkUtc: string | null = null;
+  private lastPushOkUtc: string | null = null;
+  /**
+   * Whether the most recent push cycle actually landed (pushed, or verified
+   * there was nothing to push). Set only at the two success sites in
+   * `doPushCycle`; reset at each cycle entry. The wrappers stamp `lastRunUtc`
+   * off THIS, never off error-absence — the retry-exhausted non-fast-forward
+   * path exits without recording an error, and inferring success from a
+   * missing error stamped "Updated just now" for a push that never landed.
+   */
+  private pushCycleLanded = false;
+  /** Single-flight for the read-only panel-open fetch. */
+  private fetchOnlyInFlight = false;
   private lastFetchUtc: string | null = null;
   private lastPushedSha: string | null = null;
   private lastPullUtc: string | null = null;
@@ -613,6 +722,14 @@ export class SyncEngine {
   private pullError: string | undefined;
   private pullErrorCode: UserFacingErrorCode | undefined;
   private pausedReason: string | undefined;
+  /**
+   * Tracked paths whose local edits overlap the incoming merge, recorded when
+   * `prepareForMerge` pauses. Read back out only while that pause holds (see
+   * `blockingPathsForStatus`), so a stale set can never outlive the condition
+   * that produced it — the alternative is clearing it at each of the five
+   * places `pausedReason` is reset, one of which would eventually be missed.
+   */
+  private blockingPaths: string[] = [];
   private currentBranch = 'main';
 
   // Concurrency guard: only one operation at a time
@@ -997,6 +1114,41 @@ export class SyncEngine {
    * checkpoint + overlay conversion; that transition machinery is not wired here
    * yet, so this treats every non-`off` target as the plain enable path.
    */
+  /**
+   * Apply a new scheduled-cycle cadence.
+   *
+   * Idempotent on a same-value call, for the same reason `setMode` is: the
+   * config re-apply path fires on both a producer notify and a watcher echo.
+   *
+   * A changed interval re-arms the timers immediately rather than waiting for
+   * the in-flight one to elapse — a user who moves 60 min → 30 s expects the
+   * next pull in 30 s, not up to an hour later. The re-arm goes through the
+   * normal schedule helpers, so backoff, jitter, and the mode gate on pushing
+   * all still apply. An in-flight cycle is left alone; its own `finally`
+   * re-schedules at the new interval.
+   */
+  setIntervals(pullIntervalSeconds: number, pushIntervalSeconds: number): void {
+    const pullChanged = this.pullIntervalSeconds !== pullIntervalSeconds;
+    const pushChanged = this.pushIntervalSeconds !== pushIntervalSeconds;
+    if (!pullChanged && !pushChanged) return;
+    log.info(
+      {
+        pullFrom: this.pullIntervalSeconds,
+        pullTo: pullIntervalSeconds,
+        pushFrom: this.pushIntervalSeconds,
+        pushTo: pushIntervalSeconds,
+      },
+      '[sync] cycle intervals changed',
+    );
+    this.pullIntervalSeconds = pullIntervalSeconds;
+    this.pushIntervalSeconds = pushIntervalSeconds;
+    // Only re-arm what is already armed. Re-scheduling a timer that is null
+    // because the engine is off, dormant, or mid-cycle would start a loop the
+    // mode gate never authorized.
+    if (pullChanged && this.pullTimer !== null) this.schedulePull();
+    if (pushChanged && this.pushTimer !== null) this.schedulePush();
+  }
+
   async setMode(mode: SyncMode, source: SyncModeChangeSource = 'config'): Promise<void> {
     if (this.mode === mode) return;
     const from = this.mode;
@@ -1048,9 +1200,15 @@ export class SyncEngine {
 
     this.transitionTo('idle');
     this.schedulePull(0);
+    // Immediate, symmetric with the pull above. Deferring the first push by a
+    // full interval made enabling Auto look like it had synced — the pull lands
+    // at once and stamps the freshness line — while pending edits sat locally
+    // for the whole interval. Harmless before the cadence was configurable
+    // (60 s); with a user-chosen interval it stretched to an hour.
+    //
     // No-op unless mode === 'full' (the push gate lives in schedulePush +
     // runPushCycle), so a pull-only project schedules pulls only.
-    this.schedulePush();
+    this.schedulePush(0);
     this.saveStateNow();
     // Re-check push permission so the engine state and the probe state stay
     // consistent. For `full`, a stale `denied` probe would otherwise let this
@@ -1256,15 +1414,30 @@ export class SyncEngine {
 
     this.transitionTo('idle');
     this.schedulePull(0);
-    this.schedulePush();
+    // Immediate for the same reason as the mode-change path above: a resumed
+    // engine that pulls at once but withholds the push reads as synced while
+    // local work stays local.
+    this.schedulePush(0);
     this.saveStateNow();
     void this.probePushPermissionInternal('refresh');
   }
 
   // ─── Manual trigger ────────────────────────────────────────────────────────
 
-  /** Trigger an immediate pull + push cycle (bypasses backoff, resets consecutiveFailures). */
-  async trigger(op: 'sync' | 'push' | 'pull' = 'sync'): Promise<void> {
+  /**
+   * Trigger an immediate push and/or pull (bypasses backoff, resets
+   * consecutiveFailures). Every `op` runs through a once-primitive, so a
+   * manual-mode project (`off`, no background loop) does real work on an
+   * explicit user act.
+   */
+  async trigger(op: 'sync' | 'push' | 'pull' | 'fetch' = 'sync'): Promise<void> {
+    if (op === 'fetch') {
+      // Read-only and deliberately ahead of everything below: a fetch must not
+      // reset failure counters, clear paused reasons, or re-probe permissions.
+      // Those are recoveries a user-requested sync earns; a panel open does not.
+      await this.fetchOnly();
+      return;
+    }
     this.consecutiveFailures = 0;
     // Retry clears transient paused reasons; protected-branch etc. stay set.
     if (
@@ -1329,15 +1502,17 @@ export class SyncEngine {
       return;
     }
 
-    // Log why a push/sync trigger is a no-op so "Sync now returns OK but nothing
+    if (op === 'push') {
+      await this.pushOnce();
+      return;
+    }
+
+    // Log why a sync trigger is a no-op so "Sync now returns OK but nothing
     // happens" is diagnosable from the server terminal. The cycle guards
-    // silently early-return in these states; surface them here.
-    if (
-      this.state === 'dormant' ||
-      this.state === 'disabled' ||
-      this.state === 'conflict' ||
-      this.state === 'auth-error'
-    ) {
+    // silently early-return in these states; surface them here. `disabled` is
+    // NOT in this set: it is the resting state of a manual-mode project, where
+    // a trigger is expected to do real work.
+    if (this.state === 'dormant' || this.state === 'conflict' || this.state === 'auth-error') {
       log.warn(
         {
           op,
@@ -1352,14 +1527,187 @@ export class SyncEngine {
     } else {
       log.info({ op, state: this.state }, `[sync] trigger(${op}) running`);
     }
-    if (op === 'push') {
+    // Push first so pending working-tree edits get committed via the
+    // isolated-index path. A subsequent merge then has a clean tree instead of
+    // refusing with "working tree has uncommitted changes". Both legs go
+    // through the once-primitives so a manual (mode `off`) project runs a real
+    // cycle rather than two silent no-ops.
+    await this.pushOnce();
+    // The sync op's pull leg is 'sync' context: in full mode it keeps the
+    // commit+merge machinery. Push ran first, so the tree is usually clean and
+    // the interim commit fires only on mid-window dirt.
+    await this.pullOnce('sync');
+  }
+
+  /**
+   * Run a single push — the primitive behind every user-pressed Push, and the
+   * push leg of a user-pressed Pull-and-Push.
+   *
+   * Symmetric with {@link pullOnce}: it runs in every mode, so a project whose
+   * automation does not push (`off` — manual, or `follow` — auto pull-only) can
+   * still push on an explicit user act. The scheduled loop is untouched — a
+   * manual push neither starts one nor leaves the project looking active.
+   *
+   * The consent guarantee lives on the scheduling axis, not the mode axis:
+   * Open Knowledge never pushes on its OWN initiative outside `full` mode
+   * (`runPushCycle` is the single gate for that). A button press is not the
+   * product's initiative — it is the user's, and the user is allowed to send
+   * their own work whichever automation they chose. What `follow` guarantees is
+   * that nothing leaves this machine unless they ask; it is not a promise that
+   * they can never ask.
+   */
+  async pushOnce(): Promise<void> {
+    // A full-mode project already owns a push loop; reuse it so the manual push
+    // chains the next scheduled one exactly as a background push would.
+    if (this.mode === 'full') {
       await this.runPushCycle();
-    } else {
-      // Push first so pending working-tree edits get committed via the
-      // isolated-index path. A subsequent merge then has a clean tree
-      // instead of refusing with "working tree has uncommitted changes".
-      await this.runPushCycle();
-      await this.runPullCycle();
+      return;
+    }
+    await this.runOneShotPush();
+  }
+
+  /**
+   * Push once for a project whose automation has no push loop — mode `off`
+   * (manual) or `follow` (auto pull-only).
+   *
+   * Mirrors `runOneShotPull`'s shape: same single-flight guard, same
+   * "restore the resting posture" discipline so the project does not end up
+   * looking like it started auto-pushing, and deliberately no `schedulePush()`
+   * — an explicit push must not arm a background loop the user did not choose.
+   */
+  private async runOneShotPush(): Promise<void> {
+    // Single-flight: a concurrent cycle already owns the working tree and the
+    // isolated index. Refuse rather than race it.
+    // Every refusal logs. `runOneShotPull`'s equivalents all route through
+    // `recordPullOutcome('refused')`, which stamps status and signals CC1; the
+    // push one-shot has no such outcome channel, so the log line is the only
+    // record that an explicit user press did nothing. Without it "Push does
+    // nothing" is undiagnosable — and this is a desktop app whose users have no
+    // server log to read, so support has only this.
+    if (this.pushInFlight || this.pullInFlight) {
+      log.info(
+        { pushInFlight: this.pushInFlight, pullInFlight: this.pullInFlight },
+        '[sync] one-shot push refused — a cycle is already in flight',
+      );
+      return;
+    }
+    // The conflict resolver owns the tree until the user resolves — ledger
+    // conflicts included (B1 keeps the engine idle while they wait).
+    if (this.state === 'conflict' || this.state === 'auth-error') {
+      log.info({ state: this.state }, `[sync] one-shot push refused — state=${this.state}`);
+      return;
+    }
+    if (this.conflictCount > 0) {
+      log.info(
+        { conflictCount: this.conflictCount },
+        '[sync] one-shot push refused — unresolved conflicts hold the tree',
+      );
+      return;
+    }
+
+    if (!this.hasRemote || isUnbornHead(this.projectDir)) {
+      log.info(
+        { hasRemote: this.hasRemote },
+        '[sync] one-shot push refused — no remote, or no commits yet',
+      );
+      return;
+    }
+
+    const restingState = this.state;
+    this.pushInFlight = true;
+    try {
+      await this.doPushCycle(1);
+    } finally {
+      this.pushInFlight = false;
+      if (this.pushCycleLanded) this.markRun();
+      // Restore the resting STATE only. A `pausedReason` or `pushError` the
+      // cycle just recorded is the answer to "why didn't my push land", so
+      // unlike the pull one-shot this path never rolls those back — the user
+      // asked for this push and has to be able to see how it went. A cycle that
+      // ended in conflict/auth-error keeps that state: it outranks the resting
+      // posture and needs the user's attention.
+      const settled = this.currentState();
+      if (settled !== 'conflict' && settled !== 'auth-error') {
+        this.transitionTo(restingState);
+      }
+      this.cc1Broadcaster?.signal('sync-status');
+    }
+  }
+
+  /**
+   * Update remote-tracking refs and the ahead/behind counts, and nothing else.
+   *
+   * Read-only by construction: `git fetch` writes `refs/remotes/origin/*` and
+   * never touches the working tree, the index, or HEAD. That is what makes it
+   * safe to run when the user merely OPENS the sync panel — a panel headed
+   * "2 behind" is the user asking about remote state, and answering that
+   * question must not move their files. Merging stays exclusively behind the
+   * Pull button (`pullOnce`), which is what "Nothing moves until you ask"
+   * promises in manual mode.
+   *
+   * Failures are deliberately QUIET. The caller here is a passive panel open,
+   * not a sync the user requested, so this never routes through `handleError`:
+   * that classifies failures, can set `pullError`, and can pause the engine —
+   * turning an offline laptop into a red error state for someone who only
+   * clicked to look. A failed background fetch leaves the previous counts
+   * standing and reports `false`; the visible state is "these numbers are old",
+   * which is the truth.
+   *
+   * Returns true when refs were refreshed. Never throws.
+   */
+  async fetchOnly(): Promise<boolean> {
+    if (!this.hasRemote || isUnbornHead(this.projectDir)) return false;
+    // A cycle already owns the repo; its own fetch is fresher than ours would
+    // be, so decline rather than issue a second concurrent network call. The
+    // fetchOnlyInFlight leg covers two panel opens racing each other (two
+    // clients on one server): concurrent `git fetch` processes contend on ref
+    // locks for nothing — one fetch serves both.
+    if (this.pullInFlight || this.pushInFlight || this.fetchOnlyInFlight) return false;
+
+    this.fetchOnlyInFlight = true;
+    const handle = this.gitHandle();
+    try {
+      await handle.git.fetch('origin');
+      this.lastFetchUtc = new Date().toISOString();
+      // Persisted so the restart-recovery scheduler computes its remaining
+      // delay from the real last fetch rather than treating every boot as
+      // never-fetched.
+      this.scheduleSaveState();
+    } catch (err) {
+      // Quiet by contract — see the doc comment. No handleError, no state
+      // transition, no pullError: the counts simply stay as they were. The log
+      // line is the one concession: without it an expired token or a renamed
+      // remote is indistinguishable from being genuinely current, and the
+      // bug-report bundle carries no evidence at all.
+      log.debug({ err }, '[sync] panel-open fetch failed — counts left as they were');
+      return false;
+    } finally {
+      this.fetchOnlyInFlight = false;
+    }
+    await this.refreshDivergenceCounts(handle);
+    // Deliberately NOT a run: this fires on panel open, so stamping it would
+    // make "Updated" read "just now" every time the user so much as looks at
+    // the popover — a field that always says the same thing tells them nothing.
+    // The fetch still refreshes the counts and the incoming list; "Updated"
+    // stays reserved for when content actually flowed.
+    this.cc1Broadcaster?.signal('sync-status');
+    return true;
+  }
+
+  /**
+   * Re-read ahead/behind from the tracking ref. Local-only — `git status`
+   * compares HEAD against `@{upstream}` with no network — so the numbers are
+   * exactly as fresh as the last fetch, no fresher.
+   */
+  private async refreshDivergenceCounts(handle: GitHandle): Promise<void> {
+    try {
+      const status = await handle.git.status();
+      this.ahead = status.ahead;
+      this.behind = status.behind;
+    } catch (err) {
+      // Non-fatal — continue with previous counts. Logged because a silently
+      // stale ahead/behind pair renders as "up to date" in the popover.
+      log.debug({ err }, '[sync] divergence-count refresh failed — keeping previous counts');
     }
   }
 
@@ -1380,9 +1728,9 @@ export class SyncEngine {
    * that read status before triggering can wait for the timestamp to change and
    * read the outcome of a pull that completed after its trigger.
    */
-  async pullOnce(): Promise<PullOutcome> {
+  async pullOnce(invocation: PullInvocation = 'explicit'): Promise<PullOutcome> {
     const mode = this.mode;
-    const outcome = await this.runOneShotPull();
+    const outcome = await this.runOneShotPull(invocation);
     // One-shot outcomes are the discrete, consumer-visible pull events (e.g. a
     // downstream update button); log each so their distribution is observable
     // without the per-cycle noise a background-pull log would add.
@@ -1390,14 +1738,37 @@ export class SyncEngine {
     return outcome;
   }
 
-  private async runOneShotPull(): Promise<PullOutcome> {
+  private async runOneShotPull(invocation: PullInvocation): Promise<PullOutcome> {
     // Single-flight: a background or concurrent one-shot cycle already owns the
     // working tree. Refuse rather than race it — the consumer retries on refused.
-    if (this.pullInFlight || this.pushInFlight) return this.recordPullOutcome('refused');
+    // Each site names its own cause. `recordPullOutcome` collapses all three to
+    // the same `'refused'` on the wire — deliberately, since a consumer's only
+    // useful response to any of them is to retry — but that leaves the log as
+    // the sole place the three are distinguishable when a user reports that
+    // Pull does nothing.
+    if (this.pullInFlight || this.pushInFlight) {
+      log.info(
+        { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
+        '[sync] one-shot pull refused — a cycle is already in flight',
+      );
+      return this.recordPullOutcome('refused');
+    }
     // The full-mode conflict resolver owns the tree until the user resolves.
-    if (this.state === 'conflict') return this.recordPullOutcome('refused');
+    if (this.state === 'conflict') {
+      log.info(
+        { state: this.state },
+        '[sync] one-shot pull refused — the conflict resolver holds the tree',
+      );
+      return this.recordPullOutcome('refused');
+    }
     // Nothing to pull from, or no commits to fast-forward against yet.
-    if (!this.hasRemote || isUnbornHead(this.projectDir)) return this.recordPullOutcome('refused');
+    if (!this.hasRemote || isUnbornHead(this.projectDir)) {
+      log.info(
+        { hasRemote: this.hasRemote },
+        '[sync] one-shot pull refused — no remote, or no commits yet',
+      );
+      return this.recordPullOutcome('refused');
+    }
 
     // Snapshot the resting posture so an off/null project can be restored to it
     // afterwards — the cycle transitions through fetching/pulling/idle, which
@@ -1407,11 +1778,21 @@ export class SyncEngine {
     const restingPausedReason = this.pausedReason;
     this.pullInFlight = true;
     try {
-      return this.recordPullOutcome(await this.doPullCycle());
+      return this.recordPullOutcome(await this.doPullCycle(invocation));
     } finally {
       this.pullInFlight = false;
       if (restingMode === 'off') {
-        this.pausedReason = restingPausedReason;
+        // Restore the resting posture — with an asymmetry for the pauses that
+        // only ever flow FORWARD: if this cycle just raised one, keep it (it is
+        // the visible answer to the click the user made — in Manual, Pull is
+        // the primary affordance and rolling it back made the press change
+        // nothing); and if this cycle CLEARED a previously-raised one, never
+        // resurrect the stale copy from the resting snapshot.
+        if (!FORWARD_ONLY_PAUSES.has(this.pausedReason)) {
+          if (!FORWARD_ONLY_PAUSES.has(restingPausedReason)) {
+            this.pausedReason = restingPausedReason;
+          }
+        }
         this.transitionTo(restingState);
       } else {
         // A background timer that fired during this one-shot early-returned on
@@ -1430,6 +1811,13 @@ export class SyncEngine {
   private recordPullOutcome(outcome: PullOutcome): PullOutcome {
     this.lastPullUtc = new Date().toISOString();
     this.lastPullOutcome = outcome;
+    // `up-to-date` counts: the pull ran and confirmed there was nothing to
+    // bring in. `refused` (a guard declined) and `error` do not — neither
+    // reached the remote. `conflict` did the work and left something to resolve.
+    if (outcome === 'succeeded' || outcome === 'up-to-date' || outcome === 'conflict') {
+      // `lastRunUtc` derives from the legs, so stamping this one is enough.
+      this.lastPullOkUtc = new Date().toISOString();
+    }
     this.cc1Broadcaster?.signal('sync-status');
     return outcome;
   }
@@ -1440,6 +1828,9 @@ export class SyncEngine {
     return {
       state: this.state,
       lastSyncUtc: this.lastSyncUtc,
+      lastRunUtc: this.lastRunUtc,
+      lastPullOkUtc: this.lastPullOkUtc,
+      lastPushOkUtc: this.lastPushOkUtc,
       lastFetchUtc: this.lastFetchUtc,
       lastPushedSha: this.lastPushedSha,
       lastPullUtc: this.lastPullUtc,
@@ -1460,8 +1851,107 @@ export class SyncEngine {
       ...(this.pullError !== undefined ? { pullError: this.pullError } : {}),
       ...(this.pullErrorCode !== undefined ? { pullErrorCode: this.pullErrorCode } : {}),
       pausedReason: this.pausedReason,
+      ...(this.blockingPathsForStatus().length > 0
+        ? { blockingPaths: this.blockingPathsForStatus() }
+        : {}),
       ...(this.pushPermission !== null ? { pushPermission: this.pushPermission } : {}),
     };
+  }
+
+  /**
+   * The overlapping paths, but only while the pause that produced them holds.
+   * Guarding on `pausedReason` here rather than clearing the field at every
+   * reset site is what keeps a resumed engine from advertising stale paths —
+   * and what makes the two resolution actions below safe to run without a
+   * caller-supplied path list.
+   */
+  private blockingPathsForStatus(): string[] {
+    if (this.pausedReason !== 'external-changes-pending') return [];
+    // The cap bounds the CC1 payload only; `getBlockingPaths()` (the action
+    // path) applies the same pause-gate but stays uncapped.
+    return this.blockingPaths.slice(0, BLOCKING_PATHS_CAP);
+  }
+
+  /** Public read of the same guarded set, for the resolution endpoints. */
+  getBlockingPaths(): string[] {
+    // Same pause-gating as the status projection (a stale set must never be
+    // actionable) but WITHOUT its display cap: this is what Commit operates on,
+    // and inheriting the bound made one press clear only the first 50 overlaps.
+    return this.pausedReason === 'external-changes-pending' ? [...this.blockingPaths] : [];
+  }
+
+  /**
+   * Commit exactly the paths blocking the merge, then let the caller resume.
+   *
+   * Scoped to the blocking set on purpose: the user pressed a button about
+   * four named files, and sweeping the rest of a dirty tree into a commit they
+   * never saw is not what that button said. The set comes from the engine's own
+   * state rather than the request body — an endpoint that committed
+   * caller-named paths would be a general-purpose commit API reachable from any
+   * page the browser loads.
+   *
+   * Returns the new commit SHA, or null when there was nothing to commit.
+   */
+  async commitBlockingPaths(): Promise<string | null> {
+    const paths = this.getBlockingPaths();
+    if (paths.length === 0) return null;
+    const handle = this.gitHandle();
+    return withParentLock(async () => {
+      // Inside the lock like every mutation below it — running it outside left
+      // a window where a concurrent cycle's identity write could interleave.
+      await this.applyCommitIdentity(handle);
+      try {
+        await handle.git.raw(['add', '--', ...paths]);
+        // Pathspec-scoped: an unscoped `--cached` probe passes on unrelated
+        // content the USER staged by hand, even when the add above staged
+        // nothing — and `git commit -- <paths>` then fails, surfacing as a
+        // generic 500 with the user's staging silently altered.
+        const staged = await listNames(handle.git, [
+          'diff',
+          '--cached',
+          '--name-only',
+          '--',
+          ...paths,
+        ]);
+        if (staged.length === 0) return null;
+        await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, '--', ...paths]);
+      } catch (err) {
+        // This path stages into the user's REAL index (unlike every scheduled
+        // commit, which builds through an isolated GIT_INDEX_FILE), so a failed
+        // attempt must not leave files staged the user never staged — that
+        // silently changes the semantics of their next hand-typed `git commit`.
+        // Best-effort: the reset can itself fail on the same broken repo.
+        await handle.git.raw(['reset', '--', ...paths]).catch(() => {});
+        log.error({ err, files: paths.length }, '[sync] commit of blocking paths failed');
+        throw err;
+      }
+      const sha = (await handle.git.revparse('HEAD')).trim();
+      this.clearBlockingPause();
+      log.info({ files: paths.length }, '[sync] committed overlapping paths at user request');
+      return sha;
+    });
+  }
+
+  // There is deliberately no `discardBlockingPaths` sibling to
+  // `commitBlockingPaths`. Restoring the blocking paths to HEAD destroys
+  // uncommitted work with no reflog entry and no stash object behind it, and a
+  // confirmation dialog is not a substitute for recoverability. The verb ships
+  // once a snapshot does; until then the panel offers Commit and a terminal,
+  // which at least makes the user type the destructive command somewhere they
+  // can inspect first. Re-adding this must come WITH the snapshot, not before.
+
+  /**
+   * Drop the pause the resolution actions just cleared the cause of. Leaves
+   * the engine idle so the caller's follow-up trigger runs a real cycle
+   * instead of short-circuiting on a paused state that no longer applies.
+   */
+  private clearBlockingPause(): void {
+    this.blockingPaths = [];
+    this.pausedReason = undefined;
+    this.clearPullError();
+    this.consecutiveFailures = 0;
+    this.cc1Broadcaster?.signal('sync-status');
+    this.scheduleSaveState();
   }
 
   /**
@@ -1799,7 +2289,10 @@ export class SyncEngine {
     }
 
     if (this.conflictCount === before) return;
-    if (this.conflictCount === 0 && this.state === 'conflict') {
+    // Keyed on the ledger emptying, NOT on `state === 'conflict'`: B1 records
+    // conflicts while the engine sits at `idle`, so a state-keyed gate skips
+    // exactly the case that needs the legs restarted.
+    if (this.conflictCount === 0) {
       this.transitionTo('idle'); // fires CC1
       this.pausedReason = undefined;
       this.schedulePull();
@@ -1854,7 +2347,10 @@ export class SyncEngine {
         await this.notifyContentConflictsResolved([file]);
       }
       this.conflictCount = this.conflictStore.count();
-      if (this.conflictCount === 0 && this.state === 'conflict') {
+      // Ledger-keyed, not state-keyed: B1 leaves the engine at `idle` while its
+      // conflicts sit in the ledger, so gating on `state === 'conflict'` skips
+      // the re-arm for exactly the conflicts that stopped the push loop.
+      if (this.conflictCount === 0) {
         this.transitionTo('idle');
         this.pausedReason = undefined;
         this.schedulePull();
@@ -2006,14 +2502,16 @@ export class SyncEngine {
 
     this.pullInFlight = true;
     try {
-      this.recordPullOutcome(await this.doPullCycle());
+      // Automation maps to its verb: full mode's loop IS auto-sync; follow's
+      // loop is auto-Pull (pull-only — it must never commit).
+      this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
       this.pullInFlight = false;
       this.schedulePull(); // chain: schedule next after current completes
     }
   }
 
-  private async doPullCycle(): Promise<PullOutcome> {
+  private async doPullCycle(invocation: PullInvocation): Promise<PullOutcome> {
     const handle = this.gitHandle();
 
     // Detached HEAD check
@@ -2047,26 +2545,27 @@ export class SyncEngine {
     }
 
     // Check ahead/behind
-    try {
-      const status = await handle.git.status();
-      this.ahead = status.ahead;
-      this.behind = status.behind;
-    } catch {
-      // Non-fatal — continue with previous counts
-    }
+    await this.refreshDivergenceCounts(handle);
 
-    // Merge if behind. Pull-only runs the B1 cycle even with existing
-    // working-tree conflicts tracked — it re-pins them against the new tip and
-    // fast-forwards the rest of the repo (the engine stays idle, not paused, so
-    // followers keep updating while a single doc waits on resolution). The
-    // full-sync merge still gates on `conflictCount === 0`: a MERGE_HEAD in
-    // flight must be resolved before another merge starts.
-    if (this.behind > 0 && this.mode !== 'full') {
+    // Merge if behind. The dispatch is keyed on the VERB alone — never the
+    // mode — so a button click behaves identically wherever the dropdown sits
+    // (see PullInvocation). Pull → B1 overlay, never commits (B1's own
+    // `ahead > 0` guard refuses diverged committed history: reconciling it
+    // needs a merge commit, and Pull doesn't author commits — Pull-and-Push
+    // does). Sync → classic commit+merge. B1 runs even with working-tree
+    // conflicts tracked (it re-pins them against the new tip and
+    // fast-forwards the rest of the repo).
+    if (this.behind > 0 && invocation === 'explicit') {
       const outcome = await this.doPullCycleB1(handle, branch);
       this.scheduleSaveState();
       return outcome;
     }
+    // Sync context, any mode. Gates on `conflictCount === 0`: a MERGE_HEAD in
+    // flight must be resolved before another merge starts.
     if (this.behind > 0 && this.conflictCount === 0) {
+      // An explicit pull that refused on diverged history parked this reason;
+      // the merge about to run is what reconciles it.
+      if (this.pausedReason === 'diverged-local-commits') this.pausedReason = undefined;
       this.transitionTo('pulling');
       // Gate batch to suppress HEAD watcher reconciliation during SyncEngine merge
       this.setBatchInProgress?.(true);
@@ -2086,6 +2585,13 @@ export class SyncEngine {
           await handle.git.merge([`origin/${branch}`]);
           this.lastSyncUtc = new Date().toISOString();
           this.behind = 0;
+          if (this.pausedReason === 'external-changes-pending') this.clearBlockingPause();
+          // The merge that just landed IS the resolution of any overlap pause,
+          // so clear it here. Without this a user who resolved the overlap
+          // themselves (which the panel's terminal handoff tells them to do)
+          // left a fully-synced idle engine still advertising the pause and a
+          // stale path list, indefinitely — nothing else on the success path
+          // clears either field.
           this.transitionTo('idle');
         } finally {
           if (mergePrep.needsStashPop) {
@@ -2322,7 +2828,11 @@ export class SyncEngine {
       this.lastSyncUtc = new Date().toISOString();
       this.behind = 0;
       this.clearPullError();
+      // Clears the paths too, not just the reason: leaving `blockingPaths`
+      // populated behind a cleared reason is what lets a later pause republish
+      // a stale set.
       this.pausedReason = undefined;
+      this.blockingPaths = [];
       this.transitionTo('idle');
 
       if (plan.newConflicts.length > 0) {
@@ -2568,7 +3078,9 @@ export class SyncEngine {
 
       if (theirsStr === null || !this.isContentConflictPath(p)) {
         // Non-content or unreadable tip blob: keep the overlay verbatim, never
-        // line-merge or escalate (matches adjacent-config behavior).
+        // line-merge or escalate (matches adjacent-config behavior). B1 serves
+        // only the Pull verb, whose disposition is keep-mine — the Sync verb's
+        // theirs-wins for these paths lives in the classic merge path.
         writes.push({ path: p, bytes: mineBuf });
         continue;
       }
@@ -2640,14 +3152,20 @@ export class SyncEngine {
     writes: Array<{ path: string; bytes: Buffer }>,
     deletions: string[],
   ): void {
+    // The exemption admits shareable `.ok` artifacts by their RESOLVED path —
+    // the overlay legitimately re-writes a dirty `.ok/config.yml` or root
+    // template, while a symlink resolving into private `.ok` state stays
+    // refused. Without it every dirty-artifact-overlapping-incoming pull dies
+    // here as a phantom "offline".
+    const guardOpts = { allowShareableOkArtifact: isShareableOkArtifact };
     for (const { path, bytes } of writes) {
       const abs = join(this.projectDir, path);
-      assertRealpathWithinDir(abs, this.projectDir);
+      assertRealpathWithinDir(abs, this.projectDir, guardOpts);
       tracedWriteFileSync(abs, bytes);
     }
     for (const path of deletions) {
       const abs = join(this.projectDir, path);
-      assertRealpathWithinDir(abs, this.projectDir);
+      assertRealpathWithinDir(abs, this.projectDir, guardOpts);
       try {
         tracedUnlinkSync(abs);
       } catch (e) {
@@ -2720,13 +3238,31 @@ export class SyncEngine {
 
   private async runPushCycle(): Promise<void> {
     if (this.pushInFlight) return;
-    // The single, authoritative push gate. Push is structurally impossible
-    // unless the project is in `full` mode — no scheduling path, manual trigger,
-    // or self-heal can reach the push subprocess for a pull-only or off project.
-    // This is the consent guarantee: a pull-only follower is never pushed for.
+    // The single, authoritative gate on pushing at the product's own
+    // initiative. Only `full` mode does that — no scheduling path, backoff
+    // retry, or self-heal can reach the push subprocess for any other mode.
+    // `off` and `follow` reach it solely through `runOneShotPush`, behind an
+    // explicit user act. Loosening this line is what would let Open Knowledge
+    // push for a user who never asked it to.
     if (this.mode !== 'full') return;
     if (this.state === 'dormant' || this.state === 'disabled') return;
     if (this.state === 'conflict' || this.state === 'auth-error') return;
+    // B1 records conflicts in the ledger while the engine stays idle, so the
+    // state gate above no longer covers them. Unresolved keep-mine bytes on
+    // disk must not be committed and pushed over a teammate's version — the
+    // resolver decides that, not the push loop. Same rule as the old
+    // state==='conflict' pause, keyed off the ledger instead.
+    //
+    // Re-arm before returning. The timer that fired is already cleared, and
+    // this is the ONLY chain call — a bare return kills the push loop for the
+    // process lifetime. `doPullCycleB1` transitions to `idle` before recording
+    // its conflicts, so the state-keyed re-arm in the resolver never fires for
+    // a B1 conflict and nothing else brings the loop back. Every visible signal
+    // would stay green while commits pile up locally.
+    if (this.conflictCount > 0) {
+      this.schedulePush();
+      return;
+    }
     if (isUnbornHead(this.projectDir)) {
       this.schedulePush();
       return;
@@ -2737,12 +3273,31 @@ export class SyncEngine {
       await this.doPushCycle(1);
     } finally {
       this.pushInFlight = false;
+      if (this.pushCycleLanded) this.markRun();
       this.schedulePush(); // chain: schedule next after current completes
     }
   }
 
+  // NOTE: the guards above look like `runOneShotPush`'s and are deliberately
+  // NOT shared. Three differences make a common predicate wrong here:
+  //   - mode: this path refuses outside `full`; the explicit one runs in every
+  //     mode, because a button press is its own consent.
+  //   - re-arm: refusals here are split — `conflict`/`auth-error` return bare
+  //     (the resolver and the auth flow re-arm), while ledger-conflict and
+  //     unborn-head MUST call `schedulePush()` or the loop dies for the process
+  //     lifetime. The explicit path re-arms on none of them: arming a
+  //     background loop the user did not choose is the bug in the other
+  //     direction.
+  //   - signal: refusals here are silent by design (a timer fires constantly);
+  //     the explicit path logs every refusal, since a user is waiting on it.
+  // Collapsing them is how the loop-death case gets reintroduced. Change one
+  // side deliberately, and re-read the other before assuming they should match.
+
   /** @param retriesLeft - Max inline fetch+merge+retry attempts on non-fast-forward. */
   private async doPushCycle(retriesLeft = 0): Promise<void> {
+    // Reset per attempt; the retry recursion re-enters here, so the flag
+    // reflects the FINAL attempt's outcome by the time a wrapper reads it.
+    this.pushCycleLanded = false;
     // Temp index file for GIT_INDEX_FILE isolation
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
@@ -2840,6 +3395,7 @@ export class SyncEngine {
             );
             this.lastPushedSha = headSha;
             this.lastSyncUtc = new Date().toISOString();
+            this.pushCycleLanded = true;
             this.clearPushError();
             this.transitionTo('idle');
             return;
@@ -2960,6 +3516,7 @@ export class SyncEngine {
       if (commitSha) {
         this.lastPushedSha = commitSha;
         this.lastSyncUtc = new Date().toISOString();
+        this.pushCycleLanded = true;
         this.ahead = 0;
         this.clearPushError();
         if (this.state === 'pushing') {
@@ -3021,7 +3578,20 @@ export class SyncEngine {
             if (mc.class === 'semantic' && mc.subclass === 'merge-conflict') {
               await this.handleMergeConflict();
             } else if (mergeErr instanceof ShareableOkEnumerationError) {
-              throw mergeErr;
+              // Routed, NOT rethrown. This catch sits inside the outer catch, so
+              // a throw here escapes doPushCycle entirely — past runOneShotPush's
+              // catch-less try/finally, out to the fire-and-forget
+              // `void engine.trigger()` call sites, where an unhandled rejection
+              // terminates the server.
+              //
+              // `'push'`, unlike the `else` below: a staging failure is the push
+              // leg failing to assemble what it would send, so it belongs on
+              // `pushError` — where the outer catch already puts this same error
+              // type. The sibling branch says `'pull'` because it handles MERGE
+              // errors, and the merge is the retry's pull leg. Same catch block,
+              // genuinely different directions.
+              log.warn({ err: mergeErr }, '[sync] push retry: staging error detail');
+              this.handleError(mc, 'push');
             } else {
               this.handleError(mc, 'pull');
             }
@@ -3296,6 +3866,12 @@ export class SyncEngine {
     if (blocking.length > 0) {
       const display = blocking.slice(0, 3).join(', ');
       const rest = blocking.length > 3 ? `, +${blocking.length - 3} more` : '';
+      // Uncapped: this set is what the resolution ACTION operates on, and a
+      // display bound must not leak into it — a capped set made Commit clear
+      // only the first 50 overlaps, re-pause on the remainder with a different
+      // file list, and read as a product bug. The cap is applied at the status
+      // projection, whose payload rides the CC1 broadcast.
+      this.blockingPaths = blocking;
       this.pullErrorCode = undefined;
       this.pullError = `Sync paused — your local changes to ${display}${rest} conflict with incoming changes. Commit, stash, or discard them before syncing.`;
       this.pausedReason = 'external-changes-pending';
@@ -3326,6 +3902,10 @@ export class SyncEngine {
         this.pullError =
           'Sync paused — OpenKnowledge could not safely isolate local MCP launcher changes before merging.';
         this.pausedReason = 'external-changes-pending';
+        // This pause has no path list — it is an isolation failure, not an
+        // overlap. Clearing explicitly stops it republishing whatever set a
+        // previous overlap pause left behind.
+        this.blockingPaths = [];
         this.transitionTo('idle');
         this.scheduleSaveState();
         return { proceed: false, needsStashPop: false, reconciled: [] };
@@ -3696,24 +4276,38 @@ export class SyncEngine {
     return results;
   }
 
+  /**
+   * Whether a project-relative path is inside the set this engine will commit.
+   *
+   * The staging walk, HEAD deletion tracking, and the working-tree status
+   * surface must all answer this identically — a path one admits and another
+   * refuses is precedent #55's failure mode (a HEAD path the gather walk
+   * refuses gets committed as a spurious deletion every cycle). Public because
+   * the status endpoint marks out-of-scope paths in the UI, and a second
+   * predicate for that marking would be free to drift.
+   */
+  isSyncScopedPath(projRelPath: string): boolean {
+    const absPath = join(this.projectDir, projRelPath);
+    const contentRelPath = toPosix(relative(this.contentDir, absPath));
+    const inContentWalk =
+      !contentRelPath.startsWith('..') &&
+      !this.contentFilter.isExcluded(contentRelPath, CONTENT_SYNC_STAGING_SCOPE);
+    // Mirror of the gather walk's project-root enumeration: without this
+    // term, a tracked project-root artifact would be misread as deleted
+    // on every push cycle in subfolder-content.dir projects.
+    const inRootOkWalk =
+      this.rootOkOutsideContentWalk &&
+      projRelPath.startsWith(`${OK_DIR}/`) &&
+      !this.contentFilter.isExcluded(projRelPath, PROJECT_SYNC_STAGING_SCOPE);
+    return inContentWalk || inRootOkWalk;
+  }
+
   private async listHeadContentPaths(handle: GitHandle, headSha: string): Promise<Set<string>> {
     const paths = new Set<string>();
     try {
       const headPaths = await listNames(handle.git, ['ls-tree', '-r', '--name-only', headSha]);
       for (const projRelPath of headPaths) {
-        const absPath = join(this.projectDir, projRelPath);
-        const contentRelPath = toPosix(relative(this.contentDir, absPath));
-        const inContentWalk =
-          !contentRelPath.startsWith('..') &&
-          !this.contentFilter.isExcluded(contentRelPath, CONTENT_SYNC_STAGING_SCOPE);
-        // Mirror of the gather walk's project-root enumeration: without this
-        // term, a tracked project-root artifact would be misread as deleted
-        // on every push cycle in subfolder-content.dir projects.
-        const inRootOkWalk =
-          this.rootOkOutsideContentWalk &&
-          projRelPath.startsWith(`${OK_DIR}/`) &&
-          !this.contentFilter.isExcluded(projRelPath, PROJECT_SYNC_STAGING_SCOPE);
-        if (inContentWalk || inRootOkWalk) {
+        if (this.isSyncScopedPath(projRelPath)) {
           paths.add(projRelPath);
         }
       }
@@ -4065,6 +4659,30 @@ export class SyncEngine {
 
   // ─── State transitions ────────────────────────────────────────────────────
 
+  /**
+   * Read `this.state` opaquely. An awaited cycle reassigns it, but TypeScript's
+   * control-flow analysis keeps the narrowing from the calling method's own
+   * earlier guards, so a direct `this.state` comparison after the await is
+   * checked against a stale union and reported as an impossible comparison.
+   */
+  private currentState(): SyncState {
+    return this.state;
+  }
+
+  /**
+   * Stamp a successful sync run — a push or pull that reached the remote.
+   * Called only from completion points that know the op did not error: a failed
+   * push must not read "Updated just now" while a red error line sits above it.
+   * The panel-open fetch deliberately does not call this.
+   */
+  private markRun(): void {
+    // Both call sites gate on `pushCycleLanded`, so reaching here always means
+    // a push landed. Pull success stamps its own leg in `recordPullOutcome`;
+    // `lastRunUtc` derives from whichever is later.
+    this.lastPushOkUtc = new Date().toISOString();
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
   private transitionTo(newState: SyncState): void {
     if (this.state === newState) return;
     const prev = this.state;
@@ -4100,6 +4718,8 @@ export class SyncEngine {
       const data: PersistedSyncState = {
         version: 1,
         lastSyncUtc: this.lastSyncUtc,
+        lastPullOkUtc: this.lastPullOkUtc,
+        lastPushOkUtc: this.lastPushOkUtc,
         lastFetchUtc: this.lastFetchUtc,
         lastPushedSha: this.lastPushedSha,
         consecutiveFailures: this.consecutiveFailures,
@@ -4121,6 +4741,8 @@ export class SyncEngine {
       const data = JSON.parse(raw) as Partial<PersistedSyncState>;
       if (data.version !== 1) return;
       this.lastSyncUtc = data.lastSyncUtc ?? null;
+      this.lastPullOkUtc = data.lastPullOkUtc ?? null;
+      this.lastPushOkUtc = data.lastPushOkUtc ?? null;
       this.lastFetchUtc = data.lastFetchUtc ?? null;
       this.lastPushedSha = data.lastPushedSha ?? null;
       this.consecutiveFailures = data.consecutiveFailures ?? 0;
@@ -4128,8 +4750,15 @@ export class SyncEngine {
       // `'auth-error'` out, but a state file written by an earlier build (or
       // hand-edited) could still contain them. Drop both on load so a restart
       // re-attempts sync rather than resurrecting a stuck auth/permission state.
+      // `external-changes-pending` joins them: `blockingPaths` is memory-only,
+      // so a restored reason advertises a pause the panel cannot render (no
+      // paths) and the resolve endpoint 409s on. The overlap may also have been
+      // resolved outside the app while we were down; the next cycle re-derives
+      // it truthfully.
       this.pausedReason =
-        data.pausedReason === 'no-push-permission' || data.pausedReason === 'auth-error'
+        data.pausedReason === 'no-push-permission' ||
+        data.pausedReason === 'auth-error' ||
+        data.pausedReason === 'external-changes-pending'
           ? undefined
           : data.pausedReason;
 

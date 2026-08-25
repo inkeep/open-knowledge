@@ -103,6 +103,49 @@ export function openAgentSettings(): void {
   openSettingsSection(CONFIGURE_AGENTS_SECTION);
 }
 
+/** Sidebar item id for the This project → Sync section. */
+const PROJECT_SYNC_SECTION = 'sync';
+
+/**
+ * One-shot request to open the Sync section's Advanced disclosure expanded.
+ *
+ * A module flag rather than the `SECTION_INTENT_EVENT` pattern above because
+ * the two cases differ: that event targets an ALREADY-MOUNTED dialog, while
+ * this intent is set while Settings is still closed and must survive until the
+ * lazy body chunk resolves and `SyncSection` mounts. An event dispatched now
+ * would land before anything is listening.
+ *
+ * Consumed on mount and cleared, so arriving at Sync any other way — the header
+ * gear, the sidebar, a plain `#settings/sync` link — leaves the disclosure
+ * collapsed, which is the point of calling it Advanced.
+ */
+let pendingSyncAdvanced = false;
+
+/**
+ * Read and clear the pending Advanced-disclosure intent. Call once, from the
+ * consuming component's mount.
+ */
+export function consumeSyncAdvancedIntent(): boolean {
+  const pending = pendingSyncAdvanced;
+  pendingSyncAdvanced = false;
+  return pending;
+}
+
+/**
+ * Open Settings straight to This project → Sync — the sync popover's own
+ * pointer at the fuller controls it does not host (the committed shared default
+ * and the cycle cadence). Single-sources the deep-link literal the same way
+ * `openAgentSettings` does.
+ *
+ * `advanced` additionally expands the Sync section's Advanced disclosure, so a
+ * caller that names the cadence in its own label lands the user on the control
+ * rather than on a collapsed row they have to find.
+ */
+export function openSyncSettings(opts?: { advanced?: boolean }): void {
+  if (opts?.advanced === true) pendingSyncAdvanced = true;
+  openSettingsSection(PROJECT_SYNC_SECTION);
+}
+
 /** Sidebar item id for the This project → Plugins manage section. */
 const PROJECT_PLUGINS_SECTION = 'plugins-manage';
 

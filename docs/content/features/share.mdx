@@ -25,10 +25,10 @@ If the push fails after the repo was created (auth lost mid-flow, network blip),
 
 ### Freshness warnings
 
-A share link points at GitHub, but your local edits only reach GitHub through auto-sync (off by default) or a manual push. When you click Share, OpenKnowledge checks the shared doc or folder against its last-known state on GitHub and, if the link won't yet show what you're looking at, adds a non-blocking warning row to the popover:
+A share link points at GitHub, but your local edits only reach GitHub through **Auto (Pull and Push)** or a manual push — in Manual and Auto (Pull only), nothing is pushed on a schedule. When you click Share, OpenKnowledge checks the shared doc or folder against its last-known state on GitHub and, if the link won't yet show what you're looking at, adds a non-blocking warning row to the popover:
 
-- **Not on GitHub yet.** The target has never been pushed, so the link won't resolve until it is. With auto-sync off, the row offers **Enable auto-sync** and **How to push manually**; with auto-sync on, it offers **Sync now** and clears itself once the push lands.
-- **Unpushed changes.** The target is on GitHub but has local edits that aren't, so recipients see the last pushed version. With auto-sync on this stays silent — the next sync closes the gap.
+- **Not on GitHub yet.** The target has never been pushed, so the link won't resolve until it is. When the project isn't on Auto (Pull and Push), the row offers **Enable Auto (Pull and Push)** and **How to push manually**; when it is, it offers **Sync now** and clears itself once the push lands.
+- **Unpushed changes.** The target is on GitHub but has local edits that aren't, so recipients see the last pushed version. On Auto (Pull and Push) this stays silent — the next scheduled push closes the gap.
 - **Empty folder.** The folder holds nothing Git can track — it has no documents, or everything inside it is ignored — so the link won't resolve, and unlike the never-pushed case no push will fix it. The row names the only remedy, adding a document, and offers no sync actions at all. Only folders reach this state: a doc is trackable at any size, including zero bytes.
 
 If you don't have write access to the repo, the row explains that instead of offering a push action. The check is local, adds no network round-trip, and never blocks sharing: if it can't run, the link still copies with no warning. Folder shares get the same treatment as docs, and can additionally hit the empty-folder case above, which a doc never can. Links minted by an agent get the same check: the [`share_link` MCP tool](/docs/reference/mcp) prepends the warning to its response so the agent can relay it with the link.
@@ -66,11 +66,11 @@ If OpenKnowledge can't reach GitHub to make this call, the dialog falls back to 
 ### When the shared target is not on your local copy
 
 Even on the right branch, a shared target (file or folder) can be renamed or deleted after a link is minted. In this case, OpenKnowledge offers to open the renamed target at its new path, a plain "removed from this branch" message with a link back to the parent folder, or "not pushed yet" when the path never existed.
-If the target was moved, renamed, or deleted in your own local copy, OpenKnowledge tells you to commit your changes manually or enable auto-sync.
+If the target was moved, renamed, or deleted in your own local copy, OpenKnowledge tells you to commit your changes manually or enable Auto (Pull and Push).
 If the target is on GitHub but hasn't reached your local copy yet, OpenKnowledge alerts you that your local copy is behind. The **Pull latest changes** button on this message fetches from GitHub and fast-forwards your copy in place. It only ever pulls: nothing is committed or pushed on your behalf, and your uncommitted edits ride on top of what comes in. If the pull can't run — another sync operation is already in flight, or GitHub is unreachable — the reason appears under the message and the button stays available to retry.
 
 ### Receiving without push permission
 
-If the shared repo is one your GitHub account can't push to (you're not a collaborator on a public repo, or you have read-only access on a private one), OpenKnowledge offers **[Follow](/docs/features/github-sync#follow)** at first open instead of the full "Enable auto-sync?" prompt: your copy keeps up to date by pulling the latest from GitHub automatically, while your own edits stay on your computer. You can keep editing — an incoming update combines with your non-overlapping changes automatically, and an edit to the same lines surfaces as a conflict to resolve.
+If the shared repo is one your GitHub account can't push to (you're not a collaborator on a public repo, or you have read-only access on a private one), OpenKnowledge offers **[Auto (Pull only)](/docs/features/github-sync#auto-pull-only)** at first open instead of the full "Enable Auto (Pull and Push)?" prompt: your copy keeps up to date by pulling the latest from GitHub automatically, while your own edits stay on your computer. You can keep editing — an incoming update combines with your non-overlapping changes automatically, and an edit to the same lines surfaces as a conflict to resolve.
 
 See [GitHub sync](/docs/features/github-sync) for how to automatically sync changes to GitHub, and [Timeline and recovery](/docs/features/timeline-and-recovery) for per-doc history once the doc is open.

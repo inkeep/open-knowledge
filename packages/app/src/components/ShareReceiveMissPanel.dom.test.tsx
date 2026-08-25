@@ -222,7 +222,7 @@ describe('ShareReceiveMissPanel verdict surfaces', () => {
     fireEvent.click(screen.getByTestId('share-receive-miss-enable-sync'));
     const dialog = screen.getByRole('dialog');
     expect(autoSyncWrites).toEqual([]);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable auto-sync' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     expect(autoSyncWrites).toEqual([true]);
     // The in-tab surface has no modal to close, so a successful enable clears it
     // by navigating to the parent folder (DOC_NAV path 'notes/plan' → 'notes').

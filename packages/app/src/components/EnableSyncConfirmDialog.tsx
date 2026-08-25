@@ -68,7 +68,11 @@ export function EnableSyncConfirmDialog({
             </Button>
           </DialogClose>
           <Button onClick={onConfirm}>
-            {variant === 'follow' ? <Trans>Enable Follow</Trans> : <Trans>Enable auto-sync</Trans>}
+            {variant === 'follow' ? (
+              <Trans>Enable Auto (Pull only)</Trans>
+            ) : (
+              <Trans>Enable Auto (Pull and Push)</Trans>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

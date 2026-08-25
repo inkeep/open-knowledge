@@ -316,6 +316,13 @@ export const ProblemTypeSchema = z.enum([
   // both flag "I have no conflict record for this file" distinctly from
   // generic 4xx so MCP clients can branch on the URN.
   'urn:ok:error:no-conflict-tracked',
+  // `no-blocking-changes` is the 409 from handleSyncResolveBlocking when the
+  // commit action arrives against an engine that is no longer paused on
+  // a pre-merge overlap — a stale panel, or a second click after the first
+  // already cleared it. Distinct from a generic 409 so the UI can refresh its
+  // status and drop the panel rather than surfacing a failure the user caused
+  // by resolving the same thing twice.
+  'urn:ok:error:no-blocking-changes',
   // Cluster H: sync + seed handlers. `sync-not-active` flags the
   // service-unavailable state when the sync engine isn't constructed yet
   // (no remote, or sync subsystem disabled). `project-repo-not-configured`
