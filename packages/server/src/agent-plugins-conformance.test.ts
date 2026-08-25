@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { buildAgentPluginArtifact, buildSkillBundles } from '../scripts/build-skill-bundles.ts';
+import { expectConformantManifest, readManifest } from './agent-plugin-manifest.test-helper.ts';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME } from './skill-bundles.ts';
 
 /**
@@ -12,47 +13,16 @@ import { BUNDLE_IDS, BUNDLE_SKILL_NAME } from './skill-bundles.ts';
  * every shipped manifest declares the standard's `$schema`, carries a name
  * passing the constraint grammar, and its `skills/` children (when the spec
  * layout is used) each hold a `SKILL.md`.
+ *
+ * Every subject must be present in every tree this file executes in — its own
+ * package, a sibling workspace package, or an artifact built here. One that is
+ * not will ENOENT wherever that tree lacks it.
  */
 
 const PKG_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const REPO_OK_ROOT = join(PKG_ROOT, '..', '..');
 
-/** The spec's plugin-name grammar (mirrors the enumerator's). */
-const NAME_RE = /^(?!.*[-.]{2})[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$/;
-
-function readManifest(dir: string): { $schema?: unknown; name?: unknown } {
-  return JSON.parse(readFileSync(join(dir, 'plugin.json'), 'utf-8')) as {
-    $schema?: unknown;
-    name?: unknown;
-  };
-}
-
-function expectConformantManifest(dir: string): void {
-  const manifest = readManifest(dir);
-  expect(manifest.$schema, `${dir} $schema`).toBe(
-    'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-  );
-  expect(typeof manifest.name, `${dir} name type`).toBe('string');
-  expect(manifest.name as string, `${dir} name grammar`).toMatch(NAME_RE);
-}
-
 describe('shipped Agent Plugins conformance', () => {
-  test('the internal team plugin (plugins/ok) is conformant', () => {
-    const dir = join(REPO_OK_ROOT, 'plugins', 'ok');
-    expectConformantManifest(dir);
-    // Spec layout: immediate children of skills/ each hold a SKILL.md.
-    const skillDirs = readdirSync(join(dir, 'skills'), { withFileTypes: true }).filter((e) =>
-      e.isDirectory(),
-    );
-    expect(skillDirs.length).toBeGreaterThan(0);
-    for (const child of skillDirs) {
-      expect(
-        existsSync(join(dir, 'skills', child.name, 'SKILL.md')),
-        `plugins/ok/skills/${child.name}`,
-      ).toBe(true);
-    }
-  });
-
   test('every starter pack carries a conformant manifest matching its dir name', () => {
     const packsDir = join(PKG_ROOT, 'assets', 'skills', 'packs');
     const packs = readdirSync(packsDir, { withFileTypes: true }).filter((e) => e.isDirectory());

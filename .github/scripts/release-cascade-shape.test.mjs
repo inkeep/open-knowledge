@@ -534,6 +534,42 @@ describe('the bug lane hands off instead of verifying in the evaluator', () => {
   });
 });
 
+// The failing-test names travel verify-step output → paging-step env →
+// `--argjson`, and each hop is a separate string in a separate step. Break any
+// one and the page still POSTs, still renders, and simply says it captured no
+// failing test name — the uninformative page the channel exists to avoid. That
+// is a silent degradation, so the hops are pinned by step rather than by a
+// file-wide `toContain` that either end could satisfy alone.
+describe('the failing-test names reach the refusal page', () => {
+  test('the verify step publishes them as an output', () => {
+    const verify = bugLaneVerifyStep('Verify the synthetic tree (cherry-pick + fast test tiers)');
+    expect(verify).toContain('failures<<FAILURES_EOF');
+    // The heredoc BODY, not the bare token: `FAILURES_JSON` also appears on its
+    // own declaration line, so a token check passes while the body emits a
+    // literal `[]` and the output goes permanently empty. That line is outside
+    // what the extraction test executes, too — its slicer stops at the
+    // declaration — so nothing else covers it.
+    expect(verify).toContain('printf \'%s\\n\' "$FAILURES_JSON"');
+  });
+
+  test('the paging step reads that output and hands it to the payload builder', () => {
+    const page = bugLaneVerifyStep('Page on a refusal (armed only)');
+    expect(page).toContain('FAILURES: ${{ steps.verify.outputs.failures }}');
+    // The connector between the env var and the variable `jq` reads. It sits
+    // third in a stack of three near-identical siblings (TICKETS_JSON,
+    // CONFLICTS_JSON, FAILURES_JSON) in the step whose whole job is not to
+    // page empty. Both plausible mis-wires fail INVISIBLY, because `parseArgs`
+    // drops every non-string and `${...:-}` defaults a name that does not
+    // exist: reaching for the wrong sibling (`${CONFLICTS:-}`) hands the
+    // builder conflict OBJECTS, and dropping the plural (`${FAILURE:-}`)
+    // hands it nothing at all. Either way the list arrives `[]` and the page
+    // says it captured no failing test name — the uninformative page restored,
+    // with every other assertion here still green.
+    expect(page).toContain('FAILURES_JSON="${FAILURES:-}"');
+    expect(page).toContain('--argjson failures "$FAILURES_JSON"');
+  });
+});
+
 describe('the bug lane verifies the synthetic tree at the same bar as main', () => {
   const verify = bugLaneVerify.slice(
     bugLaneVerify.indexOf('- name: Verify the synthetic tree'),

@@ -254,6 +254,83 @@ describe('buildSlackPayload', () => {
     },
   ];
 
+  // "Why it refused" renders per-ref conflict evidence, and a red tier has none
+  // of its own — every surviving ref cherry-picked cleanly, which is the only
+  // way it reached the tiers. Without the failure list the section renders as a
+  // bare heading above an instruction to go read the log.
+  test('a red tier names the failing tests instead of an empty reason', () => {
+    const body = buildSlackPayload({
+      verdict: 'fail',
+      stable: 'v0.62.1',
+      refs: [],
+      runUrl: '',
+      failures: [
+        'src/skill-bundles.test.ts > every bundle has a SKILL.md on disk whose frontmatter name matches',
+      ],
+    }).blocks[1].text.text;
+    expect(body).toContain('skill-bundles.test.ts');
+    expect(body).toContain('not flake-class');
+    // The discrimination the empty page could not offer.
+    expect(body).toContain('the stable is red on its own');
+    expect(body).not.toMatch(/\*Why it refused\*\n\n/);
+  });
+
+  // A red tier does NOT imply an empty batch: the pick loop records every
+  // dropped ref and lets the survivors run the tiers, so a partial drop
+  // followed by a red tier carries both kinds of evidence. The partial-drop
+  // page is gated on `verdict == 'pass'`, so if this page omits the drops
+  // nothing on that tick tells the operator a ref was dropped at all.
+  test('a red tier with dropped refs still accounts for the drops', () => {
+    const body = buildSlackPayload({
+      verdict: 'fail',
+      stable: 'v0.62.1',
+      runUrl: '',
+      failures: ['src/thing.test.ts > a case'],
+      refs,
+    }).blocks[1].text.text;
+    expect(body).toContain('src/thing.test.ts');
+    expect(body).toContain('Also dropped from this batch');
+    expect(body).toContain('packages/app/package.json');
+    expect(body).toContain('PRD-7835');
+  });
+
+  test('a red tier with no dropped refs adds no drop section', () => {
+    const body = buildSlackPayload({
+      verdict: 'fail',
+      stable: 'v0.62.1',
+      runUrl: '',
+      failures: ['src/thing.test.ts > a case'],
+      refs: [],
+    }).blocks[1].text.text;
+    expect(body).not.toContain('Also dropped from this batch');
+  });
+
+  test('a red tier with no captured failures says so rather than rendering nothing', () => {
+    const body = buildSlackPayload({
+      verdict: 'fail',
+      stable: 'v0.62.1',
+      refs: [],
+      runUrl: '',
+      failures: [],
+    }).blocks[1].text.text;
+    expect(body).toContain('captured no failing test or task name');
+    expect(body).not.toMatch(/\*Why it refused\*\n\n/);
+  });
+
+  test('a red tier caps the failure list and says how many it dropped', () => {
+    const failures = Array.from({ length: 11 }, (_, i) => `suite > case ${i}`);
+    const body = buildSlackPayload({
+      verdict: 'fail',
+      stable: 'v0.62.1',
+      refs: [],
+      runUrl: '',
+      failures,
+    }).blocks[1].text.text;
+    expect(body).toContain('case 7');
+    expect(body).not.toContain('case 8');
+    expect(body).toContain('…and 3 more');
+  });
+
   test('names the ticket, the path, the verdict and what applied cleanly', () => {
     const body = buildSlackPayload({
       verdict: 'conflict',
