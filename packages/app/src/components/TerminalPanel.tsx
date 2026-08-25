@@ -32,6 +32,7 @@ import { createTerminalFileLinkProvider } from './terminal-link-provider';
 import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
 import { createResizeThrottle } from './terminal-resize-throttle';
+import { restoreScrollReach } from './terminal-scroll-reach';
 import { nextWheelReports, sgrWheelReport, wheelReportPosition } from './terminal-wheel';
 import { useLiveXtermTheme } from './use-live-xterm-theme';
 
@@ -702,7 +703,26 @@ function TerminalSession({
         const colsBefore = term.cols;
         const rowsBefore = term.rows;
         fit.fit();
-        if (term.cols !== colsBefore || term.rows !== rowsBefore) repaintSameFrame();
+        if (term.cols !== colsBefore || term.rows !== rowsBefore) {
+          // Repaint first, then restore — for as long as the flush is
+          // synchronous. `repaintSameFrame` flushes xterm's render debouncer,
+          // and `_innerRefresh` ends by running the refresh callbacks, which is
+          // where the viewport has queued the scroll-area sync that sets the
+          // scrollbar's dimensions. So the flush is what re-derives those
+          // dimensions against the new grid, and a restore running ahead of it
+          // would re-assert a position against dimensions still describing the
+          // old one.
+          //
+          // That last part is CONDITIONAL, so do not read it as an invariant.
+          // The debouncer is a guarded internal: when a bump moves it,
+          // `createSameFrameRepaint` warns and defers the refresh — and the
+          // dimension sync riding on it — to the next frame, which puts the
+          // restore back ahead of the sync. Nothing here detects that; the
+          // warning is the signal, and in that state the panel has already lost
+          // its same-frame repaint too.
+          repaintSameFrame();
+          restoreScrollReach(term);
+        }
         ptyResizeThrottle?.request();
       });
       observer.observe(container);
