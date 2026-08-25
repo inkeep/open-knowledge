@@ -427,6 +427,7 @@
       "!**/.turbo",
       "!**/tmp",
       "!**/test-results",
+      "!**/test-results-packaged",
       "!**/playwright-report",
       "!**/next-env.d.ts",
       "!.claude",

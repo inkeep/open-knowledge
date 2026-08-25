@@ -46,7 +46,7 @@ export const EXIT_CODES = {
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DESKTOP_DIR = resolve(SCRIPT_DIR, '..', '..', 'packages', 'desktop');
 const PACKAGED_CONFIG = 'playwright.packaged.config.ts';
-const PACKAGED_REPORT = join('test-results', 'desktop-smoke-packaged-results.json');
+export const PACKAGED_REPORT = join('test-results', 'desktop-smoke-packaged-results.json');
 
 /**
  * Pure verdict function. `report` is the parsed Playwright JSON report, or null

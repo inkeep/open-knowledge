@@ -4,25 +4,13 @@ import { shouldAttachStderr } from '../smoke/_helpers/electron-stderr';
 
 /**
  * Pins the conditional-attach predicate that gates whether the smoke-test
- * `captureStderrFor` fixture writes its captured `main-process-stderr`
- * artifact to Playwright's `testInfo`.
+ * `captureStderrFor` fixture surfaces its captured `main-process-stderr`
+ * artifact on `testInfo`.
  *
- * Why this predicate is load-bearing: when a smoke test attempt times out
- * on a CI runner under load, macOS kills the Electron Helper subprocess
- * mid-teardown, and the helper emits XPC errors to stderr during shutdown
- * (`Electron Helper[…] XPC error for connection com…`). Those errors get
- * captured into the fixture's per-test buffer. If the fixture then
- * unconditionally attaches that buffer to `testInfo`, Playwright's
- * reporter surfaces the failed-attempt block AND its `main-process-stderr`
- * attachment in the run output, even when the retry succeeds and the test
- * is reported as "flaky" (passed). The reporter then counts the
- * failed-attempt block as an "error not part of any test", which exits the
- * job with status 1 — even with `failOnFlakyTests: false`.
- *
- * The fix is to attach iff (a) this is the FINAL attempt (retries
- * exhausted) AND (b) the final attempt is failing. Non-final failed
- * attempts that may yet retry-pass DO NOT attach — their captured stderr
- * is informational at best and exit-1-causing at worst.
+ * `shouldAttachStderr`'s JSDoc in `_helpers/electron-stderr.ts` owns why
+ * the predicate exists — the XPC-kill to reporter to exit-1 chain, the
+ * final-attempt-only rule it produces, and the caveat about what that
+ * chain has and has not been re-measured against.
  *
  * If you change the predicate's truth table, you are changing the contract
  * between the smoke fixture and Playwright's flake-tolerance gate.

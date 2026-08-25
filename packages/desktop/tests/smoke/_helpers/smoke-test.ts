@@ -5,14 +5,17 @@
  * smoke test must satisfy:
  *
  *   (1) STDERR ATTACH CONTRACT — the Electron app's stdout/stderr is
- *   captured during the test attempt, and the captured buffer is attached
- *   to `testInfo` as the `main-process-stderr` artifact ONLY when (a) this
- *   is the final attempt — retries exhausted — AND (b) the final attempt
- *   is failing. Flake-passed and success-first-try attempts skip the
- *   attachment because the captured buffer can carry helper-teardown XPC
- *   noise that Playwright's reporter would otherwise surface as "errors
- *   not part of any test". The gating predicate (`shouldAttachStderr`,
- *   exported from `./electron-stderr`) owns the decision.
+ *   captured during the test attempt, and the captured buffer is written
+ *   to a file under the test's output directory and attached to
+ *   `testInfo` by path as the `main-process-stderr` artifact ONLY when
+ *   (a) this is the final attempt — retries exhausted — AND (b) the final
+ *   attempt is failing. Flake-passed and success-first-try attempts skip
+ *   the attachment because the captured buffer can carry helper-teardown
+ *   XPC noise that Playwright's reporter would otherwise surface as
+ *   "errors not part of any test". The gating predicate
+ *   (`shouldAttachStderr`, exported from `./electron-stderr`) owns the
+ *   decision; `./electron-stderr` also owns why the attachment must carry
+ *   a path rather than a body to reach the CI artifacts at all.
  *
  *   (2) BOUNDED CLEANUP CONTRACT — every Electron process group launched
  *   in the test is reaped within bounded time after the test body
@@ -56,23 +59,23 @@
  *   body initiates close ahead of it (enforced by the static guard at
  *   `_helpers/no-unbounded-app-close.test.ts`).
  *
- * Both contracts engage off the SAME registration call: `captureStderrFor(app)`
+ * All three contracts engage off the SAME registration call: `captureStderrFor(app)`
  * after each `electron.launch(...)`. Tests do not need a separate
  * cleanup-registration call.
  *
  * Why a fixture instead of helper-call-in-finally:
  *
- *   1. Single source of truth. Adding both contracts to a new test is one
- *      line (`captureStderrFor(app)`) instead of an attach-finally and a
- *      close-finally per test.
+ *   1. Single source of truth. Adding all three contracts to a new test is
+ *      one line (`captureStderrFor(app)`) instead of an attach-finally and
+ *      a close-finally per test.
  *   2. Survives test timeout. Playwright fixture cleanup runs even when
  *      the worker kills the test body mid-await — same guarantee the
  *      manual finally provides, but contract-as-fixture means it can't be
  *      forgotten and can't be skipped by per-test timeout cancellation.
  *   3. Multi-launch tolerant. Tests that boot multiple Electron processes
- *      (rare today, but the switch-project case in nav-close-on-open
- *      already does this) register each app once; both contracts apply
- *      to every registered app.
+ *      in one test (a handful of relaunch / cross-restart specs do)
+ *      register each app once; every contract applies to every registered
+ *      app, and each gets its own stderr artifact.
  *   4. Centralized decisions. The attach-or-skip decision and the
  *      bounded-cleanup loop are taken once each, so consumers cannot
  *      accidentally regress either contract.
@@ -89,6 +92,7 @@ import { rmSync } from 'node:fs';
 import { expect as baseExpect, test as baseTest, type ElectronApplication } from '@playwright/test';
 import { captureAppProcess, closeAppBounded, reapDetachedServers } from './electron-cleanup';
 import {
+  attachCapturedStderr,
   captureElectronStderr,
   type ElectronStderrCapture,
   shouldAttachStderr,
@@ -112,7 +116,8 @@ export interface SmokeFixtures {
    * Subscribes to `app.process()` streams immediately, captures the
    * underlying Node `ChildProcess` for later cleanup (capture must happen
    * WHILE the channel is alive — see file-level comment), and queues:
-   *   1. an attach to `testInfo` on test end (gated by `shouldAttachStderr`)
+   *   1. a file-backed attach to `testInfo` on test end (gated by
+   *      `shouldAttachStderr`)
    *   2. a `closeAppBounded` cleanup on the captured ChildProcess
    *   3. (when `opts.cleanupDirs` is set) rmSync of each dir AFTER (2)
    *
@@ -157,13 +162,14 @@ export const test = baseTest.extend<SmokeFixtures>({
     // Contract (1): stderr-attach. Skip when the predicate says the
     // captured buffer has no diagnostic value (success first try, flake-
     // passed on retry, non-final timed-out attempt that may still retry-
-    // pass, skipped). The captured buffer goes out of scope when this
-    // function returns and is reclaimed by GC. Rationale lives in
-    // `shouldAttachStderr`'s JSDoc.
+    // pass, skipped); rationale lives in `shouldAttachStderr`'s JSDoc.
+    // `attachCapturedStderr` takes the whole registration list, so this
+    // call has no index-shaped argument to get wrong, and it absorbs its
+    // own failures so contracts (2) and (3) below still run — both
+    // documented at that function. The captured buffers go out of scope
+    // when this function returns.
     if (shouldAttachStderr(testInfo)) {
-      for (const capture of captures) {
-        await capture.attachTo(testInfo);
-      }
+      await attachCapturedStderr(testInfo, captures);
     }
     // Contract (2): bounded cleanup. Runs unconditionally for every
     // registered app, every attempt. This is the FIRST and ONLY
@@ -201,9 +207,14 @@ export const test = baseTest.extend<SmokeFixtures>({
     for (const dir of cleanupDirs) {
       try {
         rmSync(dir, { recursive: true, force: true });
-      } catch {
-        // Defensive: post-reap residual race is rare but not impossible;
-        // tmpdir reaper handles GC. Swallow rather than fail the test.
+      } catch (error) {
+        // A post-reap residual race is rare but not impossible, and the
+        // tmpdir reaper handles GC, so this must not fail the test. It
+        // must still be visible: a silent catch here turns a repeatable
+        // "something is still writing after the reap" signal into no
+        // signal at all.
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`[smoke-test] tmp-dir cleanup failed for ${dir}: ${reason}`);
       }
     }
   },

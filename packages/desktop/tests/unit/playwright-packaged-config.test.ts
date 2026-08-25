@@ -50,6 +50,13 @@ describe('playwright.packaged.config', () => {
     expect(json?.[1]?.outputFile).toBe(PACKAGED_JSON_REPORT_PATH);
   });
 
+  it('writes its per-test artifacts to a tree the unpackaged tier does not share', () => {
+    // The config owns why the trees are separate. Pinned here because
+    // dropping the line brings the collision back silently.
+    expect(packagedConfig.outputDir).toBe('test-results-packaged');
+    expect(unpackagedSource).not.toContain('test-results-packaged');
+  });
+
   it('leaves the required desktop-smoke check untouched', () => {
     // A `projects` array on the unpackaged config would change
     // testInfo.project.retries, which electron-stderr.ts reads. The packaged

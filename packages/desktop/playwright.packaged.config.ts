@@ -37,11 +37,34 @@ export const PACKAGED_SMOKE_SUBSET = [
   'mcp-wiring.e2e.ts',
 ] as const;
 
-/** Distinct from the unpackaged report so the two never overwrite each other. */
+/**
+ * Distinct filename so one directory can hold both tiers' JSON reports. The
+ * reports still SHARE `test-results/`; only the per-test artifact trees are
+ * separated, by `outputDir` below.
+ */
 export const PACKAGED_JSON_REPORT_PATH = 'test-results/desktop-smoke-packaged-results.json';
 
 export default defineConfig({
   testDir: './tests/smoke',
+  // Without this, the tier would default to the unpackaged run's
+  // `test-results/` and clear it at run start, taking that run's per-test
+  // artifacts with it — Playwright 1.59.1, re-verify on any upgrade, not just
+  // a major, since the range admits minors and this is undocumented behavior
+  // of a public API.
+  //
+  // That was never reachable: a captured main-process stderr file exists only
+  // when the smoke FAILED, a failing smoke fails its step, and this tier
+  // carries no `if:` — so it skips exactly when there is something to lose.
+  // The safety was that `if:` and nothing else, and one `if: !cancelled()`
+  // here would have put a failing smoke's only evidence behind a clear. A
+  // separate tree makes it structural instead of conditional.
+  //
+  // Only the artifact trees separate. A reporter's `outputFile` is its own
+  // path — same 1.59.1 measurement, same re-verify-on-any-upgrade — so
+  // `PACKAGED_JSON_REPORT_PATH` still lands in `test-results/` beside its
+  // sibling, and nothing clears it now: fine on a fresh CI workspace, worth
+  // knowing on a reused one. Both trees upload on failure.
+  outputDir: 'test-results-packaged',
   testMatch: PACKAGED_SMOKE_SUBSET.map((file) => `**/${file}`),
   // Matches the unpackaged config's CI budget. A packaged launch is if anything
   // slower than `electron out/main/index.js` (Gatekeeper assessment, first-run
