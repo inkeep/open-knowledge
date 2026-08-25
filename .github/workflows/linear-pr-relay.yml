@@ -44,18 +44,17 @@ concurrency:
 
 jobs:
   relay:
-    # Copybara's own sync PRs are this repo talking to itself; they are not
-    # community contributions and must never become tickets.
+    # FORK PRs ONLY. The tickets this produces carry `source:gh-pr`, meaning
+    # "originated from an external GitHub pull request", so the predicate is
+    # provenance rather than branch name.
     #
-    # Keyed on the head REPOSITORY, not the branch name alone. A fork chooses its
-    # own branch name, so matching only on `copybara/sync` let any contributor
-    # name their branch that and skip both this relay and the receiver's sweep
-    # filter, leaving their PR permanently invisible to Linear. That is evasion of
-    # the very tracking control this workflow is. "Talking to itself" is a
-    # property of where the branch lives, which a stranger cannot forge.
-    if: >-
-      github.event.pull_request.head.repo.full_name != github.repository
-      || github.event.pull_request.head.ref != 'copybara/sync'
+    # Pushing a branch to this repo requires write access, so every same-repo PR
+    # is internal by construction: Copybara's own `copybara/sync`, a maintainer's
+    # patch branch, or Dependabot. None is a community contribution. Excluding
+    # same-repo wholesale subsumes the Copybara case rather than restating it,
+    # and it is unforgeable — a contributor picks their branch name, not which
+    # repository it lives in.
+    if: github.event.pull_request.head.repo.full_name != github.repository
     name: Relay the pull request number to agents-private
     runs-on: ubuntu-latest
     timeout-minutes: 5
