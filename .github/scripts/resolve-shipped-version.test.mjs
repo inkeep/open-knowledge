@@ -3,8 +3,10 @@ import {
   firstContainingStableTag,
   parseFixRef,
   parseGitOriginRevIds,
+  parseTagLines,
   resolvePrivateSha,
   resolveShippedVersion,
+  sortReleaseTagsAscending,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
 
@@ -342,5 +344,125 @@ describe('resolvePrivateSha', () => {
         },
       ),
     ).toThrow(/not merged/);
+  });
+});
+
+describe('release tags across both channels', () => {
+  const MIXED = ['v0.36.0', 'v0.35.0-beta.10', 'v0.35.0', 'v0.35.0-beta.2', 'not-a-tag', 'v0.35.6'];
+
+  test('a beta sorts below the stable it becomes, and betas order numerically', () => {
+    // String ordering would put beta.10 before beta.2 and leave the stable
+    // adjacent to its own prereleases in whatever order they were listed.
+    expect(sortReleaseTagsAscending(MIXED)).toEqual([
+      'v0.35.0-beta.2',
+      'v0.35.0-beta.10',
+      'v0.35.0',
+      'v0.35.6',
+      'v0.36.0',
+    ]);
+  });
+
+  test('the stable sorter still refuses every prerelease', () => {
+    expect(sortStableTagsAscending(MIXED)).toEqual(['v0.35.0', 'v0.35.6', 'v0.36.0']);
+  });
+});
+
+describe('resolving against a channel', () => {
+  const PRIVATE = 'a'.repeat(40);
+  const MIRRORED = 'b'.repeat(40);
+  const TAGS = ['v0.35.0', 'v0.36.0-beta.0', 'v0.36.0-beta.1', 'v0.36.0'];
+  const findMirrored = (sha) =>
+    sha === PRIVATE ? [{ sha: MIRRORED, message: `subject\n\nGitOrigin-RevId: ${PRIVATE}\n` }] : [];
+  // The fix landed in the first beta of the 0.36 cycle and rode it to stable.
+  const contains = (tag, sha) =>
+    sha === MIRRORED && ['v0.36.0-beta.0', 'v0.36.0-beta.1', 'v0.36.0'].includes(tag);
+
+  test('the beta channel answers with the first build of any kind that carried it', () => {
+    const result = resolveShippedVersion({
+      privateSha: PRIVATE,
+      stableTags: TAGS,
+      findMirroredCommits: findMirrored,
+      contains,
+      channel: 'beta',
+    });
+    expect(result).toMatchObject({
+      shipped: true,
+      tag: 'v0.36.0-beta.0',
+      version: '0.36.0-beta.0',
+    });
+  });
+
+  test('the stable channel ignores the betas entirely and answers with the stable', () => {
+    const result = resolveShippedVersion({
+      privateSha: PRIVATE,
+      stableTags: TAGS,
+      findMirroredCommits: findMirrored,
+      contains,
+    });
+    expect(result).toMatchObject({ shipped: true, tag: 'v0.36.0', version: '0.36.0' });
+  });
+
+  test('a fix that reached a beta but no stable is unshipped on the stable channel and shipped on the beta one', () => {
+    const betaOnly = (tag, sha) => sha === MIRRORED && tag === 'v0.36.0-beta.1';
+    expect(
+      resolveShippedVersion({
+        privateSha: PRIVATE,
+        stableTags: TAGS,
+        findMirroredCommits: findMirrored,
+        contains: betaOnly,
+      }),
+    ).toMatchObject({ shipped: false, reason: 'not-in-any-stable' });
+    expect(
+      resolveShippedVersion({
+        privateSha: PRIVATE,
+        stableTags: TAGS,
+        findMirroredCommits: findMirrored,
+        contains: betaOnly,
+        channel: 'beta',
+      }),
+    ).toMatchObject({ shipped: true, version: '0.36.0-beta.1' });
+  });
+
+  test('a fix in no tag at all reports the channel it failed against', () => {
+    expect(
+      resolveShippedVersion({
+        privateSha: PRIVATE,
+        stableTags: TAGS,
+        findMirroredCommits: findMirrored,
+        contains: () => false,
+        channel: 'beta',
+      }),
+    ).toMatchObject({ shipped: false, reason: 'not-in-any-release' });
+  });
+});
+
+
+describe('the tag boundary', () => {
+  test('prereleases survive it, because the channel decides what counts and not this', () => {
+    // The beta channel went dead on a reader that filtered to bare vX.Y.Z here.
+    // Filtering belongs to the sorter, which knows which channel is asking.
+    expect(parseTagLines('v0.36.0\nv0.37.0-beta.1\n\n  v0.37.0  \n')).toEqual([
+      'v0.36.0',
+      'v0.37.0-beta.1',
+      'v0.37.0',
+    ]);
+  });
+
+  test('a fix that only a stable contains resolves to that stable even on the beta channel', () => {
+    // The precondition behind `stable-covers-it`: a point-release cherry-pick
+    // has no beta to point anyone at, so the beta run must see a stable-shaped
+    // version and stand down rather than invent one.
+    const PRIVATE = 'a'.repeat(40);
+    const MIRRORED = 'b'.repeat(40);
+    expect(
+      resolveShippedVersion({
+        privateSha: PRIVATE,
+        stableTags: ['v0.35.0', 'v0.36.0-beta.0', 'v0.36.0'],
+        findMirroredCommits: (sha) =>
+          sha === PRIVATE ? [{ sha: MIRRORED, message: `GitOrigin-RevId: ${PRIVATE}` }] : [],
+        contains: (tag, sha) => sha === MIRRORED && tag === 'v0.36.0',
+        channel: 'beta',
+      }),
+    ).toMatchObject({ shipped: true, tag: 'v0.36.0', version: '0.36.0' });
   });
 });

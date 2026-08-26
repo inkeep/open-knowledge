@@ -442,7 +442,7 @@ describe('E2E STOP rule — zero allowlist', () => {
     }
     if (violations.length > 0) {
       throw new Error(
-        `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, rmSync in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env:\n${violations.join('\n')}`,
+        `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, removeAllDuringTeardown in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env:\n${violations.join('\n')}`,
       );
     }
   });

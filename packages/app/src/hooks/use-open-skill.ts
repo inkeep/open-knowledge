@@ -2,12 +2,13 @@ import type { SkillScope } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { useDocumentContext } from '@/editor/DocumentContext';
-import { useSkills } from '@/hooks/use-skills';
+import { useSkills, whenSkillsListContains } from '@/hooks/use-skills';
 import {
   hashFromDocName,
   pushHashWithoutNavigation,
   replaceHashWithoutNavigation,
 } from '@/lib/doc-hash';
+import { beginSkillWrite, endSkillWrite } from '@/lib/documents-events';
 import { skillEntryLiveDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { openSkillPreviewTab } from '@/lib/open-managed-artifact-tab';
 import { requestSkillTrackPrompt } from '@/lib/skill-track-prompt-store';
@@ -47,6 +48,20 @@ export function useOpenSkill(): (
   const skillsState = useSkills();
   return (scope, name, opts) => {
     const open = (docName: string) => {
+      // A just-created/imported/installed skill can be opened BEFORE the
+      // skills list refetch lands. The tab reconciler closes skill tabs whose
+      // skill is absent from the list, and a stale snapshot doesn't have this
+      // one yet - which closed the fresh tab and made create/install look
+      // like they never opened anything. Busy-mark it until a list containing
+      // it lands (the waiter resolves on timeout too, so the mark always
+      // releases).
+      const listed =
+        skillsState.status === 'ready' &&
+        skillsState.data.some((sk) => sk.scope === scope && sk.name === name);
+      if (!listed) {
+        beginSkillWrite(scope, name);
+        void whenSkillsListContains(scope, name).then(() => endSkillWrite(scope, name));
+      }
       // `replace-active` swaps the currently-active tab in place (e.g. transition an
       // explore PREVIEW tab into the real skill after install) — one tab, no separate
       // close, so nothing can resurrect the old preview.

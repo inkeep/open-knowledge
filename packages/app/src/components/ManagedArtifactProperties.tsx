@@ -14,7 +14,9 @@ import { SkillProperties } from '@/components/SkillProperties';
 import { TemplateProperties } from '@/components/TemplateProperties';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { docNameForTabId } from '@/editor/editor-tabs';
+import { whenSkillsListContains } from '@/hooks/use-skills';
 import { hashFromDocName, replaceHashWithoutNavigation } from '@/lib/doc-hash';
+import { beginSkillWrite, endSkillWrite } from '@/lib/documents-events';
 import { moveTemplate } from '@/lib/folder-config-api';
 import { parseProjectSkillContentDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { moveSkill } from '@/lib/skills-api';
@@ -86,16 +88,27 @@ export function ManagedArtifactProperties({
  * rename / scope move. Opens the relocated doc (which becomes active) before
  * closing the old tab, so there's no flash of empty editor in between.
  */
-export function useManagedArtifactRetarget(): (fromDocName: string, toDocName: string) => void {
+export function useManagedArtifactRetarget(): (
+  fromDocName: string,
+  toDocName: string,
+  opts?: {
+    /** The source doc was ACTIVE when the operation started. The server's own
+     *  doc teardown races the HTTP response: on a slow op the close lands
+     *  first, the tab is already gone by the time this runs, and both live
+     *  checks below miss - the editor strands empty and the rename looks like
+     *  it did nothing. The caller snapshots the truth before awaiting. */
+    sourceWasActive?: boolean;
+  },
+) => void {
   const { openTarget, closeDocument, activeDocName, openTabs } = useDocumentContext();
-  return (fromDocName, toDocName) => {
+  return (fromDocName, toDocName, opts) => {
     if (fromDocName === toDocName) return;
     // Open the destination DIRECTLY, not via the hash → resolveNavigationTarget
     // path: a project skill content doc (`.ok/skills/<name>/SKILL`) resolves through
     // the page index, which lags a rename/scope-move by the async `files` refetch, so
     // the hash path would resolve the just-created doc to a read-only asset viewer.
     const dest = { kind: 'doc', target: toDocName, docName: toDocName } as const;
-    if (activeDocName === fromDocName) {
+    if (activeDocName === fromDocName || opts?.sourceWasActive === true) {
       // The source is the ACTIVE tab (renaming/moving what you're viewing): morph it
       // in place. `replace-active` marks the old tab closed-during-restore so the
       // source doc's STILL-CONNECTED live provider can't RESURRECT it — a plain open +
@@ -128,9 +141,38 @@ export function useRenameSkill(): (
 ) => Promise<Awaited<ReturnType<typeof moveSkill>>> {
   const { t } = useLingui();
   const retarget = useManagedArtifactRetarget();
+  const { activeDocName } = useDocumentContext();
   return async (skill, next) => {
-    const result = await moveSkill({ scope: skill.scope, fromName: skill.name, toName: next });
+    // Snapshot BEFORE the await: the server tears the source doc down during
+    // the rename, and when that close outruns the response the live tab state
+    // no longer says the user was viewing it.
+    // The suffix form only ever names an in-place PROJECT doc, so it is
+    // scope-gated: without the gate, renaming a GLOBAL skill while an
+    // unrelated same-named PROJECT skill is the active tab would morph that
+    // tab onto the global doc.
+    const sourceWasActive =
+      activeDocName != null &&
+      (activeDocName === skillLiveDocName(skill.scope, skill.name) ||
+        (skill.scope === 'project' &&
+          parseProjectSkillContentDocName(activeDocName) === skill.name));
+    // Busy-mark BOTH names for the tab reconciler: right after the rename the
+    // skills list is refetching, and a snapshot from before the rename has
+    // NEITHER name in its final state — acting on it closed the freshly
+    // renamed tab (the rename "did nothing" from the user's chair). Same
+    // begin/end discipline as the scope-move flow.
+    beginSkillWrite(skill.scope, skill.name);
+    beginSkillWrite(skill.scope, next);
+    let result: Awaited<ReturnType<typeof moveSkill>>;
+    try {
+      result = await moveSkill({ scope: skill.scope, fromName: skill.name, toName: next });
+    } catch (err) {
+      endSkillWrite(skill.scope, skill.name);
+      endSkillWrite(skill.scope, next);
+      throw err;
+    }
     if (!result.ok) {
+      endSkillWrite(skill.scope, skill.name);
+      endSkillWrite(skill.scope, next);
       toast.error(t`Couldn't rename "${skill.name}": ${result.error}`);
       return result;
     }
@@ -148,7 +190,26 @@ export function useRenameSkill(): (
       skill.scope === 'project' && result.to !== undefined
         ? `${result.to.split('/').slice(0, -1).join('/')}/${skill.name}/SKILL`
         : skillLiveDocName(skill.scope, skill.name);
-    retarget(fromDoc, toDoc);
+    try {
+      retarget(fromDoc, toDoc, { sourceWasActive });
+    } catch (err) {
+      console.error('[skill-rename] retarget failed after a successful rename', err);
+    }
+    // Hold the busy-marks until a skills list CONTAINING the new name has
+    // landed. Ending synchronously here is too early: the tab reconciler runs
+    // on the NEXT React commit, sees a refetch-in-flight (stale) list without
+    // either name un-flagged, and closes the freshly morphed tab - the rename
+    // "did nothing" from the user's chair. Bounded so a wedged fetch can't
+    // leak the flags (a leaked flag suppresses the reconciler for this skill
+    // for the rest of the session).
+    // Rides the coalesced shared pipeline - an independent polling loop
+    // against /api/skills is the scan-storm shape use-skills exists to
+    // prevent (each attempt was an uncoalesced full-roots walk). The waiter
+    // resolves on its own timeout too, so the marks always release.
+    void whenSkillsListContains(skill.scope, next).then(() => {
+      endSkillWrite(skill.scope, skill.name);
+      endSkillWrite(skill.scope, next);
+    });
     return result;
   };
 }

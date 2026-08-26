@@ -18,6 +18,7 @@ function result(over: Partial<LintRunResult> = {}): LintRunResult {
     errorCount: 0,
     warningCount: 0,
     fixedCount: 0,
+    ran: ['markdownlint'],
     ...over,
   };
 }
@@ -26,6 +27,7 @@ describe('formatLintReport', () => {
   test('reports a clean run', async () => {
     const out = formatLintReport(result({ fileCount: 3 }));
     expect(out).toContain('No problems in 3 files');
+    expect(out).toContain('Checks run: markdownlint.');
   });
 
   test('groups diagnostics under their file with a summary', async () => {
@@ -33,6 +35,7 @@ describe('formatLintReport', () => {
       result({
         fileCount: 1,
         warningCount: 1,
+        warnings: ['could not read directory drafts'],
         files: [
           {
             file: 'a.md',
@@ -54,6 +57,10 @@ describe('formatLintReport', () => {
     expect(out).toContain('Hard tabs');
     expect(out).toContain('markdownlint/MD010');
     expect(out).toContain('1 problem');
+    expect(out).toContain('Checks run: markdownlint.');
+    expect(out.indexOf('Checks run: markdownlint.')).toBeLessThan(
+      out.indexOf('could not read directory drafts'),
+    );
   });
 
   test('marks fixed files and shows a fixed summary', async () => {
@@ -67,9 +74,26 @@ describe('formatLintReport', () => {
     expect(out).toContain('Fixed 1 file');
   });
 
-  test('surfaces runner warnings', async () => {
-    const out = formatLintReport(result({ warnings: ['could not read directory drafts'] }));
+  test('surfaces runner warnings after the summary, not before it', async () => {
+    const out = formatLintReport(
+      result({ fileCount: 500, warnings: ['could not read directory drafts'] }),
+    );
     expect(out).toContain('could not read directory drafts');
+    // On a large KB a warning block rendered first scrolls off, leaving a
+    // terminal whose last screen reads clean.
+    expect(out.indexOf('could not read directory drafts')).toBeGreaterThan(
+      out.indexOf('No problems in 500 files'),
+    );
+    // The coverage line still sits adjacent to the no-problems claim it qualifies.
+    expect(out.indexOf('Checks run: markdownlint.')).toBeLessThan(
+      out.indexOf('could not read directory drafts'),
+    );
+  });
+
+  test('distinguishes an explicit empty selection from an older response', () => {
+    expect(formatLintReport(result({ ran: [] }))).toContain('No checks ran.');
+    expect(formatLintReport(result({ ran: undefined }))).not.toContain('Checks run:');
+    expect(formatLintReport(result({ ran: undefined }))).not.toContain('No checks ran.');
   });
 });
 

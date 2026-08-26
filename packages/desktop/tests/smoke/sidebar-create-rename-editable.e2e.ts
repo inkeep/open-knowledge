@@ -115,14 +115,22 @@ async function createSidebarFileAndType(
     })
     .toBe(`#/${docName}`);
 
-  const editor = page.locator('.ProseMirror[contenteditable="true"]').first();
+  const editor = page
+    .locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)')
+    .first();
   await expect(editor).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(
       () =>
         page.evaluate(() => {
           const active = document.activeElement;
-          return active instanceof HTMLElement && active.classList.contains('ProseMirror');
+          // The Ask-AI composer is its own ProseMirror instance and can hold
+          // focus, so the class alone does not mean the document editor.
+          return (
+            active instanceof HTMLElement &&
+            active.classList.contains('ProseMirror') &&
+            !active.classList.contains('composer-prosemirror')
+          );
         }),
       { timeout: 5_000, message: `${docName} editor did not receive focus after rename` },
     )
@@ -163,7 +171,9 @@ test.describe('Sidebar create and rename editability smoke', () => {
     captureStderrFor(app, { cleanupDirs: [seed.tmpHome, seed.projectDir] });
 
     const page = await findEditorWindow(app, 'start');
-    await expect(page.locator('.ProseMirror[contenteditable="true"]').first()).toBeVisible({
+    await expect(
+      page.locator('.ProseMirror[contenteditable="true"]:not(.composer-prosemirror)').first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
 

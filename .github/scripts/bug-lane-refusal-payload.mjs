@@ -182,8 +182,14 @@ export function describeRefusal({ verdict, refs }) {
   if (verdict === 'fail') {
     return {
       headline: 'Bug lane: verification failed on the synthetic tree',
+      // Says what is known and stops there. This used to assert "a real
+      // conflict with the stable", which is one of two causes and not the one
+      // that actually happened: the tiers can be red because the STABLE's own
+      // tree is red, in which case every fix refuses and none of them is at
+      // fault. Reading a base failure as an incompatible fix is how a lane-wide
+      // outage looks like a run of bad luck with the fixes.
       meaning:
-        'The fast tiers went red on BOTH attempts, or the install failed. Past flake-class: treat it as a real conflict with the stable.',
+        'The fast tiers went red on BOTH attempts, or the install failed. Past flake-class, so either the fix depends on something the stable lacks or the stable is red on its own.',
     };
   }
   if (refs.length > 0 && refs.every((r) => r.inert)) {
@@ -224,7 +230,8 @@ export function describeRefusal({ verdict, refs }) {
 export function optionsFor({ verdict, refs }) {
   if (verdict === 'fail') {
     return [
-      'Read the failing tier in the run log before anything else — a red synthetic tree is a real incompatibility, not a retry candidate.',
+      'Check the failures above against the fixes first — a failure in code no fix touches means the STABLE is red, which no amount of re-running or re-picking will clear.',
+      'If the failures do sit in code a fix touches, that fix depends on later work. Either way it is not a retry candidate.',
       'The fixes ride their cycle’s stable. Forcing them past a red verification is not an option this lane offers.',
     ];
   }
@@ -290,14 +297,73 @@ function refLines(refs) {
   return lines;
 }
 
-export function buildSlackPayload({ verdict, stable, refs, runUrl, repo = DEFAULT_REPO }) {
+const MAX_FAILURES_SHOWN = 8;
+
+/**
+ * "Why it refused", for a red tier.
+ *
+ * A `fail` verdict has no conflicting paths among the refs that REACHED the
+ * tiers — every survivor cherry-picked cleanly, which is the only way it got
+ * there — so `refLines` had nothing to say about the failure itself and the
+ * section rendered as a bare heading above an instruction to go read the log.
+ * That is the most severe verdict the lane has and it was carrying the least
+ * information of any of them. (`refs` can still be non-empty on a `fail`: it
+ * holds refs DROPPED before the tiers ran, which `buildSlackPayload` renders
+ * under its own heading rather than as the reason the tiers went red.)
+ *
+ * Naming the failures is also what lets a reader tell the two causes apart
+ * without opening anything: a failing test in a package the fixes never touched
+ * is the stable being red on its own, not a fix that depends on later work.
+ */
+function failureLines(failures) {
+  if (failures.length === 0) {
+    // Hedged, because `verdict=fail` has two sites in the workflow: the
+    // retry-exhausted tier path, and the `pnpm install --frozen-lockfile`
+    // failure that exits BEFORE either attempt runs and so can never populate
+    // this list. Asserting "both attempts" would be false in exactly the case
+    // that reaches this branch most reliably, which is the same
+    // cause-conflation this page is being fixed to stop doing.
+    return [
+      'The tiers went red on both attempts, or the install itself failed before either ran. This run captured no failing test or task name — read the run log directly.',
+    ];
+  }
+  const shown = failures.slice(0, MAX_FAILURES_SHOWN);
+  const lines = ['Failing on the second attempt, so not flake-class:'];
+  for (const failure of shown) lines.push(`    • \`${failure}\``);
+  if (failures.length > shown.length) {
+    lines.push(`    • …and ${failures.length - shown.length} more`);
+  }
+  lines.push(
+    'If none of these sit in code the fixes touch, the stable is red on its own and the lane will refuse every fix until that is repaired.',
+  );
+  return lines;
+}
+
+export function buildSlackPayload({
+  verdict,
+  stable,
+  refs,
+  runUrl,
+  failures = [],
+  repo = DEFAULT_REPO,
+}) {
   const { headline, meaning } = describeRefusal({ verdict, refs });
   const summary = `⛔ ${headline}`;
   const body = [
     `*Over \`${stable}\` on \`${repo}\`.* ${meaning}`,
     '',
     '*Why it refused*',
-    ...refLines(refs),
+    ...(verdict === 'fail' ? failureLines(failures) : refLines(refs)),
+    // A red tier does not imply an empty `refs`. The pick loop writes its
+    // `conflicts` output for every DROPPED ref and then lets the survivors run
+    // the tiers, so a partial drop followed by a red tier arrives here with
+    // real drop evidence. `refLines` used to render it, badly labelled; the
+    // partial-drop page cannot cover the gap because its own step is gated on
+    // `verdict == 'pass'`. Losing the labelling problem must not also lose the
+    // information, so the drops keep their own heading.
+    ...(verdict === 'fail' && refs.length > 0
+      ? ['', '*Also dropped from this batch, before the tiers ran*', ...refLines(refs)]
+      : []),
     '',
     '*What you can do*',
     ...optionsFor({ verdict, refs }).map((o, i) => `${i + 1}. ${o}`),
@@ -333,6 +399,12 @@ export function parseArgs(argv) {
     verdict: parsed.verdict || 'conflict',
     stable: parsed.stable || '(unknown stable)',
     refs: Array.isArray(parsed.refs) ? parsed.refs : [],
+    // Non-strings are dropped rather than stringified: this text is rendered
+    // into the page verbatim, and "[object Object]" as a failing test name is
+    // worse than the empty-reason line it would replace.
+    failures: Array.isArray(parsed.failures)
+      ? parsed.failures.filter((entry) => typeof entry === 'string' && entry.trim() !== '')
+      : [],
     runUrl: parsed.runUrl || '',
     repo: args.repo || parsed.repo || DEFAULT_REPO,
   };

@@ -62,7 +62,12 @@ import {
   GitTooOldError,
 } from './git-preflight.ts';
 import { emitPreflightFailureSpan } from './git-preflight-telemetry.ts';
-import { attachIdleShutdown, type IdleShutdownHandle } from './idle-shutdown.ts';
+import {
+  attachCollabClientCounter,
+  attachIdleShutdown,
+  type CollabClientCounter,
+  type IdleShutdownHandle,
+} from './idle-shutdown.ts';
 import { scanGlobalInPlaceSkills, scanInPlaceSkills } from './in-place-skills.ts';
 import { buildIngressPolicy, ExposureConsentError } from './ingress-policy.ts';
 import { resolveLocalSinkConfig } from './local-sink-resolver.ts';
@@ -210,10 +215,12 @@ export interface BootServerOptions
     | 'enableTestRoutes'
     | 'lockKind'
     | 'detectGh'
+    | 'detectGhAccounts'
     | 'tokenStore'
     | 'embeddingsKeyStore'
     | 'singleDocRelPath'
     | 'ephemeral'
+    | 'configHomedirOverride'
   > {
   /**
    * The project's loaded `Config` (parsed from `.ok/config.yml`,
@@ -361,11 +368,18 @@ export interface BootServerOptions
   skipStateManifestCheck?: boolean;
 }
 
+/**
+ * Why this server is shutting down. Recorded at the top of teardown so a bundle
+ * distinguishes a stop/kill from a self-reap from the host going away — three
+ * outcomes that otherwise leave byte-identical shutdown logs.
+ */
+export type ServerExitReason = 'external-signal' | 'idle-shutdown' | 'parent-exit' | 'unspecified';
+
 export interface BootedServer {
   /** The bound HTTP server listening on `port`. */
   httpServer: HttpServer;
   /** Composite shutdown — closes httpServer, detaches idle-shutdown, destroys the Hocuspocus server (which releases server.lock). */
-  destroy: () => Promise<void>;
+  destroy: (reason?: ServerExitReason) => Promise<void>;
   /** Absolute path to `<contentDir>/.ok`. */
   lockDir: string;
   /** Resolved content directory. */
@@ -533,9 +547,9 @@ export async function bootServer(opts: BootServerOptions): Promise<BootedServer>
     throw err;
   }
   const innerDestroy = booted.destroy;
-  booted.destroy = async () => {
+  booted.destroy = async (reason) => {
     try {
-      await innerDestroy();
+      await innerDestroy(reason);
     } finally {
       crashCapture.uninstall();
     }
@@ -771,8 +785,14 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     );
   }
 
+  // Live `/collab` client count. The counter can only attach once the HTTP
+  // server exists (further down), while the API extension is built here — so
+  // the route reads through this indirection rather than a captured value.
+  let collabClientCounter: CollabClientCounter | null = null;
+
   // Compose createServer options from the subset we accept.
   const serverInstance = createServer({
+    getCollabClientCount: () => collabClientCounter?.getCount() ?? 0,
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
     ingressPolicy,
@@ -799,10 +819,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     capabilities: opts.reactShellDistDir ? ['http', 'ws', 'ui'] : ['http', 'ws'],
     skipStateManifestCheck: opts.skipStateManifestCheck,
     detectGh: opts.detectGh,
+    detectGhAccounts: opts.detectGhAccounts,
     tokenStore: opts.tokenStore,
     embeddingsKeyStore: opts.embeddingsKeyStore,
     singleDocRelPath: opts.singleDocRelPath,
     ephemeral: opts.ephemeral,
+    configHomedirOverride: opts.configHomedirOverride,
   });
 
   const {
@@ -1026,9 +1048,14 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // before that listen resolves. But if something ever does call this before
   // the real assignment, a clear error beats a "Cannot access 'destroy' before
   // initialization" TDZ trace.
-  let destroy: () => Promise<void> = async () => {
+  let destroy: (reason?: ServerExitReason) => Promise<void> = async () => {
     throw new Error('bootServer: destroy() invoked before initialization — boot did not complete');
   };
+
+  // Attached unconditionally: the count is the termination guard's predicate,
+  // and desktop boots disable idle-shutdown entirely — exactly the topology
+  // where a window is attached and a stop would strand it.
+  collabClientCounter = attachCollabClientCounter(httpServer);
 
   // Idle-shutdown wiring — suppressed entirely when idleShutdownMs is null.
   // The CLI uses this to tear the server down after 30 min of zero WS
@@ -1044,10 +1071,13 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       });
     idleHandle = attachIdleShutdown({
       httpServer,
+      // Share the counter attached above rather than attaching a second
+      // listener to the same server for the same events.
+      counter: collabClientCounter,
       thresholdMs: idleMs,
       log,
       onShutdown: idleHandler(async () => {
-        await destroy();
+        await destroy('idle-shutdown');
       }),
     });
   }
@@ -1175,6 +1205,24 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // the self-call base structurally identical rather than two literals in sync.
   const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
+  // The only record that a server actually bound this port, as opposed to a
+  // lock file claiming it did. Those are different facts: the lock outlives the
+  // process that wrote it, so a reader with only the lock cannot tell a live
+  // listener from a stale advertisement, and cannot tell WHICH pid owns a port
+  // when two servers have run for one directory. Every address is named because
+  // a client failing on one family while another answers is otherwise
+  // indistinguishable from the port being dead.
+  log.info(
+    {
+      event: 'server-listening',
+      pid: process.pid,
+      port: realPort,
+      addresses: listenAddresses,
+      url: boundBaseUrl,
+      lockDir,
+    },
+    `[boot] listening on ${boundBaseUrl}`,
+  );
 
   let destroyed = false;
   const withDestroyTimeout = async (name: string, work: () => Promise<void>): Promise<void> => {
@@ -1193,9 +1241,10 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       if (timer !== undefined) clearTimeout(timer);
     }
   };
-  destroy = async (): Promise<void> => {
+  destroy = async (reason: ServerExitReason = 'unspecified'): Promise<void> => {
     if (destroyed) return;
     destroyed = true;
+    log.info({ reason, pid: process.pid, lockDir }, `[server] shutdown initiated (${reason})`);
     // Flip /readyz to not-ready synchronously, before any teardown step, so
     // probe-driven routers stop sending traffic during the drain window —
     // the HTTP mirror of the lock-file draining mark below.
@@ -1218,6 +1267,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       markServerLockDraining(lockDir);
     } catch (err) {
       log.warn({ err, step: 'markServerLockDraining' }, 'bootServer destroy step failed');
+    }
+
+    try {
+      collabClientCounter?.detach();
+    } catch (err) {
+      log.warn({ err, step: 'collabClientCounter.detach' }, 'bootServer destroy step failed');
     }
 
     try {

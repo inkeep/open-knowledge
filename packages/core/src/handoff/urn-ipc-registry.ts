@@ -244,6 +244,11 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   // doesn't track the requested file. HTTP-only (same surface as the rest
   // of /api/sync/*).
   'urn:ok:error:no-conflict-tracked',
+  // 409 from handleSyncResolveBlocking when the engine is no longer paused on a
+  // pre-merge overlap — a stale panel, or a second click after the first
+  // cleared it. HTTP-only (same surface as the rest of /api/sync/*; there is no
+  // desktop IPC counterpart for resolve-blocking).
+  'urn:ok:error:no-blocking-changes',
   // Cluster B — pages CRUD (HTTP-only; desktop binds CRUD via Hocuspocus, not IPC)
   'urn:ok:error:doc-not-found',
   'urn:ok:error:doc-already-exists',

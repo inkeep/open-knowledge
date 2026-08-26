@@ -64,12 +64,50 @@ function createDoc() {
 
 /** Seed the fragment in one null-origin drain so Observer A sees xmlDirty. A
  *  guard throw inside the settlement handler propagates out of this call. */
-function seedFragment(doc: Y.Doc, xmlFragment: Y.XmlFragment, md: string): void {
-  const pmNode = schema.nodeFromJSON(mdManager.parse(md));
+function seedFragmentJson(doc: Y.Doc, xmlFragment: Y.XmlFragment, json: unknown): void {
+  const pmNode = schema.nodeFromJSON(json);
   doc.transact(() => {
     updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
   }, null);
 }
+
+function seedFragment(doc: Y.Doc, xmlFragment: Y.XmlFragment, md: string): void {
+  seedFragmentJson(doc, xmlFragment, mdManager.parse(md));
+}
+
+/** A RECOGNIZED container holding an unrecognized child as a `rawMdxFallback` —
+ *  the tree a client NodeView leaves behind after swapping that child for its
+ *  own source. The wrapper is recognized on purpose: for an unrecognized one the
+ *  NodeView replaces the whole subtree with a single top-level fallback, so
+ *  container-holding-fallback is only a transient state there, whereas a
+ *  recognized wrapper never converts and the shape is durable. `reason` carries
+ *  the real prefix the NodeView stamps, which `severity.ts` classifies on. No
+ *  markdown parse yields this shape, so it is built as PM JSON. The container is
+ *  `sourceDirty`, so serialize re-derives from the children rather than
+ *  replaying `sourceRaw`, and the fallback's text is what reaches the guard. */
+const CONTAINER_WITH_FALLBACK_CHILD = {
+  type: 'doc',
+  content: [
+    {
+      type: 'jsxComponent',
+      attrs: {
+        componentName: 'Callout',
+        kind: 'element',
+        attributes: [],
+        sourceRaw: '<Callout>\n\n<Step>\n\n**bold** step\n\n</Step>\n\n</Callout>',
+        sourceDirty: true,
+        props: { type: 'info' },
+      },
+      content: [
+        {
+          type: 'rawMdxFallback',
+          attrs: { reason: 'Unregistered component: Step' },
+          content: [{ type: 'text', text: '<Step>\n\n**bold** step\n\n</Step>' }],
+        },
+      ],
+    },
+  ],
+};
 
 /** MarkdownManager whose `serialize` drops every `dropText` run from its output
  *  — a serializer that silently loses content, faulted at the system boundary. */
@@ -177,6 +215,29 @@ describe('Producer guard (FR6) — dev/test posture throws (M2)', () => {
     }
   });
 
+  test('a faithful serialize of a container holding a rawMdxFallback does NOT fire', () => {
+    // No faulted serializer: the real MarkdownManager emits the fallback's own
+    // bytes and a fresh parse rebuilds them as a `<Step>` component. Nothing is
+    // lost, but the live tree holds those tags as TEXT while the reparse holds
+    // them as STRUCTURE. L1a compared the two skeletons and reported the markup
+    // the parse legitimately consumed as dropped content, so the guard fired —
+    // and, in the packaged posture, checkpointed — on every drain of a document
+    // in this shape.
+    // No `console.warn` assertion here: in this posture a fire THROWS before
+    // `reportProducerGuardViolation` runs, so a warn spy could never see one and
+    // would read as coverage of the packaged log path it cannot reach. The
+    // packaged case below asserts that path through the artifact users see.
+    const { doc, xmlFragment, ytext } = createDoc();
+    const cleanup = setupServerObservers(
+      baseOpts({ doc, xmlFragment, ytext, docName: 'fallback.md' }),
+    );
+    try {
+      expect(() => seedFragmentJson(doc, xmlFragment, CONTAINER_WITH_FALLBACK_CHILD)).not.toThrow();
+    } finally {
+      cleanup();
+    }
+  });
+
   test('a container-shatter (text preserved, container gone) does NOT fire — silent on shatter', () => {
     // Pins "fire on content-loss, silent on shatter": the serializer drops the
     // Callout wrapper but keeps its text, so a fresh parse shatters the container
@@ -279,6 +340,43 @@ describe('Producer guard (FR6) — packaged posture logs + checkpoints, never th
       // Silent checkpoint queued + committed.
       const refs = await waitForCheckpointRefs(shadow);
       expect(refs.length).toBeGreaterThan(0);
+    } finally {
+      warn.mockRestore();
+      cleanup();
+    }
+  });
+
+  test('a container holding a rawMdxFallback logs nothing and leaves no surfaced checkpoint', async () => {
+    // The packaged posture is the only one that reaches the log and the
+    // checkpoint, and the checkpoint is the harm the changeset names: its
+    // registry entry is `visibility: 'surfaced'`, so a bogus one shows up as a
+    // restore row in the user's own version history. Asserted through that
+    // artifact rather than through a spy that the dev/test posture forecloses.
+    const { doc, xmlFragment, ytext } = createDoc();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const cleanup = setupServerObservers(
+      baseOpts({
+        doc,
+        xmlFragment,
+        ytext,
+        docName: 'fallback.md',
+        shadow: () => shadow,
+        contentRoot: 'content',
+        getBranch: () => 'main',
+      }),
+    );
+    try {
+      expect(() => seedFragmentJson(doc, xmlFragment, CONTAINER_WITH_FALLBACK_CHILD)).not.toThrow();
+      const fired = warn.mock.calls
+        .map((call) => String(call[0]))
+        .some((line) => line.includes('producer-guard-violation'));
+      expect(fired).toBe(false);
+      // Inverted use of a helper built for the positive case: it polls to its
+      // deadline and returns empty, which is the answer we want here. An
+      // explicit shorter bound, because this one has to expire every run and a
+      // real checkpoint on this path commits well inside it (the same
+      // assertion under a mutated guard returns one ref in about a second).
+      expect(await waitForCheckpointRefs(shadow, 1500)).toEqual([]);
     } finally {
       warn.mockRestore();
       cleanup();

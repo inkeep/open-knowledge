@@ -1,12 +1,15 @@
 import {
+  type PrepareSingleFileOpenOptions,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
+  SingleFileProjectOverrideError,
 } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { runSingleFileOpen, type SingleFileOpenDeps } from './single-file-open.ts';
 
 interface Recorder {
+  prepareOptions: Array<PrepareSingleFileOpenOptions | undefined>;
   openTargets: string[];
   projectOpens: Array<{ docName: string; projectRoot: string }>;
   browserOpens: Array<Extract<SingleFileOpenPlan, { mode: 'ephemeral' }>>;
@@ -18,6 +21,7 @@ function makeDeps(
   overrides: Partial<SingleFileOpenDeps> & { plan?: SingleFileOpenPlan; planThrows?: Error },
 ): { deps: SingleFileOpenDeps; rec: Recorder } {
   const rec: Recorder = {
+    prepareOptions: [],
     openTargets: [],
     projectOpens: [],
     browserOpens: [],
@@ -25,7 +29,8 @@ function makeDeps(
     errors: [],
   };
   const deps: SingleFileOpenDeps = {
-    prepare: () => {
+    prepare: (_filePath, options) => {
+      rec.prepareOptions.push(options);
       if (overrides.planThrows) throw overrides.planThrows;
       if (!overrides.plan) throw new Error('no plan configured');
       return overrides.plan;
@@ -131,5 +136,33 @@ describe('runSingleFileOpen', () => {
   test('an unexpected (non-typed) error propagates', async () => {
     const { deps } = makeDeps({ planThrows: new Error('disk on fire') });
     await expect(runSingleFileOpen('/x/notes.md', deps)).rejects.toThrow('disk on fire');
+  });
+});
+
+describe('runSingleFileOpen with an explicit --project override', () => {
+  test('passes the named root through to the shared preparation step', async () => {
+    const { deps, rec } = makeDeps({ plan: projectPlan });
+    const code = await runSingleFileOpen('/proj/sub/spec.md', deps, { projectRoot: '/named' });
+    expect(code).toBe(0);
+    expect(rec.prepareOptions).toEqual([{ projectRoot: '/named' }]);
+    expect(rec.projectOpens).toEqual([{ docName: 'sub/spec', projectRoot: '/proj' }]);
+  });
+
+  test('an override that cannot be honored exits non-zero with the reason', async () => {
+    const { deps, rec } = makeDeps({
+      planThrows: new SingleFileProjectOverrideError('/named', 'no .ok/config.yml there'),
+    });
+    const code = await runSingleFileOpen('/x/notes.md', deps, { projectRoot: '/named' });
+    expect(code).toBe(1);
+    expect(rec.errors[0]).toContain('/named');
+    expect(rec.errors[0]).toContain('no .ok/config.yml there');
+    expect(rec.projectOpens).toEqual([]);
+    expect(rec.openTargets).toEqual([]);
+  });
+
+  test('no override → prepare is called without a root (ancestor walk decides)', async () => {
+    const { deps, rec } = makeDeps({ plan: projectPlan });
+    await runSingleFileOpen('/proj/sub/spec.md', deps);
+    expect(rec.prepareOptions).toEqual([{ projectRoot: undefined }]);
   });
 });

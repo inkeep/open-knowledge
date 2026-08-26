@@ -432,12 +432,20 @@ describe('DerivedDocumentIndex', () => {
     await settleStartup(rig);
     const backlinksReplacement = createDeferred();
     const tagsReplacement = createDeferred();
-    vi.spyOn(BacklinkIndex.prototype, 'rebuildFromDisk').mockImplementationOnce(
-      async () => backlinksReplacement.promise,
+    vi.spyOn(BacklinkIndex.prototype, 'reconcileWithDisk').mockImplementationOnce(() =>
+      backlinksReplacement.promise.then(() => ({
+        added: 0,
+        updated: 0,
+        deleted: 0,
+        deletedDocNames: [],
+        changedDocs: [],
+      })),
     );
     const tagInit = vi
-      .spyOn(TagIndex.prototype, 'init')
-      .mockImplementationOnce(async () => tagsReplacement.promise);
+      .spyOn(TagIndex.prototype, 'reconcileWithDisk')
+      .mockImplementationOnce(() =>
+        tagsReplacement.promise.then(() => ({ added: 0, updated: 0, deleted: 0 })),
+      );
 
     const refresh = rig.index.refreshContentScope();
     let mutationSettled = false;

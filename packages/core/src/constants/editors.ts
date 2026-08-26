@@ -36,8 +36,7 @@ export const ALL_EDITOR_IDS = [
 /**
  * Human-readable display label per editor. Consumed by:
  *   - cli `EDITOR_TARGETS[id].label` (the canonical metadata registry)
- *   - app's `ConsentDialogBody` (via `payload.editorOptions` from main)
- *   - app's `CreateProjectDialog` (directly imported)
+ *   - app's `ProjectAiToolsField` (the create-project + open-folder setup row)
  */
 export const EDITOR_LABELS = {
   claude: 'Claude',

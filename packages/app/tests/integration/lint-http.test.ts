@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  LINT_PLUGINS,
   type LintAuditResponse,
   LintAuditResponseSchema,
   type LintConfigResponse,
@@ -21,7 +22,7 @@ import {
   type LintFixResult,
   LintFixResultSchema,
 } from '@inkeep/open-knowledge-core';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness.ts';
 
@@ -54,6 +55,11 @@ describe('GET /api/lint (single document)', () => {
       expect(res.status).toBe(200);
       const body: LintDocResult = LintDocResultSchema.parse(await res.json());
       expect(body.file).toBe('lint-http/tabbed.md');
+      expect(body.ran).toEqual(['markdownlint']);
+      // `ran` is the field that is always present. `warnings` keeps its
+      // documented additive contract — absent when there is nothing to report —
+      // so a consumer branching on its presence is not fired on every clean lint.
+      expect(body).not.toHaveProperty('warnings');
       const md010 = body.diagnostics.find((d) => d.code === 'MD010');
       expect(md010).toBeDefined();
       expect(md010?.source).toBe('markdownlint');
@@ -70,6 +76,29 @@ describe('GET /api/lint (single document)', () => {
   test('an unknown doc is a 404', async () => {
     const res = await fetch(api(`/api/lint?doc=no-such-doc-${crypto.randomUUID().slice(0, 8)}`));
     expect(res.status).toBe(404);
+  });
+
+  test('a selected plugin degradation stays in ran and is named in warnings', async () => {
+    const folder = join(server.contentDir, 'lint-http-degraded');
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'doc.md'), TABBED_BODY, 'utf-8');
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const lint = vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('unavailable'));
+    try {
+      const res = await fetch(api('/api/lint?doc=lint-http-degraded%2Fdoc'));
+      expect(res.status).toBe(200);
+      const body = LintDocResultSchema.parse(await res.json());
+      expect(body.ran).toEqual(['markdownlint']);
+      expect(body.warnings).toEqual([
+        'source "markdownlint" lint failed on "lint-http-degraded/doc.md": unavailable',
+      ]);
+    } finally {
+      lint.mockRestore();
+      warn.mockRestore();
+      rmSync(folder, { recursive: true, force: true });
+    }
   });
 });
 
@@ -92,6 +121,7 @@ describe('GET /api/lint/audit', () => {
         expect(f.diagnostics.length).toBeGreaterThan(0);
       }
       expect(fullBody.fileCount).toBeGreaterThanOrEqual(2);
+      expect(fullBody.ran).toEqual(['markdownlint']);
 
       const scoped = await fetch(api('/api/lint/audit?path=lint-http-audit'));
       expect(scoped.status).toBe(200);
@@ -101,6 +131,7 @@ describe('GET /api/lint/audit', () => {
         'lint-http-audit/b.md',
       ]);
       expect(scopedBody.fileCount).toBe(2);
+      expect(scopedBody.ran).toEqual(['markdownlint']);
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }
@@ -130,6 +161,7 @@ describe('POST /api/lint/fix', () => {
       expect(res.status).toBe(200);
       const body: LintFixResult = LintFixResultSchema.parse(await res.json());
       expect(body.file).toBe('lint-fix/tabbed.md');
+      expect(body.ran).toEqual(['markdownlint']);
       expect(body.fixedCount).toBeGreaterThanOrEqual(1);
       // MD010 (hard tabs) is auto-fixable — gone from the remaining set.
       expect(body.diagnostics.find((d) => d.code === 'MD010')).toBeUndefined();
@@ -138,6 +170,42 @@ describe('POST /api/lint/fix', () => {
       expect(onDisk).not.toContain('\t');
       expect(onDisk).toContain('title: Keep Me');
     } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  test('a throwing plugin lands in warnings while the fix write stays durable', async () => {
+    const folder = join(server.contentDir, 'lint-fix-degraded');
+    mkdirSync(folder, { recursive: true });
+    const file = join(folder, 'tabbed.md');
+    writeFileSync(
+      file,
+      '---\ntitle: Keep Me\n---\n\n# Doc\n\n\tindented with a hard tab\n',
+      'utf-8',
+    );
+    const markdownlint = LINT_PLUGINS.find((plugin) => plugin.id === 'markdownlint');
+    if (!markdownlint) throw new Error('markdownlint plugin missing');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // `lint` throws; `fix` is a separate plugin entry point and keeps working —
+    // the shape where the write succeeds but the surrounding lint passes degrade.
+    const lint = vi.spyOn(markdownlint, 'lint').mockRejectedValue(new Error('unavailable'));
+    try {
+      const res = await postFix('lint-fix-degraded/tabbed');
+      expect(res.status).toBe(200);
+      const body = LintFixResultSchema.parse(await res.json());
+      expect(body.ran).toEqual(['markdownlint']);
+      // The lint pass fails before AND after the write; the summarizer
+      // collapses the two reports of the one fault into a single line.
+      expect(body.warnings).toEqual([
+        'source "markdownlint" lint failed on "lint-fix-degraded/tabbed.md": unavailable',
+      ]);
+      // The fix landed and persisted despite the degradation.
+      const onDisk = readFileSync(file, 'utf-8');
+      expect(onDisk).not.toContain('\t');
+      expect(onDisk).toContain('title: Keep Me');
+    } finally {
+      lint.mockRestore();
+      warn.mockRestore();
       rmSync(folder, { recursive: true, force: true });
     }
   });
@@ -196,6 +264,36 @@ describe('POST /api/lint/fix', () => {
       body: JSON.stringify({ docName: 'anything', summary: 123 }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe('zero selected lint sources', () => {
+  test('single-doc, project, and fix success responses emit ran: []', async () => {
+    const disabledServer = await createTestServer();
+    const disabledApi = (path: string) => `http://127.0.0.1:${disabledServer.port}${path}`;
+    try {
+      const doc = LintDocResultSchema.parse(
+        await (await fetch(disabledApi('/api/lint?doc=test-doc'))).json(),
+      );
+      const audit = LintAuditResponseSchema.parse(
+        await (await fetch(disabledApi('/api/lint/audit'))).json(),
+      );
+      const fix = LintFixResultSchema.parse(
+        await (
+          await fetch(disabledApi('/api/lint/fix'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ docName: 'test-doc', agentId: 'zero-source-agent' }),
+          })
+        ).json(),
+      );
+
+      expect(doc.ran).toEqual([]);
+      expect(audit.ran).toEqual([]);
+      expect(fix.ran).toEqual([]);
+    } finally {
+      await disabledServer.cleanup();
+    }
   });
 });
 

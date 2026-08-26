@@ -90,7 +90,11 @@ export function AutoSyncOnboardingDialog({
             <Trans>Keep disabled</Trans>
           </Button>
           <Button onClick={() => persistChoice(true)} disabled={writer === null}>
-            {variant === 'follow' ? <Trans>Enable Follow</Trans> : <Trans>Enable auto-sync</Trans>}
+            {variant === 'follow' ? (
+              <Trans>Enable Auto (Pull only)</Trans>
+            ) : (
+              <Trans>Enable Auto (Pull and Push)</Trans>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

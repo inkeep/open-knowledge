@@ -41,6 +41,9 @@ export function useExplorePreviewInstall({
   /** The on-disk skill name once imported (else null) — the caller transitions the
    *  preview tab into this real skill when the install menu closes. */
   importedName: string | null;
+  /** Home-relative SKILL.md path the import reported - lets the redirect open
+   *  the landed skill without waiting on a skills-list refetch. */
+  importedPath: string | null;
   /** The scope the bundle ACTUALLY landed at, captured at import time (else
    *  null). The caller must redirect against this, not the live `scope` state:
    *  `scope` is a user-settable selector that can move after the import, and
@@ -63,6 +66,7 @@ export function useExplorePreviewInstall({
     return list ? new Set<string>(list) : null;
   };
   const [importedName, setImportedName] = useState<string | null>(null);
+  const [importedPath, setImportedPath] = useState<string | null>(null);
   // Mirrors `importedScopeRef` into render state so the caller's redirect can
   // read it; the ref alone is invisible to React.
   const [importedScope, setImportedScope] = useState<SkillScope | null>(null);
@@ -97,6 +101,7 @@ export function useExplorePreviewInstall({
       importedScopeRef.current = importScope;
       setImportedScope(importScope);
       setImportedName(res.name);
+      setImportedPath(res.path ?? null);
       return res.name;
     });
     importPromiseRef.current = pending;
@@ -218,6 +223,7 @@ export function useExplorePreviewInstall({
     setScope,
     scopeLocked: importedName !== null || busy,
     importedName,
+    importedPath,
     importedScope,
     importNow: ensureImported,
     toggles,

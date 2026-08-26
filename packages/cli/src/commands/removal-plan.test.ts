@@ -21,6 +21,7 @@ import {
   applicationDataOps,
   buildUninstallPlan,
   deinitOps,
+  describeAttachedClients,
   type RunRemovalDeps,
   runRemoval,
   type UninstallPlanInput,
@@ -644,5 +645,29 @@ describe('pi trust revocation surfaces through the removal plan', () => {
       rmSync(cwd, { recursive: true, force: true });
       rmSync(home, { recursive: true, force: true });
     }
+  });
+});
+
+describe('describeAttachedClients', () => {
+  const plan = { scope: 'deinit' as const, ops: deinitOps('/proj', '/home/u') };
+
+  test('names the attached clients and that restart will not recover them', async () => {
+    const lines = await describeAttachedClients(plan, async () => 3);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain('3 collaboration clients');
+    expect(lines[0]).toContain('restarting will NOT recover them');
+  });
+
+  test('says nothing when no clients are attached', async () => {
+    expect(await describeAttachedClients(plan, async () => 0)).toEqual([]);
+  });
+
+  test('says nothing when the server cannot be reached', async () => {
+    expect(await describeAttachedClients(plan, async () => null)).toEqual([]);
+  });
+
+  test('disclosure does not gate: the stop op stays in the plan', async () => {
+    await describeAttachedClients(plan, async () => 2);
+    expect(plan.ops.filter((op) => op.kind === 'stop-server')).toHaveLength(1);
   });
 });

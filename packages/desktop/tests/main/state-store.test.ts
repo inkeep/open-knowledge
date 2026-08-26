@@ -144,6 +144,44 @@ describe('state-store (recent projects + LRU)', () => {
     expect(annotated.find((p) => p.path === '/tmp/missing')?.missing).toBe(true);
   });
 
+  // Entries persisted before the userinfo-aware URL parser can hold a
+  // credentialed remote URL at rest (`https://alice:pw@github.com/…`), and a
+  // project never re-opened would keep it forever — the writer only re-emits
+  // on open. Load-time canonicalization heals them.
+  test('parseAppState heals a credentialed gitRemoteUrl and keeps canonical ones verbatim', () => {
+    const parsed = parseAppState({
+      recentProjects: [
+        {
+          path: '/tmp/leaky',
+          name: 'leaky',
+          lastOpenedAt: '2026-04-20T00:00:00Z',
+          gitRemoteUrl: 'https://alice:s3cretpw@github.com/acme/kb.git',
+        },
+        {
+          path: '/tmp/clean',
+          name: 'clean',
+          lastOpenedAt: '2026-04-20T00:00:00Z',
+          gitRemoteUrl: 'https://github.com/acme/other.git',
+        },
+        {
+          path: '/tmp/junk',
+          name: 'junk',
+          lastOpenedAt: '2026-04-20T00:00:00Z',
+          gitRemoteUrl: 'not a url at all',
+        },
+      ],
+      projectSessions: {},
+    });
+    expect(parsed).not.toBeNull();
+    const byPath = Object.fromEntries((parsed?.recentProjects ?? []).map((p) => [p.path, p]));
+    expect(byPath['/tmp/leaky']?.gitRemoteUrl).toBe('https://github.com/acme/kb.git');
+    expect(byPath['/tmp/clean']?.gitRemoteUrl).toBe('https://github.com/acme/other.git');
+    // A value the parser cannot read is dropped, not kept — it was junk-shaped
+    // and could itself be credential-bearing.
+    expect(byPath['/tmp/junk']?.gitRemoteUrl).toBeUndefined();
+    expect(JSON.stringify(parsed)).not.toContain('s3cretpw');
+  });
+
   test('parseAppState ignores flat legacy project sessions', () => {
     const raw = {
       recentProjects: [{ path: '/tmp/a', name: 'a', lastOpenedAt: '2026-04-20T00:00:00Z' }],

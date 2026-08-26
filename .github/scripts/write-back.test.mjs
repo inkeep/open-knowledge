@@ -3,13 +3,16 @@ import { describe, expect, test } from 'vitest';
 import {
   CANDIDATE_QUERY,
   changesetDirFor,
+  DEFAULT_BETA_LOOKBACK,
   DEFAULT_RELEASE_LOOKBACK,
+  deriveChannel,
   deriveVersionForFixRefs,
   findChangesetPath,
   isFixRepoInRemit,
   isRetryableNetworkError,
   isSelfRepoPr,
   isRetryableStatus,
+  isStableVersion,
   LINEAR_RETRY_ATTEMPTS,
   LINEAR_RETRY_CAP_MS,
   linearGraphql,
@@ -27,6 +30,7 @@ import {
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
 const GH_PULL = 'https://github.com/inkeep/agents-private/pull/2844';
 const SLACK_ARCHIVE = 'https://inkeep.slack.com/archives/C016VCYCL74/p1727122965001469';
+const LINEAR_UPLOAD = 'https://uploads.linear.app/abc/def/diagnostics.zip';
 const DISCORD_THREAD = 'https://discord.com/channels/1514363990740828223/1528881792063508610';
 const CHANGESET = { title: 'Honor backslash escapes', body: 'Honor backslash escapes in the markdown promoters.' };
 
@@ -60,6 +64,7 @@ function harness(overrides = {}) {
     // Every candidate in these fixtures ships in v0.36.0; the window tests
     // below drive the scoping itself.
     classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+    selfRepo: 'inkeep/open-knowledge',
     log: (m) => logs.push(m),
     ...overrides,
   };
@@ -73,16 +78,34 @@ describe('candidate enumeration', () => {
     expect(CANDIDATE_QUERY).not.toMatch(/commits?\s*\(/);
   });
 
-  test('the label filter matches any label, so a Bug ticket carrying a platform label is still enumerated', () => {
-    expect(CANDIDATE_QUERY).toContain('labels: { name: { eq: "Bug" } }');
-    // `labels: { every: ... }` reads almost the same and would drop every
-    // multi-labelled ticket, which in practice is nearly all of them.
-    expect(CANDIDATE_QUERY).not.toContain('every');
+  test('no label narrows the enumeration, because a label was never what a reply depends on', () => {
+    // The Bug label used to be the filter, and it silently excluded every
+    // community feature request from ever being told its fix shipped. Whether a
+    // reporter hears back must not depend on how triage classified them, so the
+    // query narrows on nothing but completion and the real preconditions (an
+    // origin, a fix reference) are checked against the data it returns.
+    expect(CANDIDATE_QUERY).not.toMatch(/labels\s*:/);
+    expect(CANDIDATE_QUERY).not.toContain('Bug');
+    expect(CANDIDATE_QUERY).toContain('state: { type: { eq: "completed" } }');
   });
 
   test('the not-yet-notified condition is not expressed inside the query', () => {
     expect(CANDIDATE_QUERY).not.toMatch(/notified/i);
     expect(CANDIDATE_QUERY).toContain('attachments');
+  });
+
+  test('the tag list comes from the shared boundary, never a private copy of it', () => {
+    // A private `realStableTags` here filtered the list to bare vX.Y.Z, so no
+    // prerelease ever reached the channel-aware resolver and the beta channel
+    // resolved nothing in production. Every beta test injects its own tag list,
+    // so the unit suite could not see it; this is what stands in for that.
+    const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
+    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/s);
+    expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
+    // The list reaches the resolver exactly as git gave it. Narrowing it here,
+    // at the definition or at the call site, is the whole failure.
+    expect(source).toMatch(/const stableTags = realReleaseTags\(\);/);
+    expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
 
   test('the module imports the shared shipped-version resolver rather than reimplementing containment', () => {
@@ -158,6 +181,47 @@ describe('version derivation', () => {
 
   test('a ticket with no fix references yields no version rather than throwing', () => {
     expect(derive({ fixReferences: [] })).toBeNull();
+  });
+
+  test('the beta channel threads through to the resolver and answers with the beta', () => {
+    // The seam this whole feature hangs off: deriveVersionForFixRefs ->
+    // resolveShippedVersion with a channel. Same fix, same inputs, two answers.
+    const shared = {
+      fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
+      stableTags: [...STABLE_TAGS, 'v0.37.0-beta.0', 'v0.37.0-beta.1'],
+      contains: containsFrom({ [MIRRORED_SHA]: ['v0.37.0-beta.0', 'v0.37.0-beta.1'] }),
+    };
+    expect(derive({ ...shared, channel: 'beta' })).toBe('0.37.0-beta.0');
+    // No stable carries it yet, so the stable channel correctly has no answer.
+    expect(derive(shared)).toBeNull();
+  });
+
+  test('the beta channel still yields nothing for a fix that is in no tag at all', () => {
+    expect(
+      derive({
+        fixReferences: [{ channel: 'pull-request', url: GH_PULL }],
+        contains: () => false,
+        channel: 'beta',
+      }),
+    ).toBeNull();
+  });
+
+  test('the mirror-PR containment fallback honours the channel it was given', () => {
+    // A mirror merge commit with no usable origin trailer falls back to direct
+    // containment, which is a second place the tag list has to be channel-aware.
+    const mirrorMain = 'd'.repeat(40);
+    expect(
+      deriveVersionForFixRefs({
+        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        stableTags: [...STABLE_TAGS, 'v0.37.0-beta.0'],
+        selfRepo: 'inkeep/open-knowledge',
+        resolvePrMergeSha: () => mirrorMain,
+        readCommitMessage: () => 'subject carrying no trailer at all',
+        findMirroredCommits: () => [],
+        contains: (tag, sha) => sha === mirrorMain && tag === 'v0.37.0-beta.0',
+        channel: 'beta',
+      }),
+    ).toBe('0.37.0-beta.0');
   });
 
   test('a mirror pull request in this repo resolves through its merge commit trailer', () => {
@@ -496,7 +560,7 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('nowhere to post'))).toBe(true);
+    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
   });
 
   test('a candidate with no origin at all is skipped quietly, because not every fix has a reporter', async () => {
@@ -1011,9 +1075,25 @@ describe('workflow shape', () => {
     expect(workflow).not.toContain('types: [published]');
   });
 
-  test('only a bare stable tag runs the write-back', () => {
+  test('both release channels run, and a tag of neither shape runs nothing', () => {
     expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
-    expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.stable == 'true'/);
+    expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$');
+    expect(workflow).toContain("echo \"channel=stable\"");
+    expect(workflow).toContain("echo \"channel=beta\"");
+    expect(workflow).toContain("echo \"channel=none\"");
+    // Every step that does real work stays behind the gate, so a tag of neither
+    // shape reaches nothing: no checkout, no token mint, no reply.
+    expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.channel != 'none'/);
+    expect(workflow).not.toMatch(/steps\.tag\.outputs\.stable/);
+  });
+
+  test('no working step is left outside the channel gate', () => {
+    // A step that forgot the gate would run on a tag the script then refuses,
+    // which reads as a red write-back on an ordinary release.
+    const stepNames = [...workflow.matchAll(/^ {6}- (?:name:.*|uses:.*)$/gm)].length;
+    const gated = [...workflow.matchAll(/if: steps\.tag\.outputs\.channel != 'none'/g)].length;
+    // Every step but the channel decision itself is gated.
+    expect(gated).toBe(stepNames - 1);
   });
 
   test('it carries its own concurrency group so a release can never queue behind it', () => {
@@ -1126,9 +1206,34 @@ describe('release window', () => {
   });
 
   test('a missing or malformed release tag refuses rather than admitting all of history', () => {
-    for (const bad of [undefined, '', '   ', 'v0.36.0-beta.1', 'latest']) {
+    for (const bad of [undefined, '', '   ', 'latest', 'v0.36.0-rc.1', 'v0.36']) {
       expect(() => makeReleaseWindow({ releaseTag: bad, stableTags: TAGS })).toThrow(/RELEASE_TAG/);
     }
+  });
+
+  test('a beta tag is a release this runs for, not a malformed one', () => {
+    const window = makeReleaseWindow({
+      releaseTag: 'v0.36.0-beta.1',
+      stableTags: [...TAGS, 'v0.36.0-beta.0', 'v0.36.0-beta.1'],
+    });
+    expect(window('0.36.0-beta.0')).toBe('in-window');
+    expect(window('0.36.0-beta.1')).toBe('in-window');
+    // The stable of the same cycle supersedes the beta, so it has not shipped
+    // yet from the beta run's point of view.
+    expect(window('0.36.0')).toBe('not-yet-shipped');
+  });
+
+  test('a stable run counts stables, so the betas between them cannot eat the lookback', () => {
+    // `git tag --list v*` hands over the betas too. If the stable window counted
+    // them, three releases back would reach hours rather than weeks and the
+    // catch-up the lookback exists for would stop happening.
+    const dense = ['v0.33.0', 'v0.34.0', 'v0.35.0', 'v0.36.0'].flatMap((tag) => [
+      `${tag}-beta.0`,
+      `${tag}-beta.1`,
+      tag,
+    ]);
+    const window = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: dense });
+    expect(window('0.33.0')).toBe('in-window');
   });
 
   test('the default lookback is three', () => {
@@ -1176,5 +1281,320 @@ describe('release window applied to a run', () => {
   test('runWriteBack refuses to run unscoped', async () => {
     const h = harness({ live: true, classifyRelease: undefined });
     await expect(h.run()).rejects.toThrow(/classifyRelease/);
+  });
+});
+
+describe('release channels', () => {
+  test('the two tag shapes this repo cuts are the two channels, and nothing else is a release', () => {
+    expect(deriveChannel('v0.36.0')).toBe('stable');
+    expect(deriveChannel('v0.36.0-beta.3')).toBe('beta');
+    for (const bad of [
+      undefined,
+      '',
+      'v0.36.0-rc.1',
+      '0.36.0',
+      'v0.36',
+      'latest',
+      'v0.36.0-beta',
+    ]) {
+      expect(deriveChannel(bad)).toBeNull();
+    }
+  });
+
+  test('a beta version is not a stable one, which is what keeps the two replies apart', () => {
+    expect(isStableVersion('0.36.0')).toBe(true);
+    expect(isStableVersion('v0.36.0')).toBe(true);
+    expect(isStableVersion('0.36.0-beta.0')).toBe(false);
+  });
+
+  test('the beta lookback is wider than the stable one, because betas cut far more often', () => {
+    // Three betas can span less than a day, so reusing the stable number would
+    // age a reporter out of the window over a quiet weekend.
+    expect(DEFAULT_BETA_LOOKBACK).toBeGreaterThan(DEFAULT_RELEASE_LOOKBACK);
+  });
+});
+
+describe('origin remit', () => {
+  const foreignIssue = 'https://github.com/inkeep/agents/issues/412';
+
+  test('a report from another repo is passed over instead of attempted', async () => {
+    // The reply is posted with this job's own token, which has no standing in
+    // any other repository. Attempting it would 403 and turn a run that behaved
+    // correctly red, on a ticket it was never meant to speak about.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, foreignIssue] })],
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-elsewhere' }]);
+    expect(result.errored).toEqual([]);
+    expect(h.logs.some((m) => m.startsWith('::warning::'))).toBe(false);
+  });
+
+  test('a foreign origin costs no round trip, which is what makes the wider candidate list affordable', async () => {
+    // The gate has to sit in front of the children query, not behind it. With
+    // no label narrowing the enumeration, every completed ticket in the
+    // workspace arrives here; one GraphQL call each would exhaust the API
+    // budget long before the run finished.
+    let childrenCalls = 0;
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, foreignIssue] })],
+      listChildren: async () => {
+        childrenCalls += 1;
+        return [];
+      },
+      versionFor: async () => {
+        throw new Error('a foreign-origin candidate must never reach version resolution');
+      },
+    });
+    await h.run();
+    expect(childrenCalls).toBe(0);
+  });
+
+  test('a ticket whose only extra attachment is an upload is passed over as having no origin', async () => {
+    // `uploads.linear.app` is a screenshot or a diagnostic zip, which is most of
+    // the workspace once no label narrows the enumeration. Reading it as an
+    // origin both kept those tickets on the expensive path and warned that their
+    // "only origin" had nowhere to post a reply, which was never true.
+    let childrenCalls = 0;
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, LINEAR_UPLOAD] })],
+      listChildren: async () => {
+        childrenCalls += 1;
+        return [];
+      },
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-origin' }]);
+    expect(h.logs.some((m) => m.startsWith('::warning::'))).toBe(false);
+    expect(childrenCalls).toBe(0);
+  });
+
+  test('the reachability warning names every origin that cannot be answered, not just one', async () => {
+    // A ticket can carry both a foreign-repo issue and a Slack link. Calling the
+    // Slack link its "only" origin would hide the other one from an operator.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, 'https://github.com/inkeep/agents/issues/412', SLACK_ARCHIVE] }),
+      ],
+    });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
+    const warning = h.logs.find((m) => m.startsWith('::warning::'));
+    expect(warning).toContain('inkeep/agents');
+    expect(warning).toContain('slack-archive');
+    expect(warning).not.toContain('only origin');
+  });
+
+  test('a Slack archive is still a real origin, so it still reports a reachability gap', async () => {
+    // Someone IS waiting in that thread; this workflow simply cannot post there.
+    // That distinction is the whole reason `unrepliable` stays on the full path.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, SLACK_ARCHIVE] })],
+    });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
+    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
+  });
+
+  test('a Discord thread is repliable wherever it lives, because the bot is not repo-scoped', async () => {
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, DISCORD_THREAD] })],
+    });
+    await h.run();
+    expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(1);
+  });
+
+  test('an unknown self repo refuses the run rather than skipping every candidate as foreign', async () => {
+    // The dangerous reading of a missing GITHUB_REPOSITORY is the quiet one: no
+    // origin matches, every candidate is skipped, and the run exits 0 looking
+    // like a healthy release in which nobody happened to need telling.
+    //
+    // The env var is stubbed rather than left alone: `selfRepo: undefined` falls
+    // through to the destructuring default, so under Actions the runner's own
+    // GITHUB_REPOSITORY would satisfy a check this test exists to see fail.
+    const previous = process.env.GITHUB_REPOSITORY;
+    delete process.env.GITHUB_REPOSITORY;
+    try {
+      for (const missing of [undefined, '', '   ']) {
+        const h = harness({ live: true, selfRepo: missing });
+        await expect(h.run()).rejects.toThrow(/selfRepo|GITHUB_REPOSITORY/);
+      }
+    } finally {
+      if (previous === undefined) delete process.env.GITHUB_REPOSITORY;
+      else process.env.GITHUB_REPOSITORY = previous;
+    }
+  });
+
+  test('a channel that is neither is refused at the entry point, before any round trip', async () => {
+    // Every downstream decision is a `channel === 'beta'` ternary, so an
+    // unexpected value would quietly behave as stable all the way to the reply.
+    const h = harness({
+      live: true,
+      channel: 'nightly',
+      listChildren: async () => {
+        throw new Error('an invalid channel must be refused before the children query');
+      },
+    });
+    await expect(h.run()).rejects.toThrow(/channel/);
+  });
+});
+
+describe('a linked pull request, not a label, is what a reply depends on', () => {
+  test('a ticket nobody linked a fix to is passed over quietly, not warned about', async () => {
+    // This is the ordinary state of a completed ticket that carried no code
+    // change, and with the label filter gone it is much the commonest outcome of
+    // a run. Warning on it would bury the genuine broken-chain warning under it.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
+      versionFor: async () => null,
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-fix-reference' }]);
+    expect(h.logs.some((m) => m.startsWith('::warning::'))).toBe(false);
+  });
+
+  test('a fix reference that exists and does not resolve still warns, because that is a broken chain', async () => {
+    const h = harness({ live: true, versionFor: async () => null });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
+    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('could be derived'))).toBe(
+      true,
+    );
+  });
+
+  test('a sibling that resolved does not make an unlinked sibling look like a broken chain', async () => {
+    // One child shipped, the other was closed with no pull request at all. The
+    // warning must not name the child that is fine, and must not send an
+    // operator looking for attachments the other one never had.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
+      listChildren: async () => [
+        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
+      ],
+      versionFor: async (node) => (node.identifier === 'PRD-7398' ? '0.36.0' : null),
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-fix-reference' }]);
+    expect(h.logs.some((m) => m.startsWith('::warning::'))).toBe(false);
+  });
+
+  test('the broken-chain warning names only the tickets that actually carry a link', async () => {
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
+      listChildren: async () => [
+        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
+      ],
+      versionFor: async () => null,
+    });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
+    const warning = h.logs.find((m) => m.startsWith('::warning::') && m.includes('could be derived'));
+    expect(warning).toContain('PRD-7398');
+    expect(warning).not.toContain('PRD-7401');
+  });
+
+  test('a fix reference on a child counts for the parent that has none of its own', async () => {
+    // A report that fanned out carries its links on the children. Looking only
+    // at the parent would file every fanned-in report as unlinked.
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
+      listChildren: async () => [
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: [],
+          attachmentUrls: [GH_PULL],
+        },
+      ],
+      versionFor: async () => null,
+    });
+    const result = await h.run();
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
+  });
+});
+
+describe('the beta leg', () => {
+  const BETA_TAGS = [...STABLE_TAGS, 'v0.37.0-beta.0', 'v0.37.0-beta.1'];
+  const betaHarness = (overrides = {}) =>
+    harness({
+      live: true,
+      channel: 'beta',
+      versionFor: async () => '0.37.0-beta.0',
+      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.37.0-beta.1', stableTags: BETA_TAGS }),
+      ...overrides,
+    });
+
+  test('a fix whose earliest build is a beta is announced as a beta, with the stable promised', async () => {
+    const h = betaHarness();
+    await h.run();
+    const post = h.writes.find((w) => w.kind === 'post');
+    expect(post.text).toContain('v0.37.0-beta.0');
+    expect(post.text).toContain('going out now on the Open Knowledge beta channel');
+    expect(post.text).toContain('follow up here');
+    expect(post.text).not.toContain('This shipped in');
+  });
+
+  test('the beta marker is not the stable one, so each channel is told at most once', async () => {
+    const beta = betaHarness();
+    await beta.run();
+    const stable = harness({ live: true });
+    await stable.run();
+    const betaMark = beta.writes.find((w) => w.kind === 'mark').url;
+    const stableMark = stable.writes.find((w) => w.kind === 'mark').url;
+    expect(betaMark).not.toBe(stableMark);
+    expect(betaMark).toContain('v0.37.0-beta.0');
+  });
+
+  test('a later beta of the same cycle re-reads the same marker and says nothing more', async () => {
+    // The beta version is the FIRST tag containing the fix, so it does not move
+    // as the cycle cuts beta.1, beta.2 and so on. That is what stops a reporter
+    // being pinged once per beta.
+    const marked = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
+    const h = betaHarness({
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marked] })],
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.37.0-beta.5',
+        stableTags: [...BETA_TAGS, 'v0.37.0-beta.5'],
+      }),
+    });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'already-notified' }]);
+  });
+
+  test('a fix that only ever appeared in a stable is left to the stable leg', async () => {
+    // A point release cherry-picks a fix straight onto the stable line, so its
+    // earliest containing tag is a stable and there is no beta to point anyone
+    // at. Announcing it here would name a stable version as a beta and promise a
+    // follow-up that the stable leg has already made.
+    const h = betaHarness({ versionFor: async () => '0.35.6' });
+    const result = await h.run();
+    expect(h.writes).toEqual([]);
+    expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'stable-covers-it' }]);
+  });
+
+  test('the stable leg still speaks in stable terms once the promotion happens', async () => {
+    const h = harness({ live: true });
+    await h.run();
+    const post = h.writes.find((w) => w.kind === 'post');
+    expect(post.text).toContain('This shipped in Open Knowledge v0.36.0');
+    expect(post.text).not.toContain('beta');
   });
 });

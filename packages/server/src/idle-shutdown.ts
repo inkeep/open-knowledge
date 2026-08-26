@@ -40,6 +40,12 @@ export interface AttachIdleShutdownOptions {
   warnBeforeMs?: number;
   /** Injectable scheduler for deterministic tests. */
   scheduler?: Scheduler;
+  /**
+   * An already-attached counter to schedule off. Supplied when the caller
+   * already counts for another consumer, so one upgrade listener serves both.
+   * When omitted this attaches its own and owns tearing it down.
+   */
+  counter?: CollabClientCounter;
 }
 
 export interface IdleShutdownHandle {
@@ -47,11 +53,79 @@ export interface IdleShutdownHandle {
   detach: () => void;
 }
 
+export interface CollabClientCounter {
+  /** Live `/collab` WebSocket clients right now — editor windows AND agents. */
+  getCount: () => number;
+  /**
+   * Observe count changes. Returns an unsubscribe. Several consumers watch the
+   * same count (idle-shutdown schedules off it; the server-info route reads
+   * it), so this is a fan-out rather than a single callback — two counters over
+   * one server would double the upgrade listeners and drift the moment the
+   * counting rule changes.
+   */
+  subscribe: (listener: (count: number) => void) => () => void;
+  /**
+   * Removes the upgrade listener. Idempotent. Belongs to whoever CREATED the
+   * counter — a consumer handed one it did not create unsubscribes instead,
+   * or it would stop counting for every other consumer.
+   */
+  detach: () => void;
+}
+
+/**
+ * Count live `/collab` WebSocket upgrades on `httpServer`.
+ *
+ * The single counting implementation: idle-shutdown schedules off it, and the
+ * server-info route discloses it so a caller about to terminate this process
+ * can ask "is anything using it" rather than "who started it" (the latter is
+ * unanswerable — the process title is rewritten at start). DirectConnections
+ * (CC1 broadcaster, agent sessions) never transit an upgrade and are invisible
+ * here, which is what keeps a permanently-connected internal consumer from
+ * pinning the count above zero (precedent #14).
+ */
+export function attachCollabClientCounter(
+  httpServer: HttpServer,
+  onChange?: (count: number) => void,
+): CollabClientCounter {
+  let count = 0;
+  let detached = false;
+  const listeners = new Set<(next: number) => void>();
+  if (onChange) listeners.add(onChange);
+  const emit = (next: number): void => {
+    for (const listener of listeners) listener(next);
+  };
+
+  const onUpgrade = (req: IncomingMessage, socket: Duplex): void => {
+    if (!req.url?.startsWith('/collab')) return;
+    count++;
+    emit(count);
+    socket.once('close', () => {
+      count--;
+      if (count < 0) count = 0;
+      emit(count);
+    });
+  };
+
+  httpServer.on('upgrade', onUpgrade);
+
+  return {
+    getCount: () => count,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    detach: () => {
+      if (detached) return;
+      detached = true;
+      httpServer.off('upgrade', onUpgrade);
+    },
+  };
+}
+
 export function attachIdleShutdown(opts: AttachIdleShutdownOptions): IdleShutdownHandle {
   const scheduler = opts.scheduler ?? defaultScheduler;
   const warnBeforeMs = opts.warnBeforeMs ?? DEFAULT_WARN_BEFORE_MS;
 
-  let webSocketClientCount = 0;
   let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
   let warnTimer: ReturnType<typeof setTimeout> | null = null;
   let fired = false;
@@ -71,12 +145,12 @@ export function attachIdleShutdown(opts: AttachIdleShutdownOptions): IdleShutdow
   function scheduleShutdown(): void {
     clearTimers();
     if (detached || fired) return;
-    if (webSocketClientCount !== 0) return;
+    if (counter.getCount() !== 0) return;
 
     if (warnBeforeMs > 0 && warnBeforeMs < opts.thresholdMs) {
       warnTimer = scheduler.setTimeout(() => {
         warnTimer = null;
-        if (webSocketClientCount === 0 && !fired) {
+        if (counter.getCount() === 0 && !fired) {
           opts.log?.warn(
             { msUntilShutdown: warnBeforeMs, webSocketClientCount: 0 },
             'idle shutdown pending: no WebSocket clients',
@@ -88,7 +162,7 @@ export function attachIdleShutdown(opts: AttachIdleShutdownOptions): IdleShutdow
     shutdownTimer = scheduler.setTimeout(() => {
       shutdownTimer = null;
       if (detached || fired) return;
-      if (webSocketClientCount !== 0) return;
+      if (counter.getCount() !== 0) return;
       fired = true;
       opts.log?.info({ webSocketClientCount: 0 }, 'idle shutdown firing');
       try {
@@ -104,25 +178,23 @@ export function attachIdleShutdown(opts: AttachIdleShutdownOptions): IdleShutdow
     }, opts.thresholdMs);
   }
 
-  const onUpgrade = (req: IncomingMessage, socket: Duplex): void => {
-    if (!req.url?.startsWith('/collab')) return;
-    webSocketClientCount++;
-    clearTimers();
-    socket.once('close', () => {
-      webSocketClientCount--;
-      if (webSocketClientCount < 0) webSocketClientCount = 0;
-      if (webSocketClientCount === 0) scheduleShutdown();
-    });
+  const onCount = (count: number): void => {
+    if (count === 0) scheduleShutdown();
+    else clearTimers();
   };
+  const ownsCounter = opts.counter === undefined;
+  const counter = opts.counter ?? attachCollabClientCounter(opts.httpServer);
+  const unsubscribe = counter.subscribe(onCount);
 
-  opts.httpServer.on('upgrade', onUpgrade);
   scheduleShutdown();
 
   return {
     detach: () => {
       if (detached) return;
       detached = true;
-      opts.httpServer.off('upgrade', onUpgrade);
+      unsubscribe();
+      // Detaching a counter we were handed would stop counting for its owner.
+      if (ownsCounter) counter.detach();
       clearTimers();
     },
   };

@@ -16,6 +16,7 @@ import { buildAuthToken } from '../lib/auth-token';
 import { readNumericOverride } from '../lib/perf/env-override';
 import { mark } from '../lib/perf/mark';
 import { emitColdMountChild } from '../lib/perf/otel-spans';
+import { projectDigest, scopedStorageKey } from '../lib/storage-scope';
 import {
   type ClientPersistenceProvider,
   captureStateVector,
@@ -373,14 +374,19 @@ class StoredEpochPeekTimeoutError extends Error {
  * `ProviderPool` to seed the cross-branch defense's in-memory cache on
  * a fresh tab so the very first auth-token claim is checked against
  * the server's current branch (closes the fresh-tab-with-stale-IDB
- * gap). Single key per origin is fine — a single Hocuspocus server's
- * branch is global to the project.
+ * gap). Scoped per project by `scopedStorageKey` — see that helper for why
+ * one key per ORIGIN is not one key per project.
  */
 const LAST_OBSERVED_BRANCH_KEY = 'ok-last-observed-branch';
 
 /**
  * localStorage key for the persisted per-doc lineage-epoch records.
- * Single envelope per origin:
+ * Scoped per project by `scopedStorageKey`, for the same reason the branch
+ * key is: a sibling project's window shares this origin's localStorage, and
+ * its write would clobber this project's envelope. A clobbered read still
+ * fails safe via the validation below, but the fence it feeds goes silently
+ * dead until the next learned epoch.
+ * Single envelope per project:
  * `{ branch, serverInstanceId, epochs: Record<docName, epoch> }` —
  * validated against the current observed branch + live instance id on
  * load, so a stale envelope (server restarted, branch switched) is
@@ -661,6 +667,21 @@ export class ProviderPool {
    */
   private readonly storage: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
 
+  /**
+   * Project-scoped storage keys, resolved once at construction from
+   * `options.storageNamespace`. See `scopedStorageKey` for why the bare
+   * constants cannot be used directly in a packaged desktop window.
+   */
+  private readonly lastObservedBranchKey: string;
+  private readonly docLineageEpochsKey: string;
+
+  /**
+   * Project identity handed to every replay-outbox call. Held raw rather than
+   * pre-scoped because the outbox composes its own database name around the
+   * digest; see `outboxDbName`.
+   */
+  private readonly storageNamespace: string | null;
+
   constructor(
     maxSize: number,
     wsUrl: string,
@@ -668,6 +689,12 @@ export class ProviderPool {
       recycleDebounceMs?: number;
       clearDataTimeoutMs?: number;
       storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
+      /**
+       * Project identity (the content dir) that scopes this pool's storage
+       * keys. Omit / null on hosts where the origin already isolates
+       * projects. See `scopedStorageKey`.
+       */
+      storageNamespace?: string | null;
       persistenceFactory?: ClientPersistenceFactory;
       peekStoredLineageEpoch?: PeekStoredLineageEpoch;
     },
@@ -689,6 +716,10 @@ export class ProviderPool {
       this.storage =
         typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null;
     }
+    const storageNamespace = options?.storageNamespace ?? null;
+    this.storageNamespace = storageNamespace;
+    this.lastObservedBranchKey = scopedStorageKey(LAST_OBSERVED_BRANCH_KEY, storageNamespace);
+    this.docLineageEpochsKey = scopedStorageKey(DOC_LINEAGE_EPOCHS_KEY, storageNamespace);
   }
 
   /**
@@ -1193,7 +1224,7 @@ export class ProviderPool {
     if (this.lastObservedBranchInitialized) return this.lastObservedBranch;
     this.lastObservedBranchInitialized = true;
     try {
-      const stored = this.storage?.getItem(LAST_OBSERVED_BRANCH_KEY) ?? null;
+      const stored = this.storage?.getItem(this.lastObservedBranchKey) ?? null;
       if (stored !== null && stored.length > 0) {
         this.lastObservedBranch = stored;
       }
@@ -1214,9 +1245,9 @@ export class ProviderPool {
     this.lastObservedBranchInitialized = true;
     try {
       if (branch === null || branch.length === 0) {
-        this.storage?.removeItem(LAST_OBSERVED_BRANCH_KEY);
+        this.storage?.removeItem(this.lastObservedBranchKey);
       } else {
-        this.storage?.setItem(LAST_OBSERVED_BRANCH_KEY, branch);
+        this.storage?.setItem(this.lastObservedBranchKey, branch);
       }
     } catch {
       // Storage write failures are non-fatal — see read-side comment.
@@ -1272,7 +1303,7 @@ export class ProviderPool {
     if (instanceId === null || instanceId.length === 0) return;
     this.docLineageEpochsEnvelopeConsumed = true;
     try {
-      const raw = this.storage?.getItem(DOC_LINEAGE_EPOCHS_KEY) ?? null;
+      const raw = this.storage?.getItem(this.docLineageEpochsKey) ?? null;
       if (raw === null) return;
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== 'object' || parsed === null) return;
@@ -1323,7 +1354,7 @@ export class ProviderPool {
     if (instanceId === null || instanceId.length === 0) return;
     try {
       this.storage?.setItem(
-        DOC_LINEAGE_EPOCHS_KEY,
+        this.docLineageEpochsKey,
         JSON.stringify({
           branch: this.normalizedObservedBranch(),
           serverInstanceId: instanceId,
@@ -1368,9 +1399,9 @@ export class ProviderPool {
   private recoveryTelemetryBase(
     docName: string,
     staleClaimOverride?: string | undefined,
-  ): { docName: string; branch: string; serverInstanceId?: string } {
+  ): { docName: string; branch: string; serverInstanceId?: string; project?: string } {
     const branch = this.normalizedObservedBranch();
-    const base: { docName: string; branch: string; serverInstanceId?: string } = {
+    const base: { docName: string; branch: string; serverInstanceId?: string; project?: string } = {
       docName,
       branch,
     };
@@ -1378,6 +1409,18 @@ export class ProviderPool {
       staleClaimOverride !== undefined ? staleClaimOverride : this.recoveryMismatchStaleClaim;
     if (stale !== undefined && stale.length > 0) {
       base.serverInstanceId = stale;
+    }
+    // `docName` + `branch` are exactly the key two projects legitimately
+    // share, so without this a cross-project report has nothing to correlate
+    // on and a project-specific storage fault reads as a global one. Carries
+    // the DIGEST, not the path: these events go through `console.warn` into
+    // diagnostic bundles, and the raw namespace is an absolute path that can
+    // contain the OS username. Routed through `projectDigest` — the same step
+    // `scopedStorageKey` embeds — so the value stays comparable to the
+    // database name's project segment by construction rather than because two
+    // call sites happen to hash alike.
+    if (this.storageNamespace !== null) {
+      base.project = projectDigest(this.storageNamespace);
     }
     return base;
   }
@@ -2394,7 +2437,11 @@ export class ProviderPool {
         tokenBacked = buffered.durable;
       } else {
         try {
-          const durable = await readReplayOutboxEntry(branch, docName);
+          const durable = await readReplayOutboxEntry({
+            branch,
+            docName,
+            namespace: this.storageNamespace,
+          });
           if (durable === null) return;
           source = durable;
           tokenBacked = true;
@@ -2415,11 +2462,13 @@ export class ProviderPool {
       // At-most-once in the tiny [consumed → server-synced] tail (matching the
       // RAM buffer, and past the crash window the outbox exists to close).
       //
-      // The consume is also the CROSS-TAB claim: same-origin tabs share one
-      // `(branch, docName)` record, so losing the claim means another tab
-      // already replayed this edit and this one must stand down. That covers
-      // both orders — the other tab consuming before we read (we never see a
-      // record) and after (we see one but cannot claim it).
+      // The consume is also the CROSS-TAB claim: tabs of the SAME project
+      // share one `(namespace, branch, docName)` record, so losing the claim
+      // means another tab of this project already replayed this edit and this
+      // one must stand down. A window of a DIFFERENT project never contends
+      // for it. That covers both orders — the other tab consuming before we
+      // read (we never see a record) and after (we see one but cannot claim
+      // it).
       //
       // Only attempt it when a durable record actually backs this replay. An
       // unconditional consume would, on a RAM-only buffer, throw its way into
@@ -2429,7 +2478,11 @@ export class ProviderPool {
       if (tokenBacked) {
         let claimed: boolean;
         try {
-          claimed = await consumeReplayOutboxEntry(tokenBranch, docName);
+          claimed = await consumeReplayOutboxEntry({
+            branch: tokenBranch,
+            docName,
+            namespace: this.storageNamespace,
+          });
         } catch (err: unknown) {
           // Bail rather than apply: the record is still there, so a later
           // clean open recovers the edit instead of risking a double-apply.
@@ -2498,13 +2551,17 @@ export class ProviderPool {
       // on an UNEXPECTED throw — which, once a carrier has been consumed, is a
       // silent in-process loss. Emit it (like this file's other fire-and-forget
       // recovery paths) rather than swallow, while still keeping the rejection
-      // out of the `synced` emitter. Kept minimal (no telemetry-base helper) so
-      // the fallback itself can never throw its way back out.
+      // out of the `synced` emitter. It carries the full telemetry base: this
+      // is the highest-value event on the buffer-replay path for a
+      // cross-project incident, so omitting `branch` and `project` here is
+      // exactly the wrong place to economize. Safe to call — the base's only
+      // fallible step (storage read) already swallows, and the digest is a
+      // pure function.
       provider.off('synced', onSyncedReplay);
       void runReplay().catch((err: unknown) => {
         this.emitStructuredClientRecoveryEvent({
           event: 'ok-buffer-replay-unexpected-error',
-          docName,
+          ...this.recoveryTelemetryBase(docName),
           errorName: err instanceof Error ? err.name : 'non-error-throw',
           errorMessage: err instanceof Error ? err.message : String(err),
         });
@@ -2756,10 +2813,10 @@ export class ProviderPool {
         // for a live token.
         if (fullStateForBuffer !== null) {
           outboxWrites.push(
-            writeReplayOutboxEntry(recoveryBranch, docName, {
-              delta: unsynced,
-              fullState: fullStateForBuffer,
-            })
+            writeReplayOutboxEntry(
+              { branch: recoveryBranch, docName, namespace: this.storageNamespace },
+              { delta: unsynced, fullState: fullStateForBuffer },
+            )
               .then((persisted) => {
                 if (persisted) buffered.durable = true;
                 else {
@@ -3343,7 +3400,11 @@ export class ProviderPool {
     const buffered = this.bufferedUpdates.get(docName);
     this.bufferedUpdates.delete(docName);
     if (buffered === undefined || !buffered.durable) return;
-    void consumeReplayOutboxEntry(buffered.branch, docName).catch((err: unknown) => {
+    void consumeReplayOutboxEntry({
+      branch: buffered.branch,
+      docName,
+      namespace: this.storageNamespace,
+    }).catch((err: unknown) => {
       this.emitStructuredClientRecoveryEvent({
         event: 'ok-buffer-replay-outbox-discard-failed',
         ...this.recoveryTelemetryBase(docName),

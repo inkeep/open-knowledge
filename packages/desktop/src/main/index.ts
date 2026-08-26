@@ -34,7 +34,6 @@ import {
   existsSync,
   promises as fsPromises,
   mkdirSync,
-  openSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -94,6 +93,7 @@ import type {
   OkTerminalDockStateWriteResult,
   OkTerminalRestartSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   assertGitAvailable,
@@ -158,7 +158,6 @@ import type {
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
-  McpWiringEditorId,
   MenuDispatchCommand,
   MenuDispatchRole,
   OnboardingShowPayload,
@@ -400,7 +399,9 @@ import {
   shouldRevealInactiveNow,
 } from './restore-focus.ts';
 import { handleRevealExternal } from './reveal-external.ts';
+import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
+import { breakServerLockHeldBy } from './server-lock-break.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
@@ -443,6 +444,7 @@ import {
   type UpdateChannel,
   windowRestoreKey,
 } from './state-store.ts';
+import { quoteStopCommandPath } from './stop-command.ts';
 import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
@@ -1469,10 +1471,14 @@ let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 let osShutdownNoted = false;
 
 /**
- * Records the server's last exit (code + Electron process-gone reason) to
+ * Records the server's last exit (timestamp, pid, code, killing signal, which
+ * host observed it, and Electron's process-gone reason where one applies) to
  * `<lockDir>/last-server-exit.json` for bug-report diagnosis. Lazy singleton so
- * the window-manager fork path and the `child-process-gone` listener — which
- * initialize on different boot paths — share one correlator.
+ * all three participants — the window-manager fork path, the `child-process-gone`
+ * listener, and the detached-spawn observer wired at the spawn closure below —
+ * share one correlator rather than each building its own. That sharing is what
+ * `tests/integration/server-exit-wiring.test.ts` pins: a per-path recorder would
+ * split the reason correlation the fork path depends on.
  */
 let serverExitRecorder: ServerExitRecorder | null = null;
 function getServerExitRecorder(): ServerExitRecorder {
@@ -1861,9 +1867,12 @@ function ensureWindowManager() {
             // filename — one tail target for operators. `stdio: 'ignore'`
             // would route everything to /dev/null and leave the user
             // staring at a 15-second `spawn-lock-timeout` with no
-            // breadcrumb. The fd is opened in 'w' mode (truncate-on-spawn)
-            // so each boot starts with a fresh log; rotation lives at the
-            // OS level if it ever matters.
+            // breadcrumb. The fd APPENDS behind a per-attempt header, because
+            // the retry after a failed spawn would otherwise erase the output
+            // explaining the failure it is retrying; it starts over only at
+            // `SPAWN_ERROR_LOG_MAX_BYTES`, so rotation is this policy's job
+            // and not the OS's. Both writers share the mode — see
+            // `spawnErrorLogOpenMode`.
             const projectRoot = projectDir ?? contentDir;
             const lockDir = getLocalDir(projectRoot);
             if (!existsSync(lockDir)) {
@@ -1887,7 +1896,7 @@ function ensureWindowManager() {
             const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
             let spawnErrorLogFd: number;
             try {
-              spawnErrorLogFd = openSync(spawnErrorLogPath, 'w');
+              spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
             } catch (err) {
               throw Object.assign(
                 new Error(
@@ -2015,6 +2024,19 @@ function ensureWindowManager() {
             childRef.on('exit', (code, signal) => {
               exitRecord = { code, signal };
             });
+            // `exitRecord` above only ever reaches the boot-time spawn-failure
+            // branches via `readExit()`; once a window has attached, nothing
+            // reads it again. A second listener on the same event persists the
+            // death for a later bug bundle instead, and in a packaged build it
+            // is the only observer of that death — `server-exit-observer.ts`
+            // holds the why, and owns the registration so that the shape of it
+            // is covered by a test rather than by review of this file.
+            // `tests/integration/server-exit-wiring.test.ts` pins the call.
+            attachServerExitObserver(childRef, {
+              lockDir,
+              recordExit: (info) => getServerExitRecorder().recordExit(info),
+              logger: getLogger('server-exit'),
+            });
             childRef.unref();
             const pid = childRef.pid;
             if (pid === undefined) {
@@ -2061,6 +2083,10 @@ function ensureWindowManager() {
     // state, so it holds for the whole session. See `firstLaunchAfterUpgrade`.
     isFirstLaunchAfterUpgrade: () => firstLaunchAfterUpgrade,
     setTimeout: (cb, ms) => setTimeout(cb, ms),
+    // Repeating timer for the ephemeral single-file server-liveness watch —
+    // unref'd so it never keeps the event loop alive on its own.
+    setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
     killProbe: (pid, signal) => {
       process.kill(pid, signal as NodeJS.Signals | 0);
     },
@@ -2069,6 +2095,17 @@ function ensureWindowManager() {
     // contentDir, window-manager reads the lock + verifies liveness and
     // connects the renderer directly instead of trying to spawn a duplicate.
     readServerLock: (lockDir) => readServerLock(lockDir),
+    // Break a stale claim whose holder is both unkillable and not serving —
+    // see `removeServerLock` in WindowManagerDeps for when that is reached.
+    // Unlinked directly rather than through the server's refcounted
+    // `releaseServerLock`, which only releases a lock this process owns.
+    //
+    // Read-compare-unlink, mirroring `process-lock.ts`'s `registerExitUnlink`:
+    // the caller's verdict is about a specific holder and a health probe stands
+    // between that verdict and this call, so a successor that acquired the lock
+    // meanwhile must keep it. A missing or unparseable file is the desired end
+    // state either way.
+    removeServerLock: (lockDir, expected) => breakServerLockHeldBy(lockDir, expected),
     isProcessAlive: (pid) => isProcessAlive(pid),
     hostname: () => osHostname(),
     probeWsUpgrade: (url, timeoutMs) => probeWsUpgrade(url, timeoutMs),
@@ -2093,7 +2130,11 @@ function ensureWindowManager() {
     // the `desktop-upgrade-reconcile` upgrade signal, restart — reach
     // `~/.ok/logs/`.
     log: getLogger('window-manager'),
-    recordServerExit: (info) => getServerExitRecorder().recordExit(info),
+    // The adapter, not the dep, names the host: `WindowManagerDeps` stays
+    // narrow (it has no signal and no observer to give), and this is the site
+    // that knows which of the two spawn paths it is wiring.
+    recordServerExit: (info) =>
+      getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
     // Presence-invisible keepalive WS — registers the desktop as an active
     // `/collab*` upgrade for as long as a project window is open, so a brief
     // MCP disconnect does not trip the server's idle-shutdown timer. The
@@ -2476,14 +2517,6 @@ async function openProject(
       gitState: discovery.gitState,
       gitRootPromoted: discovery.gitRootPromoted,
       warnings: validation.warnings.map((w) => ({ kind: w.kind })),
-      editorOptions: ALL_EDITOR_IDS.map((id) => ({
-        id: id as McpWiringEditorId,
-        label: EDITOR_TARGETS[id].label,
-        hasProjectConfig: EDITOR_TARGETS[id].projectConfigPath !== undefined,
-        // Pi is the first project-scope-only editor; without the user-side
-        // signal the badge would misread as "(project + user)".
-        hasUserConfig: EDITOR_TARGETS[id].scope === 'global',
-      })),
     };
     const decision = await requestUserConsent(
       {
@@ -2510,10 +2543,12 @@ async function openProject(
     contentDirChanged = request.contentDir !== discovery.defaultContentDir;
     // Customized vs default — telemetry attribute distinguishes the two
     // so the team can answer "how often do users tweak the dialog?"
+    // The AI-tool row offers only the tools detected on this machine, so its
+    // id count carries no signal about whether the user touched it — an
+    // untouched row on a two-tool machine submits two ids, and on a machine
+    // with no tools submits none. The checkbox the user left is the answer.
     flowKind =
-      contentDirChanged ||
-      request.additionalIgnores.trim().length > 0 ||
-      request.editorIds.length !== ALL_EDITOR_IDS.length
+      contentDirChanged || request.additionalIgnores.trim().length > 0 || !request.connectEditors
         ? 'fresh-customized'
         : 'fresh-default';
     if (
@@ -2813,6 +2848,18 @@ async function openProjectOrFallbackToNavigator(
     const errorMessage = (err as Error).message;
     const kind = (err as Error & { kind?: string }).kind;
     const holderPid = (err as Error & { holderPid?: number }).holderPid;
+    // Which of the two refusals this is. `stale-lock-holder` covers both a
+    // holder that answered nothing and a lock whose port we cannot hold a
+    // connection open on, and only the second can involve a LIVE holder.
+    // Both are only meaningful on `stale-lock-holder`; other kinds reach the
+    // shared remedy copy below and must not read a `reason` that is not theirs.
+    const isStaleLockHolder = kind === 'stale-lock-holder';
+    const staleLockReason = isStaleLockHolder
+      ? (err as Error & { reason?: string }).reason
+      : undefined;
+    const holderIsOwnChild =
+      isStaleLockHolder &&
+      (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild === true;
     // Route through pino, not only `console.error`: a failure reported solely
     // to the native dialog leaves nothing in `~/.ok/logs/desktop.*.log`, so a
     // user who hits this can send logs that contain their successful opens and
@@ -2857,6 +2904,18 @@ async function openProjectOrFallbackToNavigator(
     } else if (kind === 'lock-collision') {
       dialogTitle = 'OpenKnowledge is already running for this project';
       dialogBody = `${projectPath}\n\n${errorMessage}`;
+    } else if (kind === 'stale-lock-holder') {
+      // Distinct from `lock-collision`: that one means a real server has the
+      // project and we should not fight it. On the probed arm the holder
+      // answered nothing on the port it advertises, so "already running" would
+      // be the wrong thing to tell someone whose project has been unopenable
+      // for days. The unusable-lock arm never dialed anyone, so it must not
+      // borrow that claim — its holder may be perfectly healthy.
+      dialogTitle =
+        staleLockReason === 'lock-not-attachable'
+          ? 'This project\u2019s server lock cannot be used'
+          : 'A stopped server is still holding this project';
+      dialogBody = `${projectPath}\n\n${errorMessage}`;
     }
     // A spawn that timed out because a holder is in the way (fail-closed
     // collision — visible in the child's stderr tail), or a direct lock
@@ -2864,7 +2923,10 @@ async function openProjectOrFallbackToNavigator(
     // retry. Everything else keeps the plain error box.
     const holderInTheWay =
       kind === 'lock-collision' ||
+      kind === 'stale-lock-holder' ||
       (kind === 'spawn-lock-timeout' && errorMessage.includes('already running'));
+    // The one arm whose holder was never dialed, so it may be a live server.
+    const warnsHolderMayBeLive = staleLockReason === 'lock-not-attachable' && !holderIsOwnChild;
     if (holderInTheWay) {
       const { response } = await dialog.showMessageBox({
         type: 'warning',
@@ -2872,9 +2934,18 @@ async function openProjectOrFallbackToNavigator(
         message: dialogTitle,
         detail:
           `${dialogBody}\n\n` +
-          `OpenKnowledge can stop the conflicting server process and retry opening the project.`,
+          (warnsHolderMayBeLive
+            ? `OpenKnowledge can stop that process and retry opening the project. It may still be ` +
+              `running, so stop it only if you do not need it.`
+            : holderIsOwnChild
+              ? `OpenKnowledge already asked that server to stop during this open. It can make ` +
+                `sure it is gone and try again.`
+              : `OpenKnowledge can stop the conflicting server process and retry opening the project.`),
         buttons: ['Stop Server & Retry', 'Cancel'],
-        defaultId: 0,
+        // Enter lands on the safe path. Everywhere else that is Stop, because
+        // the holder is known inert; on the arm that just told the user their
+        // process may still be running, the safe path is the other button.
+        defaultId: warnsHolderMayBeLive ? 1 : 0,
         cancelId: 1,
       });
       if (response === 0) {
@@ -2919,6 +2990,59 @@ async function openProjectOrFallbackToNavigator(
               (stop.reason === 'eperm'
                 ? 'The conflicting server belongs to another user account and cannot be stopped from here. Quit it from that account and try again.'
                 : 'Could not stop the conflicting server. Quit it manually (`ok stop`) and try again.'),
+          );
+        }
+      } else {
+        // Every kind that reaches this dialog gets a decline record. The BOX is
+        // scoped narrower on purpose — the collision arms self-remedy in their
+        // own message text — but the record's reader is not the box's reader:
+        // to an operator reading a bundle, "kind=lock-collision, then silence"
+        // cannot distinguish a decline from an app quit mid-modal.
+        getLogger('project').info(
+          {
+            projectPath,
+            kind,
+            ...(isStaleLockHolder ? { reason: staleLockReason, holderIsOwnChild } : {}),
+            holderPid,
+          },
+          'user declined the stop-and-retry remedy',
+        );
+        if (isStaleLockHolder) {
+          // Three holder states reach here, not two. On the own-child arm this
+          // method signalled that pid during the open the user just asked for,
+          // so "nothing was stopped" would be wrong there — but SIGTERM is a
+          // request, and the child releases the lock on receiving it, so that
+          // arm must not claim the stop completed OR that the lock survived.
+          //
+          // Quoted because this is a command the user is told to paste: `ok stop`
+          // rejoins its own argv, but never sees what the shell already ate. An
+          // apostrophe in a folder name hangs at a continuation prompt, and an
+          // `&` silently runs against a truncated path and reports success. The
+          // quoting is per-platform and lives in its own module, because POSIX
+          // single quotes are not a grouping character on `cmd.exe`.
+          //
+          // The target is the PROJECT PATH, never the pid: `ok stop <path>`
+          // resolves the same lockDir this refusal was computed from and stops
+          // it without reading `port`, while `ok stop <pid>` goes through a
+          // heuristic process scan that can miss, and matches a port before a
+          // pid — so on a machine where another project's port equals this
+          // holder's pid it stops the wrong one.
+          const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
+          dialog.showErrorBox(
+            dialogTitle,
+            `${dialogBody}\n\n` +
+              (holderIsOwnChild
+                ? `OpenKnowledge has signalled that server to stop. Open the project again. If ` +
+                  `this keeps happening, the server is advertising a port it cannot serve on — ` +
+                  `there is no way around that from here, so please send a report from ` +
+                  `Help > Report a bug.`
+                : warnsHolderMayBeLive
+                  ? `Nothing was stopped. If you need that process, leave it running and open a ` +
+                    `different project; if you do not, run \`ok stop ${stopCommandTarget}\` and ` +
+                    `open the project again, or reopen and choose Stop Server & Retry.`
+                  : `Nothing was stopped. Run \`ok stop ${stopCommandTarget}\` and open the ` +
+                    `project again, or reopen and choose Stop Server & Retry to have ` +
+                    `OpenKnowledge do it.`),
           );
         }
       }
@@ -2986,14 +3110,26 @@ async function openEphemeralFile(filePath: string): Promise<void> {
   }
 
   try {
+    // Capture any pre-existing live session BEFORE the call so the log can tell a
+    // focus-dedup from a fresh spawn: `createEphemeralWindow` returns the SAME
+    // context object when it focuses an existing live window, and a NEW one when
+    // it spawns (including when it reaps a dead session and re-spawns).
+    const existingBefore = wm.getWindowFor(plan.canonicalFilePath);
     const ctx = await wm.createEphemeralWindow({
       canonicalFilePath: plan.canonicalFilePath,
       contentDir: plan.contentDir,
       docName: plan.docName,
     });
+    const deduped = existingBefore !== undefined && existingBefore === ctx;
     getLogger('project').info(
-      { file: plan.canonicalFilePath, apiOrigin: ctx.apiOrigin },
-      'ephemeral single-file window created',
+      {
+        file: plan.canonicalFilePath,
+        apiOrigin: ctx.apiOrigin,
+        outcome: deduped ? 'focused-existing' : 'spawned-fresh',
+      },
+      deduped
+        ? 'ephemeral single-file window focused (deduped)'
+        : 'ephemeral single-file window created',
     );
     // The external-link / asset safety net is attached by the window factory
     // (WindowManager.attachSafetyNet) — for ephemeral windows the asset root is
@@ -6588,8 +6724,8 @@ function registerIpcHandlers() {
   // the per-session `recentGitRoots` membership set.
   handle('ok:fs:remove-git-folder', async (_event, gitRoot) => {
     // Primary teardown: deterministically stop this worktree's OWN collab
-    // server (+ ui sibling) BEFORE removing its `.git`, so a deleted worktree
-    // doesn't leave an orphaned server holding a now-dangling lockDir. Reuses
+    // server BEFORE removing its `.git`, so a deleted worktree doesn't leave
+    // an orphaned server holding a now-dangling lockDir. Reuses
     // the path-addressable `runStop` against the worktree's lockDir. Scoped to
     // the same `recentGitRoots` membership set that gates the delete itself, so
     // a fabricated path can't drive a stray SIGTERM. Best-effort: a worktree
@@ -6600,8 +6736,11 @@ function registerIpcHandlers() {
         // Route runStop's own log through the structured logger (not stdout) so
         // the success path — which PIDs were SIGTERM'd before `.git` deletion —
         // is captured for incident forensics, not silently dropped.
-        const outcome = runStop({
+        const outcome = await runStop({
           lockDir: resolveLockDir(gitRoot),
+          // The worktree and its `.git` are going away regardless, so the
+          // in-use decline would only strand the server it is about to orphan.
+          force: true,
           log: (msg) => getLogger('project').info({ gitRoot }, `[remove-git-folder] ${msg}`),
         });
         getLogger('project').info(
@@ -7620,6 +7759,23 @@ function bootPrimaryInstance(): void {
     'desktop main process starting',
   );
 
+  // Read once, here, before anything in this function can touch the state file.
+  //
+  // Crash detection needs to know whether an install this app committed to may
+  // still have been running when the previous session ended, and the updater's
+  // boot reconciliation later in this function CLEARS that record the moment
+  // the running version catches up. Taking the snapshot at the top makes the
+  // answer independent of where either consumer ends up sitting: the two are
+  // ~1000 lines apart today, and a reordering that put the updater first would
+  // otherwise silently disable install-kill suppression while every test stayed
+  // green, because nothing here composes the two boot steps.
+  //
+  // Off disk rather than the module-level `appState`, which is still
+  // `emptyState()` this early: nothing has hydrated it yet at this point in
+  // boot, so reading it here would answer "no install was in flight" for every
+  // session regardless of the truth.
+  const bootStateSnapshot = loadAppState();
+
   // Stand up the renderer-ready mount-ack sink before anything can open a
   // window: the preload invokes `ok:mcp-wiring:renderer-ready` /
   // `ok:onboarding:renderer-ready` on every renderer mount, and the sink's
@@ -7676,19 +7832,21 @@ function bootPrimaryInstance(): void {
     // previous session ended? If so the installer killed it to replace its
     // files, and the dirty sentinel it left behind is not a crash.
     //
-    // Read from disk rather than from the in-memory `appState`, which is not
-    // hydrated this early in boot, and asked of the updater's own predicate so
-    // the bound cannot drift from the one deciding whether to tell the user an
-    // install failed.
+    // Answered from `bootStateSnapshot`, taken at the top of this function
+    // before anything here can mutate the state file, so the verdict does not
+    // depend on this call sitting ahead of the updater's boot reconciliation.
+    // The staging stamp is passed as-is: the snapshot predates the stale-pending
+    // clear, so the field still holds the moment the artifact was staged.
     //
-    // ORDERING: this must run before the updater's boot reconciliation, which
-    // clears `attemptedInstall` the moment the running version catches up — a
-    // field report put that clear 249ms after detection, so the margin is real
-    // but thin. Both calls are in `bootPrimaryInstance` in that order today;
-    // moving updater init ahead of `detectBootCrash()` would silently disable
-    // this class, so the suppression tests in `crash-detection.test.ts` are
-    // the tripwire.
-    installInFlight: () => installMayStillBeRunning(loadAppState(), Date.now()),
+    // Asked of the updater's own predicate rather than re-derived, so the bound
+    // cannot drift from the one deciding whether to tell the user an install
+    // failed.
+    installInFlight: () =>
+      installMayStillBeRunning(
+        bootStateSnapshot,
+        Date.now(),
+        bootStateSnapshot.versionPendingInstallStagedAt,
+      ),
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();

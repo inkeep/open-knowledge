@@ -20,6 +20,7 @@ import { BacklinkIndex } from '../backlink-index.ts';
 import { LocalTargetIndex } from '../local-target-index.ts';
 import {
   createProjectValidators,
+  type ProjectValidator,
   runValidationAudit,
   toValidationCountsPlane,
   type ValidationAuditDeps,
@@ -126,6 +127,7 @@ describe('runValidationAudit', () => {
     expect(result.errorCount).toBe(0);
     expect(result.warningCount).toBeGreaterThan(1);
     expect(result.fileCount).toBe(2);
+    expect(result.ran).toEqual(['markdownlint', 'links']);
     // The engine plane must survive the wire schema untouched — the audit
     // route serializes through it.
     expect(ValidationAuditResponseSchema.parse(result)).toEqual(result);
@@ -158,6 +160,7 @@ describe('runValidationAudit', () => {
 
     const off = await runValidationAudit(createProjectValidators(deps({ linksValidation: 'off' })));
     expect(off.files.every((f) => f.diagnostics.every((d) => d.source !== 'links'))).toBe(true);
+    expect(off.ran).toEqual(['markdownlint']);
     // A deliberate off is not a degradation — no warning in the plane.
     expect(off.warnings).toEqual([]);
   });
@@ -175,6 +178,7 @@ describe('runValidationAudit', () => {
     expect(result.errorCount).toBe(0);
     expect(result.warningCount).toBe(1);
     expect(result.fileCount).toBe(2);
+    expect(result.ran).toEqual(['links']);
   });
 
   test('a doc with lint and link problems yields one file entry sorted by position', async () => {
@@ -247,14 +251,20 @@ describe('runValidationAudit', () => {
     expect(result.files.map((f) => f.file)).toEqual(['dirty.md']);
     expect(result.errorCount).toBe(0);
     expect(result.warnings).toContain(
-      'links validation unavailable: backlink index is not configured',
+      'source family "links" validation failed: backlink index is not configured',
     );
+    // A degraded validator stays in `ran`. Dropping it would report
+    // `['markdownlint']` beside a warning that link checking broke, which an
+    // agent reads as "links are not validated in this project" and stops
+    // repairing them.
+    expect(result.ran).toEqual(['markdownlint', 'links']);
   });
 
   test('an additional registered validator merges into the plane', async () => {
     seedDoc('dirty', DOC_WITH_TAB);
     const extra = {
       id: 'extra',
+      sourceFamilies: [] as const,
       run: async () => ({
         files: [
           {
@@ -301,6 +311,8 @@ describe('runValidationAudit', () => {
     seedDoc('dirty', DOC_WITH_TAB);
     const boom = {
       id: 'boom',
+      sourceFamilies: ['okf'] as const,
+      failureSourceFamily: 'okf' as const,
       run: async () => {
         throw new Error('kaboom');
       },
@@ -312,7 +324,60 @@ describe('runValidationAudit', () => {
     expect(result.files.map((f) => f.file)).toEqual(['dirty.md']);
     expect(result.files[0]?.diagnostics.some((d) => d.code === 'MD010')).toBe(true);
     // The throw becomes a validator-tagged warning, not an unhandled rejection.
-    expect(result.warnings).toContain('validator "boom" failed: kaboom');
+    expect(result.warnings).toContain('source family "okf" validation failed: kaboom');
+    expect(result.ran).toEqual(['markdownlint', 'links', 'okf']);
+  });
+
+  test('a lint-walk failure keeps its label whatever the enabled plugin count is', async () => {
+    // The label is a static property of the validator, not a function of how
+    // many lint families the project happens to enable. Deriving it from
+    // `sourceFamilies.length === 1` made the same walk failure report as
+    // `markdownlint` on one project and `lint` on the next.
+    const walkFailure = async (baseConfig: LinterConfig) => {
+      const validators = createProjectValidators(deps({ baseConfig, linksValidation: 'off' }));
+      const lint = validators.find((validator) => validator.id === 'lint');
+      if (!lint) throw new Error('lint validator missing');
+      const failing: ProjectValidator = {
+        ...lint,
+        run: async () => {
+          throw new Error('EACCES');
+        },
+      };
+      const result = await runValidationAudit([failing]);
+      return result.warnings;
+    };
+
+    const twoFamilies = {
+      ...lintOn,
+      plugins: { ...lintOn.plugins, okf: { enabled: true } },
+    } as LinterConfig;
+
+    expect(await walkFailure(lintOn)).toEqual(['validator "lint" failed: EACCES']);
+    expect(await walkFailure(twoFamilies)).toEqual(['validator "lint" failed: EACCES']);
+  });
+
+  test('a project-validator failure reports under its public source family', async () => {
+    // `okf-project` is an internal engine id that appears in no `ran` array and
+    // no diagnostic `source`; the family it contributes to is what a caller can
+    // join against.
+    const okfOn = {
+      ...lintOn,
+      plugins: { ...lintOn.plugins, okf: { enabled: true } },
+    } as LinterConfig;
+    const validators = createProjectValidators(deps({ baseConfig: okfOn, linksValidation: 'off' }));
+    const okfProject = validators.find((validator) => validator.id === 'okf-project');
+    if (!okfProject) throw new Error('okf project validator missing');
+    const failing: ProjectValidator = {
+      ...okfProject,
+      run: async () => {
+        throw new Error('kaboom');
+      },
+    };
+
+    const result = await runValidationAudit([failing]);
+
+    expect(result.warnings).toEqual(['source family "okf" validation failed: kaboom']);
+    expect(result.ran).toEqual(['okf']);
   });
 
   test('a dead link from an admitted-but-unsaved source still names a file', async () => {
@@ -401,7 +466,7 @@ describe('runValidationAudit', () => {
       expect.objectContaining({ code: 'dead-link', linkTarget: 'ghost' }),
     ]);
     expect(result.warnings).toContain(
-      'local-target validation unavailable: Local-target index is not ready',
+      'source family "links" validation degraded: local-target projection unavailable: Local-target index is not ready',
     );
   });
 });
@@ -663,6 +728,16 @@ describe('the OKF project validator', () => {
     runValidationAudit(
       createProjectValidators(deps({ baseConfig: okfOnly, linksValidation: 'off', ...overrides })),
     );
+
+  test('reports okf in ran exactly once — the lint and tree validators share the family', async () => {
+    writeFile('index.md', '# Index\n\n* [a](a.md) - a\n');
+    writeFile('a.md');
+    const result = await auditOkf();
+    // Both the okf lint plugin (through the lint walk) and the okf project
+    // validator select this family, and they fold into one public id — so the
+    // roster must not double-count them.
+    expect(result.ran).toEqual(['okf']);
+  });
 
   test('a mis-cased reserved file reaches the plane under the okf source', async () => {
     writeFile('Index.md', '# Index\n\n* [a](a.md) - a\n');

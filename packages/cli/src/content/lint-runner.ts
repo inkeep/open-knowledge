@@ -16,11 +16,15 @@ import {
 } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
+  deriveValidationRunSources,
   fixDocument,
   type LintDiagnostic,
   type LinterConfig,
+  type LintPluginFailure,
+  type LintPluginId,
   lintDocument,
   SUPPORTED_DOC_EXTENSIONS,
+  summarizeLintPluginFailures,
 } from '@inkeep/open-knowledge-core';
 import {
   composeEffectiveLinterConfig,
@@ -46,6 +50,7 @@ export interface LintRunResult {
   errorCount: number;
   warningCount: number;
   fixedCount: number;
+  ran: LintPluginId[];
 }
 
 export interface RunLintOptions {
@@ -76,6 +81,15 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
   // load problems surface as report warnings — the same resolution the server
   // uses.
   const resolvedBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, pushConfigProblem);
+  const ran = deriveValidationRunSources(resolvedBase, { mode: 'lint' });
+  // Collected structured and summarized once at the end rather than pushed as
+  // formatted lines: a plugin that throws on every document would otherwise add
+  // one warning per file, and the `seenConfigProblems` dedup above cannot
+  // collapse them because each carries its own doc path.
+  const pluginFailures: LintPluginFailure[] = [];
+  const pushPluginFailure = (failure: LintPluginFailure): void => {
+    pluginFailures.push(failure);
+  };
 
   // markdownlint `rules` come from the project's native `.markdownlint.*`
   // files, resolved per doc with cli2 cascade semantics (nearest file on the
@@ -150,7 +164,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     const cfg = configForDoc(rel);
     let wasFixed = false;
     if (fix && cfg.enabled) {
-      const fixedText = fixDocument(text, cfg);
+      const fixedText = fixDocument(text, cfg, rel, pushPluginFailure);
       if (fixedText !== text) {
         // tmp + rename so an interrupted write can never leave the document
         // half-written (mirrors the server's markdownlint-write pattern).
@@ -172,13 +186,15 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
       }
     }
 
-    const diagnostics = await lintDocument(text, cfg, rel);
+    const diagnostics = await lintDocument(text, cfg, rel, pushPluginFailure);
     for (const d of diagnostics) {
       if (d.severity === 'error') errorCount++;
       else warningCount++;
     }
     files.push({ file: rel, diagnostics, fixed: wasFixed });
   }
+
+  warnings.push(...summarizeLintPluginFailures(pluginFailures));
 
   return {
     contentDir,
@@ -188,6 +204,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     errorCount,
     warningCount,
     fixedCount,
+    ran,
   };
 }
 

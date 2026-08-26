@@ -404,20 +404,6 @@ export interface OnboardingShowPayload {
   readonly gitState: OnboardingGitState;
   readonly gitRootPromoted: boolean;
   readonly warnings: readonly { readonly kind: OnboardingWarningKind }[];
-  readonly editorOptions: readonly {
-    readonly id: McpWiringEditorId;
-    readonly label: string;
-    /** True when this editor scaffolds a per-project MCP config; false when
-     *  only the user-level config is writable. Surfaced as a per-row badge
-     *  in the consent dialog so the user can distinguish project-scoped vs
-     *  user-only editors before clicking Start. */
-    readonly hasProjectConfig: boolean;
-    /** True when this editor also has a user-global config surface. Optional
-     *  for back-compat with older payload producers; absent reads as `true`
-     *  (every pre-Pi editor was user-writable). Pi is the first
-     *  project-scope-only editor — `false` renders "(project-level only)". */
-    readonly hasUserConfig?: boolean;
-  }[];
 }
 
 /** User clicked Start with these values. */
@@ -426,6 +412,11 @@ export interface OnboardingConfirmRequest {
   readonly contentDir: string;
   readonly additionalIgnores: string;
   readonly editorIds: readonly McpWiringEditorId[];
+  /** The AI-tools checkbox as the user left it. `editorIds` alone cannot say:
+   *  an empty list means "declined" on a machine with tools and "nothing to
+   *  offer" on one without, and the two are different answers. Read only for
+   *  telemetry — the write set is `editorIds`. */
+  readonly connectEditors: boolean;
   /**
    * Sharing-mode posture. `shared` — commit
    * OK config alongside content. `local-only` — append OK

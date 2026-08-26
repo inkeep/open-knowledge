@@ -15,12 +15,16 @@
 
 import { dirname, relative } from 'node:path';
 import {
+  deriveValidationRunSources,
   type LinterConfig,
   runOkfProjectRules,
-  type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
 import { collectDocFiles, resolveScope } from './audit.ts';
-import type { ProjectValidator, ValidationScope } from './validation-audit.ts';
+import type {
+  ProjectValidator,
+  ValidationDiagnosticFor,
+  ValidationScope,
+} from './validation-audit.ts';
 
 /**
  * Zero-width anchor at the top of the file. A project finding is about the file's
@@ -40,14 +44,25 @@ export interface OkfProjectValidatorDeps {
   baseConfig: LinterConfig;
 }
 
-export function createOkfProjectValidator(deps: OkfProjectValidatorDeps): ProjectValidator {
+export function createOkfProjectValidator(deps: OkfProjectValidatorDeps): ProjectValidator<'okf'> {
+  // Selection comes off the shared derivation rather than a second copy of the
+  // enablement predicate, and the early return below reads it back — so "is OKF
+  // selected" is stated once. Lint mode, not audit mode: this validator has no
+  // opinion on link validation, and naming a links setting here would read as if
+  // it did.
+  const sourceFamilies = deriveValidationRunSources(deps.baseConfig, { mode: 'lint' }).filter(
+    (source): source is 'okf' => source === 'okf',
+  );
   return {
     id: 'okf-project',
+    sourceFamilies,
+    // Tree-shape checks report under the same public family as the okf lint
+    // plugin, so a total failure of this validator belongs to `okf` too.
+    failureSourceFamily: 'okf',
     async run(scope: ValidationScope) {
-      const slice = deps.baseConfig.plugins.okf;
       // Plugin off is a clean empty contribution, not a degradation warning — the
       // project chose not to run OKF at all.
-      if (!deps.baseConfig.enabled || !slice?.enabled) {
+      if (sourceFamilies.length === 0) {
         return { files: [], fileCount: 0, warnings: [] };
       }
 
@@ -72,8 +87,8 @@ export function createOkfProjectValidator(deps: OkfProjectValidatorDeps): Projec
         onWarning: (warning) => warnings.push(warning),
       });
 
-      const byFile = new Map<string, ValidationDiagnostic[]>();
-      for (const finding of runOkfProjectRules(docFiles, slice.rules)) {
+      const byFile = new Map<string, ValidationDiagnosticFor<'okf'>[]>();
+      for (const finding of runOkfProjectRules(docFiles, deps.baseConfig.plugins.okf?.rules)) {
         if (targetFile !== undefined && finding.file !== targetFile) continue;
         const diagnostics = byFile.get(finding.file) ?? [];
         diagnostics.push({

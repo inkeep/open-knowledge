@@ -159,6 +159,9 @@ patchedDependencies:
   '@tiptap/y-tiptap@3.0.3':
     hash: 43915485b8dd39489356fd829d5364b627ad0bc65ad1fd07c8350b1bcca8f3e4
     path: patches/@tiptap%2Fy-tiptap@3.0.3.patch
+  '@xterm/xterm@6.0.0':
+    hash: 52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90
+    path: patches/@xterm%2Fxterm@6.0.0.patch
   react-medium-image-zoom@5.4.3:
     hash: d59ed459a6ae570e843d0829f844dde24c0697b883351b198034f47606766517
     path: patches/react-medium-image-zoom@5.4.3.patch
@@ -533,7 +536,7 @@ importers:
         version: 0.19.0
       '@xterm/xterm':
         specifier: 6.0.0
-        version: 6.0.0
+        version: 6.0.0(patch_hash=52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -16417,7 +16420,7 @@ snapshots:
 
   '@xterm/addon-webgl@0.19.0': {}
 
-  '@xterm/xterm@6.0.0': {}
+  '@xterm/xterm@6.0.0(patch_hash=52e724ea4ed73d38923344d68d2e1e8503110de5870507336fe8b096d92d7d90)': {}
 
   '@zag-js/anatomy@1.42.0': {}
 

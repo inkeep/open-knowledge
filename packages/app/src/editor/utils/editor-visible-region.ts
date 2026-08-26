@@ -43,6 +43,23 @@ type EditorShiftOptions = Omit<ShiftOptions, 'boundary' | 'padding' | 'mainAxis'
 };
 
 /**
+ * What `deriveEditorSizeOptions` emits. `apply` states only the one field it
+ * reads instead of floating-ui's full `MiddlewareState & { availableWidth,
+ * availableHeight }`: the producer derives its cap from the region itself, and
+ * narrowing the parameter is what makes reaching for `availableWidth` — the
+ * position-dependent number this deliberately does not use — a compile error
+ * rather than a silent behaviour change. A handler that accepts less is still
+ * assignable where floating-ui passes more.
+ *
+ * No `boundary`/`padding` here: `size()`'s own `detectOverflow` pass feeds
+ * numbers we ignore, so stating a boundary for it would advertise an input
+ * this producer does not consume.
+ */
+interface EditorSizeOptions {
+  apply: (state: Pick<MiddlewareState, 'elements'>) => void;
+}
+
+/**
  * Floating-UI clipping options that keep selection-anchored menus inside the
  * editor's *visible* content region, not just inside the viewport.
  *
@@ -62,7 +79,9 @@ type EditorShiftOptions = Omit<ShiftOptions, 'boundary' | 'padding' | 'mainAxis'
  * `deriveEditorShiftOptions` below, which converts this description of the
  * region into the clamp that keeps a surface inside it. A boundary handed to
  * `flip()`/`hide()` alone detects the overflow and then declines to correct
- * it, so the two producers are consumed together.
+ * it, so the producers are consumed together — and where the surface can be
+ * wider than the pane, with `deriveEditorSizeOptions` as well, since the
+ * clamp has nowhere to put a surface that does not fit.
  *
  * Floating UI is the canonical positioning primitive for selection-anchored
  * overlays (precedent #35), and this module owns the visible-region half of
@@ -77,11 +96,7 @@ type EditorShiftOptions = Omit<ShiftOptions, 'boundary' | 'padding' | 'mainAxis'
  */
 export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions {
   return () => {
-    // `getEditorView` rather than `editor.view`, which is a proxy that throws
-    // until the ProseMirror view mounts (recycle/remount race). A try/catch
-    // around that throw swallows every other one too, and a missing boundary
-    // is invisible: the clamp quietly falls back to the viewport.
-    const boundary = getEditorView(editor)?.dom.closest('.editor-doc-scroll') ?? null;
+    const boundary = resolveRegionBoundary(editor);
     const padding = {
       top: editorToolbarOverlapPx(),
       bottom:
@@ -92,6 +107,18 @@ export function deriveEditorClipOptions(editor: Editor): () => EditorClipOptions
     // to floating-ui's default boundary rather than pinning a stale element.
     return boundary ? { boundary, padding } : { padding };
   };
+}
+
+/**
+ * The editor's scroll box — the element every producer here bounds against.
+ *
+ * `getEditorView` rather than `editor.view`, which is a proxy that throws
+ * until the ProseMirror view mounts (recycle/remount race). A try/catch around
+ * that throw swallows every other one too, and a missing boundary is
+ * invisible: the clamp quietly falls back to the viewport.
+ */
+function resolveRegionBoundary(editor: Editor): Element | null {
+  return getEditorView(editor)?.dom.closest('.editor-doc-scroll') ?? null;
 }
 
 /** Gap a selection-anchored surface keeps between itself and its anchor. */
@@ -158,6 +185,87 @@ export function deriveEditorShiftOptions(
       },
     };
   };
+}
+
+/**
+ * The third member of the contract: a cap that keeps a surface NARROWER than
+ * the editor's visible content region.
+ *
+ * `shift()` relocates; it cannot shrink. Its clamp can satisfy both pane edges
+ * only while the surface FITS between them, so a surface with a fixed width —
+ * the formatting bar is ~450px, the comment composer's card 320px, the lint
+ * callout 352px — overhangs a pane narrower than itself from every coordinate
+ * the clamp could choose. Docking the terminal to the right of a narrowed
+ * editor column is how that happens in the product: the surplus paints on the
+ * terminal — the same escape the two producers above close for position
+ * alone.
+ *
+ * The cap is measured off the boundary element rather than read from
+ * floating-ui's `availableWidth`, and that is deliberate. `availableWidth` is
+ * position-dependent until `shift()` has run — while `middlewareData.shift` is
+ * absent floating-ui reports `min(overflowAvailableWidth,
+ * maximumClippingWidth)`, the room to the right of wherever the surface
+ * currently sits — so a chain that sized before it clamped would squeeze a
+ * surface in a pane with room to spare. Measuring the region states the
+ * invariant the product wants (a surface is at most as wide as the pane it
+ * belongs to) and makes this producer correct at ANY index in the middleware
+ * array. That matters because we do not own every array: tiptap's BubbleMenu
+ * plugin assembles its own as `flip -> shift -> offset -> arrow -> size ->
+ * hide` and gives us no way to reorder it.
+ *
+ * `size()` re-runs the chain whenever `apply` changed the surface's
+ * dimensions, so `shift()` re-clamps against the narrowed rect rather than the
+ * one it was about to overflow with.
+ *
+ * `authorMaxWidth` is for a surface whose stylesheet ALREADY caps its width —
+ * the lint callout's `22rem`. An inline `max-width` outranks that rule, so
+ * writing the region width bare would WIDEN such a surface on a roomy pane
+ * instead of only narrowing it on a cramped one. Naming the author's cap here
+ * folds the two into `min()` and keeps this producer a ceiling, never a floor.
+ * A surface with no stylesheet cap (the bar) or one that sets `width` rather
+ * than `max-width` (the comment card's `w-80`, which `max-width` already
+ * beats) omits it.
+ *
+ * No resolvable region (detached view, non-doc host): clear the cap rather
+ * than pin the surface to a stale width. The same fallback the other two
+ * producers take.
+ */
+export function deriveEditorSizeOptions(
+  editor: Editor,
+  { authorMaxWidth }: { authorMaxWidth?: string } = {},
+): () => EditorSizeOptions {
+  return () => ({
+    apply({ elements }) {
+      const regionWidth = editorRegionWidthPx(editor);
+      if (regionWidth === null) {
+        elements.floating.style.maxWidth = '';
+        return;
+      }
+      elements.floating.style.maxWidth = authorMaxWidth
+        ? `min(${authorMaxWidth}, ${regionWidth}px)`
+        : `${regionWidth}px`;
+    },
+  });
+}
+
+/**
+ * The width a surface may occupy inside the region — the number
+ * `deriveEditorSizeOptions` caps to, exposed for the one caller that has to
+ * decide something other than a `max-width` from it.
+ *
+ * The suggestion picker is that caller: it is two columns, and squeezing both
+ * into a pane that fits neither reads worse than dropping the decorative one.
+ * Deciding that needs the measurement itself, not the style the producer
+ * writes — and re-measuring at the call site would be a second definition of
+ * the region free to drift from this one.
+ *
+ * `null` when no region resolves, matching the producer's own fallback: the
+ * caller has no basis for a width-conditional decision either.
+ */
+export function editorRegionWidthPx(editor: Editor): number | null {
+  const boundary = resolveRegionBoundary(editor);
+  if (!boundary) return null;
+  return Math.max(0, boundary.getBoundingClientRect().width - PANE_GUTTER_PX * 2);
 }
 
 /**

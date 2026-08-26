@@ -60,6 +60,24 @@
       "cache": true,
       "inputs": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "tests/contract/**/*.ts"]
     },
+    "@inkeep/open-knowledge-desktop#test": {
+      "dependsOn": ["^build"],
+      "cache": true,
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!CHANGELOG.md",
+        "!README.md",
+        "../../biome.jsonc",
+        "../../biome-plugins/**",
+        "../../test-support/**",
+        "../../.github/scripts/smoke-packaged-dmg.mjs",
+        "../../scripts/verify-native-config-in-packaged-dmg.mjs",
+        "../../scripts/verify-keyring-in-packaged-dmg.mjs",
+        "../app/*.ts",
+        "../app/*.html",
+        "../app/src/**"
+      ]
+    },
     "@inkeep/md-conformance#test": {
       "dependsOn": ["^build"],
       "cache": true,

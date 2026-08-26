@@ -138,16 +138,6 @@ msgstr "(terbuka di tab baru)"
 msgid "(optional)"
 msgstr "(opsional)"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "(proyek + pengguna)"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "(hanya tingkat proyek)"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "(hanya-baca — untuk sekarang, sunting di mode sumber)"
@@ -163,11 +153,6 @@ msgstr "(sebagian mungkin sudah disembunyikan oleh aturan lain)"
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "(symlink)"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "(hanya tingkat pengguna)"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -518,10 +503,6 @@ msgid "{basename} — text editor"
 msgstr "{basename} — penyunting teks"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr "{behind, plural, other {# commit di belakang}}"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr "{behind} di belakang"
 
@@ -615,6 +596,14 @@ msgstr "{count, plural, other {Langsung memperbaiki # masalah yang punya perbaik
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {cocok dengan # berkas}}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr "{count} di depan"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
+msgstr "{count} di belakang"
 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "{count} skills"
@@ -811,14 +800,11 @@ msgstr "{localizedMessage} pada baris {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# mnt lalu}}"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr "{minutes} mnt lalu"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes} mnt lalu"
 
@@ -909,6 +895,10 @@ msgstr "{propertyCount, plural, other {# properti}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "Properti {propPanelDescriptorLabel}"
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
+msgstr "{seconds} detik"
 
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1122,6 +1112,26 @@ msgstr "📝 atau assets/icon.png"
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
 msgstr "0/0"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr "1 jam"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr "1 menit"
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr "15 menit"
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr "30 detik"
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
+msgstr "5 menit"
 
 #: src/components/ImportSkillForm.tsx
 msgid "A .zip or .skill archive."
@@ -1517,6 +1527,7 @@ msgstr "Tambahkan komentar Anda ke pesan ini"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "Ditambahkan"
 
@@ -1530,8 +1541,8 @@ msgstr "Menambahkan blok terkelola ke"
 msgid "Adds a managed block to {0}"
 msgstr "Menambahkan blok terkelola ke {0}"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "Menambahkan entri MCP OpenKnowledge dan keterampilan proyek ke <0>{toolList}</0> agar agen Anda dapat membaca dan mengedit berkas Anda."
 
@@ -1553,7 +1564,7 @@ msgstr "Menambahkan keterampilan OpenKnowledge ke <0>aplikasi Claude Desktop</0>
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "Menambahkan keterampilan ke {rootRel} — juga dibaca oleh {0}"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "Menambahkan berkas ini"
 
@@ -1565,11 +1576,13 @@ msgstr "Menambahkan folder ini"
 msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "Lanjutan"
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr "Pengaturan lanjutan"
 
@@ -1838,6 +1851,10 @@ msgstr "Menerapkan…"
 msgid "Approve"
 msgstr "Setujui"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "Setujui dan lanjutkan"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "Disetujui"
@@ -1925,6 +1942,10 @@ msgstr "Minta AI memperbaiki {flatId}"
 msgid "Ask an agent"
 msgstr "Tanya agen"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "Minta perubahan…"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
 msgid "Asset"
@@ -1959,6 +1980,10 @@ msgstr "Lampiran"
 msgid "Attachments must total under 3 MB."
 msgstr "Total lampiran harus di bawah 3 MB."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "Diautentikasi sebagai {login}."
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."
@@ -1966,6 +1991,24 @@ msgstr "Konten otoritatif; dicerminkan apa adanya di mana pun ia dirujuk."
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Authorize in browser"
 msgstr "Beri izin di peramban"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr "Otomatis (Pull dan Push)"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr "Otomatis (hanya Pull)"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr "Otomatis (hanya Pull) mengambil pembaruan dari repositori git remote Anda dan memajukan salinan Anda secara otomatis. Suntingan lokal Anda tetap di komputer ini dan tidak pernah dikirim."
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr "Otomatis (hanya Pull) tidak pernah melakukan push atau commit perubahan lokal Anda. Semuanya tetap hanya di mesin ini."
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
@@ -2000,21 +2043,13 @@ msgstr "Perbaikan otomatis hanya berlaku untuk masalah yang punya perbaikan meka
 msgid "Auto-save"
 msgstr "Simpan otomatis"
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "Sinkronisasi otomatis mati untuk worktree ini, diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "Sinkronisasi otomatis aktif untuk worktree ini, diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "Sinkronisasi otomatis dijeda — masuk untuk melanjutkan."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-msgstr "Sinkronisasi otomatis dijeda — Anda tidak punya izin push ke repo ini. Beralih ke Ikuti agar tetap menerima pembaruan."
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+msgstr "Sinkronisasi otomatis dijeda: Anda tidak punya izin push ke repositori ini. Beralihlah ke Otomatis (hanya Pull) agar tetap menerima pembaruan."
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2412,8 +2447,13 @@ msgid "Change the embeddings provider?"
 msgstr "Ganti penyedia embedding?"
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
 msgstr "Diubah"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
+msgstr "Berubah di sini dan di remote"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -2442,6 +2482,10 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "Periksa pembaruan"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
+msgstr "Periksa pembaruan setiap"
 
 #: src/components/AppMenubar.tsx
 msgid "Check for updates…"
@@ -2514,7 +2558,7 @@ msgstr "Memeriksa keterampilan"
 msgid "Checking source"
 msgstr "Memeriksa sumber"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "Memeriksa alat AI yang Anda miliki"
 
@@ -2962,6 +3006,10 @@ msgstr "Beri komentar atau tanya AI tentang blok kode ini"
 msgid "Comments"
 msgstr "Komentar"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr "Commit dan sinkronkan"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "Lakukan commit atau stash pada perubahan untuk berpindah:"
@@ -3112,10 +3160,6 @@ msgstr "Hubungkan alat AI yang Anda pakai ke proyek ini secara khusus. Berkas-be
 msgid "Connect this project to GitHub to share."
 msgstr "Hubungkan proyek ini ke GitHub untuk membagikannya."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "Hubungkan ke alat AI"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "Hubungkan ke GitHub"
@@ -3133,8 +3177,8 @@ msgstr "Hubungkan alat"
 msgid "Connect your AI tools"
 msgstr "Hubungkan alat AI Anda"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "Hubungkan alat AI Anda ke proyek ini"
 
@@ -3263,6 +3307,7 @@ msgstr "Mengubah..."
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr "Disalin"
@@ -3878,6 +3923,10 @@ msgstr "Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang diki
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "Komentar yang menunggu dikirim tidak bisa dibaca: {0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr "Tidak bisa membaca working tree. Periksa log server."
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4370,6 +4419,7 @@ msgid "Delete {0}"
 msgstr "Hapus {0}"
 
 #. placeholder {0}: bulkEntries.length
+#. placeholder {0}: deletable.length
 #: src/components/SkillsTree.tsx
 msgid "Delete {0} skills"
 msgstr "Hapus {0} keterampilan"
@@ -4450,6 +4500,10 @@ msgstr "Hapus obrolan ini?"
 msgid "Delete this comment"
 msgstr "Hapus komentar ini"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr "Dihapus"
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4479,6 +4533,10 @@ msgstr "templat dihapus"
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "Menghapus"
+
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleting {progress} of {count}"
+msgstr "Menghapus {progress} dari {count}"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Denied"
@@ -4540,6 +4598,10 @@ msgstr "token deskripsi"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "Desain"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
+msgstr "HEAD terlepas"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4913,6 +4975,10 @@ msgstr "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "Setiap paket menyusun proyek Anda dengan folder dan templat siap pakai."
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr "Setiap push adalah satu commit ke remote Anda."
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5166,25 +5232,25 @@ msgstr "Aktifkan {id}"
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
-msgstr "Aktifkan sinkronisasi otomatis"
+msgid "Enable Auto (Pull and Push)"
+msgstr "Aktifkan Otomatis (Pull dan Push)"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
+msgstr "Aktifkan Otomatis (Pull dan Push)?"
+
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Auto (Pull only)"
+msgstr "Aktifkan Otomatis (hanya Pull)"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull only)?"
+msgstr "Aktifkan Otomatis (hanya Pull)?"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Enable external link previews"
 msgstr "Aktifkan pratinjau tautan eksternal"
-
-#: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
-msgstr "Aktifkan Ikuti"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
-msgstr "Aktifkan Ikuti?"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
-msgstr "Aktifkan sinkronisasi otomatis git?"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
@@ -5788,6 +5854,10 @@ msgstr "Gagal memperbarui penyedia embedding — {detail}"
 msgid "Failed to update the project sync default — {detail}"
 msgstr "Gagal memperbarui sinkronisasi bawaan proyek — {detail}"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr "Gagal memperbarui interval sinkronisasi — {detail}"
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "Gagal mengunggah berkas"
@@ -6047,28 +6117,6 @@ msgstr "Tautan berbagi folder disalin."
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "Folder tujuan: {linkTitle}. Klik untuk membuka ikhtisarnya."
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr "Ikuti"
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr "Ikuti — pembaruan mengalir masuk dari remote Anda; suntingan Anda tetap di komputer ini."
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr "Ikuti mengambil pembaruan dari repositori git remote Anda dan memajukan salinan Anda secara otomatis. Suntingan lokal Anda tetap di komputer ini dan tidak pernah dikirim."
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "Ikuti aktif untuk worktree ini, diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr "Ikuti tidak pernah melakukan push atau commit pada perubahan lokal Anda. Semuanya hanya tinggal di komputer ini."
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr "Ikuti suntingan agen"
@@ -6159,11 +6207,6 @@ msgstr "Frontmatter yang mengawali setiap dokumen yang dibuat dari templat ini. 
 msgid "Frontmatter schemas"
 msgstr "Skema frontmatter"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr "Penuh"
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr "Panduan lengkap"
@@ -6176,14 +6219,6 @@ msgstr "Jalur lengkap"
 #: src/components/skill-actions.tsx
 msgid "Full Path"
 msgstr "Jalur Lengkap"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr "Sinkronisasi penuh — commit Anda dikirim dan perubahan remote ditarik secara otomatis."
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
-msgstr "Sinkronisasi penuh — suntingan Anda di-commit dan dikirim ke remote Anda secara otomatis."
 
 #: src/components/OkBlobRunner.tsx
 msgid "Game over · press <0>Space</0> to play again"
@@ -6243,6 +6278,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr "Git membutuhkan alat bantu (seperti git-lfs) yang belum terpasang atau tidak ditemukan. Pasang dulu, lalu coba lagi."
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr "Sinkronisasi git"
 
@@ -6624,6 +6660,10 @@ msgstr ""
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "Cara dokumen, file, dan gambar lokal proyek yang hilang dilaporkan di Masalah, diagnostik editor, audit, dan alat agen."
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr "Seberapa sering komputer ini menarik perubahan dari remote Anda."
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "Cara push manual"
@@ -6708,6 +6748,10 @@ msgstr "Pola abaikan"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
 msgstr "Pola abaikan (teks mentah)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
+msgstr "Diabaikan"
 
 #: src/components/LinksPanel.tsx
 msgid "Image {identity}. Go to reference."
@@ -6810,6 +6854,10 @@ msgstr "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitatt
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Di aplikasi Claude Desktop"
+
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "Dalam rencana di atas, tolong "
 
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
@@ -7305,8 +7353,8 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr "Nama harus 64 karakter atau kurang."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-msgstr "Jaga proyek ini tetap selaras dengan remote git Anda. Ikuti mengambil pembaruan tanpa mengirim; sinkronisasi penuh juga mengirim commit Anda. Menyalakan sinkronisasi memerlukan konfirmasi."
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+msgstr "Jaga proyek ini tetap sinkron dengan remote git Anda. Otomatis (hanya Pull) membawa pembaruan tanpa push; Otomatis (Pull dan Push) juga mengirim suntingan Anda. Mengaktifkan sinkronisasi otomatis memerlukan konfirmasi."
 
 #: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7794,6 +7842,11 @@ msgstr "Pengelolaan alat AI tidak tersedia pada build ini."
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "Pengelolaan alat AI proyek tidak tersedia pada build ini."
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr "Manual"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "Petakan arsitekturnya"
@@ -7936,10 +7989,6 @@ msgstr "Warna palet tidak lengkap"
 msgid "Missing theme name"
 msgstr "Nama tema tidak ada"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr "Mode"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr "Model"
@@ -7956,6 +8005,7 @@ msgstr "Upaya bawaan model"
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr "Diubah"
 
@@ -7966,14 +8016,6 @@ msgstr "Ubah tujuan tautan, jangkar, dan label tampilannya."
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "Lainnya"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "Opsi pemberian izin lainnya"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "Opsi penolakan lainnya"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8256,10 +8298,6 @@ msgstr "Galat jaringan saat pembersihan"
 msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "Pengaturan jaringan belum dimuat. Coba lagi sebentar."
 
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
-msgstr "tidak pernah"
-
 #: src/components/FolderOverview.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "New"
@@ -8470,7 +8508,7 @@ msgstr "Tidak ada agen AI yang terpasang"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Alat AI & CLI."
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "Belum ada alat AI yang terdeteksi. Setelah Anda memasang satu, hubungkan dari Pengaturan > Proyek ini."
 
@@ -8874,9 +8912,21 @@ msgstr "tidak apa pun ({0} tidak bisa cocok dengan sebuah dokumen)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "tidak apa pun ({0} bukan pola yang valid)"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr "Tidak ada yang berjalan sampai Anda meminta — pull dan push dari menu sinkronisasi."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr "Tidak ada yang berjalan sampai Anda meminta."
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "Belum ada yang disetel."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
+msgstr "Tidak ada yang perlu di-commit: working tree bersih."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
@@ -8910,10 +8960,6 @@ msgstr "dari {0}"
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
 msgstr "dari {totalPages}"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
-msgstr "Mati"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Off — external links show only their URL. No requests leave this computer."
@@ -9669,6 +9715,10 @@ msgstr "Keluar"
 msgid "Outline"
 msgstr "Kerangka"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr "Di luar cakupan commit Open Knowledge."
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "melebihi anggaran token {budgetLabel}"
@@ -9878,10 +9928,6 @@ msgstr "Galat sintaks pola: {message}"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
 msgstr "Peringatan pola: {summary}"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
-msgstr "Jeda sinkronisasi"
 
 #: src/components/acp/ThreadView.tsx
 msgid "pending"
@@ -10272,9 +10318,25 @@ msgstr "Menerbitkan..."
 msgid "Pull"
 msgstr "Pull"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr "Pull dan Push"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr "Pull membawa"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
 msgstr "Tarik perubahan terbaru"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr "Ditarik {pulled}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
+msgstr "Ditarik {pulled} · dikirim {pushed}"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -10301,9 +10363,25 @@ msgstr "Push cabang {branch} ke GitHub sebelum berbagi."
 msgid "Push failed — check the server logs for details."
 msgstr "Push gagal — periksa log server untuk detailnya."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr "Push menyertakan"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr "Kirim suntingan saya setiap"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr "Push melewati"
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
 msgstr "Push cabang ini ke GitHub sebelum berbagi."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
+msgstr "Dikirim {pushed}"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -10378,6 +10456,10 @@ msgstr "Salinan hanya-baca dari blok MirrorSource di dokumen lain. Sunting di su
 msgid "Read-only file in the {name} skill"
 msgstr "Berkas hanya-baca di keterampilan {name}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr "Membaca working tree"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "Membaca…"
@@ -10430,6 +10512,10 @@ msgstr "Keterampilan agen yang direkomendasikan"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "Perlu menyambung ulang"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
+msgstr "Perlu menyambung ulang untuk melanjutkan sinkronisasi."
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -10491,6 +10577,7 @@ msgstr "Pasang ulang untuk Claude Chat & Cowork"
 msgid "Reinstalling"
 msgstr "Memasang ulang"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "Tolak"
@@ -10696,6 +10783,10 @@ msgstr "Ganti nama keterampilan"
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "Penggantian nama berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr "Diganti nama"
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10847,13 +10938,21 @@ msgstr "Repositori yang sudah Anda kloning mungkin tetap tersinkron lewat kreden
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr "Repositori"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Repository name"
 msgstr "Nama repositori"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "Repositori tidak ditemukan"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "Repositori tidak ditemukan — mungkin ia tidak ada, atau akun yang digunakan mungkin tidak punya akses."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
@@ -10921,6 +11020,10 @@ msgstr "Ubah ukuran panel Keterampilan"
 msgid "Resolve conflict in your terminal"
 msgstr "Selesaikan konfliknya di terminal Anda"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
+msgstr "Selesaikan di terminal"
+
 #: src/components/FileTree.tsx
 msgid "Resolve the conflict on {files} before deleting."
 msgstr "Selesaikan konflik pada {files} sebelum menghapus."
@@ -10946,8 +11049,8 @@ msgid "Resources"
 msgstr "Sumber daya"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "Mulai ulang server"
@@ -10965,7 +11068,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "Dimulai ulang — kini menjalankan v{appRuntime}."
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "Memulai ulang"
 
@@ -11035,10 +11137,6 @@ msgstr "Dipulihkan ke versi dari {0}"
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "Hasil dibatasi — ruang kerja ini punya lebih banyak berkas daripada yang bisa diindeks pencarian. Berkas yang hilang bisa jadi efek batasan itu, bukan salah ketik."
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr "Lanjutkan sinkronisasi"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
@@ -11111,8 +11209,8 @@ msgid "Reverting"
 msgstr "Mengembalikan"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
-msgstr "Tinjau konflik"
+msgid "Review"
+msgstr "Tinjau"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
@@ -12258,6 +12356,10 @@ msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 msgid "Small section heading."
 msgstr "Judul bagian kecil."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr "Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "Beberapa tema tersimpan tidak ditampilkan karena folder tema melewati batas pemindaian."
@@ -12449,6 +12551,10 @@ msgstr "Memulai agennya…"
 msgid "status"
 msgstr "status"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr "Status"
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12596,8 +12702,8 @@ msgid "Switch to a branch to share."
 msgstr "Beralih ke sebuah cabang untuk berbagi."
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
-msgstr "Beralih ke Ikuti"
+msgid "Switch to Auto (Pull only)"
+msgstr "Beralih ke Otomatis (hanya Pull)"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -12636,7 +12742,6 @@ msgid "Symlinks the skill to {path}"
 msgstr "Menautkan keterampilan secara symlink ke {path}"
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "Sinkronisasi"
 
@@ -12646,10 +12751,6 @@ msgid "Sync & sharing"
 msgstr "Sinkronisasi & berbagi"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
-msgstr "Sinkronisasi dinonaktifkan"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync failed — check the server logs for details."
 msgstr "Sinkronisasi gagal — periksa log server untuk detailnya."
 
@@ -12657,13 +12758,21 @@ msgstr "Sinkronisasi gagal — periksa log server untuk detailnya."
 msgid "Sync is failing. See the sync status for details."
 msgstr "Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
-msgstr "Sinkronisasi mati — suntingan Anda tetap di komputer ini sampai Anda melakukan commit dan push secara manual."
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+msgstr "Sinkronisasi dijeda. Commit suntingan lokal ini untuk melanjutkan, atau selesaikan di terminal."
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
-msgstr "Sinkronisasi dijeda. Nyalakan lagi untuk melanjutkan."
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "Sinkronisasi worktree ini disetel ke Otomatis (Pull dan Push), diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "Sinkronisasi worktree ini disetel ke Otomatis (hanya Pull), diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "Sinkronisasi worktree ini disetel ke Manual, diwarisi dari {project}. Ubah di Pengaturan → Sinkronisasi."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -12675,16 +12784,8 @@ msgid "Sync now"
 msgstr "Sinkronkan sekarang"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr "Sinkronisasi mati"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "Sinkronisasi dijeda"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
-msgstr "Sinkronisasi dijeda — selesaikan konfliknya untuk melanjutkan."
 
 #: src/hooks/use-no-push-permission-toast.ts
 msgid "Sync paused — you don't have permission to push to this repo"
@@ -12719,10 +12820,6 @@ msgstr "Status sinkronisasi: {syncStateLabel} — identitas git belum disetel"
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
 msgstr "Tersinkron"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
-msgstr "Tersinkron {lastSyncedRelative}"
 
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
@@ -12946,6 +13043,10 @@ msgstr "Terima kasih atas laporannya!"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "Cabang itu sudah terbuka di worktree lain."
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
+msgstr "Itu tidak berhasil. Periksa log server lalu coba lagi."
 
 #: src/comments/reveal-comment.ts
 msgid "That document didn't open in time. Try again once it has synced."
@@ -13982,6 +14083,10 @@ msgstr "Ketik '/' untuk melihat perintah"
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "Ketik sebuah kueri, lalu tekan <0>↵</0> untuk mencari di halaman Anda berdasarkan makna."
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr "Tipe berubah"
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr "Ketik untuk menyunting; <0>Cmd/Ctrl+Enter</0> menyimpan, <1>Esc</1> membatalkan."
@@ -14110,6 +14215,10 @@ msgstr "Hapus tanda semua komentar"
 msgid "Unmark every comment in {0}"
 msgstr "Hapus tanda semua komentar di {0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr "Belum digabungkan"
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr "Daftar item tanpa nomor."
@@ -14149,6 +14258,10 @@ msgstr "Gambar {identity} tidak dapat ditentukan. Buka referensi."
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "Laporan tanpa judul"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
+msgstr "Tidak dilacak"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
@@ -14197,8 +14310,8 @@ msgid "Updated \"{name}\" from {0}"
 msgstr "\"{name}\" diperbarui dari {0}"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
-msgstr "Diperbarui {lastSyncedRelative}"
+msgid "Updated {updatedRelative}"
+msgstr "Diperbarui {updatedRelative}"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
@@ -14211,6 +14324,11 @@ msgstr "Diperbarui ke Versi {version}"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "Pembaruan mengalir masuk"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
+msgstr "Pembaruan masuk dari remote Anda; suntingan Anda tetap di komputer ini."
 
 #: src/components/SkillOriginInline.tsx
 msgid "Updates from the source apply automatically (unless edited locally)"
@@ -14668,6 +14786,10 @@ msgstr "Di mana ia sebaiknya berada?"
 msgid "Which skill"
 msgstr "Keterampilan yang mana"
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr "Selama Anda keluar dari akun, pembaruan diperiksa paling cepat setiap 3 menit, terlepas dari pengaturan ini."
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "Spasi"
@@ -14764,10 +14886,6 @@ msgstr "Worktree"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "Membungkus baris panjang di penyunting sumber markdown."
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "Menulis konfigurasi MCP proyek untuk setiap alat yang dipilih."
-
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "Menulis entri ke"
@@ -14840,16 +14958,12 @@ msgstr "Anda tidak punya akses ke repositori ini."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "Anda tidak punya izin push ke repo ini"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "Anda tidak punya izin push ke repo ini."
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-msgstr "Anda tidak punya izin push ke repo ini. Ikuti tetap bisa menjaga salinan Anda mutakhir."
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+msgstr "Anda tidak punya izin push ke repositori ini. Otomatis (hanya Pull) tetap bisa menjaga salinan Anda mutakhir."
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "You don't have write access to this repo."
@@ -14921,9 +15035,22 @@ msgstr "Salinan cabang <0>{shareBranch}</0> milik Anda punya perubahan yang belu
 msgid "Your current version is saved first, so this is reversible."
 msgstr "Versi Anda saat ini disimpan lebih dulu, jadi ini bisa dikembalikan."
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
+msgstr "Suntingan Anda di-commit dan dikirim ke remote Anda secara otomatis."
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"
 msgstr "Suntingan Anda tetap di komputer ini"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Konfigurasi Git Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "Konfigurasi kredensial Git Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -14961,6 +15088,10 @@ msgstr "Salinan lokal cabang <0>{branch}</0> milik Anda tertinggal. Tarik peruba
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "Pesanmu tidak sampai ke {agentName}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "URL remote Anda menyebut {declaredLogin}, tetapi kredensial akun itu tidak dapat digunakan."
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

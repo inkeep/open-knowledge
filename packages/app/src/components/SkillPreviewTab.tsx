@@ -34,7 +34,7 @@ import { hashFromSkillFile, hashFromSkillPreview, type SkillPreviewFlavor } from
 import { skillEntryLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { openManagedArtifactTab } from '@/lib/open-managed-artifact-tab';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
-import { discoverSkillsInSource, fetchSkillDetail } from '@/lib/skills-api';
+import { discoverSkillsInSource, fetchSkillDetail, getSkillCurrentPath } from '@/lib/skills-api';
 
 interface Props {
   /** `explore` = a skills.sh catalog entry; `detected` = a skill found in another
@@ -229,11 +229,14 @@ export function SkillPreviewTab({
   // selector only for the bulk-install path, which imports at the current scope
   // and reports no scope of its own.
   const landedScope = previewInstall.importedScope ?? previewInstall.scope;
-  // Redirect only once the skill is actually IN the list, and open it at the
-  // scope the list reports. `useOpenSkill` resolves the doc from that same list,
-  // which lags a fresh import by the `skills-changed` refetch — and the fire-once
-  // ref is set BEFORE the open resolves, so firing early burns the one attempt
-  // on a lookup that cannot succeed and strands the preview for good.
+  // Redirect as soon as the import/install REPORTS where it landed. This was
+  // once gated on the skill appearing in the skills list, but that list lags
+  // an install by a full refetch - seconds on a large content root - so the
+  // preview sat un-redirected long enough to read as "install didn't open the
+  // skill". `useOpenSkill` now resolves a not-yet-listed skill itself (fresh
+  // fetch for project, direct managed doc for global) and busy-marks it
+  // against the tab reconciler, so the early fire no longer burns the
+  // fire-once attempt on a lookup that cannot succeed.
   //
   // Still gated on `landedName`, so previewing a marketplace skill whose name
   // already exists locally does not bounce you straight out of the preview.
@@ -249,14 +252,21 @@ export function SkillPreviewTab({
     linked && allSkills.status === 'ready'
       ? allSkills.data.find((sk) => sk.scope === targetScope && sk.name === name)
       : undefined;
-  const landedEntry =
-    landedName !== null && allSkills.status === 'ready'
-      ? allSkills.data.find((sk) => sk.name === landedName && sk.scope === landedScope)
-      : undefined;
   const importedNow =
-    (flavor === 'explore' || foreign || pluginInfo !== null) && landedEntry !== undefined;
+    (flavor === 'explore' || foreign || pluginInfo !== null) && landedName !== null;
   useEffect(() => {
-    if (!importedNow || redirectedRef.current || installMenuOpen) return;
+    // `installing` holds the redirect like the open menu does: an install
+    // toggle can RELOCATE the just-imported bundle (set-exact fan-out picks
+    // the canonical dir), and a redirect fired mid-install opens a doc whose
+    // dir is about to move — the server auth-rejects it and the cleanup
+    // closes the tab, landing the user on Home with nothing open.
+    if (
+      !importedNow ||
+      redirectedRef.current ||
+      installMenuOpen ||
+      previewInstall.toggles.installing
+    )
+      return;
     redirectedRef.current = true;
     // Capture THIS preview's tab id(s) before opening, then close them after.
     // `replaceActive` only opens with preview DISPOSITION — it swaps whatever
@@ -268,15 +278,47 @@ export function SkillPreviewTab({
       const tab = parseEditorTabId(id);
       return tab.kind === 'skill-preview' && tab.name === name;
     });
-    openSkill(landedScope, landedName as string, {
-      replaceActive: true,
-      // This open REPLACES the preview the user is standing on, so it takes
-      // that history entry rather than stacking a second one for the same skill.
-      replaceHistory: true,
-    });
-    // After the open, so a failure to resolve can never leave zero tabs.
-    for (const id of stalePreviewTabIds) closeTab(id);
-  }, [importedNow, installMenuOpen, landedScope, landedName, openSkill, openTabs, name, closeTab]);
+    const openLanded = (path: string | undefined) => {
+      openSkill(landedScope, landedName as string, {
+        ...(path !== undefined ? { path } : {}),
+        replaceActive: true,
+        // This open REPLACES the preview the user is standing on, so it takes
+        // that history entry rather than stacking a second one for the same skill.
+        replaceHistory: true,
+      });
+      // After the open, so a failure to resolve can never leave zero tabs.
+      for (const id of stalePreviewTabIds) closeTab(id);
+    };
+    if (previewInstall.toggles.hostSet.size === 0) {
+      // The import's own path report: the open resolves with zero
+      // skills-list round-trips, which on a large content root is the
+      // difference between instant and seconds.
+      openLanded(previewInstall.importedPath ?? undefined);
+    } else {
+      // An install toggle can RELOCATE the just-imported bundle (set-exact
+      // fan-out picks the canonical dir), so the import-time path report may
+      // now point at a dir that no longer exists — opening it auth-rejects
+      // server-side and the tab self-closes to Home. Re-resolve the current
+      // location with the per-skill detail read (fast; the skills LIST is
+      // the read that lags by seconds on large roots), falling back to the
+      // import report if the read fails.
+      void getSkillCurrentPath(landedScope, landedName as string).then((current) =>
+        openLanded(current ?? previewInstall.importedPath ?? undefined),
+      );
+    }
+  }, [
+    importedNow,
+    installMenuOpen,
+    landedScope,
+    landedName,
+    openSkill,
+    openTabs,
+    name,
+    closeTab,
+    previewInstall.importedPath,
+    previewInstall.toggles.installing,
+    previewInstall.toggles.hostSet,
+  ]);
   // Capitalized harness for the header copy ("detected in Claude"), matching
   // the "From Claude" provenance chip.
   const harnessLabel = subtitle ? subtitle.charAt(0).toUpperCase() + subtitle.slice(1) : subtitle;
@@ -400,7 +442,17 @@ export function SkillPreviewTab({
         // Explore installs and plugin copies go through the SAME destination
         // menu. The first destination choice performs the import, so "Edit a
         // copy" never silently defaults to `.agents` or any other root.
-        <DropdownMenu onOpenChange={setInstallMenuOpen}>
+        <DropdownMenu
+          // modal=false: the first destination pick triggers the import whose
+          // auto-open REPLACES this tab, unmounting the menu mid-close. A modal
+          // menu locks `body` with pointer-events:none while open, and that
+          // abrupt unmount skips the unlock — the whole app then ignores every
+          // click until reload (caught live: orphaned open menu + body stuck at
+          // pointer-events:none). Non-modal never locks, so there is nothing to
+          // leak; outside-click and Escape still dismiss.
+          modal={false}
+          onOpenChange={setInstallMenuOpen}
+        >
           <DropdownMenuTrigger asChild>
             <Button
               size="sm"

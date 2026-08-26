@@ -14,6 +14,7 @@ tmp/
 .vercel/
 packages/content/
 test-results/
+packages/desktop/test-results-packaged/
 packages/app/test-results/
 playwright-report/
 blob-report/

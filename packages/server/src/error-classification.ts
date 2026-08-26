@@ -18,14 +18,9 @@ import {
 
 /** Subclass strings, narrowed per class. */
 type NetworkSubclass = 'dns' | 'timeout' | '5xx' | '429' | 'connection-refused' | 'unknown-network';
-type AuthSubclass =
-  | '401'
-  | '403'
-  | 'expired-token'
-  | 'scope-mismatch'
-  | 'no-credential'
-  | 'ssh-auth'
-  | 'unknown-auth';
+// Derived from the canonical core union so a new subclass lands here
+// automatically, the same way `AUTH_SUBCLASS_MESSAGES` already tracks it.
+type AuthSubclass = GitAuthFailureSubclass;
 type SemanticSubclass =
   | 'non-fast-forward'
   | 'protected-branch'
@@ -110,6 +105,7 @@ export function deriveUserFacingCode(
   if (cls === 'auth' && subclass === '401') return 'auth-401';
   if (cls === 'auth' && subclass === 'scope-mismatch') return 'auth-scope-mismatch';
   if (cls === 'auth' && subclass === 'no-credential') return 'auth-no-credential';
+  if (cls === 'auth' && subclass === 'not-found-as-identity') return 'auth-not-found-as-identity';
   if (cls === 'semantic' && subclass === 'protected-branch') return 'semantic-protected-branch';
   return null;
 }
@@ -141,6 +137,10 @@ const AUTH_SUBCLASS_MESSAGES: Record<GitAuthFailureSubclass, string> = {
   '403': 'Access denied (403)',
   'scope-mismatch': 'GitHub token missing required scopes',
   'ssh-auth': 'SSH authentication failed — check your SSH key or host-key trust',
+  // Asserts only what the stderr proves: GitHub 404s both "doesn't exist" and
+  // "private + no access", so the copy names both and accuses neither.
+  'not-found-as-identity':
+    'Repository not found — it may not exist, or the account used may not have access',
   'unknown-auth': 'Authentication failed',
 };
 

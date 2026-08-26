@@ -35,7 +35,7 @@ describe('EnableSyncConfirmDialog', () => {
 
   test('full variant (default) shows the bidirectional warning and no stranded disclosure', async () => {
     await renderDialog({ strandedCommitCount: 3 });
-    expect(screen.getByRole('button', { name: 'Enable auto-sync' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     const note = screen.getByRole('note').textContent ?? '';
     expect(note).toContain('Commits happen automatically');
     // Stranded disclosure is pull-only; a full enable pushes the commits, so it
@@ -45,7 +45,7 @@ describe('EnableSyncConfirmDialog', () => {
 
   test('pull variant shows the one-directional warning', async () => {
     await renderDialog({ variant: 'follow' });
-    expect(screen.getByRole('button', { name: 'Enable Follow' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull only)' })).not.toBeNull();
     expect(screen.getByRole('note').textContent ?? '').toContain('Updates flow in');
     expect(screen.queryByText(/haven't shared/i)).toBeNull();
   });
@@ -67,7 +67,7 @@ describe('EnableSyncConfirmDialog', () => {
   test('confirm fires the callback', async () => {
     const confirms: string[] = [];
     await renderDialog({ variant: 'follow', onConfirm: () => confirms.push('ok') });
-    await userEvent.click(screen.getByRole('button', { name: 'Enable Follow' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull only)' }));
     expect(confirms).toEqual(['ok']);
   });
 });

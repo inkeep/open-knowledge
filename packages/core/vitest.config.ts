@@ -7,7 +7,6 @@ import { okVitestBase } from '../../test-support/vitest.base';
  * Spreads the shared workspace base (`development` export-condition pin,
  * `bun:test` alias shim, `Bun` global facade, `import.meta.dir` transform, 30s
  * timeout). The base `include` matches every `*.test.ts` under the package; each
- * `test*` npm script narrows to its tier with path positionals, mirroring what
- * `bun test <dir…>` selected before the flip.
+ * `test*` npm script narrows to its tier with path positionals.
  */
 export default defineConfig({ ...okVitestBase });

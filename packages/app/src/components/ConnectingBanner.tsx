@@ -16,6 +16,12 @@
  *       (b) a manual "Retry" button that resets the backoff window. Shown
  *       immediately regardless of grace — the user has already waited 30s.
  *
+ * Terminal is browser-only: every window that mounts this banner is handed a
+ * populated `collabUrl` on the desktop bridge, so `useCollabUrl` short-circuits
+ * and never polls, let alone gives up. Server-restart recovery therefore has no
+ * reachable home here — it lives on the surfaces the desktop actually renders
+ * when a server dies (the document error boundary and the sidebar listing).
+ *
  * A silent-forever banner is itself a form of ceremony — users hit-refresh
  * or kill the tab. The terminal state surfaces an actionable diagnostic
  * (pointer at `ok status` / `last-spawn-error.log`) so the user can fix
@@ -28,7 +34,6 @@ import { Trans } from '@lingui/react/macro';
 import { useEffect, useState } from 'react';
 import { OkBlob } from '@/components/OkBlob';
 import { useDocumentContext, useOpenBlobRunner } from '@/editor/DocumentContext';
-import { restartCollabServer } from '@/lib/restart-collab-server';
 
 /**
  * Grace-period length before the amber retrying banner surfaces. 500 ms
@@ -96,11 +101,6 @@ export function ConnectingBanner() {
   const openBlobRunner = useOpenBlobRunner();
   const { collabUrl, collabTerminal, collabLastError, retryCollab } = useDocumentContext();
   const [graceElapsed, setGraceElapsed] = useState(false);
-  const [restarting, setRestarting] = useState(false);
-  const [restartError, setRestartError] = useState<string | null>(null);
-  // Desktop-only: `restartServer` lives on the Electron bridge. In `ok ui`
-  // (browser) mode there is no owned process to restart, so only Retry shows.
-  const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
 
   useEffect(() => {
     // Resolved or terminal → no grace timer needed. Reset the flag so a
@@ -130,30 +130,6 @@ export function ConnectingBanner() {
     // indefinite "Connecting".
     const isNoCollabServer = isNoCollabServerError(collabLastError);
     const errorDetail = describeError(collabLastError);
-    // Retry only re-attempts the SAME server — futile once it has exited (e.g.
-    // idle-shutdown). In the desktop app we can spawn a fresh one; `restartServer`
-    // reads the (now absent) lock and boots a new server + window.
-    const handleRestart = async () => {
-      if (!bridge) return;
-      setRestartError(null);
-      setRestarting(true);
-      try {
-        const result = await restartCollabServer(bridge);
-        // Success: main tears this window down and recreates it, so this
-        // component is unmounting — nothing to reset. Only a resolved failure
-        // needs surfacing.
-        if (!result.ok) {
-          setRestartError(result.message);
-          setRestarting(false);
-        }
-      } catch {
-        // The invoke rejects when main destroys this window mid-call (the
-        // success path) — but an unexpected IPC failure lands here too. Re-enable
-        // the button so it can't stick on "Restarting"; on the success path the
-        // component is unmounting, so the state update is a harmless no-op.
-        setRestarting(false);
-      }
-    };
     return (
       <div
         role="alert"
@@ -177,27 +153,11 @@ export function ConnectingBanner() {
         </span>
         <button
           type="button"
-          onClick={() => {
-            // Clear any prior restart-failure message so a fresh Retry doesn't
-            // read as if the retry itself produced the stale error.
-            setRestartError(null);
-            retryCollab();
-          }}
-          disabled={restarting}
-          className="bg-red-950 text-red-50 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-900 disabled:opacity-60"
+          onClick={retryCollab}
+          className="bg-red-950 text-red-50 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-900"
         >
           <Trans>Retry</Trans>
         </button>
-        {bridge ? (
-          <button
-            type="button"
-            onClick={handleRestart}
-            disabled={restarting}
-            className="bg-red-950 text-red-50 px-2 py-0.5 rounded text-xs font-medium hover:bg-red-900 disabled:opacity-60"
-          >
-            {restarting ? <Trans>Restarting</Trans> : <Trans>Restart server</Trans>}
-          </button>
-        ) : null}
         {/* Deliberate exception to the hidden-game gate: waking the mascot
             elsewhere costs a rage-click streak, but this banner only appears
             while the user is stuck waiting on the server, which is the wait
@@ -212,9 +172,6 @@ export function ConnectingBanner() {
           >
             <OkBlob size={22} trackMouse={false} variant="sleeping" />
           </button>
-        ) : null}
-        {restartError !== null ? (
-          <span className="w-full text-red-950 text-xs">{restartError}</span>
         ) : null}
       </div>
     );

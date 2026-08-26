@@ -10,11 +10,15 @@ import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { setImmediate as yieldToEventLoop } from 'node:timers/promises';
 import {
+  deriveValidationRunSources,
   fixDocument,
   type LintDiagnostic,
   type LinterConfig,
+  type LintPluginFailure,
+  type LintPluginId,
   lintDocument,
   SUPPORTED_DOC_EXTENSIONS,
+  summarizeLintPluginFailures,
 } from '@inkeep/open-knowledge-core';
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import { createContentFilter } from '../content-filter.ts';
@@ -23,10 +27,20 @@ import { AuditCache } from './audit-cache.ts';
 import { unmatchedAppliesToProblems } from './frontmatter-schemas.ts';
 import { composeFrontmatterSchemasConfig, resolveEffectiveLinterConfig } from './resolve-config.ts';
 
-export interface FileLintResult {
+interface FileLintResult {
   /** Path relative to `contentDir`. */
   file: string;
   diagnostics: LintDiagnostic[];
+}
+
+interface LintDocRunResult extends FileLintResult {
+  ran: LintPluginId[];
+  /**
+   * Structured rather than pre-rendered: a whole-project walk collapses the
+   * per-doc repeats of one systematic fault into a single counted line, which
+   * it cannot do once each failure has been formatted with its own docName.
+   */
+  failures: LintPluginFailure[];
 }
 
 export interface AuditResult {
@@ -35,6 +49,7 @@ export interface AuditResult {
   errorCount: number;
   warningCount: number;
   warnings: string[];
+  ran: LintPluginId[];
 }
 
 /**
@@ -110,7 +125,7 @@ export interface AuditOptions {
  *  per-doc effective config. */
 export async function lintDoc(
   opts: AuditOptions & { docRelPath: string; onConfigProblem?: (problem: string) => void },
-): Promise<FileLintResult> {
+): Promise<LintDocRunResult> {
   const { projectDir, contentDir, baseConfig, docRelPath, onConfigProblem, liveSourceFor, cache } =
     opts;
   const live = liveSourceFor?.(docRelPath) ?? null;
@@ -123,8 +138,18 @@ export async function lintDoc(
     projectDir,
     onProblem: onConfigProblem,
   });
+  const ran = deriveValidationRunSources(cfg, { mode: 'lint' });
+  const failures: LintPluginFailure[] = [];
+  const onPluginFailure = (failure: LintPluginFailure): void => {
+    failures.push(failure);
+  };
   if (live !== null) {
-    return { file: docRelPath, diagnostics: await lintDocument(live, cfg, docRelPath) };
+    return {
+      file: docRelPath,
+      diagnostics: await lintDocument(live, cfg, docRelPath, onPluginFailure),
+      ran,
+      failures,
+    };
   }
   // Symlinks inside the content dir are supported (realpath-based identity),
   // but an escape must be refused before the read: lint diagnostics echo
@@ -148,13 +173,19 @@ export async function lintDoc(
     }
     if (cacheKey !== null) {
       const cached = cache.get(cacheKey);
-      if (cached !== null) return { file: docRelPath, diagnostics: cached };
+      if (cached !== null) return { file: docRelPath, diagnostics: cached, ran, failures };
     }
   }
   const text = readFileSync(canonical, 'utf-8');
-  const diagnostics = await lintDocument(text, cfg, docRelPath);
-  if (cacheKey !== null) cache?.set(cacheKey, diagnostics);
-  return { file: docRelPath, diagnostics };
+  const diagnostics = await lintDocument(text, cfg, docRelPath, onPluginFailure);
+  // A degraded run is never cached: the entry stores diagnostics ALONE, so a hit
+  // would replay the incomplete set with no failure beside it and report the doc
+  // clean until its mtime, size, or config fingerprint moves. The cost is that a
+  // plugin failing across the corpus keeps every walk cold until it is fixed;
+  // the payoff is that the failure self-heals on the next audit instead of
+  // sticking to a cache key nothing invalidates.
+  if (cacheKey !== null && failures.length === 0) cache?.set(cacheKey, diagnostics);
+  return { file: docRelPath, diagnostics, ran, failures };
 }
 
 /**
@@ -172,16 +203,27 @@ export async function lintAndFixSource(
     source: string;
     onConfigProblem?: (problem: string) => void;
   },
-): Promise<{ cfg: LinterConfig; before: LintDiagnostic[]; fixed: string }> {
+): Promise<{
+  cfg: LinterConfig;
+  before: LintDiagnostic[];
+  fixed: string;
+  ran: LintPluginId[];
+  failures: LintPluginFailure[];
+}> {
   const { projectDir, contentDir, baseConfig, docRelPath, source, onConfigProblem } = opts;
   const cfg = resolveEffectiveLinterConfig(contentDir, baseConfig, {
     docName: docRelPath,
     projectDir,
     onProblem: onConfigProblem,
   });
-  const before = await lintDocument(source, cfg, docRelPath);
-  const fixed = fixDocument(source, cfg);
-  return { cfg, before, fixed };
+  const ran = deriveValidationRunSources(cfg, { mode: 'lint' });
+  const failures: LintPluginFailure[] = [];
+  const onPluginFailure = (failure: LintPluginFailure): void => {
+    failures.push(failure);
+  };
+  const before = await lintDocument(source, cfg, docRelPath, onPluginFailure);
+  const fixed = fixDocument(source, cfg, docRelPath, onPluginFailure);
+  return { cfg, before, fixed, ran, failures };
 }
 
 /**
@@ -239,6 +281,7 @@ export async function auditProject(
 ): Promise<AuditResult> {
   const { projectDir, contentDir, baseConfig, targetPath, auditGeneration } = opts;
   const warnings: string[] = [];
+  let ran: LintPluginId[] = [];
   // Sampled before the first yield, so it is the generation every doc in this
   // walk is linted under until proven otherwise.
   const startGeneration = auditGeneration?.();
@@ -255,19 +298,19 @@ export async function auditProject(
   const scopeRel = relative(contentDir, scope.path);
   if (scopeRel.startsWith('..') || isAbsolute(scopeRel)) {
     warnings.push(`refusing audit scope outside the content directory: ${targetPath ?? ''}`);
-    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings };
+    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
   }
   // Same hidden-segment rule the walk applies per entry: a scope like
   // `.ok/skills` names docs the write path cannot address, so auditing it
   // would produce unfixable, unnavigable rows.
   if (scopeRel.split('/').some((segment) => segment.startsWith('.'))) {
     warnings.push(`refusing audit scope under a hidden path segment: ${targetPath ?? ''}`);
-    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings };
+    return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
   }
   try {
     if (!isWithinContentDir(realpathSync(scope.path), realpathSync(contentDir))) {
       warnings.push(`symlink-escape: audit scope resolves outside the content directory`);
-      return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings };
+      return { files: [], fileCount: 0, errorCount: 0, warningCount: 0, warnings, ran: [] };
     }
   } catch {
     // Scope path missing or unreadable: fall through — the walk/read reports it.
@@ -288,6 +331,7 @@ export async function auditProject(
   docFiles.sort();
 
   const files: FileLintResult[] = [];
+  const pluginFailures: LintPluginFailure[] = [];
   let errorCount = 0;
   let warningCount = 0;
   // Config problems repeat for every doc a governing file covers — dedupe.
@@ -300,6 +344,7 @@ export async function auditProject(
   // Frontmatter schema loading is doc-independent — resolve once for the whole
   // audit; the per-doc resolution sees resolved entries and skips the reads.
   const auditBase = composeFrontmatterSchemasConfig(projectDir, baseConfig, onConfigProblem);
+  ran = deriveValidationRunSources(auditBase, { mode: 'lint' });
   // Zero-match globs only make sense against the FULL doc set — a sub-path
   // audit would flag every pattern scoped to a folder outside the target.
   const fmSlice = auditBase.plugins.frontmatter;
@@ -320,7 +365,7 @@ export async function auditProject(
       }
       sliceStartedAt = performance.now();
     }
-    let result: FileLintResult;
+    let result: LintDocRunResult;
     try {
       result = await lintDoc({
         projectDir,
@@ -335,12 +380,15 @@ export async function auditProject(
       warnings.push(`could not lint ${rel}: ${errMsg(e)}`);
       continue;
     }
+    pluginFailures.push(...result.failures);
     for (const d of result.diagnostics) {
       if (d.severity === 'error') errorCount++;
       else warningCount++;
     }
     // Only include files that actually have diagnostics in the audit payload.
-    if (result.diagnostics.length > 0) files.push(result);
+    if (result.diagnostics.length > 0) {
+      files.push({ file: result.file, diagnostics: result.diagnostics });
+    }
   }
 
   // Small corpora may finish without crossing the time-slice yield above. The
@@ -349,7 +397,13 @@ export async function auditProject(
     throw new AuditSupersededError();
   }
 
-  return { files, fileCount: docFiles.length, errorCount, warningCount, warnings };
+  // One line per distinct fault, not per doc it hit: a plugin that throws on
+  // every document would otherwise make this array grow with the corpus and
+  // flood the agent channels that render it.
+  // MCP capAuditWarnings applies cap-safe priority at the carrier boundary.
+  warnings.push(...summarizeLintPluginFailures(pluginFailures));
+
+  return { files, fileCount: docFiles.length, errorCount, warningCount, warnings, ran };
 }
 
 /**

@@ -73,6 +73,22 @@ export const PushPermissionSchema = z.discriminatedUnion('checkStatus', [
         'repo-not-found',
         'not-authenticated',
       ]),
+      /**
+       * Login whose credential the probe actually authenticated with — what
+       * the token resolution landed on after any fallback, never a declared
+       * account the resolution fell back from. Absent when no identity is
+       * known; the UI must then omit the identity sentence rather than guess.
+       */
+      resolvedLogin: z.string().optional(),
+      /**
+       * Declared account that did NOT produce the credential used, plus the
+       * mechanism it was declared through — currently `'remote-url'` or
+       * `'credential-config'`. Open strings rather than enums: a payload
+       * from a server with a newer declaration mechanism must degrade to
+       * generic wording, not fail the whole sync-status parse.
+       */
+      declaredLogin: z.string().optional(),
+      declaredSource: z.string().optional(),
     })
     .loose(),
   z
@@ -109,6 +125,13 @@ export const SYNC_ERROR_CODES = [
   // back to a (no-TTY) interactive prompt. Distinct from `auth-401` (a token
   // exists but was rejected): the user must reconnect, not just retry.
   'auth-no-credential',
+  // GitHub's 404 masquerade: git said "repository not found" while a
+  // credential WAS attached. The repo may not exist, or the identity used may
+  // not see it — the stderr cannot say which, so the copy asserts both and
+  // never offers a sign-in as the fix. A client older than this code renders
+  // its formatter's generic fallback (the wire is not schema-validated
+  // client-side; the formatters carry an explicit default branch).
+  'auth-not-found-as-identity',
   'semantic-protected-branch',
 ] as const;
 
@@ -154,6 +177,29 @@ export const SyncStatusSchema = z
   .object({
     state: SyncStateSchema,
     lastSyncUtc: z.string().nullable(),
+    /**
+     * When a sync operation last completed successfully — a push or a pull that
+     * REACHED THE REMOTE, scheduled or user-pressed, whether or not content
+     * moved. Explicitly NOT the panel-open fetch: that fires whenever the user
+     * looks, so counting it would pin this to "just now" permanently.
+     * `lastSyncUtc` by contrast only advances when content actually changed,
+     * which reads as a dead button after a no-op pull.
+     * Optional for version-skew safety.
+     */
+    lastRunUtc: z.string().nullable().optional(),
+    /**
+     * The same successful-run signal split by direction, so a consumer can say
+     * WHICH leg ran rather than collapsing both into one stamp. These are the
+     * primary source for the popover's freshness line; `lastRunUtc` is the
+     * single-value fallback for a server that predates them.
+     *
+     * Declared rather than left to `.loose()`: the success envelope serializes
+     * the VALIDATED object, so an undeclared field only reaches the client by
+     * the object being loose. Tightening this schema would silently blank the
+     * freshness line with no compile error.
+     */
+    lastPullOkUtc: z.string().nullable().optional(),
+    lastPushOkUtc: z.string().nullable().optional(),
     lastFetchUtc: z.string().nullable(),
     lastPushedSha: z.string().nullable(),
     ahead: z.number().int().min(0),
@@ -178,6 +224,15 @@ export const SyncStatusSchema = z
     pullError: z.string().optional(),
     pullErrorCode: SyncErrorCodeSchema.optional(),
     pausedReason: z.string().optional(),
+    /**
+     * The tracked paths whose local edits overlap the incoming merge, when
+     * `pausedReason` is `external-changes-pending`. These are what the user has
+     * to commit (or resolve in a terminal) before sync can continue, so the UI lists them and
+     * offers the actions rather than naming three of them in a sentence and
+     * leaving the user to find the rest. Capped server-side; absent (not empty)
+     * whenever nothing is blocking, so a consumer branches on presence.
+     */
+    blockingPaths: z.array(z.string().min(1)).optional(),
     /** Push-permission probe outcome. Absent when no probe has resolved yet. */
     pushPermission: PushPermissionSchema.optional(),
     /**
@@ -202,14 +257,49 @@ export const SyncStatusSchema = z
 export type SyncStatusWire = z.infer<typeof SyncStatusSchema>;
 
 /**
+ * Success body for `POST /api/sync/resolve-blocking` — the action that
+ * clear a pre-merge overlap pause.
+ *
+ * `paths` is what the server actually acted on, read from the engine's own
+ * blocking set rather than the request: the client names the ACTION, never the
+ * files. `commitSha` is present only for `commit` and only when the commit
+ * produced one (an overlap already staged and committed by another surface
+ * leaves nothing to do, which is a success with no SHA).
+ */
+export const SyncResolveBlockingSuccessSchema = z
+  .object({
+    action: z.enum(['commit']),
+    paths: z.array(z.string().min(1)),
+    commitSha: z.string().optional(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type SyncResolveBlockingSuccess = z.infer<typeof SyncResolveBlockingSuccessSchema>;
+
+/**
+ * Request body for `POST /api/sync/resolve-blocking`. Deliberately carries no
+ * path list — see the success schema.
+ */
+export const SyncResolveBlockingRequestSchema = z
+  .object({
+    action: z.enum(['commit']),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type SyncResolveBlockingRequest = z.infer<typeof SyncResolveBlockingRequestSchema>;
+
+/**
  * Request body for `POST /api/sync/trigger`. `op` is optional — server defaults
- * to `'sync'` when omitted. Pre-validation, the legacy handler accepted any
+ * to `'sync'` when omitted.
+ *
+ * `'fetch'` is the read-only member of the set: it refreshes remote-tracking
+ * refs and the ahead/behind counts and never merges, commits, or touches the
+ * working tree. It is what a passive surface (opening the sync panel) may call;
+ * everything else moves files and belongs behind an explicit user action. Pre-validation, the legacy handler accepted any
  * unknown shape and silently fell through to `'sync'`; the schema-validated
  * form rejects unknown `op` values explicitly with `urn:ok:error:invalid-request`.
  */
 export const SyncTriggerRequestSchema = z
   .object({
-    op: z.enum(['sync', 'push', 'pull']).optional(),
+    op: z.enum(['sync', 'push', 'pull', 'fetch']).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncTriggerRequest = z.infer<typeof SyncTriggerRequestSchema>;
@@ -220,7 +310,7 @@ export type SyncTriggerRequest = z.infer<typeof SyncTriggerRequestSchema>;
  */
 export const SyncTriggerSuccessSchema = z
   .object({
-    op: z.enum(['sync', 'push', 'pull']),
+    op: z.enum(['sync', 'push', 'pull', 'fetch']),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncTriggerSuccess = z.infer<typeof SyncTriggerSuccessSchema>;

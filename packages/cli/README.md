@@ -24,7 +24,7 @@ ok start         # serve the editor and open it in your browser
 
 - `ok init` — turn a folder into an OpenKnowledge project and register the MCP server with supported AI tools.
 - `ok start` — run the local server and web editor, then open it in your browser.
-- `ok open <file.md>` — open a single Markdown file in the editor.
+- `ok open <target>` — open a doc, a folder, or a path to a Markdown file in the editor. It prints the project root it resolved; pass `--project <dir>` anywhere in the command to name one yourself.
 - `ok --help` — list every command.
 
 ## Desktop app

@@ -32,6 +32,7 @@ import {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   SPAWN_ERROR_LOG,
+  sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
@@ -39,6 +40,7 @@ import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
+import type { ServerExitInfo } from './server-exit-record.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
 import type { ShareDeepLinkBranchSwitchPayload } from './url-scheme.ts';
@@ -71,6 +73,72 @@ const DEFAULT_SPAWN_STARTUP_DEADLINE_MS = 15_000;
  * proportion however the first is configured.
  */
 const SPAWN_WAIT_EXTENSION_FACTOR = 8;
+
+/**
+ * How many times a foreign lock is probed before a caller acts on the answer,
+ * and how long it waits between tries. Shared by the detached-spawn gate and
+ * the recovery that breaks a stale claim. See `probeForeignLockWithGrace`.
+ */
+const FOREIGN_LOCK_PROBE_ATTEMPTS = 3;
+const FOREIGN_LOCK_PROBE_RETRY_MS = 500;
+
+/**
+ * Which decision a health probe is informing. The `desktop-attach-refused`
+ * event predates every caller but the attach gate, so without this a bundle
+ * reads a restart-recovery refusal and an attach-gate refusal as the same
+ * verdict twice on one port.
+ */
+type ProbePhase = 'attach' | 'spawn-foreign-lock' | 'restart-recovery' | 'force-stop-recovery';
+
+/**
+ * Whether a lock's `port` is something we can actually dial.
+ *
+ * `lock.port` is TYPED `number` but never validated at runtime on this path:
+ * `readProcessLock` checks only `pid` and then casts. So `undefined`, `Infinity`,
+ * `70000`, `1.5` and even a string all reach us, and every one of them survives
+ * a `port <= 0` test — `undefined <= 0` is a NaN comparison, hence `false`.
+ * Each then formats into `http://localhost:undefined`-shaped garbage, the probe
+ * throws, `probeAttachableLock` swallows it as "not serving", and a lock we had
+ * no business touching gets unlinked. Testing dialability rather than sign is
+ * what closes that.
+ */
+function isDialablePort(port: unknown): port is number {
+  return typeof port === 'number' && Number.isInteger(port) && port > 0 && port <= 65535;
+}
+
+/** The two entry states that can meet an unkillable lock holder. */
+type RecoveryCaller = 'restart' | 'force-stop';
+
+/**
+ * Pairs each recovery entry state's log event with its probe phase, so the two
+ * cannot drift apart. Not the single source of the event NAME — the same
+ * literals are set independently at the other log sites in these two methods;
+ * this owns only the pairing.
+ */
+const RECOVERY_CALLERS: Record<
+  RecoveryCaller,
+  { event: 'desktop-server-restart' | 'desktop-force-stop-conflicting-server'; phase: ProbePhase }
+> = {
+  restart: { event: 'desktop-server-restart', phase: 'restart-recovery' },
+  'force-stop': {
+    event: 'desktop-force-stop-conflicting-server',
+    phase: 'force-stop-recovery',
+  },
+};
+
+/**
+ * Cadence (ms) of the ephemeral single-file session's server-liveness poll. An
+ * ephemeral server is a DETACHED process whose lifetime is decoupled from its
+ * window's, so it can die (kill / crash / idle-shutdown) while the window stays
+ * open. The spawner observes the child's `'exit'` but exposes it only as a pull
+ * snapshot (`readExit`), not a push signal to this class — so this poll is how
+ * the window manager proactively notices a dead session and reaps it. A few
+ * seconds is well inside human re-open latency while staying a cheap
+ * `process.kill(pid, 0)` probe. Tests inject `deps.setInterval` (see
+ * `wireIntervalTimers` / `tick` in the ephemeral-window test suite) to advance
+ * it deterministically.
+ */
+const EPHEMERAL_SERVER_WATCH_POLL_MS = 3_000;
 
 /**
  * Local mirror of `isValidLockPid` from `@inkeep/open-knowledge-server`. Same
@@ -298,38 +366,84 @@ export interface ServerLockMetadataLike {
 }
 
 /**
+ * The loopback origin a lock's `url` field yields, or `null` when it yields
+ * none. Extracted so `lockApiOrigin` and anything reasoning about whether a
+ * lock is dialable at all read the SAME precedence — a second copy of this
+ * check drifting from the first is how a lock with a good `url` and a garbage
+ * `port` came to look unreachable.
+ */
+function loopbackOriginFromUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  let parsed: URL | null = null;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
+  const host = parsed.hostname;
+  const loopback =
+    host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+  return loopback ? parsed.origin : null;
+}
+
+/**
+ * Whether anything could be listening at what this lock names — the question
+ * the BREAK path asks, because breaking without a probe is only safe when the
+ * answer is no.
+ *
+ * Deliberately permissive about `port`. `lockApiOrigin` renders a numeric
+ * STRING into `http://localhost:42117`, which is a perfectly live address, so
+ * a server can be behind a lock that shape. Treating it as nothing-there would
+ * destroy a claim we could have dialed.
+ */
+function lockMayHaveServer(lock: { port?: unknown; url?: unknown }): boolean {
+  if (loopbackOriginFromUrl(lock.url) !== null) return true;
+  const port = typeof lock.port === 'string' ? Number(lock.port) : lock.port;
+  return isDialablePort(port);
+}
+
+/**
+ * Whether we can ATTACH to what this lock names — a strictly narrower question
+ * than `lockMayHaveServer`, and the reason the two exist separately.
+ *
+ * A numeric string can have a server behind it, but the session we would build
+ * on top cannot carry it: `resolveKeepaliveWsOrigin` returns `undefined` unless
+ * `port` is a positive NUMBER, so idle-shutdown reaps the server under an open
+ * window. That requirement is unconditional, which is why a good `url` does not
+ * rescue a bad `port` here the way it does for `lockMayHaveServer` — dialing
+ * once and holding the server alive are different needs, and only the second
+ * one is what attaching commits us to. Both doors into attach ask this; the
+ * break path asks the looser question and probes rather than assuming dead.
+ * `createEphemeralWindow` polls too and is exempt by design, not by omission —
+ * its lockDir is freshly synthesized under `os.tmpdir()`, so no foreign lock
+ * can ever be there to refuse.
+ */
+function lockIsAttachable(lock: { port?: unknown }): boolean {
+  return isDialablePort(lock.port);
+}
+
+/**
  * Base HTTP origin to dial for a lock holder — prefers the lock's `url`
- * (validated: http(s) + loopback hostname only, since the string comes off
- * disk and becomes renderer arguments), falling back to `port` for locks
- * written by binaries predating the field or whose `url` fails validation.
+ * (validated: http(s) + loopback hostname only, since the string comes off disk
+ * and becomes renderer arguments), falling back to `port` for locks written by
+ * binaries predating the field or whose `url` fails validation.
  *
  * Drift warning: mirrors `lockBaseUrl`/`dialableLockOrigin` in the server
  * package's `process-lock.ts`. This module is deliberately structurally
  * independent of that package (see `ServerLockMetadataLike`), so TypeScript
- * cannot catch divergence — parity is pinned by
- * `tests/main/lock-api-origin-parity.test.ts`. One deliberate difference:
- * the canonical helper returns `null` when nothing is dialable (`port` 0,
- * no usable `url`); this one returns `http://localhost:0` — safe because
- * every caller reaches it with a post-listen lock (`port > 0` guaranteed),
- * also pinned by the parity test.
+ * cannot catch divergence — both arms are pinned by
+ * `tests/main/lock-api-origin-parity.test.ts`. One deliberate difference, also
+ * pinned there: the canonical helper returns `null` when nothing is dialable;
+ * this one returns `http://localhost:0`, which is safe only because it is a
+ * string for argv and never a reachability claim.
  */
-export function lockApiOrigin(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
-  if (typeof lock.url === 'string' && lock.url.length > 0) {
-    let parsed: URL | null = null;
-    try {
-      parsed = new URL(lock.url);
-    } catch {
-      parsed = null;
-    }
-    if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
-      // WHATWG URL keeps the brackets in `hostname` for IPv6 literals.
-      const host = parsed.hostname;
-      const loopback =
-        host === 'localhost' || host === '[::1]' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
-      if (loopback) return parsed.origin;
-    }
-  }
-  return `http://localhost:${lock.port}`;
+export function lockApiOrigin(lock: { port?: unknown; url?: unknown }): string {
+  // Total by construction: callers that only need a string for argv always get
+  // one. It is NOT a claim that the origin is reachable — the decision paths ask
+  // `lockMayHaveServer` or `lockIsAttachable`, never this.
+  return loopbackOriginFromUrl(lock.url) ?? `http://localhost:${lock.port}`;
 }
 
 /**
@@ -361,7 +475,7 @@ export function collabUrlFromApiOrigin(apiOrigin: string): string {
 }
 
 /** `/collab` WebSocket endpoint derived from the same origin as `lockApiOrigin`. */
-export function lockCollabUrl(lock: Pick<ServerLockMetadataLike, 'port' | 'url'>): string {
+export function lockCollabUrl(lock: { port?: unknown; url?: unknown }): string {
   return collabUrlFromApiOrigin(lockApiOrigin(lock));
 }
 
@@ -751,6 +865,19 @@ export interface WindowManagerDeps {
   isFirstLaunchAfterUpgrade?(): boolean;
   /** Schedule a one-shot timer (test injection for the post-exit liveness probe). */
   setTimeout(cb: () => void, ms: number): unknown;
+  /**
+   * Schedule a repeating timer for the ephemeral single-file session's
+   * server-liveness watch. Kept SEPARATE from `setTimeout` (which
+   * several tests inject as an immediate-firing stub to advance the bounded
+   * spawn-lock poll) because the watch is an UNBOUNDED periodic poll — reusing
+   * an immediate `setTimeout` would recurse forever. Production wires
+   * `setInterval`; when unwired (test harnesses that don't exercise the watch),
+   * the exit-watch is simply not armed and the probe-on-dedup backstop still
+   * repairs the reported symptom. Paired with `clearInterval` (all-or-nothing).
+   */
+  setInterval?(cb: () => void, ms: number): unknown;
+  /** Cancel a timer started by `setInterval`. Wired iff `setInterval` is. */
+  clearInterval?(handle: unknown): void;
   /** `process.kill(pid, signal)` — used in the post-exit liveness probe. */
   killProbe(pid: number, signal: number | NodeJS.Signals): void;
   /**
@@ -796,6 +923,35 @@ export interface WindowManagerDeps {
    * effectively disabled and every call spawns a fresh utility.
    */
   readServerLock?(lockDir: string): ServerLockMetadataLike | null;
+  /**
+   * Delete a project's `server.lock` outright, breaking a holder's claim
+   * without its cooperation. Deliberately NOT the server's `releaseServerLock`,
+   * which is refcounted for the OWNING process and no-ops for anyone else.
+   *
+   * Reached from the two recovery entry states — `restartAttachedServer` (from an
+   * open window) and `forceStopConflictingServer` (from the failed-open dialog),
+   * once a holder has proven BOTH unkillable (EPERM) and not serving. Both
+   * halves are load-bearing: a live server's lock must never be broken, or two
+   * servers end up bound to one project.
+   *
+   * `expected` is the holder the caller decided about, and the implementation
+   * MUST re-read the file and unlink only if it still names that pid. The
+   * decision takes hundreds of milliseconds (a health probe), and the holder
+   * can exit and a fresh server acquire the lock inside that window — an
+   * unguarded unlink would delete the newcomer's valid claim on the strength of
+   * a verdict about its predecessor. `process-lock.ts`'s `registerExitUnlink`
+   * is the same read-compare-unlink shape for the same reason.
+   *
+   * Returns whether THIS call removed the lock, so the caller logs what happened
+   * rather than what it intended.
+   *
+   * Optional only for back-compat with tests that never reach the recovery.
+   * Whether to break a lock is a fact about the HOLDER, so leaving this unwired
+   * does not change that verdict — it just makes the break a no-op, and the
+   * recreate that follows then fails loudly on the stale lock rather than
+   * silently wiring a window to it.
+   */
+  removeServerLock?(lockDir: string, expected: { pid: number }): boolean;
   /**
    * Check whether a pid is alive on this host (EPERM counts as alive per the
    * `process.kill(pid, 0)` semantics in `isProcessAlive`). Production:
@@ -879,8 +1035,14 @@ export interface WindowManagerDeps {
    * Record why the server just exited to `<lockDir>/last-server-exit.json`, so
    * a later bug-report bundle can tell an unexpected death from a managed
    * shutdown. No-op when omitted (tests, web). See `server-exit-record.ts`.
+   *
+   * Narrowed from the recorder's own payload rather than restated, so the two
+   * cannot drift: the `utilityProcess` exit event this is called from carries
+   * no signal and does not name the observing host, so `index.ts`'s adapter
+   * supplies both. The record's `signal` is only ever filled by the packaged
+   * detached-spawn observer.
    */
-  recordServerExit?(info: { lockDir: string; pid: number | null; code: number | null }): void;
+  recordServerExit?(info: Pick<ServerExitInfo, 'lockDir' | 'pid' | 'code'>): void;
   /**
    * Startup-instrumentation hooks (desktop launch waterfall). All optional and
    * no-op when omitted (tests, web). Wired by `index.ts` only for the FIRST
@@ -997,6 +1159,58 @@ export class WindowManager {
    * `canonicalKey` field on `ProjectContext`.
    */
   private readonly windowsByPath = new Map<string, ProjectContext>();
+
+  /**
+   * BrowserWindow → its ProjectContext for two of the spans in which no
+   * authoritative `windowsByPath` entry answers for a window the user can see
+   * and act on. Other such spans exist and do not use this map; the ones worth
+   * knowing about are named below. Neither list is exhaustive. Read only
+   * through `getContextForBrowserWindow`.
+   *
+   * The two spans this map covers, both seconds long:
+   *
+   *   - A newly created window. Its `windowsByPath` entry lands only AFTER
+   *     `await loadFile` resolves, whereas the window — and the application
+   *     menu acting on it — exists from the moment `createWindow` returns, and
+   *     every field of the context is known before that call.
+   *   - A window mid-`restartAttachedServer`. That path deliberately detaches
+   *     the originating window from `windowsByPath` so the recreate spawns a
+   *     new window instead of focusing the old one, and keeps the old one open
+   *     and on screen until the replacement exists.
+   *
+   * `createEphemeralWindow`'s stale-entry sweep does NOT publish, and must not.
+   * It drops the entry for a superseded single-file window it deliberately
+   * leaves open, and that window is a tombstone rather than one awaiting a
+   * replacement: its server is dead with nothing coming, its temp dir has been
+   * reaped, and the file now belongs to the fresh window the user just asked
+   * for. There is also no bounded span to release on — the sweep invalidates
+   * the ownership guard in that window's own `'closed'` handler, so a publish
+   * made there would never be released at all.
+   *
+   * The utility-fork `on('exit')` handler also drops the entry under a window
+   * that stays open, on the dev-only spawn path. It does not publish today, and
+   * this docblock does not rule on whether it should: the ephemeral exit-watch
+   * declines that very drop, on the grounds that the entry is what keeps a
+   * still-open window in the session-restore set.
+   *
+   * In the two published spans, this class owned a project window it would not
+   * admit to owning: anything asking "which project is this window's?" got
+   * `undefined`. The user-visible cost was Terminal → New Terminal Window,
+   * where `resolveTerminalWindowProject` saw no editor context and opened a
+   * project-less HOME-cwd window with an empty collab URL, silently.
+   *
+   * Deliberately keyed by window rather than project: this answers the
+   * window→project question only. Widening `windowsByPath` instead would
+   * change its meaning — a completed, dedupable, restorable window — to admit
+   * one that may still fail to load. That reason covers the create span, not
+   * the restart span, whose window was all three of those things a moment
+   * earlier. So the restart span leaves a known residual on the reverse
+   * direction: `getOpenWindows`, `getOpenProjectPaths` and `getWindowFor` read
+   * `windowsByPath` alone, and a quit landing inside a restart therefore writes
+   * a restore snapshot with that project missing. Closing that needs the two
+   * spans told apart, which is a separate change.
+   */
+  private readonly loadingContextByWindow = new Map<BrowserWindowLike, ProjectContext>();
 
   /**
    * canonicalKey → pid of the detached server THIS desktop process spawned
@@ -1155,12 +1369,67 @@ export class WindowManager {
    * map) instead of going through `appState.recentProjects`, which avoids a
    * stale-state race between `createProjectWindow` resolving and
    * `addRecentProject` persisting.
+   *
+   * Falls back to `loadingContextByWindow` so a window with no authoritative
+   * entry resolves too — still loading its renderer, or detached by a server
+   * restart. See that field for both spans. Both maps hold the SAME context
+   * object, so callers cannot tell which one answered.
+   *
+   * A window detached by a restart answers with the `port`/`apiOrigin` of the
+   * server that restart just terminated. Deliberate: `projectPath` is what
+   * nearly every caller reads and it does not change across a restart, and the
+   * recreate-failure branch restores this very context — dead origin and all —
+   * into `windowsByPath` for as long as the failure stands, provided the window
+   * survived the wait. If it was destroyed meanwhile nothing is restored and
+   * this answers `undefined` again, which no caller can observe because the
+   * window is gone. So the in-flight span agrees with the state on either side
+   * of it rather than inventing a third. On a SUCCESSFUL recreate, a note
+   * window opened against it is rebuilt on the fresh origin by
+   * `onProjectServerRestarted`; that hook sits past the failure return, so a
+   * failed recreate rebuilds nothing. A terminal window is never rebuilt on
+   * either outcome, and keeps the dead collab URL for its lifetime.
+   *
+   * The restart answer stops the moment the replacement's authoritative entry
+   * lands, so one project is never answered for by two windows at once.
    */
   getContextForBrowserWindow(win: BrowserWindowLike): ProjectContext | undefined {
     for (const ctx of this.windowsByPath.values()) {
       if (ctx.window === win) return ctx;
     }
-    return undefined;
+    // No authoritative entry: still loading its renderer, or detached by a
+    // server restart. The docblock above says how the two differ.
+    return this.loadingContextByWindow.get(win);
+  }
+
+  /**
+   * Publish a window's context for as long as no authoritative `windowsByPath`
+   * entry answers for it, and hand back the release.
+   *
+   * On a create path the bracket MUST enclose `windowsByPath.set`, NOT just the
+   * load. A `finally` wrapped around only the `await` releases the moment the
+   * load settles — before the authoritative entry exists — which reopens the
+   * exact window this map was added to close, in the one function that
+   * implements the fix. Bracket the whole span: publish, load, `set`, release.
+   *
+   * Releasing after `set` is safe because both maps hold the SAME object and
+   * `getContextForBrowserWindow` reads `windowsByPath` first, so the overlap is
+   * invisible. Release is idempotent, so a path that must also release early
+   * (the ephemeral reap, which stops a `destroy()`ed window resolving before it
+   * awaits teardown) can do that and still keep the bracket as its backstop.
+   *
+   * The server-restart publisher brackets a different span — the detach of the
+   * originating window until the replacement owns the authoritative entry, or,
+   * on failure, until the restore puts the old one back. It releases explicitly
+   * on the success path, ahead of the close, so one project is never answered
+   * for by two windows; the bracket then covers the failure return and anything
+   * the close throws. An unreleased publish is a permanent entry pinning a
+   * destroyed BrowserWindow.
+   */
+  private publishLoadingContext(context: ProjectContext): () => void {
+    this.loadingContextByWindow.set(context.window, context);
+    return () => {
+      this.loadingContextByWindow.delete(context.window);
+    };
   }
 
   /**
@@ -1409,6 +1678,31 @@ export class WindowManager {
   }
 
   /**
+   * Whether the detached server backing an ephemeral single-file session is
+   * still live. The ephemeral dedup and the exit-watch must gate on SERVER
+   * liveness, not just WINDOW liveness — a detached server can die (kill /
+   * crash / idle-shutdown) while its window stays open, leaving the cached
+   * `apiOrigin` pointing at nothing.
+   *
+   * Pid liveness is authoritative: `isPidAlive` always has a probe (it falls
+   * back to the required `killProbe` dep), so there is no configuration in which
+   * a dead server reads as alive, and a dead pid is dead regardless of a stale
+   * lock a SIGKILL left behind. When the pid IS alive, a gone or `draining` lock
+   * still counts as dead — that is a server mid-shutdown (the same signal
+   * `pollServerLock` treats as not-ready) whose pid has not exited yet. With no
+   * lock reader wired, the live pid is trusted on its own.
+   */
+  private isEphemeralServerAlive(ctx: ProjectContext): boolean {
+    const eph = ctx.ephemeral;
+    if (eph === undefined) return true; // not an ephemeral ctx — nothing to probe
+    if (!this.isPidAlive(eph.pid)) return false;
+    const reader = this.deps.readServerLock;
+    if (!reader) return true; // pid alive, no lock reader to corroborate — trust it
+    const lock = reader(eph.lockDir);
+    return lock !== null && lock.draining !== true;
+  }
+
+  /**
    * Terminate a server by pid using the same SIGTERM → grace-poll → SIGKILL
    * ladder as `stopAllOwnedServers`, but returning a caller-consumable outcome
    * instead of fire-and-forget logging. Used by `restartAttachedServer` to
@@ -1454,6 +1748,170 @@ export class WindowManager {
   }
 
   /**
+   * The one rule for an unkillable lock holder, shared by both entry states
+   * that can meet one: `restartAttachedServer` (reached from an OPEN project
+   * window) and `forceStopConflictingServer` (reached from the failed-open
+   * dialog, when there is no window). Keeping a single rule is the point — a
+   * holder that is unrecoverable from one entry state and recoverable from the
+   * other is the shape that left a real project unopenable for three days.
+   *
+   * "Cannot be signalled" and "is serving" are separate facts. EPERM only says
+   * the holder exists and is not ours to kill: an MCP-spawned server, or a pid
+   * the OS has reused. Nothing else clears that lock either — `runClean` prunes
+   * only dead-pid and corrupt locks, and its classifier reads EPERM as alive.
+   *
+   * So ask the holder — but only once it names somewhere to ask. A lock naming
+   * no dialable origin at all is broken outright and breaks without a probe;
+   * past that there are three outcomes, not two. A holder that has not bound
+   * yet (the `port: 0` boot sentinel) is left
+   * alone, because a probe that cannot succeed is not evidence of anything. A
+   * holder that answers is a live server we simply do not own; refuse, and let
+   * the caller surface the cross-account remedy, because breaking that lock
+   * would strand a running server and put a second one on the same project. A
+   * holder that answers nothing is stale in effect however alive its pid looks,
+   * so break the claim and let the caller proceed.
+   *
+   * Returns whether the lock was broken. Scoped to `eperm` by the callers: an
+   * `other` termination failure says nothing about whether the holder serves.
+   */
+  private async breakUnservingHolderLock(args: {
+    lockDir: string;
+    // Only what the decision needs: the identity to guard the unlink on, and
+    // enough to address the port. Narrower than `ServerLockMetadataLike` so the
+    // force-stop caller, which reads the lock raw precisely because the
+    // identity-filtered reader refuses these holders, can pass what it actually
+    // parsed instead of casting a partial object into a full one.
+    lock: Pick<ServerLockMetadataLike, 'pid' | 'url'> & { port: unknown };
+    projectPath: string;
+    // ONE discriminator for one fact. The log event and the probe phase are two
+    // views of "which entry state is asking", so taking them separately lets a
+    // caller pair a restart event with a force-stop phase and nothing would
+    // notice. Mapped once, exhaustively, below.
+    caller: RecoveryCaller;
+  }): Promise<boolean> {
+    const { lockDir, lock, projectPath, caller } = args;
+    const { event, phase } = RECOVERY_CALLERS[caller];
+    // A port of 0 is the acquired-but-not-yet-bound sentinel a lock carries
+    // during boot. The probe cannot succeed against it, so it would read as
+    // "not serving" and break the lock of a server that is still coming up.
+    //
+    // This lives in the RULE, not at a caller. The whole point of this helper is
+    // that both entry states decide the same way, and a guard installed at one
+    // of them leaves the other free to do the damage.
+    const port = lock.port;
+    // Two different states hide behind "the port is not dialable", and treating
+    // them alike gets one of them wrong.
+    //
+    // `0` is the acquired-but-not-yet-bound sentinel: a server mid-boot, which
+    // will have a real port shortly. Leave it alone — it is the one case where
+    // waiting is correct.
+    //
+    // A lock that names nowhere to dial (absent, `Infinity`, out of range, a
+    // fraction) cannot denote a listening server at all, so there is nothing to
+    // strand and no reason to keep the claim. Refusing here would be worse than
+    // useless: nothing else prunes these, so the project would stay wedged —
+    // the exact failure this whole change exists to end. A numeric STRING is
+    // NOT in this set: it renders into a live address, so it goes to the probe.
+    if (!lockMayHaveServer(lock)) {
+      if (port === 0) {
+        this.deps.log?.warn(
+          {
+            event,
+            outcome: 'eperm-stale-lock-break-skipped',
+            reason: 'booting',
+            pid: lock.pid,
+            projectPath,
+          },
+          '[window-manager] holder has not bound a port yet — leaving its lock alone',
+        );
+        return false;
+      }
+      this.deps.log?.warn(
+        // Port carried raw: for a lock this shape the value IS the diagnosis.
+        // A DECISION, not the result: the unlink below can still decline or
+        // fail, and `-broken` is the value that means it did not.
+        {
+          event,
+          outcome: 'eperm-stale-lock-break-decided',
+          reason: 'unservable-origin',
+          pid: lock.pid,
+          port,
+          projectPath,
+        },
+        '[window-manager] holder names nowhere that could serve — breaking its stale lock',
+      );
+      return this.unlinkHolderLock({ lockDir, lock, projectPath, event });
+    }
+    const dialable = { pid: lock.pid, port, url: lock.url };
+    // The graced probe, not a single shot. This path is the DESTRUCTIVE one —
+    // it deletes another process's claim — so it should not settle for less
+    // confidence than the spawn path, which only declines to adopt. A transient
+    // refusal here breaks a live server's lock; there it costs a retry.
+    if (await this.probeForeignLockWithGrace(dialable, phase)) return false;
+    // Identity-guarded: the verdict above is about THIS holder, and the probe
+    // it rests on took long enough for that holder to exit and a fresh server
+    // to take the lock.
+    //
+    // Reporting what HAPPENED, not what was intended. The dep is optional, its
+    // identity guard can decline, and the unlink can fail on a read-only or
+    // otherwise hostile `.ok` directory — claiming "broken" through any of those
+    // would tell the next diagnosis the lock is gone when it is still there, the
+    // same false-record failure the recovery rule one branch over avoids. It
+    // also must not
+    // throw: this is the recovery path for a wedged project, and replacing a
+    // stuck project with a crashed app is a strictly worse outcome.
+    return this.unlinkHolderLock({ lockDir, lock, projectPath, event });
+  }
+
+  /**
+   * The unlink half of the rule: identity-guarded, non-throwing, and honest
+   * about whether it actually removed anything. Shared by both break paths so
+   * neither can drift from the other.
+   */
+  private unlinkHolderLock(args: {
+    lockDir: string;
+    lock: Pick<ServerLockMetadataLike, 'pid'> & { port?: unknown };
+    projectPath: string;
+    event: string;
+  }): boolean {
+    const { lockDir, lock, projectPath, event } = args;
+    let broke = false;
+    try {
+      broke = this.deps.removeServerLock?.(lockDir, { pid: lock.pid }) ?? false;
+    } catch (err) {
+      this.deps.log?.warn(
+        { event, outcome: 'eperm-stale-lock-break-failed', err, pid: lock.pid, projectPath },
+        '[window-manager] could not break the stale lock',
+      );
+      return false;
+    }
+    if (!broke) {
+      this.deps.log?.warn(
+        { event, outcome: 'eperm-stale-lock-break-declined', pid: lock.pid, projectPath },
+        // Deliberately does not name a cause: the break declines on an identity
+        // mismatch, an already-gone file, or a failed unlink, and this layer
+        // cannot tell which. Asserting one would be the same false-record
+        // failure this path exists to avoid.
+        '[window-manager] stale lock was not broken',
+      );
+      return false;
+    }
+    this.deps.log?.warn(
+      {
+        event,
+        outcome: 'eperm-stale-lock-broken',
+        pid: lock.pid,
+        port: lock.port,
+        projectPath,
+      },
+      // Neutral about WHY: the caller has already logged whether the holder
+      // failed its probe or advertised a port nothing could serve.
+      "[window-manager] broke the unkillable holder's stale lock",
+    );
+    return true;
+  }
+
+  /**
    * Explicit-user-consent recovery: stop whatever process holds this
    * project's server.lock so a fresh open can proceed. Reached from the
    * "Unable to open project" dialog's "Stop Server & Retry" button after a
@@ -1474,9 +1932,17 @@ export class WindowManager {
   ): Promise<{ ok: true } | { ok: false; reason: 'eperm' | 'other' }> {
     const lockDir = getLocalDir(resolve(projectPath));
     let pid: unknown;
+    let rawPort: unknown;
+    let rawUrl: unknown;
     try {
-      pid = (JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8')) as { pid?: unknown })
-        ?.pid;
+      const raw = JSON.parse(readFileSync(join(lockDir, 'server.lock'), 'utf-8')) as {
+        pid?: unknown;
+        port?: unknown;
+        url?: unknown;
+      };
+      pid = raw?.pid;
+      rawPort = raw?.port;
+      rawUrl = raw?.url;
     } catch {
       // No lock / unreadable — nothing to stop; the retry will proceed.
       return { ok: true };
@@ -1485,6 +1951,29 @@ export class WindowManager {
       return { ok: true };
     }
     const term = await this.terminateServerByPid(lockDir, pid);
+    // The dialog behind this call is the ONLY remedy a user has while the
+    // project has no window, so an EPERM dead-end here is terminal in a way the
+    // restart path's is not. Same two-fact rule, same safety argument: a holder
+    // that answers its port is still refused.
+    //
+    // The probe target is built from the RAW fields above, NOT `readServerLock`.
+    // That reader applies the machine-identity filter this whole method exists
+    // to bypass, and it would refuse exactly the holders EPERM implies — a
+    // different account, a foreign-looking machineId, a hostname flap — leaving
+    // the one no-window remedy silently inert for its most likely cohort.
+    if (!term.ok && term.reason === 'eperm') {
+      const broke = await this.breakUnservingHolderLock({
+        lockDir,
+        lock: {
+          pid,
+          port: rawPort,
+          ...(typeof rawUrl === 'string' ? { url: rawUrl } : {}),
+        },
+        projectPath,
+        caller: 'force-stop',
+      });
+      if (broke) return { ok: true };
+    }
     this.deps.log?.info(
       {
         event: 'desktop-force-stop-conflicting-server',
@@ -1510,6 +1999,10 @@ export class WindowManager {
    * not closed — so its pending invoke resolves with `{ ok:false }` and the
    * renderer can surface the remedy on a surviving window. The originating
    * window is closed only after the new one is successfully created.
+   *
+   * The originating window stays on screen and focusable for the whole
+   * recreate, so its context is published for that span (see
+   * `getContextForBrowserWindow`) and released on every exit.
    */
   async restartAttachedServer(
     projectPath: string,
@@ -1522,90 +2015,129 @@ export class WindowManager {
     if (lock && isValidLockPidLocal(lock.pid)) {
       const term = await this.terminateServerByPid(lockDir, lock.pid);
       if (!term.ok) {
-        this.deps.log?.warn(
+        // Scoped to `eperm` — see `breakUnservingHolderLock` for the rule, and
+        // why an `other` failure keeps the conservative refusal.
+        const broke =
+          term.reason === 'eperm' &&
+          (await this.breakUnservingHolderLock({
+            lockDir,
+            lock,
+            projectPath: resolved,
+            caller: 'restart',
+          }));
+        if (!broke) {
+          this.deps.log?.warn(
+            {
+              event: 'desktop-server-restart',
+              outcome: term.reason,
+              pid: lock.pid,
+              projectPath: resolved,
+            },
+            '[window-manager] server restart could not terminate the attached server',
+          );
+          return term;
+        }
+      } else {
+        // Only the genuine kill reports `terminated`. The lock-broken path above
+        // falls through to the same recreate but terminated nothing, and saying
+        // otherwise would misreport the one event a future diagnosis reads to
+        // learn whether the old server actually went away.
+        this.deps.log?.info(
           {
             event: 'desktop-server-restart',
-            outcome: term.reason,
+            outcome: 'terminated',
+            escalated: term.escalated,
             pid: lock.pid,
+            appRuntime: this.deps.selfRuntimeVersion ?? null,
             projectPath: resolved,
           },
-          '[window-manager] server restart could not terminate the attached server',
+          '[window-manager] terminated attached server for restart',
         );
-        return term;
       }
-      this.deps.log?.info(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'terminated',
-          escalated: term.escalated,
-          pid: lock.pid,
-          appRuntime: this.deps.selfRuntimeVersion ?? null,
-          projectPath: resolved,
-        },
-        '[window-manager] terminated attached server for restart',
-      );
     }
     // Detach the originating window from the map (so the recreate spawns a new
     // window instead of focusing the old) but keep it open until the new one
-    // exists — see the failure branch below.
+    // exists — see the failure branch below. It stays on screen and focusable
+    // for that whole span, so publish its context: without it the menu acting
+    // on that window resolves no project at all. The release brackets every
+    // exit below, including the failure return — a publish left behind pins a
+    // destroyed BrowserWindow forever.
     const originating = this.windowsByPath.get(canonicalKey);
-    if (originating) this.windowsByPath.delete(canonicalKey);
-    let recreated: ProjectContext;
+    let releaseOriginatingContext: (() => void) | undefined;
+    if (originating) {
+      this.windowsByPath.delete(canonicalKey);
+      releaseOriginatingContext = this.publishLoadingContext(originating);
+    }
     try {
-      recreated = await this.createProjectWindow({
-        projectPath: resolved,
-        pendingServerRestartedToast: true,
-        localOpCliArgs: opts?.localOpCliArgs,
-      });
-    } catch (err) {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'recreate-failed',
-          // Full error (stack + name), not just the message — a respawn failure
-          // is a rare, important diagnostic.
-          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+      let recreated: ProjectContext;
+      try {
+        recreated = await this.createProjectWindow({
           projectPath: resolved,
-        },
-        '[window-manager] server restart killed the old server but could not respawn',
-      );
-      // Restore the originating window as the project's window so its pending
-      // invoke resolves with the failure below; its still-live renderer then
-      // surfaces `restartFailureMessage('other')`.
-      if (originating && originating.window.isDestroyed?.() !== true) {
-        this.windowsByPath.set(canonicalKey, originating);
+          pendingServerRestartedToast: true,
+          localOpCliArgs: opts?.localOpCliArgs,
+        });
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-restart',
+            outcome: 'recreate-failed',
+            // Full error (stack + name), not just the message — a respawn failure
+            // is a rare, important diagnostic.
+            err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+            projectPath: resolved,
+          },
+          '[window-manager] server restart killed the old server but could not respawn',
+        );
+        // Restore the originating window as the project's window so its pending
+        // invoke resolves with the failure below; its still-live renderer then
+        // surfaces `restartFailureMessage('other')`.
+        if (originating && originating.window.isDestroyed?.() !== true) {
+          this.windowsByPath.set(canonicalKey, originating);
+        }
+        return { ok: false, reason: 'other' };
       }
-      return { ok: false, reason: 'other' };
-    }
-    // The project window is back on the fresh server. Note windows are not in
-    // `windowsByPath`, so they were not recreated above and still hold argv
-    // pointing at the terminated server — recreate them before the old window
-    // closes, so the pop-outs come back with the project rather than lingering
-    // as permanently disconnected windows.
-    //
-    // Isolated in its own try/catch: the note-window recreate is a SECONDARY
-    // concern, so a throw in the injected callback (a `BrowserWindow`
-    // constructor failure under memory pressure, say) must not skip the
-    // `closeAndAwait` teardown below and strand the old window as a zombie
-    // pointing at the terminated server.
-    try {
-      this.deps.onProjectServerRestarted?.({
-        projectPath: resolved,
-        apiOrigin: recreated.apiOrigin,
-      });
-    } catch (err) {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-server-restart',
-          outcome: 'note-recreate-failed',
-          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+      // The replacement now holds the authoritative entry for this project, so
+      // the originating window must stop answering for it — otherwise one
+      // project has two answers while the old window is torn down, and the
+      // per-project state its renderer can still write (session state, terminal
+      // dock, sharing) would clobber what the replacement just restored.
+      // `closeAndAwait` grants a two-second grace and a `beforeunload` veto can
+      // consume all of it, so that overlap is not instantaneous. Releasing early
+      // is the shape `publishLoadingContext` sanctions; the outer bracket stays
+      // as the backstop.
+      releaseOriginatingContext?.();
+      // The project window is back on the fresh server. Note windows are not in
+      // `windowsByPath`, so they were not recreated above and still hold argv
+      // pointing at the terminated server — recreate them before the old window
+      // closes, so the pop-outs come back with the project rather than lingering
+      // as permanently disconnected windows.
+      //
+      // Isolated in its own try/catch: the note-window recreate is a SECONDARY
+      // concern, so a throw in the injected callback (a `BrowserWindow`
+      // constructor failure under memory pressure, say) must not skip the
+      // `closeAndAwait` teardown below and strand the old window as a zombie
+      // pointing at the terminated server.
+      try {
+        this.deps.onProjectServerRestarted?.({
           projectPath: resolved,
-        },
-        '[window-manager] project window recreated, but a note-window recreate threw',
-      );
+          apiOrigin: recreated.apiOrigin,
+        });
+      } catch (err) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-restart',
+            outcome: 'note-recreate-failed',
+            err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+            projectPath: resolved,
+          },
+          '[window-manager] project window recreated, but a note-window recreate threw',
+        );
+      }
+      if (originating) await this.closeAndAwait(originating.window);
+      return { ok: true };
+    } finally {
+      releaseOriginatingContext?.();
     }
-    if (originating) await this.closeAndAwait(originating.window);
-    return { ok: true };
   }
 
   /**
@@ -1926,8 +2458,135 @@ export class WindowManager {
           childExited,
         });
       }
+      // A lock our child did not write is an UNVERIFIED claim, and the readiness
+      // this branch is about to declare rests on it. `pollServerLock` accepts a
+      // foreign holder deliberately — a concurrent starter that won the acquire
+      // is a real server worth sharing, which the losing-child path depends on —
+      // but a STALE holder passes every metadata gate that acceptance rests on:
+      // right host, valid pid, non-draining, real port, and (because EPERM reads
+      // as alive) a liveness check it cannot fail. Only asking the port
+      // separates the two, and `spawnProjectWindow`'s attach gate already asks
+      // it about this very lock. Not asking here is how one field log recorded
+      // both verdicts on the same port 2 ms apart — `desktop-attach-refused`
+      // with `reason: 'ws-upgrade-failed'`, then this line calling it ready —
+      // and the window opened onto a port answering nothing.
+      //
+      // Our OWN child is exempt: we watched it come up, so a probe would buy no
+      // signal and cost every cold start its timeout.
+      const adoptedForeignLock = lock.pid !== handle.pid;
+      // Two doors lead into `attachToExistingServer`, and gating only the direct
+      // one leaves the other open. `pollServerLock` admits on `lock.port > 0` —
+      // a RELATIONAL compare, so `'42117' > 0` coerces true — and this branch
+      // then attaches whatever it returned. A lock we cannot carry has to be
+      // refused at both doors or the stricter predicate is decoration.
+      const unusableLock = !lockIsAttachable(lock);
+      if (unusableLock || (adoptedForeignLock && !(await this.probeForeignLockWithGrace(lock)))) {
+        // Our child may still be alive here (it can lose the publish race
+        // without losing the acquire), and it is `.unref()`ed, so refusing the
+        // holder without reaping it leaks an orphan with no parent to reap it —
+        // the same hazard the lock-timeout branch above handles, for the same
+        // reason. ESRCH just means it already exited.
+        const childExited = this.deps.isProcessAlive
+          ? !this.deps.isProcessAlive(handle.pid)
+          : undefined;
+        const childExit = handle.readExit?.() ?? null;
+        try {
+          this.deps.killProbe(handle.pid, 'SIGTERM');
+        } catch (signalErr) {
+          const code = (signalErr as NodeJS.ErrnoException).code;
+          if (code !== 'ESRCH') {
+            this.deps.log?.warn(
+              {
+                event: 'desktop-spawn-orphan-sigterm-failed',
+                err: signalErr,
+                code,
+                pid: handle.pid,
+                projectPath,
+              },
+              '[window-manager] SIGTERM on orphan after refusing a stale lock failed',
+            );
+          }
+        }
+        this.spawnedDetachedPids.delete(canonicalKey);
+        this.deps.log?.warn(
+          {
+            event: 'desktop-server-spawn-refused-stale-lock',
+            reason: unusableLock ? 'lock-not-attachable' : 'holder-not-serving',
+            pid: handle.pid,
+            lockPid: lock.pid,
+            port: lock.port,
+            // `port` alone cannot name which shape refused this. Under pino's
+            // JSON semantics `undefined` drops the key and `Infinity` becomes
+            // `null`, so a bundle showing `"port": null` cannot distinguish a
+            // writer that set nothing from one that computed `Infinity` — two
+            // different upstream bugs. These two survive serialization.
+            portType: typeof lock.port,
+            rawPort: String(lock.port),
+            lockDir,
+            projectPath,
+          },
+          '[window-manager] refusing to attach the spawn to a lock we cannot use',
+        );
+        // Its OWN error kind, deliberately not `buildSpawnFailureError`. That
+        // one narrates a deadline and the child's exit, and nothing here is a
+        // deadline: `pollServerLock` returned on its first read, so reporting
+        // the tier that was never served would blame a 15 s timeout that did
+        // not elapse, on our own healthy child's pid, and never mention the
+        // holder. It also would not reach the remedy — the failed-open dialog
+        // gates Stop Server & Retry on the kind, so a refusal that wants that
+        // button has to say what it actually is.
+        // `||` short-circuits, so on the unusable-lock arm the holder was never
+        // dialed. Reporting "is not serving" there states a probe result that
+        // does not exist, and the failed-open dialog quotes this message
+        // verbatim — the user would consent to stopping a process on the claim
+        // it is already inert. The holder framing has to move too: `unusableLock`
+        // is deliberately not exempted for our own child the way the probe is,
+        // so "another process" can be our own healthy spawn.
+        const holder = adoptedForeignLock
+          ? `Another process (pid ${lock.pid})`
+          : `The server OpenKnowledge just started (pid ${lock.pid})`;
+        throw Object.assign(
+          new Error(
+            unusableLock
+              ? `${holder} holds this project's server lock, but the lock does not name a port ` +
+                  `OpenKnowledge can keep a connection open on (${String(lock.port)}).`
+              : `${holder} holds this project's server lock but is not serving on port ${lock.port}.`,
+          ),
+          {
+            name: 'StaleLockHolderError',
+            kind: 'stale-lock-holder' as const,
+            reason: unusableLock
+              ? ('lock-not-attachable' as const)
+              : ('holder-not-serving' as const),
+            // The unusable arm is not exempted for our own spawn the way the
+            // probe is, so the holder here can be the child this method just
+            // SIGTERMed. Asking the user whether they still need a process we
+            // killed for them, from the request they just made, has no answer
+            // they could act on — the dialog drops that clause when this is set.
+            holderIsOwnChild: !adoptedForeignLock,
+            holderPid: lock.pid,
+            holderPort: lock.port,
+            pid: handle.pid,
+            childExited,
+            exitCode: childExit?.code ?? null,
+            exitSignal: childExit?.signal ?? null,
+          },
+        );
+      }
       this.deps.log?.info(
-        { event: 'desktop-server-spawned-detached', pid: handle.pid, port: lock.port, lockDir },
+        {
+          event: 'desktop-server-spawned-detached',
+          pid: handle.pid,
+          // `pid` and `port` come from different sources — our child handle and
+          // whoever holds the lock. Recording `lockPid` and how the claim was
+          // established keeps the pair auditable: without them this record
+          // cannot distinguish "our child came up" from "we adopted a
+          // stranger's lock", which is precisely the confusion it caused.
+          lockPid: lock.pid,
+          readiness: adoptedForeignLock ? 'foreign-lock-probe-verified' : 'own-child',
+          port: lock.port,
+          lockDir,
+        },
         '[window-manager] detached server ready',
       );
       // Startup waterfall: the detached server's lock is now readable — carry
@@ -2174,10 +2833,10 @@ export class WindowManager {
       });
     }
 
-    // (The dev reclaim path used to deliver a "started a fresh server" notice
-    // here; both it and the packaged upgrade reconcile now terminate + respawn
-    // silently, so no server-lifecycle toast is delivered on this dev/test-only
-    // utility-fork branch.)
+    // (No "started a fresh server" notice here: the dev reclaim path and the
+    // packaged upgrade reconcile both terminate + respawn silently, so no
+    // server-lifecycle toast is delivered on this dev/test-only utility-fork
+    // branch.)
 
     // Defer OS-level window display until both first-paint AND chrome-theme
     // signals arrive — `show: false` in DEFAULT_WIN_OPTS hides the native
@@ -2190,32 +2849,6 @@ export class WindowManager {
     // emitted on timeout.
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    if (this.deps.rendererDevUrl) {
-      await window.loadURL(this.deps.rendererDevUrl);
-    } else {
-      await window.loadFile(this.deps.rendererEntryPath);
-    }
-    this.deps.startup?.markLoadUrlResolved?.();
-
-    window.on('closed', () => {
-      // Drop any stale show-gate state — a window destroyed before either
-      // signal arrives must not hold a slot in the registry's Map.
-      disposeShowGate();
-      // Guard against detached IPC port — the utility may have already exited
-      // (e.g. crash, parent-death poll beat us) in which case `postMessage`
-      // throws ERR_IPC_CHANNEL_CLOSED. The utility's shutdown drain +
-      // parentLifecycleBound takes care of the forked process regardless;
-      // windowsByPath.delete fires from the utility's exit event above.
-      try {
-        utility.postMessage({ type: 'shutdown' });
-      } catch (err) {
-        this.deps.log?.warn(
-          { err, projectPath },
-          'utility shutdown IPC failed on window close (likely already exited)',
-        );
-      }
-    });
-
     const context: ProjectContext = {
       projectPath,
       canonicalKey,
@@ -2226,24 +2859,62 @@ export class WindowManager {
       utility,
       ownsServer: true,
     };
-    this.windowsByPath.set(canonicalKey, context);
+    const releaseLoadingContext = this.publishLoadingContext(context);
+    try {
+      if (this.deps.rendererDevUrl) {
+        await window.loadURL(this.deps.rendererDevUrl);
+      } else {
+        await window.loadFile(this.deps.rendererEntryPath);
+      }
+      this.deps.startup?.markLoadUrlResolved?.();
+
+      window.on('closed', () => {
+        // Drop any stale show-gate state — a window destroyed before either
+        // signal arrives must not hold a slot in the registry's Map.
+        disposeShowGate();
+        // Guard against detached IPC port — the utility may have already exited
+        // (e.g. crash, parent-death poll beat us) in which case `postMessage`
+        // throws ERR_IPC_CHANNEL_CLOSED. The utility's shutdown drain +
+        // parentLifecycleBound takes care of the forked process regardless;
+        // windowsByPath.delete fires from the utility's exit event above.
+        try {
+          utility.postMessage({ type: 'shutdown' });
+        } catch (err) {
+          this.deps.log?.warn(
+            { err, projectPath },
+            'utility shutdown IPC failed on window close (likely already exited)',
+          );
+        }
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
     return context;
   }
 
   /**
    * Open (or focus) an ephemeral single-file editing session for a no-project
-   * file (`ok <file>`). Distinct from `createProjectWindow` in three ways that
-   * make a dedicated method cleaner than threading an `ephemeral` flag through
-   * that 450-line path:
-   *   - **Dedup on the canonical FILE path**: a second `ok <samefile>`
-   *     focuses the existing window rather than spawning a second server on the
-   *     same inode (which would clobber the file). The dedup check runs BEFORE
-   *     any temp-dir creation so a focus never leaks a throwaway dir.
+   * file (`ok <file>`). Distinct from `createProjectWindow` in ways that make a
+   * dedicated method cleaner than threading an `ephemeral` flag through that
+   * 450-line path:
+   *   - **Dedup on the canonical FILE path, gated on SERVER liveness**: a second
+   *     `ok <samefile>` focuses the existing window rather than spawning a second
+   *     server on the same inode (which would clobber the file) — but ONLY when
+   *     that window's detached server is still alive. A dead cached session is
+   *     reaped and re-spawned instead of re-served (see `isEphemeralServerAlive`).
+   *     The dedup check runs BEFORE any temp-dir creation so a focus never leaks
+   *     a throwaway dir.
    *   - **Slim single-file boot** in a throwaway temp `projectDir` (git + MCP
    *     off, content scoped to the one doc): no `.ok/` lands in the user's dir.
    *   - **Deterministic teardown** on window-close: a detached server would
    *     otherwise survive the close. The `'closed'`
    *     handler terminates the pid then removes the temp dir, sequentially.
+   *   - **Server-liveness exit-watch**: because the server is detached, it can
+   *     die while the window stays open; a per-session poll (armed when the
+   *     `setInterval` dep is wired) reaps the dead server's temp dir. It leaves
+   *     the window itself open — the dedup gate above handles the next re-open.
    *
    * Requires the ephemeral deps (`createEphemeralProjectDir`,
    * `spawnDetachedServer`, `removeDir`) to be wired — there is no fallback for an
@@ -2264,15 +2935,43 @@ export class WindowManager {
     const canonicalKey = this.canonicalizeKey(opts.canonicalFilePath);
     const existing = this.windowsByPath.get(canonicalKey);
     if (existing) {
-      if (existing.window.isDestroyed?.() !== true) {
+      const windowAlive = existing.window.isDestroyed?.() !== true;
+      // Dedup only onto a session that is BOTH window-alive AND server-alive. An
+      // ephemeral server is detached and can die while its window stays open; the
+      // pre-fix check trusted window liveness alone and re-served a dead
+      // `apiOrigin`, so `ok open <file>` "succeeded" with no live session.
+      if (windowAlive && this.isEphemeralServerAlive(existing)) {
         this.bringToFront(existing.window);
         return existing;
       }
       this.deps.log?.warn(
-        { canonicalKey },
-        '[window-manager] stale destroyed ephemeral entry — clearing and re-creating',
+        {
+          event: 'desktop-ephemeral-stale-entry',
+          canonicalKey,
+          windowAlive,
+          pid: existing.ephemeral?.pid,
+          apiOrigin: existing.apiOrigin,
+          lockDir: existing.ephemeral?.lockDir,
+        },
+        windowAlive
+          ? '[window-manager] ephemeral entry has a dead server — clearing and re-spawning'
+          : '[window-manager] stale destroyed ephemeral entry — clearing and re-creating',
       );
       this.windowsByPath.delete(canonicalKey);
+      // Reap the dead session's temp dir + (already-dead) pid only when the
+      // window is still open here. A destroyed window already ran its `'closed'`
+      // teardown; teardown is idempotent, but skipping the redundant SIGTERM/rm
+      // keeps the destroyed-window path single-pass, as before.
+      //
+      // The stale window itself is left open, not closed — deliberately, unlike
+      // `restartAttachedServer` (which closes the old window once the replacement
+      // exists). That path has a synchronous in-place replacement; here the user
+      // explicitly re-opened, and gracefully retiring the dead-server window is
+      // the renderer "server gone" affordance's job, not main's. Closing it here
+      // would preempt that and yank a window the user may still be reading.
+      if (windowAlive && existing.ephemeral) {
+        void this.teardownEphemeralSession(existing.ephemeral);
+      }
     }
 
     // A same-file open already in flight (mid spawn/load) → await it and focus
@@ -2447,28 +3146,6 @@ export class WindowManager {
 
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    try {
-      if (this.deps.rendererDevUrl) {
-        await window.loadURL(this.deps.rendererDevUrl);
-      } else {
-        await window.loadFile(this.deps.rendererEntryPath);
-      }
-    } catch (err) {
-      // Renderer load failed AFTER the server spawned + bound its lock. The
-      // window never reaches the `'closed'` teardown below (it isn't in
-      // `windowsByPath` yet), so reap here: drop the show gate, destroy the
-      // never-shown window, and terminate the detached server + remove its temp
-      // dir. Without this the server pid + `ok-ephemeral-*` temp dir orphan.
-      disposeShowGate();
-      window.destroy?.();
-      await this.teardownEphemeralSession({
-        projectDir: tempProjectDir,
-        pid: handle.pid,
-        lockDir,
-      });
-      throw err;
-    }
-
     const context: ProjectContext = {
       projectPath: opts.contentDir,
       canonicalKey,
@@ -2480,25 +3157,136 @@ export class WindowManager {
       ownsServer: false,
       ephemeral: { projectDir: tempProjectDir, pid: handle.pid, lockDir },
     };
+    // Exit-watch handle — shared by the `'closed'` handler (below) and the
+    // liveness poll (further below). The spawner observes the child's `'exit'`
+    // but exposes it only as a pull snapshot (`readExit`), not a push signal to
+    // this class, so the poll is how the manager proactively notices a death;
+    // once the window closes or the session is invalidated, the interval must be
+    // cleared.
+    let watchHandle: unknown;
+    let watchCleared = false;
+    const stopExitWatch = (): void => {
+      if (watchCleared) return;
+      watchCleared = true;
+      if (watchHandle !== undefined) this.deps.clearInterval?.(watchHandle);
+    };
 
-    window.on('closed', () => {
-      disposeShowGate();
-      // Ownership guard — only tear down if THIS window still owns the slot. A
-      // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
-      // the entry; without the guard we'd terminate a sibling's server or double
-      // free. (Double teardown is itself safe — ESRCH + force-rm — but the guard
-      // keeps the common path single-pass.)
-      if (this.windowsByPath.get(canonicalKey) !== context) return;
-      this.windowsByPath.delete(canonicalKey);
-      // Fire-and-forget: the `'closed'` event handler is synchronous. Terminate
-      // the server THEN remove the temp dir (sequential — see
-      // `teardownEphemeralSession`).
-      void this.teardownEphemeralSession(
-        context.ephemeral as NonNullable<ProjectContext['ephemeral']>,
-      );
-    });
+    const releaseLoadingContext = this.publishLoadingContext(context);
 
-    this.windowsByPath.set(canonicalKey, context);
+    try {
+      try {
+        if (this.deps.rendererDevUrl) {
+          await window.loadURL(this.deps.rendererDevUrl);
+        } else {
+          await window.loadFile(this.deps.rendererEntryPath);
+        }
+      } catch (err) {
+        // Stop a window we are about to `destroy()` from resolving to a project
+        // before the awaited teardown below; the outer bracket is the backstop.
+        releaseLoadingContext();
+        // Renderer load failed AFTER the server spawned + bound its lock. The
+        // window never reaches the `'closed'` teardown below (it isn't in
+        // `windowsByPath` yet), so reap here: drop the show gate, destroy the
+        // never-shown window, and terminate the detached server + remove its temp
+        // dir. Without this the server pid + `ok-ephemeral-*` temp dir orphan.
+        disposeShowGate();
+        window.destroy?.();
+        await this.teardownEphemeralSession({
+          projectDir: tempProjectDir,
+          pid: handle.pid,
+          lockDir,
+        });
+        throw err;
+      }
+
+      window.on('closed', () => {
+        // Stop the liveness poll first — the session is going away under the normal
+        // teardown path; a straggling poll must not fire a second teardown.
+        stopExitWatch();
+        disposeShowGate();
+        // Ownership guard — only tear down if THIS window still owns the slot. A
+        // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
+        // the entry; without the guard we'd terminate a sibling's server or double
+        // free. (Double teardown is itself safe — ESRCH + force-rm — but the guard
+        // keeps the common path single-pass.)
+        if (this.windowsByPath.get(canonicalKey) !== context) return;
+        this.windowsByPath.delete(canonicalKey);
+        // Fire-and-forget: the `'closed'` event handler is synchronous. Terminate
+        // the server THEN remove the temp dir (sequential — see
+        // `teardownEphemeralSession`).
+        void this.teardownEphemeralSession(
+          context.ephemeral as NonNullable<ProjectContext['ephemeral']>,
+        );
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
+
+    // Exit-watch: proactively notice a detached server that dies while its window
+    // is still open (kill / crash / idle-shutdown) and reap its throwaway temp
+    // dir, so it does not linger for the window's whole open lifetime. Armed only
+    // when `setInterval` is wired (production); unwired harnesses rely on the
+    // probe-on-dedup backstop, which alone repairs the reported re-open symptom.
+    //
+    // It deliberately does NOT delete the `windowsByPath` entry (unlike the
+    // utility-fork `on('exit')` path). The entry is what keeps a still-open
+    // window in the session-restore set (`getOpenWindows`); dropping it would
+    // silently exclude the file from next-launch restore. Dedup correctness does
+    // not need the delete — the dedup gate live-probes liveness on the next open
+    // — so leaving the entry costs nothing and preserves restore. The window is
+    // left open; retiring it gracefully is the renderer affordance's job.
+    //
+    // The whole body is wrapped in try/catch: this is the one new call site not
+    // guarded by async/await propagation, and main runs with no
+    // `uncaughtException` handler by design — a throw here (a probe dep, an errno
+    // path) would take down every window, not just this one.
+    if (this.deps.setInterval) {
+      watchHandle = this.deps.setInterval(() => {
+        try {
+          if (watchCleared) return;
+          // Superseded: a focus-dedup re-open or teardown replaced/cleared the
+          // slot. Whoever owns it now runs its own watch — stop quietly.
+          if (this.windowsByPath.get(canonicalKey) !== context) {
+            stopExitWatch();
+            return;
+          }
+          if (this.isEphemeralServerAlive(context)) return;
+          // The detached server died while its window stayed open. Reap its temp
+          // dir and stop; the entry stays for the reasons above.
+          stopExitWatch();
+          const eph = context.ephemeral as NonNullable<ProjectContext['ephemeral']>;
+          this.deps.log?.warn(
+            {
+              event: 'desktop-ephemeral-server-exited',
+              pid: eph.pid,
+              lockDir: eph.lockDir,
+              file: opts.canonicalFilePath,
+            },
+            '[window-manager] ephemeral server exited while its window was open — reaping the dead session temp dir',
+          );
+          // No `recordServerExit` here (unlike the utility-fork `on('exit')`
+          // path): that record lands in `<lockDir>/last-server-exit.json`, and an
+          // ephemeral lockDir lives inside the throwaway temp projectDir that this
+          // teardown removes — a persistent project lock is re-attached and read
+          // by a later bug-report bundle, but a throwaway one never is.
+          void this.teardownEphemeralSession(eph);
+        } catch (err) {
+          this.deps.log?.warn(
+            {
+              event: 'desktop-ephemeral-watch-probe-failed',
+              err,
+              file: opts.canonicalFilePath,
+              pid: context.ephemeral?.pid,
+              lockDir: context.ephemeral?.lockDir,
+            },
+            '[window-manager] ephemeral server-liveness probe threw — skipping this poll cycle',
+          );
+        }
+      }, EPHEMERAL_SERVER_WATCH_POLL_MS);
+    }
+
     return context;
   }
 
@@ -2510,34 +3298,52 @@ export class WindowManager {
    * removing the dir under a live server is a race. Idempotent: a second call
    * (the `'closed'` handler and `stopAllOwnedServers` can both reach a session)
    * hits ESRCH on the already-dead pid and a no-op `force` rm on the gone dir.
+   *
+   * Guaranteed non-rejecting: every caller invokes it fire-and-forget (`void`),
+   * so a rejection would surface as an unhandled rejection — and main runs with
+   * no `unhandledRejection` handler by design, which would crash every window.
+   * The top-level try/catch makes that guarantee structural rather than relying
+   * on each callee (`terminateServerByPid`, `removeDir`) never throwing.
    */
   private async teardownEphemeralSession(session: {
     projectDir: string;
     pid: number;
     lockDir: string;
   }): Promise<void> {
-    const term = await this.terminateServerByPid(session.lockDir, session.pid);
-    if (!term.ok) {
+    try {
+      const term = await this.terminateServerByPid(session.lockDir, session.pid);
+      if (!term.ok) {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-ephemeral-teardown',
+            outcome: term.reason,
+            pid: session.pid,
+            projectDir: session.projectDir,
+          },
+          '[window-manager] ephemeral server termination did not confirm; removing temp dir anyway',
+        );
+      }
+      await this.deps.removeDir?.(session.projectDir).catch((err: unknown) => {
+        this.deps.log?.warn(
+          {
+            event: 'desktop-ephemeral-teardown',
+            err,
+            projectDir: session.projectDir,
+          },
+          '[window-manager] failed to remove ephemeral temp dir',
+        );
+      });
+    } catch (err) {
       this.deps.log?.warn(
         {
-          event: 'desktop-ephemeral-teardown',
-          outcome: term.reason,
+          event: 'desktop-ephemeral-teardown-unexpected',
+          err,
           pid: session.pid,
           projectDir: session.projectDir,
         },
-        '[window-manager] ephemeral server termination did not confirm; removing temp dir anyway',
+        '[window-manager] unexpected error tearing down ephemeral session',
       );
     }
-    await this.deps.removeDir?.(session.projectDir).catch((err: unknown) => {
-      this.deps.log?.warn(
-        {
-          event: 'desktop-ephemeral-teardown',
-          err,
-          projectDir: session.projectDir,
-        },
-        '[window-manager] failed to remove ephemeral temp dir',
-      );
-    });
   }
 
   /** Close a specific project window (called by IPC `ok:project:close`). */
@@ -2598,8 +3404,18 @@ export class WindowManager {
     const STDERR_TAIL_BYTES = 8192;
     let stderrTail: string | undefined;
     try {
-      const raw = readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8');
-      stderrTail = raw.length > STDERR_TAIL_BYTES ? `…${raw.slice(-STDERR_TAIL_BYTES)}` : raw;
+      // Bound to THIS attempt first. The file appends across spawns, so a
+      // child that died having written nothing would otherwise hand the
+      // previous attempt's stack trace to this failure, labelled as its cause —
+      // a false record of exactly the kind this log exists to prevent.
+      // `.trim()` matching the sibling shim reader: without it, a child whose
+      // only output is a newline defeats the emptiness contract above and
+      // renders a stderr section containing whitespace.
+      const attempt = sliceLastSpawnAttempt(
+        readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8'),
+      ).trim();
+      stderrTail =
+        attempt.length > STDERR_TAIL_BYTES ? `…${attempt.slice(-STDERR_TAIL_BYTES)}` : attempt;
     } catch (readErr) {
       // An absent log is expected — the child can die before opening the fd.
       // Anything else (permissions, a bad path) would otherwise vanish here and
@@ -2849,12 +3665,51 @@ export class WindowManager {
     // Attaching would bind the window to a dying backend — fall through to
     // spawn mode, whose `ok start` child waits out the drain.
     if (lock.draining === true) return refuse('lock-draining');
-    if (lock.port <= 0) return refuse('lock-port-zero');
+    // A STRICTER question than the recovery rule's: not whether anything could
+    // be there, but whether we could HOLD it. A numeric string passes the first
+    // and fails this one. Deliberately decided on `port` alone even when the
+    // `url` is perfectly good, because the keepalive reads the port and nothing
+    // else; `port <= 0` would not do, since it admits `Infinity` to be formatted
+    // into a probe URL nothing can answer.
+    if (!lockIsAttachable(lock)) return refuse('lock-not-attachable');
     if (lock.kind === undefined) return refuse('legacy-lock-no-kind');
     if (lock.capabilities !== undefined && !lock.capabilities.includes('ws')) {
       return refuse('capabilities-missing-ws');
     }
     return lock;
+  }
+
+  /**
+   * `probeAttachableLock` with a bounded grace, for the callers whose verdict on
+   * a failed probe is one-way: the detached-spawn gate fails the open, and the
+   * recovery path deletes the holder's claim.
+   *
+   * The attach path can afford a single shot: a refusal there falls through to
+   * spawning our own server, so a false negative costs a redundant spawn. The
+   * detached-spawn path has already spawned, so its refusal fails the open —
+   * and the lock it is judging belongs to a concurrent starter caught at its
+   * youngest. The port-0 sentinel means `port > 0` implies `listen()` has
+   * bound, but binding is not the same as serving `/collab`: a hung or
+   * mid-wiring upgrade path is the exact symptom `probeAttachableLock` exists
+   * for. One 500 ms shot at that moment would refuse healthy winners.
+   *
+   * Retries are cheap here because the failure they guard against is expensive
+   * and one-way, and because a genuinely dead port fails fast on connection
+   * refused rather than burning the timeout.
+   */
+  private async probeForeignLockWithGrace(
+    lock: { pid: number; port?: unknown; url?: unknown },
+    phase: ProbePhase = 'spawn-foreign-lock',
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= FOREIGN_LOCK_PROBE_ATTEMPTS; attempt++) {
+      if (await this.probeAttachableLock(lock, phase)) return true;
+      if (attempt < FOREIGN_LOCK_PROBE_ATTEMPTS) {
+        await new Promise<void>((resolveSleep) => {
+          this.deps.setTimeout(() => resolveSleep(), FOREIGN_LOCK_PROBE_RETRY_MS);
+        });
+      }
+    }
+    return false;
   }
 
   /**
@@ -2868,7 +3723,13 @@ export class WindowManager {
    * the probe (thrown rejections) are treated as failures — defensive
    * stance, since we cannot prove the server is healthy.
    */
-  private async probeAttachableLock(lock: ServerLockMetadataLike): Promise<boolean> {
+  private async probeAttachableLock(
+    // Only the fields the probe reads: the address to dial and the pid to name
+    // in the refusal. Narrow so callers holding a partially-parsed lock can ask
+    // without fabricating the rest.
+    lock: { pid: number; port?: unknown; url?: unknown },
+    phase: ProbePhase = 'attach',
+  ): Promise<boolean> {
     const probe = this.deps.probeWsUpgrade;
     if (!probe) return true;
     const url = `${lockCollabUrl(lock)}/__attach_probe__`;
@@ -2880,7 +3741,17 @@ export class WindowManager {
     }
     if (!upgradeOk) {
       this.deps.log?.warn(
-        { event: 'desktop-attach-refused', reason: 'ws-upgrade-failed', lockPid: lock.pid },
+        {
+          event: 'desktop-attach-refused',
+          reason: 'ws-upgrade-failed',
+          lockPid: lock.pid,
+          // Which decision this probe was informing. The event name predates
+          // the second caller, and a bundle that cannot tell an attach-gate
+          // refusal from a spawn-path one reads as the same verdict twice on
+          // one port — the exact confusion that made this class hard to
+          // diagnose from logs in the first place.
+          phase,
+        },
         '[window-manager] refusing attach',
       );
     }
@@ -3070,56 +3941,6 @@ export class WindowManager {
     // on a fast load.
     const disposeShowGate = this.deps.showGate.register(window, { kind: 'editor' });
 
-    if (this.deps.rendererDevUrl) {
-      await window.loadURL(this.deps.rendererDevUrl);
-    } else {
-      await window.loadFile(this.deps.rendererEntryPath);
-    }
-    this.deps.startup?.markLoadUrlResolved?.();
-
-    // Open the keepalive WS as soon as the project window mounts. The WS
-    // counts toward the server's idle-shutdown WS-client tally so a brief
-    // MCP disconnect (the agent restarts, the IDE reloads its MCP shim,
-    // etc.) does not trigger idle-shutdown while the user has a project
-    // window open. Presence-invisibility is enforced by the wired
-    // `createKeepalive` (which omits `displayName`/`clientName`/
-    // `colorSeed`); the dep contract documents this constraint.
-    if (this.deps.createKeepalive) {
-      const existingKeepalive = this.keepalives.get(canonicalKey);
-      // Defensive idempotence — a second window for the same project (e.g.
-      // a deep-link re-open while the previous one is mid-teardown) would
-      // race the close handler. Drop the old handle before opening a new
-      // one so we never leak.
-      if (existingKeepalive) existingKeepalive.close();
-      const lockDir = getLocalDir(projectPath);
-      const handle = this.deps.createKeepalive({ lockDir });
-      this.keepalives.set(canonicalKey, handle);
-    }
-
-    window.on('closed', () => {
-      // Drop any stale show-gate state — a window destroyed before either
-      // signal arrives must not hold a slot in the registry's Map.
-      disposeShowGate();
-      // Only release the project's slot if THIS window still owns it. A
-      // server-restart recreate detaches the originating window from the map
-      // and replaces it under the same `canonicalKey` before closing the old
-      // one — without this guard the old window's `'closed'` would delete the
-      // new window's entry (and its keepalive).
-      if (this.windowsByPath.get(canonicalKey) !== context) return;
-      // Close the project's keepalive WS so the server's idle-shutdown
-      // counter can fall back to whatever MCP clients (if any) are still
-      // connected. No-op when no keepalive was opened (back-compat tests).
-      const keepalive = this.keepalives.get(canonicalKey);
-      if (keepalive) {
-        keepalive.close();
-        this.keepalives.delete(canonicalKey);
-      }
-      // Drop from our map so a subsequent open either re-attaches (if the
-      // sibling is still live) or spawns (if it has since exited). Critically,
-      // NO shutdown IPC — the server is not ours to stop.
-      this.windowsByPath.delete(canonicalKey);
-    });
-
     const context: ProjectContext = {
       projectPath,
       canonicalKey,
@@ -3130,7 +3951,62 @@ export class WindowManager {
       utility: null,
       ownsServer: false,
     };
-    this.windowsByPath.set(canonicalKey, context);
+    const releaseLoadingContext = this.publishLoadingContext(context);
+    try {
+      if (this.deps.rendererDevUrl) {
+        await window.loadURL(this.deps.rendererDevUrl);
+      } else {
+        await window.loadFile(this.deps.rendererEntryPath);
+      }
+      this.deps.startup?.markLoadUrlResolved?.();
+
+      // Open the keepalive WS as soon as the project window mounts. The WS
+      // counts toward the server's idle-shutdown WS-client tally so a brief
+      // MCP disconnect (the agent restarts, the IDE reloads its MCP shim,
+      // etc.) does not trigger idle-shutdown while the user has a project
+      // window open. Presence-invisibility is enforced by the wired
+      // `createKeepalive` (which omits `displayName`/`clientName`/
+      // `colorSeed`); the dep contract documents this constraint.
+      if (this.deps.createKeepalive) {
+        const existingKeepalive = this.keepalives.get(canonicalKey);
+        // Defensive idempotence — a second window for the same project (e.g.
+        // a deep-link re-open while the previous one is mid-teardown) would
+        // race the close handler. Drop the old handle before opening a new
+        // one so we never leak.
+        if (existingKeepalive) existingKeepalive.close();
+        const lockDir = getLocalDir(projectPath);
+        const handle = this.deps.createKeepalive({ lockDir });
+        this.keepalives.set(canonicalKey, handle);
+      }
+
+      window.on('closed', () => {
+        // Drop any stale show-gate state — a window destroyed before either
+        // signal arrives must not hold a slot in the registry's Map.
+        disposeShowGate();
+        // Only release the project's slot if THIS window still owns it. A
+        // server-restart recreate detaches the originating window from the map
+        // and replaces it under the same `canonicalKey` before closing the old
+        // one — without this guard the old window's `'closed'` would delete the
+        // new window's entry (and its keepalive).
+        if (this.windowsByPath.get(canonicalKey) !== context) return;
+        // Close the project's keepalive WS so the server's idle-shutdown
+        // counter can fall back to whatever MCP clients (if any) are still
+        // connected. No-op when no keepalive was opened (back-compat tests).
+        const keepalive = this.keepalives.get(canonicalKey);
+        if (keepalive) {
+          keepalive.close();
+          this.keepalives.delete(canonicalKey);
+        }
+        // Drop from our map so a subsequent open either re-attaches (if the
+        // sibling is still live) or spawns (if it has since exited). Critically,
+        // NO shutdown IPC — the server is not ours to stop.
+        this.windowsByPath.delete(canonicalKey);
+      });
+
+      this.windowsByPath.set(canonicalKey, context);
+    } finally {
+      releaseLoadingContext();
+    }
     return context;
   }
 }

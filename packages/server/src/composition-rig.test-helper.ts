@@ -1,6 +1,9 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { request as httpRequest } from 'node:http';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { type BootedServer, type BootServerOptions, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
@@ -31,7 +34,15 @@ export async function bootCompositionRig(
   overrides: Partial<BootServerOptions> = {},
 ): Promise<BootedServer> {
   seedOkScaffold(contentDir);
-  return bootServer({
+  // Isolate the home-dir scan on a dedicated empty tmpdir (NOT `contentDir`,
+  // which would collapse the home + project config tiers onto one `.ok/`):
+  // without an override, `homeDirOverride`/`skillsHome` fall through to the
+  // runner's real `$HOME`, so `/api/skills/installed` enumerates the
+  // developer's `~/.claude`. Computed BEFORE the boot so the mkdtemp is skipped
+  // when a scope-separation suite supplies its own home.
+  const ownedHome =
+    overrides.configHomedirOverride ?? mkdtempSync(resolve(tmpdir(), 'ok-rig-home-'));
+  const booted = await bootServer({
     host: '127.0.0.1',
     config: TEST_CONFIG,
     contentDir,
@@ -40,7 +51,97 @@ export async function bootCompositionRig(
     gitEnabled: false,
     idleShutdownMs: null,
     ...overrides,
+    configHomedirOverride: ownedHome,
   });
+  // The rig owns what it created — reap it on the teardown every consumer
+  // already calls, rather than pushing cleanup onto each call site. A
+  // caller-supplied home is left to its owner. (`destroy` is a plain mutable
+  // property on a non-frozen object, so wrapping it is safe.)
+  if (overrides.configHomedirOverride === undefined) {
+    const inner = booted.destroy;
+    booted.destroy = async (reason) => {
+      // try/finally so the home is reaped even if the inner destroy throws its
+      // AggregateError (a teardown-step timeout under CI load is documented,
+      // not hypothetical) — mirrors bootServer's own destroy wrap.
+      try {
+        await inner(reason);
+      } finally {
+        rmSync(ownedHome, { recursive: true, force: true });
+      }
+    };
+  }
+  return booted;
+}
+
+/**
+ * A synthetic `IncomingMessage` for HANDLER-LEVEL pins that dispatch a route's
+ * handler directly (via `group.table.resolve(path)?.dispatch`), bypassing the
+ * shared `/api/*` pipeline. That bypass is the point: `createApiRequestPipeline`
+ * runs the origin gate and the universal `/api/*` peer + Host read gate before
+ * it dispatches any route, so a handler's INLINE loopback/Host/local-op gate is
+ * only observable when the handler runs without the pipeline in front of it.
+ */
+export function makeSyntheticReq(opts: {
+  method?: string;
+  url?: string;
+  host?: string;
+  origin?: string;
+  remoteAddress?: string;
+}): IncomingMessage {
+  const req = Readable.from(Buffer.from('')) as unknown as IncomingMessage;
+  req.method = opts.method ?? 'GET';
+  req.url = opts.url ?? '/';
+  req.headers = {
+    host: opts.host ?? '127.0.0.1',
+    ...(opts.origin !== undefined ? { origin: opts.origin } : {}),
+  };
+  req.socket = {
+    remoteAddress: opts.remoteAddress ?? '127.0.0.1',
+  } as unknown as IncomingMessage['socket'];
+  return req;
+}
+
+export interface CapturedRes {
+  status: number;
+  headers: Record<string, string | number | string[] | undefined>;
+  body: string;
+}
+
+/**
+ * A minimal `ServerResponse` that records what the wire emitters
+ * (`errorResponse` / `successResponse`) write — status, headers, body — and
+ * carries the `headersSent` / `writableEnded` / `destroyed` flags their
+ * triple-guard reads.
+ */
+export function makeCaptureRes(): { res: ServerResponse; captured: CapturedRes } {
+  const captured: CapturedRes = { status: 0, headers: {}, body: '' };
+  const res = {
+    headersSent: false,
+    writableEnded: false,
+    destroyed: false,
+    statusCode: 0,
+    writeHead(status: number, headers?: Record<string, string | number | string[]>) {
+      captured.status = status;
+      if (headers)
+        for (const [k, v] of Object.entries(headers)) captured.headers[k.toLowerCase()] = v;
+      (res as { headersSent: boolean }).headersSent = true;
+      return res;
+    },
+    setHeader(key: string, value: string | number | string[]) {
+      captured.headers[key.toLowerCase()] = value;
+    },
+    getHeader(key: string) {
+      return captured.headers[key.toLowerCase()];
+    },
+    end(body?: string) {
+      // Handlers that set `res.statusCode` directly (the HEAD branches) instead
+      // of calling writeHead surface their status here.
+      if (captured.status === 0) captured.status = (res as { statusCode: number }).statusCode;
+      if (body !== undefined) captured.body = body;
+      (res as { writableEnded: boolean }).writableEnded = true;
+    },
+  } as unknown as ServerResponse;
+  return { res, captured };
 }
 
 export interface RawResponse {

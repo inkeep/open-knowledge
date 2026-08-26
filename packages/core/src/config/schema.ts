@@ -4,7 +4,12 @@ import { SUPPORTED_LOCALES } from '../i18n/locales.ts';
 import { DEFAULT_LINKS_VALIDATION, LINKS_VALIDATION_SETTINGS } from '../markdown/lint/types.ts';
 import { BASE16_SLOT_ROLES, BASE16_SLOTS } from '../theme/base16.ts';
 import { THEME_ID_PATTERN, THEME_PLUGIN_IDS } from '../theme/theme-plugins.ts';
-import { STORED_SYNC_ACTIVE_MODES, STORED_SYNC_MODES } from './auto-sync-mode.ts';
+import {
+  MAX_SYNC_INTERVAL_SECONDS,
+  MIN_SYNC_INTERVAL_SECONDS,
+  STORED_SYNC_ACTIVE_MODES,
+  STORED_SYNC_MODES,
+} from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
 
 /**
@@ -618,9 +623,13 @@ export const ConfigSchema = z.looseObject({
   // popover, and the AutoSyncOnboardingDialog all write here via the
   // project-local binding — no special HTTP endpoint.
   //
-  // `mode` is the single knob the engine reads to decide whether to push: only
-  // `'full'` pushes, so a `'pull'` follower can never be mistaken for a pusher.
-  // It supersedes the legacy `enabled` boolean, which stays readable for configs
+  // `mode` is the single knob the engine reads to decide whether to push ON A
+  // SCHEDULE: only `'full'` schedules pushes, so a follower's machine never
+  // publishes commits the user did not ask it to. It is NOT a capability gate —
+  // the explicit Push action runs in every mode, including `'off'`, because a
+  // button the user pressed is itself the consent this key exists to secure.
+  // Read the field `description` below as the user-facing contract; the two must
+  // not drift. It supersedes the legacy `enabled` boolean, which stays readable for configs
   // written before `mode` existed — `resolveLocalAutoSyncMode` derives a mode
   // from `enabled` when no `mode` key is present, so the two shapes coexist with
   // no migration.
@@ -639,7 +648,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project-local',
           description:
-            "How this machine syncs this project with its git remote: 'off' (no sync), 'follow' (one-directional — pull remote changes, never push your own; 'pull' is accepted as a legacy alias), or 'full' (bidirectional pull and push). null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared. Supersedes the legacy autoSync.enabled boolean.",
+            "What this machine syncs on a schedule for this project: 'off' (Manual — nothing scheduled; the manual pull/push actions still work), 'follow' (Auto, pull only — scheduled pulls, never a scheduled push; 'pull' is accepted as a legacy alias), or 'full' (Auto, pull and push — bidirectional). Explicit user-triggered pushes work in every mode. null = not chosen yet (onboarding asks). Per-machine (project-local) — not shared. Supersedes the legacy autoSync.enabled boolean.",
         })
         .nullable()
         .default(null),
@@ -675,6 +684,59 @@ export const ConfigSchema = z.looseObject({
             "When sync is paused (autoSync.mode 'off') after having been enabled, the active mode to resume into ('follow' | 'full'). Per-machine UI memory; ignored while a mode is active. Not shared.",
         })
         .optional(),
+      // `autoSync.{pull,push}IntervalSeconds` are the per-machine cadence for
+      // the scheduled cycles. Project-local for the same reason `mode` is: how
+      // hard THIS machine polls is a property of this machine's network and
+      // this person's tolerance for commit noise, not something to push at
+      // teammates through git.
+      //
+      // Absent means "use the shipped default" rather than carrying the number
+      // in every config, so the defaults stay changeable in one place.
+      //
+      // `.catch(undefined)` is load-bearing, not decoration. `readConfigSafely`
+      // degrades the ENTIRE layer to schema defaults on any parse failure, and
+      // `autoSync.mode` lives in this same layer — so a hand-edited
+      // `pullIntervalSeconds: 15` would drop the user's `mode: 'off'` and fall
+      // through to the committed `autoSync.default`. On a project whose
+      // maintainer committed `full`, that silently converts an explicit Manual
+      // choice into automated commits. It would also reject every later
+      // project-local Settings write, since the bad value stays in the merged
+      // doc. Per-leaf catch keeps the blast radius on the leaf, and
+      // `resolveAutoSyncIntervals` supplies the default.
+      //
+      // Pull and push are separate knobs because their costs differ in kind: a
+      // pull is a read (polling faster only buys freshness) while a push
+      // authors a commit in shared history (polling faster buys noise).
+      pullIntervalSeconds: z
+        .number()
+        .int()
+        .min(MIN_SYNC_INTERVAL_SECONDS)
+        .max(MAX_SYNC_INTERVAL_SECONDS)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project-local',
+          description:
+            'Seconds between scheduled pulls while autoSync.mode is follow or full (default 30). An unauthenticated follower is additionally floored to the anonymous poll minimum, so a lower value there has no effect. Per-machine (project-local) — not shared.',
+        })
+        .optional()
+        .catch(undefined),
+      pushIntervalSeconds: z
+        .number()
+        .int()
+        .min(MIN_SYNC_INTERVAL_SECONDS)
+        .max(MAX_SYNC_INTERVAL_SECONDS)
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project-local',
+          description:
+            "Seconds between scheduled pushes while autoSync.mode is full (default 60). Ignored in every other mode, which never pushes on a schedule. Each cycle with pending edits authors a commit, so a shorter interval means more, smaller commits in the repo's shared history. Per-machine (project-local) — not shared.",
+        })
+        .optional()
+        .catch(undefined),
       // `autoSync.default` is the COMMITTED (project-scope) seed for a machine's
       // sync mode on first open. It travels with the repo via git so a
       // maintainer can pre-answer the prompt for everyone who clones the

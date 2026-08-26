@@ -175,7 +175,7 @@ Pre-fill the stub with the **symptom** (how you'd recognize this again — "chec
 - Add a `## Related` section linking **every prior postmortem that shares a subsystem** (from Step 2), plus the `decisions/` and `specs/` implicated — the decision that set the config policy, the spec for the component that failed. `[2024-01-11 payments pool](./postmortems/2024-01-11-payments-pool.md)`, `[connection-pool sizing decision](./decisions/2023-11-04-pool-sizing.md)`.
 - Link the runbook stubs you created in Step 9 from their action items (done above) and from `## Related`.
 - Update the hub of any folder you touched if it has one (an `INDEX.md` in `postmortems/`) so the new incident shows up in the index — the preview becomes a live progress bar.
-- Validate: `links({ kind: "dead", sourceDocNames: ["postmortems/YYYY-MM-DD-name"] })` returns clean — fix or drop every dead link. Confirm frontmatter is complete and the Summary / Timeline / Root cause / What went well / Action items sections are all filled, none left as template placeholder.
+- Validate: `audit({ path: "postmortems/YYYY-MM-DD-name.md" })` returns clean (every lint violation + broken internal link) — fix every finding. Confirm frontmatter is complete and the Summary / Timeline / Root cause / What went well / Action items sections are all filled, none left as template placeholder.
 
 ---
 

@@ -9,18 +9,71 @@
  * store, and read back on the next open of the doc — surviving a tab crash at
  * any point up to the replay.
  *
- * It is a SEPARATE IndexedDB database (`ok-replay-outbox:<branch>:<docName>`),
- * NEVER the y-indexeddb `updates` store: hydrating the pre-recycle bytes back
- * into the fresh Y.Doc is exactly the content-duplication class `clearData`
- * exists to prevent. The reopen path reads this store explicitly and feeds the
- * bytes through the CONTENT-level replay (rebuild a replica, splice the
- * recovered string) rather than a Y.Doc merge.
+ * It is a SEPARATE IndexedDB database
+ * (`ok-replay-outbox[:<project digest>]:<branch>:<docName>` — the project
+ * segment is absent on a null namespace), NEVER the y-indexeddb
+ * `updates` store: hydrating the pre-recycle bytes back into the fresh Y.Doc
+ * is exactly the content-duplication class `clearData` exists to prevent. The
+ * reopen path reads this store explicitly and feeds the bytes through the
+ * CONTENT-level replay (rebuild a replica, splice the recovered string) rather
+ * than a Y.Doc merge.
  *
- * The db name is branch+docName scoped (not epoch-scoped): the post-recycle
- * `serverInstanceId` is unknown when the buffer is captured (the client nulls
- * its cached id and only relearns it from the reconnect handshake), so the
- * epoch cannot be part of the key. Branch isolation mirrors the y-indexeddb
- * naming.
+ * The db name is project+branch+docName scoped (not epoch-scoped): the
+ * post-recycle `serverInstanceId` is unknown when the buffer is captured (the
+ * client nulls its cached id and only relearns it from the reconnect
+ * handshake), so the epoch cannot be part of the key.
+ *
+ * The project component is REQUIRED for every packaged window, and omitted
+ * only for a null namespace, where the origin already isolates — that is
+ * `precedent #59`, applied here through `scopedStorageKey`
+ * (`lib/storage-scope.ts`), not re-derived. What is specific to THIS
+ * store: `docName` is repo-root-relative and branch names repeat, so two
+ * worktrees of one repository on the same branch address the same doc path,
+ * and the payload here is buffered document content — so a collision crosses
+ * edits between projects rather than raising an error. The sibling
+ * y-indexeddb store in `client-persistence.ts` is safe without a project
+ * component only because its name carries the per-process `serverInstanceId`,
+ * which this one cannot have; the omission of the epoch does not license
+ * omitting project identity.
+ *
+ * `namespace` is threaded in from the caller rather than resolved in here, and
+ * travels in a NAMED field (`ReplayOutboxKey`) rather than a positional slot.
+ * Requiredness only forces a value to be supplied; naming is what stops a
+ * wrong one — three bare strings in a row compile in any order.
+ *
+ * A namespace change renames the database, so an entry written under a
+ * different one is not read back. That has three causes, all accepted:
+ *
+ * 1. The one-time upgrade from the pre-scoping name. Deliberately NOT
+ *    migrated: adopting an unscoped record would import the cross-project
+ *    content this scoping removes, which is the bug. Electron only, since a
+ *    null namespace reproduces the old name exactly. The stranded set is
+ *    every LIVE pre-scoping record, not just one caught mid-recycle. Every
+ *    consume path runs INSIDE a live session: a reopen's replay (from the RAM
+ *    buffer when one survived, straight from the outbox when the tab died and
+ *    none did), or an intentional discard through `discardBufferedUpdate`
+ *    (explicit close, LRU eviction, cross-branch invalidation) — that second
+ *    family is the one gated on the RAM buffer's `durable` flag. Ordinary app
+ *    termination — quit, force-quit, `quitAndInstall` — runs none of them. So
+ *    a doc not reopened between its write and the upgrade keeps an
+ *    unreachable record. Stranding is also silent: a null read is
+ *    indistinguishable from "nothing to recover".
+ * 2. Ongoing: the namespace is the project path AS THE USER PICKED IT, not
+ *    its realpath (`window-manager.ts` keeps `projectPath` and `canonicalKey`
+ *    deliberately distinct, and the renderer is handed the former). So
+ *    reopening one project under a different spelling of the same path
+ *    (`/tmp` vs `/private/tmp`, a symlinked cwd, Windows drive-letter case)
+ *    reads a different name and misses its own parked edit.
+ * 3. A revert of this change orphans records written under the NEW name, for
+ *    the same reason as (1) — the desktop updater rolls forward only, so a
+ *    rollback ships as a revert.
+ *
+ * Case 2 costs a missed recovery on a best-effort mechanism; the collision it
+ * replaces silently applied ANOTHER project's content. Canonicalizing is
+ * additive rather than blocked — `window-manager.ts` already computes
+ * `canonicalKey`, and identity reaches the renderer as independently-parsed
+ * spawn args — but it touches the desktop spawn surface and every
+ * editor-window path, so it is deferred rather than bundled here.
  *
  * Durable recovery requires `indexedDB.databases()` (Baseline). On engines
  * without it EVERY operation no-ops (degrade to RAM-only): the read/consume
@@ -30,12 +83,13 @@
  * reports that with a `false` return so the caller knows the buffer is
  * RAM-only.
  *
- * The single `(branch, docName)` record is also the CROSS-TAB exactly-once
- * token: same-origin tabs share it, so `consumeReplayOutboxEntry` reports
- * whether THIS caller was the one that removed a live record. Its count+delete
- * run in one `readwrite` transaction, and IndexedDB serializes overlapping
- * readwrite transactions across connections, which makes the pair an atomic
- * compare-and-claim rather than a check-then-act.
+ * The single `(namespace, branch, docName)` record is also the CROSS-TAB
+ * exactly-once token: tabs of the same project share it, so
+ * `consumeReplayOutboxEntry` reports whether THIS caller was the one that
+ * removed a live record. Its count+delete run in one `readwrite` transaction,
+ * and IndexedDB serializes overlapping readwrite transactions across
+ * connections, which makes the pair an atomic compare-and-claim rather than a
+ * check-then-act.
  *
  * Consumed entries leave an empty outbox database behind (record deleted, DB
  * kept) rather than racing a `deleteDatabase` against a concurrent reopen —
@@ -51,6 +105,8 @@
  * `blocked` (only `deleteDatabase` and an upgrading open can). The deadline
  * covers the general stall, not a version-change block.
  */
+
+import { scopedStorageKey } from '@/lib/storage-scope';
 
 const REPLAY_OUTBOX_DB_PREFIX = 'ok-replay-outbox';
 const ENTRY_STORE_NAME = 'entry';
@@ -116,8 +172,32 @@ export interface ReplayOutboxEntry {
   readonly fullState: Uint8Array;
 }
 
-function outboxDbName(branch: string, docName: string): string {
-  return `${REPLAY_OUTBOX_DB_PREFIX}:${branch}:${docName}`;
+/**
+ * Addresses ONE outbox record. Object-literal form for the reason
+ * `CreateClientPersistenceArgs` in `client-persistence.ts` gives for the
+ * sibling IDB name: the fields are indistinguishable to the type system, so
+ * positionally a swap compiles cleanly and silently produces the wrong
+ * database name — here defeating the cross-project defense.
+ */
+export interface ReplayOutboxKey {
+  readonly branch: string;
+  readonly docName: string;
+  /** See the module header. `null` only on hosts the origin already isolates. */
+  readonly namespace: string | null;
+}
+
+/**
+ * `<prefix>[:<project digest>]:<branch>:<docName>`. The project segment is
+ * ABSENT for a null namespace, which is what keeps the web-host name
+ * byte-identical to its pre-scoping form.
+ *
+ * The project component is what keeps two windows of DIFFERENT projects off
+ * one database — see the `namespace` note in the module header. It is applied
+ * by `scopedStorageKey` to the PREFIX rather than appended to the whole name,
+ * so no web-host record is orphaned by this change.
+ */
+function outboxDbName({ branch, docName, namespace }: ReplayOutboxKey): string {
+  return `${scopedStorageKey(REPLAY_OUTBOX_DB_PREFIX, namespace)}:${branch}:${docName}`;
 }
 
 function openOutboxDb(dbName: string): Promise<IDBDatabase> {
@@ -146,11 +226,14 @@ function openOutboxDb(dbName: string): Promise<IDBDatabase> {
  * `databases()` enumerates ALL origin databases and runs on the first `synced`
  * of a doc open (via `readReplayOutboxEntry`), so its cost scales with the
  * origin's total database count, not just outbox DBs. The consumed-but-kept
- * empty outboxes (see the module note) add to that count only per recycled
- * `(branch, docName)` — a bounded subset dwarfed by the per-epoch y-indexeddb
- * stores this call already lists — so retaining them is a storage-hygiene cost,
- * not an enumeration-cost regression that would justify racing a `deleteDatabase`
- * against a concurrent reopen.
+ * empty outboxes (see the module note) add to that count per recycled
+ * `(namespace, branch, docName)`, so it scales with projects opened as well as
+ * docs recycled — N worktrees sharing a branch and a doc path leave N orphans
+ * where they once left one. Still dwarfed by the per-epoch y-indexeddb stores
+ * this call already lists, so retaining them remains a storage-hygiene cost
+ * rather than an enumeration-cost regression that would justify racing a
+ * `deleteDatabase` against a concurrent reopen — but the project multiplier is
+ * the term to re-check if that ever stops holding.
  */
 async function outboxDbExists(dbName: string): Promise<boolean> {
   if (!isReplayOutboxSupported()) return false;
@@ -168,15 +251,15 @@ async function outboxDbExists(dbName: string): Promise<boolean> {
  * caller uses that to decide whether a durable copy backs its RAM buffer.
  */
 export async function writeReplayOutboxEntry(
-  branch: string,
-  docName: string,
+  key: ReplayOutboxKey,
   entry: ReplayOutboxEntry,
 ): Promise<boolean> {
   // No `databases()` means no reader will ever find this record: writing it
   // would strand a full doc-state payload in storage with nothing able to
   // consume or reclaim it. Report RAM-only instead.
   if (!isReplayOutboxSupported()) return false;
-  const dbName = outboxDbName(branch, docName);
+  const { docName } = key;
+  const dbName = outboxDbName(key);
   return withOutboxTimeout(
     'write',
     docName,
@@ -214,11 +297,11 @@ export async function writeReplayOutboxEntry(
  * consumed outbox). Never creates a DB for a doc that has no outbox.
  */
 export async function readReplayOutboxEntry(
-  branch: string,
-  docName: string,
+  key: ReplayOutboxKey,
 ): Promise<ReplayOutboxEntry | null> {
   if (!isReplayOutboxSupported()) return null;
-  const dbName = outboxDbName(branch, docName);
+  const { docName } = key;
+  const dbName = outboxDbName(key);
   return withOutboxTimeout(
     'read',
     docName,
@@ -251,20 +334,26 @@ export async function readReplayOutboxEntry(
  * Consume a doc's buffer by deleting its record, and report whether THIS
  * caller was the one that removed a live record.
  *
- * That boolean is the cross-tab exactly-once claim. Same-origin tabs share one
- * `(branch, docName)` record, so a `false` return means another tab already
- * consumed it and owns the replay — re-applying on top would not be idempotent
- * (see `replayBufferedContent`'s surface attribution). The count and the delete
- * run in ONE `readwrite` transaction and IndexedDB serializes overlapping
- * readwrite transactions across connections, so the pair is an atomic
- * compare-and-claim, not a check-then-act.
+ * That boolean is the cross-tab exactly-once claim. Tabs of the SAME project
+ * share one `(namespace, branch, docName)` record, so a `false` return means
+ * another such tab already consumed it and owns the replay — re-applying on
+ * top would not be idempotent (see `replayBufferedContent`'s surface
+ * attribution). The count and the delete run in ONE `readwrite` transaction
+ * and IndexedDB serializes overlapping readwrite transactions across
+ * connections, so the pair is an atomic compare-and-claim, not a
+ * check-then-act.
+ *
+ * A window of a DIFFERENT project must never lose this claim: its buffered
+ * edit belongs to a different document that merely shares a path and a branch
+ * name. That is what the `namespace` component guarantees.
  *
  * Idempotent for callers that only want the record gone (consuming an absent
  * record resolves `false` rather than throwing).
  */
-export async function consumeReplayOutboxEntry(branch: string, docName: string): Promise<boolean> {
+export async function consumeReplayOutboxEntry(key: ReplayOutboxKey): Promise<boolean> {
   if (!isReplayOutboxSupported()) return false;
-  const dbName = outboxDbName(branch, docName);
+  const { docName } = key;
+  const dbName = outboxDbName(key);
   return withOutboxTimeout(
     'consume',
     docName,

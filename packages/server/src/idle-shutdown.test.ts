@@ -3,7 +3,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import type { Scheduler } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
-import { attachIdleShutdown } from './idle-shutdown';
+import { attachCollabClientCounter, attachIdleShutdown } from './idle-shutdown';
 
 // ─────────────────────────────────────────────────────────────
 // Test helpers
@@ -387,5 +387,57 @@ describe('attachIdleShutdown', () => {
         resolve();
       });
     });
+  });
+});
+
+describe('attachCollabClientCounter', () => {
+  test('counts /collab upgrades and decrements on socket close', () => {
+    const server = createFakeHttpServer();
+    const counter = attachCollabClientCounter(server);
+    expect(counter.getCount()).toBe(0);
+
+    const a = createFakeSocket();
+    const b = createFakeSocket();
+    emitUpgrade(server, '/collab/doc-a', a);
+    emitUpgrade(server, '/collab/doc-b', b);
+    expect(counter.getCount()).toBe(2);
+
+    (a as unknown as EventEmitter).emit('close');
+    expect(counter.getCount()).toBe(1);
+    (b as unknown as EventEmitter).emit('close');
+    expect(counter.getCount()).toBe(0);
+  });
+
+  test('counts every client kind on /collab, including agent keepalive sockets', () => {
+    const server = createFakeHttpServer();
+    const counter = attachCollabClientCounter(server);
+    emitUpgrade(server, '/collab/keepalive?connectionId=agent-1', createFakeSocket());
+    expect(counter.getCount()).toBe(1);
+  });
+
+  test('ignores non-/collab upgrades', () => {
+    const server = createFakeHttpServer();
+    const counter = attachCollabClientCounter(server);
+    emitUpgrade(server, '/mcp', createFakeSocket());
+    expect(counter.getCount()).toBe(0);
+  });
+
+  test('detach stops counting', () => {
+    const server = createFakeHttpServer();
+    const counter = attachCollabClientCounter(server);
+    counter.detach();
+    emitUpgrade(server, '/collab/doc', createFakeSocket());
+    expect(counter.getCount()).toBe(0);
+  });
+
+  test('reports changes so idle-shutdown can schedule off the same count', () => {
+    const server = createFakeHttpServer();
+    const seen: number[] = [];
+    const counter = attachCollabClientCounter(server, (n) => seen.push(n));
+    const socket = createFakeSocket();
+    emitUpgrade(server, '/collab/doc', socket);
+    (socket as unknown as EventEmitter).emit('close');
+    expect(seen).toEqual([1, 0]);
+    expect(counter.getCount()).toBe(0);
   });
 });

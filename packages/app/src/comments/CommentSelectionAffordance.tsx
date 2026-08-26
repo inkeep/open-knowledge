@@ -23,7 +23,7 @@
 
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 import { commentQuoteText } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { posToDOMRect } from '@tiptap/core';
@@ -38,6 +38,7 @@ import {
 import {
   deriveEditorClipOptions,
   deriveEditorShiftOptions,
+  deriveEditorSizeOptions,
   SELECTION_SURFACE_GAP_PX,
 } from '@/editor/utils/editor-visible-region';
 import { getEditorView } from '@/editor/utils/get-editor-view';
@@ -158,6 +159,12 @@ export function CommentSelectionAffordance({
           // boundary as well as the clamp that keeps it inside it.
           flip(deriveEditorClipOptions(editor)),
           shift(deriveEditorShiftOptions(editor)),
+          // The card's `w-80` is wider than the editor pane once a terminal or
+          // rail is docked beside a narrowed column, and a clamp cannot place
+          // a card that does not fit. Capping its width to the region keeps it
+          // off the neighbour; the card is a flex column, so the cap costs it
+          // reflow rather than reachable controls.
+          size(deriveEditorSizeOptions(editor)),
           // No hide(): unlike the formatting bar, this card holds a draft and
           // owns focus, so stamping `visibility: hidden` on it would drop the
           // caret to <body> mid-sentence. Scrolling the captured passage out

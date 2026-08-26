@@ -2,7 +2,7 @@
 
 (Core carries the MUST gates: read the folder before writing, use a template when one fits, bake recurring properties into a template. This file is the structural model.)
 
-Every `.md` / `.mdx` file needs YAML frontmatter — `title` + `description` required, `tags` recommended:
+Every `.md` / `.mdx` file needs YAML frontmatter — `title` + `description` required, `tags` recommended (except in OKF projects, where the `okf` pack's reserved-file rules override this — see core):
 
 ```yaml
 ---

@@ -10,10 +10,12 @@ import { okVitestBase } from '../../test-support/vitest.base';
  * utility processes and never touch a DOM, so the base `node` environment is
  * correct — no jsdom project.
  *
- * The include adds `**\/*.test.mjs`: the base glob is `**\/*.test.ts?(x)`, which
- * would miss the two native-driver verification tests written as `.mjs`. Both
- * globs together reproduce the file set `bun test` auto-discovered before the
- * flip.
+ * The include adds `**\/*.test.mjs`: the base glob is `**\/*.test.ts?(x)`, so
+ * on its own it would miss any suite written as `.mjs` — e.g. the guards that
+ * import a plain `.mjs` driver directly rather than through TypeScript.
+ * Keep the glob broad: narrowing it to match today's filenames would
+ * un-discover the next one silently, with vitest reporting fewer tests and no
+ * error.
  */
 export default defineConfig({
   ...okVitestBase,

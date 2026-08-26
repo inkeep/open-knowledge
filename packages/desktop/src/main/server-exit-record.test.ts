@@ -3,7 +3,8 @@
  * clock, and a capturing logger — the same injectable-deps posture as the
  * sibling crash-detection tests. Covers the two arrival orders of the exit
  * `code` and the process-gone `reason`, the correlation window that joins
- * them, and the fail-soft write path.
+ * them, the optional `signal` only the packaged spawn path observes, and the
+ * fail-soft write path.
  */
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -58,7 +59,7 @@ describe('createServerExitRecorder', () => {
     const clock = makeClock();
     const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
 
-    recorder.recordExit({ lockDir, pid: 51502, code: 0 });
+    recorder.recordExit({ lockDir, pid: 51502, code: 0, observer: 'utility-process' });
 
     const record = readRecord(lockDir);
     expect(record.pid).toBe(51502);
@@ -72,9 +73,124 @@ describe('createServerExitRecorder', () => {
     const clock = makeClock();
     const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
 
-    recorder.recordExit({ lockDir, pid: 999, code: null });
+    recorder.recordExit({ lockDir, pid: 999, code: null, observer: 'utility-process' });
 
     expect(readRecord(lockDir).code).toBeNull();
+  });
+
+  test('a signal reaches the record verbatim', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    recorder.recordExit({
+      lockDir,
+      pid: 4242,
+      code: null,
+      signal: 'SIGKILL',
+      observer: 'detached-spawn',
+    });
+
+    const record = readRecord(lockDir);
+    expect(record.signal).toBe('SIGKILL');
+    expect(record.code).toBeNull();
+  });
+
+  test('an exit reported without a signal records signal null', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    // The dev `utilityProcess` exit event carries no signal, so its call site
+    // omits the field entirely.
+    recorder.recordExit({ lockDir, pid: 7, code: 0, observer: 'utility-process' });
+
+    const record = readRecord(lockDir);
+    expect(record.signal).toBeNull();
+    expect(record.pid).toBe(7);
+    expect(record.code).toBe(0);
+  });
+
+  test('the record names which host observed the death', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    // Without this a triager cannot tell a `reason: null` that means "the
+    // correlation window produced nothing" from one that means "no such
+    // classification can exist for this process".
+    recorder.recordExit({ lockDir, pid: 7, code: 0, observer: 'utility-process' });
+    expect(readRecord(lockDir).observer).toBe('utility-process');
+
+    recorder.recordExit({
+      lockDir,
+      pid: 8,
+      code: null,
+      signal: 'SIGKILL',
+      observer: 'detached-spawn',
+    });
+    expect(readRecord(lockDir).observer).toBe('detached-spawn');
+  });
+
+  test('a later noteGoneReason patch preserves the signal', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    recorder.recordExit({
+      lockDir,
+      pid: 1,
+      code: null,
+      signal: 'SIGKILL',
+      observer: 'utility-process',
+    });
+    clock.tick(100);
+    recorder.noteGoneReason('killed');
+
+    const record = readRecord(lockDir);
+    expect(record.reason).toBe('killed');
+    expect(record.signal).toBe('SIGKILL');
+  });
+
+  test('a detached-path record declines a reason that arrived before it', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    // Packaged shape: the project server is a plain spawn child, so every
+    // `child-process-gone` reason that can reach the recorder describes some
+    // other Utility (a pty-host, say). Adopting one would label this death
+    // with a different process's cause.
+    recorder.noteGoneReason('killed');
+    clock.tick(50);
+    recorder.recordExit({
+      lockDir,
+      pid: 1,
+      code: null,
+      signal: 'SIGTERM',
+      observer: 'detached-spawn',
+    });
+
+    expect(readRecord(lockDir).reason).toBeNull();
+    expect(readRecord(lockDir).signal).toBe('SIGTERM');
+  });
+
+  test('a reason arriving after a detached-path record does not patch it', () => {
+    const lockDir = makeLockDir();
+    const clock = makeClock();
+    const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
+
+    recorder.recordExit({
+      lockDir,
+      pid: 1,
+      code: 0,
+      signal: null,
+      observer: 'detached-spawn',
+    });
+    clock.tick(50);
+    recorder.noteGoneReason('clean-exit');
+
+    expect(readRecord(lockDir).reason).toBeNull();
   });
 
   test('noteGoneReason before recordExit attaches the reason', () => {
@@ -84,7 +200,7 @@ describe('createServerExitRecorder', () => {
 
     recorder.noteGoneReason('oom');
     clock.tick(50);
-    recorder.recordExit({ lockDir, pid: 1, code: null });
+    recorder.recordExit({ lockDir, pid: 1, code: null, observer: 'utility-process' });
 
     expect(readRecord(lockDir).reason).toBe('oom');
   });
@@ -94,7 +210,7 @@ describe('createServerExitRecorder', () => {
     const clock = makeClock();
     const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
 
-    recorder.recordExit({ lockDir, pid: 1, code: 1 });
+    recorder.recordExit({ lockDir, pid: 1, code: 1, observer: 'utility-process' });
     expect(readRecord(lockDir).reason).toBeNull();
 
     clock.tick(100);
@@ -114,7 +230,7 @@ describe('createServerExitRecorder', () => {
 
     recorder.noteGoneReason('killed');
     clock.tick(3_001);
-    recorder.recordExit({ lockDir, pid: 1, code: null });
+    recorder.recordExit({ lockDir, pid: 1, code: null, observer: 'utility-process' });
 
     expect(readRecord(lockDir).reason).toBeNull();
   });
@@ -124,7 +240,7 @@ describe('createServerExitRecorder', () => {
     const clock = makeClock();
     const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
 
-    recorder.recordExit({ lockDir, pid: 1, code: 0 });
+    recorder.recordExit({ lockDir, pid: 1, code: 0, observer: 'utility-process' });
     clock.tick(3_001);
     recorder.noteGoneReason('clean-exit');
 
@@ -136,9 +252,9 @@ describe('createServerExitRecorder', () => {
     const clock = makeClock();
     const recorder = createServerExitRecorder({ now: clock.now, logger: makeLogger().logger });
 
-    recorder.recordExit({ lockDir, pid: 1, code: 0 });
+    recorder.recordExit({ lockDir, pid: 1, code: 0, observer: 'utility-process' });
     clock.tick(60_000);
-    recorder.recordExit({ lockDir, pid: 2, code: 1 });
+    recorder.recordExit({ lockDir, pid: 2, code: 1, observer: 'utility-process' });
 
     const record = readRecord(lockDir);
     expect(record.pid).toBe(2);
@@ -156,8 +272,45 @@ describe('createServerExitRecorder', () => {
     const { warnings, logger } = makeLogger();
     const recorder = createServerExitRecorder({ now: clock.now, logger });
 
-    expect(() => recorder.recordExit({ lockDir: badLockDir, pid: 1, code: 1 })).not.toThrow();
+    expect(() =>
+      recorder.recordExit({
+        lockDir: badLockDir,
+        pid: 1,
+        code: 1,
+        observer: 'utility-process',
+      }),
+    ).not.toThrow();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.payload.event).toBe('server-exit-record.write-failed');
+  });
+
+  test('a throwing warn sink still cannot escape the write path', () => {
+    const parent = makeLockDir();
+    const filePath = join(parent, 'not-a-dir');
+    writeFileSync(filePath, 'x');
+    const badLockDir = join(filePath, 'nested');
+    const clock = makeClock();
+    // When the state dir is unwritable the desktop logger's own lazily-created
+    // `~/.ok/logs` often is too. Both failing at once must still not throw:
+    // `recordExit` runs inside an `'exit'` listener, so an escape becomes an
+    // `uncaughtException` and Electron's fatal dialog — the exact masking of a
+    // server death this fail-soft path exists to prevent.
+    const recorder = createServerExitRecorder({
+      now: clock.now,
+      logger: {
+        warn: () => {
+          throw new Error("EACCES: permission denied, mkdir '/x/.ok/logs'");
+        },
+      },
+    });
+
+    expect(() =>
+      recorder.recordExit({
+        lockDir: badLockDir,
+        pid: 1,
+        code: 1,
+        observer: 'utility-process',
+      }),
+    ).not.toThrow();
   });
 });

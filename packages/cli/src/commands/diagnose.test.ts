@@ -36,7 +36,7 @@ function makeServerLock(pid: number, worktreeRoot: string, port = 5173): LockSta
 function makeBaseDeps(outDir: string) {
   return {
     discover: async () => [],
-    inspect: (_: string, __: 'server'): LockState => ({ status: 'missing', lockPath: '' }),
+    inspect: (): LockState => ({ status: 'missing', lockPath: '' }),
     resolveCommand: (_: number) => '/usr/local/bin/node /tmp/cli.ts start',
     resolveUsage: (_: number) => ({ cpuPercent: 1.2, memPercent: 0.4 }),
     collectLsofFn: (_: number) => 'COMMAND  PID  USER  FD  TYPE  DEVICE  SIZE  NAME\n',
@@ -139,10 +139,7 @@ describe('runDiagnose', () => {
       {
         ...makeBaseDeps(out),
         discover: async () => [`${worktreeRoot}/.ok/local`],
-        inspect: (_lockDir, name) =>
-          name === 'server'
-            ? makeServerLock(pid, worktreeRoot)
-            : { status: 'missing', lockPath: '' },
+        inspect: () => makeServerLock(pid, worktreeRoot),
       },
     );
 
@@ -163,8 +160,7 @@ describe('runDiagnose', () => {
       {
         ...makeBaseDeps(contentDir),
         discover: async () => [`${contentDir}/.ok/local`],
-        inspect: (_lockDir, name) =>
-          name === 'server' ? makeServerLock(pid, contentDir) : { status: 'missing', lockPath: '' },
+        inspect: () => makeServerLock(pid, contentDir),
         log: (m) => logs.push(m),
       },
     );

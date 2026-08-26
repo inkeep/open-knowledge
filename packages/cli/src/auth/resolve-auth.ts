@@ -15,6 +15,12 @@ interface RelayGhToken {
   token: string;
   /** Host the token authenticates; the helper host-matches before using it. */
   host: string;
+  /**
+   * gh account that produced the token, when known. Absent for tokens the
+   * active account answered anonymously (`gh auth token` names no account), so
+   * diagnostics reading this must degrade to "identity unknown", never guess.
+   */
+  login?: string;
 }
 
 export interface ResolvedAuth {
@@ -38,6 +44,13 @@ export interface ResolvedAuth {
 interface ResolveAuthOptions {
   /** Skip gh detection even if gh is on PATH */
   skipGhDetect?: boolean;
+  /**
+   * gh account to request the token for (`gh auth token --user <login>`),
+   * as declared by the remote URL's userinfo or a `credential.<url>.username`
+   * entry. A login gh cannot serve falls back to the active account inside
+   * `detectGh` — auth degrades to the active identity, never to no-credential.
+   */
+  login?: string;
   /**
    * argv that re-execs THIS CLI (`[execPath, cliEntry]`), used to build the
    * self-referential credential helper. Defaults to the bare `open-knowledge`
@@ -87,7 +100,10 @@ export async function resolveAuth(
   host: string,
   tokenStore: TokenStore,
   options: ResolveAuthOptions = {},
-  _detectGhFn: (host?: string) => ReturnType<typeof detectGh> = detectGh,
+  _detectGhFn: (
+    host?: string,
+    options?: { login?: string },
+  ) => ReturnType<typeof detectGh> = detectGh,
 ): Promise<ResolvedAuth> {
   const selfHelper = buildCliCredentialHelper(options.selfCliArgs ?? ['open-knowledge']);
   // Empty reset first, then OK's helper — see ResolvedAuth.gitConfig.
@@ -95,9 +111,21 @@ export async function resolveAuth(
 
   // Tier A: gh CLI — relay the gh-resolved token via env.
   if (!options.skipGhDetect) {
-    const gh = _detectGhFn(host);
+    const gh = _detectGhFn(host, { login: options.login });
     if (gh.available && gh.token) {
-      return { tier: 'A', gitConfig: authenticatedConfig, relayToken: { token: gh.token, host } };
+      return {
+        tier: 'A',
+        gitConfig: authenticatedConfig,
+        // `resolvedLogin`, never the requested login: after detectGh's
+        // fallback the token belongs to the active account, and relaying the
+        // missed name would let diagnostics claim an identity the token
+        // does not have.
+        relayToken: {
+          token: gh.token,
+          host,
+          ...(gh.resolvedLogin ? { login: gh.resolvedLogin } : {}),
+        },
+      };
     }
   }
 

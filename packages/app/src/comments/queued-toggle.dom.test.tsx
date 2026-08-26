@@ -112,7 +112,7 @@ describe('opening an edit', () => {
 });
 
 describe('the active-thread tint', () => {
-  test('the card being read in the document carries the highlight amber', () => {
+  test('the card being read in the document carries the highlight blue', () => {
     render(
       <TooltipProvider>
         <ThreadCard
@@ -129,8 +129,8 @@ describe('the active-thread tint', () => {
     // A WASH, deliberately not a border: an outline reads as "this comment is
     // picked", and being read is not being selected — the tick owns that.
     const card = screen.getByRole('article');
-    expect(card.className).toContain('bg-amber-500/10');
-    expect(card.className).not.toContain('border-amber-500/60');
+    expect(card.className).toContain('bg-blue-600/10');
+    expect(card.className).not.toContain('border-blue-600/60');
   });
 
   test('an inactive card carries none', () => {
@@ -145,7 +145,7 @@ describe('the active-thread tint', () => {
         />
       </TooltipProvider>,
     );
-    expect(screen.getByRole('article').className).not.toContain('bg-amber-500/10');
+    expect(screen.getByRole('article').className).not.toContain('bg-blue-600/10');
   });
 });
 

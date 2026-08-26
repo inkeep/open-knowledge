@@ -135,7 +135,7 @@ describe('runAudit', () => {
   }
 
   test('clean audit: GET /api/audit with cli version headers, exit 0', async () => {
-    const { urls, inits } = stubFetch(payload({ fileCount: 3 }));
+    const { urls, inits } = stubFetch(payload({ fileCount: 3, ran: ['markdownlint', 'links'] }));
     const { io, out } = collectIo();
 
     const code = await runAudit(undefined, {}, minimalConfig, dir, dir, io);
@@ -146,6 +146,7 @@ describe('runAudit', () => {
     expect(headers['x-ok-client-kind']).toBe('cli');
     expect(headers['x-ok-client-runtime']).toBe(RUNTIME_VERSION);
     expect(out.join('\n')).toContain('No problems in 3 files');
+    expect(out.join('\n')).toContain('Checks run: markdownlint, links.');
   });
 
   test('scopes the query to the contentDir-relative target', async () => {
@@ -163,6 +164,7 @@ describe('runAudit', () => {
         fileCount: 2,
         errorCount: 1,
         warningCount: 1,
+        ran: ['markdownlint', 'links'],
         files: [
           {
             file: 'a.md',
@@ -189,6 +191,7 @@ describe('runAudit', () => {
     expect(text).toContain('markdownlint/MD010');
     expect(text).toContain('links/dead-link');
     expect(text).toContain('2 problems');
+    expect(text).toContain('Checks run: markdownlint, links.');
   });
 
   test('--errors-only ignores warning-severity findings for the exit code', async () => {
@@ -210,6 +213,7 @@ describe('runAudit', () => {
     const body = payload({
       fileCount: 1,
       warningCount: 1,
+      ran: ['markdownlint', 'links'],
       files: [{ file: 'a.md', diagnostics: [diagnostic()] }],
     });
     stubFetch(body);
@@ -260,14 +264,16 @@ describe('runAudit', () => {
 
   test('surfaces engine degradation warnings in the report', async () => {
     stubFetch(
-      payload({ warnings: ['links validation unavailable: backlink index is not configured'] }),
+      payload({
+        warnings: ['source family "links" validation failed: backlink index is not configured'],
+      }),
     );
     const { io, out } = collectIo();
 
     const code = await runAudit(undefined, {}, minimalConfig, dir, dir, io);
 
     expect(code).toBe(0);
-    expect(out.join('\n')).toContain('links validation unavailable');
+    expect(out.join('\n')).toContain('source family "links" validation failed');
   });
 
   test('errors with `ok start` guidance when no server lock is live', async () => {

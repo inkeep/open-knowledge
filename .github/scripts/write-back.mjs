@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 /**
- * Tell a bug reporter, once, that the fix they reported has shipped.
+ * Tell a reporter, at most once per channel, that the fix they reported is out.
+ *
+ * "A reporter", not "a bug reporter": the enumeration below does not narrow on the
+ * Bug label, because whether someone hears back should not depend on how triage
+ * classified what they raised.
  *
  * Why this enumerates tickets rather than release commits. Every off-the-shelf
  * release notifier walks the commits in a release, follows each to its pull
@@ -43,11 +47,19 @@ import {
   firstContainingStableTag,
   parseFixRef,
   parseGitOriginRevIds,
+  realReleaseTags,
   resolvePrivateSha,
   resolveShippedVersion,
+  sortReleaseTagsAscending,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
-import { composeReply, evaluateFanIn, partitionAttachments } from './write-back-gate.mjs';
+import {
+  compareVersions,
+  composeReply,
+  evaluateFanIn,
+  isOriginRepliableFrom,
+  partitionAttachments,
+} from './write-back-gate.mjs';
 
 const LINEAR_GRAPHQL_URL = 'https://api.linear.app/graphql';
 const RELEASES_TAG_BASE = 'https://github.com/inkeep/open-knowledge/releases/tag';
@@ -57,26 +69,37 @@ const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 const PAGE_SIZE = 50;
 
 /**
- * The candidate enumeration.
+ * The candidate enumeration: every completed ticket, and nothing narrower.
  *
- * `labels: { name: { eq: "Bug" } }` matches when ANY of the ticket's labels is
- * Bug, which is the intent: a real ticket looks like ["Bug", "ok:platform"].
- * The sibling form `labels: { every: { name: { eq: "Bug" } } }` reads almost
- * identically and would silently drop every multi-labelled ticket, which is to
- * say nearly all of them. The colocated test pins that this query never uses
- * `every`.
+ * It used to add `labels: { name: { eq: "Bug" } }`, and that label was the only
+ * thing standing between a reporter and a reply. It is the wrong gate. A
+ * community feature request that someone waited months for is exactly as
+ * report-shaped as a bug, and triage that files it as `Feature` — or with only
+ * a component label — made it permanently invisible here. Relabelling such a
+ * ticket `Bug` is the other way out and is worse: the automated point-release
+ * lane keys off that same label, so relabelling to fix a notification would
+ * also change how the fix ships.
  *
- * "Not yet notified" is deliberately absent from the filter. Linear's filter
- * language has no negative-existence predicate over attachments, and expressing
- * it as a positive one would invert the meaning; the check runs over the
- * attachments this query already returns.
+ * What replaces it is not another server-side predicate but the gates that were
+ * always downstream, promoted to run first: a ticket needs an origin this
+ * workflow can reply to, and a fix reference that resolves to a released build.
+ * Those are the two facts a reply actually depends on, and a ticket missing
+ * either was never going to be posted to whatever its labels said.
+ *
+ * The cost of the wider net is enumeration volume, and it is paid in the
+ * candidate loop rather than here: the origin check is pure and runs over the
+ * attachments this query already returns, so the per-candidate children query
+ * and the per-fix-reference `gh api` call are only reached by tickets that came
+ * from outside. Linear's filter language has no attachment-existence predicate
+ * that could have expressed it server-side, which is the same reason "not yet
+ * notified" is absent from the filter and checked client-side.
  */
 export const CANDIDATE_QUERY = `
   query WriteBackCandidates($after: String) {
     issues(
       first: ${PAGE_SIZE}
       after: $after
-      filter: { state: { type: { eq: "completed" } }, labels: { name: { eq: "Bug" } } }
+      filter: { state: { type: { eq: "completed" } } }
     ) {
       pageInfo { hasNextPage endCursor }
       nodes {
@@ -184,6 +207,7 @@ export function deriveVersionForFixRefs({
   readCommitMessage = () => null,
   defaultRepo = DEFAULT_PRIVATE_REPO,
   selfRepo = process.env.GITHUB_REPOSITORY,
+  channel = 'stable',
   log = () => {},
 }) {
   const usable = fixReferences.filter((ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''));
@@ -224,48 +248,99 @@ export function deriveVersionForFixRefs({
       // one that lacks their fix.
       const revIds = parseGitOriginRevIds(readCommitMessage(refSha) ?? '');
       if (revIds.length === 1) {
-        result = resolveShippedVersion({ privateSha: revIds[0], stableTags, findMirroredCommits, contains });
+        result = resolveShippedVersion({
+          privateSha: revIds[0],
+          stableTags,
+          findMirroredCommits,
+          contains,
+          channel,
+        });
       } else {
         log(
           `::notice::write-back: ${ref.url} merges a commit with ${revIds.length === 0 ? 'no' : 'more than one'} ` +
             'origin trailer; falling back to direct tag containment of the merge commit itself.',
         );
+        const sortedTags =
+          channel === 'beta'
+            ? sortReleaseTagsAscending(stableTags)
+            : sortStableTagsAscending(stableTags);
         const tag = firstContainingStableTag({
-          sortedStableTags: sortStableTagsAscending(stableTags),
+          sortedStableTags: sortedTags,
           sha: refSha,
           contains,
         });
         result = tag
           ? { shipped: true, version: tag.replace(/^v/, ''), tag }
-          : { shipped: false, reason: 'not-in-any-stable' };
+          : {
+              shipped: false,
+              reason: channel === 'beta' ? 'not-in-any-release' : 'not-in-any-stable',
+            };
       }
     } else {
-      result = resolveShippedVersion({ privateSha: refSha, stableTags, findMirroredCommits, contains });
+      result = resolveShippedVersion({
+        privateSha: refSha,
+        stableTags,
+        findMirroredCommits,
+        contains,
+        channel,
+      });
     }
     if (!result.shipped) {
-      log(`::notice::write-back: ${ref.url} has not reached a stable release yet (${result.reason}).`);
+      log(
+        `::notice::write-back: ${ref.url} has not reached a ${channel === 'beta' ? 'released build' : 'stable release'} ` +
+          `yet (${result.reason}).`,
+      );
       return null;
     }
-    if (highest === null || compareSemver(result.version, highest) > 0) highest = result.version;
+    if (highest === null || compareVersions(result.version, highest) > 0) highest = result.version;
   }
   return highest;
 }
 
-function compareSemver(a, b) {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i += 1) {
-    if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
-  }
-  return 0;
-}
 
 export const DEFAULT_RELEASE_LOOKBACK = 3;
 
-/** `v0.36.0` and `0.36.0` both mean the same release; anything else means none. */
+/**
+ * Betas are cut several times a day, so three of them can span less than a day
+ * and a quiet weekend would age a reporter out of the window before anyone was
+ * told. The stable lookback counts releases that land roughly weekly, which is
+ * why the same number does not serve both. Nothing is lost by the wider beta
+ * floor: the marker, not the window, is what stops a second reply.
+ */
+export const DEFAULT_BETA_LOOKBACK = 10;
+
+/**
+ * Which channel a release tag belongs to, or null when it is neither.
+ *
+ * A bare `vX.Y.Z` is the stable promotion; `vX.Y.Z-beta.N` is a beta cut. Any
+ * other shape (a release candidate someone tags by hand, a moved pointer) is
+ * refused rather than guessed at, because every downstream decision keys off
+ * this answer and a wrong one addresses the reporter about the wrong build.
+ */
+export function deriveChannel(releaseTag) {
+  const tag = String(releaseTag ?? '').trim();
+  if (STABLE_TAG_RE.test(tag)) return 'stable';
+  if (/^v\d+\.\d+\.\d+-beta\.\d+$/.test(tag)) return 'beta';
+  return null;
+}
+
+/** True when a version string names a stable build rather than a beta. */
+export function isStableVersion(raw) {
+  return /^\d+\.\d+\.\d+$/.test(
+    String(raw ?? '')
+      .trim()
+      .replace(/^v/, ''),
+  );
+}
+
+/**
+ * `v0.36.0` and `0.36.0` both mean the same release; anything else means none.
+ * Beta versions are accepted too, so the beta channel's window can scope
+ * against the prerelease tags it is actually cutting.
+ */
 function normalizeVersion(raw) {
   const trimmed = String(raw ?? '').trim().replace(/^v/, '');
-  return /^\d+\.\d+\.\d+$/.test(trimmed) ? trimmed : null;
+  return /^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(trimmed) ? trimmed : null;
 }
 
 /**
@@ -285,32 +360,39 @@ function normalizeVersion(raw) {
  * Without a window every completed fix in history looks eligible, which on a
  * first armed run means messaging the entire back catalogue at once.
  */
-export function makeReleaseWindow({
-  releaseTag,
-  stableTags = [],
-  lookback = DEFAULT_RELEASE_LOOKBACK,
-}) {
+export function makeReleaseWindow({ releaseTag, stableTags = [], channel, lookback }) {
   const release = normalizeVersion(releaseTag);
   if (!release) {
     throw new Error(
-      `RELEASE_TAG must be a bare stable tag such as v0.36.0 (got ${JSON.stringify(releaseTag)}). ` +
+      `RELEASE_TAG must be a release tag of this cadence, v0.36.0 or v0.36.0-beta.3 ` +
+        `(got ${JSON.stringify(releaseTag)}). ` +
         'Refusing to run: with no release to scope against, every shipped fix in history is a candidate.',
     );
   }
+  const resolvedChannel = channel ?? (isStableVersion(release) ? 'stable' : 'beta');
+  const resolvedLookback =
+    lookback ?? (resolvedChannel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK);
 
-  const known = [...new Set(stableTags.map(normalizeVersion).filter(Boolean))].sort(compareSemver);
-  const atOrBelow = known.filter((v) => compareSemver(v, release) <= 0);
+  // `stableTags` is the raw `git tag --list v*` output, which carries the betas
+  // too. The stable channel has to drop them here or its floor would be
+  // computed over a list ten times denser than the stables it is counting, and
+  // a lookback of three would reach back hours instead of weeks.
+  const eligible = resolvedChannel === 'beta' ? () => true : (version) => isStableVersion(version);
+  const known = [
+    ...new Set(stableTags.map(normalizeVersion).filter(Boolean).filter(eligible)),
+  ].sort(compareVersions);
+  const atOrBelow = known.filter((v) => compareVersions(v, release) <= 0);
   // Keep the release plus `lookback` older ones; the entry just below that
   // block is the exclusive floor. Too little history to reach back that far
   // means everything at or below the release stays in.
-  const floorIndex = atOrBelow.length - (lookback + 1) - 1;
+  const floorIndex = atOrBelow.length - (resolvedLookback + 1) - 1;
   const floor = floorIndex >= 0 ? atOrBelow[floorIndex] : null;
 
   return (version) => {
     const shipped = normalizeVersion(version);
     if (!shipped) return 'unversioned';
-    if (compareSemver(shipped, release) > 0) return 'not-yet-shipped';
-    if (floor && compareSemver(shipped, floor) <= 0) return 'shipped-earlier';
+    if (compareVersions(shipped, release) > 0) return 'not-yet-shipped';
+    if (floor && compareVersions(shipped, floor) <= 0) return 'shipped-earlier';
     return 'in-window';
   };
 }
@@ -360,6 +442,8 @@ export async function runWriteBack({
   postReply,
   recordNotification,
   classifyRelease,
+  channel = 'stable',
+  selfRepo = process.env.GITHUB_REPOSITORY,
   live = false,
   log = () => {},
 }) {
@@ -368,6 +452,23 @@ export async function runWriteBack({
   // readings is the entire back catalogue.
   if (typeof classifyRelease !== 'function') {
     throw new Error('runWriteBack requires classifyRelease; see makeReleaseWindow.');
+  }
+  // Also no default. An unknown repo would make every GitHub origin look like
+  // somebody else's, so the run would skip the entire candidate list as
+  // `origin-elsewhere` and exit 0 looking like a quiet, healthy release. Refusing
+  // is the only reading of a missing GITHUB_REPOSITORY that cannot be mistaken
+  // for good news.
+  // The two-value domain every downstream ternary decides over. Checking it here
+  // rather than at the first `composeReply` means a misconfigured caller is
+  // refused before the children query and the changeset reads, not after them.
+  if (channel !== 'stable' && channel !== 'beta') {
+    throw new Error(`runWriteBack requires channel 'stable' or 'beta', got '${channel}'`);
+  }
+  if (!String(selfRepo ?? '').trim()) {
+    throw new Error(
+      'runWriteBack requires selfRepo (GITHUB_REPOSITORY): without it no GitHub origin can be ' +
+        'recognised as one this job may reply to, and every candidate would be skipped silently.',
+    );
   }
 
   const posted = [];
@@ -381,12 +482,48 @@ export async function runWriteBack({
   // everyone reachable has been told, which is strictly more than aborting on
   // the first bad reference told anyone.
   const processCandidate = async (candidate) => {
-    const { origins, unrepliable, fixReferences } = partitionAttachments(candidate.attachmentUrls ?? []);
+    const {
+      origins: attachedOrigins,
+      unrepliable,
+      fixReferences,
+    } = partitionAttachments(candidate.attachmentUrls ?? []);
+    const origins = attachedOrigins.filter((origin) => isOriginRepliableFrom(origin, selfRepo));
+
+    // Two cheap gates run before any network call, and their order is what makes
+    // a label-free candidate list affordable. Everything below them costs a
+    // GraphQL round trip for the children and a `gh api` call per fix reference;
+    // everything at this point is a pure read of attachments the enumeration
+    // already returned.
+    //
+    // First: is there anywhere to reply at all? A ticket with no origin, or one
+    // whose only origins are issues in another product's repo, can never be
+    // posted to from here no matter what else is true of it. A Slack archive is
+    // the one shape that deliberately does NOT exit here: someone really is
+    // waiting in that thread, so it stays on the full path and its warning can
+    // still name the version they would have been told about, which is the whole
+    // point of distinguishing it from silence. An uploaded file is not an origin
+    // at all and exits here with everything else.
+    if (origins.length === 0 && unrepliable.length === 0) {
+      if (attachedOrigins.length > 0) {
+        log(
+          `::debug::write-back: ${candidate.identifier} reports from ` +
+            `${attachedOrigins.map((o) => o.url).join(', ')}, outside ${selfRepo || 'this repo'}; ` +
+            'this job has no standing to post there.',
+        );
+        skip(candidate.identifier, 'origin-elsewhere');
+      } else {
+        // Not every fix has a reporter. This is the ordinary case, not a fault.
+        skip(candidate.identifier, 'no-origin');
+      }
+      return;
+    }
+
     const children = await listChildren(candidate.id);
 
     // The version for every node in the tree is resolved up front so the gate
     // itself stays synchronous and pure.
     const considered = children.length > 0 ? children : [candidate];
+
     const versions = new Map();
     for (const node of considered) {
       versions.set(node.identifier, await versionFor(node));
@@ -401,12 +538,47 @@ export async function runWriteBack({
 
     if (gate.decision !== 'notify') {
       if (gate.unresolved.length > 0) {
-        log(
-          `::warning::write-back: ${candidate.identifier} is done but no stable release could be derived for ` +
-            `${gate.unresolved.join(', ')}; posting nothing. Check the fix-reference attachments on those tickets.`,
+        // "Nobody ever linked a pull request to this" and "a link exists and the
+        // chain behind it is broken" both surface as an underivable version, and
+        // they want opposite responses: the first is the ordinary state of a
+        // ticket closed without a code change, the second is a fault worth
+        // chasing. Now that the candidate list is no longer narrowed by label,
+        // the first is much the commoner of the two, and folding it into a
+        // warning would bury the fault under thousands of lines of routine.
+        // Scoped to the unresolved nodes, not the whole tree. A fan-in where one
+        // sibling resolved and another has no link at all would otherwise be
+        // reported against the sibling that is fine, and the warning would tell
+        // an operator to go check attachments that do not exist.
+        const unresolvedWithRef = considered.filter(
+          (node) =>
+            gate.unresolved.includes(node.identifier) &&
+            partitionAttachments(node.attachmentUrls ?? []).fixReferences.length > 0,
         );
+        if (unresolvedWithRef.length === 0) {
+          skip(candidate.identifier, 'no-fix-reference');
+          return;
+        }
+        log(
+          `::warning::write-back: ${candidate.identifier} is done but no ${channel === 'beta' ? 'released build' : 'stable release'} ` +
+            `could be derived for ${unresolvedWithRef.map((n) => n.identifier).join(', ')}; posting nothing. ` +
+            'Check the fix-reference attachments on those tickets.',
+        );
+        skip(candidate.identifier, 'version-underivable');
+        return;
       }
-      skip(candidate.identifier, gate.unresolved.length > 0 ? 'version-underivable' : 'fan-in-withheld');
+      skip(candidate.identifier, 'fan-in-withheld');
+      return;
+    }
+
+    // A beta run only has news when the earliest build carrying the fix is
+    // itself a beta. When the first containing tag is a stable — a point release
+    // that cherry-picked the fix straight onto the stable line, which happens
+    // whenever the automated fix lane ships one — there is no beta to point at,
+    // and the stable leg is the one that owns telling this reporter. Saying
+    // "available now in beta v0.58.1" about a stable version would be wrong
+    // twice: the channel and the promise of a follow-up.
+    if (channel === 'beta' && isStableVersion(gate.version)) {
+      skip(candidate.identifier, 'stable-covers-it');
       return;
     }
 
@@ -419,17 +591,26 @@ export async function runWriteBack({
       return;
     }
 
+    // Reaching here with no repliable origin means the ticket has only
+    // unrepliable ones: the early gate above already returned on every other
+    // shape. Kept on the full path precisely so this warning can name the
+    // version, which is what makes it a report of a reachability gap rather than
+    // one more line of silence.
     if (origins.length === 0) {
-      if (unrepliable.length > 0) {
-        log(
-          `::warning::write-back: ${candidate.identifier} shipped in v${gate.version} but its only origin ` +
-            `(${unrepliable.map((u) => u.channel).join(', ')}) has nowhere to post a reply; posting nothing.`,
-        );
-        skip(candidate.identifier, 'origin-unrepliable');
-      } else {
-        // Not every fix has a reporter. This is the ordinary case, not a fault.
-        skip(candidate.identifier, 'no-origin');
-      }
+      // Names every origin that exists and cannot be answered, not just the
+      // unrepliable ones. A ticket can carry a foreign-repo issue as well, and
+      // calling the Slack link its "only" origin would hide that.
+      const unreachable = [
+        ...attachedOrigins
+          .filter((origin) => !isOriginRepliableFrom(origin, selfRepo))
+          .map((origin) => `${origin.channel} in ${origin.owner}/${origin.repo}`),
+        ...unrepliable.map((u) => u.channel),
+      ];
+      log(
+        `::warning::write-back: ${candidate.identifier} shipped in v${gate.version} but no origin on it can be ` +
+          `replied to (${unreachable.join(', ')}); posting nothing.`,
+      );
+      skip(candidate.identifier, 'origin-unrepliable');
       return;
     }
 
@@ -449,6 +630,7 @@ export async function runWriteBack({
               version: gate.version,
               originChannel: origin.channel,
               coverage: gate.coverage,
+              channel,
             });
 
       if (!text) {
@@ -465,7 +647,12 @@ export async function runWriteBack({
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
             `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
         );
-        posted.push({ identifier: candidate.identifier, origin: origin.url, version: gate.version, dryRun: true });
+        posted.push({
+          identifier: candidate.identifier,
+          origin: origin.url,
+          version: gate.version,
+          dryRun: true,
+        });
         continue;
       }
 
@@ -498,8 +685,15 @@ export async function runWriteBack({
             'No future run will retry it; post the reply by hand.',
         );
       }
-      log(`::notice::write-back: replied to ${origin.url} for ${candidate.identifier} (v${gate.version}).`);
-      posted.push({ identifier: candidate.identifier, origin: origin.url, version: gate.version, dryRun: false });
+      log(
+        `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} (v${gate.version}).`,
+      );
+      posted.push({
+        identifier: candidate.identifier,
+        origin: origin.url,
+        version: gate.version,
+        dryRun: false,
+      });
     }
   };
 
@@ -623,7 +817,11 @@ export function isRetryableNetworkError(err) {
   for (let cur = err, depth = 0; cur && typeof cur === 'object' && depth < 5; cur = cur.cause, depth += 1) {
     if (cur.name === 'TimeoutError') return true;
     if (RETRYABLE_NETWORK_CODES.has(cur.code)) return true;
-    if (/fetch failed|socket hang up|other side closed|terminated|network/i.test(String(cur.message ?? ''))) {
+    if (
+      /fetch failed|socket hang up|other side closed|terminated|network/i.test(
+        String(cur.message ?? ''),
+      )
+    ) {
       return true;
     }
   }
@@ -776,7 +974,10 @@ async function paginate({ apiKey, query, variables, log }) {
   do {
     const data = await linearGraphql({ apiKey, query, variables: { ...variables, after }, log });
     const page = data?.issues;
-    if (!page) throw new Error('Linear returned no issues connection; refusing to treat that as an empty result.');
+    if (!page)
+      throw new Error(
+        'Linear returned no issues connection; refusing to treat that as an empty result.',
+      );
     collected.push(...page.nodes.map(toNode));
     after = page.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
   } while (after);
@@ -786,16 +987,11 @@ async function paginate({ apiKey, query, variables, log }) {
 function runGit(args) {
   const res = spawnSync('git', args, { encoding: 'utf8' });
   if (res.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
+    throw new Error(
+      `git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
+    );
   }
   return String(res.stdout || '');
-}
-
-function realStableTags() {
-  return runGit(['tag', '--list', 'v*', '--sort=version:refname'])
-    .split('\n')
-    .map((t) => t.trim())
-    .filter((t) => STABLE_TAG_RE.test(t));
 }
 
 function realReadCommitMessage(sha) {
@@ -825,7 +1021,9 @@ function realFindMirroredCommits(privateSha) {
 }
 
 function realContains(tag, sha) {
-  const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], { encoding: 'utf8' });
+  const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], {
+    encoding: 'utf8',
+  });
   if (res.status === 0) return true;
   if (res.status === 1) return false;
   throw new Error(
@@ -939,11 +1137,19 @@ function realReadChangesetProse(_candidate, { fixReferences }) {
   let names;
   try {
     names = gh(
-      ['api', `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`, '--paginate', '--jq', '.[].filename'],
+      [
+        'api',
+        `repos/${pull.owner}/${pull.repo}/pulls/${pull.number}/files`,
+        '--paginate',
+        '--jq',
+        '.[].filename',
+      ],
       pull,
     );
   } catch (err) {
-    throw new Error(`gh api pulls/${pull.number}/files failed: ${String(err?.stderr || err?.message || '').trim()}`);
+    throw new Error(
+      `gh api pulls/${pull.number}/files failed: ${String(err?.stderr || err?.message || '').trim()}`,
+    );
   }
 
   const changesetPath = findChangesetPath(names.split('\n'), { repo: pull.repo });
@@ -963,7 +1169,9 @@ function realReadChangesetProse(_candidate, { fixReferences }) {
       pull,
     );
   } catch (err) {
-    throw new Error(`gh api contents/${changesetPath} failed: ${String(err?.stderr || err?.message || '').trim()}`);
+    throw new Error(
+      `gh api contents/${changesetPath} failed: ${String(err?.stderr || err?.message || '').trim()}`,
+    );
   }
 
   const decoded = Buffer.from(raw.replace(/\s+/g, ''), 'base64').toString('utf8');
@@ -983,7 +1191,12 @@ async function realPostReply(origin, text) {
   if (origin.channel === 'github-issue') {
     execFileSync(
       'gh',
-      ['api', `repos/${origin.owner}/${origin.repo}/issues/${origin.number}/comments`, '-f', `body=${text}`],
+      [
+        'api',
+        `repos/${origin.owner}/${origin.repo}/issues/${origin.number}/comments`,
+        '-f',
+        `body=${text}`,
+      ],
       { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
     );
     return;
@@ -1009,7 +1222,9 @@ async function realPostReply(origin, text) {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (!res.ok) {
-      throw new Error(`notify endpoint returned HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      throw new Error(
+        `notify endpoint returned HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`,
+      );
     }
     return;
   }
@@ -1029,12 +1244,21 @@ async function main() {
 
   const live = process.env.WRITE_BACK_MODE === 'live';
   if (!live) {
-    log('::notice::write-back: running in dry-run mode (set WRITE_BACK_MODE=live to arm reporter replies).');
+    log(
+      '::notice::write-back: running in dry-run mode (set WRITE_BACK_MODE=live to arm reporter replies).',
+    );
   }
 
   const releaseTag = process.env.RELEASE_TAG;
+  const channel = deriveChannel(releaseTag);
+  if (!channel) {
+    throw new Error(
+      `RELEASE_TAG must be a release tag of this cadence, v0.36.0 or v0.36.0-beta.3 ` +
+        `(got ${JSON.stringify(releaseTag)}).`,
+    );
+  }
 
-  const stableTags = realStableTags();
+  const stableTags = realReleaseTags();
   const versionFor = (node) =>
     deriveVersionForFixRefs({
       fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
@@ -1043,13 +1267,15 @@ async function main() {
       contains: realContains,
       resolvePrMergeSha: realResolvePrMergeSha,
       readCommitMessage: realReadCommitMessage,
+      channel,
       log,
     });
 
-  const classifyRelease = makeReleaseWindow({ releaseTag, stableTags });
+  const classifyRelease = makeReleaseWindow({ releaseTag, stableTags, channel });
+  const lookback = channel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK;
   log(
-    `::notice::write-back: scoped to ${releaseTag} and the ${DEFAULT_RELEASE_LOOKBACK} stable releases before it; ` +
-      'anything shipped earlier is left alone.',
+    `::notice::write-back: ${channel} channel, scoped to ${releaseTag} and the ${lookback} ` +
+      `${channel === 'beta' ? 'releases' : 'stable releases'} before it; anything shipped earlier is left alone.`,
   );
 
   if (!String(process.env.CROSS_REPO_TOKEN ?? '').trim()) {
@@ -1064,6 +1290,7 @@ async function main() {
     listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
     versionFor,
     classifyRelease,
+    channel,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
     postReply: realPostReply,
     recordNotification: async ({ issueId, url, title }) => {

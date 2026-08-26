@@ -227,3 +227,115 @@ describe('runDeinit — refuses the home directory', () => {
     }
   });
 });
+
+describe('runDeinit attached-client disclosure', () => {
+  test('names attached clients in the plan without gating the removal', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        dryRun: true,
+        probeClients: async () => 2,
+      });
+      expect(result.status).toBe('dry-run');
+      expect(result.exitCode).toBe(0);
+      expect(result.message).toContain('2 collaboration clients');
+      expect(result.message).toContain('restarting will NOT recover them');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('no disclosure line when nothing is attached', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        dryRun: true,
+        probeClients: async () => 0,
+      });
+      expect(result.message).not.toContain('collaboration client');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--json --dry-run carries the probe result', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        dryRun: true,
+        json: true,
+        probeClients: async () => 2,
+      });
+      const json = JSON.parse(result.message);
+      expect(json.mode).toBe('dry-run');
+      expect(json.attachedClients).toHaveLength(1);
+      expect(json.attachedClients[0]).toContain('2 collaboration clients');
+      expect(json.attachedClients[0]).toContain('restarting will NOT recover them');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--json --dry-run reports an empty probe result when nothing is attached', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        dryRun: true,
+        json: true,
+        probeClients: async () => 0,
+      });
+      expect(JSON.parse(result.message).attachedClients).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--json --yes carries the probe result on the applied outcome too', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        yes: true,
+        json: true,
+        probeClients: async () => 3,
+        runRemovalDeps: {
+          stopServer: async () => ({ stopped: 1, failed: [] }),
+        },
+      });
+      const json = JSON.parse(result.message);
+      expect(json.mode).toBe('applied');
+      expect(json.attachedClients).toHaveLength(1);
+      expect(json.attachedClients[0]).toContain('3 collaboration clients');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('--yes still removes with clients attached (disclosure, not a gate)', async () => {
+    const dir = seedProject();
+    try {
+      const result = await runDeinit({
+        cwd: dir,
+        home: dirname(dir),
+        yes: true,
+        probeClients: async () => 4,
+        runRemovalDeps: {
+          stopServer: async () => ({ stopped: 1, failed: [] }),
+        },
+      });
+      expect(result.status).toBe('done');
+      expect(existsSync(join(dir, '.ok'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

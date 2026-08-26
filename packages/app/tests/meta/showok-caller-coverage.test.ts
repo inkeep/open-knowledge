@@ -86,11 +86,29 @@ describe('showOk caller coverage', () => {
       'export interface StreamShowAllOpts',
       /export async function walkContentDirForShowAll/,
     );
+    // Region A2: `toOpenTarget`, the sync popover's open-target resolver.
+    //
+    // A second AUTHORIZED consumer, not a leak. It enumerates nothing — the
+    // rows come from `git status`, which never consults ContentFilter — and
+    // decides only whether an already-listed row carries a clickable link.
+    // `bypassFilters` + `showOk` reduce the filter to its floors alone, which
+    // is the set the sidebar itself refuses under Show All Files; without
+    // `showOk` a changed `.ok/config.yml` would render unclickable while the
+    // sidebar opens it. `.ok/worktrees` and `.ok/local` stay floored
+    // unconditionally (OK_ALWAYS_SKIP_CHILDREN), so per-machine state cannot
+    // reach the wire through this path either way.
+    // Starts at the docblock, which states the contract and names the flag.
+    const [openTargetStart, openTargetEnd] = sliceRegion(
+      source,
+      '   * Where a project-relative working-tree path opens',
+      /\n {2}\/\*\*/,
+    );
     const outside: string[] = [];
     for (const match of source.matchAll(/\bshowOk\b/g)) {
       const offset = match.index ?? 0;
       const inWalk = offset >= walkStart && offset < walkEnd;
-      if (!inWalk) {
+      const inOpenTarget = offset >= openTargetStart && offset < openTargetEnd;
+      if (!inWalk && !inOpenTarget) {
         const line = source.slice(0, offset).split('\n').length;
         outside.push(
           `api-extension.ts:${line} — showOk outside the walk-opts region. ` +

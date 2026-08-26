@@ -31,9 +31,8 @@ export default defineConfig({
   // pattern test (create-new-project.e2e.ts at 140s). Tests that
   // structurally exceed this (e.g. qa-create-new-extended.e2e.ts which
   // launches Electron twice for cross-restart state checks) opt into a
-  // launches Electron twice for cross-restart state checks) opt into a
-  // structural reason is local to the test that needs it. Local dev keeps
-  // 60s so real regressions surface immediately. Same CI-vs-local
+  // larger budget with `test.setTimeout`, so the structural reason is
+  // local to the test that needs it. Local dev keeps
   // 60s so real regressions surface immediately. Same CI-vs-local
   // divergence shape as `retries: process.env.CI ? 2 : 0` below.
   timeout: process.env.CI ? 150_000 : 60_000,
@@ -65,14 +64,15 @@ export default defineConfig({
   // parallelize meaningfully (they poke at OS-level URL scheme dispatch).
   workers: 1,
   fullyParallel: false,
-  // `html` reporter generates `playwright-report/` so testInfo.attach() body-
-  // style attachments (e.g. `main-process-stderr` from the smoke tests'
-  // electron-stderr capture) materialize as artifact files in the CI upload.
-  // Without it, the workflow's `if-no-files-found: ignore` silently skips.
+  // `html` reporter generates `playwright-report/`, one of the two trees CI
+  // uploads. Without it the workflow's `if-no-files-found: ignore` silently
+  // skips that upload. It does NOT by itself decide whether an attachment
+  // lands as a file — the carrier does, and
+  // `tests/smoke/_helpers/electron-stderr.ts` owns that rule.
   // `open: never` suppresses the auto-open browser tab during local runs.
   // `json` writes machine-readable run stats so the desktop-smoke job can assert
   // the gate isn't vacuous (a whole-suite env-skip reads green but asserts
-  // nothing). Parsed by scripts/assert-smoke-not-vacuous.mjs.
+  // nothing). Parsed by the CI vacuity control.
   reporter: [
     ['list'],
     ['html', { open: 'never' }],

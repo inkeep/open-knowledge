@@ -125,6 +125,7 @@ export type StructuralEquivalenceResult =
 
 export interface ComparePmStructuralOptions {
   ignoreAttrs?: (attrKey: string) => boolean;
+  rawSourceSide?: 'expected';
 }
 
 /** Rebuild a node with `fn` applied to each child; identity when childless.
@@ -207,10 +208,14 @@ function stableStringify(value: unknown): string {
 
 /** Concatenated, whitespace-stripped text of a tree — the byte stream a
  *  faithful round-trip must not LOSE. Compared as a subsequence so a degrade
- *  that INSERTS tokens (a `<br/>` literal) never reads as loss. */
-function textSkeleton(node: PmStructuralNode): string {
+ *  that INSERTS tokens (a `<br/>` literal) never reads as loss.
+ *
+ *  `omitRawSource` skips `rawMdxFallback` subtrees. L1a decides when to pass it
+ *  from the caller's `rawSourceSide`; that call site owns the rationale. */
+function textSkeleton(node: PmStructuralNode, omitRawSource = false): string {
   let acc = '';
   const walk = (n: PmStructuralNode): void => {
+    if (omitRawSource && n.type === 'rawMdxFallback') return;
     if (n.text !== undefined) acc += n.text;
     if (n.content) for (const child of n.content) walk(child);
   };
@@ -257,7 +262,12 @@ export function comparePmStructural(
   const a = applyDegrades(actual);
   const appliedDegrades = [...new Set([...e.fired, ...a.fired])];
 
-  if (!isSubsequence(textSkeleton(e.normalized), textSkeleton(a.normalized))) {
+  const intactStrict = isSubsequence(textSkeleton(e.normalized), textSkeleton(a.normalized));
+  const exemptExonerates =
+    !intactStrict &&
+    opts.rawSourceSide === 'expected' &&
+    isSubsequence(textSkeleton(e.normalized, true), textSkeleton(a.normalized, true));
+  if (!intactStrict && !exemptExonerates) {
     return {
       equivalent: false,
       level: 'L1',

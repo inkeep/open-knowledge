@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import type { BootedServer, BootServerOptions } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import type { SetupUtilityDeps } from './server-entry.ts';
+import type { SetupUtilityDeps, UtilityHandle } from './server-entry.ts';
 
 // Stub node:os.homedir() before importing the utility (which transitively pulls
 // in the CLI's layered `loadConfig`) so the user-global layer
@@ -135,6 +135,9 @@ interface DriveResult {
   bootPorts: Array<number | undefined>;
   ready?: { type: string; port: number; apiOrigin: string };
   readyErr?: Error;
+  handle: UtilityHandle;
+  /** Every `reason` the booted server's `destroy` was handed. */
+  destroyReasons: Array<string | undefined>;
 }
 
 /**
@@ -149,12 +152,19 @@ async function driveInit(opts: {
 }): Promise<DriveResult> {
   const posted: Array<Record<string, unknown>> = [];
   const bootPorts: Array<number | undefined> = [];
+  const destroyReasons: Array<string | undefined> = [];
   let messageHandler: ((e: { data: unknown }) => void) | undefined;
 
   const fakeBootServer = async (o: BootServerOptions): Promise<BootedServer> => {
     bootPorts.push(o.port);
     const res = await opts.boot(o.port);
-    return { port: res.port, degraded: [], destroy: async () => {} } as unknown as BootedServer;
+    return {
+      port: res.port,
+      degraded: [],
+      destroy: async (reason?: string) => {
+        destroyReasons.push(reason);
+      },
+    } as unknown as BootedServer;
   };
 
   const deps: SetupUtilityDeps = {
@@ -193,9 +203,9 @@ async function driveInit(opts: {
   });
   try {
     const ready = await handle.readyPromise;
-    return { posted, bootPorts, ready };
+    return { posted, bootPorts, ready, handle, destroyReasons };
   } catch (err) {
-    return { posted, bootPorts, readyErr: err as Error };
+    return { posted, bootPorts, readyErr: err as Error, handle, destroyReasons };
   }
 }
 
@@ -248,5 +258,32 @@ describe('port pinning + EADDRINUSE fallback', () => {
     expect(bootPorts).toEqual([24550]);
     expect(readyErr?.message).toContain('git preflight failed');
     expect(posted.find((m) => m.type === 'error')).toBeDefined();
+  });
+});
+
+describe('shutdown exit reason', () => {
+  async function drive() {
+    return driveInit({
+      requestedPort: 24560,
+      boot: (port) => Promise.resolve({ port: port ?? 0 }),
+    });
+  }
+
+  test('a dead parent drains the server as parent-exit', async () => {
+    const { handle, destroyReasons } = await drive();
+    await handle.shutdown('parent-died');
+    expect(destroyReasons).toEqual(['parent-exit']);
+  });
+
+  test('window-close IPC drains as parent-exit too — the host is going away', async () => {
+    const { handle, destroyReasons } = await drive();
+    await handle.shutdown('shutdown-ipc');
+    expect(destroyReasons).toEqual(['parent-exit']);
+  });
+
+  test('a signal drains as external-signal', async () => {
+    const { handle, destroyReasons } = await drive();
+    await handle.shutdown('SIGTERM');
+    expect(destroyReasons).toEqual(['external-signal']);
   });
 });

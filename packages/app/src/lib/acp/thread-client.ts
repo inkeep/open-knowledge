@@ -103,10 +103,60 @@ export class AgentThreadClient {
   private pendingQueueEdits = new Map<string, PendingQueueEdit>();
   /** Archived threads the user explicitly opened as tabs this session. */
   private openedArchived = new Set<string>();
+  /**
+   * Per-thread timestamp of the last activity the user actually saw — bumped
+   * to `info.lastActivityAt` when the tab activates. Seeded on first
+   * observation of a thread to whatever `lastActivityAt` already is, so a
+   * renderer reload does NOT report every idle `ready` tab as unread — the
+   * pulse should mean "advanced while you were elsewhere in this window",
+   * not "you just reloaded". In-memory only; not persisted across processes.
+   */
+  private lastViewedByThread = new Map<string, number>();
   private reqCounter = 0;
   private status: ThreadConnectionStatus = 'idle';
   /** Bumped on every store change; the useSyncExternalStore snapshot. */
   private version = 0;
+
+  /**
+   * Mark a thread as "seen up to its current lastActivityAt" — clears the
+   * unread affordance on its tab. Called on tab activation, and again on
+   * every activity tick (or status transition into `ready`) while the tab
+   * stays active.
+   */
+  markThreadViewed = (threadId: string): void => {
+    const state = this.threads.get(threadId);
+    if (state === undefined) return;
+    // Only meaningful on a settled `ready` tab. Skipping during `running`
+    // avoids a bump storm: every streaming event advances lastActivityAt,
+    // and the SessionsHost effect keys on it — a bump per batch here
+    // would invalidate the snapshot cache and re-render every subscriber
+    // once per event. The transition into `ready` re-fires the effect
+    // and clears unread with a single bump.
+    if (state.info.status !== 'ready') return;
+    const at = state.info.lastActivityAt;
+    if (this.lastViewedByThread.get(threadId) === at) return;
+    this.lastViewedByThread.set(threadId, at);
+    this.bump();
+  };
+
+  /**
+   * Whether the thread has activity the user hasn't seen since last viewing
+   * it. Only meaningful on a settled (`ready`) tab — a running turn already
+   * carries its own pulse via the status dot.
+   */
+  getThreadUnread = (threadId: string): boolean => {
+    const state = this.threads.get(threadId);
+    if (state === undefined) return false;
+    if (state.info.status !== 'ready') return false;
+    // Floor is seeded at first observation in `upsertInfo`, so any thread
+    // present in `this.threads` also has an entry here. The undefined
+    // check exists to discharge `Map.get`'s `T | undefined` return for
+    // strictNullChecks; it is not a live failure mode (unreachable under
+    // the current write set).
+    const seen = this.lastViewedByThread.get(threadId);
+    if (seen === undefined) return false;
+    return state.info.lastActivityAt > seen;
+  };
 
   /** Set (or clear) the WS URL. Reconnects when it changes. */
   setUrl(url: string | null): void {
@@ -802,6 +852,12 @@ export class AgentThreadClient {
     const existing = this.threads.get(info.threadId);
     if (existing === undefined) {
       this.threads.set(info.threadId, { info, events: [], lastSeq: -1 });
+      // Seed the unread floor at first observation so a renderer reload
+      // doesn't unread every idle `ready` tab — the pulse means "advanced
+      // WHILE you were elsewhere in this window", not "you just reloaded".
+      if (!this.lastViewedByThread.has(info.threadId)) {
+        this.lastViewedByThread.set(info.threadId, info.lastActivityAt);
+      }
     } else if (info.archived === true && existing.info.archived !== true) {
       // Live → archived (server-side close/reap). The tab derivation drops it
       // and the retained events would only go stale — free them so a later
@@ -878,6 +934,17 @@ export function useAgentThread(threadId: string): ThreadState | null {
  */
 export function useAgentThreadModel(threadId: string): ThreadRenderModel | null {
   const getSnapshot = () => client.getThreadModel(threadId);
+  return useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * Reactive "has activity the user hasn't seen since last viewing" flag.
+ * True only on a settled `ready` tab whose `lastActivityAt` has advanced
+ * past the recorded viewed timestamp — a running/error/permission status
+ * already tells its own story on the tab's status dot.
+ */
+export function useAgentThreadUnread(threadId: string): boolean {
+  const getSnapshot = () => client.getThreadUnread(threadId);
   return useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
 }
 

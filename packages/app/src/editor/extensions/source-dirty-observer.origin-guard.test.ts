@@ -5,19 +5,23 @@
  * three observer-bridge correctness bugs that all hinged on whether a CRDT
  * sync transaction was properly identified and skipped. This test drives
  * the source-dirty plugin at the PM-state level (the same surface the plugin
- * runs against in production inside a real EditorView + y-prosemirror) with
- * both branches of the guard's truth table:
+ * runs against in production inside a real EditorView + y-prosemirror). The
+ * guard's truth table has three arms; this file owns the first two, and the
+ * sibling suite `source-dirty-observer.autonomous-swap.test.ts` owns the third:
  *
  *   1. Transaction WITH `ySyncPluginKey` meta set → appendTransaction must
  *      return null. This covers every CRDT-origin path: Observer A/B,
  *      agent-write, rollback-apply, file-watcher, remote WebSocket. None
  *      of these should flip `sourceDirty` on the local view.
- *   2. Transaction WITHOUT `ySyncPluginKey` meta → appendTransaction must
- *      return a new tr that sets `sourceDirty: true` on mutated jsxComponent
- *      nodes ONLY. Siblings with no prop or content change must stay
- *      pristine (the reconstruction path applies per-node, so any
- *      false-positive dirty on a sibling silently corrupts unrelated
- *      content on save).
+ *   2. Transaction with NEITHER `ySyncPluginKey` meta nor the autonomous
+ *      stamp → appendTransaction must return a new tr that sets
+ *      `sourceDirty: true` on mutated jsxComponent nodes ONLY. Siblings with
+ *      no prop or content change must stay pristine (the reconstruction path
+ *      applies per-node, so any false-positive dirty on a sibling silently
+ *      corrupts unrelated content on save).
+ *   3. Transaction carrying the autonomous stamp but no sync meta → must NOT
+ *      mark dirty; absence of sync meta alone is not user intent. Covered by
+ *      the sibling suite, not here.
  *
  * A future refactor that renames `ySyncPluginKey`, strips meta via an
  * intermediate plugin, or replaces the meta check with something else fails
@@ -28,7 +32,7 @@
  */
 
 import { getSchema } from '@tiptap/core';
-import { EditorState, type Plugin, type Transaction } from '@tiptap/pm/state';
+import { EditorState, type Plugin } from '@tiptap/pm/state';
 // Same source as source-dirty-observer.ts (and bridge-id-plugin.ts +
 // editor-cache.ts). Test correctness depends on the SAME PluginKey
 // identity the production module imports; using y-prosemirror here would
@@ -38,25 +42,10 @@ import { EditorState, type Plugin, type Transaction } from '@tiptap/pm/state';
 import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { describe, expect, test } from 'vitest';
 import { sharedExtensions } from './shared';
-import { SourceDirtyObserver, sourceDirtyPluginKey } from './source-dirty-observer';
+import { sourceDirtyPluginKey } from './source-dirty-observer';
+import { applyWithAppend, getSourceDirtyPlugin } from './source-dirty-observer.test-helper';
 
 const schema = getSchema(sharedExtensions);
-
-// Resolve the PM plugin instance from the extension's `addProseMirrorPlugins`.
-// Tiptap wraps `addProseMirrorPlugins` on the extension definition; invoking
-// it with the extension's `this` bound to a minimal stub is enough — the
-// implementation only uses `Plugin` + `PluginKey`, no editor state.
-function getPlugin(): Plugin {
-  const ext = SourceDirtyObserver.configure({});
-  // TipTap's Extension.configure returns a factory; `config.addProseMirrorPlugins`
-  // is on the base config object but not exposed in the public types.
-  const pluginsFn = (ext.config as { addProseMirrorPlugins?: () => Plugin[] })
-    .addProseMirrorPlugins;
-  if (!pluginsFn) throw new Error('SourceDirtyObserver missing addProseMirrorPlugins');
-  const plugins = pluginsFn.call({} as never);
-  if (plugins.length === 0) throw new Error('SourceDirtyObserver returned no plugins');
-  return plugins[0];
-}
 
 /**
  * Build a doc with one `jsxComponent` block containing a paragraph child.
@@ -115,24 +104,6 @@ function isDirty(state: EditorState, pos: number): boolean {
 }
 
 /**
- * Apply a transaction and run `appendTransaction` + apply its result, so the
- * resulting state matches what a real PM editor would see after the plugin
- * appends its dirty-marking transaction. Returns the post-append state.
- */
-function applyWithAppend(
-  plugin: Plugin,
-  state: EditorState,
-  mutate: (tr: Transaction) => Transaction,
-): EditorState {
-  const userTr = mutate(state.tr);
-  const intermediate = state.apply(userTr);
-  const spec = plugin.spec as { appendTransaction?: typeof plugin.spec.appendTransaction };
-  const appended = spec.appendTransaction?.([userTr], state, intermediate);
-  if (!appended) return intermediate;
-  return intermediate.apply(appended);
-}
-
-/**
  * Positions of every jsxComponent in the doc, in document order. Re-locating
  * blocks after an edit shifts their positions lets an assertion on the
  * untouched sibling read the right node instead of a stale offset.
@@ -153,14 +124,9 @@ function componentPositions(state: EditorState): number[] {
  * `syncMeta` stamps the transaction as CRDT-origin so the deny-list treats it as
  * non-user-intent.
  */
-function editInteriorText(
-  plugin: Plugin,
-  state: EditorState,
-  text: string,
-  syncMeta?: unknown,
-): EditorState {
+function editInteriorText(state: EditorState, text: string, syncMeta?: unknown): EditorState {
   const innerTextPos = firstComponentPos(state) + 2;
-  return applyWithAppend(plugin, state, (tr) => {
+  return applyWithAppend(state, (tr) => {
     if (syncMeta !== undefined) tr.setMeta(ySyncPluginKey, syncMeta);
     return tr.insertText(text, innerTextPos);
   });
@@ -168,7 +134,7 @@ function editInteriorText(
 
 describe('SourceDirtyObserver origin guard', () => {
   test('user-intent prop edit marks only the mutated jsxComponent dirty', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
     const secondPos = targetPos + (initial.doc.nodeAt(targetPos)?.nodeSize ?? 0);
@@ -176,7 +142,7 @@ describe('SourceDirtyObserver origin guard', () => {
     expect(isDirty(initial, targetPos)).toBe(false);
     expect(isDirty(initial, secondPos)).toBe(false);
 
-    const next = applyWithAppend(plugin, initial, (tr) => {
+    const next = applyWithAppend(initial, (tr) => {
       const node = initial.doc.nodeAt(targetPos);
       if (!node) throw new Error('Target vanished');
       return tr.setNodeMarkup(targetPos, null, { ...node.attrs, props: { title: 'A-new' } });
@@ -189,11 +155,11 @@ describe('SourceDirtyObserver origin guard', () => {
   });
 
   test('CRDT-origin transaction with ySyncPluginKey meta does NOT mark dirty', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
 
-    const next = applyWithAppend(plugin, initial, (tr) => {
+    const next = applyWithAppend(initial, (tr) => {
       const node = initial.doc.nodeAt(targetPos);
       if (!node) throw new Error('Target vanished');
       // Simulate what y-prosemirror's sync-plugin does: stamp the meta on
@@ -212,7 +178,7 @@ describe('SourceDirtyObserver origin guard', () => {
   });
 
   test('meta truthiness — any non-nullish ySyncPluginKey meta short-circuits', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
 
@@ -225,7 +191,7 @@ describe('SourceDirtyObserver origin guard', () => {
       true,
       1,
     ]) {
-      const next = applyWithAppend(plugin, initial, (tr) => {
+      const next = applyWithAppend(initial, (tr) => {
         const node = initial.doc.nodeAt(targetPos);
         if (!node) throw new Error('Target vanished');
         tr.setMeta(ySyncPluginKey, stamp);
@@ -236,7 +202,7 @@ describe('SourceDirtyObserver origin guard', () => {
   });
 
   test('sourceDirtyPluginKey is exported and locatable on the EditorState', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     // The plugin must register under the exported key so future consumers
     // (status indicators, telemetry) can locate it without relying on
@@ -246,11 +212,11 @@ describe('SourceDirtyObserver origin guard', () => {
   });
 
   test('insertion of a new non-CRDT jsxComponent marks only the insertion dirty', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const targetPos = firstComponentPos(initial);
 
-    const next = applyWithAppend(plugin, initial, (tr) => {
+    const next = applyWithAppend(initial, (tr) => {
       const node = schema.node(
         'jsxComponent',
         {
@@ -283,21 +249,21 @@ describe('SourceDirtyObserver origin guard', () => {
     // previously-empty position with a non-empty `sourceRaw` (the shape
     // produced by mdast→PM parse handlers, on-blur rawMdxFallback upgrade,
     // MDX paste, and slash-menu template inserts) must NOT be marked
-    // dirty. Marking dirty would force the serialize path to re-emit the
-    // component through the to-markdown handler's canonical form,
-    // clobbering the user's authored bytes (e.g., `<Foo>\ntext\n</Foo>`
-    // → `<Foo>\n\ntext\n\n</Foo>`).
+    // dirty. Marking dirty would route it onto the reconstruct path, which
+    // re-spells the container boundary instead of emitting what the user
+    // wrote; the byte direction lives at `upstreamMdxJsxFlowHandler` in
+    // `to-markdown-handlers.ts`, not restated here.
     //
     // Append-at-end is the clean positive-path setup: the old-state
     // position past content.size doesn't resolve to any existing
     // jsxComponent, so `isFreshInsert` is true. Inserting at pos 0 would
     // map back to the first existing jsxComponent and defeat the guard's
     // `oldNode.type.name !== 'jsxComponent'` branch.
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const insertPos = initial.doc.content.size;
 
-    const next = applyWithAppend(plugin, initial, (tr) => {
+    const next = applyWithAppend(initial, (tr) => {
       const node = schema.node(
         'jsxComponent',
         {
@@ -321,14 +287,14 @@ describe('SourceDirtyObserver origin guard', () => {
   });
 
   test('deny-list gates the interior-content route by origin, not by content', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
 
     // User-intent interior text edit (no ySyncPluginKey meta): the deny-list's
     // hasUserTransaction check must admit it, and the contentChanged branch must
     // flip the edited component dirty while leaving the untouched sibling pristine.
     {
       const initial = buildInitialState(plugin);
-      const next = editInteriorText(plugin, initial, 'X');
+      const next = editInteriorText(initial, 'X');
       const [firstPos, secondPos] = componentPositions(next);
       expect(isDirty(next, firstPos)).toBe(true);
       expect(isDirty(next, secondPos)).toBe(false);
@@ -339,20 +305,20 @@ describe('SourceDirtyObserver origin guard', () => {
     // transaction, not interior edits flipping unconditionally.
     {
       const initial = buildInitialState(plugin);
-      const next = editInteriorText(plugin, initial, 'X', { isChangeOrigin: true });
+      const next = editInteriorText(initial, 'X', { isChangeOrigin: true });
       const [firstPos] = componentPositions(next);
       expect(isDirty(next, firstPos)).toBe(false);
     }
   });
 
   test('freshly-inserted component stays pristine on insert, but its first interior edit flips', () => {
-    const plugin = getPlugin();
+    const plugin = getSourceDirtyPlugin();
     const initial = buildInitialState(plugin);
     const insertPos = initial.doc.content.size;
 
     // Insert a fresh registered component carrying an authoritative sourceRaw:
     // the fresh-insert guard preserves it verbatim (pristine, not dirty).
-    const afterInsert = applyWithAppend(plugin, initial, (tr) => {
+    const afterInsert = applyWithAppend(initial, (tr) => {
       const node = schema.node(
         'jsxComponent',
         {
@@ -374,9 +340,7 @@ describe('SourceDirtyObserver origin guard', () => {
     // guard is one-shot at insert time (oldNode is now a jsxComponent, so
     // isFreshInsert is false), so the edit re-derives and must flip dirty. A
     // guard keyed on sourceRaw alone would wrongly keep it pristine here.
-    const afterEdit = applyWithAppend(plugin, afterInsert, (tr) =>
-      tr.insertText('!', insertPos + 2),
-    );
+    const afterEdit = applyWithAppend(afterInsert, (tr) => tr.insertText('!', insertPos + 2));
     expect(isDirty(afterEdit, insertPos)).toBe(true);
   });
 });

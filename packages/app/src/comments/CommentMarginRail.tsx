@@ -306,7 +306,11 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
               'pointer-events-auto absolute left-0 size-7 rounded-full border bg-background p-0 shadow-sm transition-colors hover:bg-muted',
               // Dimmed: it is parked at the edge, not pointing at the line beside it.
               pos.offscreen && 'opacity-40 hover:opacity-100',
-              active && 'border-amber-500 bg-amber-50',
+              // Tracks COMMENT_HUE in `anchor-layers.ts` — the marker wears the
+              // colour of the passage it points at. The dark pairing is not
+              // optional: an un-inverted `-50` fill is near-white, which turns
+              // the active marker into a white disc on the dark canvas.
+              active && 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950',
             )}
             style={{ top: pos.top - rail.top }}
             data-comment-thread={thread.id}
@@ -316,7 +320,7 @@ export function CommentMarginRail({ editor, docName }: { editor: Editor; docName
             onPointerEnter={() => setActiveThread(thread.id)}
             onPointerLeave={() => clearActiveThread(thread.id)}
           >
-            <MessageSquare className="size-3.5 text-amber-500" />
+            <MessageSquare className="size-3.5 text-blue-600 dark:text-blue-400" />
           </Button>
         );
       })}

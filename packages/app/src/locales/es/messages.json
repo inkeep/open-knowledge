@@ -37,13 +37,7 @@
     "-YV1Uo": ["Patrón ", ["patternNumber"]],
     "-bFGPF": ["Cambio siguiente"],
     "-dNlfM": ["Se deshizo la última edición en ", ["docName"]],
-    "-f2Ogn": [
-      "Mantén este proyecto sincronizado con tu remoto de git. Seguir obtiene actualizaciones sin hacer push; la sincronización completa también sube tus commits. Activar la sincronización requiere confirmación."
-    ],
     "-g6KIS": ["Enlace no reconocido"],
-    "-imiMK": [
-      "Seguir: las actualizaciones llegan desde tu remoto; tus ediciones se quedan en este equipo."
-    ],
     "-kKdCC": ["Se instalaron ", ["imported"], " habilidades desde ", ["0"]],
     "-kbIAr": ["Enlaces e imágenes"],
     "-ksoxk": [
@@ -111,7 +105,6 @@
     ],
     "0QVrvp": ["Ya hay el máximo de agentes en marcha"],
     "0TnCvC": ["Renombrar ", ["0"]],
-    "0YEbfk": ["Conectar con herramientas de IA"],
     "0YUS3Q": ["Subcarpeta dentro de la carpeta actual"],
     "0_J12R": [
       "Archivo nuevo a partir de la plantilla \"",
@@ -156,7 +149,6 @@
     "0wswKc": ["Línea horizontal que separa secciones."],
     "0xnQ_X": ["Las actualizaciones llegan solas"],
     "0xnmlQ": ["Nombre del repositorio"],
-    "0yL--g": ["Revisar los conflictos"],
     "0ySP5u": ["Los cambios se guardan automáticamente en este tema."],
     "0zAhu6": ["todos los documentos"],
     "1-flC9": ["Puerto del servidor local"],
@@ -196,6 +188,7 @@
     "1NgrlY": ["Otras formas de instalarlo"],
     "1QfxQT": ["Descartar"],
     "1RluQD": ["Mostrar reemplazar"],
+    "1TA-aJ": ["Traído ", ["pulled"], " · enviado ", ["pushed"]],
     "1TNIig": ["Abrir"],
     "1Ta7Fd": ["Abrir ", ["basename"]],
     "1V17kO": ["Cargando ambas versiones"],
@@ -272,6 +265,11 @@
       "Páginas de todo el proyecto ordenadas por número de enlaces entrantes, hasta ",
       ["FULLSCREEN_HUB_LIMIT"],
       " resultados."
+    ],
+    "2okwy4": [
+      "La sincronización de este worktree está en Automático (solo Pull), heredada de ",
+      ["project"],
+      ". Cámbiala en Ajustes → Sincronización."
     ],
     "2pR7ad": ["Clave de API de embeddings"],
     "2q_Q7x": ["Visibilidad"],
@@ -405,11 +403,11 @@
     "4A3Yzu": ["Bloque de código"],
     "4BITzH": ["Error:"],
     "4CfgPM": ["Se creó la carpeta del proyecto, pero falló git init. Inténtalo de nuevo."],
-    "4DcimZ": ["Actualizado ", ["lastSyncedRelative"]],
     "4E9jPa": ["Crea tu primer proyecto"],
     "4EZrJN": ["Reglas"],
     "4ErgAf": ["OpenKnowledge instaló una habilidad"],
     "4FltCB": ["Elige dónde va tu copia. Al elegir un destino, se crea."],
+    "4GYCwt": ["Aprobar y continuar"],
     "4Gz2wC": ["No se pudo subir el archivo"],
     "4KmEoC": ["Atajos de teclado"],
     "4NC2Ym": ["Ir a la celda siguiente o anterior de la tabla."],
@@ -436,6 +434,7 @@
       "Elige las habilidades que quieres instalar. Cada una llega como una habilidad editable que es tuya."
     ],
     "4mLBx9": ["Ahora mismo no hay suscripciones disponibles."],
+    "4mbrAq": ["1 minuto"],
     "4mp6Tv": ["OpenKnowledge listó las habilidades instaladas"],
     "4niEzY": [
       "Incrustación de HTML aislada: escribe HTML y ve la vista previa renderizada en vivo."
@@ -453,11 +452,6 @@
       "Selecciona todas las filas visibles del árbol de archivos cuando el foco está en la barra lateral Archivos."
     ],
     "4xtLTl": ["Carpeta “", ["basename"], "” oculta"],
-    "4zEZS5": [
-      "La sincronización automática está activada en este worktree, heredado de ",
-      ["project"],
-      ". Cámbialo en Ajustes → Sincronización."
-    ],
     "4zGlN_": ["Pega la URL de la imagen o haz clic en subir"],
     "4z_1j2": ["Renderizado"],
     "5-FeN2": ["URL para compartir"],
@@ -545,6 +539,7 @@
     ],
     "5hFl0U": ["Copiar referencia"],
     "5jEnaB": ["No disponible en esta plataforma"],
+    "5k0NLb": ["Revisar"],
     "5kWklo": ["(puede que otras reglas ya oculten algunos)"],
     "5lWFkC": ["Iniciar sesión"],
     "5mksg0": ["No se pudo desactivar la búsqueda semántica — ", ["detail"]],
@@ -583,6 +578,7 @@
       "Los comandos se ejecutan con todo el acceso de tu cuenta de usuario en este equipo. Desactiva esto para deshabilitar el shell."
     ],
     "6Aih4U": ["Sin conexión"],
+    "6EoD0z": ["Resolver en la terminal"],
     "6FCixu": ["Reabrir un chat anterior"],
     "6HCOwA": ["No se pudo abrir."],
     "6KCH4m": ["Archivos ocultos"],
@@ -657,6 +653,11 @@
     ],
     "6ur2Mk": ["Ayuda a tus agentes a descubrir y usar OpenKnowledge en cualquier proyecto."],
     "6vEr3W": ["Destino del enlace"],
+    "6xPJIj": [
+      "La sincronización de este worktree está en Manual, heredada de ",
+      ["project"],
+      ". Cámbiala en Ajustes → Sincronización."
+    ],
     "6xeZX9": ["Los cambios se aplican al instante. El tema determina si es claro u oscuro."],
     "6zzhQL": ["Envía tu informe por correo"],
     "72xhRD": ["Modo de vista del diagrama"],
@@ -813,7 +814,6 @@
     "8qgfac": ["Servidores MCP"],
     "8rZ1pk": ["Habilitar ", ["id"]],
     "8ruqQi": ["Enlaces internos rotos"],
-    "8sMErm": ["¿Activar Seguir?"],
     "8t9CRE": ["Iniciando ", ["agentName"], "…"],
     "8t9T3-": ["No se encontraron habilidades."],
     "8tjQCz": ["Explorar"],
@@ -879,6 +879,7 @@
       ]
     ],
     "9Y6cCI": ["No se pudieron cargar las páginas"],
+    "9ZxzfT": [["count"], " por delante"],
     "9_2oe6": [
       "Vuelve a convertir ",
       ["0"],
@@ -889,7 +890,6 @@
     "9bCiQ8": ["No hay páginas sin enlaces entrantes en el grafo."],
     "9bG48P": ["Enviando"],
     "9clcD5": ["Abrir los documentos etiquetados con #", ["chip"]],
-    "9dVehq": ["Más opciones de permiso"],
     "9euN0m": [
       [
         "count",
@@ -975,11 +975,6 @@
     "AVW-K9": ["No se pudieron cargar las páginas huérfanas"],
     "AWOSPo": ["Acercar"],
     "AYoYhU": ["Falló la actualización: ", ["0"]],
-    "AaaESH": [
-      "La sincronización automática está desactivada en este worktree, heredado de ",
-      ["project"],
-      ". Cámbialo en Ajustes → Sincronización."
-    ],
     "AcK_r0": ["Claude CLI"],
     "AczYxH": ["Entrada open-knowledge personalizada, no gestionada por OpenKnowledge"],
     "AdcGcG": ["Aplicando tu cambio"],
@@ -1066,6 +1061,7 @@
     "BVkqD9": [
       "El mantenimiento del índice está en pausa porque otro atributo de Git controla index.md. Actualiza .gitattributes para que las rutas index.md de ese ámbito usen merge=union y vuelve a intentarlo."
     ],
+    "BWTzAb": ["Manual"],
     "BY-g4_": ["Añadir patrón"],
     "Ba4D2x": ["Plantilla importada"],
     "Bdha5y": ["Publicando..."],
@@ -1110,6 +1106,7 @@
     ],
     "C0Ciaj": ["Se importó como \"", ["0"], "\": el nombre \"", ["1"], "\" ya estaba ocupado."],
     "C0hoX6": ["Siempre incluido"],
+    "C2abof": ["Sin seguimiento"],
     "C3Zc44": ["Explorar habilidades"],
     "C62P6b": ["Selección del editor"],
     "C7PKTv": ["Enviar los comentarios marcados al chat"],
@@ -1131,6 +1128,11 @@
     "CGj3gX": ["error de análisis"],
     "CHfFN_": ["Quitar OpenKnowledge de ", ["0"]],
     "CKyk7Q": ["Volver"],
+    "CMd-g-": [
+      "Tu URL remota indica ",
+      ["declaredLogin"],
+      ", pero no se pudieron usar las credenciales de esa cuenta."
+    ],
     "CMyafZ": ["Valor hexadecimal de ", ["slot"]],
     "COr1Y7": [
       "Elige <0>openknowledge.skill</0> en tu carpeta <1>Descargas</1>. Se activa automáticamente."
@@ -1141,9 +1143,6 @@
     "CTJLpz": ["\"", ["trimmed"], "\" ya existe aquí"],
     "CU3AiE": ["Cambiando de rama"],
     "CUmCwI": ["Insertar fila debajo"],
-    "CVRM5N": [
-      "Seguir obtiene las actualizaciones de tu repositorio git remoto y avanza tu copia automáticamente. Tus ediciones locales se quedan en este equipo y nunca se suben."
-    ],
     "CWjM1r": ["documentos directamente en ", ["0"], "/"],
     "CWzc2T": [
       "<0>~/.ok/bin</0> y <1>~/.ok/env.sh</1> se conservan en cualquier caso: la aplicación siempre los mantiene."
@@ -1163,7 +1162,6 @@
       "Tu sesión de GitHub ha caducado: inicia sesión de nuevo para verificar el acceso de push."
     ],
     "CcaU4i": ["Los cambios se aplican al instante y se guardan automáticamente en este tema."],
-    "ChAtFg": ["No tienes permiso para hacer push a este repositorio"],
     "ChMshD": ["Salir de ", ["appName"]],
     "Ck9XRt": ["No se pudo guardar la clave; inténtalo de nuevo."],
     "ClII5l": ["Pulsa el sol o la luna de “Custom” arriba para usar este tema."],
@@ -1185,6 +1183,7 @@
       "En los proyectos Git, Open Knowledge añade una regla con alcance al archivo .gitattributes de la raíz del repositorio para combinar los cambios simultáneos del índice."
     ],
     "CxVk-w": ["Comentar en ", ["address"]],
+    "Cz-K13": ["15 minutos"],
     "D-NlUC": ["Sistema"],
     "D-Oh1s": ["Cómo configurar ", ["0"], " (se abre en el navegador)"],
     "D-_B7l": ["Conectado: este endpoint devuelve vectores de ", ["0"], " dimensiones."],
@@ -1252,7 +1251,6 @@
     "DmkTrb": ["No se pudo crear este tema. Inténtalo de nuevo."],
     "Dnn2XG": ["Automático"],
     "DpjYd6": ["Ir al texto anclado"],
-    "DrYM2Z": ["Sincronización desactivada"],
     "DsDwR-": [
       [
         "0",
@@ -1347,6 +1345,7 @@
       "Tus comentarios están esperando detrás del turno en curso: permanecen en cola hasta que el agente recoja el mensaje."
     ],
     "Eji13z": ["Activa o desactiva el resaltado."],
+    "EkEFE3": ["No se encontró el repositorio"],
     "EkH9pt": ["Actualizar"],
     "EkUnmS": ["cualquiera"],
     "El7NbA": ["Encabezado 2"],
@@ -1455,6 +1454,7 @@
     ],
     "Fqx38P": ["¿Qué te lo impidió?"],
     "Fr8JGg": ["Archivo zip"],
+    "FsEXax": ["Eso no se completó. Revisa los registros del servidor e inténtalo de nuevo."],
     "Fsx78O": ["Añade el comando <0>ok</0> a tu terminal"],
     "FvMSms": [
       "Renombrarlo cambia el archivo en el disco y el id con el que los agentes eligen esta plantilla."
@@ -1492,6 +1492,11 @@
     "G8t9NN": ["Añadir una propiedad"],
     "GA-UkN": ["Tipo de ", ["keyName"], ": ", ["typeLabel"], ". Haz clic para cambiarlo."],
     "GAohqx": ["Eliminar columna"],
+    "GBEqoP": [
+      "Tu configuración de Git indica ",
+      ["declaredLogin"],
+      ", pero no se pudieron usar las credenciales de esa cuenta."
+    ],
     "GBQjiV": ["Añadir habilidad"],
     "GDvlUT": ["Función"],
     "GGsM4y": ["Seleccionado en el grafo"],
@@ -1589,6 +1594,9 @@
     "H0WlWQ": ["Cuadrícula de filas y columnas con una fila de encabezado."],
     "H1TmTu": ["Se dejó de arreglar. Los archivos ya arreglados se quedan como están."],
     "H3oH0g": ["Rehacer"],
+    "H4doZt": [
+      "La sincronización está en pausa. Confirma estas ediciones locales para continuar, o resuélvelas en una terminal."
+    ],
     "H86f9p": ["Contraer"],
     "H8DVOJ": ["Idénticas en ambas: ", ["pick"], " las sigue leyendo."],
     "HAkEqR": ["Archivos recientes"],
@@ -1698,6 +1706,7 @@
     "IWGfGF": ["Comprobando tu conexión con GitHub"],
     "IX7-sq": ["Algo salió mal al abrir \"", ["docName"], "\"."],
     "IX_uXB": ["mi-funcion"],
+    "IXiG0B": ["Automático (Pull y Push)"],
     "IYciRC": ["¡Gracias por el informe!"],
     "IajAbS": ["Añadir un paquete inicial"],
     "If0crP": ["Abrir con la IA ", ["targetDisplayName"], ", ", ["hint"]],
@@ -1760,6 +1769,7 @@
     "JLzQi_": ["Cerrar ", ["accessibleLabel"]],
     "JM_aq-": ["Usa una URL https://; http:// solo se admite para localhost."],
     "JOcPqH": ["Trae un repositorio remoto a este equipo."],
+    "JOhCT9": ["Push incluye"],
     "JWsZlx": ["Abre un proyecto para editarlo."],
     "JZ8cO6": ["Claro, oscuro o seguir al sistema."],
     "J_jZ5z": [
@@ -1855,6 +1865,9 @@
     "KjTmeO": ["Actualiza OpenKnowledge para abrir este elemento compartido."],
     "KkEAud": ["Crea un archivo a partir del documento o la carpeta actuales."],
     "KkRyMI": ["No se pudo clasificar la fusión. Inténtalo de nuevo."],
+    "KmVekT": [
+      "Automático (solo Pull) obtiene actualizaciones de tu repositorio git remoto y avanza tu copia automáticamente. Tus ediciones locales se quedan en este equipo y nunca se envían."
+    ],
     "KmydK6": ["Negrita"],
     "KnoB--": ["Se guardará como <0>", ["sanitized"], "</0>."],
     "KpOJFY": ["Activar la vista previa de enlaces externos"],
@@ -1864,6 +1877,7 @@
     "KsAPaB": ["Esta rama está extraída en:"],
     "KtACeE": ["Por defecto: <0>", ["0"], "</0>"],
     "KujtjC": ["Buscar"],
+    "KvwJv8": ["Algunos archivos no aparecen: el árbol de trabajo tiene demasiados cambios."],
     "Kx881F": ["Se restauró ", ["0"], "."],
     "L-rMC9": ["Restablecer al valor por defecto"],
     "L1BQTH": [["0"], " todavía no está instalado: abriendo su página de descarga."],
@@ -1881,6 +1895,7 @@
     "L83DKQ": ["Falló la instalación en PATH: ", ["summary"]],
     "L8fKuc": ["Ejecuta esto en tu terminal"],
     "L9Y9Om": ["Páginas más enlazadas"],
+    "L9ox9k": ["No se pudo leer el árbol de trabajo. Revisa los registros del servidor."],
     "LAR9ub": ["Reemplaza la entrada de OpenKnowledge existente en ", ["0"]],
     "LBv_TR": ["Convertir las ubicaciones en enlaces simbólicos"],
     "LBwUR6": [
@@ -1909,7 +1924,6 @@
       ]
     ],
     "LKOLNn": ["No hay agentes de IA instalados"],
-    "LNum6A": ["hace ", ["minutes"], " min"],
     "LPAv9E": ["hace ", ["days"], " d"],
     "LQdLio": ["Esquema nuevo"],
     "LQsCPn": ["Hay commits locales que impiden actualizar esta copia"],
@@ -2018,7 +2032,6 @@
     "MCjC9A": ["Eliminar ", ["deleteDescriptorLabel"]],
     "MDBJwN": ["Difícil de usar"],
     "MDZSJe": ["Cuándo ejecuta el agente su trabajo programado."],
-    "MGBNwj": ["Pausar la sincronización"],
     "MGb89P": [
       "Inserta, elimina, mueve, copia y sangra líneas del editor de código con el mapa de teclas por defecto de CodeMirror."
     ],
@@ -2027,7 +2040,6 @@
     "MIF36T": ["No se pudo resolver la bifurcación: ", ["0"]],
     "MILoeL": ["Servicios"],
     "MJuO1q": ["Ventana de contexto:"],
-    "MKEPCY": ["Seguir"],
     "MLVPcm": [["0"], " versión ", ["1"]],
     "MOAoFO": ["Aún no hay carpetas de agentes"],
     "MPpSAg": ["Crear proyecto a partir de ", ["selectedPackName"]],
@@ -2092,6 +2104,7 @@
     ],
     "N5rzKJ": ["Eliminar ", ["0"], " habilidades"],
     "N6j2JH": ["Editar ", ["0"]],
+    "N7Lau6": ["Confirmar y sincronizar"],
     "NBdIgR": ["Comentar"],
     "NErvOX": ["Guardado en"],
     "NEzPEh": ["Crea una rama nueva, o extrae una existente, en su propia ventana."],
@@ -2121,6 +2134,7 @@
     "Nay2Yr": ["Ningún agente coincide con tu búsqueda."],
     "NcUznW": [["0"], ", sin espacio de trabajo"],
     "NcurBF": ["Desplazar hacia abajo"],
+    "NcwbBM": ["Pull trae"],
     "NeQ_0G": ["Trabaja sobre estos comentarios"],
     "NeY1Np": ["Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."],
     "NfraGd": ["Otras formas de instalar Slidev"],
@@ -2166,6 +2180,7 @@
     "O6yEPk": ["Crea un proyecto de OpenKnowledge en la carpeta que elijas."],
     "O7_W_a": ["Abrir con IA"],
     "O9oQJS": ["Enviar el informe"],
+    "OBdkpo": ["HEAD desacoplado"],
     "OD0FCX": ["“", ["basename"], "” oculto"],
     "ODGGlj": ["Nombre de la carpeta: ", ["detail"]],
     "OEEQKT": ["Bien"],
@@ -2225,6 +2240,7 @@
     "Oo_WWc": ["No se encontraron páginas"],
     "Oos8fo": ["Copiar comando"],
     "OplnBG": ["La gestión de herramientas de IA no está disponible en esta compilación."],
+    "OqqecQ": ["30 segundos"],
     "OsSaYm": ["No se pudo clonar: ", ["title"]],
     "OuQezS": ["Se aplica cuando retomes esta conversación"],
     "OuY8t9": ["Abrir en la rama actual"],
@@ -2259,7 +2275,11 @@
     "PBwmDJ": ["Buscando por significado"],
     "PBxg_E": ["Ahora no"],
     "PCSkw2": ["Habilidades"],
+    "PEGxvo": ["5 minutos"],
     "PGPGsL": ["Añadir descripción"],
+    "PGRnbw": [
+      "Las actualizaciones llegan desde tu remoto; tus ediciones se quedan en este equipo."
+    ],
     "PHHEuH": ["Ocultar comentarios resueltos (", ["0"], ")"],
     "PIMM5l": ["¡Te has suscrito!"],
     "PKLY-1": ["Abriendo..."],
@@ -2272,7 +2292,6 @@
     "PRgIJh": ["No se pudo actualizar ", ["subRoot"], ": ", ["0"]],
     "PRnH8G": ["de ", ["0"]],
     "PTUuoc": ["No se pudo desmarcar ese comentario: sigue pendiente de envío."],
-    "PTb1Nx": ["La sincronización está en pausa. Vuelve a activarla para reanudarla."],
     "PVSwOe": ["Redirigiendo: esperando a que se detenga la ejecución actual…"],
     "PVUn_c": ["Abrir carpeta"],
     "PVggyD": ["Esquemas de frontmatter"],
@@ -2326,6 +2345,7 @@
     "PrWQiT": ["Mover Terminal a la derecha"],
     "PrhzDE": ["Desplazar hacia arriba"],
     "Pw5PTU": ["Origen externo"],
+    "PxZCNM": ["Fuera de lo que confirma Open Knowledge."],
     "Q-DKvr": ["Instalar desde ", ["source"]],
     "Q1mtyd": ["Ocultar la barra lateral"],
     "Q5fqMz": ["Error de conexión: inténtalo de nuevo"],
@@ -2382,6 +2402,7 @@
         { "one": ["#", " elemento"], "many": ["#", " elementos"], "other": ["#", " elementos"] }
       ]
     ],
+    "QeREu8": ["Renombrado"],
     "QfFBdJ": ["El nombre de archivo de la plantilla (sin `.md`)."],
     "Qft6eW": ["Mover ", ["0"], " a Global"],
     "Qj4RL5": ["Completado:"],
@@ -2572,7 +2593,6 @@
       "\". Recarga para reintentarlo."
     ],
     "ScwcF2": ["Ya existe un proyecto en esta ubicación. Elige otra carpeta superior."],
-    "SfxQX8": ["Escribe una configuración MCP de proyecto para cada herramienta seleccionada."],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -2600,13 +2620,9 @@
     "Sr9xtj": ["Elegir las carpetas a las que se aplica este esquema"],
     "SrOuyg": ["Paneles del documento"],
     "SvBFYA": ["No hay proyectos recientes"],
-    "Sxx_Zz": [
-      "Seguir está activado en este worktree, heredado de ",
-      ["project"],
-      ". Cámbialo en Ajustes → Sincronización."
-    ],
     "T-654M": ["Cargando el PDF"],
     "T0OVm7": ["La rama por defecto está protegida: los push requieren una pull request."],
+    "T1fMJ6": ["Con qué frecuencia este equipo trae cambios de tu remoto."],
     "T2fvhw": ["Desmarcar todos los comentarios de ", ["0"]],
     "T3Mld1": ["Ventana"],
     "T3j-7o": ["p. ej. Cambiar de proyecto mientras se sincronizaba"],
@@ -2628,6 +2644,7 @@
     ],
     "TTDXD8": ["Worktree nuevo…"],
     "TUzThQ": ["Compartir habilidades"],
+    "T_N0ro": ["Solicitar cambios…"],
     "T_j5G0": ["Esta no es una versión compatible de Slidev."],
     "T_wG4n": ["No pudimos comprobar tu conexión con GitHub."],
     "Ta25TG": ["Todavía no hay historial"],
@@ -2663,10 +2680,10 @@
     "U2pMtf": ["nombre-de-etiqueta"],
     "U3IvM5": ["Guía completa"],
     "U3RIJu": ["Archivos locales"],
-    "U4nTfu": ["Activar Seguir"],
     "U5Spo9": ["El directorio de contenido debe estar dentro del proyecto"],
     "U6Mdhd": ["Vamos a configurarlo."],
     "U6wmNc": ["Sincronización en pausa"],
+    "U7Iesw": [["seconds"], " segundos"],
     "U88xbi": ["No se pudo crear el archivo de esquema"],
     "U8CD-l": ["Copiar ruta completa, sin espacio de trabajo"],
     "UBv8UK": ["Eliminar definitivamente"],
@@ -2710,9 +2727,6 @@
     "URmyfc": ["Detalles"],
     "UTNVyS": ["Selecciona el documento de código completo."],
     "UTZ97u": ["La selección debe estar dentro del proyecto"],
-    "UVDasf": [
-      "La sincronización está desactivada: tus ediciones se quedan en este equipo hasta que hagas commit y push a mano."
-    ],
     "UVLlMV": ["No se pudo contactar con GitHub. ¿Reintentar?"],
     "UW2Fg3": [
       "El servidor en marcha de este proyecto no admite edición en vivo. Reinicia OpenKnowledge para arreglarlo."
@@ -2755,6 +2769,7 @@
     "UhpfxY": ["Desplazar a la izquierda"],
     "UkQGhd": ["Ocultar reemplazar"],
     "UlVARL": ["Activar Slidev"],
+    "Uo2Rj7": ["¿Activar Automático (Pull y Push)?"],
     "Uobeu9": ["Añade la habilidad a ", ["rootRel"], ", que también lee ", ["0"]],
     "Up2_7p": ["Copiar ruta completa"],
     "UpCz01": ["Este documento"],
@@ -2856,6 +2871,7 @@
     "Vftef5": [
       "Problemas habituales de markdown: tabulaciones, saltos de nivel en los encabezados, marcadores de lista y más."
     ],
+    "Vl1H8I": ["Se requiere volver a conectar para seguir sincronizando."],
     "Vlc75q": ["Mantener el archivo eliminado"],
     "VmJT51": ["Cargando tus informes"],
     "VmXASo": ["(enlace simbólico)"],
@@ -2893,6 +2909,7 @@
       ["rootPath"],
       "</0>. Elige una ubicación fuera de él o abre ese proyecto."
     ],
+    "W7mERj": ["¿Activar Automático (solo Pull)?"],
     "W8vpBM": ["paquete inicial"],
     "W9NSe0": ["Comprobando enlaces"],
     "W9_Bub": ["Los cambios locales se solapan con la sincronización entrante"],
@@ -2912,6 +2929,7 @@
       " elementos seleccionados? Se eliminarán las carpetas y todos los archivos que contienen. Esta acción no se puede deshacer."
     ],
     "WMsoIm": ["¿Ya iniciaste sesión?"],
+    "WOfp4H": ["No se pudo actualizar el intervalo de sincronización — ", ["detail"]],
     "WOr-hW": ["tokens"],
     "WPwDin": ["Abrir la carpeta en el disco"],
     "WR0y2O": ["Compartir la carpeta"],
@@ -2930,6 +2948,7 @@
     "Wcv-Zi": ["Haz que esta base de conocimiento esté disponible como habilidad de Claude."],
     "We7h2I": ["📝 o assets/icon.png"],
     "Weq9zb": ["General"],
+    "WfcERq": ["Nada que confirmar: el árbol de trabajo está limpio."],
     "Wfy3rU": ["Ajustes del agente"],
     "Wgmlsw": ["Obteniendo"],
     "Wh0im4": ["editando [[", ["realCurrentDoc"], "]]"],
@@ -2983,7 +3002,6 @@
     "XRuL0i": ["Crear página"],
     "XSb9HS": ["Descartar las ediciones locales y restaurar la versión instalada"],
     "XT-L4j": ["Activa un agente para crear con IA"],
-    "XU0OXn": ["Activar la sincronización automática"],
     "XU5AOg": ["Entrada"],
     "XV5sC0": ["Abrir el worktree"],
     "XW18jo": ["La respuesta de los encabezados de página no coincide con el esquema de éxito"],
@@ -3052,6 +3070,7 @@
     "Xp7Kq4": ["Hay otra operación de sincronización en curso. Inténtalo de nuevo en un momento."],
     "Xp94R1": ["Intentar una vez más"],
     "XpIZmv": ["Bloque de código delimitado con texto monoespaciado."],
+    "Xs1kjx": ["Buscar actualizaciones cada"],
     "Xs7IcT": ["No se pudo conectar con ", ["displayName"], ". ¿Reintentar?"],
     "XszXjc": ["Se renombró a ", ["0"]],
     "XtRoxT": ["Página ", ["pageNumber"]],
@@ -3086,6 +3105,7 @@
       "Los complementos de análisis (qué familias de reglas se ejecutan y sus ajustes por regla) se configuran en su propia pestaña, en Este proyecto → Complementos."
     ],
     "YEP3X2": ["Elimina una tabla cuando la selección de celdas activa cubre la tabla entera."],
+    "YEzhIr": ["Pull y Push"],
     "YGIi_c": ["Reinstalar"],
     "YGNRB5": ["— excepto"],
     "YGt-0e": ["Leyendo…"],
@@ -3132,17 +3152,6 @@
       "Se aplica a este proyecto solo en este equipo. Se guarda en .ok/local y no se comparte mediante git."
     ],
     "Yp-Hi_": ["Abrir los ajustes"],
-    "YsEYYS": [
-      [
-        "behind",
-        "plural",
-        {
-          "one": ["#", " commit por detrás"],
-          "many": ["#", " commits por detrás"],
-          "other": ["#", " commits por detrás"]
-        }
-      ]
-    ],
     "YvwwqC": ["Dónde"],
     "YwPUUP": ["Este paquete ya está configurado aquí."],
     "YxZDGh": [
@@ -3196,6 +3205,7 @@
     "ZGVsOD": ["Envía esta rama a GitHub antes de compartir."],
     "ZI8uvA": ["No se encontraron problemas."],
     "ZJ99sD": ["Insertar columna a la izquierda"],
+    "ZKVuLY": ["Autenticado como ", ["login"], "."],
     "ZNK2Tq": ["raíz"],
     "ZOVgDv": [["moved"], " habilidades movidas a Proyecto"],
     "ZQJ1IV": ["Activa la última pestaña del editor."],
@@ -3250,7 +3260,6 @@
     "Zue_jx": [
       "A tu token de GitHub le faltan ámbitos obligatorios. Prueba a iniciar sesión de nuevo."
     ],
-    "Zul8Ry": ["nunca"],
     "ZvzbDF": ["Añádelo directamente a este proyecto."],
     "ZwpggY": ["OpenKnowledge leyó la configuración del proyecto"],
     "_0JUKX": ["Para informar de errores necesitas la aplicación de escritorio de OpenKnowledge."],
@@ -3389,15 +3398,17 @@
     "ai40UJ": ["Nuevo récord · pulsa <0>Espacio</0> para jugar de nuevo"],
     "aiArms": ["No pudimos clonar este repositorio."],
     "aiOceC": ["Habilitar índices"],
-    "ajHi4O": [
-      "La sincronización automática está en pausa: no tienes permiso para hacer push a este repositorio. Cambia a Seguir para seguir recibiendo actualizaciones."
-    ],
     "ajz9F8": [
       "No se pudo cargar el contenido del conflicto de ",
       ["filePath"],
       ". Prueba a recargar la página."
     ],
     "ak4LLg": ["Vaciar menú"],
+    "akOe4q": [
+      "Tu configuración de credenciales de Git indica ",
+      ["declaredLogin"],
+      ", pero no se pudieron usar las credenciales de esa cuenta."
+    ],
     "akmOT9": ["Editar este comentario"],
     "an0aL5": ["Preguntar a un agente"],
     "anmUZq": ["Faltaba una función"],
@@ -3409,7 +3420,6 @@
       "Los ajustes de vista previa de enlaces aún no se han cargado; inténtalo de nuevo en un momento"
     ],
     "axQ1h6": ["¿Quieres añadir algo? (opcional)"],
-    "az8lvo": ["Desactivado"],
     "b18t0_": ["Cerrar diferencias"],
     "b1FDss": ["Desplazar hasta el principio"],
     "b2ezG_": ["Se conservaron ambos: \"", ["0"], "\" ahora es una habilidad aparte"],
@@ -3475,6 +3485,7 @@
     ],
     "bpytj4": ["Mover a ", ["0"]],
     "brCtGB": ["El historial no está disponible"],
+    "btNgJP": ["En el plan de arriba, por favor "],
     "buNXgr": ["Cambia entre el editor visual y el de código sin perder tu sitio."],
     "bultyE": [
       "Cuando está activado, el agente abre o actualiza la vista previa después de cada edición. Desactívalo si gestionas tu propia ventana de vista previa (OK Desktop, una pestaña del navegador en otra pantalla, etc.)."
@@ -3513,8 +3524,10 @@
     ],
     "cH0dkG": ["Le faltaba una función que necesitaba"],
     "cHhH3i": ["una herramienta de git necesaria"],
+    "cIFYZn": [
+      "Mientras tengas la sesión cerrada, las actualizaciones se buscan como mucho cada 3 minutos, independientemente de este ajuste."
+    ],
     "cIptmH": ["En la aplicación Claude Desktop"],
-    "cKjLuT": ["(proyecto + usuario)"],
     "cLP0Lf": ["Origen remoto de habilidades"],
     "cLn264": ["No se pudo leer este archivo de tema"],
     "cMMb6H": [
@@ -3595,6 +3608,8 @@
     "ct2kv5": ["No hay encabezados en ", ["pageTarget"]],
     "cuA8QW": ["Organizar las especificaciones"],
     "cuHhjo": ["Crear y editar"],
+    "cyoNqf": ["Sin fusionar"],
+    "czQDKY": ["Cada push es un commit en tu remoto."],
     "d-GtJt": ["Ver en el Markdown de origen"],
     "d1JjXo": [
       "Tu copia local de la rama <0>",
@@ -3711,6 +3726,9 @@
     "eGUbmF": ["Copiar el archivo o la carpeta seleccionados"],
     "eJitUk": ["Subir desde el equipo"],
     "eKThTQ": ["No se pudo reordenar"],
+    "eNOyTV": [
+      "No tienes permiso para hacer push en este repositorio. Automático (solo Pull) puede mantener tu copia al día."
+    ],
     "eNQGRb": ["Fórmula LaTeX en línea renderizada con KaTeX."],
     "eNhWUl": [
       "Un revisor de PR, un redactor de notas de versión, una lista de comprobación de despliegue..."
@@ -3754,6 +3772,7 @@
     "emMrXQ": ["El servidor devolvió una respuesta de duplicación con formato incorrecto."],
     "emgiet": ["Contenido autoritativo; se replica literalmente allí donde se referencia."],
     "enPTnx": ["línea ", ["displayLine"]],
+    "eolhcI": ["Leyendo el árbol de trabajo"],
     "eps54V": ["Eliminado"],
     "epuNYK": [
       "Marca un bloque como fuente de verdad. Los espejos de otros sitios se actualizan en vivo mientras lo editas."
@@ -3761,9 +3780,6 @@
     "erenF-": ["No se pueden eliminar archivos con conflictos sin resolver"],
     "euGaS0": ["No se pudo leer ", ["fileName"], "."],
     "euc6Ns": ["Duplicar"],
-    "evHlIg": [
-      "Seguir nunca hace push ni commit de tus cambios locales. Se quedan solo en este equipo."
-    ],
     "evs0iw": ["Etiquetas que coinciden con \"", ["tagListQuery"], "\""],
     "ewSbS_": ["Sesión de shell"],
     "ezUmoU": ["Valores de elemento permitidos (vacío = cualquiera)"],
@@ -3790,7 +3806,6 @@
     "fMsFdZ": ["No se pudo guardar el ajuste de actualización automática: ", ["0"]],
     "fNr-MX": ["Desactivar la búsqueda semántica"],
     "fOzzSV": ["El destino del enlace «", ["shown"], "» no corresponde a un archivo existente."],
-    "fR-Kdc": ["(solo a nivel de proyecto)"],
     "fRVBiq": [
       "Añade telemetría, estado del servidor e información de ejecución cuando está disponible. Las credenciales siempre se eliminan; los nombres de documento, si se incluyen, aparecen en texto plano (sin ocultar)."
     ],
@@ -3863,7 +3878,6 @@
         }
       ]
     ],
-    "g2Tj8R": ["Completo"],
     "g3UF2V": ["Aceptar"],
     "g4WlQK": [
       "La gestión de herramientas de IA del proyecto solo está disponible en la aplicación de escritorio de OpenKnowledge."
@@ -3881,7 +3895,6 @@
       ["display"],
       ". Esa carpeta se convierte en un enlace simbólico a esta, así que su agente lee todo lo que pongas aquí. Esta carpeta sigue siendo real. Si hay habilidades en conflicto, la fusión se cancela."
     ],
-    "g85bAo": ["Sincronizado ", ["lastSyncedRelative"]],
     "g9Nj4l": ["// nota"],
     "gAhHu7": [
       "El arreglo automático solo se aplica a los problemas con un arreglo mecánico conocido."
@@ -3959,6 +3972,7 @@
       "Este documento todavía no se ha sincronizado con GitHub. El enlace funcionará tras la próxima sincronización."
     ],
     "gyHDWC": ["Arreglarlo todo con IA (", ["count"], ")"],
+    "gyYvCN": ["Enviar mis ediciones cada"],
     "h-AdvS": ["Las carpetas y las plantillas ya están aquí, así que no hay nada que añadir."],
     "h06R3C": ["No hay páginas sin enlaces salientes en el grafo."],
     "h16FyT": ["Listas"],
@@ -4019,6 +4033,7 @@
     "hgf5io": ["Blob Run"],
     "hgtsat": ["No se pudo eliminar ", ["file"]],
     "hh4mVC": ["Pedir a la IA que arregle ", ["flatId"]],
+    "hiNDrI": ["Eliminando ", ["progress"], " de ", ["count"]],
     "hjO0Mq": ["Añadir pestaña"],
     "hmYd9H": [
       "Lleva la cuenta de las personas y empresas con las que trabajas y de las reuniones que tienes con ellas. Va bien para recordar quién es alguien, de qué la conoces y de qué hablasteis la última vez."
@@ -4037,9 +4052,6 @@
       "Una línea con una nota al pie<0><1>[1]</1></0> y una definición que se muestra abajo."
     ],
     "hxEUVJ": ["Inicializar ", ["selectedPackName"]],
-    "hxYFzm": [
-      "Sincronización completa: tus commits se suben y los cambios remotos se descargan automáticamente."
-    ],
     "hxnF0I": ["Propiedades de ", ["0"]],
     "hyCxJY": ["Abrir ese worktree en su lugar"],
     "hynz2K": ["Descarga iniciada"],
@@ -4054,7 +4066,6 @@
     "i09An-": ["Se restauró una versión anterior (", ["0"], ")"],
     "i1flq_": ["Sugerencias de enlaces wiki"],
     "i3f2kh": ["Ningún comando coincide."],
-    "i6ng22": ["Cambiar a Seguir"],
     "i92eAT": ["Crearemos un repositorio y empezaremos a sincronizar; no hace falta terminal."],
     "i94lQe": ["OpenKnowledge buscó conflictos"],
     "i9OyGp": ["Deshacer o rehacer"],
@@ -4148,13 +4159,11 @@
     ],
     "iqugog": ["Falló la inicialización: ", ["errorDetail"]],
     "irFGwu": ["Lista de plantillas"],
+    "irnKr_": ["Actualizado ", ["updatedRelative"]],
     "irrm_E": ["Quitar la selección"],
     "isRobC": ["Nuevo"],
     "iuTKci": ["Todavía no hay ediciones."],
     "iv452l": ["Documentación de ", ["0"], " (se abre en el navegador)"],
-    "iy64Li": [
-      "Sincronización completa: tus ediciones se confirman y se suben a tu remoto automáticamente."
-    ],
     "iycx_A": ["Haciendo push"],
     "iz1LdD": [
       "Se modificó fuera de OK desde la última vez que escribió aquí; el estado que se muestra es el que hay ahora en el disco"
@@ -4198,6 +4207,9 @@
     "jPUPvG": ["No se pudo resolver el conflicto de ", ["filePath"], "."],
     "jRAGrQ": ["Configurar agentes"],
     "jRHdCz": ["No se pudo cargar el PDF"],
+    "jRsjlF": [
+      "No se encontró el repositorio: puede que no exista o que la cuenta utilizada no tenga acceso."
+    ],
     "jSO1X5": [
       "Las plantillas heredadas no se pueden renombrar aquí: hazlo en la carpeta que las contiene."
     ],
@@ -4205,6 +4217,7 @@
     "jTLWxh": [
       "Incrusta una página externa en un iframe en línea (documentación, demos, Figma, CodeSandbox)."
     ],
+    "jTUxaN": ["Activar Automático (solo Pull)"],
     "jWzDfC": ["Comprobando qué herramientas de IA tienes"],
     "jZ_E5M": ["Falló el fetch: consulta los registros del servidor para ver los detalles."],
     "j_Z6g7": ["Valor compartido por defecto"],
@@ -4295,13 +4308,15 @@
     "kNqMMd": ["Carpeta"],
     "kSiB3X": ["No se pudo mover a la ", ["trashNoun"]],
     "kUgGPO": ["Character budget per indexing request"],
-    "kUn-CN": ["Sincronización desactivada"],
     "kV2YZv": [
       "¿No ves <0>Habilidades</0>? Activa antes <1>Ajustes <2/> Capacidades <3/> Ejecución de código y creación de archivos</1>."
     ],
     "kVS5tE": ["¿Mantener índices generados en cada carpeta?"],
     "kVgQUA": ["¿Eliminar este chat?"],
     "kVzuTI": ["Habilidad de agente recomendada"],
+    "kXNv8P": [
+      "Automático (solo Pull) nunca hace push ni confirma tus cambios locales. Se quedan solo en esta máquina."
+    ],
     "kYL1lH": ["Actividad del agente"],
     "k_Dqw1": [
       [
@@ -4397,6 +4412,7 @@
     "lM4c-I": [
       "Una ruta dentro de la habilidad; cualquier carpeta sirve (p. ej. references/notes.md). Las carpetas de la ruta se crean automáticamente."
     ],
+    "lPkjpD": ["Enviado ", ["pushed"]],
     "lPzyrU": ["Todos los fragmentos resueltos"],
     "lS83Sg": ["No se pudo acceder al portapapeles."],
     "lScd1O": [
@@ -4614,7 +4630,6 @@
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gestiona los archivos ocultos en Ajustes → Patrones de exclusión."],
     "nXHOFU": ["No se pudo actualizar desde ", ["0"], ": ", ["1"]],
-    "nYKerc": ["(solo a nivel de usuario)"],
     "nYeBmY": ["hace ", ["hours"], " h"],
     "n_I-da": ["Ver la fuente"],
     "nbLQ_9": ["Elige a dónde enviar estos comentarios"],
@@ -4758,6 +4773,7 @@
     "pJ7XCo": ["Esta página no hace referencia a ningún archivo o imagen local."],
     "pMPnZv": [["deleted"], " habilidades eliminadas"],
     "pOo4Aa": ["Texto sin formato"],
+    "pPiV8s": ["Activar Automático (Pull y Push)"],
     "pSimwP": ["Nombre nuevo para la versión de ", ["editor"]],
     "pTPqMK": ["Activa o desactiva un bloque de código delimitado."],
     "pTyA_t": ["etiquetas"],
@@ -4835,6 +4851,7 @@
     "qAx7xG": ["Carpeta fija en la raíz del contenido"],
     "qBi_YG": ["Instalar OpenKnowledge en tus herramientas de IA"],
     "qC7PwZ": ["No se pudo eliminar el campo"],
+    "qD3krc": ["Nada se mueve hasta que lo pidas."],
     "qEEfPk": ["Informe de error ", ["0"]],
     "qEIFZu": ["Clave terminada en ", ["keyHint"]],
     "qEue6Q": [" o "],
@@ -4843,6 +4860,9 @@
     "qIJIrD": ["Probando"],
     "qJSo0_": ["¿Qué diferencia hay entre las copias y los enlaces simbólicos?"],
     "qKMfPp": ["Ocultar los nodos de habilidades"],
+    "qLXJTB": [
+      "Mantén este proyecto sincronizado con tu remoto de git. Automático (solo Pull) trae actualizaciones sin hacer push; Automático (Pull y Push) también envía tus ediciones. Activar la sincronización automática requiere confirmación."
+    ],
     "qNOgUu": [
       "Las ediciones hechas en el origen llegan aquí: sin desviaciones por copiar y pegar."
     ],
@@ -4862,7 +4882,6 @@
     "qXg5W9": ["El archivo se guarda en <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publicar en GitHub"],
     "qZv5ZR": ["No se pudo cambiar la compartición de la configuración"],
-    "q_9EcE": ["¿Activar la sincronización automática de git?"],
     "q_Q1-i": [
       [
         "count",
@@ -4970,7 +4989,6 @@
       ["boldName"],
       ", una habilidad integrada que viene con Open Knowledge. Es de solo lectura."
     ],
-    "rn7n0G": ["Reanudar la sincronización"],
     "rnX-1S": ["Activar los complementos"],
     "rnrdEX": ["principal"],
     "roAe2K": ["URL del enlace"],
@@ -5020,6 +5038,7 @@
     "sJK6pq": ["Permiso denegado"],
     "sJWhgo": ["Componente desconocido: ", ["unregisteredComponentName"]],
     "sKEgGd": ["Enviar al chat"],
+    "sKHiNR": [["count"], " por detrás"],
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
@@ -5043,6 +5062,7 @@
     "scyoP9": [
       "Los documentos de índice no llevan frontmatter, salvo el que está en la raíz de tu base de conocimiento. Los documentos de registro no están incluidos: OKF no limita su frontmatter."
     ],
+    "sdvHp3": ["Cambiados aquí y en el remoto"],
     "se-tU0": ["No se pudieron corregir ", ["0"], " de ", ["total"], " archivos."],
     "seeS6l": ["¿Configurar OpenKnowledge en esta carpeta?"],
     "sgmRY8": ["Se omitió la descarga de ", ["0"], "."],
@@ -5066,6 +5086,9 @@
     "snrVQ7": ["falló la comprobación"],
     "sq4WQH": ["Usar ", ["0"], " como tema claro"],
     "sqUrlK": ["Cavilando…"],
+    "srdlOs": [
+      "La sincronización automática está en pausa: no tienes permiso para hacer push en este repositorio. Cambia a Automático (solo Pull) para seguir recibiendo actualizaciones."
+    ],
     "ssk6rl": [
       "La carpeta propia de la habilidad (",
       ["path"],
@@ -5087,11 +5110,13 @@
       "Fila en línea al estilo Notion para un archivo descargable. También funciona arrastrar y soltar."
     ],
     "t18QYR": ["Dejar de fijar ", ["accessibleLabel"]],
-    "t2TkQ3": ["Sincronización en pausa: resuelve los conflictos para reanudarla."],
     "t4sFKC": [
       "La rama nueva <0>",
       ["trimmed"],
       "</0> se creará a partir del commit actual, en su propio worktree dentro de <1>.ok/worktrees/</1>."
+    ],
+    "t5I7P_": [
+      "Nada se mueve hasta que lo pidas: usa Pull y Push desde el menú de sincronización."
     ],
     "t6w1cq": ["Abre una pestaña de editor en blanco."],
     "t7YoBO": ["Enviar este comentario"],
@@ -5137,6 +5162,7 @@
       ["alreadyImported"],
       " ya estaban)"
     ],
+    "tlGXxX": ["Automático (solo Pull)"],
     "tnG-m6": ["La sincronización automática está en pausa: inicia sesión para reanudarla."],
     "toyw51": ["Controles del diagrama de Mermaid"],
     "tqQBwN": ["Los scripts se muestran para que los revises; nunca se ejecutan."],
@@ -5169,6 +5195,7 @@
     "u779EG": ["Usa un origen http:// o https://."],
     "u7H-Wn": ["Mostrar el panel (", ["panelShortcutLabel"], ")"],
     "u7U_Ij": ["Enlaza el texto seleccionado o edita el enlace bajo el cursor."],
+    "uAQUqI": ["Estado"],
     "uA_jXp": ["Cambiar de rama y actualizar"],
     "uBAxNB": ["Editor"],
     "uCaIdy": [
@@ -5199,9 +5226,6 @@
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."
     ],
     "uUCrBv": ["enlace simbólico"],
-    "uUiiyC": [
-      "No tienes permiso para hacer push a este repositorio. Seguir puede mantener tu copia al día igualmente."
-    ],
     "uVbUP8": ["Ajustes…"],
     "uY5Z7P": ["Fin del juego · pulsa <0>Espacio</0> para jugar de nuevo"],
     "uYZTcW": ["No se puede compartir esta URL de GitHub."],
@@ -5255,6 +5279,7 @@
     "v15iQB": [
       "El contrato de cálculo certificado. Solo se aplica a documentos de tipo Attested Computation, para los que OKF requiere un runtime; los conceptos normales no se ven afectados."
     ],
+    "v16Pzh": ["Cambiar a Automático (solo Pull)"],
     "v2ZW0K": ["Activar la terminal"],
     "v2a04T": ["Reglas de markdownlint"],
     "v41fCm": ["No se encontró el archivo"],
@@ -5279,6 +5304,7 @@
       "Las actualizaciones del origen se aplican automáticamente (salvo que se haya editado en local)"
     ],
     "vGeNNQ": ["Copia un prompt y pégalo en tu agente para configurar tu proyecto."],
+    "vGjmyl": ["Eliminado"],
     "vHlhDc": ["Haz doble clic para editar"],
     "vIxrEk": ["Ajustar al ancho"],
     "vLyv1R": ["Ocultar"],
@@ -5350,8 +5376,10 @@
         }
       ]
     ],
+    "vp5vfW": ["1 hora"],
     "vppAju": ["Dónde se colocan los adjuntos recién añadidos."],
     "vqJXNe": ["Instalar la habilidad <0>open-knowledge-discovery</0>"],
+    "vsFXfP": ["Push omite"],
     "vv7kpg": ["Cancelado"],
     "vvWZnu": ["No hay diferencias disponibles"],
     "vwV-kH": ["La corrección de archivos se detuvo inesperadamente."],
@@ -5422,6 +5450,11 @@
     "wdzBgi": ["Compartir configuración ahora está en Solo yo."],
     "weP6me": ["No se pudieron cargar los documentos: escribe @ otra vez para reintentarlo"],
     "wgNoIs": ["Seleccionar todo"],
+    "wk_v1X": [
+      "La sincronización de este worktree está en Automático (Pull y Push), heredada de ",
+      ["project"],
+      ". Cámbiala en Ajustes → Sincronización."
+    ],
     "wlwXUk": [
       "Elegiste ~/Downloads. Los archivos de ahí suelen ser pasajeros; plantéate una carpeta más estable."
     ],
@@ -5467,6 +5500,7 @@
     "xDEcka": [
       "El proveedor está limitando la frecuencia de esta clave. Inténtalo de nuevo en un momento."
     ],
+    "xDKOFk": ["Ignorado"],
     "xEb24l": ["Permítenos escribirte por correo"],
     "xFQRu4": ["Ya lo tengo en local"],
     "xG4tb6": ["Se perdió la conexión con \"", ["docName"], "\"."],
@@ -5478,6 +5512,7 @@
     "xOTzt5": ["ahora mismo"],
     "xSVO3J": ["Qué se crea"],
     "xV5sXw": ["hace ", ["0"], " sem"],
+    "xW5AUw": ["Traído ", ["pulled"]],
     "xWEvuo": ["Preguntar a la IA"],
     "xWomUD": ["Usar la versión de ", ["editor"]],
     "xXo8FT": ["Falló al guardar: ", ["error"]],
@@ -5499,7 +5534,6 @@
     "xi9KGG": ["Mostrar Terminal"],
     "xiv-dW": ["Todavía no hay archivos."],
     "xk133d": ["Instala la skill en ", ["path"], " — la primera ubicación guarda su propia copia"],
-    "xlQpTE": ["Más opciones de rechazo"],
     "xloBjn": ["Ruta relativa"],
     "xrVr_k": ["No se pudo crear la habilidad: ", ["0"]],
     "xsZhu-": ["Número de página"],
@@ -5643,6 +5677,7 @@
     "zAJzIg": ["Problemas en ", ["0"]],
     "zAsDLY": ["Visualización en grafo de los enlaces entre documentos"],
     "zBUqvf": ["Configurar las integraciones de OpenKnowledge…"],
+    "zBiFZh": ["Tus ediciones se confirman y se envían a tu remoto automáticamente."],
     "zC5jrM": ["Se creará como <0>", ["effective"], "</0>"],
     "zD1Nqf": [
       [
@@ -5665,6 +5700,7 @@
     "zLak8b": ["Activar pestaña nueva"],
     "zMmwh4": ["Elige un tema o crea el tuyo."],
     "zQBg2C": ["Sube o baja una posición el bloque actual."],
+    "zWZBPx": ["Tipo cambiado"],
     "zXj1rA": ["Buscar por significado"],
     "zYp8Sr": [
       "La etiqueta <0>Modificada</0> marca las reglas que tu configuración define de forma explícita, directamente o heredadas mediante <1>extends</1>. Las reglas sin marcar conservan su estado por defecto."
@@ -5708,7 +5744,6 @@
       ". ¿Eliges una carpeta clonada desde ",
       ["expectedHost"],
       "?"
-    ],
-    "zz_Wd_": ["Modo"]
+    ]
   }
 }

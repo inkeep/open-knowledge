@@ -18,6 +18,7 @@
  * structured payload.
  */
 
+import { validationCoverageLines } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
@@ -25,7 +26,9 @@ import {
   AUDIT_FILE_CAP,
   AUDIT_FILE_DIAGNOSTIC_CAP,
   agentIdentityFields,
+  capAuditWarnings,
   countSummary,
+  degradationBlock,
   formatDiagnosticLine,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
   httpGet,
@@ -45,11 +48,15 @@ export const DESCRIPTION = [
   '- `document` given → lint just that doc (extension-less path); `path` is ignored.',
   '- `document` omitted → audit every in-scope `.md`/`.mdx` doc; pass `path` to scope to a folder or single file.',
   '- `fix: true` (requires `document`) → apply auto-fixable rules to that doc IN PLACE and report what remains.',
+  '- The result reports `ran`, the enabled document-lint source families selected for the run: `markdownlint`, `frontmatter`, and/or document-level `okf`. A family absent from `ran` was not checked. Project-tree OKF checks and link validation run only through `audit`.',
   '',
-  "Each violation carries a `source` (the plugin, e.g. markdownlint), a `code` (the engine's native rule id, e.g. MD010), `message`, a 0-based LSP `range`, and `severity` ('error' | 'warning' | 'info' | 'hint'). The audit lists only files that have at least one violation, plus `fileCount`/`errorCount`/`warningCount`. Audit output (text and structured) is capped at 10 files × 10 diagnostics per file, with explicit '… and N more' indicators; the counts always reflect the full scan — re-run with `path` scoped to a folder or file to see what was omitted. Lint rules are configured in Settings → Plugins (the toggle is committed to `config.yml`; the rules live in the project's native `.markdownlint.*` file).",
+  "Each violation carries a `source` (the plugin, e.g. markdownlint), a `code` (the engine's native rule id, e.g. MD010), `message`, a 0-based LSP `range`, and `severity` ('error' | 'warning' | 'info' | 'hint'). The audit lists only files that have at least one violation, plus `fileCount`/`errorCount`/`warningCount`. Audit output (text and structured) is capped at 10 files × 10 diagnostics per file and project-wide at 10 warnings, with explicit '… and N more' indicators and `omittedWarningCount` when warnings are dropped; the counts always reflect the full scan — re-run with `path` scoped to a folder or file to see what was omitted. Lint rules are configured in Settings → Plugins (the toggle is committed to `config.yml`; the rules live in the project's native `.markdownlint.*` file).",
   '',
   'To auto-fix, pass `fix: true` with `document`: the fix lands through the collaborative document — attributed to you and reflected in the live preview, same as the editor. It fixes auto-fixable rules (e.g. hard tabs, trailing spaces); violations that resist auto-fix need content edits via the `edit`/`write` tools. (`ok lint --fix` from a shell remains the headless/CI path, but it writes on disk unattributed — prefer `fix: true` when the server is running.)',
 ].join('\n');
+
+export const LINT_WARNINGS_DESCRIPTION =
+  'Anything that made this run less than a full answer: unreadable files/dirs (audit), lint-config problems such as a broken frontmatter schema file, and selected lint plugins that threw. A source family named here is still listed in `ran` — it was selected, it just could not finish.';
 
 /**
  * Trailing hint for a single-doc lint, quantified by the fixability the wire
@@ -93,6 +100,7 @@ interface LintDocPayload {
   file?: string;
   diagnostics?: LintDiagnosticPayload[];
   warnings?: string[];
+  ran?: string[];
 }
 
 interface LintFixPayload {
@@ -100,6 +108,8 @@ interface LintFixPayload {
   fixedCount?: number;
   diagnostics?: LintDiagnosticPayload[];
   warning?: string;
+  warnings?: string[];
+  ran?: string[];
 }
 
 interface LintAuditPayload {
@@ -108,6 +118,7 @@ interface LintAuditPayload {
   errorCount?: number;
   warningCount?: number;
   warnings?: string[];
+  ran?: string[];
 }
 
 export interface LintDeps {
@@ -156,12 +167,17 @@ export function register(server: ServerInstance, deps: LintDeps): void {
         fileCount: z.number().optional().describe('Audit only: total in-scope documents scanned.'),
         errorCount: z.number().describe('Total error-severity violations.'),
         warningCount: z.number().describe('Total warning-severity violations.'),
-        warnings: z
+        warnings: z.array(z.string()).optional().describe(LINT_WARNINGS_DESCRIPTION),
+        ran: z
           .array(z.string())
           .optional()
           .describe(
-            'Non-fatal issues: unreadable files/dirs (audit) and lint-config problems such as broken frontmatter schema files (audit + single doc).',
+            'Lint source families selected for this run. A family absent from `ran` was not checked.',
           ),
+        omittedWarningCount: z
+          .number()
+          .optional()
+          .describe('Audit only: warnings omitted from `warnings` by the output cap.'),
         omittedFileCount: z
           .number()
           .optional()
@@ -230,7 +246,17 @@ async function fixLintDoc(
   const fixedCount = data.fixedCount ?? 0;
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.length - errorCount;
-  const structured = { files: [{ file, diagnostics }], fixedCount, errorCount, warningCount, cwd };
+  const responseWarnings = data.warnings ?? [];
+  const coverageLines = validationCoverageLines(data.ran);
+  const structured = {
+    files: [{ file, diagnostics }],
+    fixedCount,
+    errorCount,
+    warningCount,
+    ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
+    ...(data.ran === undefined ? {} : { ran: data.ran }),
+    cwd,
+  };
 
   const header = data.warning
     ? // Fix wrote successfully but the post-write re-lint failed — the doc is
@@ -239,15 +265,27 @@ async function fixLintDoc(
       `Applied auto-fixes to ${file}, but re-lint failed (${data.warning}); the fix landed — problems below are the pre-fix set, re-run \`lint\` to confirm.`
     : fixedCount > 0
       ? `Fixed ${fixedCount} problem${fixedCount === 1 ? '' : 's'} in ${file}.`
-      : `No auto-fixable problems in ${file}.`;
+      : responseWarnings.length > 0
+        ? `No auto-fixable problems in ${file}, but the lint could not fully complete.`
+        : `No auto-fixable problems in ${file}.`;
   const lines = diagnostics.map(formatDiagnosticLine);
+  // The re-lint failure rides both channels during its deprecation window, and
+  // the header already states it verbatim — render it once here.
+  const warningBlock = degradationBlock(
+    'Lint',
+    responseWarnings.filter((warning) => warning !== data.warning),
+  );
   const footer =
     diagnostics.length > 0 && !data.warning
       ? [
           `${diagnostics.length} problem${diagnostics.length === 1 ? '' : 's'} remain (${countSummary(errorCount, warningCount)}) — need content edits via \`edit\`/\`write\`.`,
         ]
       : [];
-  return textPlusStructured([header, ...lines, ...footer].join('\n'), structured);
+  const textLines =
+    diagnostics.length === 0
+      ? [header, ...coverageLines, ...warningBlock]
+      : [header, ...lines, ...warningBlock, ...footer, ...coverageLines];
+  return textPlusStructured(textLines.join('\n'), structured);
 }
 
 async function lintSingleDoc(document: string, url: string, cwd: string) {
@@ -261,24 +299,36 @@ async function lintSingleDoc(document: string, url: string, cwd: string) {
   const configWarnings = data.warnings ?? [];
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
   const warningCount = diagnostics.length - errorCount;
+  const coverageLines = validationCoverageLines(data.ran);
   const file = { file: data.file ?? normalized.docName, diagnostics };
   const structured = {
     files: [file],
     errorCount,
     warningCount,
     ...(configWarnings.length > 0 ? { warnings: configWarnings } : {}),
+    ...(data.ran === undefined ? {} : { ran: data.ran }),
     cwd,
   };
 
   const header =
-    diagnostics.length === 0
-      ? `No problems in ${file.file}.`
-      : `${file.file}: ${countSummary(errorCount, warningCount)}`;
+    diagnostics.length > 0
+      ? `${file.file}: ${countSummary(errorCount, warningCount)}`
+      : configWarnings.length > 0
+        ? // A clean set from a run that degraded is not a clean document. The
+          // coverage line below reports SELECTION, so it still lists the family
+          // that failed — the qualifier here is the only thing separating
+          // "checked and clean" from "selected but silently non-functional".
+          `No problems found in ${file.file}, but the lint could not fully complete.`
+        : `No problems in ${file.file}.`;
   const lines = diagnostics.map(formatDiagnosticLine);
-  const warningLines = configWarnings.map((w) => `  ⚠ ${w}`);
+  const warningBlock = degradationBlock('Lint', configWarnings);
   const fixableCount = diagnostics.filter((d) => (d.fixes?.length ?? 0) > 0).length;
   const footer = diagnostics.length > 0 ? [singleDocFixHint(fixableCount, diagnostics.length)] : [];
-  return textPlusStructured([header, ...lines, ...warningLines, ...footer].join('\n'), structured);
+  const textLines =
+    diagnostics.length === 0
+      ? [header, ...coverageLines, ...warningBlock]
+      : [header, ...lines, ...warningBlock, ...footer, ...coverageLines];
+  return textPlusStructured(textLines.join('\n'), structured);
 }
 
 async function lintAudit(path: string | undefined, url: string, cwd: string) {
@@ -291,6 +341,7 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
   const fileCount = data.fileCount ?? 0;
   const errorCount = data.errorCount ?? 0;
   const warningCount = data.warningCount ?? 0;
+  const coverageLines = validationCoverageLines(data.ran);
 
   // Both channels are agent-context-bound, so both get the cap; the HTTP
   // endpoint stays the uncapped surface for GUI consumers.
@@ -306,22 +357,29 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
   });
   const omittedFileCount = files.length - shownFiles.length;
 
+  const warnings = data.warnings ?? [];
+  const { shownWarnings, omittedWarningCount } = capAuditWarnings(warnings);
+
   const structured = {
     files: shownFiles,
     fileCount,
     errorCount,
     warningCount,
-    ...(data.warnings && data.warnings.length > 0 ? { warnings: data.warnings } : {}),
+    ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}),
+    ...(omittedWarningCount > 0 ? { omittedWarningCount } : {}),
+    ...(data.ran === undefined ? {} : { ran: data.ran }),
     ...(omittedFileCount > 0 ? { omittedFileCount } : {}),
     cwd,
   };
 
   const scope = path ? ` in ${path}` : '';
+  const warningBlock = degradationBlock('Lint', shownWarnings, omittedWarningCount);
   if (files.length === 0) {
-    return textPlusStructured(
-      `No problems across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}.`,
-      structured,
-    );
+    const summary =
+      warnings.length > 0
+        ? `No problems found across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}, but the lint could not fully complete.`
+        : `No problems across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}.`;
+    return textPlusStructured([summary, ...coverageLines, ...warningBlock].join('\n'), structured);
   }
   const header = `${files.length} of ${fileCount} document${fileCount === 1 ? '' : 's'}${scope} with problems — ${countSummary(errorCount, warningCount)}:`;
   const fileBlocks = shownFiles.map((file) => {
@@ -338,7 +396,9 @@ async function lintAudit(path: string | undefined, url: string, cwd: string) {
       ? [`… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems`]
       : [];
   return textPlusStructured(
-    [header, ...fileBlocks, ...footer, AUDIT_FIX_HINT].join('\n'),
+    [header, ...fileBlocks, ...footer, ...warningBlock, AUDIT_FIX_HINT, ...coverageLines].join(
+      '\n',
+    ),
     structured,
   );
 }

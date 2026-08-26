@@ -71,14 +71,20 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
   if (!raw) return null;
 
   // https:// or http://
+  // The userinfo half (dropped — the account/credential resolution consumes
+  // it via the server-side parser, never this one) is matched greedily so a
+  // `@` inside a password (`user:p@ss`) is consumed by it rather than read as
+  // the host delimiter.
   {
-    const m = /^https?:\/\/([^/?#]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(raw);
+    const m = /^https?:\/\/(?:[^/?#]*@)?([^@/?#]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
+      raw,
+    );
     if (m) return { protocol: 'https', hostname: stripPort(m[1]), owner: m[2], name: m[3] };
   }
 
   // ssh://[user@]host/owner/repo(.git)?
   {
-    const m = /^ssh:\/\/(?:[\w.-]+@)?([^/?#]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
+    const m = /^ssh:\/\/(?:[^/?#]*@)?([^@/?#]+)\/([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?\/?$/.exec(
       raw,
     );
     if (m) return { protocol: 'ssh', hostname: stripPort(m[1]), owner: m[2], name: m[3] };
@@ -94,7 +100,7 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
   // The hostname must contain a dot or be a known hostname pattern (prevents
   // matching Windows-style paths like C:\path or plain "foo:bar/baz").
   {
-    const m = /^(?:[\w.-]+@)?([\w.-]+):([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
+    const m = /^(?:[\w.\-~%]+@)?([\w.-]+):([\w.\-~%]+)\/([\w.\-~%]+?)(?:\.git)?$/.exec(raw);
     if (m?.[1].includes('.')) {
       return { protocol: 'ssh', hostname: m[1], owner: m[2], name: m[3] };
     }

@@ -106,12 +106,6 @@ function buildEntry(
   command: string | null,
   serverUsage: ProcessUsage | null,
 ): PsEntry | null {
-  // Discard entries where server lock is missing or corrupt. This intentionally
-  // hides a lone pre-migration `ui.lock` holder (a lockDir with no `server.lock`):
-  // `ok ps` shows current-topology processes only. Such an orphan stays reap-able
-  // — `process-scan`'s discovery keeps the `ui.lock` disjunct so `ok stop <pid>`,
-  // `ok stop all`, and `ok clean` still reach it (all deleted together in the
-  // reap-removal follow-up).
   if (serverState.status === 'missing' || serverState.status === 'corrupt') {
     return null;
   }
@@ -285,7 +279,7 @@ export function renderTable(entries: PsEntry[]): string {
 
 interface RunPsDeps {
   discover?: () => Promise<string[]>;
-  inspect?: (lockDir: string, name: 'server') => LockState;
+  inspect?: (lockDir: string) => LockState;
   resolveCommand?: (pid: number) => string | null;
   resolveUsage?: (pid: number) => ProcessUsage | null;
   json?: boolean;
@@ -295,7 +289,7 @@ interface RunPsDeps {
 
 export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   const discover = deps.discover ?? discoverLockDirs;
-  const inspect = deps.inspect ?? inspectLock;
+  const inspect = deps.inspect ?? ((dir) => inspectLock(dir, 'server'));
   const log = deps.log ?? ((msg) => console.log(msg));
   const resolveCommand = deps.resolveCommand ?? processCommand;
   const resolveUsage = deps.resolveUsage ?? processUsage;
@@ -304,7 +298,7 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
 
   const entries: PsEntry[] = [];
   for (const lockDir of lockDirs) {
-    const serverState = inspect(lockDir, 'server');
+    const serverState = inspect(lockDir);
     const command =
       serverState.status === 'missing' || serverState.status === 'corrupt'
         ? null
@@ -322,14 +316,14 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   if (deps.json) {
     // JSON: always include all statuses (caller filters). Each entry carries
     // the computed `displayStatus` so tooling consumers don't have to
-    // replicate the override rules (desktop/ui-orphan/stale derivation).
+    // replicate the override rules (desktop/stale derivation).
     const enriched = entries.map((e) => ({ ...e, displayStatus: displayStatus(e) }));
     log(JSON.stringify(enriched, null, 2));
     return;
   }
 
   // Text mode: filter by displayStatus. Default shows running / desktop /
-  // foreign / ui-orphan (everything except `stale`). `--all` adds stale.
+  // foreign (everything except `stale`). `--all` adds stale.
   const filtered = deps.all
     ? entries
     : entries.filter((e) => DEFAULT_VISIBLE.has(displayStatus(e)));

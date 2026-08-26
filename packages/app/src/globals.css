@@ -3145,6 +3145,15 @@ button:active:not(:disabled) {
    * override would introduce a sibling `--selection` token at higher alpha
    * for body prose. */
   --selection-soft: oklch(0.66 0.18 259 / 0.18);
+  /* Comment-highlight hue, as `r,g,b` for interpolation into `rgba()` by the
+     anchor decorations (`comments/anchor-layers.ts`) and the property-value
+     `::selection` twin. It lives here rather than in TS because it is the one
+     part of the mark that must differ per theme: the decoration paints the same
+     alpha ladder on both canvases, so a single hue cannot clear the 3:1 non-text
+     floor at both ends — blue-600 does it on white, and washes out to 2.4:1 on
+     the dark canvas. Dark takes blue-400. Gated by comment-hue-contrast.test.ts;
+     the Tailwind mirrors on the rail marker and thread card are hand-kept. */
+  --ok-comment-hue: 37, 99, 235;
   /* Categorical chart palette for `html preview` embeds — five
      perceptually-distinct hues aligned with the callout color system
      (--chart-1 anchors to the brand azure, the rest track the
@@ -3263,6 +3272,9 @@ button:active:not(:disabled) {
   /* Dark-mode soft range halo — slightly brighter + higher alpha so the
    * 18%-on-white equivalent reads cleanly on dark backgrounds. */
   --selection-soft: oklch(0.72 0.16 259 / 0.32);
+  /* Dark-canvas comment hue — blue-400. See the :root declaration for why this
+     is the one token in the mark that has to move with the theme. */
+  --ok-comment-hue: 96, 165, 250;
   /* Dark-mode chart palette — same hue family as the :root block above,
      lightness lifted for legibility on the dark --background. Keep in sync
      with :root --chart-* and PREVIEW_THEME_TOKENS (preview-theme-tokens.test.ts). */
@@ -5737,6 +5749,75 @@ html.electron-mode [data-slot="sidebar-inner"] {
   display: none;
 }
 
+/* Shrink-propagation for pane-clipped suggestion pickers.
+
+   The pane cap is an inline `max-width` on the portaled wrapper, and a
+   `max-width` does not shrink a block child carrying its own fixed `width`:
+   a `w-80` menu root sat inside a 284px wrapper and still painted 320px,
+   straight over the dock. Making the popup's CONTENT yield lives here, once,
+   rather than as a `max-w-full` every menu component has to remember — the
+   wrapper is the only place that knows it is clipped at all.
+
+   Stated over the whole subtree rather than the direct children because the
+   menu root's depth is not ours to know: tiptap interposes a `.react-renderer`
+   between the wrapper and the component, so a `> *` rule caps that wrapper and
+   leaves the root beneath it painting past the pane. The narrow-pane cases in
+   `selection-surface-pane-clip.e2e.ts` are what hold that.
+
+   LAYERED ON PURPOSE, and specificity is not what does it. The cascade sorts
+   by layer BEFORE it looks at specificity, and unlayered author declarations
+   form an implicit final layer that outranks every named one — so this rule
+   sitting outside a layer beat every `max-w-*` a descendant carries no matter
+   how weak the selector was, which made it a FLOOR. Tailwind emits its
+   utilities into `@layer utilities`, and `components` sorts before that, so a
+   descendant stating its own cap as a UTILITY wins and one stating nothing is
+   still capped. The scoping is real: `.tag` a few blocks down is unlayered and
+   renders inside the slash-command Tag preview, so it outranks this rule by
+   the same law — invisibly today, since it also says `100%`.
+
+   That is a ceiling, but it is NOT the `min()` the sibling producer composes.
+   `deriveEditorSizeOptions` writes `min(authorMaxWidth, regionWidth)`, where
+   the narrower wins in both directions. A cascade override REPLACES this
+   declaration outright, wider included: a root carrying `max-w-96` beside a
+   fixed `width` inside a 284px wrapper resolves to 384px, which constrains
+   nothing and paints straight past the pane — the exact failure the first
+   paragraph describes. A picker that wants its own ceiling AND the clip has
+   to compose it, `max-w-[min(28rem,100%)]`, one character from the classes
+   this rule replaced.
+
+   The token the height axis uses (`--suggestion-menu-max-width`, consumed as
+   an inline `min(...)` at each root) is the one option that composes natively
+   and outranks every layer, which is why the producer chose it there. Kept a
+   rule here because it needs no per-component consumption; recorded so the
+   next reader does not re-derive the trade.
+
+   Unlike the reduced-transparency and composer-prosemirror blocks, which stay
+   unlayered so they always win, this one must be OVERRIDABLE — hence the
+   layer. Both policies are right for their surface.
+
+   Layering costs the fix nothing: `max-width` constrains `width` at the
+   used-value step whichever declaration won the cascade, so a `w-80` root in a
+   284px wrapper shrinks either way. `globals.suggestion-clip-cascade.test.ts`
+   holds the layer, because no LAYOUT-FREE tier can observe it; a Playwright
+   probe injecting a capped descendant would pin it harder and is the rung not
+   bought yet. */
+@layer components {
+  [data-suggestion-popup][data-suggestion-clipped] * {
+    max-width: 100%;
+  }
+}
+
+/* One-column suggestion picker.
+
+   `suggestion-floating-ui.ts` sets `data-suggestion-narrow` on the popup when
+   the editor's visible region cannot hold the list AND the preview beside it.
+   Squeezing both columns into a pane that fits neither reads worse than the
+   list alone, and the preview is `aria-hidden` decoration, so it is the column
+   that gives way. */
+[data-suggestion-popup][data-suggestion-narrow] .ok-suggestion-preview {
+  display: none;
+}
+
 /* Tables — hanging indent only, composed through .cm-line's additive-calc
    via --list-hang (set inline by the source-polish view-plugin on
    table-row/header lines — same mechanism lists use). Wrapped row
@@ -6210,7 +6291,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
  * A property value is a `<textarea>`, whose text no decoration can reach — so
  * the highlight is the field's own selection, recoloured to match. The fill
  * comes from `--comment-reveal-fill`, set alongside the attribute in
- * `property-row-rect.ts`, so the amber has one definition rather than two that
+ * `property-row-rect.ts`, so the hue has one definition rather than two that
  * can drift apart.
  *
  * Attribute-scoped on purpose: without it every ordinary selection in the field

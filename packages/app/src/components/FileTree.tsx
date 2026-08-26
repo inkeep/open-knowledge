@@ -163,6 +163,7 @@ import {
   type ResolvedNavigationTarget,
 } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
+import { RestartServerButton } from '@/components/RestartServerButton';
 import {
   appendPattern,
   parseOkignoreDoc,
@@ -902,6 +903,10 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     disposition: previewOpenDisposition(previewTabsEnabled),
     consumeActiveNewTab: true,
   } satisfies OpenTargetOptions;
+  // Held as a local so the render below can tell this one failure class apart
+  // from server-answered errors: only an unreachable server is recoverable by
+  // spawning a new one.
+  const couldNotReachServerTitle = t`Could not reach server`;
   const {
     documents,
     setDocuments,
@@ -921,7 +926,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     messages: {
       fallbackErrorTitle: t`Failed to load documents`,
       schemaMismatchTitle: t`Documents response did not match expected shape.`,
-      couldNotReachServerTitle: t`Could not reach server`,
+      couldNotReachServerTitle,
     },
   });
   function navigationTargetForDocument(
@@ -3553,6 +3558,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       ? t`Relaunching to install the update…`
       : t`Reconnecting…`
     : null;
+  const serverUnreachable = error === couldNotReachServerTitle;
 
   if (documents.length === 0) {
     // The empty tree is the most likely state during a relaunch (zero docs
@@ -3569,10 +3575,11 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     }
     if (error) {
       return (
-        <div className="flex flex-1 items-center justify-center py-8">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8">
           <span role="alert" className="select-none text-sidebar-foreground/50 text-sm">
             {error}
           </span>
+          {serverUnreachable ? <RestartServerButton /> : null}
         </div>
       );
     }
@@ -3636,7 +3643,15 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
                 {reconnectNotice !== null ? (
                   <FileTreeHeaderNotice kind="reconnecting">{reconnectNotice}</FileTreeHeaderNotice>
                 ) : (
-                  error && <FileTreeHeaderNotice kind="error">{error}</FileTreeHeaderNotice>
+                  error && (
+                    <>
+                      <FileTreeHeaderNotice kind="error">{error}</FileTreeHeaderNotice>
+                      {/* Outside the notice: it is an aria-live region and a
+                          focusable descendant would diverge from what screen
+                          readers announce. */}
+                      {serverUnreachable ? <RestartServerButton className="mx-2 mb-1" /> : null}
+                    </>
+                  )
                 )}
                 {truncationNotice !== null && (
                   <FileTreeHeaderNotice kind="info">{truncationNotice}</FileTreeHeaderNotice>

@@ -44,6 +44,23 @@ describe('classifyGitAuthError', () => {
     ).toEqual({ kind: 'auth', subclass: 'no-credential' });
   });
 
+  // The cohort whose remote carries a userinfo (`https://alice@github.com/…`)
+  // and whose working credential lived only in an ambient helper (GCM, os
+  // keychain): recognizing those URLs as GitHub origins routes them through
+  // OK's credential reset, so their first post-upgrade sync fails with git's
+  // promptless no-credential wording. That failure MUST stay login-fixable —
+  // signing in to OpenKnowledge is exactly the remedy — and must not drift
+  // into the withdrawn-affordance not-found bucket.
+  test('a promptless credential miss on a userinfo remote stays login-fixable', () => {
+    const classified = classifyGitAuthError(
+      new Error(
+        "fatal: could not read Username for 'https://alice@github.com': terminal prompts disabled",
+      ),
+    );
+    expect(classified).toEqual({ kind: 'auth', subclass: 'no-credential' });
+    expect(isLoginFixableGitAuthError(classified)).toBe(true);
+  });
+
   test('classifies "could not read Password" as no-credential', () => {
     expect(
       classifyGitAuthError(new Error('fatal: could not read Password for https://github.com')),
@@ -144,10 +161,38 @@ describe('classifyGitAuthError', () => {
     });
   });
 
-  test('classifies "fatal: repository not found" as unknown-auth (private-repo masquerade)', () => {
+  test('classifies "fatal: repository not found" as not-found-as-identity (404 masquerade)', () => {
     expect(
       classifyGitAuthError(new Error("fatal: repository 'https://github.com/o/r.git' not found")),
-    ).toEqual({ kind: 'auth', subclass: 'unknown-auth' });
+    ).toEqual({ kind: 'auth', subclass: 'not-found-as-identity' });
+  });
+
+  test('auth wording co-occurring with "repository not found" still reads as the 404 masquerade', () => {
+    // GitHub's auth-shaped 404s can carry both lines; the not-found signal is
+    // the more specific one, so it wins over generic auth wording.
+    expect(
+      classifyGitAuthError(
+        new Error(
+          "remote: Authentication failed\nfatal: repository 'https://github.com/o/r.git' not found",
+        ),
+      ),
+    ).toEqual({ kind: 'auth', subclass: 'not-found-as-identity' });
+  });
+
+  test('an explicit 401 outranks a co-occurring "repository not found"', () => {
+    expect(
+      classifyGitAuthError(
+        new Error("remote: HTTP 401 Unauthorized\nfatal: repository 'x' not found"),
+      ),
+    ).toEqual({ kind: 'auth', subclass: '401' });
+  });
+
+  test('an explicit 403 outranks a co-occurring "repository not found"', () => {
+    expect(
+      classifyGitAuthError(
+        new Error("remote: HTTP 403 Forbidden\nfatal: repository 'x' not found"),
+      ),
+    ).toEqual({ kind: 'auth', subclass: '403' });
   });
 
   test('reads stderr from simple-git-style { message, git } shape', () => {
@@ -192,6 +237,7 @@ describe('isLoginFixableGitAuthError', () => {
     { input: { kind: 'auth', subclass: '403' }, expected: false },
     { input: { kind: 'auth', subclass: 'scope-mismatch' }, expected: false },
     { input: { kind: 'auth', subclass: 'ssh-auth' }, expected: false },
+    { input: { kind: 'auth', subclass: 'not-found-as-identity' }, expected: false },
     { input: { kind: 'non-auth' }, expected: false },
   ];
 

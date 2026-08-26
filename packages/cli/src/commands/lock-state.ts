@@ -10,7 +10,6 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
 import {
   getMachineId,
   isProcessAlive,
@@ -36,8 +35,13 @@ interface InspectLockOptions {
   machineId?: string;
 }
 
-/** Classify a lock file at an explicit path — never mutates the filesystem. */
-function inspectLockPath(lockPath: string, opts: InspectLockOptions): LockState {
+/** Classify a lock file — never mutates the filesystem. */
+export function inspectLock(
+  lockDir: string,
+  lockName: LockName,
+  opts: InspectLockOptions = {},
+): LockState {
+  const lockPath = lockFilePath(lockDir, lockName);
   if (!existsSync(lockPath)) return { status: 'missing', lockPath };
 
   let parsed: unknown;
@@ -84,27 +88,4 @@ function inspectLockPath(lockPath: string, opts: InspectLockOptions): LockState 
     return { status: 'foreign-host', lockPath, lock };
   }
   return { status: 'alive', lockPath, lock };
-}
-
-export function inspectLock(
-  lockDir: string,
-  lockName: LockName,
-  opts: InspectLockOptions = {},
-): LockState {
-  return inspectLockPath(lockFilePath(lockDir, lockName), opts);
-}
-
-/** Filename of the retired UI lock — only the legacy reap below reads it. */
-const LEGACY_UI_LOCK_FILENAME = 'ui.lock';
-
-/**
- * One-release legacy-reap carve-out: peek a leftover `ui.lock` written by a
- * pre-migration `ok ui` holder. The current binary never writes `ui.lock`
- * (`LockName` narrowed to `'server'`), so this is the only remaining reader —
- * `ok stop` SIGTERMs a live legacy holder and `ok clean` prunes a stale one for
- * one release of upgrade goodwill. Reads the filename directly (not via the
- * `LockName` surface) to stay isolated from the live lock. Delete with the reap.
- */
-export function inspectLegacyUiLock(lockDir: string, opts: InspectLockOptions = {}): LockState {
-  return inspectLockPath(join(lockDir, LEGACY_UI_LOCK_FILENAME), opts);
 }

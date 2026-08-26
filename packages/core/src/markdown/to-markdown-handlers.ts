@@ -5,6 +5,7 @@ import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
 import { scanBraceSpans } from './autolink-void-html-guard.ts';
 import { widenFenceLength } from './code-fence.ts';
+import type { RawMdxFallbackMdast } from './mdast-augmentation.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
 
@@ -51,6 +52,20 @@ const upstreamMdxJsxFlowHandler: Handle = (() => {
 
 const LAZY_UNSAFE_LINE_RE =
   /^[ \t]*(?:$|#{1,6}(?:[ \t]|[ \t]*$)|>|(?:[-+*]|\d{1,9}[.)])[ \t]|`{3,}|~{3,}|=+[ \t]*$|-+[ \t]*$|(?:\*[ \t]*){3,}$|(?:_[ \t]*){3,}$)/;
+
+type JsxFlowChild = MdxJsxFlowElement['children'][number];
+
+function keepVerbatimChildUnindented(child: JsxFlowChild): JsxFlowChild {
+  const fallback = child as unknown as RawMdxFallbackMdast;
+  if (fallback.type !== 'rawMdxFallback') return child;
+  return {
+    type: 'mdxJsxFlowElement',
+    name: null,
+    attributes: [],
+    children: [],
+    data: { sourceRaw: fallback.value ?? '' },
+  } as unknown as JsxFlowChild;
+}
 
 export const toMarkdownHandlers = {
   text(node, _parent, state, info) {
@@ -616,6 +631,7 @@ export const toMarkdownHandlers = {
     const delegated: MdxJsxFlowElement = {
       ...mdxNode,
       attributes: (mdxNode.attributes ?? []).map(normalizeAttrForUpstream),
+      children: (mdxNode.children ?? []).map(keepVerbatimChildUnindented),
     };
     return upstreamMdxJsxFlowHandler(delegated, parent, state, info);
   },

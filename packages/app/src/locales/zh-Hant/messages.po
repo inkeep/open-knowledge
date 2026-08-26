@@ -138,16 +138,6 @@ msgstr "（在新分頁中開啟）"
 msgid "(optional)"
 msgstr "（選填）"
 
-#. Scope tag next to an AI tool — config is written at both project and user level
-#: src/components/ConsentDialogBody.tsx
-msgid "(project + user)"
-msgstr "（專案 + 使用者）"
-
-#. Scope tag next to an AI tool — config is written at project level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(project-level only)"
-msgstr "（僅專案層級）"
-
 #: src/components/PropertyWidgets.tsx
 msgid "(read-only — edit in source mode for now)"
 msgstr "（唯讀——目前請在原始碼模式中編輯）"
@@ -163,11 +153,6 @@ msgstr "（其中有些可能已被其他規則隱藏）"
 #: src/components/SkillProperties.tsx
 msgid "(symlink)"
 msgstr "（符號連結）"
-
-#. Scope tag next to an AI tool — config is written at user level only
-#: src/components/ConsentDialogBody.tsx
-msgid "(user-level only)"
-msgstr "（僅使用者層級）"
 
 #. placeholder {0}: preview.backlinkCount
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
@@ -518,10 +503,6 @@ msgid "{basename} — text editor"
 msgstr "{basename} — 文字編輯器"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "{behind, plural, one {# commit behind} other {# commits behind}}"
-msgstr "{behind, plural, other {落後 # 個提交}}"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "{behind} behind"
 msgstr "落後 {behind} 個"
 
@@ -615,6 +596,14 @@ msgstr "{count, plural, other {立即修正有已知自動修正方式的 # 個�
 #: src/components/settings/OkignoreSection.tsx
 msgid "{count, plural, one {matches # file} other {matches # files}}"
 msgstr "{count, plural, other {符合 # 個檔案}}"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} ahead"
+msgstr "領先 {count} 個提交"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "{count} behind"
+msgstr "落後 {count} 個提交"
 
 #: src/components/SkillBulkDeleteDialog.tsx
 msgid "{count} skills"
@@ -811,14 +800,11 @@ msgstr "第 {displayLine} 行：{localizedMessage}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分鐘前}}"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "{minutes} min ago"
-msgstr "{minutes} 分鐘前"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{minutes}m ago"
 msgstr "{minutes} 分鐘前"
 
@@ -909,6 +895,10 @@ msgstr "{propertyCount, plural, other {# 項屬性}}"
 #: src/editor/extensions/JsxComponentView.tsx
 msgid "{propPanelDescriptorLabel} Properties"
 msgstr "{propPanelDescriptorLabel} 屬性"
+
+#: src/components/settings/SyncSection.tsx
+msgid "{seconds} seconds"
+msgstr "{seconds} 秒"
 
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
@@ -1126,6 +1116,26 @@ msgstr "📝 或 assets/icon.png"
 #: src/components/ProseFindBar.tsx
 msgid "0/0"
 msgstr "0/0"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 hour"
+msgstr "1 小時"
+
+#: src/components/settings/SyncSection.tsx
+msgid "1 minute"
+msgstr "1 分鐘"
+
+#: src/components/settings/SyncSection.tsx
+msgid "15 minutes"
+msgstr "15 分鐘"
+
+#: src/components/settings/SyncSection.tsx
+msgid "30 seconds"
+msgstr "30 秒"
+
+#: src/components/settings/SyncSection.tsx
+msgid "5 minutes"
+msgstr "5 分鐘"
 
 #: src/components/ImportSkillForm.tsx
 msgid "A .zip or .skill archive."
@@ -1521,6 +1531,7 @@ msgstr "把你的註解寫在這則訊息裡"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Added"
 msgstr "已新增"
 
@@ -1534,8 +1545,8 @@ msgstr "加入一個受管理的區塊到"
 msgid "Adds a managed block to {0}"
 msgstr "加入一個受管理的區塊到 {0}"
 
-#. Subtext under the create-project AI-tools checkbox
-#: src/components/CreateProjectDialog.tsx
+#. Subtext under the project AI-tools checkbox
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds an OpenKnowledge MCP entry and the project skill to <0>{toolList}</0>, so your agents can read and edit your files."
 msgstr "向 <0>{toolList}</0> 新增 OpenKnowledge 的 MCP 項目與專案技能，讓你的智慧代理可以讀取並編輯你的檔案。"
 
@@ -1557,7 +1568,7 @@ msgstr "把 OpenKnowledge 技能加到 <0>Claude Desktop App</0>，這樣在 Cha
 msgid "Adds the skill to {rootRel} — also read by {0}"
 msgstr "把技能加到 {rootRel}——{0} 也會讀取該處"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Adds these files"
 msgstr "新增這些檔案"
 
@@ -1569,11 +1580,13 @@ msgstr "新增這些資料夾"
 msgid "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
 msgstr ""
 
+#: src/components/settings/SyncSection.tsx
 #: src/editor/components/PropPanel.tsx
 msgid "Advanced"
 msgstr "進階"
 
 #: src/components/ConsentDialogBody.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Advanced settings"
 msgstr "進階設定"
 
@@ -1842,6 +1855,10 @@ msgstr "套用中…"
 msgid "Approve"
 msgstr "核准"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Approve & proceed"
+msgstr "核准並繼續"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Approved"
 msgstr "已核准"
@@ -1929,6 +1946,10 @@ msgstr "請 AI 修正 {flatId}"
 msgid "Ask an agent"
 msgstr "詢問智慧代理"
 
+#: src/components/acp/PlanChecklist.tsx
+msgid "Ask changes…"
+msgstr "要求變更…"
+
 #: src/editor/extensions/WikiLinkPropPanel.tsx
 #: src/editor/link-path-suggestions.tsx
 msgid "Asset"
@@ -1963,6 +1984,10 @@ msgstr "附件"
 msgid "Attachments must total under 3 MB."
 msgstr "附件總大小必須小於 3 MB。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Authenticated as {login}."
+msgstr "已以 {login} 身分驗證。"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Authoritative content; mirrored verbatim everywhere it's referenced."
 msgstr "權威內容；在所有被參照的地方逐字鏡像。"
@@ -1970,6 +1995,24 @@ msgstr "權威內容；在所有被參照的地方逐字鏡像。"
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Authorize in browser"
 msgstr "在瀏覽器中授權"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull and Push)"
+msgstr "自動（拉取與推送）"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Auto (Pull only)"
+msgstr "自動（僅拉取）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
+msgstr "自動（僅拉取）從你的 git 遠端儲存庫取得更新並自動快轉你的副本。你的本機編輯只保留在這台電腦上，永遠不會被推送。"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Auto (Pull only) never pushes or commits your local changes. They stay only on this machine."
+msgstr "自動（僅拉取）永遠不會推送或提交你的本機變更。它們只保留在這台機器上。"
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Auto-approve settings not yet loaded — try again in a moment"
@@ -2004,21 +2047,13 @@ msgstr "自動修正只作用於有已知機械式修正方式的問題。"
 msgid "Auto-save"
 msgstr "自動儲存"
 
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "這個 worktree 的自動同步已關閉，繼承自 {project}。可在「設定 → 同步」中變更。"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "這個 worktree 的自動同步已開啟，繼承自 {project}。可在「設定 → 同步」中變更。"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Auto-sync is paused — sign in to resume."
 msgstr "自動同步已暫停——請登入以繼續。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Follow to keep receiving updates."
-msgstr "自動同步已暫停——你沒有推送到這個儲存庫的權限。切換到「跟隨」以繼續接收更新。"
+msgid "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
+msgstr "自動同步已暫停：你沒有向此儲存庫推送的權限。切換到自動（僅拉取）以繼續接收更新。"
 
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
@@ -2416,8 +2451,13 @@ msgid "Change the embeddings provider?"
 msgstr "要更換嵌入服務供應商嗎？"
 
 #: src/components/PropertyDiffBlock.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Changed"
 msgstr "已修改"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "Changed here and on the remote"
+msgstr "本機和遠端都有變更"
 
 #: src/components/ChangedOutsideBadge.tsx
 msgid "changed outside"
@@ -2446,6 +2486,10 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "檢查更新"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Check for updates every"
+msgstr "檢查更新的頻率"
 
 #: src/components/AppMenubar.tsx
 msgid "Check for updates…"
@@ -2518,7 +2562,7 @@ msgstr "檢查技能"
 msgid "Checking source"
 msgstr "正在檢查來源"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "Checking which AI tools you have"
 msgstr "正在檢查你安裝了哪些 AI 工具"
 
@@ -2966,6 +3010,10 @@ msgstr "對此程式碼區塊發表評論或詢問 AI"
 msgid "Comments"
 msgstr "註解"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Commit and sync"
+msgstr "提交並同步"
+
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Commit or stash changes to switch:"
 msgstr "先提交或暫存變更才能切換："
@@ -3116,10 +3164,6 @@ msgstr "把你用的 AI 工具連接到這個特定專案。這些檔案放在�
 msgid "Connect this project to GitHub to share."
 msgstr "把這個專案連接到 GitHub 才能分享。"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Connect to AI tools"
-msgstr "連接 AI 工具"
-
 #: src/components/settings/SyncSection.tsx
 msgid "Connect to GitHub"
 msgstr "連接到 GitHub"
@@ -3137,8 +3181,8 @@ msgstr "連接工具"
 msgid "Connect your AI tools"
 msgstr "連接你的 AI 工具"
 
-#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the new project
-#: src/components/CreateProjectDialog.tsx
+#. Checkbox that wires the OpenKnowledge MCP into every detected AI tool for the project
+#: src/components/ProjectAiToolsField.tsx
 msgid "Connect your AI tools to this project"
 msgstr "將你的 AI 工具連接到這個專案"
 
@@ -3267,6 +3311,7 @@ msgstr "正在轉換…"
 
 #: src/components/empty-state/CopyablePromptList.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SyncStatusBadge.tsx
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Copied"
 msgstr "已複製"
@@ -3882,6 +3927,10 @@ msgstr "無法讀取等著傳送的註解——什麼都沒有送出。"
 msgid "Couldn't read the comments waiting to send: {0}"
 msgstr "無法讀取等著傳送的註解：{0}"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Couldn't read the working tree. Check the server logs."
+msgstr "無法讀取工作區。請查看伺服器日誌。"
+
 #. placeholder {0}: warning.code
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Couldn’t read this theme ({0})"
@@ -4374,6 +4423,7 @@ msgid "Delete {0}"
 msgstr "刪除 {0}"
 
 #. placeholder {0}: bulkEntries.length
+#. placeholder {0}: deletable.length
 #: src/components/SkillsTree.tsx
 msgid "Delete {0} skills"
 msgstr "刪除 {0} 個技能"
@@ -4454,6 +4504,10 @@ msgstr "刪除此對話？"
 msgid "Delete this comment"
 msgstr "刪除這則註解"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Deleted"
+msgstr "已刪除"
+
 #. placeholder {0}: deletedTheme.label
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Deleted {0}."
@@ -4483,6 +4537,10 @@ msgstr "已刪除範本"
 #: src/components/TrashFailureModal.tsx
 msgid "Deleting"
 msgstr "正在刪除"
+
+#: src/components/SkillBulkDeleteDialog.tsx
+msgid "Deleting {progress} of {count}"
+msgstr "正在刪除第 {progress} 個，共 {count} 個"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Denied"
@@ -4544,6 +4602,10 @@ msgstr "描述 token"
 #: src/components/ExploreSkills.tsx
 msgid "Design"
 msgstr "設計"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "detached HEAD"
+msgstr "分離的 HEAD"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Detached HEAD — checkout a branch to resume"
@@ -4917,6 +4979,10 @@ msgstr "每個 AI 工具都從各自的資料夾讀取技能。將一個資料�
 msgid "Each pack scaffolds your project with ready-made folders and templates."
 msgstr "每個套件都會用現成的資料夾和範本幫你的專案搭好骨架。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Each push is one commit to your remote."
+msgstr "每次推送就是向你的遠端儲存庫提交一次。"
+
 #: src/components/AppMenubar.tsx
 #: src/components/settings/LintingSection.tsx
 #: src/components/SkillsTree.tsx
@@ -5170,25 +5236,25 @@ msgstr "啟用 {id}"
 #: src/components/EnableSyncConfirmDialog.tsx
 #: src/components/share-receive-miss-content.tsx
 #: src/components/ShareFreshnessWarning.tsx
-msgid "Enable auto-sync"
-msgstr "啟用自動同步"
+msgid "Enable Auto (Pull and Push)"
+msgstr "啟用自動（拉取與推送）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull and Push)?"
+msgstr "啟用自動（拉取與推送）？"
+
+#: src/components/AutoSyncOnboardingDialog.tsx
+#: src/components/EnableSyncConfirmDialog.tsx
+msgid "Enable Auto (Pull only)"
+msgstr "啟用自動（僅拉取）"
+
+#: src/components/AutoSyncEnableWarning.tsx
+msgid "Enable Auto (Pull only)?"
+msgstr "啟用自動（僅拉取）？"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Enable external link previews"
 msgstr "開啟外部連結預覽"
-
-#: src/components/AutoSyncOnboardingDialog.tsx
-#: src/components/EnableSyncConfirmDialog.tsx
-msgid "Enable Follow"
-msgstr "啟用「跟隨」"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable Follow?"
-msgstr "要啟用「跟隨」嗎？"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Enable git auto-sync?"
-msgstr "要啟用 git 自動同步嗎？"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
@@ -5792,6 +5858,10 @@ msgstr "更新嵌入服務供應商失敗——{detail}"
 msgid "Failed to update the project sync default — {detail}"
 msgstr "更新專案同步預設值失敗——{detail}"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Failed to update the sync interval — {detail}"
+msgstr "更新同步間隔失敗 — {detail}"
+
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "上傳檔案失敗"
@@ -6051,28 +6121,6 @@ msgstr "已複製資料夾分享連結。"
 msgid "Folder target: {linkTitle}. Click to open the overview."
 msgstr "目標資料夾：{linkTitle}。點一下可開啟總覽。"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow"
-msgstr "跟隨"
-
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Follow — updates flow in from your remote; your edits stay on this computer."
-msgstr "跟隨——更新從你的遠端流入；你的編輯留在這台電腦上。"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow fetches updates from your remote git repository and fast-forwards your copy automatically. Your local edits stay on this computer and are never pushed."
-msgstr "「跟隨」會從你的遠端 git 儲存庫取得更新，並自動快轉你的副本。你的本機編輯留在這台電腦上，永遠不會被推送。"
-
-#: src/hooks/use-worktree-autosync-notice.tsx
-msgid "Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync."
-msgstr "這個 worktree 的「跟隨」已開啟，繼承自 {project}。可在「設定 → 同步」中變更。"
-
-#: src/components/AutoSyncEnableWarning.tsx
-msgid "Follow never pushes or commits your local changes. They stay only on this machine."
-msgstr "「跟隨」不會推送或提交你的本機變更。它們只會留在這台電腦上。"
-
 #: src/components/acp/ThreadView.tsx
 msgid "Follow the agent's edits"
 msgstr "跟著代理的編輯走"
@@ -6163,11 +6211,6 @@ msgstr "用這個範本建立的每份文件都會以這段 frontmatter 開頭�
 msgid "Frontmatter schemas"
 msgstr "frontmatter 結構描述"
 
-#: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
-msgid "Full"
-msgstr "完整"
-
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Full guide"
 msgstr "完整指南"
@@ -6180,14 +6223,6 @@ msgstr "完整路徑"
 #: src/components/skill-actions.tsx
 msgid "Full Path"
 msgstr "完整路徑"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Full sync — your commits push and remote changes pull automatically."
-msgstr "完全同步——你的提交會自動推送，遠端的變更會自動拉取。"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Full sync — your edits are committed and pushed to your remote automatically."
-msgstr "完全同步——你的編輯會自動提交並推送到你的遠端。"
 
 #: src/components/OkBlobRunner.tsx
 msgid "Game over · press <0>Space</0> to play again"
@@ -6247,6 +6282,7 @@ msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn'
 msgstr "Git 需要一個輔助工具（例如 git-lfs），但它沒有安裝或找不到。請先安裝再試一次。"
 
 #: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Git sync"
 msgstr "Git 同步"
 
@@ -6628,6 +6664,10 @@ msgstr ""
 msgid "How missing project-local documents, files, and images are reported in Problems, editor diagnostics, audits, and agent tools."
 msgstr "如何在「問題」、編輯器診斷、稽核和代理工具中報告缺少的專案本機文件、檔案和影像。"
 
+#: src/components/settings/SyncSection.tsx
+msgid "How often this computer pulls changes from your remote."
+msgstr "這台電腦從你的遠端儲存庫拉取變更的頻率。"
+
 #: src/components/ShareFreshnessWarning.tsx
 msgid "How to push manually"
 msgstr "如何手動推送"
@@ -6712,6 +6752,10 @@ msgstr "忽略模式"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Ignore patterns (raw text)"
 msgstr "忽略模式（純文字）"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Ignored"
+msgstr "已忽略"
 
 #: src/components/LinksPanel.tsx
 msgid "Image {identity}. Go to reference."
@@ -6814,6 +6858,10 @@ msgstr "在 Git 專案中，Open Knowledge 也新增了一個作用域 .gitattri
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "在 Claude Desktop App 中"
+
+#: src/components/acp/ThreadView.tsx
+msgid "In the plan above, please "
+msgstr "在上面的計畫中，請 "
 
 #: src/components/SkillScopeSegment.tsx
 msgid "In this repo — collaborators get copies via git."
@@ -7309,8 +7357,8 @@ msgid "Keep the name to 64 characters or fewer."
 msgstr "名稱請控制在 64 個字元以內。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Keep this project in sync with your git remote. Follow fetches updates without pushing; full sync pushes your commits too. Turning sync on requires confirmation."
-msgstr "讓這個專案和你的 git 遠端保持同步。「跟隨」只取得更新而不推送；完全同步也會推送你的提交。開啟同步需要確認。"
+msgid "Keep this project in sync with your git remote. Auto (Pull only) brings in updates without pushing; Auto (Pull and Push) sends your edits too. Turning auto-sync on requires confirmation."
+msgstr "讓此專案與你的 git 遠端儲存庫保持同步。自動（僅拉取）只帶來更新而不推送；自動（拉取與推送）還會傳送你的編輯。開啟自動同步需要確認。"
 
 #: src/lib/pack-copy.ts
 msgid "Keep track of the people and companies you work with and the meetings you have with them. Good for remembering who someone is, how you know them, and what you last talked about."
@@ -7798,6 +7846,11 @@ msgstr "這個版本無法管理 AI 工具。"
 msgid "Managing project AI tools is unavailable in this build."
 msgstr "這個版本無法管理專案的 AI 工具。"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Manual"
+msgstr "手動"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Map the architecture"
 msgstr "梳理架構"
@@ -7940,10 +7993,6 @@ msgstr "缺少色盤色彩"
 msgid "Missing theme name"
 msgstr "缺少主題名稱"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Mode"
-msgstr "模式"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Model"
 msgstr "模型"
@@ -7960,6 +8009,7 @@ msgstr "模型預設的推理強度"
 #: src/components/FolderOverview.tsx
 #: src/components/settings/markdownlint-rule-browser.tsx
 #: src/components/SkillOriginInline.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Modified"
 msgstr "已修改"
 
@@ -7970,14 +8020,6 @@ msgstr "修改連結目標、錨點和顯示標籤。"
 #: src/components/ui/breadcrumb.tsx
 msgid "More"
 msgstr "更多"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More grant options"
-msgstr "更多授權選項"
-
-#: src/components/acp/ThreadView.tsx
-msgid "More refusal options"
-msgstr "更多拒絕選項"
 
 #: src/editor/components/PreviewBlockedNotice.tsx
 msgid "More requests were blocked."
@@ -8260,10 +8302,6 @@ msgstr "清理過程中發生網路錯誤"
 msgid "Network settings not yet loaded. Try again in a moment."
 msgstr "網路設定尚未載入。請稍後重試。"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "never"
-msgstr "從不"
-
 #: src/components/FolderOverview.tsx
 #: src/editor/tag-suggestion/TagSuggestionMenu.tsx
 msgid "New"
@@ -8474,7 +8512,7 @@ msgstr "沒有安裝任何 AI 代理"
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > AI tools & CLI."
 msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > AI 工具與 CLI」中連接。"
 
-#: src/components/CreateProjectDialog.tsx
+#: src/components/ProjectAiToolsField.tsx
 msgid "No AI tools detected yet. Once you install one, connect it from Settings > This project."
 msgstr "尚未偵測到 AI 工具。安裝之後，可在「設定 > 這個專案」中連接。"
 
@@ -8878,9 +8916,21 @@ msgstr "無（{0} 無法比對到任何文件）"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "無（{0} 不是有效的模式）"
 
+#: src/components/settings/SyncSection.tsx
+msgid "Nothing moves until you ask — pull and push from the sync menu."
+msgstr "在你發起操作之前不會有任何變動——請在同步選單中拉取與推送。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing moves until you ask."
+msgstr "在你發起操作之前不會有任何變動。"
+
 #: src/components/FolderPropertiesCard.tsx
 msgid "Nothing set yet."
 msgstr "還沒有設定任何東西。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Nothing to commit — working tree clean."
+msgstr "沒有需要提交的內容：工作區是乾淨的。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Nothing was uploaded. The report stays on this computer until you email it to us."
@@ -8914,10 +8964,6 @@ msgstr "共 {0}"
 #: src/editor/components/Pdf.tsx
 msgid "of {totalPages}"
 msgstr "共 {totalPages}"
-
-#: src/components/settings/SyncSection.tsx
-msgid "Off"
-msgstr "關閉"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "Off — external links show only their URL. No requests leave this computer."
@@ -9673,6 +9719,10 @@ msgstr "連出"
 msgid "Outline"
 msgstr "大綱"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Outside what Open Knowledge commits."
+msgstr "不在 Open Knowledge 的提交範圍內。"
+
 #: src/components/SkillCostValue.tsx
 msgid "over the {budgetLabel} token budget"
 msgstr "超出 {budgetLabel} token 預算"
@@ -9882,10 +9932,6 @@ msgstr "模式語法錯誤：{message}"
 #: src/components/settings/OkignoreSection.tsx
 msgid "Pattern warnings: {summary}"
 msgstr "模式警告：{summary}"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Pause sync"
-msgstr "暫停同步"
 
 #: src/components/acp/ThreadView.tsx
 msgid "pending"
@@ -10276,9 +10322,25 @@ msgstr "正在發布…"
 msgid "Pull"
 msgstr "拉取"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull and Push"
+msgstr "拉取並推送"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pull brings in"
+msgstr "拉取帶來"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Pull latest changes"
 msgstr "拉取最新的變更"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled}"
+msgstr "{pulled}拉取"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pulled {pulled} · pushed {pushed}"
+msgstr "{pulled}拉取 · {pushed}推送"
 
 #: src/components/share-receive-miss-content.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -10305,9 +10367,25 @@ msgstr "分享前請先將分支 {branch} 推送到 GitHub。"
 msgid "Push failed — check the server logs for details."
 msgstr "推送失敗——詳情請看伺服器記錄。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Push includes"
+msgstr "推送包含"
+
+#: src/components/settings/SyncSection.tsx
+msgid "Push my edits every"
+msgstr "推送我的編輯的頻率"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Push skips"
+msgstr "推送略過"
+
 #: src/lib/share/run-share-action.ts
 msgid "Push this branch to GitHub before sharing."
 msgstr "分享前請先將這個分支推送到 GitHub。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Pushed {pushed}"
+msgstr "{pushed}推送"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Pushing"
@@ -10382,6 +10460,10 @@ msgstr "來自另一份文件的 MirrorSource 區塊的唯讀副本。在來源�
 msgid "Read-only file in the {name} skill"
 msgstr "{name} 技能中的唯讀檔案"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Reading working tree"
+msgstr "正在讀取工作區"
+
 #: src/components/acp/working-status.ts
 msgid "Reading…"
 msgstr "閱讀中…"
@@ -10434,6 +10516,10 @@ msgstr "推薦代理技能"
 #: src/components/SyncStatusBadge.tsx
 msgid "Reconnect required"
 msgstr "需要重新連接"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Reconnect required to keep syncing."
+msgstr "需要重新連線才能繼續同步。"
 
 #: src/presence/use-sync-toasts.ts
 msgid "Reconnected"
@@ -10495,6 +10581,7 @@ msgstr "為 Claude Chat 和 Cowork 重新安裝"
 msgid "Reinstalling"
 msgstr "正在重新安裝"
 
+#: src/components/acp/PlanChecklist.tsx
 #: src/components/DiffView.tsx
 msgid "Reject"
 msgstr "拒絕"
@@ -10700,6 +10787,10 @@ msgstr "重新命名技能"
 msgid "Rename succeeded but the sidebar may be out of date — refresh to resync"
 msgstr "重新命名成功，但側邊欄可能不是最新的——請重新整理以重新同步"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Renamed"
+msgstr "已重新命名"
+
 #. placeholder {0}: docLeaf(descriptor.from)
 #. placeholder {1}: docLeaf(descriptor.to)
 #: src/components/TimelinePanel.tsx
@@ -10851,13 +10942,21 @@ msgstr "即使你中斷連接，你已經複製下來的儲存庫也可能透過
 #: src/components/CloneDialog.tsx
 #: src/components/share-metadata-rows.tsx
 #: src/components/SkillPreviewTab.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Repository"
 msgstr "儲存庫"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "Repository name"
 msgstr "儲存庫名稱"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found"
+msgstr "找不到儲存庫"
+
+#: src/components/ShareBranchSwitchDialog.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Repository not found — it may not exist, or the account used may not have access."
+msgstr "找不到儲存庫——它可能不存在，或所用帳戶可能沒有存取權。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Repository not found. It may have been renamed, deleted, or moved."
@@ -10925,6 +11024,10 @@ msgstr "調整「技能」面板大小"
 msgid "Resolve conflict in your terminal"
 msgstr "在你的終端機中解決衝突"
 
+#: src/components/SyncBlockingChanges.tsx
+msgid "Resolve in terminal"
+msgstr "在終端機中解決"
+
 #: src/components/FileTree.tsx
 msgid "Resolve the conflict on {files} before deleting."
 msgstr "刪除前請先解決 {files} 上的衝突。"
@@ -10950,8 +11053,8 @@ msgid "Resources"
 msgstr "資源"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 #: src/components/DocumentErrorBoundary.tsx
+#: src/components/RestartServerButton.tsx
 #: src/presence/use-sync-toasts.ts
 msgid "Restart server"
 msgstr "重新啟動伺服器"
@@ -10969,7 +11072,6 @@ msgid "Restarted — now running v{appRuntime}."
 msgstr "已重新啟動——現在執行的是 v{appRuntime}。"
 
 #: src/components/BranchRecycleBanner.tsx
-#: src/components/ConnectingBanner.tsx
 msgid "Restarting"
 msgstr "正在重新啟動"
 
@@ -11039,10 +11141,6 @@ msgstr "已還原到 {0} 的版本"
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
 msgstr "結果已被截斷——這個工作區的檔案數超過搜尋能索引的上限。找不到某個檔案可能是上限造成的，不是打錯字。"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Resume sync"
-msgstr "恢復同步"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Resuming the chat"
@@ -11115,8 +11213,8 @@ msgid "Reverting"
 msgstr "正在回復"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Review conflicts"
-msgstr "檢視衝突"
+msgid "Review"
+msgstr "檢視"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Review your report"
@@ -12262,6 +12360,10 @@ msgstr "Slidev 啟動逾時。請再試一次。"
 msgid "Small section heading."
 msgstr "小型章節標題。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Some files are not listed — the working tree has too many changes."
+msgstr "部分檔案未列出：工作區的變更過多。"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Some saved themes aren’t shown because the theme folder exceeds the scan limit."
 msgstr "因為主題資料夾超出掃描限制，部分已儲存的主題未顯示。"
@@ -12453,6 +12555,10 @@ msgstr "正在啟動代理…"
 msgid "status"
 msgstr "狀態"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Status"
+msgstr "狀態"
+
 #: src/components/SubscribeCard.tsx
 #: src/components/SubscribeForm.tsx
 msgid "Stay in the loop"
@@ -12600,8 +12706,8 @@ msgid "Switch to a branch to share."
 msgstr "請切換到某個分支後再分享。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "Switch to Follow"
-msgstr "切換到「跟隨」"
+msgid "Switch to Auto (Pull only)"
+msgstr "切換到自動（僅拉取）"
 
 #: src/components/command-palette-commands.ts
 msgid "Switch worktree"
@@ -12640,7 +12746,6 @@ msgid "Symlinks the skill to {path}"
 msgstr "把技能符號連結到 {path}"
 
 #: src/components/settings/SyncSection.tsx
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync"
 msgstr "同步"
 
@@ -12650,10 +12755,6 @@ msgid "Sync & sharing"
 msgstr "同步與分享"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync disabled"
-msgstr "同步已停用"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync failed — check the server logs for details."
 msgstr "同步失敗——詳情請看伺服器記錄。"
 
@@ -12661,13 +12762,21 @@ msgstr "同步失敗——詳情請看伺服器記錄。"
 msgid "Sync is failing. See the sync status for details."
 msgstr "同步一直失敗。詳情請看同步狀態。"
 
-#: src/components/settings/SyncSection.tsx
-msgid "Sync is off — your edits stay on this computer until you commit and push manually."
-msgstr "同步已關閉——在你手動提交並推送之前，你的編輯只會留在這台電腦上。"
+#: src/components/SyncBlockingChanges.tsx
+msgid "Sync is paused. Commit these local edits to continue, or sort them out in a terminal."
+msgstr "同步已暫停。提交這些本地編輯以繼續，或在終端機中處理它們。"
 
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync is paused. Turn it back on to resume."
-msgstr "同步已暫停。重新開啟就會繼續。"
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "這個 worktree 的同步已設為「自動（拉取與推送）」，繼承自 {project}。可在「設定 → 同步」中變更。"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "這個 worktree 的同步已設為「自動（僅拉取）」，繼承自 {project}。可在「設定 → 同步」中變更。"
+
+#: src/hooks/use-worktree-autosync-notice.tsx
+msgid "Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings → Sync."
+msgstr "這個 worktree 的同步已設為「手動」，繼承自 {project}。可在「設定 → 同步」中變更。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Sync mode"
@@ -12679,16 +12788,8 @@ msgid "Sync now"
 msgstr "立即同步"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Sync off"
-msgstr "同步已關閉"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "Sync paused"
 msgstr "同步已暫停"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Sync paused — resolve conflicts to resume."
-msgstr "同步已暫停——解決衝突後就會繼續。"
 
 #: src/hooks/use-no-push-permission-toast.ts
 msgid "Sync paused — you don't have permission to push to this repo"
@@ -12723,10 +12824,6 @@ msgstr "同步狀態：{syncStateLabel} —— 未設定 git 身分"
 #: src/components/SyncStatusBadge.tsx
 msgid "Synced"
 msgstr "已同步"
-
-#: src/components/SyncStatusBadge.tsx
-msgid "Synced {lastSyncedRelative}"
-msgstr "{lastSyncedRelative}同步"
 
 #: src/components/TimelinePanel.tsx
 msgid "Synced from disk"
@@ -12950,6 +13047,10 @@ msgstr "謝謝你的回報！"
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "That branch is already open in another worktree."
 msgstr "那個分支已經在另一個 worktree 中開啟了。"
+
+#: src/components/SyncBlockingChanges.tsx
+msgid "That did not go through. Check the server logs and try again."
+msgstr "操作沒有成功。請查看伺服器記錄後再試一次。"
 
 #: src/comments/reveal-comment.ts
 msgid "That document didn't open in time. Try again once it has synced."
@@ -13986,6 +14087,10 @@ msgstr "輸入「/」開啟命令"
 msgid "Type a query, then press <0>↵</0> to search your pages by meaning."
 msgstr "輸入查詢內容，然後按 <0>↵</0> 就能按語意搜尋你的頁面。"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Type changed"
+msgstr "類型已變更"
+
 #: src/editor/components/CodePreviewEditModal.tsx
 msgid "Type to edit; <0>Cmd/Ctrl+Enter</0> saves, <1>Esc</1> cancels."
 msgstr "輸入即可編輯；<0>Cmd/Ctrl+Enter</0> 儲存，<1>Esc</1> 取消。"
@@ -14114,6 +14219,10 @@ msgstr "取消勾選全部註解"
 msgid "Unmark every comment in {0}"
 msgstr "取消勾選 {0} 中的所有註解"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Unmerged"
+msgstr "未合併"
+
 #: src/editor/slash-command/items.tsx
 msgid "Unordered list of items."
 msgstr "沒有編號的項目清單。"
@@ -14153,6 +14262,10 @@ msgstr "無法解析圖片 {identity}。前往引用位置。"
 #: src/components/BugReportHistory.tsx
 msgid "Untitled report"
 msgstr "未命名回報"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Untracked"
+msgstr "未追蹤"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
@@ -14201,8 +14314,8 @@ msgid "Updated \"{name}\" from {0}"
 msgstr "已從 {0} 更新「{name}」"
 
 #: src/components/SyncStatusBadge.tsx
-msgid "Updated {lastSyncedRelative}"
-msgstr "{lastSyncedRelative}更新"
+msgid "Updated {updatedRelative}"
+msgstr "更新於 {updatedRelative}"
 
 #: src/components/FolderTimelineCard.tsx
 msgid "updated folder properties"
@@ -14215,6 +14328,11 @@ msgstr "已更新到版本 {version}"
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Updates flow in"
 msgstr "更新會自動流入"
+
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Updates flow in from your remote; your edits stay on this computer."
+msgstr "更新會從遠端儲存庫流入；你的編輯只保留在這台電腦上。"
 
 #: src/components/SkillOriginInline.tsx
 msgid "Updates from the source apply automatically (unless edited locally)"
@@ -14672,6 +14790,10 @@ msgstr "它應該放在哪裡？"
 msgid "Which skill"
 msgstr "哪一個技能"
 
+#: src/components/settings/SyncSection.tsx
+msgid "While you're signed out, updates are checked at most every 3 minutes regardless of this setting."
+msgstr "在你登出期間，無論此設定為何，更新最多每 3 分鐘檢查一次。"
+
 #: src/components/settings/markdownlint-rule-browser.tsx
 msgid "Whitespace"
 msgstr "空白字元"
@@ -14768,10 +14890,6 @@ msgstr "Worktree"
 msgid "Wrap long lines in the markdown source editor."
 msgstr "在 markdown 原始碼編輯器中把過長的行自動換行。"
 
-#: src/components/ConsentDialogBody.tsx
-msgid "Writes a project-MCP config for each selected tool."
-msgstr "為每個選取的工具寫入一份專案層級的 MCP 設定。"
-
 #: src/components/McpConsentDialogBody.tsx
 msgid "Writes an entry to"
 msgstr "寫入項目到"
@@ -14844,16 +14962,12 @@ msgstr "你沒有這個儲存庫的存取權。"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
-msgid "You don't have permission to push to this repo"
-msgstr "你沒有推送到這個儲存庫的權限"
-
-#: src/components/SyncStatusBadge.tsx
 msgid "You don't have permission to push to this repo."
 msgstr "你沒有推送到這個儲存庫的權限。"
 
 #: src/components/settings/SyncSection.tsx
-msgid "You don't have permission to push to this repo. Follow can still keep your copy up to date."
-msgstr "你沒有推送到這個儲存庫的權限。「跟隨」仍然可以讓你的副本保持最新。"
+msgid "You don't have permission to push to this repo. Auto (Pull only) can still keep your copy up to date."
+msgstr "你沒有向此儲存庫推送的權限。自動（僅拉取）仍可讓你的副本保持最新。"
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "You don't have write access to this repo."
@@ -14925,9 +15039,22 @@ msgstr "你本機的 <0>{shareBranch}</0> 分支副本有變更還沒推到 GitH
 msgid "Your current version is saved first, so this is reversible."
 msgstr "你目前的版本會先存起來，所以這一步可以回復。"
 
+#: src/components/settings/SyncSection.tsx
+#: src/components/SyncStatusBadge.tsx
+msgid "Your edits are committed and pushed to your remote automatically."
+msgstr "你的編輯會自動提交並推送到遠端儲存庫。"
+
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "Your edits stay on this computer"
 msgstr "你的編輯會留在這台電腦上"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的 Git 設定中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your Git credential configuration names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的 Git 憑證設定中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
 
 #: src/components/settings/SyncSection.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -14965,6 +15092,10 @@ msgstr "你本機的 <0>{branch}</0> 分支副本落後了。請拉取最新的�
 #: src/components/acp/ThreadView.tsx
 msgid "Your message didn't reach {agentName}."
 msgstr "你的訊息未送達 {agentName}。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Your remote URL names {declaredLogin}, but that account's credentials couldn't be used."
+msgstr "你的遠端 URL 中指定了 {declaredLogin}，但無法使用該帳戶的憑證。"
 
 #: src/components/BugReportSendToast.tsx
 msgid "Your report is saved on this computer, so nothing was lost."

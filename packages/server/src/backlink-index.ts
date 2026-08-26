@@ -2385,6 +2385,13 @@ export class BacklinkIndex {
     updated: number;
     deleted: number;
     /**
+     * The docs this reconcile re-parsed (new or mtime-changed), with the disk
+     * path each was read from. Lets the caller update sibling per-doc indexes
+     * (local targets) for exactly the changed set instead of re-parsing the
+     * whole corpus. Paths only - contents are not retained.
+     */
+    changedDocs: Array<{ docName: string; filePath: string }>;
+    /**
      * DocNames dropped because their file is gone from disk (global skill
      * bundle nodes excluded — they live outside contentDir). Includes docs
      * known only via graph keys, not just the mtime snapshot: docs created
@@ -2411,9 +2418,10 @@ export class BacklinkIndex {
     updated: number;
     deleted: number;
     deletedDocNames: string[];
+    changedDocs: Array<{ docName: string; filePath: string }>;
   }> {
     if (!existsSync(this.contentDir))
-      return { added: 0, updated: 0, deleted: 0, deletedDocNames: [] };
+      return { added: 0, updated: 0, deleted: 0, deletedDocNames: [], changedDocs: [] };
 
     const storedMtimes = this.mtimesByBranch.get(branch) ?? new Map<string, number>();
     const rawDocs: Array<{ docName: string; filePath: string }> = [];
@@ -2499,7 +2507,13 @@ export class BacklinkIndex {
     }
 
     this.mtimesByBranch.set(branch, newMtimes);
-    return { added, updated, deleted, deletedDocNames };
+    return {
+      added,
+      updated,
+      deleted,
+      deletedDocNames,
+      changedDocs: toProcess.map(({ docName, filePath }) => ({ docName, filePath })),
+    };
   }
 
   /**

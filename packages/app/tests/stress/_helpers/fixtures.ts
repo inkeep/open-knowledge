@@ -47,7 +47,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test as base } from '@playwright/test';
@@ -63,6 +63,7 @@ import {
   tailServerLog,
   waitForHttpReady,
 } from './server-process.ts';
+import { removeAllDuringTeardown } from './teardown-fs.ts';
 
 export interface WorkerServer {
   /** PID of the long-lived pnpm/Vite process group leader. */
@@ -478,15 +479,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);
         // Same guard shape as the teardown below: cleanup must run even if
-        // the kill throws. Which errnos it absorbs is `tolerateDuringTeardown`
-        // in server-process.ts, not a set restated here. The log file is
-        // deliberately NOT removed — the thrown message cites its path.
+        // the kill throws, and every directory is reclaimed even if an earlier
+        // one cannot be. Which errnos each half absorbs is
+        // `tolerateDuringTeardown` in server-process.ts and
+        // `removeAllDuringTeardown` in teardown-fs.ts, not a set restated here.
+        // The log file is deliberately NOT removed — the thrown message cites
+        // its path.
         try {
           await killGracefully(proc);
         } finally {
           closeServerLog(serverLog);
-          rmSync(contentDir, { recursive: true, force: true });
-          rmSync(viteCacheDir, { recursive: true, force: true });
+          removeAllDuringTeardown(contentDir, viteCacheDir);
         }
         throw new Error(
           `${reason}\n--- dev server log tail (${serverLog.path}) ---\n${tailServerLog(serverLog)}`,
@@ -496,17 +499,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       if (proc.pid === undefined) throw new Error('dev server process has no pid');
       await use({ pid: proc.pid, port, baseURL, contentDir });
 
-      // Cleanup must run even if killGracefully throws — a leaked
-      // viteCacheDir under node_modules accumulates prebundled chunks with no
-      // reaper. Which errnos it absorbs is `tolerateDuringTeardown` in
-      // server-process.ts. Mirrors the per-test fixtures' teardown shape.
+      // Cleanup must run even if killGracefully throws, and every target is
+      // attempted even if an earlier one refuses — a leaked viteCacheDir under
+      // node_modules accumulates prebundled chunks with no reaper. Which
+      // errnos each half absorbs is `tolerateDuringTeardown` in
+      // server-process.ts and `removeAllDuringTeardown` in teardown-fs.ts.
+      // Mirrors the per-test fixtures' teardown shape.
       try {
         await killGracefully(proc);
       } finally {
         closeServerLog(serverLog);
-        rmSync(serverLog.path, { force: true });
-        rmSync(contentDir, { recursive: true, force: true });
-        rmSync(viteCacheDir, { recursive: true, force: true });
+        removeAllDuringTeardown(serverLog.path, contentDir, viteCacheDir);
       }
     },
     // 240s: server boot probe (≤72s) + app first-load warmup (≤60s goto +

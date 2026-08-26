@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type { DerivedViewChannel } from '@inkeep/open-knowledge-core';
 import {
   type BacklinkEntry,
@@ -548,7 +549,17 @@ export class DerivedDocumentIndex
   refreshContentScope(): Promise<void> {
     return this.runCommand(async () => {
       const branch = this.backlinkIndex.getActiveBranch();
-      await this.backlinkIndex.rebuildFromDisk(branch);
+      // Incremental, not the full rebuild: this runs after every content-filter
+      // rebuild, and each skill op schedules one of those — so on a
+      // monorepo-sized root the full variant re-parsed the whole corpus
+      // (~20-30s of CPU) minutes after every skill op, pegging the single
+      // server thread and freezing whatever op landed during it. A scope
+      // change only adds/removes a handful of files, which is exactly what
+      // the mtime-witnessed reconcile covers: both walks apply the LIVE
+      // filter, so newly admitted files parse as new, newly excluded ones
+      // prune, and an empty witness map (first pass on a branch) degrades to
+      // the full scan on its own.
+      const scopeDiff = await this.backlinkIndex.reconcileWithDisk(branch);
       let globalIngestFailed = false;
       let globalIngestFailure: unknown;
       try {
@@ -557,8 +568,28 @@ export class DerivedDocumentIndex
         globalIngestFailed = true;
         globalIngestFailure = err;
       }
-      await this.tagIndex.init();
-      await this.rebuildLocalTargets('content-filter');
+      // Same incremental treatment: `init()` is the tag index's own full-corpus
+      // parse, doubling the storm the backlink swap above removes.
+      await this.tagIndex.reconcileWithDisk();
+      // The local-target leg was the LAST full-corpus parse on this path
+      // (`rebuildLocalTargets` -> `populateFromDisk` reads and assesses every
+      // doc; profiled at ~10s on a monorepo root, pegging the server during
+      // whatever op triggered the refresh). Targets reconcile from the watcher
+      // inventory as before; SOURCE assessments update for exactly the docs
+      // the backlink reconcile re-parsed, plus removals for the ones it
+      // dropped. A read that fails downgrades to removal - matching the live
+      // update path's admission-flip behavior.
+      this.reconcileLocalTargetInventory();
+      for (const { docName, filePath } of scopeDiff.changedDocs) {
+        try {
+          this.localTargetIndex.setSource(docName, await readFile(filePath, 'utf-8'));
+        } catch {
+          this.localTargetIndex.removeSource(docName);
+        }
+      }
+      for (const docName of scopeDiff.deletedDocNames) {
+        this.localTargetIndex.removeSource(docName);
+      }
       await this.saveBothLogOnly('content-filter', branch);
       // Content scope changed wholesale; signalAllRelations() -> maybeSignalLocalTargets
       // emits `local-targets` off the rebuild's generation jump (no baseline sync).

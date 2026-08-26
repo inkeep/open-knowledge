@@ -127,9 +127,24 @@ describe('durable replay outbox across server-instance-mismatch', () => {
     const outboxDbs = await outboxDbsForDoc(docName);
     expect(outboxDbs.length).toBeGreaterThanOrEqual(1);
     for (const dbName of outboxDbs) {
-      const segments = dbName.split(':');
-      const branch = segments[1] ?? '';
-      expect(await readReplayOutboxEntry(branch, docName)).toBeNull();
+      // The name is `ok-replay-outbox[:<project digest>]:<branch>:<docName>`.
+      // This harness builds its pool with no `storageNamespace`, so the
+      // project segment is absent and the recomposed key below must pass
+      // `namespace: null` to address the same database. PIN that rather than
+      // parse around it: a harness that grows a namespace would otherwise
+      // recompose an unscoped name, read a database that does not exist, and
+      // pass this `toBeNull()` vacuously — reporting "consumed" for a record
+      // it never looked at.
+      // Strip the docName by LENGTH so a colon inside it cannot shift the
+      // parse (`validateDocName` permits one, and `:` is a legal POSIX
+      // filename byte), then strip the known prefix. What remains is the
+      // branch alone for an unscoped name and `<digest>:<branch>` for a
+      // scoped one — so the colonless assert IS the unscoped check, and git
+      // refnames can never contain a colon to false-trip it.
+      const withoutDoc = dbName.slice(0, -(docName.length + 1));
+      const branch = withoutDoc.slice('ok-replay-outbox:'.length);
+      expect(branch).not.toContain(':');
+      expect(await readReplayOutboxEntry({ branch, docName, namespace: null })).toBeNull();
     }
 
     const finalOnDisk = readFileSync(join(server.contentDir, `${docName}.md`), 'utf-8');

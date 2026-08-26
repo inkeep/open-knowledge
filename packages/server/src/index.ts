@@ -72,6 +72,7 @@ export {
   type BootServerOptions,
   bootServer,
   restoreLifecycleFromConflictsJson,
+  type ServerExitReason,
 } from './boot.ts';
 export {
   type BuildSkillZipOptions,
@@ -238,7 +239,9 @@ export {
 } from './http/error-response.ts';
 export {
   type AttachIdleShutdownOptions,
+  attachCollabClientCounter,
   attachIdleShutdown,
+  type CollabClientCounter,
   type IdleShutdownHandle,
 } from './idle-shutdown.ts';
 export {
@@ -526,15 +529,27 @@ export {
   hasGcLogLatch,
   type ShadowObjectStats,
 } from './shadow-repo-stats.ts';
-export { originGitHubHost } from './share/git-context.ts';
+export {
+  loginShapedUserinfoUser,
+  originGitHubHost,
+  sameGitHubLogin,
+} from './share/git-context.ts';
+export {
+  type CredentialUrlMatchReader,
+  type GitHubAccountSource,
+  resolveGitHubAccountFromUrl,
+} from './share/github-account.ts';
+export { redactShareSubprocessStderr } from './share/publish.ts';
 export {
   createEphemeralProjectDir,
   EPHEMERAL_PROJECT_DIR_PREFIX,
+  type PrepareSingleFileOpenOptions,
   prepareSingleFileOpen,
   SingleFileNotAFileError,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
+  SingleFileProjectOverrideError,
   seedEphemeralProjectDir,
 } from './single-file-open.ts';
 export {

@@ -56,6 +56,48 @@ describe('ContentFilter', () => {
     await rm(xdgDir, { recursive: true, force: true });
   });
 
+  describe('sync-popover open-target admission', () => {
+    // The sync popover offers a row to the asset viewer when the filter admits
+    // it under `bypassFilters` + `showOk` — the reduction to FLOORS ONLY. The
+    // text-view endpoint has no extension or ignore gate of its own, so this
+    // predicate is the whole guard on what one click can read.
+    const openable = (filter: ContentFilter, relPath: string): boolean =>
+      !filter.isExcluded(relPath, { bypassFilters: true, showOk: true });
+
+    test('admits the config and dotfiles the sidebar shows', () => {
+      writeFileSync(join(projectDir, '.gitignore'), 'ignored-note.md\n');
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      expect(openable(filter, 'opencode.json')).toBe(true);
+      expect(openable(filter, '.gitignore')).toBe(true);
+      expect(openable(filter, '.ok/config.yml')).toBe(true);
+      // Skill docs are the exception: the reserved-doc gate holds them out of
+      // the user tree under every bypass, because their surface is the Skills
+      // section, not the asset viewer. A projected SKILL.md row therefore stays
+      // plain text in the popover.
+      expect(openable(filter, '.claude/skills/reviewer/SKILL.md')).toBe(false);
+      // Gitignored is not hidden here: the user can already see it under Show
+      // All Files, and it is their own note.
+      expect(openable(filter, 'ignored-note.md')).toBe(true);
+    });
+
+    test('refuses the floors — secrets first', () => {
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      // A dirty `.env` shows up in a git listing by name; one click must not
+      // turn that listing into a reader for its contents.
+      expect(openable(filter, '.env')).toBe(false);
+      expect(openable(filter, '.env.local')).toBe(false);
+      expect(openable(filter, 'deploy/prod.pem')).toBe(false);
+      expect(openable(filter, '.ssh/id_rsa')).toBe(false);
+      expect(openable(filter, '.aws/credentials')).toBe(false);
+      // Machine-local OK state and VCS/dependency internals stay closed too.
+      expect(openable(filter, '.ok/local/server.lock')).toBe(false);
+      expect(openable(filter, '.git/config')).toBe(false);
+      expect(openable(filter, 'node_modules/pkg/index.js')).toBe(false);
+    });
+  });
+
   describe('gitignore filtering', () => {
     test('excludes files matching .gitignore patterns', () => {
       writeFileSync(join(projectDir, '.gitignore'), 'dist/\ntmp/\n');
@@ -2872,6 +2914,106 @@ describe('ContentFilter', () => {
       expect(filter.isExcluded('other.md')).toBe(true);
       expect(filter.isDirExcluded('sub')).toBe(true);
       expect(filter.isPathIgnored('sibling.png')).toBe(false);
+    });
+  });
+
+  describe('descendant projects', () => {
+    // Ancestor project with a real nested project and a folder that only
+    // carries OK folder metadata. The two `.ok/` dirs differ by `config.yml`.
+    function seedTwoLevelFixture(): void {
+      writeFileSync(join(projectDir, 'ancestor.md'), '# ancestor');
+      mkdirSync(join(projectDir, 'notes'), { recursive: true });
+      writeFileSync(join(projectDir, 'notes', 'own.md'), '# own');
+
+      mkdirSync(join(projectDir, 'nested', '.ok'), { recursive: true });
+      writeFileSync(
+        join(projectDir, 'nested', '.ok', 'config.yml'),
+        'autoSync:\n  enabled: false\n',
+      );
+      writeFileSync(join(projectDir, 'nested', 'inside.md'), '# inside');
+      mkdirSync(join(projectDir, 'nested', 'deep'), { recursive: true });
+      writeFileSync(join(projectDir, 'nested', 'deep', 'deeper.md'), '# deeper');
+
+      mkdirSync(join(projectDir, 'rules', '.ok', 'templates'), { recursive: true });
+      writeFileSync(join(projectDir, 'rules', '.ok', 'frontmatter.yml'), 'type: note\n');
+      writeFileSync(join(projectDir, 'rules', '.ok', 'templates', 'note.md'), '# template');
+      writeFileSync(join(projectDir, 'rules', 'ruled.md'), '# ruled');
+    }
+
+    test('excludes a descendant project root and everything under it', () => {
+      seedTwoLevelFixture();
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      expect(filter.isDirExcluded('nested')).toBe(true);
+      expect(filter.isDirExcluded('nested/deep')).toBe(true);
+      expect(filter.isExcluded('nested/inside.md')).toBe(true);
+      expect(filter.isExcluded('nested/deep/deeper.md')).toBe(true);
+      // A descendant project's own skills are its project's content, not ours.
+      expect(filter.isExcluded('nested/.ok/skills/demo/SKILL.md')).toBe(true);
+
+      // The ancestor's own content is untouched.
+      expect(filter.isExcluded('ancestor.md')).toBe(false);
+      expect(filter.isExcluded('notes/own.md')).toBe(false);
+      expect(filter.isDirExcluded('notes')).toBe(false);
+    });
+
+    test('a nested `.ok` carrying only folder metadata is not a project', () => {
+      seedTwoLevelFixture();
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+
+      expect(filter.isDirExcluded('rules')).toBe(false);
+      expect(filter.isExcluded('rules/ruled.md')).toBe(false);
+      expect(filter.isExcluded('rules/.ok/templates/note.md')).toBe(false);
+    });
+
+    test('single-file scope is unaffected — the one admitted doc stays admitted', () => {
+      seedTwoLevelFixture();
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: projectDir,
+        singleDocRelPath: 'nested/inside.md',
+      });
+
+      expect(filter.isExcluded('nested/inside.md')).toBe(false);
+      expect(filter.isDirExcluded('nested')).toBe(false);
+    });
+
+    test('detects the descendant root under either path base', () => {
+      // Sync-scope callers pass project-relative paths; every other caller
+      // passes contentDir-relative ones. Resolving both against contentDir
+      // would silently miss the descendant on the project-relative side.
+      mkdirSync(join(projectDir, 'content', 'docs', '.ok'), { recursive: true });
+      writeFileSync(join(projectDir, 'content', 'docs', '.ok', 'config.yml'), 'x: 1\n');
+      writeFileSync(join(projectDir, 'content', 'docs', 'inside.md'), '# inside');
+      mkdirSync(join(projectDir, 'content', 'guides', '.ok'), { recursive: true });
+      writeFileSync(join(projectDir, 'content', 'guides', '.ok', 'frontmatter.yml'), 'icon: map\n');
+      writeFileSync(join(projectDir, 'content', 'guides', 'ruled.md'), '# ruled');
+
+      const filter = createContentFilter({
+        projectDir,
+        contentDir: join(projectDir, 'content'),
+      });
+      const projectScope = { syncScope: { pathBase: 'project' } } as const;
+
+      expect(filter.isDirExcluded('docs')).toBe(true);
+      expect(filter.isExcluded('docs/inside.md')).toBe(true);
+      expect(filter.isDirExcluded('content/docs', projectScope)).toBe(true);
+      expect(filter.isExcluded('content/docs/inside.md', projectScope)).toBe(true);
+
+      expect(filter.isDirExcluded('guides')).toBe(false);
+      expect(filter.isDirExcluded('content/guides', projectScope)).toBe(false);
+      expect(filter.isExcluded('content/guides/.ok/frontmatter.yml', projectScope)).toBe(false);
+    });
+
+    test('async factory mirrors the descendant-project floor', async () => {
+      seedTwoLevelFixture();
+      const filter = await createContentFilterAsync({ projectDir, contentDir: projectDir });
+
+      expect(filter.isDirExcluded('nested')).toBe(true);
+      expect(filter.isExcluded('nested/inside.md')).toBe(true);
+      expect(filter.isExcluded('ancestor.md')).toBe(false);
+      expect(filter.isDirExcluded('rules')).toBe(false);
+      expect(filter.isExcluded('rules/ruled.md')).toBe(false);
     });
   });
 });

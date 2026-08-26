@@ -78,7 +78,16 @@ test('editing the copy after first sight flips Modified while the plugin is unch
     join(server.contentDir, '.agents', 'skills', 'probe', 'SKILL.md'),
     skillMd('# Copy, hand-edited afterwards'),
   );
-  const entry = await listProbe();
+  // Watcher-fresh, not request-fresh: the skills list is served from a
+  // short-lived cache (re-stamping every bundle per request froze the app on
+  // large roots), and a direct disk edit reaches it via the managed-artifact
+  // watcher's files signal - poll across that window.
+  const deadline = Date.now() + 5_000;
+  let entry = await listProbe();
+  while (entry.modified !== true && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 200));
+    entry = await listProbe();
+  }
   expect(entry.modified).toBe(true);
 });
 

@@ -844,6 +844,21 @@ export function reverseProjectSkill(
 /** Max bytes inlined as text for a bundled skill file; larger files report `text: null`. */
 const MAX_BUNDLED_FILE_BYTES = 256 * 1024;
 
+/**
+ * Paths-only bundle listing for the skills LIST response: every file beside
+ * SKILL.md, no content reads. Fail-soft (empty on a vanished/unreadable dir) —
+ * a listing miss costs the sidebar its nested file rows for one refresh, never
+ * the list response.
+ */
+export function listSkillBundledFilePaths(skillDir: string): string[] {
+  try {
+    if (!existsSync(skillDir)) return [];
+    return listSkillFiles(skillDir).filter((rel) => rel !== 'SKILL.md');
+  } catch {
+    return [];
+  }
+}
+
 /** Recursively list files under `dir`, POSIX-relative, sorted (deterministic). */
 function listSkillFiles(dir: string, prefix = ''): string[] {
   const out: string[] = [];

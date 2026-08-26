@@ -18,7 +18,7 @@
  * so `[data-item-path]` selects rows directly. Paths are `<Scope>/<name>/`.
  */
 
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { expect, test } from './_helpers';
@@ -206,6 +206,19 @@ test('explore install: the destination menu survives the first pick and hands of
   // The project needs an adopted editor root for the install fan-out target.
   mkdirSync(join(workerServer.contentDir, '.claude', 'skills'), { recursive: true });
 
+  // Field conditions: on a monorepo-sized content root /api/skills takes
+  // seconds, and the install auto-open used to be GATED on that list - the
+  // preview sat un-redirected long enough to read as "install didn't open
+  // the skill". Delay every list response so the redirect can only pass the
+  // bounded assertion below by NOT waiting on the list.
+  await page.route(/\/api\/skills(\?|$)/, async (route) => {
+    if (route.request().method() === 'GET') {
+      console.log('[list-delay] holding', route.request().url());
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      console.log('[list-delay] released', route.request().url());
+    }
+    await route.continue();
+  });
   await page.route('**/api/skills/search**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -267,13 +280,32 @@ test('explore install: the destination menu survives the first pick and hands of
   void skillLanded;
 
   // Closing the menu is the handoff: the preview becomes the real skill tab.
+  // Bounded WELL below the list delay: the redirect must ride the install
+  // response's own path report, not a skills-list refetch.
   await page.keyboard.press('Escape');
+  // Belt over the Escape: a click outside is the other real close gesture,
+  // and pressing Escape in the same tick the menu finishes mounting can be
+  // swallowed by its focus setup.
+  await page.mouse.click(10, 400);
+  // The PREVIEW's own hash also contains the skill name, so the assertion
+  // demands the real live-doc shape - anything still preview-shaped fails.
   await expect
     .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
-      timeout: 20_000,
+      timeout: 4_000,
     })
-    .toContain(name);
+    .toMatch(new RegExp(`skills/${name}/SKILL$`));
   await expect(activeEditor(page).filter({ hasText: marker })).toBeVisible({ timeout: 15_000 });
+  // Landing check runs LAST so it cannot pad the redirect timing above.
+  await expect
+    .poll(
+      async () => {
+        const res = await fetch(`${workerServer.baseURL}/api/skills?scope=project`);
+        const body = (await res.json()) as { skills?: Array<{ name: string }> };
+        return body.skills?.some((s) => s.name === name) ?? false;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
 });
 
 test('shift-click ranges and cmd-click toggles drag the whole selection to the other scope', async ({
@@ -528,4 +560,339 @@ test('shift+arrow walks visible rows through read-only plugin skills; drag moves
   expect(moveRequests).not.toContain('plug-one');
   expect(moveRequests).not.toContain('plug-two');
   expect(moveRequests).not.toContain('open-knowledge');
+});
+
+test('renaming a skill from the Properties name field follows the rename everywhere', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  await createSkill(workerServer.baseURL, 'rename-me', '# Rename target\n');
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  const row = skillRow(page, 'Project/rename-me/');
+  await row.waitFor({ timeout: 15_000 });
+  await row.click();
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 15_000,
+    })
+    .toContain('rename-me');
+
+  // The single rename flow every surface shares: commit a new name in the
+  // Properties field; the tab must morph to the renamed doc (not strand on the
+  // deleted source) and the sidebar row must follow.
+  const nameInput = page.getByTestId('skill-name-input');
+  await nameInput.waitFor({ timeout: 15_000 });
+  await nameInput.fill('renamed-target');
+  await nameInput.press('Enter');
+
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 20_000,
+    })
+    .toContain('renamed-target');
+  await skillRow(page, 'Project/renamed-target/').waitFor({ timeout: 15_000 });
+  await expect(skillRow(page, 'Project/rename-me/')).toHaveCount(0);
+  // The morphed tab is live: a Properties name field reflects the committed
+  // rename (two panels can coexist for a frame while the old doc unmounts, so
+  // assert on the surviving one rather than a strict single match).
+  await expect(page.getByTestId('skill-name-input').last()).toHaveValue('renamed-target');
+});
+
+test('skill lifecycle in the .agents home: create, edit, menu rename, menu move', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  // With a `.agents/` dir present the harness-neutral hub wins as the default
+  // skill home (agentskills.io convention) - the layout real repos like
+  // agents-private run, and where the field failures happened. The worker's
+  // contentDir is SHARED across this worker's tests and nothing sweeps dot
+  // entries, so the finally below deletes the dir - leaking it would silently
+  // flip the default skill home for every later spec on the worker.
+  const agentsHome = join(workerServer.contentDir, '.agents');
+  mkdirSync(join(agentsHome, 'skills'), { recursive: true });
+  try {
+    await runLifecycleJourney(page, workerServer);
+  } finally {
+    rmSync(agentsHome, { recursive: true, force: true });
+  }
+});
+
+async function runLifecycleJourney(
+  page: Page,
+  workerServer: { baseURL: string; contentDir: string },
+): Promise<void> {
+  const created = await createSkill(workerServer.baseURL, 'lifecycle-skill', '# Lifecycle\n');
+  expect(created.path.startsWith('.agents/skills/')).toBe(true);
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  const row = skillRow(page, 'Project/lifecycle-skill/');
+  await row.waitFor({ timeout: 15_000 });
+  await row.click();
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 15_000,
+    })
+    .toContain('lifecycle-skill');
+
+  // EDIT: type into the live editor and require the bytes to land on disk -
+  // the persistence half is what a stuck save would silently drop.
+  // `:visible` matters: the Activity pool keeps HIDDEN editors mounted
+  // (display:none), and a bare .first() can grab one of those - clicks focus
+  // nothing and keystrokes vanish.
+  const editor = page.locator('.ProseMirror:visible').first();
+  await editor.waitFor({ timeout: 15_000 });
+  // Click the body TEXT, not the editor surface: the skill doc mounts more
+  // than one ProseMirror (an empty auxiliary editor takes focus on a bare
+  // surface click) and keystrokes follow the focus, not the click target.
+  await editor.getByText('Lifecycle').click();
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.type('Edited body line');
+  // The keystrokes reached the live doc...
+  await expect(editor).toContainText('Edited body line');
+  // ...and the persistence debounce flushed them to the canonical file.
+  const skillMdPath = join(
+    workerServer.contentDir,
+    '.agents',
+    'skills',
+    'lifecycle-skill',
+    'SKILL.md',
+  );
+  await expect
+    .poll(
+      () => {
+        try {
+          return readFileSync(skillMdPath, 'utf-8');
+        } catch {
+          return '';
+        }
+      },
+      { timeout: 40_000 },
+    )
+    .toContain('Edited body line');
+
+  // RENAME via the three-dot/context menu dialog (the second rename surface -
+  // Properties-field rename is covered by its own spec).
+  await row.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox').fill('lifecycle-renamed');
+  await dialog.getByRole('button', { name: 'Rename', exact: true }).click();
+  await skillRow(page, 'Project/lifecycle-renamed/').waitFor({ timeout: 15_000 });
+  await expect(skillRow(page, 'Project/lifecycle-skill/')).toHaveCount(0);
+  // The open tab followed the rename instead of stranding.
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 20_000,
+    })
+    .toContain('lifecycle-renamed');
+
+  // MOVE via the menu path (drag covers the other path). Asserted at the
+  // network seam: the harness pins home = contentDir so the scopes share
+  // physical roots and the server refuses the actual relocation.
+  const moveRequests: string[] = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/api/skill/move-scope') && req.method() === 'POST') {
+      const body = req.postDataJSON() as { name?: string; toScope?: string } | null;
+      if (body?.name) moveRequests.push(`${body.name}:${body.toScope}`);
+    }
+  });
+  await skillRow(page, 'Project/lifecycle-renamed/').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: /Move to/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Move', exact: true }).click();
+  await expect
+    .poll(() => moveRequests.join(','), { timeout: 20_000 })
+    .toContain('lifecycle-renamed:global');
+}
+
+test('New skill from the scope menu auto-opens and STAYS open under a slow skills list', async ({
+  page,
+  api,
+}) => {
+  await api.testReset();
+
+  // Delay every skills-LIST response: the field failure mode is a monorepo
+  // where /api/skills takes seconds, so every list snapshot the reconciler
+  // sees lags the create - exactly the window where the fresh tab used to be
+  // closed as "skill not in the list".
+  let delayedResponses = 0;
+  await page.route(/\/api\/skills(\?|$)/, async (route) => {
+    if (route.request().method() === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      delayedResponses += 1;
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  const scopeRow = skillRow(page, 'Project/');
+  await scopeRow.waitFor({ timeout: 15_000 });
+  await scopeRow.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'New skill' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox').first().fill('auto-open-new');
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click();
+
+  // The created skill's editor opens...
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 20_000,
+    })
+    .toContain('auto-open-new');
+
+  // ...and STAYS open across the delayed list snapshots that used to close
+  // it. Wait until at least two lagged responses have landed (the stale one
+  // that triggered the old close, plus a fresh one), then re-assert.
+  const seen = delayedResponses;
+  await expect.poll(() => delayedResponses, { timeout: 20_000 }).toBeGreaterThan(seen + 1);
+  expect(decodeURIComponent(await page.evaluate(() => window.location.hash))).toContain(
+    'auto-open-new',
+  );
+});
+
+test('an imported skill row opens on the FIRST click, under a slow skills list', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  const name = 'imported-first-click';
+  const sourceDir = join(workerServer.contentDir, '..', `import-source-${Date.now()}`);
+  mkdirSync(join(sourceDir, name), { recursive: true });
+  writeFileSync(
+    join(sourceDir, name, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: Imported first-click coverage.\n---\n\n# Imported ${name}\n`,
+  );
+  mkdirSync(join(workerServer.contentDir, '.claude', 'skills'), { recursive: true });
+
+  await page.route(/\/api\/skills(\?|$)/, async (route) => {
+    if (route.request().method() === 'GET') {
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
+    await route.continue();
+  });
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  await skillRow(page, 'Project/').waitFor({ timeout: 20_000 });
+
+  // Import server-side while the page is live - the CLI / another window /
+  // an agent does exactly this, and the sidebar picks the new row up from the
+  // files signal.
+  const imp = await fetch(`${workerServer.baseURL}/api/skill/import`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: sourceDir, skill: name, scope: 'project', install: false }),
+  });
+  expect(imp.ok).toBe(true);
+
+  // ONE click on the freshly appeared row must open it - the dead-row shape
+  // was: click swallowed by remount churn or stranded on a stale ignored
+  // flag, working only after clicking some other skill first.
+  const row = skillRow(page, `Project/${name}/`);
+  await row.waitFor({ timeout: 30_000 });
+  await row.click();
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 20_000,
+    })
+    .toMatch(new RegExp(`skills/${name}/SKILL$`));
+});
+
+test('Delete key removes a multi-selection even when one of the docs is open', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  for (const n of ['bulk-del-a', 'bulk-del-b', 'bulk-del-c']) {
+    await createSkill(workerServer.baseURL, n, `# Del ${n}\n`);
+  }
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  const rowA = skillRow(page, 'Project/bulk-del-a/');
+  await rowA.waitFor({ timeout: 15_000 });
+  // Open a - its live doc is ACTIVE, the exact shape that deadlocked the
+  // delete (server unload vs the renderer's instant re-auth on close).
+  await rowA.click();
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 15_000,
+    })
+    .toContain('bulk-del-a');
+
+  // cmd-click gathers the open skill plus two others.
+  await rowA.click({ modifiers: ['ControlOrMeta'] });
+  await skillRow(page, 'Project/bulk-del-b/').click({ modifiers: ['ControlOrMeta'] });
+  await skillRow(page, 'Project/bulk-del-c/').click({ modifiers: ['ControlOrMeta'] });
+
+  await page.keyboard.press('Delete');
+  const dialog = page.getByRole('alertdialog');
+  await dialog.waitFor({ timeout: 10_000 });
+  await dialog.getByRole('button', { name: /delete/i }).click();
+
+  // The whole batch lands: rows gone, server agrees.
+  for (const n of ['bulk-del-a', 'bulk-del-b', 'bulk-del-c']) {
+    await expect(skillRow(page, `Project/${n}/`)).toHaveCount(0, { timeout: 30_000 });
+  }
+  await expect
+    .poll(
+      async () => {
+        const res = await fetch(`${workerServer.baseURL}/api/skills?scope=project`);
+        const body = (await res.json()) as { skills?: Array<{ name: string }> };
+        return (body.skills ?? []).filter((s) => s.name.startsWith('bulk-del-')).length;
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(0);
+});
+
+test('a skills.sh import surfaces its sidebar row without any other churn', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  // A local bundle stands in for the skills.sh listing, same as the explore
+  // spec. The import is the ONLY mutation: the row must appear off the
+  // import's own client push. The watcher cannot deliver it - the new dir
+  // sits outside its coverage until the deferred ignore rebuild reconciles
+  // (~2 minutes) - which is exactly how the imported-skill row silently
+  // never appeared in a live session.
+  const name = 'import-row-skill';
+  const sourceDir = join(workerServer.contentDir, '..', `import-row-source-${Date.now()}`);
+  mkdirSync(join(sourceDir, name), { recursive: true });
+  writeFileSync(
+    join(sourceDir, name, 'SKILL.md'),
+    `---\nname: ${name}\ndescription: Import row coverage.\n---\n\n# Import Row\n`,
+  );
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+
+  const res = await fetch(`${workerServer.baseURL}/api/skill/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: sourceDir, skill: name, scope: 'project', install: false }),
+  });
+  expect(res.status).toBe(200);
+
+  const row = skillRow(page, `Project/${name}/`);
+  await row.waitFor({ timeout: 15_000 });
+  // And the row is not just visible but alive: one click opens the doc.
+  await row.click();
+  await expect
+    .poll(async () => decodeURIComponent(await page.evaluate(() => window.location.hash)), {
+      timeout: 15_000,
+    })
+    .toContain(name);
+  rmSync(sourceDir, { recursive: true, force: true });
 });

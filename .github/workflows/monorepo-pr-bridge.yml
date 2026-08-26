@@ -18,7 +18,15 @@ jobs:
     # Public-facing acknowledgement should happen immediately on a new PR and
     # stay decoupled from the inkeep-oss-sync environment approval that imports
     # the PR into agents-private.
-    if: github.event.action == 'opened' && github.event.pull_request.head.ref != 'copybara/sync'
+    #
+    # The Copybara skip is keyed on the head REPOSITORY, not the branch name
+    # alone: a fork chooses its own branch name, so a contributor who happened to
+    # call theirs `copybara/sync` would silently receive no acknowledgement, never
+    # be imported, and never be told why. Only this repo can own a branch here.
+    if: >-
+      github.event.action == 'opened'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || github.event.pull_request.head.ref != 'copybara/sync')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -44,7 +52,10 @@ jobs:
     # branch/PR. The environment has required reviewers configured in the public
     # repo, so every public PR revision needs maintainer approval before crossing
     # into agents-private.
-    if: github.event.action != 'closed' && github.event.pull_request.head.ref != 'copybara/sync'
+    if: >-
+      github.event.action != 'closed'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || github.event.pull_request.head.ref != 'copybara/sync')
     environment: inkeep-oss-sync
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -115,8 +126,12 @@ jobs:
         run: node .github/scripts/bridge-public-pr-to-monorepo.mjs sync
 
   close:
-    # Skip PRs that originated from agents-private via Copybara.
-    if: github.event.action == 'closed' && github.event.pull_request.head.ref != 'copybara/sync'
+    # Skip PRs that originated from agents-private via Copybara, identified by
+    # head repository rather than branch name for the same reason as above.
+    if: >-
+      github.event.action == 'closed'
+      && (github.event.pull_request.head.repo.full_name != github.repository
+      || github.event.pull_request.head.ref != 'copybara/sync')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

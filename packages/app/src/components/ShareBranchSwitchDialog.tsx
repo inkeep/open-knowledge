@@ -467,9 +467,24 @@ export function ShareBranchSwitchDialog({
   // is a compile error here instead of a silent generic toast.
   function showWorktreeFailureToast(
     reason: WorktreeCheckoutSideEffectReason,
-    helper?: string,
-    authFailed?: true,
+    // An options bag, not positional params: `authFailed`/`notFoundAsIdentity` are both
+    // `true | undefined`, so positional passing would let a transposition
+    // compile and silently swap which copy the user sees.
+    {
+      helper,
+      authFailed,
+      notFoundAsIdentity,
+    }: { helper?: string; authFailed?: true; notFoundAsIdentity?: true } = {},
   ): void {
+    // The repository-not-found masquerade: the remote answered, so the
+    // connection copy is wrong, and a Sign in cannot fix a repo the account
+    // can't see (or that is gone) — name what is actually known instead.
+    if (reason === 'fetch-failed' && notFoundAsIdentity) {
+      toast.error(
+        t`Repository not found — it may not exist, or the account used may not have access.`,
+      );
+      return;
+    }
     // A credential miss reaches us as `fetch-failed`, but the connection copy
     // below is a dead end for it: the fetch pins credential interactivity off,
     // so nothing prompted the user, and retrying without a credential just
@@ -542,6 +557,7 @@ export function ShareBranchSwitchDialog({
     let failureReason: WorktreeCheckoutSideEffectReason | null = null;
     let failureHelper: string | undefined;
     let failureAuth: true | undefined;
+    let failureNotFoundAsIdentity: true | undefined;
     let shouldDismiss = false;
     let openPath: string | null = null;
     setBranchSwitchState((prev) => {
@@ -550,6 +566,7 @@ export function ShareBranchSwitchDialog({
         failureReason = sideEffect.reason;
         failureHelper = sideEffect.helper;
         failureAuth = sideEffect.authFailed;
+        failureNotFoundAsIdentity = sideEffect.notFoundAsIdentity;
         shouldDismiss = next.phase === 'dismissed';
       }
       if (next.phase === 'opening-worktree') {
@@ -564,7 +581,11 @@ export function ShareBranchSwitchDialog({
           branch: shareBranch,
         }),
       );
-      showWorktreeFailureToast(failureReason, failureHelper, failureAuth);
+      showWorktreeFailureToast(failureReason, {
+        helper: failureHelper,
+        authFailed: failureAuth,
+        notFoundAsIdentity: failureNotFoundAsIdentity,
+      });
     }
     if (openPath !== null) {
       // The anchor window's cached worktree model is stale now (a worktree was

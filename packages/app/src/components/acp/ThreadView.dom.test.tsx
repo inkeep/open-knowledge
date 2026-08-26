@@ -733,7 +733,7 @@ describe('ThreadView inline diff', () => {
 });
 
 describe('ThreadView permissions', () => {
-  test('pins refusal left and the least-privilege grant right, with escalating grants between', () => {
+  test('stacks three-plus options top-to-bottom with the primary grant emphasized', () => {
     model = makeModel({
       items: [
         permission({
@@ -752,27 +752,31 @@ describe('ThreadView permissions', () => {
     render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
 
     const card = screen.getByTestId('agent-thread-permission');
+    const stack = screen.getByTestId('agent-thread-permission-stack');
     const deny = screen.getByTestId('agent-thread-permission-deny');
-    const secondary = screen.getByTestId('agent-thread-permission-allow-more');
     const primary = screen.getByTestId('agent-thread-permission-allow');
 
-    // Refusal first in the DOM (far left), primary grant last (far right).
-    expect(deny.compareDocumentPosition(secondary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(
-      secondary.compareDocumentPosition(primary) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    // Primary allow is first in DOM order (top of stack); deny follows below.
+    expect(primary.compareDocumentPosition(deny) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The escalating grant renders as a peer button, not tucked behind a chevron.
+    const escalating = within(stack).getByRole('button', {
+      name: 'Always allow all mcp__open-knowledge__exec',
+    });
+    expect(escalating).toBeDefined();
 
     // Only the least-privilege grant carries primary emphasis.
     expect(primary.textContent).toBe('Allow');
     expect(primary.getAttribute('data-variant')).toBe('default');
+    expect(escalating.getAttribute('data-variant')).toBe('outline');
     expect(deny.getAttribute('data-variant')).toBe('outline');
-    expect(secondary.getAttribute('data-variant')).toBe('outline');
 
-    // A lone escalating grant needs no chevron — it is directly actionable.
+    // No secondary-cluster chevron — the stack has no dropdown.
+    expect(within(card).queryByTestId('agent-thread-permission-allow-more')).toBeNull();
     expect(within(card).queryByTestId('agent-thread-permission-allow-more-more')).toBeNull();
   });
 
-  test('collapses several escalating grants behind one secondary button', async () => {
+  test('renders every one of four options as a full-width button — no overflow menu', async () => {
     // Claude's four-option shape: `kind` is a hint, not a key — two distinct
     // grants share `allow_always` and differ only by name.
     model = makeModel({
@@ -789,28 +793,74 @@ describe('ThreadView permissions', () => {
     });
     render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
 
-    expect(screen.getByTestId('agent-thread-permission-deny').textContent).toBe('Decline');
-    expect(screen.getByTestId('agent-thread-permission-allow').textContent).toBe('Allow');
-    const secondary = screen.getByTestId('agent-thread-permission-allow-more');
-    expect(secondary.textContent).toBe('Allow for This Session');
-    // The last grant is folded away, not rendered as a fourth top-level button.
-    expect(screen.queryByRole('button', { name: "Allow and Don't Ask Again" })).toBeNull();
+    // Every option is a real peer button — no dropdown, no truncation.
+    const primary = screen.getByTestId('agent-thread-permission-allow');
+    const deny = screen.getByTestId('agent-thread-permission-deny');
+    expect(primary.textContent).toBe('Allow');
+    expect(deny.textContent).toBe('Decline');
+    const session = screen.getByRole('button', { name: 'Allow for This Session' });
+    const forever = screen.getByRole('button', { name: "Allow and Don't Ask Again" });
+    expect(session).toBeDefined();
+    expect(forever).toBeDefined();
 
-    // The secondary button answers directly — no trip through the menu.
-    await userEvent.click(secondary);
+    // Clicking a secondary allow selects its optionId directly.
+    await userEvent.click(session);
     expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', {
       kind: 'selected',
       optionId: 'session',
     });
 
-    // Its chevron lists every escalating grant, the button's own included.
-    await userEvent.click(screen.getByTestId('agent-thread-permission-allow-more-more'));
-    expect(await screen.findByRole('menuitem', { name: 'Allow for This Session' })).toBeDefined();
-    fireEvent.click(screen.getByRole('menuitem', { name: "Allow and Don't Ask Again" }));
+    // Escalated allow is likewise directly actionable.
+    await userEvent.click(forever);
     expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', {
       kind: 'selected',
       optionId: 'forever',
     });
+  });
+
+  test('stacks even when the extra option is a second allow with no reject', async () => {
+    // Two-allow / zero-reject shape: the row branch renders only the primary
+    // grant, so without the stack the escalating grant is unreachable. And
+    // the stack must still surface a refusal — the agent offered none, so we
+    // synthesize a cancel-wired Deny.
+    model = makeModel({
+      items: [
+        permission({
+          options: [
+            { optionId: 'once', name: 'Allow', kind: 'allow_once' },
+            { optionId: 'always', name: 'Allow for This Session', kind: 'allow_always' },
+          ],
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
+    expect(screen.getByTestId('agent-thread-permission-stack')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Allow for This Session' })).toBeDefined();
+    const deny = screen.getByTestId('agent-thread-permission-deny');
+    expect(deny.textContent).toBe('Deny');
+    await userEvent.click(deny);
+    expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', { kind: 'cancelled' });
+  });
+
+  test('stacks two reject options with no allow so the escalating refusal is reachable', () => {
+    // Symmetric to the two-allow / zero-reject case: the row branch would
+    // collapse denyOptions to just the primary, dropping the escalating
+    // refusal. Two-reject / zero-allow enters the stack via
+    // `denyOptions.length > 1` and renders both refusal buttons.
+    model = makeModel({
+      items: [
+        permission({
+          options: [
+            { optionId: 'no', name: 'Reject', kind: 'reject_once' },
+            { optionId: 'stop', name: 'Reject and Stop Session', kind: 'reject_always' },
+          ],
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
+    expect(screen.getByTestId('agent-thread-permission-stack')).toBeDefined();
+    expect(screen.getByTestId('agent-thread-permission-deny').textContent).toBe('Reject');
+    expect(screen.getByRole('button', { name: 'Reject and Stop Session' })).toBeDefined();
   });
 
   test('clicking an offered option approves with that optionId (selected outcome)', async () => {
@@ -2748,5 +2798,77 @@ describe('ThreadView drop-notice for unattachable files', () => {
     await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
     fireDrop([makeFile('foo.ts', 'text/typescript')]);
     await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
+  });
+});
+
+describe('ThreadView plan approval wiring (PRD-8022)', () => {
+  const plan = [{ content: 'read the files' }, { content: 'write the fix' }];
+
+  test('Approve sends the canned English string via client.prompt', async () => {
+    model = makeModel({
+      plan,
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByTestId('agent-thread-plan-approval-approve'));
+    expect(prompt).toHaveBeenCalledWith(
+      'thread-1',
+      'Approve. Please proceed with the plan.',
+      undefined,
+    );
+  });
+
+  test('Reject sends the canned English string via client.prompt', async () => {
+    model = makeModel({
+      plan,
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByTestId('agent-thread-plan-approval-reject'));
+    expect(prompt).toHaveBeenCalledWith(
+      'thread-1',
+      'Reject. Please stop and do not proceed with this plan.',
+      undefined,
+    );
+  });
+
+  test('Ask changes prefills the composer without clobbering existing draft', async () => {
+    model = makeModel({
+      plan,
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    await userEvent.type(composer, 'hey ');
+    await userEvent.click(screen.getByTestId('agent-thread-plan-approval-ask-changes'));
+    // appendText: existing draft preserved, prefix joined with a blank line.
+    expect(composer.value).toBe('hey\n\nIn the plan above, please ');
+    // Second click: idempotent — the prefix is not duplicated.
+    await userEvent.click(screen.getByTestId('agent-thread-plan-approval-ask-changes'));
+    expect(composer.value).toBe('hey\n\nIn the plan above, please ');
+    // client.prompt is untouched by Ask changes.
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  test('approval row hides while the thread is not ready', () => {
+    model = makeModel({ plan, turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+    expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
+  });
+
+  test('approval row hides after a click until the next turn ends (double-click guard)', async () => {
+    model = makeModel({ plan, turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByTestId('agent-thread-plan-approval-approve'));
+    expect(prompt).toHaveBeenCalledTimes(1);
+    // Post-click: the pending flag hides the whole row so a second click has
+    // nothing to hit before the status has transitioned.
+    expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
+  });
+
+  test('approval row hides on an archived thread even with a pending plan', () => {
+    model = makeModel({ plan, turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready', archived: true })} />);
+    expect(screen.queryByTestId('agent-thread-plan-approval')).toBeNull();
   });
 });

@@ -31,14 +31,34 @@ export interface AnchorSegment {
 }
 
 /**
- * Amber, as `r,g,b` for interpolation into `rgba()`.
+ * Blue, as an `r,g,b` triple for interpolation into `rgba()`.
+ *
+ * Yellow and red are reserved: lint and audit problems mark up passages in the
+ * same body text, and the `==highlight==` mark is a yellow wash too — a comment
+ * in amber was a third thing wearing the warning colour.
+ *
+ * Deeper than `--color-azure-blue`, which in-viewer find washes over its matches
+ * at 30%. Sharing a family with find is the cost of blue; the underline below is
+ * what separates them, since find paints a bare wash with no rule under it.
+ *
+ * The value is a CSS custom property, not a literal, because it is the one part
+ * of the mark that must move with the theme — the alpha ladder below is painted
+ * identically on both canvases, and no single blue clears the 3:1 non-text floor
+ * at both ends. `globals.css` holds both values; the fallback here is the light
+ * one, so an unstyled mount degrades to a visible mark rather than to
+ * `rgba()` with a missing argument, which drops the highlight entirely.
  *
  * Exported because a property value's highlight cannot be a decoration — it is
  * painted as the field's own `::selection`, in `property-row-rect.ts`. Two
  * highlights meaning the same thing in two different colours would read as two
- * different states, so the colour has exactly one definition.
+ * different states, so both in-document washes derive from here.
+ *
+ * The panel surfaces cannot: `ThreadCard` and `CommentMarginRail` are styled in
+ * Tailwind, which takes class literals rather than an `rgb()` triple, so each
+ * carries a hand-kept `blue-*` mirror. Recolouring means editing those two, this
+ * fallback, and both `globals.css` declarations.
  */
-export const COMMENT_HUE = '245,158,11';
+export const COMMENT_HUE = 'var(--ok-comment-hue,37,99,235)';
 const HUE = COMMENT_HUE;
 
 /** Held at its pre-overlap value, so an unattended highlight is unchanged. */

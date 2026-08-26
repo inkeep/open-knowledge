@@ -811,9 +811,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         const breadcrumb = {
           event: 'crash-detection.machine-level-death',
           reason,
-          // Null for the three machine-level reasons. Carried on every line
-          // rather than only the update one so a reader can tell "no install
-          // was in flight" from "this build predates the class".
+          // Null when no install was in flight, whatever the reason — a reboot
+          // that happened to land inside an install window carries a version
+          // here too. Carried on every line rather than only the update one so
+          // a reader can tell "no install was in flight" from "this build
+          // predates the class".
           attemptedInstall: installInFlight?.attemptedVersion ?? null,
           // False when the moment above is the staging fallback rather than a
           // handoff a live process recorded — the same distinction the

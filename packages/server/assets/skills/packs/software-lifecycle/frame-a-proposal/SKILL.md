@@ -184,7 +184,7 @@ Run before you tell the user it's ready:
 
 - Every referenced decision, spec, or guide is a plain markdown relative link (`[text](./decisions/0004-x.md)`), never backticked, never an HTML anchor.
 - Add backlinks from 1–2 closely related docs so the proposal is discoverable — the accepted decision it revisits, a related spec, the relevant guide. `links({ kind: "backlinks", ... })` to see what already points where.
-- `links({ kind: "dead", sourceDocNames: ["proposals/0007-async-export-pipeline"] })` returns clean — fix or remove every dead link.
+- `audit({ path: "proposals/0007-async-export-pipeline.md" })` returns clean (every lint violation + broken internal link) — fix every finding.
 - Frontmatter complete: `type: proposal`, a one-line `description`, `status: draft`, `authors`, `created`, `tags: [proposal]`.
 - All five H2 sections present and non-empty: `## Motivation`, `## Design`, `## Drawbacks`, `## Alternatives`, `## Unresolved questions`. An empty Drawbacks or a strawman Alternatives fails this check even though the section technically exists.
 - `status` is still `draft`. You do not advance it — see Non-goals.

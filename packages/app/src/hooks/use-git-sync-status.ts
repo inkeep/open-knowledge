@@ -9,6 +9,7 @@ import type {
   PullOutcome,
   SyncErrorCode,
   SyncMode,
+  SyncStatusSchema,
 } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
@@ -34,9 +35,52 @@ type GitSyncState =
  * narrower `GitPushPermission` name used elsewhere in the app.
  */
 
+/**
+ * Compile-time drift guard between this hand-maintained interface and the
+ * server's wire schema.
+ *
+ * The two are not aliases — `GitSyncStatus` deliberately narrows (it omits
+ * server-only bookkeeping like `lastPushedSha` and `consecutiveFailures`, which
+ * no UI reads) and relaxes required-ness where a version-skewed engine may omit
+ * a field. What it must NEVER do is declare a field the server does not send:
+ * that reads as `undefined` at runtime with no type error at the use site, so
+ * the UI silently renders a fallback forever. `Exclude` resolves to `never`
+ * while every key here exists on the wire, and to the offending key names
+ * otherwise — which fails assignment and names them in the error.
+ *
+ * Keyed off `SyncStatusSchema.shape`, NOT `keyof SyncStatusWire`: the schema is
+ * `.loose()`, so the inferred type carries an index signature and `keyof` on it
+ * includes `string` — which makes `Exclude` resolve to `never` unconditionally
+ * and turns this guard into decoration. The shape has only the declared keys.
+ */
+type ClientFieldsNotOnWire = Exclude<keyof GitSyncStatus, keyof typeof SyncStatusSchema.shape>;
+// Annotate-with-conditional, not `= null as never`: `never` is assignable to
+// EVERY type, so annotating the offending union and assigning `never` type-checks
+// no matter what drifts. Here the annotation collapses to `true` only while the
+// union is empty; otherwise it becomes the offending key names and rejects `true`.
+const _noClientOnlyFields: [ClientFieldsNotOnWire] extends [never] ? true : ClientFieldsNotOnWire =
+  true;
+void _noClientOnlyFields;
+
 export interface GitSyncStatus {
   state: GitSyncState;
   lastSyncUtc: string | null;
+  /**
+   * When a sync op last completed successfully — a push or pull that reached
+   * the remote, whether or not content moved. NOT the panel-open fetch, which
+   * fires whenever the user looks and would pin this to "just now". The
+   * fallback behind the freshness line when the per-direction legs are absent.
+   * Optional for version-skew safety; absent from an engine that predates it.
+   */
+  lastRunUtc?: string | null;
+  /**
+   * The same successful-run signal split by direction, so the panel can say
+   * WHICH leg ran rather than collapsing both into one "Updated". Same
+   * version-skew optionality as `lastRunUtc`; an older engine sends neither and
+   * the panel falls back to the combined stamp.
+   */
+  lastPullOkUtc?: string | null;
+  lastPushOkUtc?: string | null;
   lastFetchUtc: string | null;
   /**
    * Completion timestamp + bounded outcome of the last pull (background or
@@ -89,6 +133,12 @@ export interface GitSyncStatus {
   pullError?: string;
   pullErrorCode?: SyncErrorCode;
   pausedReason?: string;
+  /**
+   * Tracked paths whose local edits overlap the incoming merge, present only
+   * while `pausedReason` is `external-changes-pending`. The sync popover lists
+   * them and offers commit/discard; absent (never empty) when nothing blocks.
+   */
+  blockingPaths?: string[];
   /**
    * Push-permission probe outcome. Absent when the probe hasn't resolved
    * yet (cold start) or the origin isn't a github.com URL. UI consumers

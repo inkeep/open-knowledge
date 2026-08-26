@@ -113,6 +113,8 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
+| `.ok/local/last-server-exit.json` | Why the collaboration server the app started last exited — a timestamp, its process id, the exit code, the signal that ended it, and which part of the app was watching. One record, overwritten on each exit; a server the app only attached to, or one you started yourself with `ok start`, leaves none. No document content or paths | In-project, gitignored |
+| `.ok/local/last-server-crash.json` | The collaboration server's own account of a crash it did not survive — a timestamp, the error message and stack, its process id, and how long it had been running. Written by the server itself, so it covers `ok start` too. Holds the most recent crash only | In-project, gitignored |
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
@@ -123,7 +125,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
-On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) **only when they are missing** — an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
+On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) **only when they are missing and you previously installed them** — a bundle you never installed or declined is not seeded, and an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -228,6 +230,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
 | `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
+| `.ok/local/last-server-crash.json` | The server's own account of a crash it did not survive — a timestamp, the error message and stack, its process id, and how long it had been running. Holds the most recent crash only | In-project, gitignored |
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |

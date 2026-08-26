@@ -18,6 +18,7 @@ import {
   SingleFileNotAFileError,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
+  SingleFileProjectOverrideError,
   seedEphemeralProjectDir,
 } from './single-file-open.ts';
 
@@ -120,6 +121,71 @@ describe('prepareSingleFileOpen', () => {
     const dir = tmp('sfo-dir-');
     mkdirSync(join(dir, 'weird.md'));
     expect(() => prepareSingleFileOpen(join(dir, 'weird.md'))).toThrow(SingleFileNotAFileError);
+  });
+});
+
+describe('prepareSingleFileOpen with an explicit project root', () => {
+  test('honors the named root and skips the ancestor walk', () => {
+    const outer = tmp('sfo-outer-');
+    makeProject(outer);
+    const inner = join(outer, 'nested');
+    mkdirSync(inner, { recursive: true });
+    makeProject(inner);
+    writeFileSync(join(inner, 'notes.md'), '# Notes\n');
+
+    // Innermost-wins is unchanged without an override…
+    const walked = prepareSingleFileOpen(join(inner, 'notes.md'));
+    if (walked.mode !== 'project') throw new Error('expected project mode');
+    expect(walked.projectRoot).toBe(inner);
+
+    // …and the override outranks it when named.
+    const overridden = prepareSingleFileOpen(join(inner, 'notes.md'), { projectRoot: outer });
+    if (overridden.mode !== 'project') throw new Error('expected project mode');
+    expect(overridden.projectRoot).toBe(outer);
+    expect(overridden.docName).toBe('nested/notes');
+  });
+
+  test('an override that is not a project root fails loudly', () => {
+    const root = tmp('sfo-ovr-notproj-');
+    makeProject(root);
+    writeFileSync(join(root, 'notes.md'), '# Notes\n');
+    const bare = tmp('sfo-ovr-bare-');
+    expect(() => prepareSingleFileOpen(join(root, 'notes.md'), { projectRoot: bare })).toThrow(
+      SingleFileProjectOverrideError,
+    );
+  });
+
+  test('an override that does not contain the file fails loudly', () => {
+    const root = tmp('sfo-ovr-elsewhere-');
+    makeProject(root);
+    const other = tmp('sfo-ovr-other-');
+    makeProject(other);
+    writeFileSync(join(other, 'notes.md'), '# Notes\n');
+    expect(() => prepareSingleFileOpen(join(other, 'notes.md'), { projectRoot: root })).toThrow(
+      /not inside that project/,
+    );
+  });
+
+  test('the override respects content.dir', () => {
+    const root = tmp('sfo-ovr-contentdir-');
+    makeProject(root, 'docs');
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(join(root, 'docs', 'intro.md'), '# Intro\n');
+    const plan = prepareSingleFileOpen(join(root, 'docs', 'intro.md'), { projectRoot: root });
+    if (plan.mode !== 'project') throw new Error('expected project mode');
+    expect(plan.docName).toBe('intro');
+  });
+
+  test('realpath still runs before the override is applied', () => {
+    const root = tmp('sfo-ovr-symlink-');
+    makeProject(root);
+    writeFileSync(join(root, 'real.md'), '# Real\n');
+    const linkDir = tmp('sfo-ovr-link-');
+    symlinkSync(join(root, 'real.md'), join(linkDir, 'alias.md'));
+    const plan = prepareSingleFileOpen(join(linkDir, 'alias.md'), { projectRoot: root });
+    if (plan.mode !== 'project') throw new Error('expected project mode');
+    expect(plan.canonicalFilePath).toBe(join(root, 'real.md'));
+    expect(plan.docName).toBe('real');
   });
 });
 

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_LINTER_CONFIG } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { lintDoc } from '../../../server/src/lint/audit.ts';
 import { runLint } from './lint-runner.ts';
 
 let root: string;
@@ -48,6 +49,25 @@ function run(opts: Partial<Parameters<typeof runLint>[0]> = {}) {
 }
 
 describe('runLint — walk + lint', () => {
+  test('reports the same selected families as the server lint path', async () => {
+    write('a.md', '# A\n');
+    const local = await run();
+    const server = await lintDoc({
+      projectDir: root,
+      contentDir: root,
+      baseConfig: {
+        ...DEFAULT_LINTER_CONFIG,
+        plugins: {
+          ...DEFAULT_LINTER_CONFIG.plugins,
+          markdownlint: { ...DEFAULT_LINTER_CONFIG.plugins.markdownlint, enabled: true },
+        },
+      },
+      docRelPath: 'a.md',
+    });
+
+    expect(local.ran).toEqual(server.ran);
+  });
+
   test('the walk skips hidden segments; an explicit hidden file target still lints', async () => {
     write('visible.md', '# A\n\ntext with a\ttab\n');
     write('.ok/skills/pack/SKILL.md', '# S\n\ntext with a\ttab\n');
@@ -62,6 +82,7 @@ describe('runLint — walk + lint', () => {
     write('a.md', '# A\n\ntext with a\ttab\n');
     write('b.md', '# B\n\n#bad heading\n');
     const result = await run();
+    expect(result.ran).toEqual(['markdownlint']);
     expect(result.fileCount).toBe(2);
     const a = result.files.find((f) => f.file === 'a.md');
     expect(a?.diagnostics.some((d) => d.code === 'MD010')).toBe(true);

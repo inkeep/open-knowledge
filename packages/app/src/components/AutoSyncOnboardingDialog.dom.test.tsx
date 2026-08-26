@@ -57,7 +57,7 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
     writer = () => ({ ok: true });
     await renderDialog('full');
 
-    expect(screen.getByRole('button', { name: 'Enable auto-sync' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Keep disabled' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
     expect(screen.getByRole('note').textContent).toContain('Heads up');
@@ -67,7 +67,7 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
     writer = () => ({ ok: true });
     await renderDialog('follow');
 
-    expect(screen.getByRole('button', { name: 'Enable Follow' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull only)' })).not.toBeNull();
     const note = screen.getByRole('note').textContent ?? '';
     expect(note).toContain('Updates flow in');
     expect(note).toContain('stay only on this machine');
@@ -81,13 +81,13 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
     };
 
     await renderDialog('full');
-    await userEvent.click(screen.getByRole('button', { name: 'Enable auto-sync' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     expect(modeWrites).toEqual(['full']);
 
     cleanup();
     modeWrites.length = 0;
     await renderDialog('follow');
-    await userEvent.click(screen.getByRole('button', { name: 'Enable Follow' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull only)' }));
     expect(modeWrites).toEqual(['follow']);
   });
 
@@ -107,7 +107,8 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
     await renderDialog('follow');
 
     expect(
-      (screen.getByRole('button', { name: 'Enable Follow' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: 'Enable Auto (Pull only)' }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
     expect(
       (screen.getByRole('button', { name: 'Keep disabled' }) as HTMLButtonElement).disabled,
@@ -119,7 +120,7 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
     writer = () => ({ ok: false, error: 'binding unavailable' });
     await renderDialog('full', () => resolvedCalls.push('resolved'));
 
-    await userEvent.click(screen.getByRole('button', { name: 'Enable auto-sync' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
 
     expect(resolvedCalls).toEqual([]);
     expect(toastErrors).toEqual(['Could not enable sync: binding unavailable']);
@@ -132,7 +133,7 @@ describe('AutoSyncOnboardingDialog runtime behavior', () => {
 
     await userEvent.keyboard('{Escape}');
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Enable auto-sync' })).not.toBeNull();
+      expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     });
     expect(resolvedCalls).toEqual([]);
   });

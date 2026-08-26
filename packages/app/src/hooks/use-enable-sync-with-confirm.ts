@@ -20,10 +20,7 @@
  * hook.
  */
 import {
-  displayActiveMode,
-  hasEverEnabledSync,
   humanFormat,
-  isSyncPaused,
   resolveLocalAutoSyncMode,
   type StoredSyncActiveMode,
   type StoredSyncMode,
@@ -117,6 +114,35 @@ export function useSyncDefaultWriter(): SyncDefaultWriter | null {
   if (projectBinding === null) return null;
   return (next: boolean | SyncMode | null) => {
     const result = projectBinding.patch({ autoSync: { default: next } });
+    return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
+  };
+}
+
+/**
+ * Adapter for the per-machine scheduled-cycle cadence
+ * (`autoSync.{pull,push}IntervalSeconds`). Project-local, alongside `mode` —
+ * how hard THIS machine polls is not a value to ship at teammates through git,
+ * so there is deliberately no committed counterpart the way `mode` has
+ * `autoSync.default`.
+ *
+ * Both legs are written together so a single config persist carries the whole
+ * cadence; the engine's `setIntervals` re-arms from one notification rather
+ * than two.
+ */
+type SyncIntervalWriter = (next: {
+  pullIntervalSeconds: number;
+  pushIntervalSeconds: number;
+}) => { ok: true } | { ok: false; error: string };
+
+/**
+ * Build a `SyncIntervalWriter` targeting the project-local config binding.
+ * Returns `null` until the binding mounts.
+ */
+export function useSyncIntervalWriter(): SyncIntervalWriter | null {
+  const { projectLocalBinding } = useConfigContext();
+  if (projectLocalBinding === null) return null;
+  return (next) => {
+    const result = projectLocalBinding.patch({ autoSync: next });
     return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
   };
 }
@@ -289,36 +315,39 @@ export function useAutoSyncPatchWriter(): AutoSyncPatchWriter | null {
 }
 
 interface UseBadgeSyncControlsResult {
-  /** Sync is running (mode pull or full) — the header Switch is on. */
-  active: boolean;
-  /** Sync was enabled then turned off — badge stays visible, mode still editable. */
-  paused: boolean;
-  /** Sync has ever been enabled — gates the manual "Sync" action. */
-  everEnabled: boolean;
-  /** The value the Full/Follow control shows: live mode when active, else the resume memory. */
-  toggleMode: SyncActiveMode;
+  /**
+   * The resolved per-machine mode the selector shows. `off` is the product's
+   * "Manual" — nothing moves on a timer, but the manual actions still run.
+   */
+  mode: SyncMode;
   confirmOpen: boolean;
   setConfirmOpen: (open: boolean) => void;
   /** Drives the confirm dialog variant ('follow' vs 'full'); null when idle. */
   pendingMode: ConfirmableMode | null;
-  /** Unpushed commits disclosed on a full→follow downgrade confirm (0 otherwise). */
+  /** Unpushed commits disclosed on a full to follow downgrade confirm (0 otherwise). */
   strandedCommitCount: number;
-  /** Header Switch handler: on = resume into `toggleMode`, off = pause. */
-  onToggleActive: (next: boolean) => void;
-  /** Full/Follow control handler. */
-  onModeSelect: (next: SyncActiveMode) => void;
+  /** Mode selector handler. */
+  onModeSelect: (next: SyncMode) => void;
   onConfirm: () => void;
 }
 
 /**
- * Sync controls for the badge popover, where the header Switch means
- * active-vs-paused (not a mode) and a separate Full/Follow control sets the
- * mode. Pausing persists as `mode: 'off'` plus a remembered `resumeMode`, so an
- * older app reads a paused project as not-syncing (never pushes) while this app
- * can restore the prior mode. Entering `full` (which pushes) always confirms;
- * resuming into or staying on `pull` never pushes, so it applies immediately.
- * While paused, changing the Full/Follow control only updates the resume memory
- * — nothing syncs until the Switch is turned back on.
+ * Sync-mode controls for the badge popover's three-way selector: Manual
+ * (`off`), Auto pull-only (`follow`), Auto push-and-pull (`full`).
+ *
+ * Manual is a resting mode, not an opt-out: the engine schedules nothing, but
+ * the popover's Pull / Push / Pull-and-Push actions still run one-shot cycles.
+ * That is why this hook no longer writes `resumeMode` — the old design stored a
+ * paused project as `off` plus a memory of which mode to resume into, because
+ * `off` had no affordances of its own. Manual has its own, so the memory has
+ * nothing left to remember. Configs written by an older build still carry the
+ * key; it is inert (`resolveLocalAutoSyncMode` never reads it) and every write
+ * here clears it.
+ *
+ * Selecting Manual applies immediately — standing an automation down never
+ * pushes or rewrites the tree. Selecting either auto mode crosses a consent
+ * boundary (`full` starts pushing on a timer; `follow` strands any unpushed
+ * commits), so both confirm.
  */
 export function useBadgeSyncControls(
   autoSync:
@@ -335,11 +364,7 @@ export function useBadgeSyncControls(
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingMode, setPendingMode] = useState<ConfirmableMode | null>(null);
 
-  const localMode = resolveLocalAutoSyncMode(autoSync) ?? 'off';
-  const active = localMode === 'follow' || localMode === 'full';
-  const paused = isSyncPaused(autoSync);
-  const everEnabled = hasEverEnabledSync(autoSync);
-  const toggleMode = displayActiveMode(autoSync);
+  const mode = resolveLocalAutoSyncMode(autoSync) ?? 'off';
 
   function apply(patch: AutoSyncPatch): boolean {
     if (writer === null) {
@@ -356,36 +381,13 @@ export function useBadgeSyncControls(
     return true;
   }
 
-  function onToggleActive(next: boolean) {
-    if (next) {
-      // Resume into the remembered mode. Full pushes, so it confirms; pull does
-      // not, so it applies immediately (the user consented before pausing).
-      if (toggleMode === 'full') {
-        setPendingMode('full');
-        setConfirmOpen(true);
-        return;
-      }
-      apply({ mode: 'follow', enabled: null, resumeMode: null });
+  function onModeSelect(next: SyncMode) {
+    if (next === mode) return;
+    if (next === 'off') {
+      // Standing the timer down is the safe direction — apply immediately.
+      apply({ mode: 'off', enabled: null, resumeMode: null });
       return;
     }
-    // Pause: store 'off' (so an old app never pushes) and remember the mode.
-    apply({
-      mode: 'off',
-      enabled: null,
-      resumeMode: active ? (localMode as SyncActiveMode) : toggleMode,
-    });
-  }
-
-  function onModeSelect(next: SyncActiveMode) {
-    if (next === toggleMode) return;
-    if (!active) {
-      // Paused/off: just remember which mode to resume into — nothing syncs yet,
-      // so no push and no confirmation.
-      apply({ resumeMode: next });
-      return;
-    }
-    // Active: entering full pushes; downgrading full→follow strands unpushed
-    // commits — both cross a consent boundary, so confirm.
     setPendingMode(next);
     setConfirmOpen(true);
   }
@@ -399,15 +401,11 @@ export function useBadgeSyncControls(
   }
 
   return {
-    active,
-    paused,
-    everEnabled,
-    toggleMode,
+    mode,
     confirmOpen,
     setConfirmOpen,
     pendingMode,
     strandedCommitCount: pendingMode === 'follow' ? aheadCount : 0,
-    onToggleActive,
     onModeSelect,
     onConfirm,
   };

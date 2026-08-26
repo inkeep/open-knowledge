@@ -33,7 +33,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED } from './_helpers/platform-gate';
@@ -167,8 +167,17 @@ type MissState = {
   phase: string | null;
   verdict: string | null;
   hasEditor: boolean;
+  hash: string;
   bodyText: string;
 };
+
+/**
+ * Filename without its `.md` extension — the part of the share target that would
+ * appear in the receiver's hash had it navigated there.
+ */
+function docStem(docPath: string): string {
+  return basename(docPath, '.md');
+}
 
 async function expectDeletedTargetMiss(
   fixture: MissFixture,
@@ -207,9 +216,16 @@ async function expectDeletedTargetMiss(
 
   // Poll every window until one resolves the miss DIALOG. A known-missing
   // target shows the honest verdict as a modal WITHOUT navigating to the dead
-  // path, so `hasEditor === false` alongside the resolved dialog is the "never
-  // create-mode fork" proof — the receiver never landed in an editor at the
-  // shared path.
+  // path, so the "never create-mode fork" proof is two-part: the hash never
+  // reaches the shared target, and no DOCUMENT editor is mounted.
+  //
+  // A bare `.ProseMirror` query is NOT that second half. The Ask-AI composer
+  // (`ComposerMentionInput`) is its own ProseMirror instance and mounts as part
+  // of the ordinary shell — including the empty state a receiver whose branch
+  // carries no docs lands on — so it matches whether or not a document was ever
+  // opened, and whether it has mounted yet is a race against the verdict fetch.
+  // `:not(.composer-prosemirror)` is what the sibling smokes use to mean "the
+  // document editor, not a composer".
   let resolved: MissState | null = null;
   await expect(async () => {
     for (const page of app.windows()) {
@@ -219,7 +235,8 @@ async function expectDeletedTargetMiss(
           return {
             phase: dialog?.getAttribute('data-phase') ?? null,
             verdict: dialog?.getAttribute('data-verdict') ?? null,
-            hasEditor: !!document.querySelector('.ProseMirror'),
+            hasEditor: !!document.querySelector('.ProseMirror:not(.composer-prosemirror)'),
+            hash: window.location.hash,
             bodyText: document.body?.innerText ?? '',
           };
         })
@@ -236,6 +253,10 @@ async function expectDeletedTargetMiss(
   const outcome: MissState = resolved;
   expect(outcome.verdict).toBe('deleted');
   expect(outcome.hasEditor).toBe(false);
+  // Decode first: the hash percent-encodes the whole path, so a stem holding a
+  // space or non-ASCII would not appear in it verbatim. Decoding makes the check
+  // independent of the encoding rather than of today's alphanumeric fixtures.
+  expect(decodeURIComponent(outcome.hash)).not.toContain(docStem(fixture.docPath));
   expect(outcome.bodyText).toContain('removed from branch');
 }
 

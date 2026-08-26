@@ -171,7 +171,7 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
         kind="doc"
       />,
     );
-    expect(screen.getByRole('button', { name: 'Enable auto-sync' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' })).not.toBeNull();
     const link = screen.getByRole('link', { name: /How to push manually/ }) as HTMLAnchorElement;
     expect(link.getAttribute('href')).toBe('https://git-scm.com/docs/git-push');
   });
@@ -187,14 +187,14 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
     );
     // The row CTA opens the off → on confirmation gate rather than navigating
     // the sender away to the settings surface.
-    fireEvent.click(screen.getByRole('button', { name: 'Enable auto-sync' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     const dialog = screen.getByRole('dialog');
     expect(window.location.hash).toBe('');
     expect(autoSyncWrites).toEqual([]); // nothing written until the user confirms
 
     // Confirming the gate enables auto-sync in place via the project-local
     // config binding.
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable auto-sync' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Enable Auto (Pull and Push)' }));
     expect(autoSyncWrites).toEqual([true]);
   });
 
@@ -207,7 +207,7 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
       />,
     );
     expect(screen.getByRole('button', { name: 'Sync now' })).not.toBeNull();
-    expect(screen.queryByRole('button', { name: 'Enable auto-sync' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enable Auto (Pull and Push)' })).toBeNull();
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
   });
 
@@ -307,7 +307,7 @@ describe('ShareFreshnessWarning — recovery CTAs (FR4/FR5)', () => {
         kind="doc"
       />,
     );
-    expect(screen.queryByRole('button', { name: 'Enable auto-sync' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enable Auto (Pull and Push)' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
   });
@@ -332,7 +332,7 @@ describe('ShareFreshnessWarning — empty folder', () => {
     expect(text).not.toContain("isn't on GitHub yet");
     expect(text).not.toContain("hasn't synced to GitHub yet");
     // Every CTA is a dead end for a folder git cannot represent.
-    expect(screen.queryByRole('button', { name: 'Enable auto-sync' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enable Auto (Pull and Push)' })).toBeNull();
     expect(screen.queryByRole('link', { name: /How to push manually/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
   });

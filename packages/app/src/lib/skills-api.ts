@@ -326,6 +326,9 @@ export async function importSkill(input: {
   | {
       ok: true;
       name: string;
+      /** Home-relative path to the imported SKILL.md (fresh imports only) -
+       *  lets the caller open the skill with zero skills-list round-trips. */
+      path?: string;
       alreadyImported: boolean;
       collisionRenamedFrom?: string;
       warnings: string[];
@@ -361,6 +364,7 @@ export async function importSkill(input: {
     }
     const payload = (await res.json().catch(() => null)) as {
       name?: string;
+      path?: string;
       alreadyImported?: boolean;
       collisionRenamedFrom?: string;
       warnings?: string[];
@@ -375,6 +379,12 @@ export async function importSkill(input: {
     return {
       ok: true,
       name: payload.name,
+      // Only a FRESH import's path is trusted for direct opens: the
+      // already-imported branch reports a name-relative shape, and that
+      // skill is in the list anyway.
+      ...(typeof payload.path === 'string' && payload.alreadyImported !== true
+        ? { path: payload.path }
+        : {}),
       alreadyImported: payload?.alreadyImported ?? false,
       collisionRenamedFrom: payload?.collisionRenamedFrom,
       warnings: payload?.warnings ?? [],
@@ -617,6 +627,26 @@ export async function moveSkill(input: {
   }
 }
 
+/**
+ * GET `/api/skill` — resolve where a skill's bundle CURRENTLY lives (its
+ * `SKILL.md` path, scope-relative), or null when it can't be read. Exists for
+ * the post-install redirect: an install toggle can relocate a just-imported
+ * bundle, so the import-time path report goes stale — and the skills LIST is
+ * the one read that lags by seconds on large content roots, so re-resolving
+ * must not ride it. This detail read is per-skill and fast.
+ */
+export async function getSkillCurrentPath(scope: SkillScope, name: string): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ name, scope });
+    const res = await fetch(`/api/skill?${params.toString()}`);
+    if (!res.ok) return null;
+    const detail = (await res.json().catch(() => null)) as { skill?: { path?: string } } | null;
+    return typeof detail?.skill?.path === 'string' ? detail.skill.path : null;
+  } catch {
+    return null;
+  }
+}
+
 /** DELETE `/api/skill` — remove `<root>/.ok/skills/<name>/`. */
 export async function deleteSkill(
   scope: SkillScope,
@@ -738,38 +768,6 @@ export async function deleteSkillFile(input: {
     const payload = (await res.json().catch(() => null)) as { existed?: boolean } | null;
     emitSkillsChanged();
     return { ok: true, existed: payload?.existed ?? false };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/** One bundled file beside a skill's `SKILL.md`, with inline read-only text. */
-export interface SkillBundledFile {
-  path: string;
-  /** Inline UTF-8 text, or `null` for a binary / oversize file. */
-  text: string | null;
-}
-
-/**
- * GET `/api/skill` — read a skill's bundled files (`scripts/`, `reference/`,
- * assets) as read-only text. The skill is a folder, so this surfaces what it
- * ships beside `SKILL.md` for browsing; scripts come back as TEXT, never an
- * executable byte stream.
- */
-export async function getSkillBundledFiles(
-  scope: SkillScope,
-  name: string,
-  /** Which same-named bundle to list. Omitted = the by-name default. */
-  host?: string,
-): Promise<WriteResult<{ files: SkillBundledFile[] }>> {
-  try {
-    const params = new URLSearchParams({ name, scope, ...(host ? { host } : {}) });
-    const res = await fetch(`/api/skill?${params.toString()}`);
-    if (!res.ok) return { ok: false, error: await readErrorBody(res) };
-    const detail = (await res.json().catch(() => null)) as {
-      skill?: { files?: SkillBundledFile[] };
-    } | null;
-    return { ok: true, files: detail?.skill?.files ?? [] };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

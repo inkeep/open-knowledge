@@ -27,6 +27,7 @@ import { classifyGitError } from './error-classification.ts';
 import { applyExternalChange } from './external-change.ts';
 import type {
   CheckPushPermissionOptions,
+  DetectGhAccountsFn,
   DetectGhFn,
   ProbeTokenStore,
   PushPermission,
@@ -3609,6 +3610,7 @@ describe('createServer() — push-permission auth wiring', () => {
         return { token: `store-token-for-${host}` };
       },
     };
+    const detectGhAccountsStub: DetectGhAccountsFn = () => [{ login: 'stub', active: true }];
 
     // Capture every probe-call's `opts.detectGh` + `opts.tokenStore`.
     const probeCalls: CheckPushPermissionOptions[] = [];
@@ -3624,6 +3626,7 @@ describe('createServer() — push-permission auth wiring', () => {
       debounce: 60_000,
       destroyTimeoutMs: 1_000,
       detectGh: detectGhStub,
+      detectGhAccounts: detectGhAccountsStub,
       tokenStore: tokenStoreStub,
       checkPushPermissionFn: probeSpy,
     });
@@ -3644,6 +3647,7 @@ describe('createServer() — push-permission auth wiring', () => {
       // intercepted and replaced them, which would silently break gh-token
       // resolution under any future `host` param shape.
       expect(firstCall.detectGh).toBe(detectGhStub);
+      expect(firstCall.detectGhAccounts).toBe(detectGhAccountsStub);
       expect(firstCall.tokenStore).toBe(tokenStoreStub);
       // The probe call shape must also carry owner/repo parsed from origin.
       expect(firstCall.owner).toBe('inkeep');

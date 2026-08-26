@@ -1,6 +1,6 @@
 /**
- * `open-knowledge status` — human-readable inspection of the server / ui
- * lockfile state.
+ * `open-knowledge status` — whether the server and UI are running for this
+ * project, derived entirely from the server lockfile.
  *
  * Exits 0 regardless of whether processes are live; this is a pure query
  * command. Prints formatted text by default, JSON with `--json`.
@@ -20,9 +20,8 @@ interface StatusEntry {
   /** Resolved `alive` verdict — `true` for local-live locks, `false` for
    *  `missing` / `dead-pid` / `corrupt`, `'unknown'` for foreign-host. */
   alive: boolean | 'unknown';
-  /** UI only: the UI is served by the project server itself (single-listener
-   *  default — server.lock advertises the `ui` capability and no ui.lock
-   *  exists), rather than by a separate `ok ui` sibling. */
+  /** UI only: true when the project server itself serves the UI —
+   *  `server.lock` advertises the `ui` capability. */
   servedByServer?: boolean;
 }
 
@@ -34,11 +33,11 @@ interface StatusReport {
 export function buildStatusReport(server: LockState): StatusReport {
   const serverEntry = summarize('server', server);
   // Single-listener topology: plain `ok start` serves the UI from the project
-  // server and writes NO ui.lock, so the ui row is derived entirely from
-  // server.lock's `ui` capability via the shared `lockAdvertisesUi` predicate
-  // (a missing `capabilities` field on a pre-v2 server is treated as ui-capable,
-  // matching preview_url / the redirect). A bare `--only server` boot advertises
-  // no `ui`, so its ui row is correctly empty.
+  // server, so the ui row is derived entirely from server.lock's `ui` capability
+  // via the shared `lockAdvertisesUi` predicate (a missing `capabilities` field
+  // on a pre-v2 server is treated as ui-capable, matching preview_url / the
+  // redirect). A bare `--only server` boot advertises no `ui`, so its ui row is
+  // correctly empty.
   const uiEntry: StatusEntry =
     server.status === 'alive' && lockAdvertisesUi(server.lock)
       ? {
@@ -140,7 +139,7 @@ export function runStatus(deps: RunStatusDeps): StatusReport {
 
 export function statusCommand(getConfig: () => Config): Command {
   return new Command('status')
-    .description('Show live state of the server + ui lockfiles for this project')
+    .description('Show whether the server and UI are running for this project')
     .option('--json', 'Emit structured JSON instead of formatted text')
     .action((opts: { json?: boolean }) => {
       // Lock anchor is the project root (cwd for the CLI), not contentDir —

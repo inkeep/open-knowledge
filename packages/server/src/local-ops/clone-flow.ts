@@ -27,6 +27,8 @@ import {
 import { emitPreflightFailureSpan } from '../git-preflight-telemetry.ts';
 import { expandTilde, isAllowedGitUrl, isSafeLocalPath } from '../local-op-security.ts';
 import { getLogger } from '../logger.ts';
+import { redactShareSubprocessStderr } from '../share/publish.ts';
+import { MAX_DETAIL_LEN } from './clone-error-classify.ts';
 import { runSubprocess } from './subprocess.ts';
 
 const log = getLogger('clone-flow');
@@ -200,7 +202,16 @@ export function runCloneSubprocess(opts: RunCloneOptions): RunCloneController {
       return;
     }
     if (result.code !== 0) {
-      const detail = result.stderr ? ` — ${result.stderr}` : '';
+      // Redacted AND capped: this event is forwarded verbatim to the renderer,
+      // where it becomes a clone toast and the share-receive error panel — so
+      // a credential must never reach it, and a git crash dump must not push
+      // the load-bearing first line out of view. Emptiness is decided on the
+      // REDACTED value, not the raw one: whitespace-only stderr would
+      // otherwise leave a dangling "… — " with nothing after it.
+      const redacted = redactShareSubprocessStderr(result.stderr ?? '')
+        .trim()
+        .slice(0, MAX_DETAIL_LEN);
+      const detail = redacted.length > 0 ? ` — ${redacted}` : '';
       opts.onEvent({
         type: 'error',
         message: `Clone process exited with code ${result.code ?? -1}${detail}`,

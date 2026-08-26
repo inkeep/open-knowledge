@@ -325,3 +325,54 @@ describe('scope-move window', () => {
     ]);
   });
 });
+
+describe('computeSkillTabReconcile round-trip (project -> global -> project)', () => {
+  // The field failure this pins: move a skill out and back in one session and
+  // the row went dead. Each hop must be a RETARGET, never a close, and the
+  // final state must be a no-op against the tab that followed the skill home.
+  test('outbound hop retargets the open tab to the global doc', () => {
+    const actions = computeSkillTabReconcile(
+      ['.agents/skills/demo/SKILL'],
+      [{ scope: 'global', name: 'demo', path: '.agents/skills/demo/SKILL.md' }],
+    );
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      kind: 'retarget',
+      fromDocName: '.agents/skills/demo/SKILL',
+    });
+  });
+
+  test('return hop retargets the global tab back to the project doc', () => {
+    const actions = computeSkillTabReconcile(
+      ['__skill__/global/demo'],
+      [{ scope: 'project', name: 'demo', path: '.agents/skills/demo/SKILL.md' }],
+    );
+    expect(actions).toHaveLength(1);
+    expect(actions[0]).toMatchObject({
+      kind: 'retarget',
+      fromDocName: '__skill__/global/demo',
+      toDocName: '.agents/skills/demo/SKILL',
+    });
+  });
+
+  test('after the return hop settles, the followed tab is untouched — never closed', () => {
+    const actions = computeSkillTabReconcile(
+      ['.agents/skills/demo/SKILL'],
+      [{ scope: 'project', name: 'demo', path: '.agents/skills/demo/SKILL.md' }],
+    );
+    expect(actions).toEqual([]);
+  });
+
+  test('a mid-flight snapshot with the skill at NEITHER scope defers while a write is pending', () => {
+    // Between the delete half and the create half of a move, a stale list has
+    // the skill nowhere. With the write marked pending the tab must survive;
+    // closing here is how "moved it and now it is gone" happens.
+    const actions = computeSkillTabReconcile(['.agents/skills/demo/SKILL'], [], () => true);
+    expect(actions).toEqual([]);
+  });
+
+  test('the same mid-flight snapshot with NO pending write closes (delete semantics preserved)', () => {
+    const actions = computeSkillTabReconcile(['.agents/skills/demo/SKILL'], [], () => false);
+    expect(actions).toEqual([{ kind: 'close', docName: '.agents/skills/demo/SKILL' }]);
+  });
+});

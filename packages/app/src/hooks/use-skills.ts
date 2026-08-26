@@ -131,6 +131,44 @@ function fetchSkillsShared(): Promise<unknown> {
   return pending;
 }
 
+/**
+ * Resolve once the SHARED skills cache contains `(scope, name)`, or after
+ * `timeoutMs`. Reads only in-memory state fed by the coalesced pipeline and
+ * kicks at most the single-flight shared fetch - it NEVER issues its own scan,
+ * because `/api/skills` is the stall-prone full-roots walk and an independent
+ * polling loop against it is the request-storm shape this module exists to
+ * prevent. The cache is written by mounted `useSkills` consumers; with none
+ * mounted the wait simply times out, which callers must treat as "release your
+ * guard anyway".
+ */
+export function whenSkillsListContains(
+  scope: SkillsListEntry['scope'],
+  name: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  const hit = () => lastKnownSkills?.some((s) => s.scope === scope && s.name === name) === true;
+  if (hit()) return Promise.resolve();
+  void fetchSkillsShared().catch(() => {});
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const settle = () => {
+      clearInterval(timer);
+      unsub();
+      resolve();
+    };
+    const timer = setInterval(() => {
+      if (hit() || Date.now() >= deadline) settle();
+    }, 250);
+    // A skills-changed signal means a write landed; re-kick the COALESCED
+    // fetch (free when one is already in flight) so the cache converges even
+    // between the interval ticks.
+    const unsub = subscribeToSkillsChanged(() => {
+      void fetchSkillsShared().catch(() => {});
+      if (hit()) settle();
+    });
+  });
+}
+
 export function useSkills(options?: { enabled?: boolean }): AsyncState<readonly SkillsListEntry[]> {
   // `enabled: false` keeps the hook mounted (and subscribed) but skips the
   // `/api/skills` fetch — for consumers that only need the list under a

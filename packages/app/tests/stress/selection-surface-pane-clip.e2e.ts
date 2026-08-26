@@ -216,13 +216,20 @@ function expectInsideVisibleRegionHorizontally(geometry: SurfaceGeometry, label:
   ).toBe(true);
 }
 
+/**
+ * The vertical half of the containment contract, complementary to
+ * `expectInsideVisibleRegionHorizontally`. The name predates the horizontal
+ * sibling and reads as the two-axis superset it is not, so the failure message
+ * names the axis — several tests now call both side by side, and a report that
+ * said only "escaped the region" would leave the reader to infer which one.
+ */
 function expectInsideVisibleRegion(geometry: SurfaceGeometry, label: string): void {
   const inside =
     geometry.top >= geometry.regionTop - REGION_TOLERANCE_PX &&
     geometry.bottom <= geometry.regionBottom + REGION_TOLERANCE_PX;
   expect(
     !geometry.visible || inside,
-    `${label} escaped the editor's visible content region: rendered ` +
+    `${label} escaped the editor's visible content region vertically: rendered ` +
       `${geometry.top}–${geometry.bottom}, region ${geometry.regionTop}–${geometry.regionBottom}`,
   ).toBe(true);
 }
@@ -1027,6 +1034,257 @@ test('comment composer stays inside the pane when anchored at the text column le
 });
 
 /**
+ * The pane NARROWER than the surface anchored in it.
+ *
+ * Everything above turns on WHERE a surface is put. This turns on how WIDE it
+ * is: `shift()` relocates but cannot shrink, and its clamp can satisfy both
+ * pane edges only while the surface fits between them. A surface with a fixed
+ * width overhangs a narrower pane from every coordinate the clamp could pick,
+ * so a boundary-aware chain still paints it on the neighbour — the escape the
+ * position fix could not reach.
+ *
+ * In the product the narrowing is a docked session panel: dragging the
+ * terminal's (or the agents rail's) handle inward takes the editor column down
+ * to its 5% floor while the bar keeps its ~450px of controls. Neither dock
+ * exists on the web host these tests run against — the terminal needs a pty —
+ * so the window is the lever that reaches the same geometry. It is the same
+ * lever either way: every assertion here is a function of the pane's own
+ * width, never of what occupies the space beyond it.
+ *
+ * TWO of the cap's three consumers are covered here, and the omission is a
+ * reachability limit rather than an oversight: at `MIN_VIEWPORT_WIDTH_PX` the
+ * pane bottoms out around 300px, which is still wider than a lint callout, so
+ * that surface has no overhang for an arm to contain. Its cap is pinned at the
+ * producer tier in `editor-visible-region.dom.test.tsx` instead. Give the
+ * window lever more room — a real dock, or a host that lays out narrower — and
+ * an arm for it belongs here beside these.
+ */
+
+/**
+ * Shrink the window until the editor pane is about `targetPaneWidthPx` wide.
+ *
+ * Derives the window width from the CURRENT chrome rather than hardcoding one,
+ * so a sidebar or gutter change moves the window instead of quietly widening
+ * the pane back out of the regime under test — the failure mode that turns a
+ * containment test into a tautology. `expectPaneNarrowerThan` is the assertion
+ * that catches it if a responsive breakpoint defeats this anyway.
+ */
+async function narrowPaneTo(page: Page, targetPaneWidthPx: number): Promise<void> {
+  const initial = page.viewportSize();
+  if (!initial) throw new Error('narrowPaneTo: no viewport to resize');
+  // Converge instead of solving for the window once. The chrome beside the
+  // pane is not a constant: the sidebar collapses to an icon rail below its
+  // own breakpoint and HANDS ITS WIDTH BACK to the editor, so a single
+  // `window = chrome + target` lands the pane wider than it started. Each
+  // round re-measures the chrome the app actually has at that width.
+  for (let round = 0; round < 6; round += 1) {
+    const paneWidth = await readPaneWidth(page);
+    // Sub-pixel slack: the window is set in whole pixels, so the pane lands a
+    // fraction wide of an exactly-computed target and an exact comparison
+    // never terminates.
+    if (paneWidth <= targetPaneWidthPx + 1) {
+      await nextLayoutFrame(page);
+      return;
+    }
+    const viewport = page.viewportSize();
+    if (!viewport) throw new Error('narrowPaneTo: viewport disappeared mid-resize');
+    const chromeWidth = viewport.width - paneWidth;
+    await page.setViewportSize({
+      width: Math.max(MIN_VIEWPORT_WIDTH_PX, Math.round(chromeWidth + targetPaneWidthPx) - 1),
+      height: initial.height,
+    });
+    await waitForPaneWidthSettled(page);
+  }
+  throw new Error(
+    `narrowPaneTo: pane still ${await readPaneWidth(page)}px after 6 rounds, wanted ` +
+      `<= ${targetPaneWidthPx}px`,
+  );
+}
+
+/**
+ * Wait until the pane's width stops moving.
+ *
+ * Stability rather than "it changed": the pane is a `react-resizable-panels`
+ * member whose relayout is driven by a ResizeObserver on the group, so it
+ * still reads the pre-resize width for several frames — but a round that
+ * lands on the width it already had is a legitimate convergence, and a
+ * must-have-changed predicate would fail there instead of finishing.
+ */
+async function waitForPaneWidthSettled(page: Page): Promise<void> {
+  let previous: number | null = null;
+  await expect
+    .poll(
+      async () => {
+        const current = Math.round(await readPaneWidth(page));
+        const settled = current === previous;
+        previous = current;
+        return settled;
+      },
+      { timeout: 10_000, intervals: [100, 100, 200] },
+    )
+    .toBe(true);
+}
+
+/**
+ * Floor for the converging resize — the narrowest viewport the app is expected
+ * to lay out in. A pane that still will not shrink at this width is a layout
+ * finding rather than a test that needs a smaller window, so the loop reports
+ * it instead of shrinking further.
+ *
+ * It is also the ceiling on how narrow a pane these tests can construct, which
+ * is why the group covers the bar and the comment composer but not the lint
+ * callout: at this floor the pane is still wider than a callout, so there is
+ * no overhang to contain. The callout's cap is pinned at the producer tier in
+ * `editor-visible-region.dom.test.tsx` instead.
+ */
+const MIN_VIEWPORT_WIDTH_PX = 320;
+
+/**
+ * Narrow the pane as far as the app's own layout allows.
+ *
+ * The narrow-pane arms want the widest overhang they can get, and the floor
+ * is the app's, not a number this file should guess: `narrowPaneTo` converges
+ * against whatever chrome the layout keeps at each width and stops at
+ * `MIN_VIEWPORT_WIDTH_PX`. Asking for zero and swallowing the resulting
+ * "could not reach it" is how we ask for that floor without restating it.
+ * `expectPaneNarrowerThan` is what then proves the floor was low enough for
+ * the surface under test.
+ */
+async function narrowPaneAsFarAsPossible(page: Page): Promise<void> {
+  await narrowPaneTo(page, 0).catch(() => {});
+}
+
+/**
+ * How far below the scroll container's top the selection is parked once the
+ * pane has been narrowed.
+ *
+ * Narrowing reflows the prose, so the selected block ends up somewhere else —
+ * often below the region's floor, where `hide()` correctly blanks the bar and
+ * the containment assertion would pass on nothing. A plain
+ * `scrollIntoView()` is not enough either: it settles the block against the
+ * nearest edge, which is under the Ask AI composer's band. This inset clears
+ * the toolbar band at the top and the composer band at the bottom by more
+ * than a bar height on a 720px-tall window.
+ */
+const SELECTION_MID_PANE_INSET_PX = 200;
+
+/** Width of the painted editor scroll container. */
+async function readPaneWidth(page: Page): Promise<number> {
+  return page.evaluate((scrollerSel) => {
+    const scroller = Array.from(document.querySelectorAll(scrollerSel)).find(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && element.getClientRects().length > 0,
+    );
+    if (!scroller) throw new Error('readPaneWidth: no painted scroll container');
+    return scroller.getBoundingClientRect().width;
+  }, SCROLLER);
+}
+
+/**
+ * Assert the pane really is too narrow to host the surface at its natural
+ * width. Without this the containment assertions pass on a pane that never
+ * squeezed anything, and the whole group goes quietly green the day the
+ * surface loses a control or the chrome gains one.
+ */
+function expectPaneNarrowerThan(
+  geometry: SurfaceGeometry,
+  naturalWidthPx: number,
+  label: string,
+): void {
+  const regionWidth = geometry.regionRight - geometry.regionLeft;
+  expect(
+    regionWidth,
+    `${label}: the pane (${regionWidth}px) must be narrower than the surface's natural ` +
+      `width (${naturalWidthPx}px) for the width cap to be under test`,
+  ).toBeLessThan(naturalWidthPx);
+}
+
+/** The surface's width with no pane cap biting — measured, never assumed. */
+async function readNaturalSurfaceWidth(page: Page, testId: string): Promise<number> {
+  const geometry = await readSurfaceGeometry(page, testId);
+  expect(geometry.visible, 'surface must be on screen to measure its natural width').toBe(true);
+  return geometry.right - geometry.left;
+}
+
+test('bubble bar stays inside a pane narrower than the bar', async ({ page, api }) => {
+  await openTallDoc(page, api, 'clip-bar-narrow');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, BUBBLE_BAR);
+  await narrowPaneAsFarAsPossible(page);
+  // Re-anchor: narrowing reflows the prose, so the block the selection lives
+  // in leaves the visible region, at which point `hide()` fires and the
+  // containment assertion passes vacuously on an invisible bar.
+  await parkSelectionTopAtPaneInset(page, SELECTION_MID_PANE_INSET_PX);
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const geometry = await readSurfaceGeometry(page, BUBBLE_BAR);
+  expect(geometry.present, 'bubble bar still mounted').toBe(true);
+  expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar');
+  await expectAnchorInsideRegionHorizontally(page, geometry);
+  expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane)');
+  // The cap buys width with HEIGHT: the bar only fits because it wraps to a
+  // second row. That makes the vertical arm part of this contract rather than
+  // a duplicate of the tests above — a wrapped bar tall enough to clear the
+  // region would be the cap's own regression.
+  expectInsideVisibleRegion(geometry, 'bubble bar (narrow pane)');
+});
+
+test('bubble bar stays inside a narrow pane when the plugin repositions it', async ({
+  page,
+  api,
+}) => {
+  await openTallDoc(page, api, 'clip-bar-narrow-plugin');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, BUBBLE_BAR);
+  await narrowPaneAsFarAsPossible(page);
+  await parkSelectionTopAtPaneInset(page, SELECTION_MID_PANE_INSET_PX);
+  await waitForSurfaceSettled(page, BUBBLE_BAR);
+
+  // The plugin fixes `size` after `shift` in an array we cannot reorder, so
+  // this arm is what proves the cap is stated on BOTH writers rather than
+  // inherited from whichever one happened to run last.
+  const written = await repositionViaPluginPath(page);
+
+  const geometry = await readSurfaceGeometry(page, BUBBLE_BAR);
+  expect(geometry.present, 'bubble bar still mounted').toBe(true);
+  expectGeometryIsThePluginsWrite(written, geometry, 'bubble bar in a narrow pane');
+  expectPaneNarrowerThan(geometry, naturalWidth, 'bubble bar (plugin pass)');
+  await expectAnchorInsideRegionHorizontally(page, geometry);
+  expectInsideVisibleRegionHorizontally(geometry, 'bubble bar (narrow pane, plugin pass)');
+  expectInsideVisibleRegion(geometry, 'bubble bar (narrow pane, plugin pass)');
+});
+
+test('comment composer stays inside a pane narrower than the card', async ({ page, api }) => {
+  await openTallDoc(page, api, 'clip-composer-narrow');
+  await selectSingleMarker(page, blockMarker(40));
+  await expect(page.getByTestId(BUBBLE_BAR)).toBeVisible();
+
+  await page.getByTestId('comment-bubble-button').click();
+  await expect(page.getByTestId(COMMENT_COMPOSER)).toBeVisible();
+  await waitForSurfaceSettled(page, COMMENT_COMPOSER);
+
+  const naturalWidth = await readNaturalSurfaceWidth(page, COMMENT_COMPOSER);
+  await narrowPaneAsFarAsPossible(page);
+  await waitForSurfaceSettled(page, COMMENT_COMPOSER);
+
+  const geometry = await readSurfaceGeometry(page, COMMENT_COMPOSER);
+  expect(geometry.present, 'comment composer still mounted').toBe(true);
+  // `expectInsideVisibleRegionHorizontally` short-circuits on an unpainted
+  // surface, so without this the arm would pass vacuously the day the card
+  // stops rendering here rather than reporting that it had escaped.
+  expect(geometry.visible, 'composer must be on screen for containment to bite').toBe(true);
+  expectPaneNarrowerThan(geometry, naturalWidth, 'comment composer');
+  expectInsideVisibleRegionHorizontally(geometry, 'comment composer (narrow pane)');
+  expectInsideVisibleRegion(geometry, 'comment composer (narrow pane)');
+});
+
+/**
  * The same contract at the two remaining editor-anchored floating surfaces:
  * the suggestion picker (slash / wiki-link / tag) and the markdown-lint hover
  * callout. Both are body-appended, `position: fixed`, and anchored to a
@@ -1044,7 +1302,8 @@ test('comment composer stays inside the pane when anchored at the text column le
  * the rail beside it.
  */
 
-const SUGGESTION_POPUP = '[data-suggestion-popup="slash-command"]';
+const SLASH_PICKER = '[data-suggestion-popup="slash-command"]';
+const SUGGESTION_POPUP = SLASH_PICKER;
 const LINT_CALLOUT = '.ok-lint-tooltip';
 
 /**
@@ -1143,9 +1402,65 @@ async function placeCaretNearPaneRight(page: Page, marker: string, insetPx: numb
  * mid-word never opens anything and the test would fail on setup.
  */
 async function openSuggestionPicker(page: Page): Promise<void> {
-  await page.keyboard.type(' /');
-  await page.locator(SUGGESTION_POPUP).waitFor({ state: 'visible', timeout: 10_000 });
-  await waitForFloatingSurfaceSettled(page, SUGGESTION_POPUP);
+  await openPicker(page, SLASH_PICKER);
+}
+
+/**
+ * Every picker that rides the shared middleware, with the characters that
+ * summon it. Parameterised rather than one arm for the slash menu, because the
+ * three do NOT degrade alike: the slash menu's columns are flex items that
+ * shrink under the cap on their own, while the other two render a block root
+ * carrying a fixed `width`, which a `max-width` on the portaled wrapper cannot
+ * shrink. A group that only exercised the flex shape would go green while the
+ * other two kept overhanging.
+ */
+const PICKERS = [
+  { label: 'slash', trigger: ' /', selector: '[data-suggestion-popup="slash-command"]' },
+  {
+    label: 'wiki-link',
+    trigger: ' [[',
+    selector: '[data-suggestion-popup="wiki-link-suggestion"]',
+  },
+  { label: 'tag', trigger: ' #', selector: '[data-suggestion-popup="tag-suggestion"]' },
+] as const;
+
+async function openPicker(page: Page, selector: string, trigger = ' /'): Promise<void> {
+  await page.keyboard.type(trigger);
+  await page.locator(selector).waitFor({ state: 'visible', timeout: 10_000 });
+  await waitForFloatingSurfaceSettled(page, selector);
+}
+
+/**
+ * The widest box the picker actually PAINTS — the wrapper unioned with every
+ * descendant.
+ *
+ * `readFloatingSurfaceGeometry` reads the wrapper's own border box, and a
+ * child is free to overflow it: a block menu root with `width: 20rem` inside a
+ * wrapper capped at 287px leaves the wrapper at 287 and paints 320. Measuring
+ * the wrapper alone therefore reports containment for a picker the user can
+ * plainly see lying across the dock, which is the exact hole that let a cap
+ * inert on two of the three pickers look pinned.
+ */
+async function readPaintedPickerBox(
+  page: Page,
+  selector: string,
+): Promise<{ left: number; right: number }> {
+  return page.evaluate((sel) => {
+    const root = Array.from(document.querySelectorAll(sel)).find(
+      (element): element is HTMLElement =>
+        element instanceof HTMLElement && element.getClientRects().length > 0,
+    );
+    if (!root) throw new Error(`readPaintedPickerBox: no painted ${sel}`);
+    const boxes = [root, ...root.querySelectorAll('*')]
+      .filter(
+        (el): el is HTMLElement => el instanceof HTMLElement && el.getClientRects().length > 0,
+      )
+      .map((el) => el.getBoundingClientRect());
+    return {
+      left: Math.min(...boxes.map((b) => b.left)),
+      right: Math.max(...boxes.map((b) => b.right)),
+    };
+  }, selector);
 }
 
 /** The caret's rect, read the way the picker's virtual element reads it. */
@@ -1199,6 +1514,85 @@ test('suggestion picker stays inside the pane when opened past the middle of a l
 
   expectInsideVisibleRegionHorizontally(geometry, 'suggestion picker');
 });
+
+for (const picker of PICKERS) {
+  test(`${picker.label} picker stays inside a pane narrower than the picker`, async ({
+    page,
+    api,
+  }) => {
+    await openTallDoc(page, api, `clip-suggest-narrow-${picker.label}`);
+    await selectSingleMarker(page, blockMarker(40));
+    const before = await readFloatingSurfaceGeometry(page, picker.selector);
+    await parkCaretAtViewportY(page, before.regionTop + 40);
+    await openPicker(page, picker.selector, picker.trigger);
+    const natural = await readPaintedPickerBox(page, picker.selector);
+    const naturalWidth = natural.right - natural.left;
+    if (picker.label === 'slash') {
+      // Both columns up in a roomy pane. Asserted so the narrow-pane check
+      // below pins a TOGGLE rather than an absence that a never-rendered
+      // preview would satisfy just as well. Only the slash menu has one.
+      expect(await previewColumnCount(page), 'preview column up in a roomy pane').toBe(1);
+    }
+
+    await narrowPaneAsFarAsPossible(page);
+    // The trigger characters and the caret do not survive the reflow the
+    // resize causes, so the picker is re-opened against the narrowed pane
+    // rather than measured where it was.
+    const region = await readFloatingSurfaceGeometry(page, picker.selector);
+    await parkCaretAtViewportY(page, region.regionTop + 40);
+    await openPicker(page, picker.selector, picker.trigger);
+
+    const geometry = await readFloatingSurfaceGeometry(page, picker.selector);
+    expect(geometry.present, `${picker.label} picker still mounted`).toBe(true);
+    expect(geometry.visible, `${picker.label} picker must be on screen to bite`).toBe(true);
+    // Reachability from the two MEASURED numbers rather than a table of
+    // expected widths: `narrowPaneTo` bottoms out at whatever chrome the host
+    // keeps beside the pane, and a picker narrower than that floor has no
+    // overhang for this arm to contain however narrow the window goes — the
+    // same limit that keeps the lint callout out of the group above. Skipping
+    // says so with both numbers instead of passing on nothing, and a picker
+    // that grows past the floor starts being covered with no edit here.
+    const paneWidth = geometry.regionRight - geometry.regionLeft;
+    test.skip(
+      naturalWidth <= paneWidth,
+      `${picker.label} picker is ${naturalWidth}px, which already fits the narrowest pane ` +
+        `this host lays out (${paneWidth}px) — no overhang to contain`,
+    );
+    expectPaneNarrowerThan(geometry, naturalWidth, `${picker.label} picker`);
+
+    // The PAINTED box, not the wrapper's: a menu root carrying a fixed `width`
+    // leaves the wrapper at the cap and paints past it, which the wrapper's
+    // own rect reports as contained.
+    const painted = await readPaintedPickerBox(page, picker.selector);
+    expect(
+      painted.right,
+      `${picker.label} picker painted past the pane's right edge (${geometry.regionRight}): ` +
+        `rendered ${painted.left}-${painted.right}`,
+    ).toBeLessThanOrEqual(geometry.regionRight + REGION_TOLERANCE_PX);
+    expect(
+      painted.left,
+      `${picker.label} picker painted past the pane's left edge (${geometry.regionLeft}): ` +
+        `rendered ${painted.left}-${painted.right}`,
+    ).toBeGreaterThanOrEqual(geometry.regionLeft - REGION_TOLERANCE_PX);
+
+    if (picker.label === 'slash') {
+      // Containment alone would also be satisfied by squeezing both columns
+      // into the pane, which is what the one-column rule exists to avoid.
+      expect(await previewColumnCount(page), 'preview column dropped in a narrow pane').toBe(0);
+    }
+  });
+}
+
+/** Painted preview columns inside the suggestion picker — 0 once it goes one-column. */
+async function previewColumnCount(page: Page): Promise<number> {
+  return page.evaluate(
+    (selector) =>
+      Array.from(document.querySelectorAll(`${selector} .ok-suggestion-preview`)).filter(
+        (el) => el.getClientRects().length > 0,
+      ).length,
+    SUGGESTION_POPUP,
+  );
+}
 
 test('suggestion picker stays inside the pane when the caret sits mid-pane', async ({
   page,

@@ -97,7 +97,7 @@ export function WikiLinkSuggestionMenu({
         ref={containerRef}
         role="status"
         aria-live="polite"
-        className="w-80 max-w-[min(28rem,90vw)] rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
+        className="w-80 rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
         style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
         onMouseDown={preventFocusSteal}
       >
@@ -124,7 +124,7 @@ export function WikiLinkSuggestionMenu({
         ref={containerRef}
         role="status"
         aria-live="polite"
-        className="w-80 max-w-[min(28rem,90vw)] rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
+        className="w-80 rounded-lg border bg-popover p-2 shadow-md text-sm text-muted-foreground"
         style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
         onMouseDown={preventFocusSteal}
       >
@@ -144,7 +144,7 @@ export function WikiLinkSuggestionMenu({
       aria-activedescendant={activeDescendant}
       tabIndex={-1}
       onMouseDown={preventFocusSteal}
-      className="w-80 max-w-[min(28rem,90vw)] overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
+      className="w-80 overflow-y-auto subtle-scrollbar rounded-lg border bg-popover p-1 shadow-md"
       style={{ maxHeight: 'var(--suggestion-menu-max-height, 40vh)' }}
     >
       {/*

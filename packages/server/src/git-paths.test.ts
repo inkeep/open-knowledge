@@ -10,6 +10,7 @@ import {
   listPorcelainPaths,
   listTreeLongEntries,
   parseNameStatusZ,
+  parsePorcelainEntries,
   parsePorcelainPaths,
   parseTreeLongEntriesZ,
   splitNulSeparatedPaths,
@@ -57,6 +58,28 @@ describe('parsePorcelainPaths', () => {
 
   test('ignores records shorter than a status prefix', () => {
     expect(parsePorcelainPaths('\0 M a.md\0')).toEqual(['a.md']);
+  });
+});
+
+describe('parsePorcelainEntries — rename origin in either column', () => {
+  // `diff.renames` defaults to true, so git reports a WORKTREE rename in the Y
+  // column (` R`). Consuming the origin record only on the X column left it to
+  // be re-parsed as a status record, inventing a file that does not exist.
+  test('a worktree rename yields one entry carrying its origin, and no phantom', () => {
+    const entries = parsePorcelainEntries(' R bravo.md\0alpha.md\0');
+
+    expect(entries).toEqual([{ x: ' ', y: 'R', path: 'bravo.md', origPath: 'alpha.md' }]);
+  });
+
+  test('a staged-then-worktree rename consumes both origins', () => {
+    // Two entries, each with its own origin record. Mis-parsing the second
+    // origin produced a second phantom (`vo.md`) on top of the first.
+    const entries = parsePorcelainEntries('R  bravo.md\0alpha.md\0 R charlie.md\0bravo.md\0');
+
+    expect(entries).toEqual([
+      { x: 'R', y: ' ', path: 'bravo.md', origPath: 'alpha.md' },
+      { x: ' ', y: 'R', path: 'charlie.md', origPath: 'bravo.md' },
+    ]);
   });
 });
 
@@ -122,6 +145,24 @@ describe('path-listing wrappers (real git)', () => {
   function run(cmd: string): string {
     return execSync(cmd, { cwd: projectDir, encoding: 'utf8' });
   }
+
+  test('a real worktree rename parses without inventing a file', () => {
+    // Pins the PREMISE, not just the parser: git reports worktree renames by
+    // default (`status.renames` inherits `diff.renames`), which is what the
+    // index-column-only skip got wrong. If that default ever changed, this is
+    // the test that says so.
+    writeFileSync(join(projectDir, 'alpha.md'), 'x\n');
+    run('git add -A');
+    run('git commit -q -m seed');
+    run('git mv alpha.md bravo.md');
+    run('git reset -q');
+    run('git add -N bravo.md');
+
+    const entries = parsePorcelainEntries(run('git status --porcelain -z'));
+
+    expect(entries.map((e) => e.path)).toContain('bravo.md');
+    expect(entries.map((e) => e.path)).not.toContain('ha.md');
+  });
 
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), 'ok-git-paths-test-'));

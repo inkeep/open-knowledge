@@ -1,38 +1,87 @@
-import { LINT_PLUGINS, type LinterConfig } from './plugins.ts';
+import type { LintPluginFailureReporter } from './plugin-failure.ts';
+import { isLintPluginSelected, LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { LintDiagnostic } from './types.ts';
 
 export async function lintDocument(
   text: string,
   config: LinterConfig,
   docName?: string,
+  onPluginFailure?: LintPluginFailureReporter,
 ): Promise<LintDiagnostic[]> {
   if (!config.enabled) return [];
   const diagnostics: LintDiagnostic[] = [];
   for (const plugin of LINT_PLUGINS) {
+    if (!isLintPluginSelected(config, plugin.id)) continue;
     const slice = config.plugins[plugin.id];
-    if (!slice.enabled) continue;
     try {
       diagnostics.push(...(await plugin.lint(text, slice as never, { docName })));
     } catch (err) {
       console.warn(`[lint] plugin "${plugin.id}" failed${docName ? ` on "${docName}"` : ''}`, err);
+      onPluginFailure?.({
+        source: plugin.id,
+        phase: 'lint',
+        ...(docName === undefined ? {} : { docName }),
+        message: errorMessage(err),
+      });
     }
   }
   return diagnostics;
 }
 
-export function fixDocument(text: string, config: LinterConfig): string {
+export function fixDocument(
+  text: string,
+  config: LinterConfig,
+  docName?: string,
+  onPluginFailure?: LintPluginFailureReporter,
+): string {
   if (!config.enabled) return text;
   let out = text;
   for (const plugin of LINT_PLUGINS) {
+    if (!isLintPluginSelected(config, plugin.id) || !plugin.fix) continue;
     const slice = config.plugins[plugin.id];
-    if (!slice.enabled || !plugin.fix) continue;
     try {
       out = plugin.fix(out, slice as never);
     } catch (err) {
-      console.warn(`[lint] plugin "${plugin.id}" fix failed`, err);
+      console.warn(
+        `[lint] plugin "${plugin.id}" fix failed${docName ? ` on "${docName}"` : ''}`,
+        err,
+      );
+      onPluginFailure?.({
+        source: plugin.id,
+        phase: 'fix',
+        ...(docName === undefined ? {} : { docName }),
+        message: errorMessage(err),
+      });
     }
   }
   return out;
+}
+
+/** Bounded because an object throw's `JSON.stringify` is unbounded by
+ * construction, and this string lands verbatim in the agent-context-bound
+ * `warnings[]` channel. */
+const MAX_FAILURE_MESSAGE_LENGTH = 500;
+
+function errorMessage(error: unknown): string {
+  const raw = renderErrorMessage(error);
+  return raw.length > MAX_FAILURE_MESSAGE_LENGTH
+    ? `${raw.slice(0, MAX_FAILURE_MESSAGE_LENGTH)}… (truncated)`
+    : raw;
+}
+
+function renderErrorMessage(error: unknown, depth = 0): string {
+  if (error instanceof Error) {
+    return error.cause === undefined || depth >= 3
+      ? error.message
+      : `${error.message} (cause: ${renderErrorMessage(error.cause, depth + 1)})`;
+  }
+  if (typeof error === 'object' && error !== null) {
+    try {
+      const json = JSON.stringify(error);
+      if (json !== undefined) return json;
+    } catch {}
+  }
+  return String(error);
 }
 
 export {
@@ -123,6 +172,11 @@ export {
   type OkfRuleToggles,
 } from './okf-rule-meta.ts';
 export {
+  type LintPluginFailure,
+  type LintPluginFailureReporter,
+  summarizeLintPluginFailures,
+} from './plugin-failure.ts';
+export {
   DEFAULT_LINTER_CONFIG,
   type GoverningFrontmatterSchema,
   LINT_PLUGINS,
@@ -172,6 +226,8 @@ export {
   DEFAULT_LINKS_VALIDATION,
   isFrontmatterScoped,
   LINKS_VALIDATION_SETTINGS,
+  LINT_PLUGIN_IDS,
+  VALIDATION_SOURCES,
 } from './types.ts';
 export {
   countDiagnosticsBySource,
@@ -180,3 +236,8 @@ export {
   type ValidationSourceKey,
   ZERO_SOURCE_COUNTS,
 } from './validation-counts.ts';
+export {
+  deriveValidationRunSources,
+  type ValidationRunMode,
+  validationCoverageLines,
+} from './validation-run-sources.ts';

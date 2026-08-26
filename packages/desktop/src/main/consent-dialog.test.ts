@@ -71,10 +71,6 @@ const SAMPLE_PAYLOAD: OnboardingShowPayload = {
   gitState: 'absent',
   gitRootPromoted: false,
   warnings: [],
-  editorOptions: [
-    { id: 'claude', label: 'Claude', hasProjectConfig: true },
-    { id: 'cursor', label: 'Cursor', hasProjectConfig: true },
-  ],
 };
 
 const SAMPLE_CONFIRM: OnboardingConfirmRequest = {
@@ -82,6 +78,7 @@ const SAMPLE_CONFIRM: OnboardingConfirmRequest = {
   contentDir: '.',
   additionalIgnores: '',
   editorIds: ['claude', 'cursor'],
+  connectEditors: true,
   sharing: 'shared',
 };
 
@@ -247,7 +244,7 @@ describe('requestUserConsent — confirm', () => {
     await promise;
   });
 
-  test('confirm clamps editorIds to the show payload offered set', async () => {
+  test('confirm clamps editorIds to the supported editor set', async () => {
     const ipcMain = createIpcStub();
     const navigator = fakeNavigator();
     const promise = requestUserConsent(
@@ -298,6 +295,45 @@ describe('requestUserConsent — confirm', () => {
     // Promise stays pending — let the test proceed by cancelling.
     await ipcMain.invoke('ok:onboarding:cancel', 1);
     await promise;
+  });
+
+  test('confirm with a non-boolean connectEditors is rejected', async () => {
+    const ipcMain = createIpcStub();
+    const navigator = fakeNavigator();
+    const promise = requestUserConsent(
+      { ipcMain, navigator: navigator.webContents, previewContent: fakePreview },
+      SAMPLE_PAYLOAD,
+    );
+    await ipcMain.bindSender(1);
+    const evil = { ...SAMPLE_CONFIRM, connectEditors: 'yes' };
+    const result = (await ipcMain.invoke('ok:onboarding:confirm', 1, evil)) as {
+      ok: boolean;
+      error?: string;
+    };
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('invalid connectEditors');
+    await ipcMain.invoke('ok:onboarding:cancel', 1);
+    await promise;
+  });
+
+  test('a declined AI-tools row forwards connectEditors:false with an empty write set', async () => {
+    const ipcMain = createIpcStub();
+    const navigator = fakeNavigator();
+    const promise = requestUserConsent(
+      { ipcMain, navigator: navigator.webContents, previewContent: fakePreview },
+      SAMPLE_PAYLOAD,
+    );
+    await ipcMain.bindSender(1);
+    await ipcMain.invoke('ok:onboarding:confirm', 1, {
+      ...SAMPLE_CONFIRM,
+      editorIds: [],
+      connectEditors: false,
+    });
+    const decision = (await promise) as { outcome: 'confirm'; request: OnboardingConfirmRequest };
+    expect(decision.request.editorIds).toEqual([]);
+    // Distinct from an empty list on a machine with no tools, which keeps
+    // `connectEditors: true` — the two are different answers.
+    expect(decision.request.connectEditors).toBe(false);
   });
 
   test('confirm with absolute contentDir is rejected', async () => {

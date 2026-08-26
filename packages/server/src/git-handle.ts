@@ -45,6 +45,12 @@ export interface RelayGhToken {
   token: string;
   /** Host the token authenticates (e.g. `github.com`); the helper host-matches before using it. */
   host: string;
+  /**
+   * gh account that produced the token, when known. Absent for tokens the
+   * active account answered anonymously (`gh auth token` names no account), so
+   * diagnostics reading this must degrade to "identity unknown", never guess.
+   */
+  login?: string;
 }
 
 interface GitHandleOptions {
@@ -170,7 +176,10 @@ const GIT_AUTH_ENV_KEYS = [
  * `OK_GH_TOKEN`/`OK_GH_TOKEN_HOST` are added only when a {@link RelayGhToken} is
  * supplied. This is the deliberate, named channel that carries a server-resolved
  * gh token to the credential helper across the env replacement — see
- * {@link RelayGhToken}.
+ * {@link RelayGhToken}. `OK_GH_TOKEN_LOGIN` additionally names the account that
+ * produced the token when that is known — diagnostics only: the helper's relay
+ * condition stays host-only, so the var must never gate whether the token is
+ * served.
  */
 export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
   const env: Record<string, string> = {
@@ -199,6 +208,7 @@ export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
   if (ghToken) {
     env.OK_GH_TOKEN = ghToken.token;
     env.OK_GH_TOKEN_HOST = ghToken.host;
+    if (ghToken.login) env.OK_GH_TOKEN_LOGIN = ghToken.login;
   }
   return env;
 }

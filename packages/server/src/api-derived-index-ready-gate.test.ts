@@ -139,7 +139,7 @@ describe('derived-index API readiness gate', () => {
     }
   });
 
-  test('project skill move waits for derived-index projection before responding', async () => {
+  test('project skill move responds WITHOUT waiting for derived-index projection', async () => {
     const contentDir = mkdtempSync(join(tmpdir(), 'ok-derived-skill-move-'));
     const sourceSkillDir = join(contentDir, '.ok', 'skills', 'old-skill');
     mkdirSync(sourceSkillDir, { recursive: true });
@@ -183,15 +183,21 @@ describe('derived-index API readiness gate', () => {
         toName: 'new-skill',
       });
 
-      await started;
-      await Promise.resolve();
-      expect(route.captured.status).toBe(0);
-
-      releaseProjection();
+      // The response must land while the projection is STILL HELD: the queue
+      // serializes behind full ingests (boot, watcher re-ingest) and holding
+      // the rename response on it measured 20s+ on monorepo-sized roots. The
+      // client follows the rename by the response's own path, so projection
+      // freshness is eventual, not response-gating.
       await route.done;
-
-      expect(recordDirectMutations).toHaveBeenCalledTimes(1);
       expect(route.captured.status).toBe(200);
+
+      await started;
+      releaseProjection();
+      // Let the deferred chain settle so the projection is still guaranteed
+      // to happen (deferred, never dropped).
+      await vi.waitFor(() => {
+        expect(recordDirectMutations).toHaveBeenCalledTimes(1);
+      });
       expect(JSON.parse(route.captured.body)).toMatchObject({
         from: '.ok/skills/old-skill',
         to: '.ok/skills/new-skill',

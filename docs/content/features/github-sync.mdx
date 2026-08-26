@@ -8,13 +8,16 @@ import { Cloud } from 'lucide-react';
 
 OpenKnowledge can connect a project to a GitHub remote repository and keep it synced over time. When GitHub sync is enabled, OpenKnowledge keeps your copy current with the remote.
 
-There are two modes for GitHub sync:
+The sync mode controls what runs automatically:
 
-- **Full** pulls commits from the remote and pushes your commits back.
-- **Follow** fetches updates from the remote and never pushes or commits on your behalf.
+- **Manual** — nothing moves until you ask. Pull, push, or both from the sync menu whenever you choose.
+- **Auto (Pull only)** — updates flow in from the remote on a schedule; your edits stay on this computer and are never pushed.
+- **Auto (Pull and Push)** — your edits are committed and pushed automatically, and remote changes pull in.
+
+The mode only chooses the schedule. The manual **Pull**, **Push**, and **Pull and Push** buttons in the sync menu do the same thing in every mode: **Pull** brings in remote changes without ever committing your work, **Push** commits and sends your work, and **Pull and Push** does both in one pass. If your GitHub account can't push to the repository, **Push** and **Pull and Push** are hidden rather than offered and rejected — see [GitHub-side blockers](#github-side-blockers).
 
 <Callout type="warn">
-  Only enable full GitHub sync for repositories where you are comfortable with OpenKnowledge writing commits to the remote history. If you are worried about automated commits cluttering your Git history, do not enable full sync for that repository.
+  Only enable Auto (Pull and Push) for repositories where you are comfortable with OpenKnowledge writing commits to the remote history. If you are worried about automated commits cluttering your Git history, use Manual or Auto (Pull only) for that repository.
 </Callout>
 
 ## What GitHub sync is for
@@ -65,13 +68,25 @@ This will open a dialog where you can choose an owner and repository name. You c
 
 ## Enable GitHub sync
 
-When you open a freshly cloned project, you will be prompted to enable sync. If you have full access to the repository, you will be prompted to enable **Full** sync. If you have read only access, you will be prompted to enable **Follow** sync. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
+### How often sync runs
 
-If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) — one of `off`, `follow`, or `full` — to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo; each machine's own auto-sync choice overrides it.
+Both automatic modes run on a timer, and the two directions have their own cadence: OpenKnowledge checks for updates every **30 seconds** and pushes your edits every **60 seconds** by default. They differ on purpose. A pull is a read, so checking more often only means you see other people's work sooner. A push is a commit, so pushing more often leaves more of them in the history everyone reads.
 
-### Full
+Change either one in **Settings → Sync → Advanced** (the disclosure is collapsed by default), under **Check for updates every** and **Push my edits every**. The controls appear only while an automatic mode is active — in Manual nothing runs on a schedule, so there is no cadence to set. Both accept 30 seconds, 1 minute, 5 minutes, 15 minutes, or 1 hour, and both are per-machine — your choice stays on this computer and is not committed to the repository. **Push my edits every** appears only in Auto (Pull and Push), since no other mode pushes on a schedule.
 
-With full sync active, OpenKnowledge:
+While you are signed out, **Auto (Pull only)** checks for updates at most every 3 minutes no matter what you choose here — a signed-out client is anonymous to GitHub, and the limit protects the repository from the combined polling of everyone following it. Auto (Pull and Push) is unaffected: pushing requires being signed in to begin with.
+
+When you open a freshly cloned project, you will be prompted to enable sync. If you have push access to the repository, you will be prompted to enable **Auto (Pull and Push)**. If you have read-only access, you will be prompted to enable **Auto (Pull only)**. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
+
+If you want to set a default sync setting for future collaborators, go to the project settings page and navigate to the **Sync** → **Shared default** section. This writes [`autoSync.default`](/docs/reference/configuration) — one of `off` (Manual), `follow` (Auto, pull only), or `full` (Auto, pull and push) — to the project's committed `.ok/config.yml`, pre-answering the enable-sync prompt for everyone who clones the repo; each machine's own auto-sync choice overrides it.
+
+### Manual
+
+Nothing runs on a schedule. The sync menu's **Pull**, **Push**, and **Pull and Push** buttons cover everything on demand, and the menu's status section shows what each would do before you click: which files a pull would bring in, which files a push would include, and which changed files sit outside OpenKnowledge's commit scope and would be skipped. When sync is paused because your local edits overlap an incoming update, the same menu grows a **Changed here and on the remote** section listing the blocked files with a **Commit and sync** button — see [Conflicts and pending changes](#conflicts-and-pending-changes).
+
+### Auto (Pull and Push)
+
+With push-and-pull sync active, OpenKnowledge:
 
 - Fetches commits from the remote
 - Commits your edits locally using the configured Git identity
@@ -79,16 +94,14 @@ With full sync active, OpenKnowledge:
 
 If your Git identity isn't set, OpenKnowledge commits under a default "OpenKnowledge" author; the sync status indicator reminds you to set one so teammates see your name.
 
-Pulls can overwrite uncommitted local file changes, so commit or discard work-in-progress before you enable sync.
+### Auto (Pull only)
 
-### Follow
-
-With follow sync active, OpenKnowledge:
+With pull-only sync active, OpenKnowledge:
 
 - Fetches commits from the remote
-- Never commits or pushes your edits to the remote
+- Never commits or pushes your edits on its own — if you have push access, the manual **Push** button is still there when you want to send something. Collaborators who can't push to the repository don't see it; see [GitHub-side blockers](#github-side-blockers).
 
-Your own edits stay on this computer. You can keep editing a followed project: when an update arrives, non-overlapping changes combine automatically, and an edit to the same lines the remote changed surfaces in the [conflict view](#resolving-a-conflict) where you choose which side to keep. Your branch always tracks the remote tip and never forks.
+Your own edits stay on this computer. You can keep editing: when an update arrives, non-overlapping changes combine automatically, and an edit to the same lines the remote changed surfaces in the [conflict view](#resolving-a-conflict) where you choose which side to keep. Your branch always tracks the remote tip and never forks. The same applies to the manual **Pull** button in every mode — a pull never commits your in-progress work.
 
 ## Authentication
 
@@ -98,11 +111,23 @@ Manage the connection from **Settings → Account**. **Connect GitHub** authoriz
 
 When a project's `origin` remote points at a GitHub Enterprise Server host, OpenKnowledge resolves credentials and identity for that host automatically: the account shown in settings, the sync token, the push-permission check, and the `ok auth` default `--host` all follow the workspace's remote instead of assuming github.com. Share links work with enterprise remotes too — a recipient opening a GHES share is asked to confirm the server unless they are already signed in to it.
 
-The sync status indicator surfaces an auth-error state when stored credentials stop working, and sync pauses until you reconnect.
+### Which GitHub account is used
+
+If you are signed into multiple accounts with the GitHub CLI, OpenKnowledge will use the account that is active by default. If you want to set a specific account for a project, you can do so by adding a username to the remote URL or a `credential.<url>.username` entry to your [Git configuration](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/multiple-users.md).
+
+OpenKnowledge will choose the GitHub credential to use for a project in the following order of priority:
+
+| Priority | Declaration | Where it lives | How to set it |
+| --- | --- | --- | --- |
+| 1 | A username in the remote URL — `https://alice@github.com/owner/repo` | that clone's `.git/config` | `git remote set-url origin https://alice@github.com/owner/repo.git` |
+| 2 | A `credential.<url>.username` entry | git config, any scope | `git config --global credential.https://github.com.username alice` |
+| 3 | Neither | the GitHub CLI's active account, or the account connected in OpenKnowledge | — |
+
+The username entries above apply to HTTPS remotes only. SSH projects follow the GitHub CLI's active account (switch it with `gh auth switch`), and that account decides only which identity the push-permission check runs as — the push itself authenticates with your SSH key, chosen by your SSH configuration. To pin an SSH project to a declared account, switch it to an HTTPS remote.
 
 ## Sync status and conflicts
 
-The sync status indicator in the editor shows the current state of the connection: how many commits you are ahead or behind the remote, when the last sync ran, whether sync is paused, and how many files have unresolved conflicts. You can also trigger an immediate sync from the same control instead of waiting for the next scheduled run. From a terminal, `ok sync` commits, pulls, and pushes in one pass; `ok pull` and `ok push` cover one direction each. All three work whether or not the editor is open (see the [CLI reference](/docs/reference/cli)).
+The sync status indicator in the editor opens the sync menu: the mode selector, the manual **Pull** / **Push** / **Pull and Push** buttons, and a live status section showing how far ahead or behind the remote you are, which files a pull would bring in, which files a push would include (and which it would skip), unresolved conflicts, and when a sync last ran. Opening the menu refreshes the remote counts with a read-only fetch — nothing in your copy moves until you press a button. From a terminal, `ok sync` commits, pulls, and pushes in one pass; `ok pull` and `ok push` cover one direction each. All three work whether or not the editor is open (see the [CLI reference](/docs/reference/cli)).
 
 ## Resolving a conflict
 
@@ -123,18 +148,18 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Conflicts and pending changes
 
 - **Unresolved conflicts.** If even one file has a conflict between your edits and your team's, sync waits. You can keep working on every other doc; only the conflicted files are frozen until you choose a side from the diff view. See [Resolving a conflict](#resolving-a-conflict) above.
-- **Local changes would be overwritten by an incoming update.** A teammate's update is ready to pull, but a file it touches has uncommitted local changes. Doc edits are committed automatically before merging, so this usually means other tracked files, like configs. Sync pauses rather than clobbering your work; commit, stash, or discard those changes from a terminal and sync resumes.
+- **Local changes would be overwritten by an incoming update.** A teammate's update is ready to pull, but a file it touches has uncommitted local changes. Doc edits are committed automatically before merging, so this usually means other tracked files, like configs. Sync pauses rather than clobbering your work. The sync menu lists every blocked file under **Changed here and on the remote**, and **Commit and sync** commits exactly those files and resumes — nothing else in your working tree is touched. If you would rather stash the changes or throw them away, **Resolve in terminal** (desktop app only) opens a terminal on the project so you can run that yourself. OpenKnowledge never discards uncommitted work for you.
 - **Edits made outside the app aren't ready yet.** If you (or another tool) edited a file directly on disk while sync wanted to merge, OpenKnowledge waits until those external edits settle before merging. Usually this clears in a second or two on its own.
 
 ### Project isn't on a normal branch
 
 - **The project is parked on a specific commit, not a branch.** This usually means someone checked out an older commit from the terminal to look around. There's no branch to push to, so sync pauses. Switch back to your normal branch (`main`, your working branch, whichever) and sync resumes.
-- **Diverged history.** When the remote has been rewritten (force-push, rebase, branch reset) in a way OpenKnowledge can't reconcile automatically, sync stops and shows the error. This one usually needs a fix from the command line. Ask whoever rewrote the history, or restore from the [Timeline](/docs/features/timeline-and-recovery).
+- **Diverged history.** When the remote has been rewritten (force-push, rebase, branch reset) in a way OpenKnowledge can't reconcile automatically, sync stops and shows the error. This one usually needs a fix from the command line. Ask whoever rewrote the history for help, or restore from the [Timeline](/docs/features/timeline-and-recovery).
 
 ### GitHub-side blockers
 
 - **Authentication errors.** Your stored credentials expired, were revoked, or don't have access to this repository anymore. Reconnect from the sync indicator (or from **Settings → Account**) to clear the error.
-- **You don't have permission to push to this repo.** Someone shared a project backed by a GitHub repo where your account isn't a collaborator (or has read-only access on a private repo). OpenKnowledge checks this up front and offers **Follow** instead of full sync.
+- **You don't have permission to push to this repo.** Someone shared a project backed by a GitHub repo where your account isn't a collaborator (or has read-only access on a private repo). OpenKnowledge checks this up front and offers **Auto (Pull only)** instead. In that mode the manual **Push** and **Pull and Push** buttons are hidden, since GitHub would reject them.
 - **Protected branches and rejected pushes.** If the target branch requires reviews, signed commits, or status checks, GitHub rejects the push. OpenKnowledge turns sync off automatically so it stops retrying, and it stays off until you turn it back on from the sync indicator or **Settings → Sync**. Switch to a branch you can push to, or use a pull request for the protected branch instead.
 
 ### Temporary problems

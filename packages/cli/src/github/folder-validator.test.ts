@@ -40,6 +40,27 @@ describe('validateLocalFolderForShare', () => {
     });
   });
 
+  // A userinfo origin used to fall out of `parseGitUrl` entirely and land as
+  // non-github ("switch your remote" toast) — now it validates like any other
+  // GitHub clone. The re-emitted canonical URL is rebuilt from parsed
+  // components, so neither the declared account nor an embedded password can
+  // leak into `gitRemoteUrl`.
+  test('a userinfo origin validates ok, and the canonical URL carries no credential', async () => {
+    const folder = resolve(tmpDir, 'repo');
+    mkdirSync(folder);
+    seedRepo(folder, 'https://alice:s3cretpw@github.com/inkeep/open-knowledge.git');
+
+    const result = await validateLocalFolderForShare(folder, {
+      host: 'github.com',
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+    });
+    expect(result).toEqual({
+      kind: 'ok',
+      gitRemoteUrl: 'https://github.com/inkeep/open-knowledge.git',
+    });
+  });
+
   test('returns ok and normalizes to https for ssh clones', async () => {
     const folder = resolve(tmpDir, 'repo');
     mkdirSync(folder);

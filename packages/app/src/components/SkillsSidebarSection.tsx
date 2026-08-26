@@ -42,12 +42,7 @@ import {
 } from '@/lib/skill-scope';
 import { createSkillSortComparator, SKILL_MD_PATH } from '@/lib/skill-sort';
 import { requestSkillTrackPrompt } from '@/lib/skill-track-prompt-store';
-import {
-  fetchSkillPreview,
-  getSkillBundledFiles,
-  listDetectedSkills,
-  type SkillBundledFile,
-} from '@/lib/skills-api';
+import { fetchSkillPreview, listDetectedSkills } from '@/lib/skills-api';
 import { buildSkillsTreePaths, detectedId, isSkillDocActive } from '@/lib/skills-tree-paths';
 
 // Lazy-load the full add-skill modal (skills.sh search + upload + new skill) —
@@ -192,58 +187,15 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   const skillRowKey = (s: SkillsListEntry): string =>
     `${s.scope}:${s.name}:${hostQualifierOf(s) ?? ''}`;
 
-  // Eager-load every managed skill's bundle files (both scopes) into one map.
-  // Keyed on the full row set so it refetches only on add/remove, not every render.
-  const filesKey = skills.map(skillRowKey).join('|');
-  const [filesByKey, setFilesByKey] = useState<Record<string, readonly SkillBundledFile[]>>({});
-  // True while the N-per-skill bundle-file fetch is in flight. Drives the section
-  // loading indicator so a folder with many skills doesn't look broken/empty while
-  // it fetches. Self-scaling: barely a flash on a small KB, visible when
-  // there are many skills to load.
-  const [bundleLoading, setBundleLoading] = useState(false);
-  useEffect(() => {
-    // Only the Skills tree consumes filesByKey, so skip the N fetches + the
-    // skillsChanged subscription until the dock is expanded. Radix unmounts a
-    // closed `CollapsibleContent` (no `forceMount`), so today this mostly covers
-    // the closing transition — it is also what keeps a future `forceMount` from
-    // silently reviving a fetch per skill on every collapsed sidebar.
-    if (!dockExpanded) return;
-    let alive = true;
-    const entries = filesKey ? filesKey.split('|') : [];
-    const load = () => {
-      setBundleLoading(true);
-      void Promise.all(
-        entries.map((e) => {
-          const [scope, name, host] = e.split(':') as [SkillScope, string, string];
-          return getSkillBundledFiles(scope, name, host || undefined).then((r) => {
-            // A non-OK fetch yields an empty file list, indistinguishable from a
-            // skill that genuinely has none — leave a diagnostic so a 500/timeout
-            // doesn't vanish silently.
-            if (!r.ok)
-              console.warn(`[skills-sidebar] failed to load bundle files for ${e}:`, r.error);
-            return [e, r.ok ? r.files : []] as const;
-          });
-        }),
-      )
-        .then((loaded) => {
-          if (alive) setFilesByKey(Object.fromEntries(loaded));
-        })
-        .catch((err) => {
-          // getSkillBundledFiles catches its own fetch rejections, so this only
-          // fires on an unexpected throw — surface it rather than leaving state stale.
-          console.error('[skills-sidebar] unexpected error loading skill bundle files', err);
-        })
-        .finally(() => {
-          if (alive) setBundleLoading(false);
-        });
-    };
-    load();
-    const unsub = subscribeToSkillsChanged(load);
-    return () => {
-      alive = false;
-      unsub();
-    };
-  }, [filesKey, dockExpanded]);
+  // Each skill's bundle-file paths ride the list entries themselves
+  // (`filePaths`, paths only) — derived here, no fetching. This replaced an
+  // N-per-skill `GET /api/skill` fan-out that re-fired on every skills-changed
+  // signal: on an install with ~90 skills the fan-out saturated the browser's
+  // request pool for seconds and queued imports and opens behind it, which
+  // read as "import worked but the skill won't open".
+  const filesByKey: Record<string, readonly { path: string }[]> = Object.fromEntries(
+    skills.map((s) => [skillRowKey(s), (s.filePaths ?? []).map((path) => ({ path }))]),
+  );
 
   // --- scroll preservation across tree remounts ---
   //
@@ -537,9 +489,7 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   // remounts / collapses the tree).
   const stateKey = `${skills.map((s) => `${s.installed ? 1 : 0}`).join('')}|d${detectedByPrefix.size}`;
 
-  // First list load, or the N-per-skill bundle-file fetch in flight — surface it
-  // so a folder with many skills reads as "loading", not broken/empty.
-  const skillsLoading = state.status === 'loading' || bundleLoading;
+  const skillsLoading = state.status === 'loading';
   // Pins are part of the key: the sort comparator and the pin-row CSS are both
   // baked at tree creation, and an UNGROUPED pin changes no paths — without
   // this, pinning (or the async config load delivering existing pins) neither

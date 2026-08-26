@@ -336,3 +336,98 @@ describe('runUninstall', () => {
     }
   });
 });
+
+describe('runUninstall attached-client disclosure', () => {
+  test('names attached clients in the plan without adding a gate', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-clients-'));
+    try {
+      write(join(home, '.ok', 'auth.yml'), 'x\n');
+      const result = await runUninstall({
+        home,
+        platform: 'darwin',
+        cwd: home,
+        dryRun: true,
+        deps: {
+          discoverLockDirs: async () => ['/some/proj/.ok/local'], // → a stop-server op
+          detectInstallMethods: () => [],
+          probeClients: async () => 1,
+        },
+      });
+      expect(result.status).toBe('dry-run');
+      expect(result.exitCode).toBe(0);
+      expect(result.message).toContain('1 collaboration client');
+      expect(result.message).toContain('restarting will NOT recover them');
+      // Disclosure only — no `--force`, no second prompt.
+      expect(result.message).not.toContain('--force');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('--json --dry-run carries the probe result', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-clients-'));
+    try {
+      write(join(home, '.ok', 'auth.yml'), 'x\n');
+      const result = await runUninstall({
+        home,
+        platform: 'darwin',
+        cwd: home,
+        dryRun: true,
+        json: true,
+        deps: {
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
+          detectInstallMethods: () => [],
+          probeClients: async () => 1,
+        },
+      });
+      const json = JSON.parse(result.message);
+      expect(json.mode).toBe('dry-run');
+      expect(json.attachedClients).toHaveLength(1);
+      expect(json.attachedClients[0]).toContain('1 collaboration client');
+      expect(json.attachedClients[0]).toContain('restarting will NOT recover them');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('--json --dry-run reports an empty probe result when nothing is attached', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-clients-'));
+    try {
+      const result = await runUninstall({
+        home,
+        platform: 'darwin',
+        cwd: home,
+        dryRun: true,
+        json: true,
+        deps: {
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
+          detectInstallMethods: () => [],
+          probeClients: async () => null,
+        },
+      });
+      expect(JSON.parse(result.message).attachedClients).toEqual([]);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('silent when nothing is attached', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninst-clients-'));
+    try {
+      const result = await runUninstall({
+        home,
+        platform: 'darwin',
+        cwd: home,
+        dryRun: true,
+        deps: {
+          discoverLockDirs: async () => ['/some/proj/.ok/local'],
+          detectInstallMethods: () => [],
+          probeClients: async () => null,
+        },
+      });
+      expect(result.message).not.toContain('collaboration client');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

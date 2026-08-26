@@ -36,6 +36,7 @@ import {
   type Principal,
   parseGlobalSkillBundleDoc,
   parseManagedArtifactName,
+  resolveAutoSyncIntervals,
   resolveLocalAutoSyncMode,
   type SyncMode,
   type SyncModeChangeSource,
@@ -123,7 +124,12 @@ import {
   type DerivedDocumentIndexBranchTransition,
 } from './derived-document-index.ts';
 import { applyDiskContentToDoc } from './disk-content-intake.ts';
-import { docNameToRelativePath, getDocExtension, stripDocExtension } from './doc-extensions.ts';
+import {
+  canonicalDocName,
+  docNameToRelativePath,
+  getDocExtension,
+  stripDocExtension,
+} from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
@@ -156,6 +162,7 @@ import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts
 import { buildSyncCredentialConfig } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
+  DetectGhAccountsFn,
   DetectGhFn,
   ProbeTokenStore,
   PushPermission,
@@ -309,6 +316,13 @@ export interface ServerOptions {
    * exposed in production. Enable only in tests.
    */
   enableTestRoutes?: boolean;
+  /**
+   * Live `/collab` WebSocket client count, disclosed on `GET /api/server-info`.
+   * Wired by `bootServer` (which owns the HTTP server the counter attaches to);
+   * omitted by the dev-server / plugin path, where the field is left off the
+   * response rather than reported as a possibly-wrong zero.
+   */
+  getCollabClientCount?: () => number;
   /** Shadow repo handle — passed to persistence. */
   shadowRepo?: ShadowHandle;
   /** Content root relative to project dir. */
@@ -396,6 +410,12 @@ export interface ServerOptions {
    * omitted — leaves the probe to anonymous resolution.
    */
   detectGh?: DetectGhFn;
+  /**
+   * gh account listing, wired through `SyncEngine` so probe denials can name
+   * the identity they authenticated as. Same dependency-injection rationale
+   * as `detectGh` above; omitting it only leaves denials unnamed.
+   */
+  detectGhAccounts?: DetectGhAccountsFn;
   /**
    * Tier B/C OK credential store. Wired through `SyncEngine` to the
    * push-permission probe. Same dependency-injection rationale as
@@ -846,6 +866,27 @@ export function createServer(options: ServerOptions): ServerInstance {
     };
   }
 
+  /**
+   * Per-machine scheduled-cycle cadence for this project. Project-local only:
+   * unlike `mode`, there is no committed seed — how hard one machine polls is
+   * not something a maintainer sets for everyone through git.
+   *
+   * An unreadable config falls back to the shipped defaults rather than
+   * throwing. `resolveAutoSyncIntervals` clamps, so a hand-edited out-of-range
+   * value degrades to the nearest legal cadence instead of taking sync down.
+   */
+  function readProjectAutoSyncIntervals(): {
+    pullIntervalSeconds: number;
+    pushIntervalSeconds: number;
+  } {
+    const local = readConfigSafely({
+      absPath: resolveConfigPath('project-local', projectDir),
+      sideline: false,
+      warn: (message) => log.warn({ message }, '[config] could not read project-local config'),
+    });
+    return resolveAutoSyncIntervals(local.value.autoSync);
+  }
+
   // Project-scope base linter config, read FRESH per request so a config edit
   // (project `.ok/config.yml` → contentRules.*) takes effect without a restart.
   function readLinterBaseConfig(): LinterConfig {
@@ -995,6 +1036,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           '[sync] failed to apply autoSync mode from config',
         );
       });
+      // Cadence rides the same persist. `setMode` is not awaited and awaits a
+      // remote probe before it arms anything, so this lands FIRST on a mode
+      // flip — which is harmless: it only stores the new interval fields, and
+      // setMode's own schedule calls then read them. On a cadence-only edit the
+      // timers are already armed and this re-arms them. Idempotent, so the
+      // producer-notify + watcher-echo double-fire this function documents is
+      // safe.
+      const intervals = readProjectAutoSyncIntervals();
+      syncEngine?.setIntervals(intervals.pullIntervalSeconds, intervals.pushIntervalSeconds);
     }
     // Re-evaluate semantic search on every config-doc store. `readSemanticSearchConfig`
     // resolves the project-local layer only, so only a project-local `search.semantic.*`
@@ -2399,6 +2449,25 @@ export function createServer(options: ServerOptions): ServerInstance {
       extensions: [persistence.extension],
     });
 
+    // Server-side room access converges on `openDirectConnection`, so an
+    // extension-qualified name is collapsed before it can key a SECOND room
+    // over the same file on disk. Two rooms over one file persist
+    // independently and the later write overwrites the earlier one with no
+    // merge and no conflict surfaced.
+    //
+    // Deliberately NOT wrapping `createDocument`: overriding that method
+    // perturbs the collaboration server's own internals and broke sync
+    // conflict resolution even for names this guard leaves untouched. The
+    // names that reach a room converge instead at the surfaces that accept
+    // them from outside: the HTTP document read and write routes here, and
+    // the client's own navigation and tab-restore paths.
+    const openDirect = hocuspocus.openDirectConnection.bind(hocuspocus);
+    hocuspocus.openDirectConnection = ((documentName: string, context?: unknown) =>
+      openDirect(
+        canonicalDocName(documentName),
+        context,
+      )) as typeof hocuspocus.openDirectConnection;
+
     // Workload observable gauges (loaded docs, persistence queue depths,
     // bridge drain backlog). Providers are sampled only at metric-export
     // time; registering them is a Set add and safe when OTel is disabled.
@@ -2980,6 +3049,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       // server has flushed nothing yet, matching the schema's
       // empty-object case.
       getDiskAckSVs: () => cc1Broadcaster?.getLatestDiskAckSVsAsBase64() ?? {},
+      getCollabClientCount: options.getCollabClientCount,
       contentRoot,
       derivedDocumentIndex,
       signalChannel,
@@ -5584,6 +5654,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       resetAmbient: resetAmbientCredentials,
     });
     const bootAutoSyncMode = readProjectAutoSyncMode();
+    const bootAutoSyncIntervals = readProjectAutoSyncIntervals();
     if (bootAutoSyncMode.mode !== 'off') {
       // A never-asked machine booting into a committed-default mode is the main
       // way pull-only activates silently; log it (with the resolution source) so
@@ -5601,8 +5672,13 @@ export function createServer(options: ServerOptions): ServerInstance {
         contentRoot,
         mcpTomlEditor: options.mcpTomlEditor,
         mode: bootAutoSyncMode.mode,
-        pullIntervalSeconds: options.pullIntervalSeconds,
-        pushIntervalSeconds: options.pushIntervalSeconds,
+        // The explicit option stays the test DI seam (the harness passes a huge
+        // value so no background timer races a scenario); production leaves it
+        // undefined and picks up the user's configured cadence.
+        pullIntervalSeconds:
+          options.pullIntervalSeconds ?? bootAutoSyncIntervals.pullIntervalSeconds,
+        pushIntervalSeconds:
+          options.pushIntervalSeconds ?? bootAutoSyncIntervals.pushIntervalSeconds,
         credentialConfig: syncCredentialConfig,
         cc1Broadcaster,
         // Push-permission probe auth seam — production callers (CLI `ok start`)
@@ -5613,6 +5689,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         // (`server-factory.test.ts > production wiring: push-permission auth`)
         // pins that `createServer(options)` forwards both seams to SyncEngine.
         detectGh: options.detectGh,
+        detectGhAccounts: options.detectGhAccounts,
         tokenStore: options.tokenStore,
         // Test seam — production callers leave this undefined. Forwarded so the
         // wiring test can assert detectGh + tokenStore propagate through without

@@ -80,8 +80,19 @@ const FILLER_RE = new RegExp(
 /** Markdown lead-in on a prompt's first line: headings, quotes, list markers. */
 const MARKDOWN_LEAD_RE = /^(?:[#>]+\s*|[-*]\s+|\d+[.)]\s+)+/;
 
+/** Leading punctuation the caller wrote (or the markdown-lead strip
+ *  exposed) — an em-dash bullet, a stray "??", a leftover colon after a
+ *  quote strip. FILLER_RE already consumes its own trailing separator
+ *  ("please, do X" → "do X" in one pass), so this pass only rescues
+ *  inputs that OPEN with punctuation ("— refactor" → "Refactor"). */
+const LEADING_PUNCT_RE = /^[\s,:;.!?\-–—•|]+(?=\s|$)/;
+
 /** Guard against a pathological prefix chain; real prompts stack 2-3 deep. */
 const MAX_STRIP_PASSES = 6;
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 function firstLine(raw: string): string {
   return (raw.trim().split('\n')[0] ?? '').trim();
@@ -108,16 +119,43 @@ export function clampThreadTitle(raw: string): string {
  * adopted when the remainder still reads as a title (two-plus words, or one
  * long one) — otherwise the raw first line passes through untouched, so
  * greeting-only prompts and non-English prompts degrade to today's behavior.
+ *
+ * When `agentName` is supplied (Claude, Cursor, Codex, …) a leading
+ * ADDRESSING mention is stripped first — every tab already carries the
+ * agent's icon, so "Claude, what's 2+2?" becomes "What's 2+2?" instead
+ * of leaving dead identity text as the distinguishing lead. Only
+ * addressing forms strip ("@Claude fix X", "Claude, fix X",
+ * "Claude — fix X"); a subject-position mention ("Claude Code
+ * crashed on startup") passes through unchanged. A final punctuation
+ * trim rescues titles that OPEN with punctuation (em-dash bullet,
+ * stray "??").
  */
-export function deriveThreadTitle(prompt: string): string {
+export function deriveThreadTitle(prompt: string, agentName?: string): string {
   const line = firstLine(prompt);
   let stripped = line.replace(MARKDOWN_LEAD_RE, '');
+  if (agentName !== undefined && agentName.trim() !== '') {
+    const name = escapeRegExp(agentName.trim());
+    // Only ADDRESSING mentions strip: an `@` prefix (any following
+    // separator), or the bare name followed by real punctuation (comma,
+    // colon, dash, em-dash, …). Bare whitespace does NOT count — otherwise
+    // "Codex is failing to start" would eat "Codex" and become
+    // "Is failing to start", mangling every subject-position mention.
+    // The delimiter class matches LEADING_PUNCT_RE's parity and is
+    // interpolated into both arms from ONE literal so a widening on one
+    // arm can't desync from the other.
+    const delim = String.raw`[,:;!.?\-–—•|]`;
+    const nameRe = new RegExp(
+      `^(?:@${name}\\b(?:\\s+|${delim}+(?:\\s+|$)|$)|${name}\\b\\s*${delim}+(?:\\s+|$)|@?${name}\\b$)`,
+      'i',
+    );
+    stripped = stripped.replace(nameRe, '');
+  }
   for (let pass = 0; pass < MAX_STRIP_PASSES; pass++) {
     const next = stripped.replace(FILLER_RE, '');
     if (next === stripped) break;
     stripped = next;
   }
-  stripped = stripped.trim();
+  stripped = stripped.replace(LEADING_PUNCT_RE, '').trim();
   const words = stripped.split(/\s+/).filter((w) => w !== '').length;
   const viable = stripped !== '' && (words >= 2 || stripped.length >= 12);
   if (!viable || stripped === line) return clampThreadTitle(line);

@@ -169,5 +169,6 @@ function toReportInput(result: ValidationAuditResponse): LintReportInput {
     errorCount: result.errorCount,
     warningCount: result.warningCount,
     fixedCount: 0,
+    ran: result.ran,
   };
 }

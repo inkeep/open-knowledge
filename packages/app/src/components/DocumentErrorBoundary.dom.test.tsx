@@ -11,6 +11,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as syncPromiseModule from '@/editor/sync-promise';
+import { SyncTimeoutError } from '@/editor/sync-promise';
 import { DocumentErrorBoundary, errorCopy } from './DocumentErrorBoundary';
 
 // Radix Dialog (focus trap) reaches for DOM globals the jsdom preload does not
@@ -43,11 +44,23 @@ function MaybeThrow({ label }: { label: string }) {
   return <span data-testid="payload">{label}</span>;
 }
 
+function ThrowSyncTimeout({ docName }: { docName: string }) {
+  if (shouldThrow) {
+    // Only a reach failure offers the restart affordance.
+    throw new SyncTimeoutError(docName, 10_000);
+  }
+  return <span data-testid="payload">{docName}</span>;
+}
+
 type CreateRequest = { level: 'standard' | 'full'; note?: string };
+
+const restartServer = vi.fn(async () => ({ ok: true as const }));
 
 function installBugReportBridge(): CreateRequest[] {
   const createCalls: CreateRequest[] = [];
   const bridge = {
+    config: { projectPath: '/tmp/ok', collabUrl: 'ws://127.0.0.1:5200/collab' },
+    restartServer,
     bugReport: {
       create: (request: CreateRequest) => {
         createCalls.push(request);
@@ -96,6 +109,7 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
 
   beforeEach(() => {
     shouldThrow = false;
+    restartServer.mockClear();
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
@@ -305,5 +319,35 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
       );
     });
     expect(sawBoundaryError).toBe(true);
+  });
+
+  test('the restart action is disabled while a restart is in flight', async () => {
+    shouldThrow = true;
+    installBugReportBridge();
+    let releaseRestart!: (value: { ok: true }) => void;
+    restartServer.mockImplementationOnce(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          releaseRestart = resolve;
+        }),
+    );
+
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={vi.fn(() => {})}>
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    const restart = screen.getByRole('button', { name: /restart server/i });
+    await userEvent.click(restart);
+    expect((restart as HTMLButtonElement).disabled).toBe(true);
+
+    // A second press while the first is outstanding must not spawn twice.
+    await userEvent.click(restart);
+    expect(restartServer).toHaveBeenCalledTimes(1);
+
+    releaseRestart({ ok: true });
+    await screen.findByRole('button', { name: /restart server/i });
+    expect((restart as HTMLButtonElement).disabled).toBe(false);
   });
 });

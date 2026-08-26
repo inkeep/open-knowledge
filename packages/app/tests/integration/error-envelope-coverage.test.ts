@@ -34,12 +34,40 @@ const HANDLER_SOURCES = [
   'http/link-graph-routes.ts',
   'http/metrics-routes.ts',
   'http/document-routes.ts',
+  'http/config-system-routes.ts',
+  'http/lint-routes.ts',
+  'http/history-routes.ts',
+  'http/skills-read-routes.ts',
 ].map((file) => ({
   file,
   text: readFileSync(join(SERVER_SRC, file), 'utf8'),
 }));
-/** The route table and the shared success spine live in `api-extension.ts` only. */
+/** The shared success spine lives in `api-extension.ts` only (fallback owner
+ * for `extractHandlerBody`). Route-table records, by contrast, now live in
+ * `api-extension.ts` AND each native group file — see
+ * `extractRouteTableHandlerNames`. */
 const source = HANDLER_SOURCES[0]?.text ?? '';
+
+/**
+ * Every `'/api/…': handle<X>` binding across all handler sources — the legacy
+ * dispatch record in `api-extension.ts` AND each native group's own `const
+ * routes:` record. Mirrors `attribution-sweep-coverage.test.ts` /
+ * `conflict-gate-coverage.test.ts`'s `extractStaticRouteHandlerNames`: bound
+ * each record on the `if (enableTestRoutes)` block (api-extension) or the
+ * group file's `const table` so the table's `resolve`/`dispatch` bindings are
+ * not scooped up.
+ */
+function extractRouteTableHandlerNames(): string[] {
+  return HANDLER_SOURCES.flatMap(({ text }) => {
+    const routesStart = text.indexOf('\n  const routes:');
+    if (routesStart === -1) return [];
+    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
+    const nativeTable = text.indexOf('\n  const table', routesStart);
+    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
+    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
+    return [...slice.matchAll(/:\s*(handle\w+)/g)].flatMap((m) => (m[1] ? [m[1]] : []));
+  });
+}
 
 function listAllHandlers(): string[] {
   // Handlers in `api-extension.ts` come in three shapes:
@@ -231,9 +259,7 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     // The route-table block is the single source of truth for which
     // handlers are HTTP-reachable; the meta-test's job is only valuable
     // if every reachable handler is scanned.
-    const routeTableHandlerNames = [...source.matchAll(/'\/api\/[^']*':\s+(handle\w+),?$/gm)].map(
-      (m) => m[1],
-    );
+    const routeTableHandlerNames = extractRouteTableHandlerNames();
     expect(routeTableHandlerNames.length).toBeGreaterThan(0);
     const discovered = new Set(listAllHandlers());
     const missingFromDiscovery = routeTableHandlerNames.filter(

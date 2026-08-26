@@ -205,7 +205,7 @@ export function ShareFreshnessWarning({ freshness, status, kind }: ShareFreshnes
           ) : (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <Button variant="outline" size="xs" onClick={() => onToggleRequest(true)}>
-                <Trans>Enable auto-sync</Trans>
+                <Trans>Enable Auto (Pull and Push)</Trans>
               </Button>
               <a
                 href={PUSH_DOCS_URL}

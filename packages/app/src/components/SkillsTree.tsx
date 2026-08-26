@@ -86,7 +86,7 @@ import { asDirectoryHandle } from '@/components/use-selection-mirror';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { openExternalUrl } from '@/lib/external-link';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
-import { groupUpdatableSkills } from '@/lib/skill-group-update';
+import { groupDeletableSkills, groupUpdatableSkills } from '@/lib/skill-group-update';
 import {
   bucketForDetected,
   bucketForSkill,
@@ -1048,7 +1048,29 @@ export function SkillsTree({
       return out.length > 0 ? out : skillRowOrderRef.current;
     };
     const onKeyDown = (e: Event) => {
-      if (!(e instanceof KeyboardEvent) || !e.shiftKey) return;
+      if (!(e instanceof KeyboardEvent)) return;
+      // Delete/⌘Backspace on a live multi-selection opens the bulk-delete
+      // confirm — same key semantics as the Files tree, so the two sidebars
+      // don't teach conflicting muscle memory.
+      const lowerKey = e.key.toLowerCase();
+      const isDeleteKey =
+        !e.altKey &&
+        !e.shiftKey &&
+        ((e.metaKey && !e.ctrlKey && lowerKey === 'backspace') ||
+          (!e.metaKey && !e.ctrlKey && lowerKey === 'delete'));
+      if (isDeleteKey && multiSelectedRef.current.size > 0) {
+        const del = e.target as HTMLElement | null;
+        if (del?.closest?.('[contenteditable], input, textarea, [role="textbox"]')) return;
+        const entries = [...multiSelectedRef.current]
+          .map((p) => injectInputsRef.current.skillFor(parseTreePath(p, groupByPrefixRef.current)))
+          .filter((s): s is SkillsListEntry => s !== undefined);
+        if (entries.length === 0) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setBulkDelete(entries);
+        return;
+      }
+      if (!e.shiftKey) return;
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       // Window-level (the swallowed shift-click leaves DOM focus outside the
       // tree). Act when a multi-selection is live OR the tree itself holds
@@ -1701,7 +1723,17 @@ export function SkillsTree({
               node.group !== undefined
                 ? groupByPrefix.get(`${node.scopeLabel}/${node.group}`)
                 : undefined;
-            if (members.length === 0 && !bucket) return null;
+            // The group-row bulk delete: every non-managed member, source or
+            // not (plugin-served groups excluded inside the helper).
+            const deletable =
+              node.group !== undefined
+                ? groupDeletableSkills({
+                    groupPrefix: `${node.scopeLabel}/${node.group}`,
+                    bucket,
+                    skillByPrefix,
+                  })
+                : [];
+            if (members.length === 0 && deletable.length === 0 && !bucket) return null;
             const sourceLabel = node.group ?? '';
             // The group row speaks for the upstream: name what it is, link to
             // it, and (for tracked members) refresh from it. Same shape as the
@@ -1748,6 +1780,18 @@ export function SkillsTree({
                     >
                       <DownloadCloud aria-hidden />
                       <Trans>Update all from this source</Trans>
+                    </DropdownMenuItem>
+                  </>
+                ) : null}
+                {deletable.length > 0 ? (
+                  <>
+                    {members.length === 0 && bucket ? <DropdownMenuSeparator /> : null}
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => setBulkDelete(deletable)}
+                    >
+                      <Trash2 aria-hidden />
+                      <Trans>Delete {deletable.length} skills</Trans>
                     </DropdownMenuItem>
                   </>
                 ) : null}

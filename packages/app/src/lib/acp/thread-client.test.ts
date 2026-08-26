@@ -354,3 +354,133 @@ describe('store hooks return the useSyncExternalStore subscription value (React 
     });
   }
 });
+
+describe('unread affordance (PRD-8021)', () => {
+  const info: ThreadInfo = {
+    threadId: 't-unread',
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: 'A',
+    status: 'ready',
+    createdAt: 1,
+    lastActivityAt: 100,
+    modes: null,
+    configOptions: null,
+    lastSeq: -1,
+  };
+
+  function boot(): {
+    client: AgentThreadClient;
+    bump: (nextInfo: ThreadInfo) => void;
+  } {
+    const client = new AgentThreadClient();
+    const internals = client as unknown as { handleFrame: (f: ThreadServerFrame) => void };
+    internals.handleFrame.call(client, {
+      op: 'subscribed',
+      threadId: info.threadId,
+      fromSeq: 0,
+      info,
+    });
+    return {
+      client,
+      bump: (nextInfo) =>
+        internals.handleFrame.call(client, {
+          op: 'info',
+          threadId: nextInfo.threadId,
+          info: nextInfo,
+        }),
+    };
+  }
+
+  test('a fresh subscription seeds the floor to lastActivityAt — no unread pulse on reload', () => {
+    // Contract: the pulse means "advanced while you were elsewhere in
+    // THIS window session", not "you just reloaded". The floor is seeded
+    // to whatever activity the thread already had when we first learned
+    // about it, so a renderer reload does not fabricate an unread state
+    // for every idle ready tab.
+    const { client } = boot();
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+  });
+
+  test('marks unread only after activity advances past the initial floor', () => {
+    const { client, bump } = boot();
+    // Fresh state (floor seeded): no unread.
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+    // Activity moves — unread turns on.
+    bump({ ...info, lastActivityAt: 200 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+    // Viewing clears it until the next bump.
+    client.markThreadViewed(info.threadId);
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+    bump({ ...info, lastActivityAt: 300 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+  });
+
+  test('only settled `ready` tabs report unread — a running turn already pulses via its status dot', () => {
+    const { client, bump } = boot();
+    client.markThreadViewed(info.threadId);
+    bump({ ...info, lastActivityAt: 200, status: 'running' });
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+    bump({ ...info, lastActivityAt: 200, status: 'ready' });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+  });
+
+  test('unknown thread reports false and never throws', () => {
+    const { client } = boot();
+    expect(client.getThreadUnread('not-a-thread')).toBe(false);
+    // idempotent no-op on unknown ids
+    client.markThreadViewed('not-a-thread');
+    expect(client.getThreadUnread('not-a-thread')).toBe(false);
+  });
+
+  test('a redundant markThreadViewed does not bump the store', () => {
+    const { client } = boot();
+    client.markThreadViewed(info.threadId);
+    let notifications = 0;
+    client.subscribe(() => {
+      notifications += 1;
+    });
+    client.markThreadViewed(info.threadId);
+    expect(notifications).toBe(0);
+  });
+
+  test('mark-viewed on ready flip with unchanged activityAt clears unread', () => {
+    // Reviewer regression: a `running → ready` transition may carry no
+    // fresh activityAt (an info frame that only flips status). The
+    // SessionsHost effect keys on status changes too, so markThreadViewed
+    // must still clear unread when the caller re-fires on that flip.
+    const { client, bump } = boot();
+    bump({ ...info, lastActivityAt: 200 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+    // Running interlude — activityAt stays at 200.
+    bump({ ...info, status: 'running', lastActivityAt: 200 });
+    client.markThreadViewed(info.threadId); // no-op under running
+    expect(client.getThreadUnread(info.threadId)).toBe(false); // running always reads false
+    // Flip back to ready with the SAME activityAt.
+    bump({ ...info, status: 'ready', lastActivityAt: 200 });
+    // Mark once more (what the effect's status-dep firing does).
+    client.markThreadViewed(info.threadId);
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+  });
+
+  test('markThreadViewed is a no-op while the thread is `running` — no bump storm during streaming', () => {
+    // The SessionsHost mark-viewed effect keys on lastActivityAt, which
+    // every streaming event bumps. If markThreadViewed also bumped for
+    // each of those, the version-keyed snapshot cache would invalidate
+    // once per event and every store subscriber would re-render. The
+    // guard collapses those to zero bumps until the turn settles.
+    const { client, bump } = boot();
+    bump({ ...info, status: 'running', lastActivityAt: 200 });
+    let notifications = 0;
+    client.subscribe(() => {
+      notifications += 1;
+    });
+    // Simulate five streaming batches, mark-viewed after each.
+    for (let i = 1; i <= 5; i++) {
+      bump({ ...info, status: 'running', lastActivityAt: 200 + i * 10 });
+      client.markThreadViewed(info.threadId);
+    }
+    // The bumps from `bump()` are the 5 activity-driven ones — no extras
+    // from markThreadViewed under `running`.
+    expect(notifications).toBe(5);
+  });
+});

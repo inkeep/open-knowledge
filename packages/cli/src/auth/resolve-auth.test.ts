@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import type { GhDetectResult } from './gh-detect.ts';
+import type { ExecFileSyncFn, GhDetectResult } from './gh-detect.ts';
+import { detectGh } from './gh-detect.ts';
 import { buildCliCredentialHelper, resolveAuth } from './resolve-auth.ts';
 import { FileBackend } from './token-store.ts';
 
@@ -72,6 +73,68 @@ describe('resolveAuth', () => {
     await store.set('github.com', 'alice', 'gho_abc');
     const result = await resolveAuth('github.com', store, { selfCliArgs: SELF }, ghAvailable());
     expect(result.tier).toBe('A');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Declared account: the login rides into gh's lookup and the relay names
+  // the account that actually produced the token
+  // ---------------------------------------------------------------------------
+
+  test('forwards the declared login to detectGh alongside the host', async () => {
+    const store = makeStore(tmpDir);
+    const seen: [string | undefined, string | undefined][] = [];
+    const recorder = (host?: string, opts?: { login?: string }): GhDetectResult => {
+      const login = opts?.login;
+      seen.push([host, login]);
+      return { available: true, token: 't' };
+    };
+    await resolveAuth('github.com', store, { selfCliArgs: SELF, login: 'alice' }, recorder);
+    expect(seen).toEqual([['github.com', 'alice']]);
+  });
+
+  test('relayToken names the account that produced the token', async () => {
+    const store = makeStore(tmpDir);
+    const result = await resolveAuth(
+      'github.com',
+      store,
+      { selfCliArgs: SELF, login: 'alice' },
+      () => ({
+        available: true,
+        token: 'ghs_alice',
+        resolvedLogin: 'alice',
+        fallback: false,
+      }),
+    );
+    expect(result.relayToken).toEqual({ token: 'ghs_alice', host: 'github.com', login: 'alice' });
+  });
+
+  // The fallback floor through the REAL detectGh: a declared account gh
+  // cannot serve must degrade to the active account's token — never to tier
+  // 'none', which would turn a wrong-identity clone into an anonymous one.
+  // The relay then carries no login, so nothing downstream can claim the
+  // missed account.
+  test('a declared login gh cannot serve falls back to the active token, never to tier none', async () => {
+    const store = makeStore(tmpDir);
+    const calls: string[] = [];
+    const exec = ((cmd: string, args: readonly string[]) => {
+      const argv = `${cmd} ${args.join(' ')}`;
+      calls.push(argv);
+      if (argv === 'gh auth token --hostname github.com') return 'ghs_bob_active';
+      throw new Error(`gh exited 1: ${argv}`);
+    }) as unknown as ExecFileSyncFn;
+    const result = await resolveAuth(
+      'github.com',
+      store,
+      { selfCliArgs: SELF, login: 'alice' },
+      (host, opts) => detectGh(host, { login: opts?.login, _exec: exec, _fileExists: () => false }),
+    );
+    expect(result.tier).toBe('A');
+    expect(result.relayToken).toEqual({ token: 'ghs_bob_active', host: 'github.com' });
+    expect(result.relayToken).not.toHaveProperty('login');
+    expect(calls).toEqual([
+      'gh auth token --hostname github.com --user alice',
+      'gh auth token --hostname github.com',
+    ]);
   });
 
   // ---------------------------------------------------------------------------

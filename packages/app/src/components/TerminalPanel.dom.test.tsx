@@ -18,6 +18,11 @@ import type {
   OkPtyData,
   OkPtyExit,
 } from '@/lib/desktop-bridge-types';
+import {
+  applyModelledScroll,
+  createScrollModelState,
+  instrumentSmoothScrollOption,
+} from './terminal-scroll-model.test-helper';
 
 // --- xterm mocks (3rd-party system boundary) ---
 class MockFitAddon {
@@ -77,9 +82,45 @@ class MockTerminal {
   // Optional wrapped-line fixture: each entry is one buffer row; rows after the
   // first carry `isWrapped` so the provider stitches them into one logical line.
   lineRows: string[] | null = null;
+  // Where the viewport sits in the scrollback. `viewportY === baseY` is the
+  // bottom; anything lower is scrolled back, which is what the panel's
+  // post-resize scroll-reach restore keys off.
+  //
+  // The public scrolls model the pinned `CoreBrowserTerminal`: under
+  // `smoothScrollDuration` they hand a target to an animated viewport and
+  // return with `viewportY` unmoved, and `scrollToLine` does nothing at all
+  // when `line - viewportY` is zero. A mock that simply recorded the calls
+  // would accept a restore the real terminal swallows.
+  // The scroll rules live in `terminal-scroll-model.test-helper`, shared with
+  // the unit fake beside `restoreScrollReach` so the two cannot drift.
+  scrollState = createScrollModelState(0);
+  baseY = 0;
+  get viewportY() {
+    return this.scrollState.viewportY;
+  }
+  set viewportY(line: number) {
+    this.scrollState.viewportY = line;
+  }
+  get scrollbarLine() {
+    return this.scrollState.scrollbarLine;
+  }
+  set scrollbarLine(line: number) {
+    this.scrollState.scrollbarLine = line;
+  }
+  get pendingScrollTarget() {
+    return this.scrollState.pendingTarget;
+  }
+  scrollToBottom = vi.fn(() => {
+    applyModelledScroll(this.scrollState, this.baseY, this.options.smoothScrollDuration as number);
+  });
+  scrollToLine = vi.fn((line: number) => {
+    applyModelledScroll(this.scrollState, line, this.options.smoothScrollDuration as number);
+  });
   get buffer() {
     return {
       active: {
+        viewportY: this.viewportY,
+        baseY: this.baseY,
         getLine: (index: number) => {
           if (this.lineRows) {
             const t = this.lineRows[index];
@@ -150,7 +191,12 @@ class MockTerminal {
   attachCustomWheelEventHandler = vi.fn((h: (e: WheelEvent) => boolean) => {
     this.wheelHandler = h;
   });
+  /** Writes to `smoothScrollDuration`; the scrolled-back guard's only trace. */
+  smoothScrollWrites: () => number;
   constructor(options: Record<string, unknown>) {
+    this.smoothScrollWrites = instrumentSmoothScrollOption(
+      options as { smoothScrollDuration?: number },
+    );
     this.options = options;
     lastTerm = this;
   }
@@ -693,6 +739,70 @@ describe('TerminalPanel', () => {
     act(() => roCallback?.());
     expect(lastTerm?.refresh).toHaveBeenCalled();
     expect(lastTerm?.renderFlush).toHaveBeenCalledTimes(1);
+  });
+
+  test('a grid-changing fit keeps a scrolled-back viewport on the line it was reading', async () => {
+    const { bridge } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(roCallback).toBeTruthy());
+
+    // At the bottom there is no reach to lose, so the common resize must leave
+    // even a disagreeing scrollbar alone.
+    if (lastTerm) {
+      lastTerm.viewportY = 120;
+      lastTerm.baseY = 120;
+      lastTerm.scrollbarLine = 7;
+    }
+    lastFit?.fit.mockImplementation(() => {
+      if (lastTerm) lastTerm.cols += 1;
+    });
+    act(() => roCallback?.());
+    expect(lastTerm?.viewportY).toBe(120);
+    expect(lastTerm?.scrollbarLine).toBe(7);
+    expect(lastTerm?.pendingScrollTarget).toBeNull();
+    // The ordinary resize decides it has nothing to do without touching the
+    // terminal's options; at the bottom both halves of the bounce would be
+    // no-ops anyway, so this is the guard's only observable trace.
+    expect(lastTerm?.smoothScrollWrites()).toBe(0);
+
+    // Scrolled back, the same fit re-asserts the position outright: the reader
+    // is left where they were, the scrollbar agrees again, and there is no
+    // animation still to run.
+    if (lastTerm) {
+      lastTerm.viewportY = 34;
+      lastTerm.scrollbarLine = 0;
+      // Scoped to this act, so the ordering assertion below compares the two
+      // calls from the SAME resize rather than an earlier flush.
+      lastTerm.renderFlush.mockClear();
+      lastTerm.scrollToBottom.mockClear();
+    }
+    act(() => roCallback?.());
+    // Pins the CALL ORDER: the repaint must precede the restore, because
+    // flushing the render debouncer runs the refresh callbacks the viewport
+    // queued its scroll-area sync onto. What this cannot pin is the
+    // consequence — the mock always supplies the debouncer internal, so it
+    // never enters the degraded path where the flush defers to the next frame
+    // and the restore lands ahead of the sync regardless of call order.
+    expect(lastTerm?.renderFlush.mock.invocationCallOrder[0]).toBeLessThan(
+      lastTerm?.scrollToBottom.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(lastTerm?.viewportY).toBe(34);
+    expect(lastTerm?.scrollbarLine).toBe(34);
+    expect(lastTerm?.pendingScrollTarget).toBeNull();
+    // Suppressed across the pair, then put back.
+    expect(lastTerm?.smoothScrollWrites()).toBe(2);
+    expect(lastTerm?.options.smoothScrollDuration).toBe(125);
+
+    // A resize that leaves the grid alone is not a resize that can cost reach.
+    if (lastTerm) {
+      lastTerm.viewportY = 12;
+      lastTerm.scrollbarLine = 3;
+    }
+    lastFit?.fit.mockImplementation(() => {});
+    act(() => roCallback?.());
+    expect(lastTerm?.viewportY).toBe(12);
+    expect(lastTerm?.scrollbarLine).toBe(3);
+    expect(lastTerm?.pendingScrollTarget).toBeNull();
   });
 
   test("the WebGL canvas's device-pixel re-clear also repaints in the same frame", async () => {

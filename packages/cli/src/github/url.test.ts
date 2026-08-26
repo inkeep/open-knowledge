@@ -84,6 +84,67 @@ describe('parseGitUrl', () => {
     });
   });
 
+  describe('userinfo handling', () => {
+    // The hostname split is load-bearing: with userinfo folded into the
+    // hostname, the public-repo probe gate never fires and
+    // `gh auth token --hostname alice@github.com` fails, so the exact URL
+    // form GCM's multi-account guide tells users to write lost all auth.
+    // Account extraction is NOT this parser's job — the server-side origin
+    // parser owns it (with login-grammar validation); this one only splits
+    // the userinfo off the host and drops it.
+    test('https URL with userinfo yields the real hostname', () => {
+      const result = parseGitUrl('https://alice@github.com/owner/repo');
+      expect(result).toEqual({
+        protocol: 'https',
+        hostname: 'github.com',
+        owner: 'owner',
+        name: 'repo',
+      });
+    });
+
+    test('userinfo with a port both split off the hostname', () => {
+      const result = parseGitUrl('https://alice@ghes.example.com:8443/owner/repo.git');
+      expect(result).toEqual({
+        protocol: 'https',
+        hostname: 'ghes.example.com',
+        owner: 'owner',
+        name: 'repo',
+      });
+    });
+
+    test('user:password userinfo is dropped entirely — no credential survives the parse', () => {
+      const result = parseGitUrl('https://alice:s3cretpw@github.com/owner/repo');
+      expect(result).toMatchObject({ hostname: 'github.com' });
+      expect(JSON.stringify(result)).not.toContain('s3cretpw');
+      expect(JSON.stringify(result)).not.toContain('alice');
+    });
+
+    test('a `@` inside the password half is not read as the host delimiter', () => {
+      const result = parseGitUrl('https://alice:p@ss@github.com/owner/repo');
+      expect(result).toMatchObject({ hostname: 'github.com' });
+    });
+
+    test('ssh:// URL with a user yields the real hostname', () => {
+      const result = parseGitUrl('ssh://alice@github.com/owner/repo');
+      expect(result).toEqual({
+        protocol: 'ssh',
+        hostname: 'github.com',
+        owner: 'owner',
+        name: 'repo',
+      });
+    });
+
+    test('SCP-style URL with a non-git user parses', () => {
+      const result = parseGitUrl('alice@github.com:owner/repo.git');
+      expect(result).toEqual({
+        protocol: 'ssh',
+        hostname: 'github.com',
+        owner: 'owner',
+        name: 'repo',
+      });
+    });
+  });
+
   describe('SCP-style SSH (git@host:owner/repo)', () => {
     test('standard git@ SSH', () => {
       const result = parseGitUrl('git@github.com:owner/repo');

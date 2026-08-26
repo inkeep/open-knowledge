@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 import {
   _resetDocExtensionsForTests,
+  canonicalDocName,
   docNameToRelativePath,
   forgetDocExtension,
   getDocExtension,
@@ -191,5 +192,74 @@ describe('registerDocExtension / getDocExtension', () => {
     expect(() => registerDocExtension('foo', '.txt')).toThrow();
     expect(() => registerDocExtension('foo', '.markdown')).toThrow();
     expect(() => registerDocExtension('foo', '')).toThrow();
+  });
+});
+
+describe('canonicalDocName', () => {
+  test('collapses a stray extension onto its extension-less twin', () => {
+    expect(canonicalDocName('specs/demo/SPEC.md')).toBe('specs/demo/SPEC');
+    expect(canonicalDocName('notes.mdx')).toBe('notes');
+  });
+
+  test('collapses repeated extensions rather than leaving a qualified name', () => {
+    expect(canonicalDocName('foo.md.md')).toBe('foo');
+    expect(canonicalDocName('foo.mdx.md')).toBe('foo');
+  });
+
+  test('leaves an extension-less docName untouched', () => {
+    expect(canonicalDocName('specs/demo/SPEC')).toBe('specs/demo/SPEC');
+  });
+
+  test('preserves the shadowed half of a real same-stem pair', () => {
+    // Registered the way the watcher does it: by STEM, once per file seen.
+    // `.mdx` wins, so `foo` resolves to the mdx and `foo.md` is the only way
+    // to reach the md file.
+    registerDocExtension('foo', '.md');
+    registerDocExtension('foo', '.mdx');
+    expect(canonicalDocName('foo.md')).toBe('foo.md');
+  });
+
+  test('collapses the winning half, which the bare stem already reaches', () => {
+    registerDocExtension('foo', '.md');
+    registerDocExtension('foo', '.mdx');
+    expect(canonicalDocName('foo.mdx')).toBe('foo');
+  });
+
+  test('collapses when only one file exists under the stem', () => {
+    registerDocExtension('solo', '.md');
+    expect(canonicalDocName('solo.md')).toBe('solo');
+  });
+
+  test('collapses once the shadowing file is gone', () => {
+    registerDocExtension('foo', '.md');
+    registerDocExtension('foo', '.mdx');
+    expect(canonicalDocName('foo.md')).toBe('foo.md');
+    forgetDocExtension('foo');
+    expect(canonicalDocName('foo.md')).toBe('foo');
+  });
+
+  test('registering a qualified name does not manufacture ambiguity', () => {
+    // Guards the blind spot that hid an earlier defect: hand-registering
+    // `notes.md` is a state the watcher never produces, and must not be
+    // mistaken for a real pair.
+    registerDocExtension('notes.md', '.md');
+    expect(canonicalDocName('notes.md')).toBe('notes');
+  });
+
+  test('leaves non-markdown docNames that own their extension alone', () => {
+    expect(canonicalDocName('diagram.mermaid')).toBe('diagram.mermaid');
+    expect(canonicalDocName('board.excalidraw')).toBe('board.excalidraw');
+    expect(canonicalDocName('script.ts')).toBe('script.ts');
+  });
+
+  test('is idempotent', () => {
+    const once = canonicalDocName('specs/demo/SPEC.md');
+    expect(canonicalDocName(once)).toBe(once);
+  });
+
+  test('resolves to the same file path as the name it collapses', () => {
+    expect(docNameToRelativePath(canonicalDocName('specs/demo/SPEC.md'))).toBe(
+      docNameToRelativePath('specs/demo/SPEC.md'),
+    );
   });
 });

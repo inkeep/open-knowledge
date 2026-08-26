@@ -56,6 +56,7 @@ import {
   createHandlePaste,
 } from './clipboard/index.ts';
 import { useDocumentContext } from './DocumentContext';
+import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
 import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
@@ -969,16 +970,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       docName,
       mountId,
     });
-    type TxArg = {
-      transaction: { docChanged: boolean; getMeta: (key: typeof ySyncPluginKey) => unknown };
-    };
     const onTransaction = (arg: unknown) => {
-      const transaction = (arg as TxArg).transaction;
+      const { transaction } = arg as { transaction: PMTransaction };
       if (!transaction.docChanged) return;
-      // Origin gate: sync transactions injected by y-prosemirror carry
-      // the ySyncPluginKey meta. Reject those — only true user input
-      // should drive the burst.
-      if (transaction.getMeta(ySyncPluginKey)) return;
+      // Origin gate: only true user input should drive the burst, and the
+      // editor produces two kinds of local change that are not — CRDT sync
+      // and its own NodeView representation swaps. `isUserIntentOrigin`
+      // answers both.
+      if (!isUserIntentOrigin(transaction)) return;
       // Substrate-coarse durationMs/charsDelta — see typing-burst-detector.ts.
       sampler.recordUserInput(0, 1);
     };

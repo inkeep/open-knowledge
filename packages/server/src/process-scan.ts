@@ -300,18 +300,9 @@ function parseListeningPids(output: string): number[] {
   return [...new Set(pids)];
 }
 
-/**
- * Full discovery pipeline: finds all `.ok/local/` lock dirs for running
- * open-knowledge servers.
- *
- * Returns unique canonical directory paths (each is the lock dir,
- * i.e. `<contentDir>/.ok/local`).
- */
+/** A dir counts as a lock dir only when it holds a `server.lock`. */
 function hasLockFile(lockDir: string): boolean {
-  // The `ui.lock` disjunct is the one-release legacy-reap carve-out: a lingering
-  // pre-migration `ok ui` holder with no companion `server.lock` must stay
-  // discoverable so `ok stop all` / `ok clean` can reach it. Drops with the reap.
-  return existsSync(join(lockDir, 'server.lock')) || existsSync(join(lockDir, 'ui.lock'));
+  return existsSync(join(lockDir, 'server.lock'));
 }
 
 function addLockDirsForCwd(candidateDirs: Set<string>, cwd: string): void {
@@ -363,6 +354,13 @@ function addLockDirsUnderCwd(candidateDirs: Set<string>, cwd: string): void {
   walk(cwd, 0);
 }
 
+/**
+ * Full discovery pipeline: finds all `.ok/local/` lock dirs for running
+ * open-knowledge servers.
+ *
+ * Returns unique canonical directory paths (each is the lock dir,
+ * i.e. `<contentDir>/.ok/local`).
+ */
 export async function discoverLockDirs(): Promise<string[]> {
   const candidateDirs = new Set<string>();
 

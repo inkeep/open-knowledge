@@ -29,24 +29,31 @@ interface InheritedAutoSync {
   inheritedFrom?: unknown;
 }
 
+// Each branch names the mode exactly as the Settings → Sync control labels it.
+// The toast's whole job is to point at that control, so a name it does not show
+// ("Follow", "on"/"off") leaves the user hunting for a setting that is right
+// there under the name they were not told.
 function inheritedNoticeMessage(mode: SyncMode | null, project: string) {
   if (mode === 'follow') {
     return (
       <Trans>
-        Follow is on for this worktree, inherited from {project}. Change it in Settings → Sync.
+        Sync is set to Auto (Pull only) for this worktree, inherited from {project}. Change it in
+        Settings → Sync.
       </Trans>
     );
   }
   if (mode === 'full') {
     return (
       <Trans>
-        Auto-sync is on for this worktree, inherited from {project}. Change it in Settings → Sync.
+        Sync is set to Auto (Pull and Push) for this worktree, inherited from {project}. Change it
+        in Settings → Sync.
       </Trans>
     );
   }
   return (
     <Trans>
-      Auto-sync is off for this worktree, inherited from {project}. Change it in Settings → Sync.
+      Sync is set to Manual for this worktree, inherited from {project}. Change it in Settings →
+      Sync.
     </Trans>
   );
 }

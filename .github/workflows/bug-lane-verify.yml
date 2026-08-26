@@ -271,14 +271,72 @@ jobs:
           # attempt to completion caches every task that genuinely passed, so
           # the retry re-executes only what actually failed. `--force` is
           # omitted for the same reason: it would discard those cached passes.
+          # The retry's output is captured because a red verdict has to be able
+          # to SAY what went red. The refusal page renders per-ref CONFLICT
+          # evidence under "Why it refused", and a red tier produces no
+          # conflicts by construction — every survivor picked cleanly, which is
+          # how it reached the tiers at all. So the most severe verdict was the
+          # one paging with an empty reason, sending a reader to the run log to
+          # discover what this step already knew.
+          RETRY_LOG="${RUNNER_TEMP}/bug-lane-tiers-retry.log"
           if pnpm exec turbo run typecheck test --continue --output-logs=errors-only; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
-          elif pnpm exec turbo run typecheck test --output-logs=errors-only; then
+          elif pnpm exec turbo run typecheck test --output-logs=errors-only 2>&1 | tee "$RETRY_LOG"; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
             echo "::warning::bug-lane: fast tiers passed on retry for ${STABLE} + ${SURVIVING_REFS} — the first attempt failed (flake-class); see its log before trusting this tick."
           else
             echo "verdict=fail" >> "$GITHUB_OUTPUT"
-            echo "::warning::bug-lane: fast tiers failed TWICE on ${STABLE} + ${SURVIVING_REFS} — not flake-class, so the fix likely assumes something the stable does not have. It stays on its cycle's path."
+            # Vitest names the failing test on a `FAIL` line. A typecheck-only
+            # failure produces none, so fall back to turbo's own failed-task
+            # lines rather than paging empty again. Sorted-unique and capped:
+            # the page is a pointer to the log, not a copy of it. Extraction is
+            # inline shell and not a helper script on purpose — this step runs
+            # against the SYNTHETIC tree, detached at the stable, where a script
+            # added after that stable was cut does not exist.
+            # The ESC is built with printf rather than written as `\x1b`, which
+            # only GNU sed understands — the runner has GNU sed today, and a
+            # silent no-op on any host that does not would strip nothing and
+            # leave every extracted name wrapped in escape codes.
+            ESC="$(printf '\033')"
+            strip_ansi() { sed -e "s/${ESC}\[[0-9;]*m//g" "$RETRY_LOG"; }
+            # The 200 cap is a runaway bound, not the page's display limit —
+            # the page shows a handful and computes "…and N more" from what it
+            # receives, so a cap tight enough to bite would silently understate
+            # that remainder. A red tier producing 200 distinct failures is a
+            # broken base, not a fix, and the count is a floor at that point.
+            FAILURES="$(strip_ansi | grep -E '^[[:space:]]*FAIL[[:space:]]' \
+              | sed -E 's/^[[:space:]]*FAIL[[:space:]]+//' | sort -u | head -200 || true)"
+            if [[ -z "$FAILURES" ]]; then
+              # Anchored on turbo's `<pkg>#<task>:` prefix, which is the only
+              # one of its three exit lines that names the task that failed.
+              # Measured against the pinned turbo, one failing task emits
+              # `::error::command (…) exited (1)`, `<pkg>#<task>:  ERROR  command
+              # (…) exited (1)` and ` ERROR  run failed: command  exited (1)`: a
+              # bare `command .* exited` match yields three bullets for one
+              # failure, two of them redundant and one naming nothing at all.
+              FAILURES="$(strip_ansi | grep -E '#[^ ]+:.*exited \([0-9]+\)' | sort -u | head -200 || true)"
+            fi
+            # Encoded into a variable BEFORE the heredoc block, with a fallback.
+            # Under `set -e` a jq that exits non-zero mid-block (invalid UTF-8
+            # surviving in the captured log, say) would abort between the
+            # `failures<<` line and its terminator, leaving an unterminated
+            # multiline block in $GITHUB_OUTPUT and failing the step — and the
+            # paging step has no `if: always()`, so the refusal would vanish
+            # silently. That is precisely the failure mode this whole change
+            # exists to remove, so it must not be reintroduced by its own
+            # plumbing.
+            FAILURES_JSON="$(printf '%s\n' "$FAILURES" | jq -cRn '[inputs | select(length > 0)]' || echo '[]')"
+            {
+              echo "failures<<FAILURES_EOF"
+              printf '%s\n' "$FAILURES_JSON"
+              echo "FAILURES_EOF"
+            } >> "$GITHUB_OUTPUT"
+            # Says what is known and stops there. The previous wording asserted
+            # the fix assumed something the stable lacks, which is only one of
+            # the causes: a tier can equally be red because the stable's own
+            # tree is red, and reading a base failure as an incompatible fix is
+            # how a lane-wide outage looks like a series of bad fixes.
+            echo "::warning::bug-lane: fast tiers failed TWICE on ${STABLE} + ${SURVIVING_REFS} — not flake-class. Either the fix assumes something the stable does not have, or the stable is red on its own; the named failures below decide which. It stays on its cycle's path."
           fi
 
       - name: Dispatch the point release (or log what would ship)
@@ -426,12 +484,19 @@ jobs:
       # the pending pile and re-qualifies and re-conflicts on every tick, so a
       # page-per-tick turns one durable fact into a message every 20 minutes
       # until the cycle's stable consumes it — ~70 identical pages, which is
-      # how a channel gets muted. Observed 2026-08-05: five identical pages for
-      # one deterministically-conflicting ref inside two hours.
+      # how a channel gets muted.
       #
       # Page once per DISTINCT refusal instead. The signature is the verdict
       # plus the refs it is about, so a genuinely new refusal — a different
-      # ref, or the same ref failing a different way — still pages at once.
+      # ref, or the same ref reaching a different verdict — still pages at
+      # once. That list is the WHOLE signature: `VERDICT|FIX_REFS|SURVIVING_REFS`
+      # and nothing else. Everything else the page renders — which tests went
+      # red, the stable tag, which refs were dropped and what they collided
+      # with, the tickets that qualified them — is deliberately outside it, so
+      # a second refusal that differs only in those stays quiet. The reasoning
+      # is split between the stable-tag paragraph and the comment above the
+      # `sig=` printf; stating what IS hashed rather than listing what is not
+      # is what keeps this accurate as the page grows.
       # The cache is only a "have I said this already" marker; if it misses
       # (eviction, or a tick cancelled between paging and saving) the lane
       # re-pages, which is the safe direction to fail.
@@ -455,6 +520,16 @@ jobs:
           SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
         run: |
           set -euo pipefail
+          # The failure list is deliberately OUTSIDE this signature, for the
+          # same reason the stable is: it is the churniest input the page has.
+          # A red tier is usually red for many tests at once, and a name that
+          # differs by a shard index, a temp path or one flaky sibling would
+          # mint a fresh signature every tick and restore the flood this
+          # suppression exists to stop. The cost is real and bounded: if the
+          # same batch keeps refusing while the CAUSE moves, only the first
+          # cause is paged. That is the right trade — the first page already
+          # tells an operator the lane is refusing and hands them the run log,
+          # which carries every subsequent cause.
           sig="$(printf '%s|%s|%s' "$VERDICT" "$FIX_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
           echo "sig=${sig}" >> "$GITHUB_OUTPUT"
           echo "marker=${RUNNER_TEMP}/bug-lane-refusal-marker" >> "$GITHUB_OUTPUT"
@@ -495,9 +570,8 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           FIX_REFS: ${{ inputs.fix_refs }}
           FIX_TICKETS: ${{ inputs.fix_tickets }}
-          SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
-          DROPPED_REFS: ${{ steps.verify.outputs.dropped_refs }}
           CONFLICTS: ${{ steps.verify.outputs.conflicts }}
+          FAILURES: ${{ steps.verify.outputs.failures }}
           STABLE: ${{ inputs.stable }}
           VERDICT: ${{ steps.verify.outputs.verdict }}
         run: |
@@ -535,6 +609,8 @@ jobs:
             [[ -z "$TICKETS_JSON" ]] && TICKETS_JSON='{}'
             CONFLICTS_JSON="${CONFLICTS:-}"
             [[ -z "$CONFLICTS_JSON" ]] && CONFLICTS_JSON='[]'
+            FAILURES_JSON="${FAILURES:-}"
+            [[ -z "$FAILURES_JSON" ]] && FAILURES_JSON='[]'
             # Join each dropped ref to the tickets that qualified it, so the
             # page names the bug rather than only a SHA.
             INPUT="$(jq -nc \
@@ -542,8 +618,9 @@ jobs:
               --arg stable "$STABLE" \
               --arg runUrl "$RUN_URL" \
               --argjson conflicts "$CONFLICTS_JSON" \
+              --argjson failures "$FAILURES_JSON" \
               --argjson tickets "$TICKETS_JSON" \
-              '{verdict: $verdict, stable: $stable, runUrl: $runUrl,
+              '{verdict: $verdict, stable: $stable, runUrl: $runUrl, failures: $failures,
                 refs: [$conflicts[] | . + {tickets: ($tickets[.ref] // [])}]}')"
             # A page that cannot be composed must not become silence: fall back
             # to the bare facts rather than skipping the POST, and leave the

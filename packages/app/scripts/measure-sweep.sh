@@ -180,11 +180,11 @@ echo "[measure-sweep] starting ok server on a kernel-assigned port…"
 ( cd "$SCRATCH" && exec node "$CLI_BIN" start --port 0 ) >"$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
-# The Editor SPA the browser drives is the `ui.lock` port; the API `server.lock`
-# confirms the collab/HTTP side is up. Both are written under <content>/.ok/local.
-read_lock_port() {
-  local lock_name="$1" lock port
-  lock="$(find "$SCRATCH/.ok" -name "$lock_name" 2>/dev/null | head -1 || true)"
+# Single-listener topology: one `server.lock` port (written under
+# <content>/.ok/local) serves both the Editor SPA and the API.
+read_server_port() {
+  local lock port
+  lock="$(find "$SCRATCH/.ok" -name server.lock 2>/dev/null | head -1 || true)"
   [[ -z "$lock" ]] && return 1
   port="$(jq -r '.port // 0' "$lock" 2>/dev/null || echo 0)"
   [[ "$port" =~ ^[0-9]+$ ]] && (( port > 0 )) && { printf '%s\n' "$port"; return 0; }
@@ -193,7 +193,7 @@ read_lock_port() {
 
 EDITOR_PORT=""
 for i in $(seq 1 120); do
-  if EDITOR_PORT="$(read_lock_port ui.lock)" && read_lock_port server.lock >/dev/null; then
+  if EDITOR_PORT="$(read_server_port)"; then
     echo "[measure-sweep] editor ready on port $EDITOR_PORT (after $((i))*0.5s)"
     break
   fi

@@ -1,0 +1,90 @@
+name: Linear PR Relay
+
+# Relay the NUMBER of every community pull request to agents-private, which files
+# or updates its Linear ticket.
+#
+# WHY THIS JOB HOLDS NO LINEAR SECRET AND CHECKS OUT NO CODE
+#   This repo already stores LINEAR_API_KEY, but every workflow that reads it
+#   (write-back, select-beta-to-promote, bug-lane, linear-release) fires only on
+#   schedule / push / *_dispatch — triggers that require write access here.
+#   Nothing fork-reachable has ever held that key, and this workflow deliberately
+#   does not change that.
+#
+#   Filing a Linear ticket from a PR means reading the PR's title and body, which
+#   are contributor-controlled on a fork. Doing that in a job that also holds the
+#   Linear key would put the workspace one shell-injection away from a public,
+#   endlessly probeable workflow file. So this job passes a bare integer over the
+#   boundary and nothing else. agents-private re-reads everything it needs from
+#   the GitHub API itself and does the Linear work with its own key.
+#
+#   There is no `actions/checkout` here on purpose: `gh` is preinstalled on the
+#   runner, so the job never materializes a working tree at all. Nothing about a
+#   contributor's branch is fetched, let alone executed.
+#
+# WHY THE PAYLOAD IS ONLY A NUMBER
+#   `github.event.pull_request.number` comes from GitHub's own event payload, not
+#   from anything a contributor typed, and it reaches the shell through `env:`
+#   rather than through `${{ }}` interpolation into the run body. The receiver
+#   validates the shape again before acting on it.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Safe to cancel: the receiver is a reconciler that reads live PR state, so a
+  # superseded relay carries no information the next one lacks. Unlike the
+  # contributor bridge, this job has no `environment:`, so a cancelled run leaves
+  # no failed deployment record behind.
+  group: linear-pr-relay-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  relay:
+    # FORK PRs ONLY. The tickets this produces carry `source:gh-pr`, meaning
+    # "originated from an external GitHub pull request", so the predicate is
+    # provenance rather than branch name.
+    #
+    # Pushing a branch to this repo requires write access, so every same-repo PR
+    # is internal by construction: Copybara's own `copybara/sync`, a maintainer's
+    # patch branch, or Dependabot. None is a community contribution. Excluding
+    # same-repo wholesale subsumes the Copybara case rather than restating it,
+    # and it is unforgeable — a contributor picks their branch name, not which
+    # repository it lives in.
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    name: Relay the pull request number to agents-private
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Generate agents-private dispatch token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: ${{ secrets.OSS_SYNC_APP_ID }}
+          private-key: ${{ secrets.OSS_SYNC_APP_PRIVATE_KEY }}
+          owner: inkeep
+          repositories: agents-private
+          # Without this the token carries every permission the installation
+          # holds, which for inkeep-oss-sync includes `workflows: write` on the
+          # private monorepo. `POST /dispatches` needs only `contents: write`.
+          # Nothing untrusted executes in this job today, so this is blast radius
+          # rather than an active hole: it is what keeps a future maintenance
+          # mistake here from escalating into private-monorepo write. Same
+          # `permission-*` pattern as write-back.yml.
+          permission-contents: write
+
+      - name: Dispatch
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # -F sends the value as a JSON number rather than a string, which is
+          # what the receiver's integer check expects.
+          gh api repos/inkeep/agents-private/dispatches \
+            -f event_type=public-pr-linear-sync \
+            -F "client_payload[pr]=${PR_NUMBER}"
+          echo "::notice::relayed PR #${PR_NUMBER} to agents-private"

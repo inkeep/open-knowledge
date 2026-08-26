@@ -78,13 +78,11 @@ import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ButtonGroup, ButtonGroupSeparator } from '@/components/ui/button-group';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -607,6 +605,12 @@ export function ThreadView({
   const lastSeq = state?.lastSeq ?? null;
   const [cancelPending, setCancelPending] = useState(false);
   const [cancelStalled, setCancelStalled] = useState(false);
+  // In-flight guard for the plan-approval row. `sendText` is fire-and-forget
+  // for a live thread and doesn't itself gate on `canPrompt`, so a
+  // double-click would send twice before the status transitions to
+  // `running`. Reset when the turn resumes (the send landed) or the plan
+  // clears (a new turn started fresh).
+  const [planApprovalPending, setPlanApprovalPending] = useState(false);
 
   // The turn actually ended — Stop worked (or the thread died with it).
   useEffect(() => {
@@ -614,6 +618,10 @@ export function ThreadView({
       setCancelPending(false);
       setCancelStalled(false);
     }
+  }, [turnActive]);
+
+  useEffect(() => {
+    if (turnActive) setPlanApprovalPending(false);
   }, [turnActive]);
 
   useEffect(() => {
@@ -1098,7 +1106,44 @@ export function ThreadView({
       >
         <DocPathResolverReadyContext value={resolverReady}>
           <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-          {model !== null && model.plan.length > 0 ? <PlanChecklist plan={model.plan} /> : null}
+          {model !== null && model.plan.length > 0 ? (
+            <PlanChecklist
+              plan={model.plan}
+              approval={
+                canPrompt && !archived && !planApprovalPending
+                  ? {
+                      onApprove: () => {
+                        setPlanApprovalPending(true);
+                        // Sent verbatim to the coding agent — English keeps
+                        // this out of the user's UI locale, matching the
+                        // codebase's existing agent-directed instruction
+                        // precedent. Ask changes below lands in the composer
+                        // for the user to edit, so it stays i18n'd.
+                        void sendText('Approve. Please proceed with the plan.');
+                      },
+                      onAskChanges: () => {
+                        // Idempotent by intent: skip the append when the
+                        // composer already ends with our prefix so double-
+                        // clicks don't stack duplicate leaders.
+                        const prefix = t`In the plan above, please `;
+                        const composer = composerRef.current;
+                        if (
+                          composer !== null &&
+                          !composer.getContent().instruction.endsWith(prefix)
+                        ) {
+                          composer.appendText(prefix);
+                        }
+                        composer?.focusEnd();
+                      },
+                      onReject: () => {
+                        setPlanApprovalPending(true);
+                        void sendText('Reject. Please stop and do not proceed with this plan.');
+                      },
+                    }
+                  : undefined
+              }
+            />
+          ) : null}
           {authPrompt !== null || model === null || visibleItems.length === 0 ? (
             // No messages yet: the empty state centers itself via `h-full`, which needs
             // a plain definite-height block host. The scroller's managed flex layout
@@ -3174,21 +3219,106 @@ function PermissionPrompt({
         // Unresolved on a dead turn (crash-mid-stream archive): answering is
         // impossible, so don't render buttons that would silently no-op.
         <div className="text-muted-foreground text-xs">{t`This request is no longer active.`}</div>
+      ) : allowOptions.length > 1 || denyOptions.length > 1 ? (
+        // Any escalating grant or extra refusal option; the one-row branch
+        // renders only the primary of each stance, so a 2-allow / 0-reject
+        // (or 0-allow / 2-reject) shape would otherwise silently drop its
+        // second option. Stack every option as a full-width button — no
+        // dropdown, no truncation, every choice legible. Primary allow up
+        // top for affirmative-first read order (matches iOS action-sheet
+        // convention), deny cluster below muted with a hairline divider
+        // when both stances are present so the two groups read distinct.
+        <div className="flex flex-col gap-1" data-testid="agent-thread-permission-stack">
+          {(primaryAllow !== undefined ? [primaryAllow, ...secondaryAllows] : allowOptions).map(
+            (option) => {
+              const isPrimary = option === primaryAllow;
+              return (
+                <Button
+                  key={option.optionId}
+                  ref={isPrimary ? primaryRef : undefined}
+                  type="button"
+                  size="sm"
+                  variant={isPrimary ? 'default' : 'outline'}
+                  className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
+                  onClick={() => selectOption(option.optionId)}
+                  data-testid={isPrimary ? 'agent-thread-permission-allow' : undefined}
+                  data-permission-kind={option.kind}
+                >
+                  {option.name}
+                </Button>
+              );
+            },
+          )}
+          <div
+            className={cn(
+              'flex flex-col gap-1',
+              // Only draw the group divider when the stack has both stances;
+              // a refusal-only stack doesn't need an orphan hairline.
+              allowOptions.length > 0 && 'mt-1.5 border-border/40 border-t pt-1.5',
+            )}
+          >
+            {denyOptions.length > 0 ? (
+              denyOptions.map((option, index) => (
+                <Button
+                  key={option.optionId}
+                  ref={index === 0 ? focusRefForDeny : undefined}
+                  type="button"
+                  size="sm"
+                  variant={index === 0 ? 'outline' : 'ghost'}
+                  className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans text-muted-foreground hover:text-foreground"
+                  onClick={() => selectOption(option.optionId)}
+                  data-testid={index === 0 ? 'agent-thread-permission-deny' : undefined}
+                  data-permission-kind={option.kind}
+                >
+                  {option.name}
+                </Button>
+              ))
+            ) : (
+              // Mirrors the row branch fallback — `cancelled` is the
+              // protocol's only refusal when the agent offered no reject
+              // option, so `no` exists at all even in a multi-allow stack.
+              <Button
+                ref={focusRefForDeny}
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  client.respondPermission(threadId, item.requestId, { kind: 'cancelled' })
+                }
+                data-testid="agent-thread-permission-deny"
+              >
+                {t`Deny`}
+              </Button>
+            )}
+          </div>
+        </div>
       ) : (
-        // Refusal pinned far left, the primary grant far right, and every
-        // escalating grant collapsed into the secondary button beside it — so
-        // the row stays at most three controls however many options an agent
-        // offers, and the two opposite answers never sit next to each other.
+        // One-or-two options fit a single row without wrap: keep the classic
+        // "refusal left, grant right" layout so the common Yes/No case reads
+        // like every other confirm dialog.
         <div className="flex flex-wrap items-center justify-between gap-2">
           {denyOptions.length > 0 ? (
-            <PermissionOptionCluster
-              options={denyOptions}
-              onSelect={selectOption}
-              buttonRef={focusRefForDeny}
-              testId="agent-thread-permission-deny"
-              moreLabel={t`More refusal options`}
-              menuAlign="start"
-            />
+            (() => {
+              // Row branch only reaches here when the stack gate falls through
+              // (both counts <= 1); denyOptions[0] is the single reject.
+              const only = denyOptions[0];
+              return (
+                <Button
+                  ref={focusRefForDeny}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-xs normal-case font-sans"
+                  title={only.name}
+                  onClick={() => selectOption(only.optionId)}
+                  data-testid="agent-thread-permission-deny"
+                  data-permission-kind={only.kind}
+                >
+                  <span className="truncate max-w-64">{only.name}</span>
+                </Button>
+              );
+            })()
           ) : (
             // ACP has no first-class per-tool deny beyond the agent's own
             // reject options; `cancelled` is the protocol's only refusal
@@ -3208,116 +3338,26 @@ function PermissionPrompt({
               {t`Deny`}
             </Button>
           )}
-          <div className="ml-auto flex items-center gap-1.5">
-            {secondaryAllows.length > 0 ? (
-              <PermissionOptionCluster
-                options={secondaryAllows}
-                onSelect={selectOption}
-                testId="agent-thread-permission-allow-more"
-                moreLabel={t`More grant options`}
-                menuAlign="end"
-              />
-            ) : null}
-            {primaryAllow !== undefined ? (
-              <Button
-                ref={primaryRef}
-                type="button"
-                size="sm"
-                // The `default` Button variant is `font-mono uppercase`, which
-                // is right for fixed UI verbs and wrong for a label the agent
-                // wrote — "Allow for This Session" must not render shouted.
-                className="text-xs normal-case font-sans"
-                title={primaryAllow.name}
-                onClick={() => selectOption(primaryAllow.optionId)}
-                data-testid="agent-thread-permission-allow"
-                data-permission-kind={primaryAllow.kind}
-              >
-                <span className="max-w-52 truncate">{primaryAllow.name}</span>
-              </Button>
-            ) : null}
-          </div>
+          {primaryAllow !== undefined ? (
+            <Button
+              ref={primaryRef}
+              type="button"
+              size="sm"
+              // The `default` Button variant is `font-mono uppercase`, which
+              // is right for fixed UI verbs and wrong for a label the agent
+              // wrote — "Allow for This Session" must not render shouted.
+              className="text-xs normal-case font-sans"
+              title={primaryAllow.name}
+              onClick={() => selectOption(primaryAllow.optionId)}
+              data-testid="agent-thread-permission-allow"
+              data-permission-kind={primaryAllow.kind}
+            >
+              <span className="truncate max-w-64">{primaryAllow.name}</span>
+            </Button>
+          ) : null}
         </div>
       )}
     </div>
-  );
-}
-
-/**
- * One cluster of permission choices that share a stance. `options[0]` is the
- * directly-actionable button — a single click answers with it, so the common
- * two-option case never costs an extra trip through a menu — and any further
- * options collapse behind its chevron. The menu repeats the primary so it
- * reads as the complete list of choices at that stance.
- *
- * Agent-authored names run long ("Always allow all mcp__open-knowledge__exec"),
- * so the button label is width-capped with the full string on its tooltip;
- * the menu, which has room, always shows names in full.
- */
-function PermissionOptionCluster({
-  options,
-  onSelect,
-  buttonRef,
-  testId,
-  moreLabel,
-  menuAlign,
-}: {
-  options: Extract<RenderedItem, { kind: 'permission' }>['options'];
-  onSelect: (optionId: string) => void;
-  buttonRef?: RefObject<HTMLButtonElement | null>;
-  testId: string;
-  moreLabel: string;
-  menuAlign: 'start' | 'end';
-}): ReactNode {
-  const primary = options[0];
-  if (primary === undefined) return null;
-
-  const primaryButton = (
-    <Button
-      ref={buttonRef}
-      type="button"
-      size="sm"
-      variant="outline"
-      className="text-xs"
-      title={primary.name}
-      onClick={() => onSelect(primary.optionId)}
-      data-testid={testId}
-      data-permission-kind={primary.kind}
-    >
-      <span className="max-w-52 truncate">{primary.name}</span>
-    </Button>
-  );
-
-  if (options.length === 1) return primaryButton;
-
-  return (
-    <ButtonGroup>
-      {primaryButton}
-      <ButtonGroupSeparator />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="outline"
-            aria-label={moreLabel}
-            data-testid={`${testId}-more`}
-          >
-            <ChevronDown className="size-3.5" aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align={menuAlign} className="max-w-72">
-          {options.map((option) => (
-            <DropdownMenuItem
-              key={option.optionId}
-              onSelect={() => onSelect(option.optionId)}
-              data-permission-kind={option.kind}
-            >
-              {option.name}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </ButtonGroup>
   );
 }
 

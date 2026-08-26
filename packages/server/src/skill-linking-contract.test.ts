@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest';
  *   in-repo precedent ledger).
  * - The linking reference states relative-default + the no-hybrid rule and
  *   makes the inline `brokenLinks` signal the primary write-time check, with
- *   `links({ kind: "dead" })` as the end-state audit.
+ *   `audit` as the end-state check (`links` is navigation, not validation).
  * - The core points at `brokenLinks` and the linking reference.
  * - The docs core-concepts page states relative-default + the no-hybrid rule.
  */
@@ -46,9 +46,10 @@ describe('bundled project skill — link-authoring contract', () => {
     expect(linking).toContain('Never glue `./` onto a content-root path');
   });
 
-  test('linking reference makes brokenLinks the primary check + keeps the dead-link sweep as end-state audit', () => {
+  test('linking reference makes brokenLinks the primary check + names `audit` as the end-state check', () => {
     expect(linking).toMatch(/`brokenLinks`[^\n]*primary check/);
-    expect(linking).toContain('authoritative end-state audit');
+    expect(linking).toContain('`audit` is the authoritative end-state link check');
+    expect(linking).not.toContain('authoritative end-state audit');
   });
 });
 

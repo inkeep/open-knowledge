@@ -83,28 +83,41 @@ interface RemovalItem {
  * removed, under `planned`) distinct from an applied OUTCOME (what actually
  * happened, under `removed`/`skipped`/`failed`) — so a consumer never confuses
  * "these are the ops I intend to run" with "these ops succeeded".
+ *
+ * `attachedClients` carries the live-client probe on BOTH modes, empty when
+ * nothing is attached. The human-readable path warns that those editor windows
+ * stop working and that restarting will not recover them; a machine consumer
+ * that only reads the removal lists would otherwise never learn it.
  */
 export type RemovalJson =
-  | { scope: 'uninstall' | 'deinit'; mode: 'dry-run'; planned: RemovalItem[] }
+  | {
+      scope: 'uninstall' | 'deinit';
+      mode: 'dry-run';
+      planned: RemovalItem[];
+      attachedClients: string[];
+    }
   | {
       scope: 'uninstall' | 'deinit';
       mode: 'applied';
       removed: RemovalItem[];
       skipped: RemovalItem[];
       failed: RemovalItem[];
+      attachedClients: string[];
     };
 
-export function removalPlanToJson(plan: RemovalPlan): RemovalJson {
+export function removalPlanToJson(plan: RemovalPlan, attachedClients: string[] = []): RemovalJson {
   return {
     scope: plan.scope,
     mode: 'dry-run',
     planned: plan.ops.map((op) => ({ kind: op.kind, label: op.label })),
+    attachedClients,
   };
 }
 
 export function removalOutcomeToJson(
   scope: 'uninstall' | 'deinit',
   outcome: RemovalOutcome,
+  attachedClients: string[] = [],
 ): RemovalJson {
   return {
     scope,
@@ -118,5 +131,6 @@ export function removalOutcomeToJson(
       .filter((r) => r.status === 'skipped')
       .map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
     failed: outcome.failed.map((r) => ({ kind: r.op.kind, label: r.op.label, detail: r.detail })),
+    attachedClients,
   };
 }

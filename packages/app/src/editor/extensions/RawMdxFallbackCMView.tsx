@@ -32,7 +32,10 @@ import { getEditorView } from '../utils/get-editor-view';
 import { getYDoc } from '../utils/get-ydoc';
 import { getSharedMarkdownManager } from '../utils/md-singleton';
 import { classifySeverity, SEVERITY_STYLES } from '../utils/severity';
-import { autonomousFragmentEditAllowed } from './autonomous-fragment-edit.ts';
+import {
+  autonomousFragmentEditAllowed,
+  markSwapIfByteNeutral,
+} from './autonomous-fragment-edit.ts';
 import { createNestedCMExtensions, darkTheme, lightTheme } from './nested-cm-extensions';
 
 /**
@@ -465,11 +468,20 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
           const replacement = tryParseUpgrade(source, pmView.state.schema);
           if (!replacement) return;
 
+          // `forwardUpdate` declines on a missing position, a missing view, a
+          // missing node, and a node-type mismatch, so there is no guarantee
+          // PM received what this buffer holds — and those bytes would be the
+          // user's. `markSwapIfByteNeutral` compares against the node being
+          // replaced rather than trusting a flag, so the check is local.
+          const upgrade = markSwapIfByteNeutral(
+            pmView.state.tr.replaceWith(pos, pos + currentNode.nodeSize, replacement),
+            currentNode,
+            source,
+          );
+
           updatingRef.current = true;
           try {
-            pmView.dispatch(
-              pmView.state.tr.replaceWith(pos, pos + currentNode.nodeSize, replacement),
-            );
+            pmView.dispatch(upgrade);
           } catch (err) {
             updatingRef.current = false;
             throw err;

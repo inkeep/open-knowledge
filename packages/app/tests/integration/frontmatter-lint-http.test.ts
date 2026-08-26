@@ -12,6 +12,7 @@ import {
   LintAuditResponseSchema,
   LintConfigResponseSchema,
   LintDocResultSchema,
+  LintFixResultSchema,
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -229,6 +230,21 @@ describe('GET /api/lint/audit — aggregation + config channel', () => {
     expect(body.files.find((f) => f.file === 'docs/index.md')).toBeUndefined();
     const schemaErrors = body.warnings.filter((w) => w.includes('missing.schema.json'));
     expect(schemaErrors).toHaveLength(1);
+  });
+});
+
+describe('POST /api/lint/fix — config channel', () => {
+  test('a schemaError reaches warnings when no content fix is available', async () => {
+    const res = await fetch(api('/api/lint/fix'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docName: 'docs/guide', agentId: 'frontmatter-fix-agent' }),
+    });
+    expect(res.status).toBe(200);
+    const body = LintFixResultSchema.parse(await res.json());
+    expect(body.fixedCount).toBe(0);
+    expect(body.ran).toEqual(['frontmatter']);
+    expect(body.warnings?.some((warning) => warning.includes('missing.schema.json'))).toBe(true);
   });
 });
 

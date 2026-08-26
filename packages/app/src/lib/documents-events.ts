@@ -197,16 +197,26 @@ export function endOptimisticSkillMove(fromScope: SkillScope, name: string): voi
 // mid-write can report a skill that plainly exists as absent. Anything that
 // DESTROYS user state on absence has to be able to tell "being written" from
 // "deleted"; inferring it from the list alone is what closed people's tabs.
-const pendingSkillWrites = new Set<string>();
+// Refcounted, not a plain set: overlapping operations can hold the same key
+// (rename a->b then b->a inside the first release window), and a flat set
+// would let the FIRST releaser clear a mark the second operation still
+// relies on.
+const pendingSkillWrites = new Map<string, number>();
 
 /** Mark a skill as being written. Pair with {@link endSkillWrite} in a finally. */
 export function beginSkillWrite(scope: SkillScope, name: string): void {
-  pendingSkillWrites.add(movingSkillKey(scope, name));
+  const key = movingSkillKey(scope, name);
+  pendingSkillWrites.set(key, (pendingSkillWrites.get(key) ?? 0) + 1);
   emitSkillsChanged();
 }
 
 export function endSkillWrite(scope: SkillScope, name: string): void {
-  if (pendingSkillWrites.delete(movingSkillKey(scope, name))) emitSkillsChanged();
+  const key = movingSkillKey(scope, name);
+  const count = pendingSkillWrites.get(key);
+  if (count === undefined) return;
+  if (count <= 1) pendingSkillWrites.delete(key);
+  else pendingSkillWrites.set(key, count - 1);
+  emitSkillsChanged();
 }
 
 export function isSkillWritePending(scope: SkillScope, name: string): boolean {
@@ -223,7 +233,7 @@ export function isSkillWritePending(scope: SkillScope, name: string): boolean {
  * deferred tab-close into one that never happened.
  */
 export function pendingSkillWritesKey(): string {
-  return [...pendingSkillWrites].sort().join('\u0001');
+  return [...pendingSkillWrites.keys()].sort().join('\u0001');
 }
 
 /**

@@ -2,7 +2,7 @@
  * What an orphaned card says, and what it still shows.
  *
  * Losing the passage used to print a bare "the anchored text is gone" and drop
- * the quote with it, so a panel of orphans was a column of identical amber
+ * the quote with it, so a panel of orphans was a column of identical blue
  * notices with no way to tell which comment had been on what. Orphaning mutates
  * state alone — the stored words survive — so the card shows them as the last
  * thing the comment was on.

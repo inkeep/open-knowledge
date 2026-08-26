@@ -44,6 +44,39 @@ function api(pathAndQuery: string): string {
 }
 
 describe('GET /api/audit', () => {
+  test('okf enabled reaches ran through the real config lift', async () => {
+    // Seeded through `.ok/config.yml`, not a hand-built LinterConfig: the lift
+    // from persisted config to the runtime slices is where a new plugin key
+    // silently vanishes, and a fixture that skips it cannot catch that.
+    const okfServer = await createTestServer({
+      seedProjectConfigYml: 'contentRules:\n  okf:\n    enabled: true\nvalidation:\n  links: off\n',
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${okfServer.port}/api/audit`);
+      expect(res.status).toBe(200);
+      const body = ValidationAuditResponseSchema.parse(await res.json());
+      // Once, not twice: the okf lint plugin and the okf project validator both
+      // select this family and it folds to one public id.
+      expect(body.ran).toEqual(['okf']);
+    } finally {
+      await okfServer.cleanup();
+    }
+  });
+
+  test('all validation sources off returns an explicit empty selection', async () => {
+    const disabledServer = await createTestServer({
+      seedProjectConfigYml: 'validation:\n  links: off\n',
+    });
+    try {
+      const res = await fetch(`http://127.0.0.1:${disabledServer.port}/api/audit`);
+      expect(res.status).toBe(200);
+      const body = ValidationAuditResponseSchema.parse(await res.json());
+      expect(body.ran).toEqual([]);
+    } finally {
+      await disabledServer.cleanup();
+    }
+  });
+
   test(
     'returns lint + dead-link findings in one source-tagged plane',
     async () => {
@@ -61,6 +94,7 @@ describe('GET /api/audit', () => {
         const res = await fetch(api('/api/audit'));
         expect(res.status).toBe(200);
         const body: ValidationAuditResponse = ValidationAuditResponseSchema.parse(await res.json());
+        expect(body.ran).toEqual(['markdownlint', 'links']);
 
         const tabbed = body.files.find((f) => f.file === 'audit-http/tabbed.md');
         const md010 = tabbed?.diagnostics.find((d) => d.code === 'MD010');
@@ -197,8 +231,10 @@ describe('GET /api/audit', () => {
         const enumerated = ValidationAuditResponseSchema.parse(
           await enumeratedRes.json(),
         ) satisfies ValidationAuditResponse;
+        const rawCounts: unknown = await countsRes.json();
+        expect(rawCounts).not.toHaveProperty('ran');
         const counts = ValidationAuditCountsResponseSchema.parse(
-          await countsRes.json(),
+          rawCounts,
         ) satisfies ValidationAuditCountsResponse;
 
         // Same files, same rollups — the counts plane is a derivation, not a

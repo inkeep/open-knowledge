@@ -13,6 +13,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { getLocalDir } from './config/paths.ts';
+import { isShareableOkArtifact } from './content-filter.ts';
 import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listNames } from './git-paths.ts';
 import { getLogger } from './logger.ts';
@@ -247,7 +248,9 @@ export class ConflictStore {
         // the conflicted path escape the tree on write; the working-tree path
         // already realpath-guards, so mirror it here and route through the
         // traced fs wrapper like every other server-side disk write.
-        assertRealpathWithinDir(absPath, projectRoot);
+        assertRealpathWithinDir(absPath, projectRoot, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
         tracedWriteFileSync(absPath, content, 'utf-8');
         await handle.git.raw(['add', '--', file]);
         break;
@@ -362,7 +365,9 @@ export class ConflictStore {
     // Lexical containment is not enough: an untrusted origin can ship a symlink
     // at a tracked content path, and `writeFileSync`/`unlinkSync` would follow
     // it out of the working tree. Refuse when the realpath escapes.
-    assertRealpathWithinDir(absPath, projectRoot);
+    assertRealpathWithinDir(absPath, projectRoot, {
+      allowShareableOkArtifact: isShareableOkArtifact,
+    });
 
     switch (strategy) {
       case 'mine':
@@ -383,7 +388,9 @@ export class ConflictStore {
         // event loop; a concurrent pull cycle could have materialized a symlink
         // at absPath in that gap. Re-check immediately before the write, matching
         // applyOverlayPlan's per-write containment.
-        assertRealpathWithinDir(absPath, projectRoot);
+        assertRealpathWithinDir(absPath, projectRoot, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
         tracedWriteFileSync(absPath, theirsBytes, 'utf-8');
         break;
       }

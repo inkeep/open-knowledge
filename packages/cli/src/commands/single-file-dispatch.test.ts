@@ -6,6 +6,7 @@ import {
   decideSingleFileTarget,
   hasMarkdownExtension,
   isFileishTarget,
+  resolveRootDispatch,
   scanRootArgv,
 } from './single-file-dispatch.ts';
 
@@ -129,5 +130,120 @@ describe('isFileishTarget (fs-backed predicate)', () => {
 
   test('a non-existent non-markdown token is not fileish', () => {
     expect(isFileishTarget(join(dir, 'nope'), 'nope')).toBe(false);
+  });
+});
+
+/**
+ * The eight accepted shapes of an explicit project override: `--project <v>`
+ * and `--project=<v>`, before or after the target, with and without a markdown
+ * extension. Every one must resolve to the named root — a dropped override is
+ * how a command silently acts on a different project.
+ */
+describe('--project override matrix', () => {
+  const ROOT = '/abs/project';
+  const combos: Array<{ name: string; argv: string[]; fileTarget: string | null }> = [
+    {
+      name: 'space syntax, flag before target, with extension',
+      argv: ['open', '--project', ROOT, 'notes.md'],
+      fileTarget: '/base/notes.md',
+    },
+    {
+      name: 'space syntax, flag after target, with extension',
+      argv: ['open', 'notes.md', '--project', ROOT],
+      fileTarget: '/base/notes.md',
+    },
+    {
+      name: 'equals syntax, flag before target, with extension',
+      argv: ['open', `--project=${ROOT}`, 'notes.md'],
+      fileTarget: '/base/notes.md',
+    },
+    {
+      name: 'equals syntax, flag after target, with extension',
+      argv: ['open', 'notes.md', `--project=${ROOT}`],
+      fileTarget: '/base/notes.md',
+    },
+    {
+      name: 'space syntax, flag before target, no extension',
+      argv: ['open', '--project', ROOT, 'notes'],
+      fileTarget: null,
+    },
+    {
+      name: 'space syntax, flag after target, no extension',
+      argv: ['open', 'notes', '--project', ROOT],
+      fileTarget: null,
+    },
+    {
+      name: 'equals syntax, flag before target, no extension',
+      argv: ['open', `--project=${ROOT}`, 'notes'],
+      fileTarget: null,
+    },
+    {
+      name: 'equals syntax, flag after target, no extension',
+      argv: ['open', 'notes', `--project=${ROOT}`],
+      fileTarget: null,
+    },
+  ];
+
+  for (const combo of combos) {
+    test(`${combo.name} → project root is carried, never an operand`, () => {
+      const scanned = scanRootArgv(combo.argv);
+      expect(scanned.project).toBe(ROOT);
+      // The flag value must never be mistaken for the thing to open.
+      expect(scanned.operands).not.toContain(ROOT);
+
+      const dispatch = resolveRootDispatch(combo.argv, {
+        knownSubcommands: SUBCOMMANDS,
+        cwd: '/base',
+        isFileish: (_abs, token) => hasMarkdownExtension(token),
+        resolvePath: (base, token) => (token.startsWith('/') ? token : `${base}/${token}`),
+      });
+
+      if (combo.fileTarget === null) {
+        // Ext-less names stay with Commander's `open` subcommand, which reads
+        // `--project` itself — the pre-dispatch must not divert them.
+        expect(dispatch).toBeNull();
+        expect(scanned.operands).toEqual(['open', 'notes']);
+      } else {
+        expect(dispatch).toEqual({ absPath: combo.fileTarget, projectRoot: ROOT });
+      }
+    });
+  }
+
+  test('a bare `ok <file> --project <dir>` carries the override too', () => {
+    const dispatch = resolveRootDispatch(['notes.md', '--project', ROOT], {
+      knownSubcommands: SUBCOMMANDS,
+      cwd: '/base',
+      isFileish: (_abs, token) => hasMarkdownExtension(token),
+      resolvePath: (base, token) => (token.startsWith('/') ? token : `${base}/${token}`),
+    });
+    expect(dispatch).toEqual({ absPath: '/base/notes.md', projectRoot: ROOT });
+  });
+
+  test('no override → null project root (ancestor walk decides)', () => {
+    const dispatch = resolveRootDispatch(['notes.md'], {
+      knownSubcommands: SUBCOMMANDS,
+      cwd: '/base',
+      isFileish: (_abs, token) => hasMarkdownExtension(token),
+      resolvePath: (base, token) => (token.startsWith('/') ? token : `${base}/${token}`),
+    });
+    expect(dispatch).toEqual({ absPath: '/base/notes.md', projectRoot: null });
+  });
+
+  test('--scope value is not mistaken for an operand', () => {
+    expect(scanRootArgv(['open', '--skill', '--scope', 'user', 'my-skill']).operands).toEqual([
+      'open',
+      'my-skill',
+    ]);
+  });
+
+  test('help/version still short-circuits the dispatch', () => {
+    expect(
+      resolveRootDispatch(['--help', 'notes.md'], {
+        knownSubcommands: SUBCOMMANDS,
+        cwd: '/base',
+        isFileish: () => true,
+        resolvePath: (base, token) => `${base}/${token}`,
+      }),
+    ).toBeNull();
   });
 });

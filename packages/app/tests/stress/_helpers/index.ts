@@ -75,6 +75,7 @@ export {
   waitForSlashMenuOpen,
 } from './slash-menu.ts';
 export { blockMarker, generateTallDoc } from './tall-doc-fixture.ts';
+export { removeAllDuringTeardown } from './teardown-fs.ts';
 export {
   createMp3Buffer,
   createMp4Buffer,

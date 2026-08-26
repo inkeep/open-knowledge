@@ -88,7 +88,17 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => connectionStatus,
       () => connectionStatus,
     ),
-  getAgentThreadClient: () => ({ closeThread, renameThread, openArchivedThread, deleteThread }),
+  // Unread affordance is orthogonal to the agents-panel tests; the tab-strip
+  // renders both a stable per-thread tint and the unread pulse from this
+  // hook, so it just has to exist and return `false` for these fixtures.
+  useAgentThreadUnread: () => false,
+  getAgentThreadClient: () => ({
+    closeThread,
+    renameThread,
+    openArchivedThread,
+    deleteThread,
+    markThreadViewed: () => {},
+  }),
 }));
 
 // ThreadView is lazy-loaded by the host; stub it (with the composer focus hook).

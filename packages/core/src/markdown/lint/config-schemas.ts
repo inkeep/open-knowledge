@@ -163,9 +163,12 @@ const LintDiagnosticSchema = z.object({
   frontmatterProperty: z.string().optional(),
 });
 
+const RunSourcesSchema = z.array(z.string()).optional();
+
 export const LintDocResultSchema = z.object({
   file: z.string(),
   diagnostics: z.array(LintDiagnosticSchema),
+  ran: RunSourcesSchema,
   warnings: z.array(z.string()).optional(),
 });
 
@@ -175,6 +178,7 @@ export const LintAuditResponseSchema = z.object({
   errorCount: z.number(),
   warningCount: z.number(),
   warnings: z.array(z.string()),
+  ran: RunSourcesSchema,
 });
 
 export type LintDocResult = z.infer<typeof LintDocResultSchema>;
@@ -196,6 +200,7 @@ export const ValidationAuditResponseSchema = z.object({
   errorCount: z.number(),
   warningCount: z.number(),
   warnings: z.array(z.string()),
+  ran: RunSourcesSchema,
 });
 
 export type ValidationDocResult = z.infer<typeof ValidationDocResultSchema>;
@@ -238,6 +243,8 @@ export const LintFixResultSchema = z.object({
   diagnostics: z.array(LintDiagnosticSchema),
   errorCount: z.number(),
   warningCount: z.number(),
+  ran: RunSourcesSchema,
+  warnings: z.array(z.string()).optional(),
   warning: z.string().optional(),
 });
 export type LintFixResult = z.infer<typeof LintFixResultSchema>;

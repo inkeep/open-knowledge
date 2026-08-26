@@ -16,11 +16,13 @@
 import { rm } from 'node:fs/promises';
 import {
   encodeDocName,
+  type PrepareSingleFileOpenOptions,
   prepareSingleFileOpen,
   SingleFileNotAFileError,
   SingleFileNotFoundError,
   SingleFileNotMarkdownError,
   type SingleFileOpenPlan,
+  SingleFileProjectOverrideError,
 } from '@inkeep/open-knowledge-server';
 import type { SpawnDetachedScrubbedOutcome } from '../utils/detached-spawn.ts';
 import { openTargetFailureMessage, openTarget as openTargetReal } from '../utils/open-target.ts';
@@ -38,7 +40,7 @@ const EPHEMERAL_IDLE_SHUTDOWN_MS = 10 * 60 * 1000;
 /** Injectable surface so `cli.test.ts` can drive the dispatch matrix without a
  *  real desktop / server / browser. */
 export interface SingleFileOpenDeps {
-  prepare: (filePath: string) => SingleFileOpenPlan;
+  prepare: (filePath: string, options?: PrepareSingleFileOpenOptions) => SingleFileOpenPlan;
   /** Absolute desktop bundle path when one is installed, else null. */
   detectBundlePath: () => string | null;
   /** Hand a URL / `openknowledge://` deep link to the OS to open. */
@@ -66,6 +68,11 @@ export function createRealSingleFileOpenDeps(
   };
 }
 
+export interface SingleFileOpenOptions {
+  /** Explicit `--project` override, absolute. Honored or the open fails. */
+  projectRoot?: string;
+}
+
 /**
  * Open `filePath` (an absolute path) in the editor. Returns a process exit code
  * (0 opened, 1 error). Never throws for the typed user-facing errors — they
@@ -76,15 +83,17 @@ export function createRealSingleFileOpenDeps(
 export async function runSingleFileOpen(
   filePath: string,
   deps: SingleFileOpenDeps,
+  options: SingleFileOpenOptions = {},
 ): Promise<number> {
   let plan: SingleFileOpenPlan;
   try {
-    plan = deps.prepare(filePath);
+    plan = deps.prepare(filePath, { projectRoot: options.projectRoot });
   } catch (err) {
     if (
       err instanceof SingleFileNotFoundError ||
       err instanceof SingleFileNotAFileError ||
-      err instanceof SingleFileNotMarkdownError
+      err instanceof SingleFileNotMarkdownError ||
+      err instanceof SingleFileProjectOverrideError
     ) {
       deps.error(err.message);
       return 1;
@@ -159,7 +168,7 @@ async function runSingleFileBrowserOpen(
     if (tornDown) return;
     tornDown = true;
     try {
-      await booted?.destroy();
+      await booted?.destroy('external-signal');
     } catch {
       // best-effort — we're exiting anyway
     }

@@ -31,6 +31,10 @@ const HANDLER_SOURCES = [
     'http/link-graph-routes.ts',
     'http/metrics-routes.ts',
     'http/document-routes.ts',
+    'http/config-system-routes.ts',
+    'http/lint-routes.ts',
+    'http/history-routes.ts',
+    'http/skills-read-routes.ts',
   ].map((file) => readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8')),
 ];
 const ACTOR_HELPER_PATH = join(
@@ -443,12 +447,22 @@ const EXEMPT_HANDLERS = new Set([
   // No CRDT mutation, no agent-authored content; same rationale as
   // `handleSyncStatus` / `handleServerInfo`.
   'handleBranchInfo',
+  // `/api/git/worktree-status` — GET-only working-tree listing (porcelain
+  // status, tracking refs, incoming diff). No mutation, no agent-authored
+  // content; same rationale as `handleSyncStatus` / `handleBranchInfo`.
+  'handleGitWorktreeStatus',
   // `/api/git/checkout` — git-level operation, no CRDT mutation. Wrapped
   // in `withParentLock` to serialize against the sync-engine's parent-git
   // writes; the HEAD watcher handles the CRDT transition asynchronously.
   // Identity is still extracted at entry for observability, but the
   // operation never touches Y.Docs so identity threading is exempt.
   'handleCheckout',
+  // `/api/sync/resolve-blocking` — git-level commit of the paths
+  // blocking a merge. No CRDT mutation and no agent-authored content: the
+  // commit carries the project's resolved git identity via the engine's own
+  // `applyCommitIdentity`, the same author every engine commit gets. Same
+  // rationale as `handleCheckout`.
+  'handleSyncResolveBlocking',
   // `/api/share/target-status` — receive-side git verdict (targeted fetch +
   // `cat-file -e` / removal-commit lookup / rename detection). Updates only
   // remote-tracking refs, no CRDT mutation, no agent-authored content; same

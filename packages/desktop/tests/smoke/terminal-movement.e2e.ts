@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, ElementHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
@@ -96,13 +96,12 @@ async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): P
 
 /**
  * `editorPage` lets a caller that already holds the editor window skip the
- * rediscovery poll. That poll is not free: it re-evaluates
- * `window.okDesktop.config.mode` in the renderer, so it costs whatever the
- * renderer's main thread is busy with, measured at ~400ms on a loaded CI
- * runner. Any caller TIMING this dispatch must pass the page, or it charges the
- * app for the harness's own round trip. On darwin the menu click happens inside
- * main and never pays it at all, so leaving it in makes the same assertion mean
- * two different things per platform.
+ * rediscovery poll. That poll re-evaluates `window.okDesktop.config.mode` in
+ * the renderer, so it waits on whatever the renderer's main thread is busy
+ * with. Any caller that has armed a settlement observer should pass the page:
+ * the poll otherwise sits between arming and dispatch, widening the window the
+ * observer has to survive for no reason the app is responsible for. On darwin
+ * the menu click happens inside main and never pays it at all.
  */
 async function dispatchRendererMenuAction(
   app: ElectronApplication,
@@ -173,8 +172,8 @@ async function clickTerminalPlacementItemRapidly(
   if (process.platform !== 'darwin') {
     for (let index = 0; index < count; index += 1) {
       // The page matters most here: without it each of these iterations pays
-      // its own rediscovery poll, and the settlement being timed spans all of
-      // them.
+      // its own rediscovery poll, and the settlement being awaited spans all
+      // of them.
       await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
     }
     return;
@@ -286,6 +285,26 @@ async function typeInActiveTerminal(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text);
 }
 
+/**
+ * The rendered rows of the active terminal, and NOTHING else.
+ *
+ * Use this wherever being wrong about what is on screen would be wrong in the
+ * ASSERTION's direction: anything checking a marker is ABSENT, and anything
+ * PARSING what it reads. `readActiveTerminal`'s union with the announcement
+ * buffer can only make those two fail — it holds lines the rows no longer show,
+ * and it truncates mid-token under a burst.
+ *
+ * WAITING is the case that TOLERATES the union, which is why the waits
+ * elsewhere in this file still use it — both the marker polls and the
+ * shell-readiness wait. Extra content can only ever delay a wait, never satisfy
+ * one wrongly: a stale line cannot contain a token that has not been printed.
+ */
+function readTerminalRows(page: Page): Promise<string> {
+  return visibleTerminal(page).evaluate(
+    (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
+  );
+}
+
 async function readActiveTerminal(page: Page): Promise<string> {
   return visibleTerminal(page).evaluate((section) => {
     const accessibility = section.querySelector('.xterm-accessibility')?.textContent ?? '';
@@ -307,35 +326,73 @@ async function readActiveTerminal(page: Page): Promise<string> {
  * announcement buffer, and the line printed right after it had been cut in
  * half there and was not yet scrolled into the rows.
  *
- * Steps are deliberately shorter than one wheel-page for the same reason:
- * markers on adjacent lines must not be able to straddle a step boundary and
- * so never appear together.
+ * Pages with the keyboard, NOT the wheel. The panel sets
+ * `smoothScrollDuration`, so a wheel notch does not move the rows — it
+ * retargets an animation the renderer interpolates over the following frames,
+ * and each further notch restarts that animation from wherever it had got to.
+ * Reading straight after the last notch therefore reads a view still in flight,
+ * and how far along it is depends on how many frames the runner could spare:
+ * a made-up dependency on the machine for an assertion about retained lines.
+ *
+ * `Shift+PageUp` is animated too — `scrollPages` reaches the same viewport the
+ * wheel does — so this does not escape the animation, it stops racing it. Each
+ * press asks for one page rather than the wheel's several, the loop re-reads
+ * between presses, and paging past the top is inert, so the presses converge on
+ * the top instead of overshooting a target still being interpolated toward. The
+ * ceiling is several times the pages either home needs to cross this fixture's
+ * scrollback, so it bounds a stuck loop rather than the travel.
  */
 async function expectScrollbackRetains(page: Page, ...markers: string[]): Promise<void> {
-  const terminal = visibleTerminal(page).locator('.xterm');
-  await terminal.hover();
-  const readRows = () =>
-    visibleTerminal(page).evaluate(
-      (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
-    );
-
-  let text = await readRows();
+  // Focus the node xterm actually reads keys from. Clicking the row grid would
+  // do it too, but a click lands on whatever the session last printed, and the
+  // panel activates file links on a plain click — so the first path-shaped
+  // token in this output would navigate the editor and take the focus that
+  // every press below depends on.
+  await visibleTerminal(page).locator('.xterm-helper-textarea').focus();
+  let text = await readTerminalRows(page);
   for (let step = 0; step < 40 && !markers.every((marker) => text.includes(marker)); step += 1) {
-    await page.mouse.wheel(0, -500);
-    await page.evaluate(
-      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-    );
-    text = await readRows();
+    await page.keyboard.press('Shift+PageUp');
+    text = await readTerminalRows(page);
   }
   for (const marker of markers) {
     expect(text, `terminal scrollback is missing ${marker}`).toContain(marker);
   }
+  await settleScrollPosition(page);
 }
 
-function waitForTerminalHome(page: Page, home: TerminalHome): Promise<number> {
+/**
+ * Wait until the rows stop moving.
+ *
+ * The paging above is animated, so the position after the last press is a
+ * target rather than a fact — and this is the only thing in the file that
+ * leaves the view mid-flight, which is why the settle lives here rather than at
+ * whichever caller happens to resize next. A resize refits the grid against
+ * whatever line the buffer shows AT THAT INSTANT, so a move taken mid-animation
+ * shrinks from a position that varies run to run, and every assertion about
+ * what the shrink did to the scrollback inherits that variance.
+ *
+ * Each sample sits behind an animation frame, so consecutive reads cannot all
+ * land inside one paint and report a stillness that is really just a fast round
+ * trip. Best-effort by design: if the rows never settle inside the bound, the
+ * assertions that follow are what fail, and they say something about the
+ * product rather than about the sampling.
+ */
+async function settleScrollPosition(page: Page): Promise<void> {
+  let previous = '';
+  let stable = 0;
+  for (let step = 0; step < 60 && stable < 2; step += 1) {
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    const current = await readTerminalRows(page);
+    stable = current === previous ? stable + 1 : 0;
+    previous = current;
+  }
+}
+
+function waitForTerminalHome(page: Page, home: TerminalHome): Promise<void> {
   return page.evaluate((targetHome) => {
-    return new Promise<number>((resolve, reject) => {
-      const startedAt = performance.now();
+    return new Promise<void>((resolve, reject) => {
       const activeSelector =
         targetHome === 'right'
           ? '#terminal-column section[aria-label="Terminal"]'
@@ -360,7 +417,7 @@ function waitForTerminalHome(page: Page, home: TerminalHome): Promise<number> {
         const rect = active?.getBoundingClientRect();
         if (active && !inactive && rect && rect.width > 0 && rect.height > 0 && text.length > 0) {
           window.clearTimeout(timeout);
-          resolve(performance.now() - startedAt);
+          resolve();
           return;
         }
         frame = window.requestAnimationFrame(inspect);
@@ -375,24 +432,74 @@ async function moveTerminal(
   app: ElectronApplication,
   page: Page,
   home: TerminalHome,
-): Promise<number> {
+): Promise<void> {
   const settlement = waitForTerminalHome(page, home);
-  // The stopwatch is already running inside the renderer, so the dispatch must
-  // not re-discover the window on the clock.
+  // The observer is already armed inside the renderer, so the dispatch must not
+  // re-discover the window before sending.
   await clickTerminalPlacementItem(app, page);
-  return settlement;
+  await settlement;
+}
+
+/**
+ * The live terminal surface, held so a later assertion can prove the SAME node
+ * is what ended up at the other home. Follows `.xterm` rather than the section
+ * wrapping it, so the node being tracked is the terminal itself.
+ */
+async function captureLiveTerminal(page: Page): Promise<ElementHandle<Element>> {
+  const handle = await visibleTerminal(page).locator('.xterm').elementHandle();
+  if (!handle) throw new Error('no visible Terminal surface to follow across the move');
+  return handle;
+}
+
+/**
+ * Moving the terminal must RE-PARENT the live surface, never tear it down and
+ * build a fresh one at the other home. That is the property this file exists to
+ * defend — a rebuilt surface is a dead PTY, a lost scrollback and a visible
+ * stall — and following one node across the move states it outright.
+ *
+ * It stands where a wall-clock budget on the settlement used to, which could
+ * only claim the property by proxy. That budget measured the harness as much as
+ * the app: the observer arms in the renderer BEFORE the dispatch is sent, so
+ * its number spanned a Playwright round trip and, on darwin, a main-process
+ * menu click and its IPC too. Node identity does not move with how busy the
+ * machine is.
+ *
+ * Nothing here bounds how LONG the move takes, deliberately: the only clock
+ * this harness can read spans its own round trip to the renderer, so any number
+ * it produces is partly a measurement of the runner. What remains is
+ * `waitForTerminalHome`'s 5s rejection, which catches a move that never lands
+ * rather than one that is merely slow — a move that became four seconds slower
+ * would pass here. A budget worth having would have to be taken inside the app,
+ * against a clock the harness does not sit on.
+ */
+async function expectTerminalMovedNotRebuilt(
+  surface: ElementHandle<Element>,
+  home: TerminalHome,
+): Promise<void> {
+  const containerId = home === 'right' ? 'terminal-column' : 'terminal-dock-panel';
+  const placement = await surface.evaluate(
+    (element, id) => ({
+      connected: element.isConnected,
+      atHome: element.closest(`#${id}`) !== null,
+    }),
+    containerId,
+  );
+  expect(placement, `the live terminal surface did not survive the move to ${home}`).toEqual({
+    connected: true,
+    atHome: true,
+  });
 }
 
 /**
  * The live shell's pid, read from the terminal ROWS alone.
  *
- * Every other reader here substring-matches a whole marker, so xterm's
- * `.xterm-accessibility` announcement buffer can only ever delay them — a
- * truncated prefix never satisfies a `toContain`. This one PARSES, which makes
- * truncation dangerous rather than merely slow: a `MARKER=67818` cut short in
- * the announcement buffer yields `67`, which clears the `toBeGreaterThan(0)`
- * gate and then gets compared against the real pid as proof the session
- * survived a move. Rows carry no such truncation.
+ * This one PARSES rather than substring-matching a whole marker, which makes
+ * the announcement buffer's truncation dangerous rather than merely slow: a
+ * `MARKER=67818` cut short there yields `67`, which clears the
+ * `toBeGreaterThan(0)` gate and is then compared against the real pid as proof
+ * the session survived a move. Rows carry no such truncation.
+ *
+ * Which reader any given site wants is set out on `readTerminalRows`.
  */
 async function readShellPid(page: Page, marker: string): Promise<number> {
   await typeInActiveTerminal(page, `printf '${marker}=%s\\n' "$$"\r`);
@@ -400,9 +507,7 @@ async function readShellPid(page: Page, marker: string): Promise<number> {
   await expect
     .poll(
       async () => {
-        const rows = await visibleTerminal(page).evaluate(
-          (section) => section.querySelector('.xterm-rows')?.textContent ?? '',
-        );
+        const rows = await readTerminalRows(page);
         const matches = [...rows.matchAll(new RegExp(`${marker}=(\\d+)`, 'g'))];
         processId = Number(matches.at(-1)?.[1] ?? 0);
         return processId;
@@ -439,15 +544,39 @@ async function expectCollapsedRailColumn(page: Page, selector: string): Promise<
     .toBe(0);
 }
 
+/**
+ * A move must not leave a scrolled-back reader at the bottom.
+ *
+ * Both callers reach this straight after `expectScrollbackRetains`, so the view
+ * is parked back in the scrollback and the newest line is off screen. Any
+ * restore that ends up at the bottom — the shape a scroll pair takes when its
+ * second half is swallowed — puts that line back in view. That is the one
+ * outcome distinguishable from a healthy move without asserting an exact
+ * landing line the reflow is entitled to choose.
+ *
+ * Reads the ROWS. `readActiveTerminal` would fold in the announcement buffer,
+ * which still holds the newest line from when it was printed, so an absence
+ * assertion against it would contradict the presence assertion its own caller
+ * just made.
+ */
+async function expectStillScrolledBack(page: Page, newestLine: string): Promise<void> {
+  expect(
+    await readTerminalRows(page),
+    'the move left a scrolled-back reader at the bottom of the buffer',
+  ).not.toContain(newestLine);
+}
+
 test.describe('Terminal placement continuity — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('moving a populated terminal preserves every live session', async ({ captureStderrFor }) => {
-    // The static calibration parser totals 225s of sequential condition
-    // budgets; the 240s outer budget leaves 15s for untimed interaction work.
-    test.setTimeout(240_000);
+    // The static calibration parser totals 235s of sequential condition
+    // budgets, which are worst-case ceilings rather than expected costs. The
+    // 260s outer budget leaves 25s for everything the parser cannot see: the
+    // Electron launch, every focus and keystroke, and the paging round trips.
+    test.setTimeout(260_000);
     const s = seed();
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -476,22 +605,32 @@ test.describe('Terminal placement continuity — live Electron', () => {
       .toContain(`SCROLL_${token}_120`);
     await expectScrollbackRetains(page, sentinel, scrollStart);
 
-    const toRightMs = await moveTerminal(app, page, 'right');
-    expect(toRightMs).toBeLessThan(300);
+    const liveSurface = await captureLiveTerminal(page);
+    await moveTerminal(app, page, 'right');
+    await expectTerminalMovedNotRebuilt(liveSurface, 'right');
+    await expectStillScrolledBack(page, `SCROLL_${token}_120`);
     await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
     await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
       'true',
     );
+    // Content retention across the GROW, not reach: the view enters this move
+    // at the top of the buffer, and growing 15 rows to 52 leaves almost nothing
+    // above it for a broken restore to swallow. The shrink leg below is where
+    // reach is actually exercised.
     await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rightOutput = `RIGHT_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `printf '${rightOutput}\\n'\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rightOutput);
 
+    // The shrink is the leg that can lose reach: 52 rows down to 15 anchors the
+    // newest visible line and lands tens of rows below the markers, so the
+    // re-read after it has to page all the way back up.
     await expectScrollbackRetains(page, sentinel, scrollStart);
-    const toBottomMs = await moveTerminal(app, page, 'bottom');
-    expect(toBottomMs).toBeLessThan(300);
+    await moveTerminal(app, page, 'bottom');
+    await expectTerminalMovedNotRebuilt(liveSurface, 'bottom');
+    await expectStillScrolledBack(page, `SCROLL_${token}_120`);
     await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
     await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
       'aria-selected',
@@ -505,7 +644,8 @@ test.describe('Terminal placement continuity — live Electron', () => {
 
     const rapidSettlement = waitForTerminalHome(page, 'right');
     await clickTerminalPlacementItemRapidly(app, 7, page);
-    expect(await rapidSettlement).toBeLessThan(300);
+    await rapidSettlement;
+    await expectTerminalMovedNotRebuilt(liveSurface, 'right');
     await expect(page.locator('section[aria-label="Terminal"]')).toHaveCount(2);
     await expect(visibleTerminal(page)).toHaveCount(1);
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toHaveCount(2);
@@ -527,9 +667,10 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test('renderer restart restores the right layout and its live active terminal', async ({
     captureStderrFor,
   }) => {
-    // The static calibration parser totals 255s across both reload cycles;
-    // the 270s outer budget leaves 15s for untimed interaction work.
-    test.setTimeout(270_000);
+    // The static calibration parser totals 265s across both reload cycles,
+    // which are worst-case ceilings rather than expected costs. The 290s outer
+    // budget leaves 25s for the untimed interaction work between them.
+    test.setTimeout(290_000);
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
     captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });

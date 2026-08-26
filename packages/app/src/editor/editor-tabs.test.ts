@@ -210,6 +210,39 @@ describe('editor tab state', () => {
     ).toEqual(['docs/a', folderTabId('hello')]);
   });
 
+  test('filterOpenTabsForKnownTargets keeps a displayed folder absent from folderPaths', () => {
+    // Folder twin of the `keepHashDocName` case. Why an existing folder can be
+    // missing from `folderPaths` at all is on the `keepFolderPaths` JSDoc.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set(['hello']),
+      }),
+    ).toEqual([folderTabId('hello')]);
+    // It spares ONLY the folders passed in. A blanket folder exemption would
+    // satisfy the assertion above while disabling folder pruning outright, so
+    // pin that stale siblings still go.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello'), folderTabId('old-folder')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set(['hello']),
+      }),
+    ).toEqual([folderTabId('hello')]);
+    // And with no displayed folder there is no exemption at all.
+    expect(
+      filterOpenTabsForKnownTargets([folderTabId('hello')], {
+        pages: new Set(),
+        folderPaths: new Set(),
+        assetPaths: new Set(),
+        keepFolderPaths: new Set<string>(),
+      }),
+    ).toEqual([]);
+  });
+
   test('filterOpenTabsForKnownTargets keeps the SKILL doc that left the page list', () => {
     // A scope move deletes the source bundle BEFORE its response lands, so the
     // source doc stops being a page mid-move. Pruning it there closed the tab
@@ -942,4 +975,90 @@ test('a global-level skill-preview tab id round-trips its level through the hash
     level: tab.level,
   });
   expect(skillPreviewFromHash(hash)?.level).toBe('global');
+});
+
+describe('persisted tab ids are repaired on read', () => {
+  const session = (
+    openTabs: string[],
+    extras: { pinnedTabIds?: string[]; activeTabId?: string } = {},
+  ) => ({
+    panes: [
+      {
+        id: 'pane-main',
+        openTabs,
+        pinnedTabIds: extras.pinnedTabIds ?? [],
+        activeTabId: extras.activeTabId ?? openTabs[0],
+        size: 100,
+      },
+    ],
+    focusedPaneId: 'pane-main',
+  });
+
+  test('an extension-carrying doc tab restores under its canonical name', () => {
+    const state = parseEditorTabSessionState(session(['specs/demo/SPEC.md']));
+    expect(state.panes[0].openTabs).toEqual(['specs/demo/SPEC']);
+    expect(state.panes[0].activeTabId).toBe('specs/demo/SPEC');
+  });
+
+  test('repeated extensions collapse to the stem', () => {
+    expect(parseEditorTabSessionState(session(['notes/idea.md.mdx'])).panes[0].openTabs).toEqual([
+      'notes/idea',
+    ]);
+  });
+
+  test('a managed-artifact skill reference tab is repaired', () => {
+    expect(
+      parseEditorTabSessionState(session(['__skill__/global/my-skill/references/guide.md']))
+        .panes[0].openTabs,
+    ).toEqual(['__skill__/global/my-skill/references/guide']);
+  });
+
+  test('repair dedupes rather than opening two tabs on one file', () => {
+    const state = parseEditorTabSessionState(
+      session(['specs/demo/SPEC', 'specs/demo/SPEC.md'], {
+        pinnedTabIds: ['specs/demo/SPEC.md'],
+        activeTabId: 'specs/demo/SPEC.md',
+      }),
+    );
+    expect(state.panes[0].openTabs).toEqual(['specs/demo/SPEC']);
+    expect(state.panes[0].pinnedTabIds).toEqual(['specs/demo/SPEC']);
+    expect(state.panes[0].activeTabId).toBe('specs/demo/SPEC');
+  });
+
+  test('system and config doc tabs pass through untouched', () => {
+    const synthetic = [
+      '__system__',
+      '__config__/project',
+      '__local__/project',
+      '__user__/config.yml',
+    ];
+    expect(parseEditorTabSessionState(session(synthetic)).panes[0].openTabs).toEqual(synthetic);
+  });
+
+  test('two double-extension files under one stem keep their tab ids apart', () => {
+    // `notes/foo.md.md` and `notes/foo.mdx.md` on disk. Each doc name still ends
+    // in a markdown extension that belongs to its file, so stripping either
+    // would collapse two distinct documents onto one tab. A genuine same-stem
+    // `.md` + `.mdx` pair cannot produce this session: it is indexed under one
+    // bare stem, so only its winning half ever becomes a tab id.
+    const state = parseEditorTabSessionState(
+      session(['notes/foo.md', 'notes/foo.mdx'], { activeTabId: 'notes/foo.mdx' }),
+    );
+    expect(state.panes[0].openTabs).toEqual(['notes/foo.md', 'notes/foo.mdx']);
+    expect(state.panes[0].activeTabId).toBe('notes/foo.mdx');
+  });
+
+  test('folder and asset tab ids keep their path verbatim', () => {
+    const ids = [folderTabId('specs/demo'), assetTabId('.ok/local/notes.md')];
+    expect(parseEditorTabSessionState(session(ids)).panes[0].openTabs).toEqual(ids);
+  });
+
+  test('the repair survives the local-storage read path', () => {
+    const storage = {
+      getItem: () => JSON.stringify(session(['specs/demo/SPEC.md'])),
+    };
+    expect(readLocalTabSessionState(storage, 'ok-editor-tabs-v1:test').panes[0].openTabs).toEqual([
+      'specs/demo/SPEC',
+    ]);
+  });
 });

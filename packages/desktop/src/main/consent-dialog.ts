@@ -17,6 +17,7 @@ import type { Dirent } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type {
   McpWiringEditorId,
@@ -218,7 +219,7 @@ export function requestUserConsent(
           };
         }
         if (resolved) return { ok: true };
-        const validated = validateConfirmRequest(request, payload);
+        const validated = validateConfirmRequest(request);
         if (!validated.ok) {
           logIpcError({
             event: 'ipc.error',
@@ -368,13 +369,12 @@ interface InvalidRequest {
 }
 
 /**
- * Validate the incoming confirm request and clamp `editorIds` to the show
- * payload's offered set. Renderer-side checks are the primary defense; this
- * is the wire-level safety net.
+ * Validate the incoming confirm request and clamp `editorIds` to the supported
+ * editor set. Renderer-side checks are the primary defense; this is the
+ * wire-level safety net.
  */
 function validateConfirmRequest(
   request: OnboardingConfirmRequest,
-  payload: OnboardingShowPayload,
 ): ValidatedRequest | InvalidRequest {
   if (typeof request.initGit !== 'boolean') {
     return { ok: false, error: 'invalid initGit' };
@@ -391,9 +391,15 @@ function validateConfirmRequest(
   if (!Array.isArray(request.editorIds)) {
     return { ok: false, error: 'invalid editorIds' };
   }
-  const offeredIds = new Set<McpWiringEditorId>(payload.editorOptions.map((e) => e.id));
+  if (typeof request.connectEditors !== 'boolean') {
+    return { ok: false, error: 'invalid connectEditors' };
+  }
+  // Clamp to the closed editor set. The renderer narrows further (to the tools
+  // detected on this machine that actually receive a project write); this is the
+  // wire-level safety net, so it validates membership rather than re-deriving
+  // that machine-specific answer in a second place.
   const editorIds = request.editorIds.filter((id): id is McpWiringEditorId =>
-    offeredIds.has(id as McpWiringEditorId),
+    (ALL_EDITOR_IDS as readonly string[]).includes(id),
   );
   // Sharing-mode posture: validate against the closed set; fall back to
   // `shared` on any non-matching value (defensive: a renderer bypass would
@@ -411,6 +417,7 @@ function validateConfirmRequest(
       contentDir: request.contentDir,
       additionalIgnores: request.additionalIgnores,
       editorIds,
+      connectEditors: request.connectEditors,
       sharing,
     },
   };

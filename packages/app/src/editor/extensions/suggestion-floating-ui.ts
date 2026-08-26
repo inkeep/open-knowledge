@@ -1,9 +1,12 @@
+import type { MiddlewareState } from '@floating-ui/dom';
 import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 import type { Editor } from '@tiptap/core';
 import type { SuggestionProps } from '@tiptap/suggestion';
 import {
   deriveEditorClipOptions,
   deriveEditorShiftOptions,
+  deriveEditorSizeOptions,
+  editorRegionWidthPx,
 } from '@/editor/utils/editor-visible-region';
 
 export interface SuggestionPositionState {
@@ -64,6 +67,17 @@ export function suggestionHasSelectableItem(view: object): boolean {
  * ideal placement, caps the list at the room actually available beside the
  * anchor, and leaves the clamp with nothing to do.
  */
+/**
+ * Width below which the picker drops to one column.
+ *
+ * The slash menu is a `w-56` list beside a `w-64` preview with a `gap-2`
+ * between them — 488px of fixed columns. A pane that cannot hold both squeezes
+ * BOTH, and a half-width list beside a sliver of preview reads worse than the
+ * list alone. The preview is `aria-hidden` decoration, so dropping it costs
+ * nothing a screen reader was getting.
+ */
+const SUGGESTION_TWO_COLUMN_MIN_PX = 488;
+
 function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
   const applySize = {
     apply({ availableHeight }: { availableHeight: number }) {
@@ -88,12 +102,52 @@ function buildMiddleware(popup: HTMLDivElement, editor: Editor | undefined) {
     ];
   }
   const clipOptions = deriveEditorClipOptions(editor);
+  const capWidth = deriveEditorSizeOptions(editor);
   return [
     offset(SUGGESTION_ANCHOR_GAP_PX),
     flip(clipOptions),
-    size(() => ({ ...clipOptions(), ...applySize })),
+    // The width cap rides the EXISTING `size` rather than a second one, and
+    // this call keeps its place BEFORE the clamp. That position is load-bearing
+    // for the height half above (see this function's docstring) and the cap is
+    // indifferent to it: `deriveEditorSizeOptions` measures the region instead
+    // of reading floating-ui's position-dependent `availableWidth`, so it is
+    // correct wherever in the chain it runs.
+    size(() => {
+      const { apply: applyWidthCap } = capWidth();
+      // Read BEFORE the two `apply`s below write styles. `applyWidthCap` reads
+      // the region again internally, which is deliberate — `editorRegionWidthPx`
+      // exists so a caller needing the number does not become a second
+      // definition of the region — so this neither makes the pass single-read
+      // nor removes every post-write read: `size` re-enters with
+      // `reset: { rects: true }` when it changed the surface, and that pass
+      // measures again. What it buys is the column decision no longer being
+      // one of the reads that follows a write.
+      const regionWidth = editorRegionWidthPx(editor);
+      return {
+        ...clipOptions(),
+        apply(state: MiddlewareState & { availableHeight: number }) {
+          applyWidthCap(state);
+          applySize.apply(state);
+          applyColumnCount(popup, regionWidth);
+        },
+      };
+    }),
     shift(deriveEditorShiftOptions(editor)),
   ];
+}
+
+/**
+ * Mark the popup one-column when the region cannot hold both of its columns.
+ *
+ * A `data-` attribute plus a CSS rule rather than React state: the menus are
+ * rendered into this popup by three different components, the decision is a
+ * pure function of a width the positioning pass already measured, and routing
+ * it back through React would re-render the list on every scroll tick. No
+ * resolvable region leaves the attribute alone — same fallback as the cap.
+ */
+function applyColumnCount(popup: HTMLDivElement, regionWidth: number | null): void {
+  if (!popup.isConnected || regionWidth === null) return;
+  popup.toggleAttribute('data-suggestion-narrow', regionWidth < SUGGESTION_TWO_COLUMN_MIN_PX);
 }
 
 /**
@@ -146,6 +200,18 @@ export function createSuggestionPopup(
   // comment composer — would otherwise read a click on `@`-mention results as a
   // click away and close itself mid-pick.
   popup.dataset.suggestionPopup = label;
+  // Marks the popups whose width the editor region caps, and is what the
+  // `globals.css` rule hangs the shrink-propagation off. The cap is a
+  // `max-width` on THIS wrapper, and a `max-width` does not shrink a block
+  // child that carries its own fixed `width` — so a menu root at `w-80` sat
+  // inside a 284px wrapper and painted 320px anyway. Making the popup's
+  // CONTENT yield here rather than per component is what keeps the next
+  // `clipToEditorPane` picker from repeating that: the wrapper already knows
+  // it is clipped, and the menu component does not have to remember. The rule
+  // spans the subtree, not the direct children, and sits in `@layer
+  // components` so a menu that states its own cap still wins — see
+  // `globals.css` for both.
+  if (clipToEditorPane) popup.dataset.suggestionClipped = '';
   popup.style.position = 'fixed';
   // Above every host that can own a suggestion field. At 50 it sat UNDER the
   // comment composer's `z-[60]` card, so `@`-mention results were half-hidden by

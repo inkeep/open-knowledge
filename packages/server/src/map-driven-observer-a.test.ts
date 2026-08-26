@@ -20,6 +20,7 @@ import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { getLogger } from './logger.ts';
 import { computeMapDrivenBodySplice } from './map-driven-splice.ts';
 import { getMetrics } from './metrics.ts';
+import { createCountingManager } from './parse-counting.test-helper.ts';
 import {
   __resetMapDrivenParseErrorWarnForTests,
   OBSERVER_SYNC_ORIGIN,
@@ -442,5 +443,69 @@ describe('map-driven Observer A — default Path A behavior', () => {
       expect(splice).toBeNull();
       expect(reasons).toEqual(['missing-position']);
     });
+  });
+});
+
+describe('typing-burst parse economy (PRD-8273)', () => {
+  /** Append one character to the fragment's deepest last text node — a keystroke. */
+  function typeChar(doc: Y.Doc, xmlFragment: Y.XmlFragment, ch: string): void {
+    doc.transact(() => {
+      let node: Y.XmlElement | Y.XmlText | Y.XmlHook | undefined = xmlFragment.get(
+        xmlFragment.length - 1,
+      );
+      while (node instanceof Y.XmlElement && node.length > 0) {
+        node = node.get(node.length - 1);
+      }
+      if (!(node instanceof Y.XmlText)) throw new Error('no text node to type into');
+      node.insert(node.length, ch);
+    });
+  }
+
+  /**
+   * Each keystroke drain runs `computeMapDrivenBodySplice`. Its two parses are
+   * `oldBody` (what Y.Text holds now) and `newBody` (the canonical
+   * serialization of the fragment) — and across consecutive drains those are
+   * the SAME bytes, because the splice a drain applies leaves Y.Text holding
+   * exactly the `newBody` it just parsed.
+   *
+   * The memo serves that `oldBody` side, so a drain parses once rather than
+   * twice — which is what this test pins. Without it a 15-character marker
+   * costs 30 full-document parses at any document size; with it, 15.
+   *
+   * It pins the COUNT rather than a wall-clock budget deliberately: a parse
+   * count is machine-independent in a way milliseconds are not, so this cannot
+   * go flaky on a contended runner.
+   */
+  test('consecutive keystroke drains parse each body once, not once per drain', () => {
+    const { manager: counted, parses } = createCountingManager();
+    const { doc, xmlFragment, ytext } = createTestDoc();
+    const cleanup = setupServerObservers({
+      doc,
+      xmlFragment,
+      ytext,
+      mdManager: counted,
+      schema,
+    });
+
+    doc.transact(() => {
+      const pmNode = schema.nodeFromJSON(counted.parse('# H\n\nalpha\n'));
+      updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
+    });
+
+    const before = parses();
+    for (const ch of 'XYZ') typeChar(doc, xmlFragment, ch);
+    const burstParses = parses() - before;
+
+    // The marker must actually have landed — a stalled bridge would also
+    // report a low parse count.
+    expect(ytext.toString()).toContain('alphaXYZ');
+
+    // One parse per keystroke, not two: each drain's `oldBody` is the body the
+    // PREVIOUS drain already parsed as its `newBody` (the seeding drain above
+    // primes the memo the same way), so only the newly-serialized side is real
+    // work. Three keystrokes, three parses.
+    expect(burstParses).toBe(3);
+
+    cleanup();
   });
 });

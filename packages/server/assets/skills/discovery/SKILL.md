@@ -112,9 +112,18 @@ If the OK MCP server isn't wired into this host there is no `preview_url` to
 call — use the `ok open` path above. Don't reconstruct what `preview_url` does
 by hand (spawning `ok mcp` yourself, scraping ports from `ok ps`).
 
-The path must be absolute (a file outside a project has no cwd to anchor a
-relative path). Re-opening the same file lands on the same session. Never
-construct or guess the URL — use the one `preview_url` returns.
+Give an absolute path. `ok open` prints the absolute project root it resolved
+for that path, and names the enclosing project too when the resolved root sits
+inside another one. Read that line rather than assuming which project you got.
+
+To name the project yourself, pass `--project <dir>`. It is honored wherever it
+appears: `--project <dir>` or `--project=<dir>`, before or after the path, with
+or without the `.md` extension. If it cannot be honored the command exits
+non-zero and says why, so you never need a second command to find out where it
+landed, and never need to stop a server to correct it.
+
+Re-opening the same file lands on the same session. Never construct or guess the
+URL — use the one `preview_url` returns.
 
 ## What else OK does
 

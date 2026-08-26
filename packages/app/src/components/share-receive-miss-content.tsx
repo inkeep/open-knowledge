@@ -133,7 +133,7 @@ function EnableAutoSyncButton({ onEnabled }: { onEnabled?: () => void }) {
     <>
       <Button onClick={() => onToggleRequest(true)} data-testid="share-receive-miss-enable-sync">
         <RefreshCw className="size-4" aria-hidden="true" />
-        <Trans>Enable auto-sync</Trans>
+        <Trans>Enable Auto (Pull and Push)</Trans>
       </Button>
       <EnableSyncConfirmDialog
         open={confirmOpen}

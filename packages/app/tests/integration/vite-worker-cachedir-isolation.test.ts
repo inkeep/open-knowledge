@@ -43,10 +43,16 @@
  *      references so the fixture can bind the path to a local variable
  *      (`const viteCacheDir = mkdtempSync(...)`) rather than inlining
  *      the expression. Test B3 pins the teardown counterpart: every
- *      `mkdtempSync` allocation must be paired with an `rmSync` so
- *      per-worker cache directories under `node_modules/` are reclaimed
- *      on both the happy path (after the spawned server is released)
- *      and the failure path (caught launch errors that abort `use`).
+ *      `mkdtempSync` allocation must be reclaimed, so per-worker cache
+ *      directories under `node_modules/` do not survive on the happy path
+ *      (after the spawned server is released) or the failure path (caught
+ *      launch errors that abort `use`). B3 asserts the WIRING — that both
+ *      teardown sites reclaim the cacheDir alongside the contentDir. That
+ *      a removal actually deletes the directory, and that a tolerated
+ *      errno does not abort the removals after it, is pinned
+ *      behaviourally against real syscalls in `teardown-fs-errno.test.ts`;
+ *      exercising the wiring itself would mean booting a per-worker dev
+ *      server, which is the cost this file exists to avoid.
  *
  * Why a meta-test rather than reproducing the race itself: the bug is a
  * cross-process TOCTOU over the shared directory; it needs CI-grade
@@ -279,7 +285,7 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
 
     // Step 1: resolve the per-worker cacheDir identifier from the
     // OK_TEST_VITE_CACHE_DIR property assignment. Cleanup needs a stable
-    // name to pass to `rmSync` at teardown — an inline expression as the
+    // name to hand the removal at teardown — an inline expression as the
     // property value (e.g. `OK_TEST_VITE_CACHE_DIR: mkdtempSync(...)`)
     // discards the resolved path the moment the env-object literal
     // closes, leaving no handle for teardown to reach. The
@@ -291,7 +297,7 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
     if (props.length === 0) {
       throw new Error(
         `B3 prerequisite missing: no \`${CACHE_DIR_ENV_VAR}\` property in fixtures.ts (B1 should have failed first).\n` +
-          `Without the property, there is no identifier to pass to \`rmSync\` at teardown — so the per-worker Vite cacheDir cannot be reclaimed and CI accumulates orphan directories under tmpdir() until the runner's filesystem fills.`,
+          `Without the property, there is no identifier to hand the removal at teardown — so the per-worker Vite cacheDir cannot be reclaimed and CI accumulates orphan directories under tmpdir() until the runner's filesystem fills.`,
       );
     }
     const initializer = props[0]?.getInitializer();
@@ -302,48 +308,59 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
     }
     if (!initializer.isKind(SyntaxKind.Identifier)) {
       throw new Error(
-        `B3 requires \`${CACHE_DIR_ENV_VAR}\` to be bound to a named local variable so the workerServer fixture can \`rmSync\` the same path at teardown.\n` +
+        `B3 requires \`${CACHE_DIR_ENV_VAR}\` to be bound to a named local variable so the workerServer fixture can reclaim the same path at teardown.\n` +
           `Found initializer at line ${initializer.getStartLineNumber()}: \`${initializer.getText().slice(0, 80)}\` (kind: ${initializer.getKindName()}).\n` +
           `Acceptable shape: \`const viteCacheDir = mkdtempSync(...); ...; ${CACHE_DIR_ENV_VAR}: viteCacheDir,\`.`,
       );
     }
     const cacheDirVar = initializer.getText();
 
-    // Step 2: enumerate rmSync call sites in the fixture. The two
-    // existing `rmSync(contentDir, ...)` calls anchor the failure-path
-    // catch block and the happy-path after-`use` block — together they
-    // are the two teardown sites the fix must mirror with a paired
-    // `rmSync(${cacheDirVar}, ...)`.
+    // Step 2: enumerate the teardown sites. A teardown site is a removal
+    // call that reclaims `contentDir`; the fixture has one on the failure
+    // path and one on the happy path, and each must reclaim the cacheDir
+    // too.
+    //
+    // The removal primitive is matched as a SET, and the reclaimed path may
+    // sit at ANY argument position, because neither is the invariant. The
+    // fixture reclaims through the variadic `removeAllDuringTeardown`, which
+    // applies the shared teardown errno policy and takes every target in one
+    // call; a bare `rmSync` stays legal for a path whose removal failure must
+    // abort rather than be tolerated. Pinning one callee and argument 0 made
+    // this assertion fail on a refactor that preserved the invariant exactly,
+    // so what is pinned now is "both directories are reclaimed at both
+    // sites", however the fixture spells the removal.
+    const REMOVAL_CALLEES = new Set(['rmSync', 'removeAllDuringTeardown']);
     const allCalls = sf.getDescendantsOfKind(SyntaxKind.CallExpression);
-    const rmSyncMatching = (targetName: string) =>
+    const reclaimsOf = (targetName: string) =>
       allCalls.filter((call) => {
-        if (call.getExpression().getText() !== 'rmSync') return false;
-        const firstArg = call.getArguments()[0];
-        if (!firstArg) return false;
-        return firstArg.isKind(SyntaxKind.Identifier) && firstArg.getText() === targetName;
+        if (!REMOVAL_CALLEES.has(call.getExpression().getText())) return false;
+        return call
+          .getArguments()
+          .some((arg) => arg.isKind(SyntaxKind.Identifier) && arg.getText() === targetName);
       });
-    const contentDirTeardowns = rmSyncMatching('contentDir');
-    const cacheDirTeardowns = rmSyncMatching(cacheDirVar);
+    const contentDirTeardowns = reclaimsOf('contentDir');
+    const cacheDirTeardowns = reclaimsOf(cacheDirVar);
 
     if (contentDirTeardowns.length < 2) {
       throw new Error(
-        `B3 expected at least 2 \`rmSync(contentDir, ...)\` calls to anchor the failure-path + happy-path teardown sites; found ${contentDirTeardowns.length}.\n` +
-          `If the fixture's teardown structure was refactored, update this assertion to reflect the new pattern.`,
+        `B3 expected at least 2 removal calls reclaiming \`contentDir\` to anchor the failure-path + happy-path teardown sites; found ${contentDirTeardowns.length}.\n` +
+          `Recognised removal primitives: ${[...REMOVAL_CALLEES].join(', ')}.\n` +
+          `If the fixture now reclaims through a different primitive, add it to REMOVAL_CALLEES rather than reverting the fixture — the invariant is that both directories are reclaimed at both teardown sites, not which function does it.`,
       );
     }
 
-    // Step 3: pair each contentDir teardown with a sibling
-    // `rmSync(${cacheDirVar}, ...)` in the SAME Block ancestor. This
-    // binds the assertion to BOTH the catch-block (failure path) and
-    // the function-body Block (happy path) without coupling to exact
-    // line numbers — the same nearby-block proximity required
-    // ("directly after each existing `rmSync(contentDir, ...)`").
+    // Step 3: require each contentDir teardown to be accompanied by a
+    // reclaim of ${cacheDirVar} in the SAME Block ancestor. This binds the
+    // assertion to BOTH the catch-block (failure path) and the function-body
+    // Block (happy path) without coupling to exact line numbers. A single
+    // variadic call that reclaims both satisfies this by being its own
+    // match — it appears in both arrays with the same Block ancestor.
     const missing: string[] = [];
     for (const cTeardown of contentDirTeardowns) {
       const parentBlock = cTeardown.getFirstAncestorByKind(SyntaxKind.Block);
       if (!parentBlock) {
         missing.push(
-          `\`rmSync(contentDir, ...)\` at line ${cTeardown.getStartLineNumber()} has no Block ancestor; cannot locate sibling teardown for ${cacheDirVar}`,
+          `removal call reclaiming \`contentDir\` at line ${cTeardown.getStartLineNumber()} has no Block ancestor; cannot locate the ${cacheDirVar} reclaim for that site`,
         );
         continue;
       }
@@ -352,7 +369,7 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
       );
       if (!sibling) {
         missing.push(
-          `teardown site near \`rmSync(contentDir, ...)\` at line ${cTeardown.getStartLineNumber()} is missing a sibling \`rmSync(${cacheDirVar}, ...)\` in the same block`,
+          `teardown site at line ${cTeardown.getStartLineNumber()} reclaims \`contentDir\` but nothing in the same block reclaims \`${cacheDirVar}\``,
         );
       }
     }
@@ -360,7 +377,7 @@ describe('per-worker Vite cacheDir isolation — workerServer fixture side', () 
     if (missing.length > 0) {
       throw new Error(
         [
-          `tests/stress/_helpers/fixtures.ts must \`rmSync(${cacheDirVar}, { recursive: true, force: true })\` at BOTH teardown sites — the failure-path catch block AND the happy-path after-\`use\` block — mirroring the existing \`rmSync(contentDir, ...)\` pattern.`,
+          `tests/stress/_helpers/fixtures.ts must reclaim \`${cacheDirVar}\` at BOTH teardown sites — the failure-path catch block AND the happy-path after-\`use\` block — alongside the \`contentDir\` reclaim already there.`,
           `Without cleanup at both sites, CI accumulates orphan per-worker Vite cache directories under tmpdir() until the runner's filesystem fills.`,
           ``,
           `Missing:`,
