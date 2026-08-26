@@ -56,14 +56,14 @@ describe('admitRequestSurface under allowExternal consent', () => {
   test('admits loopback, the bind literal, and the declared externalUrl host', () => {
     for (const host of ['localhost:5173', '100.64.0.7:55222', 'laptop.tail:55222']) {
       const { res, status } = fakeRes();
-      expect(admitRequestSurface(req(host), res, consentPolicy, 'test')).toBe(true);
+      expect(admitRequestSurface(req(host), res, consentPolicy, 'mcp-mount')).toBe(true);
       expect(status()).toBeUndefined();
     }
   });
 
   test('refuses a foreign Host (rebinding shape) with a 403', () => {
     const { res, status } = fakeRes();
-    expect(admitRequestSurface(req('evil.example'), res, consentPolicy, 'test')).toBe(false);
+    expect(admitRequestSurface(req('evil.example'), res, consentPolicy, 'mcp-mount')).toBe(false);
     expect(status()).toBe(403);
   });
 
@@ -78,7 +78,7 @@ describe('admitRequestSurface under allowExternal consent', () => {
         req('localhost', '127.0.0.1', { 'x-forwarded-for': '203.0.113.7' }),
         res,
         buildIngressPolicy({}),
-        'test',
+        'mcp-mount',
       ),
     ).toBe(false);
     expect(status()).toBe(403);
@@ -94,7 +94,7 @@ describe('admitRequestSurface under allowExternal consent', () => {
         req('laptop.tail:55222', '100.64.0.7', { 'x-forwarded-for': '203.0.113.7' }),
         res,
         consentPolicy,
-        'test',
+        'mcp-mount',
       ),
     ).toBe(true);
     expect(status()).toBeUndefined();
@@ -108,7 +108,7 @@ describe('admitRequestSurface under allowExternal consent', () => {
     // deliberately ungated — public bundle code.
     const local = buildIngressPolicy({});
     const { res, status } = fakeRes();
-    expect(admitRequestSurface(req('evil.example'), res, local, 'test')).toBe(true);
+    expect(admitRequestSurface(req('evil.example'), res, local, 'mcp-mount')).toBe(true);
     expect(status()).toBeUndefined();
   });
 });

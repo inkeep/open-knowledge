@@ -401,7 +401,109 @@ describe('remote enabled — trust-the-tunnel admission', () => {
   });
 });
 
+describe('session verbs through the native mount', () => {
+  // GET with a live session opens the transport's standalone SSE channel —
+  // idle (no priming bytes) but held open for server-initiated notifications;
+  // `enableJsonResponse: true` shapes POST responses only. The pin is that the
+  // response HEAD arrives as `text/event-stream` while the stream stays open:
+  // an adapter that buffered the stream to completion would never flush the
+  // head for an idle channel, so headers-before-end is the proof the router
+  // adapter does not buffer long-lived MCP streams.
+  test('GET with a live session opens the standalone SSE stream unbuffered', async () => {
+    const rig = await bootRemoteRig(null);
+    const gateHeaders = { host: `127.0.0.1:${rig.port}` };
+    const { sessionId } = await openSession(rig.port, gateHeaders);
+
+    const outcome = await new Promise<{ status: number; contentType?: string }>(
+      (resolvePromise, reject) => {
+        const req = httpRequest(
+          {
+            hostname: '127.0.0.1',
+            port: rig.port,
+            path: '/mcp',
+            method: 'GET',
+            headers: {
+              ...gateHeaders,
+              accept: 'text/event-stream',
+              'mcp-session-id': sessionId,
+              'mcp-protocol-version': MCP_PROTOCOL_VERSION,
+            },
+          },
+          (res) => {
+            let ended = false;
+            res.on('end', () => {
+              ended = true;
+            });
+            // Give a buffered/short-circuited response time to end; a held-open
+            // idle SSE channel must still be open when the timer fires.
+            setTimeout(() => {
+              const status = res.statusCode ?? 0;
+              const contentType = res.headers['content-type'];
+              req.destroy();
+              if (ended) {
+                reject(new Error('standalone SSE stream ended instead of staying open'));
+                return;
+              }
+              resolvePromise({ status, contentType });
+            }, 250);
+          },
+        );
+        req.on('error', reject);
+        req.setTimeout(5_000, () =>
+          req.destroy(new Error('timed out waiting for the /mcp GET response head')),
+        );
+        req.end();
+      },
+    );
+
+    expect(outcome.status).toBe(200);
+    expect(outcome.contentType).toBe('text/event-stream');
+  });
+
+  test('DELETE tears the session down — a follow-up POST on it is a 404', async () => {
+    const rig = await bootRemoteRig(null);
+    const gateHeaders = { host: `127.0.0.1:${rig.port}` };
+    const { sessionId } = await openSession(rig.port, gateHeaders);
+
+    const del = await raw(rig.port, {
+      method: 'DELETE',
+      path: '/mcp',
+      headers: {
+        ...gateHeaders,
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': MCP_PROTOCOL_VERSION,
+      },
+    });
+    expect(del.status).toBeLessThan(300);
+
+    const after = await raw(rig.port, {
+      method: 'POST',
+      path: '/mcp',
+      headers: {
+        ...gateHeaders,
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-session-id': sessionId,
+        'mcp-protocol-version': MCP_PROTOCOL_VERSION,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list' }),
+    });
+    expect(after.status).toBe(404);
+  });
+});
+
 describe('remote disabled — the forwarding-header tripwire', () => {
+  test('a proxied POST /mcp is refused with the exposure-consent hint', async () => {
+    const rig = await bootRemoteRig(null);
+    const res = await raw(rig.port, {
+      method: 'POST',
+      path: '/mcp',
+      headers: { host: `127.0.0.1:${rig.port}`, 'x-forwarded-for': '203.0.113.7' },
+    });
+    expect(res.status).toBe(403);
+    expect(res.body).toContain('OK_ALLOW_EXTERNAL');
+  });
+
   test('proxied requests are refused with the exposure-consent hint', async () => {
     const rig = await bootRemoteRig(null);
     const res = await raw(rig.port, {
