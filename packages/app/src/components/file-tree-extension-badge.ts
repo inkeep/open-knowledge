@@ -27,8 +27,9 @@ export const OK_EXT_ROW_ATTR = 'data-ok-ext-row';
 export const OK_FULLNAME_ROW_ATTR = 'data-ok-fullname-row';
 
 /**
- * CSS rules that apply inside Pierre's shadow root. Passed alongside the
- * other `FILE_TREE_UNSAFE_CSS` rules in `FileTree.tsx`.
+ * CSS rules that apply inside Pierre's shadow root. They reach it through
+ * `OK_FILE_TREE_READONLY_UNSAFE_CSS` (`file-tree-shared.ts`), which both the
+ * Files and Skills trees compose their `unsafeCSS` from.
  *
  *   - Hide the extension `[data-truncate-segment-priority]:last-child` for
  *     rows the JS pass has classified as extension-bearing. CSS cannot

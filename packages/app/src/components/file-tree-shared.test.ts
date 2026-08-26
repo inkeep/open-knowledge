@@ -8,6 +8,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   buildOkFileTreeOptions,
+  FILE_TREE_FRACTIONAL_ZOOM_TRUNCATION_GUARD_CSS,
   FILE_TREE_USER_NAME_DIRECTION_CSS,
   lucideMaskDataUri,
   MARKDOWN_FILE_ICON_ID,
@@ -24,10 +25,14 @@ describe('buildOkFileTreeOptions', () => {
 
   test('the read-only base gives every row its own writing direction', () => {
     // File names are the user's own words, and the tree renders them inside a
-    // third-party shadow root that inherits the chrome's direction. The main
-    // tree composes its own `unsafeCSS`, so it carries this separately — the
-    // real-browser check for that one lives in `user-text-direction.e2e.ts`.
+    // third-party shadow root that inherits the chrome's direction. Both trees
+    // inherit this base; the real-browser check lives in `user-text-direction.e2e.ts`.
     expect(OK_FILE_TREE_READONLY_UNSAFE_CSS).toContain(FILE_TREE_USER_NAME_DIRECTION_CSS);
+  });
+
+  test('the read-only base suppresses fractional-zoom false truncation', () => {
+    const opts = buildOkFileTreeOptions({ paths: [] });
+    expect(opts.unsafeCSS).toContain(FILE_TREE_FRACTIONAL_ZOOM_TRUNCATION_GUARD_CSS);
   });
 
   test('unsafeCSS override wins (the editable main tree passes its full composition)', () => {
