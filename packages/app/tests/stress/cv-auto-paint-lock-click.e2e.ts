@@ -104,21 +104,91 @@
  * This seam only exists in a real Chromium layout/paint engine — jsdom has no
  * display-lock machinery — so the pin lives at Playwright fidelity.
  *
- * KNOWN EXPOSURE IN CI ONLY, RECORDED RATHER THAN FIXED. `playwright.config.ts`
- * sets `retries: isCI ? 2 : 0` and `failOnFlakyTests: false` unconditionally.
- * In CI a test therefore runs up to three times, Playwright classifies
- * failed-then-passed as flaky rather than failed, and flaky is let through — so
- * the run goes red only when the crash reproduces on ALL THREE attempts.
- * Anything short of that is masked equally: two-of-three is hidden exactly as
- * thoroughly as one-of-three. Locally retries are 0 and a single crash fails
- * the run outright, so a local green is exactly as strong as it looks.
+ * WHY THIS FILE OPTS OUT OF THE SUITE'S CI RETRIES. `playwright.config.ts` sets
+ * `retries: isCI ? 2 : 0` with `failOnFlakyTests: false`, so in CI a test runs
+ * up to three times and failed-then-passed is classified flaky and let through.
+ * For an intermittent renderer abort that masks almost everything: the run goes
+ * red only when the crash reproduces on ALL THREE attempts, and two-of-three is
+ * hidden exactly as thoroughly as one-of-three. The file therefore calls
+ * `test.describe.configure({ retries: 0 })` below, making CI behave the way
+ * local already did — one reproduction fails the run.
  *
- * What that means in practice: a red run from this file is strong evidence, and
- * a green CI run is weaker than it looks for an intermittent crash. It is
- * recorded rather than special-cased because a per-file `retries: 0` is a
- * policy call for the suite's owners, not something this pin should make
- * unilaterally — and the sibling `.ok-mode-hidden` pin has carried the same
- * exposure since it landed.
+ * The exposure was never total, and the record should not imply it was.
+ * A daily scheduled CI job already drives this same `test:e2e` task at
+ * `--repeat-each=3 --retries=0`, and its own comment calls `--retries=0`
+ * load-bearing for exactly this reason. (It is named in `precedent #20(e)`
+ * rather than here: it lives in the monorepo's root workflow tree, which is not
+ * part of this mirror, so the filename would not resolve for a reader who has
+ * only the public repo.) Three unretried
+ * attempts a day is arguably a stronger detector for a probabilistic abort than
+ * the single PR-tier attempt this override creates. What the override actually
+ * buys is PR-tier BLOCKING rather than next-day advisory, which matters because a
+ * merged renderer-crash regression rides the beta cadence out to users before the
+ * daily run fires.
+ *
+ * The opt-out is per-file on purpose. The suite-wide settings are load-bearing:
+ * their own comment in `playwright.config.ts` records that turning
+ * `failOnFlakyTests` on globally promoted WebSocket and CRDT-broadcast noise to
+ * PR-red and cut the PR-tier green rate to roughly 22% on correct code. Those
+ * retries absorb infrastructure flake, which is what they are for. A renderer
+ * crash is not infrastructure flake, so this file — and only this file — treats
+ * a single occurrence as fatal. The sibling `.ok-mode-hidden` pin does NOT need
+ * the same treatment: its header records that it reproduces its timing
+ * deterministically, so a regression there fails all three attempts anyway and
+ * retries cannot mask it. Do not spread this policy on symmetry alone.
+ *
+ * WHAT THE OPT-OUT ALSO MAKES FATAL. The mechanism is per file, not per failure
+ * mode, so it is not only the crash that stops being retried. `setupTallDoc`'s
+ * seeding and provider sync, `stageTargetForClick`'s convergence bound, and the
+ * lock-event settle waits in two of the three tests all become
+ * single-occurrence-fatal too, and those are precisely the WebSocket and
+ * CRDT-broadcast classes the retries were absorbing. Two more join them. The
+ * file's `test.use({ trace })` is a WORKER-scoped option, so it partitions the
+ * worker pool and this file can never land on an already-booted worker: it
+ * always pays a fresh `workerServer` boot (Vite, Hocuspocus, a `mkdtemp`
+ * contentDir and a warmup load), and that boot is now unretried as well. This
+ * is the same partitioning the `workerServerEnv` files already accept, so it is
+ * precedented rather than novel, but it was previously amortizable and is not
+ * any more. And `pressAndProbe` resolves ANY renderer death to
+ * `renderer-crashed`, so a host-pressure or OOM kill is indistinguishable here
+ * from the abort being hunted and now fails the PR on first occurrence wearing
+ * the hunted crash's face.
+ *
+ * That is the price, accepted knowingly: a crash reported green is a
+ * worse failure for this file than a setup flake reported red, and three tests
+ * over one document is a small surface to pay it on. If this file starts going
+ * red on seeding or sync rather than on a hit-test abort, harden the setup —
+ * do not restore the retries, which would re-hide the crash along with the noise.
+ *
+ * TRACE, AND WHAT A RED RUN ACTUALLY LEAVES. Zero retries makes the suite's
+ * `trace: 'on-first-retry'` unreachable here, so the file sets
+ * `retain-on-failure` instead. That is not a nicety on this pin: measured on
+ * 1.59.1 by crashing a renderer with real page content loaded, a dead renderer
+ * CANNOT be screenshotted. An identical failure with the renderer alive leaves
+ * `test-failed-1.png`; kill the renderer first and the screenshot is simply
+ * absent, while `trace.zip` and `video.webm` both survive. On the one failure
+ * path this file exists to catch, trace is therefore the richest artifact that
+ * still exists rather than a luxury on top of a screenshot.
+ *
+ * The churn arm pays for this and keeps it anyway. Tracing costs tests one and
+ * two 13% and 18%, but takes the churn arm from 3.4s to 7.5s across three runs,
+ * because it congests the main thread on purpose and snapshotting adds to that
+ * congestion. Measured rather than assumed: with tracing on, all three still
+ * pass and the churn arm's own precondition still holds, so the extra load makes
+ * that arm slower without making it invalid. The DECLARATIVE option cannot be
+ * scoped below file level: `trace` is worker-scoped, so `test.use({ trace })`
+ * inside a `test.describe` is rejected outright ("forces a new worker"). That
+ * leaves file-wide or nothing among the config-driven shapes. Playwright's
+ * manual `context.tracing.start/stop` API is test-scoped and would allow per-arm
+ * tracing, at the cost of hand-wiring output paths and losing the HTML report's
+ * automatic trace linkage; it was judged not worth that for three tests, not
+ * ruled impossible. File-wide wins because
+ * the alternative gives up the only rich artifact that survives the crash.
+ *
+ * This narrows `precedent #20(e)`'s "every CI failure is debuggable from
+ * artifacts alone" here only in that a crash leaves no screenshot, which is a
+ * property of dead renderers rather than of this override. #20(e) records the
+ * carve-out this file establishes.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -132,6 +202,10 @@ import {
   test,
   waitForActiveProviderSynced,
 } from './_helpers';
+
+/** A crash is never flake. Rationale, costs and measurements: file header. */
+test.describe.configure({ retries: 0 });
+test.use({ trace: 'retain-on-failure' });
 
 const WYSIWYG = '.ProseMirror:not(.composer-prosemirror)';
 const CHUNK_WRAPPER = `${WYSIWYG} .ok-chunk-wrapper`;
