@@ -12510,6 +12510,10 @@ msgstr "ক্লোন শুরু করা হচ্ছে"
 msgid "Starting sign-in flow"
 msgstr "সাইন-ইন প্রক্রিয়া শুরু করা হচ্ছে"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "টার্মিনাল চালু হচ্ছে…"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr "এজেন্ট শুরু করা হচ্ছে…"

@@ -12510,6 +12510,10 @@ msgstr "Começando a clonagem"
 msgid "Starting sign-in flow"
 msgstr "Iniciando o fluxo de login"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "Iniciando terminal…"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr "Iniciando o agente…"

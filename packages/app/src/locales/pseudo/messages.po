@@ -12510,6 +12510,10 @@ msgstr ""
 msgid "Starting sign-in flow"
 msgstr ""
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr ""
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr ""

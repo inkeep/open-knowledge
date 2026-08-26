@@ -12514,6 +12514,10 @@ msgstr "正在開始複製"
 msgid "Starting sign-in flow"
 msgstr "正在啟動登入流程"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "正在啟動終端機…"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr "正在啟動代理…"

@@ -12510,6 +12510,10 @@ msgstr "Memulai kloning"
 msgid "Starting sign-in flow"
 msgstr "Memulai alur masuk"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "Memulai terminal…"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr "Memulai agennya…"

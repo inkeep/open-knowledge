@@ -5,8 +5,8 @@
  * `open-knowledge-app` tracer: the panel opening (adoption) and the user
  * granting shell consent (intent to run Claude Code in-app). Span names share
  * the `ok.desktop.*` convention with the main-side lifecycle spans
- * (`packages/desktop/src/main/terminal-telemetry.ts`) so the four terminal
- * events read as one family across the two tracers.
+ * (`packages/desktop/src/main/terminal-telemetry.ts`) so the terminal events
+ * read as one family across the two tracers.
  *
  * `@opentelemetry/api` returns a no-op tracer when no SDK is registered, so
  * these are zero-cost unless `VITE_OTEL_ENABLED='true'`. Never captures command

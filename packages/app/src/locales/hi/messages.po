@@ -12510,6 +12510,10 @@ msgstr "क्लोन शुरू किया जा रहा है"
 msgid "Starting sign-in flow"
 msgstr "साइन-इन प्रक्रिया शुरू की जा रही है"
 
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "टर्मिनल शुरू हो रहा है…"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
 msgstr "एजेंट शुरू किया जा रहा है…"
