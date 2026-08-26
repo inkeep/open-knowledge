@@ -47,7 +47,6 @@ import {
   AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
-  ApiConfigSuccessSchema,
   applyPatchToFm,
   type BatchEntryError,
   BranchInfoResponseSchema,
@@ -56,9 +55,7 @@ import {
   ClientLogsRequestSchema,
   ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
-  CommentCountsSuccessSchema,
   type ConfigDiagnosticsReport,
-  ConfigDiagnosticsReportSchema,
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
   CreatePageRequestSchema,
@@ -80,7 +77,6 @@ import {
   detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
-  EmbedDetectSuccessSchema,
   EmptyRequestSchema,
   encodeShareUrl,
   estimateSkillCost,
@@ -90,33 +86,24 @@ import {
   FolderConfigPutSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
-  FrontmatterSchemasListSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
   type GitWorktreeOpenTarget,
   GitWorktreeStatusSuccessSchema,
   type HeadingEntry,
-  HistorySuccessSchema,
-  HistoryVersionSuccessSchema,
   type InlineAssetMediaKind,
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
   InvalidShareUrlError,
   instantiateDoc,
-  isDetectedSkillInProject,
-  isFrontmatterSchemaAsset,
-  isHiddenDocName,
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
-  isSkillOutsideOpenProject,
   LEGACY_SKILL_STORE_ROOT,
   LINKABLE_ASSET_EXTENSIONS,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
   type LinksValidationSetting,
-  LintAuditResponseSchema,
   LintConfigResponseSchema,
-  LintDocResultSchema,
   type LinterConfig,
   LintFixRequestSchema,
   LintFixResultSchema,
@@ -147,7 +134,6 @@ import {
   OPENKNOWLEDGE_SKILLS_REPO,
   PROJECT_SKILL_EDITOR_IDS,
   type Principal,
-  PrincipalSuccessSchema,
   type ProblemType,
   parseCanonicalGitHubShareUrl,
   parseFrontmatterRecord,
@@ -157,9 +143,6 @@ import {
   RENAMED_PACK_SKILLS,
   RenamePathRequestSchema,
   RenamePathSuccessSchema,
-  type RescueEntryFlat,
-  type RescueEntryTimeline,
-  RescueListSuccessSchema,
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
@@ -180,8 +163,6 @@ import {
   SeedInstallPackSkillSuccessSchema,
   SeedListPacksSuccessSchema,
   SeedPlanSuccessSchema,
-  SemanticIndexStatusSchema,
-  ServerInfoSuccessSchema,
   ShareConstructUrlRequestSchema,
   ShareConstructUrlResponseSchema,
   SharePublishNameCheckResponseSchema,
@@ -207,7 +188,6 @@ import {
   SkillImportRequestSchema,
   SkillImportSuccessSchema,
   SkillInstallRequestSchema,
-  SkillInstallStateSuccessSchema,
   SkillInstallSuccessSchema,
   type SkillInstallWarningCode,
   SkillMoveRequestSchema,
@@ -226,7 +206,6 @@ import {
   SkillScopeSchema,
   SkillsImportBulkRequestSchema,
   SkillsImportBulkSuccessSchema,
-  SkillsInstalledSuccessSchema,
   SkillsListSuccessSchema,
   SkillsReimportBulkRequestSchema,
   SkillsReimportBulkSuccessSchema,
@@ -260,7 +239,6 @@ import {
   TemplateMoveSuccessSchema,
   TemplatePutRequestSchema,
   TemplatePutSuccessSchema,
-  TemplatesListSuccessSchema,
   TestFlushGitSuccessSchema,
   TestRescanBacklinksSuccessSchema,
   TestRescanFilesSuccessSchema,
@@ -272,13 +250,10 @@ import {
   UploadRequestSchema,
   USER_SKILL_EDITOR_IDS,
   unwrapFrontmatterFences,
-  ValidationAuditCountsResponseSchema,
-  ValidationAuditResponseSchema,
   type ValidationDiagnostic,
   type WorkspaceSearchIntent,
   type WorkspaceSearchRanking,
   type WorkspaceSearchScope,
-  WorkspaceSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import {
   formatRenameSubject,
@@ -314,17 +289,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import { z } from 'zod';
 import {
-  ACP_AGENT_HARNESS_CLIS,
   type AcpHarnessAvailability,
   createAcpHarnessAvailabilityProbe,
 } from './acp/harness-availability.ts';
-import {
-  type AcpRegistry,
-  type CustomAgentEntry,
-  FEATURED_AGENT_IDS,
-  registryPlatformKey,
-} from './acp/registry.ts';
-import { MAX_ACP_THREADS } from './acp/thread-manager.ts';
+import type { AcpRegistry, CustomAgentEntry } from './acp/registry.ts';
 import { captureEffect } from './activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
@@ -344,7 +312,6 @@ import {
 } from './agent-sessions.ts';
 import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
 import { resolveBundledSkillDir } from './build-skill-zip.ts';
-import { collabUrlFromRequestHeaders } from './collab-bootstrap-url.ts';
 import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
@@ -367,10 +334,7 @@ import {
   countBundleFiles,
 } from './content/skills-write.ts';
 import { applySubstitution, todayIsoUtc } from './content/substitution.ts';
-import {
-  resolveProjectTemplates,
-  resolveTemplatesAvailable,
-} from './content/templates-resolver.ts';
+import { resolveTemplatesAvailable } from './content/templates-resolver.ts';
 import {
   applyTemplateDelete,
   applyTemplateMove,
@@ -383,7 +347,6 @@ import {
   toContentDivergenceWarning,
 } from './content-divergence-gate.ts';
 import { recordContributor } from './contributor-tracker.ts';
-import { deriveDetection, embedProbeRing } from './embed-probe.ts';
 import {
   FileEmbeddingsBackend,
   probeEmbeddingEndpoint,
@@ -401,7 +364,6 @@ import { assertNoSymlinkEscape } from './fs-safety.ts';
 import {
   createInstalledAgentsProbe,
   createOsProbe,
-  handleInstalledAgents,
   type InstalledAgentScheme,
 } from './handoff-api.ts';
 import { handleHandoffDispatch } from './handoff-dispatch-api.ts';
@@ -411,14 +373,7 @@ import {
   recordSkillInstall,
   removeSkillInstall,
 } from './installed-skills-marker.ts';
-import {
-  AuditSupersededError,
-  auditProject,
-  collectDocFiles,
-  lintAndFixSource,
-  lintDoc,
-} from './lint/audit.ts';
-import { AuditCache } from './lint/audit-cache.ts';
+import { collectDocFiles, lintAndFixSource } from './lint/audit.ts';
 import {
   createEmptyFrontmatterSchemaFile,
   deleteFrontmatterSchemaFile,
@@ -427,11 +382,7 @@ import {
   type WriteFrontmatterSchemaResult,
   writeFrontmatterSchemaField,
 } from './lint/frontmatter-schema-write.ts';
-import {
-  listProjectSchemaFiles,
-  SCHEMA_LIST_CAP,
-  unmatchedAppliesToProblems,
-} from './lint/frontmatter-schemas.ts';
+import { unmatchedAppliesToProblems } from './lint/frontmatter-schemas.ts';
 import { type WriteMarkdownlintResult, writeMarkdownlintRule } from './lint/markdownlint-write.ts';
 import {
   composeEffectiveLinterConfig,
@@ -439,13 +390,7 @@ import {
   resolveEffectiveLinterConfig,
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
-import {
-  createProjectValidators,
-  type ProjectValidator,
-  runValidationAudit,
-  toValidationCountsPlane,
-  type ValidationAuditResult,
-} from './lint/validation-audit.ts';
+import { createProjectValidators } from './lint/validation-audit.ts';
 import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageTitle,
@@ -455,7 +400,6 @@ import {
 import type { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 import { scanSavedThemes } from './saved-themes-store.ts';
 import { deleteSavedTheme, saveSavedTheme, updateSavedTheme } from './saved-themes-write.ts';
-import { readServerLock } from './server-lock.ts';
 import {
   buildGitHubBlobUrl,
   buildGitHubTreeUrl,
@@ -516,7 +460,6 @@ import {
   validateSkillForInstall,
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
-import { readSkillInstallStateSnapshot } from './skill-state.ts';
 import { handleSpawnCursor } from './spawn-cursor-api.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
@@ -553,7 +496,6 @@ import {
   ManagedRenameSourceTypeMismatchError,
   SymlinkEscapeError,
 } from './apply-managed-rename.ts';
-import { getBootTimings } from './boot-timings.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
@@ -624,6 +566,7 @@ import { writeGitIdentity } from './git-identity.ts';
 import { readWorktreeStatus } from './git-worktree-status.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
 import { catchErrors } from './http/catch-errors.ts';
+import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
 import {
   createStreamingErrorWriter,
@@ -631,13 +574,16 @@ import {
   type HttpErrorStatus,
 } from './http/error-response.ts';
 import { errnoCode, parseQuery } from './http/handler-utils.ts';
+import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
+import { createLintRoutes } from './http/lint-routes.ts';
 import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
+import { createSkillsReadRoutes } from './http/skills-read-routes.ts';
 import { successResponse } from './http/success-response.ts';
 import {
   aliasedSourceRoots,
@@ -732,16 +678,13 @@ import {
 } from './services/skill-reimport.ts';
 import { createVersionOpsService } from './services/version-ops.ts';
 import {
-  listRescueCheckpoints,
   SERVICE_WRITER,
   type ShadowRef,
   safetyCheckpoint,
   shadowGit,
-  type TimelineRescueEntry,
   type WriterIdentity,
 } from './shadow-repo.ts';
 import { shouldResetAmbientCredentials } from './share/git-context.ts';
-import { createSingleFlight } from './single-flight.ts';
 import {
   linkEditorSkillFolder,
   previewEditorFolderLink,
@@ -764,8 +707,6 @@ import { createSkillsShHandlers } from './skills-sh-handlers.ts';
 import { reportSkillInstall } from './skills-sh-install-report.ts';
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
-import { getDocumentHistory, getFolderTimeline } from './timeline-query.ts';
-import { recordTimelineCoalesced } from './timeline-telemetry.ts';
 import { resolveUiRedirectPort } from './ui-redirect-port.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
 
@@ -2978,12 +2919,6 @@ export function createApiExtension(
 
   // Concurrency guard: at most 1 in-flight request per local-op endpoint
   const localOpGuard = localOpConcurrencyGuard ?? createConcurrencyGuard();
-
-  // Single-flight dedupe for `GET /api/history`. Keyed by the
-  // full normalized query tuple (mode + branch + every param each mode reads),
-  // so N concurrent identical history requests share ONE git walk and N
-  // identical responses. Per-server-instance, same rationale as showAllInflight.
-  const historyInflight = createSingleFlight<Awaited<ReturnType<typeof getDocumentHistory>>>();
 
   // The document/pages native route group is constructed HERE, well above the
   // route-table tail, because its returned `invalidateReferencedAssetsCache`
@@ -6633,151 +6568,6 @@ export function createApiExtension(
     { handler: 'frontmatter-patch', method: 'POST' },
   );
 
-  /**
-   * Read-only cross-harness installed-skill enumeration. `GET /api/skills/installed`
-   * returns `{ skills, packs }` — every skill OK can see across all harness
-   * homes (Claude plugins + the bare skill dirs), normalized + de-duped. Pure
-   * read: no home is mutated (NOT in MUTATING_ROUTES). 200 with empty arrays on
-   * a machine with nothing installed.
-   */
-  const handleSkillsInstalled = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        // The catalog is machine-global; the detected sidebar shows it under the
-        // OPEN project's scopes. Two moves keep it faithful to the project |
-        // global invariant (precedent #50): (1) resolve a linked worktree to its
-        // parent-checkout identity so the parent's project-scoped installs
-        // (keyed on the parent path) still match here; (2) ALSO scan this
-        // project's `.<harness>/skills` dirs so every harness's project skills
-        // surface, not just Claude plugins. The SAME identity is used to scan,
-        // stamp, and filter — drop skills bound to a *different* project.
-        const identity = resolveProjectIdentity(projectDir ?? contentDir);
-        // Same `homeDirOverride` seam as every other home-scanning surface here —
-        // without it a rig (or embedded host) enumerates the REAL ~/.claude/plugins.
-        const catalog = enumerateInstalledSkillsCached({
-          projectDir: identity,
-          ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
-        });
-        // In-place editor-dir skills are first-class `/api/skills`
-        // entries at BOTH scopes — dropping them here keeps the same skill from
-        // double-listing as a "detected" row. What remains detected: plugin-cache
-        // skills (`~/.claude/plugins/**`), which the in-place scans don't cover.
-        const inPlaceNames = new Set(scanInPlaceSkills(contentDir).map((s) => s.name));
-        const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
-        const result = {
-          ...catalog,
-          skills: catalog.skills
-            .filter(
-              (s) =>
-                isDetectedSkillInProject(s.provenance, identity) &&
-                !(s.provenance.scope === 'project'
-                  ? inPlaceNames.has(s.name)
-                  : globalInPlaceNames.has(s.name)),
-            )
-            // `identity` is the PARENT checkout for a linked worktree, so a skill
-            // can match the project while living in a tree the user does not have
-            // open. Stamp that so the client can refuse an in-place edit that would
-            // land in another checkout on another branch.
-            //
-            // The reference is the OPEN PROJECT ROOT — `projectDir ?? contentDir`,
-            // the same expression `identity` is derived from but WITHOUT the
-            // worktree→parent resolution. Not `identity` (that resolution makes the
-            // test vacuously false), and not `contentDir`: under `content.dir: docs`
-            // contentDir is `<projectDir>/docs` while harness skill dirs sit at
-            // `<projectDir>/.codex/skills/…`, so every project skill in the user's
-            // OWN checkout would be flagged foreign.
-            .map((s) =>
-              isSkillOutsideOpenProject(s.provenance, s.home, projectDir ?? contentDir)
-                ? { ...s, outsideProject: true }
-                : s,
-            ),
-        };
-        successResponse(res, 200, SkillsInstalledSuccessSchema, result, {
-          handler: 'skills-installed',
-        });
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to enumerate installed skills.',
-          { handler: 'skills-installed', cause: e },
-        );
-      }
-    },
-    { handler: 'skills-installed', method: 'GET', skipBodyParse: true },
-  );
-
-  /**
-   * Bulk unresolved-comment-count lookup, the read-side counterpart to
-   * `/api/backlink-counts`. `GET /api/comment-counts?docNames=a,b,c` returns
-   * `{ counts: { a: 2, b: 0 } }`; `?prefix=folder` returns the same shape for
-   * every doc under that folder that carries threads (sparse — a comment-free
-   * subtree yields `{}`), which is how an `ls` entry gets a folder rollup
-   * without a request per file.
-   *
-   * Read-only, so it stays out of `MUTATING_ROUTES` — unlike `/api/comments`,
-   * whose POST creates threads. docNames failing `isSafeDocName` are silently
-   * dropped, matching backlink-counts; a malformed `prefix` is a 400 because
-   * dropping it would silently widen the query to the whole project.
-   */
-  const handleCommentCounts = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const prefix = url.searchParams.get('prefix');
-        const raw = url.searchParams.get('docNames');
-        if (prefix === null && raw === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Missing docNames or prefix parameter.',
-            { handler: 'comment-counts' },
-          );
-          return;
-        }
-        let counts: Record<string, number> = {};
-        if (prefix !== null) {
-          const trimmed = prefix.trim();
-          if (trimmed !== '' && !isSafeDocName(trimmed)) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid prefix parameter.', {
-              handler: 'comment-counts',
-            });
-            return;
-          }
-          counts = Object.fromEntries(await commentService.countThreads({ prefix: trimmed }));
-        } else {
-          const docNames = (raw ?? '')
-            .split(',')
-            .map((name) => name.trim())
-            .filter((name) => name !== '' && isSafeDocName(name));
-          counts = Object.fromEntries(await commentService.countThreads({ docNames }));
-        }
-        successResponse(
-          res,
-          200,
-          CommentCountsSuccessSchema,
-          { counts },
-          {
-            handler: 'comment-counts',
-          },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read comment counts.',
-          { handler: 'comment-counts', cause: e },
-        );
-      }
-    },
-    { handler: 'comment-counts', method: 'GET', skipBodyParse: true },
-  );
-
   const handleAgentPatch = withValidation(
     AgentPatchRequestSchema,
     async (_req, res, body) => {
@@ -7896,264 +7686,6 @@ export function createApiExtension(
     { handler: 'save-version', method: 'POST' },
   );
 
-  // ── GET /api/history ─────────────────────────────────────────────────────
-  const handleHistory = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      const shadow = shadowRef?.current;
-      if (!shadow) {
-        // 503 (not 400): shadow-repo unavailability is a server-side state,
-        // matching the sync-not-active precedent.
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:shadow-not-configured',
-          'Shadow repo not configured.',
-          { handler: 'history' },
-        );
-        return;
-      }
-
-      // Read-your-writes: agent write handlers no longer force an L2 shadow
-      // commit per write (they ride the persistence debounce), so drain any
-      // pending commit before querying — a `history` call issued right after a
-      // write must list that write. No-op when nothing is pending. The flush
-      // blocks the response, so surface slow (cold-index) drains in the logs.
-      try {
-        const flushStart = performance.now();
-        await flushGitCommit?.();
-        // Contributor stragglers too: lifecycle writes flush fire-and-forget
-        // now, so a contributor recorded after an in-flight run snapshotted
-        // the map is not in the drained commit — without this second drain the
-        // just-made version is missing from the timeline. Reader-side on
-        // purpose: draining in the generic flush changed shutdown semantics.
-        await commitOkArtifactWrite('history-read');
-        const flushMs = performance.now() - flushStart;
-        if (flushMs > 1000) {
-          log.warn({ durationMs: Math.round(flushMs) }, '[history] pre-read commit flush slow');
-        }
-      } catch (err) {
-        log.warn({ err }, '[history] pre-read commit flush failed');
-      }
-
-      const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-      const docName = url.searchParams.get('docName') ?? '';
-      const folderParam = url.searchParams.get('folder');
-      const branch = url.searchParams.get('branch') ?? getCurrentBranch?.() ?? 'main';
-      if (!docName && folderParam === null) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'A docName or folder query parameter is required.',
-          { handler: 'history' },
-        );
-        return;
-      }
-
-      if (branch.includes('..') || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(branch)) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid branch name.', {
-          handler: 'history',
-        });
-        return;
-      }
-
-      // Folder timeline — attributed activity over a folder's
-      // `.ok/` artifacts (templates + frontmatter). Distinct from the doc DAG
-      // walk: no rename chain, no checkpoint filter.
-      if (folderParam !== null && !docName) {
-        const validated = validateFolderRel(folderParam, res, 'folder', 'history');
-        if (!validated) return;
-        const rawFolderLimit = Number(url.searchParams.get('limit') ?? '50');
-        const folderLimit = Math.min(200, Number.isFinite(rawFolderLimit) ? rawFolderLimit : 50);
-        const rawFolderOffset = Number(url.searchParams.get('offset') ?? '0');
-        const folderOffset = Math.max(0, Number.isFinite(rawFolderOffset) ? rawFolderOffset : 0);
-        // Single-flight key — folder mode. The resolved `branch` (not the raw
-        // param) is used so two requests on the same effective branch coalesce.
-        const folderKey = `folder\0${branch}\0${validated.folderRel}\0${folderLimit}\0${folderOffset}`;
-        // `getFolderTimeline` is self-contained: it catches its own git/IO
-        // errors, logs them, and returns an empty result rather than throwing —
-        // so a handler-level catch here would be dead code.
-        const { promise, coalesced } = historyInflight.run(folderKey, () =>
-          getFolderTimeline(shadow, validated.folderRel, contentRoot ?? '.', {
-            branch,
-            limit: folderLimit,
-            offset: folderOffset,
-          }),
-        );
-        if (coalesced) recordTimelineCoalesced('folder');
-        const result = await promise;
-        successResponse(res, 200, HistorySuccessSchema, { ...result }, { handler: 'history' });
-        return;
-      }
-
-      // Validate docName before it reaches `getDocumentHistory`, which
-      // interpolates it into a git pathspec for `git log` / `cat-file -e`.
-      // Without this guard, a docName containing `..` or null bytes could
-      // (after git's pathspec normalization) target a path outside the
-      // configured content root in the shadow repo. Sibling endpoints
-      // (handleHistoryVersion, handleDiff, handleRollback) already gate via
-      // safeDocPath.
-      const resolvedContentRoot = contentRoot ?? '.';
-      const docPathResult = safeDocPath(docName, resolvedContentRoot);
-      if ('error' in docPathResult) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', docPathResult.error, {
-          handler: 'history',
-        });
-        return;
-      }
-
-      const rawLimit = Number(url.searchParams.get('limit') ?? '50');
-      const rawOffset = Number(url.searchParams.get('offset') ?? '0');
-      const limit = Math.min(200, Number.isFinite(rawLimit) ? rawLimit : 50);
-      const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
-      const type = url.searchParams.get('type') ?? undefined;
-      const author = url.searchParams.get('author') ?? undefined;
-      const excludeAuthor = url.searchParams.get('excludeAuthor') ?? undefined;
-      // Auto-consolidation checkpoints are hidden by default; opt-in for
-      // debugging / a future maintenance UI. Part of the single-flight tuple
-      // because it changes the result set.
-      const includeAutoCheckpoints = url.searchParams.get('includeAutoCheckpoints') === 'true';
-
-      // Single-flight key — doc mode. Covers every param `getDocumentHistory`
-      // reads so a differing tuple never shares a wrong result.
-      const docKey = `doc\0${branch}\0${docName}\0${limit}\0${offset}\0${type ?? ''}\0${author ?? ''}\0${excludeAuthor ?? ''}\0${includeAutoCheckpoints ? '1' : '0'}`;
-
-      const t0 = Date.now();
-      try {
-        const { promise, coalesced } = historyInflight.run(docKey, () =>
-          getDocumentHistory(
-            shadow,
-            {
-              docName,
-              branch,
-              limit,
-              offset,
-              type,
-              author,
-              excludeAuthor,
-              includeAutoCheckpoints,
-            },
-            resolvedContentRoot,
-          ),
-        );
-        if (coalesced) recordTimelineCoalesced('doc');
-        const result = await promise;
-
-        const duration = Date.now() - t0;
-        getLogger('timeline').info(
-          { docName, entries: result.entries.length, durationMs: duration },
-          'query',
-        );
-
-        successResponse(res, 200, HistorySuccessSchema, { ...result }, { handler: 'history' });
-      } catch (e) {
-        // Generic title — raw `e.message` can leak FS paths / library internals.
-        // The underlying message is forwarded to Pino via `cause` for ops triage.
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read history.', {
-          handler: 'history',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'history', method: 'GET', skipBodyParse: true },
-  );
-
-  // ── GET /api/history/:sha ─────────────────────────────────────────────────
-  async function handleHistoryVersion(
-    req: IncomingMessage,
-    res: ServerResponse,
-    sha: string,
-  ): Promise<void> {
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'history-version',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-
-    const shadow = shadowRef?.current;
-    if (!shadow) {
-      // 503 (not 400): shadow-repo unavailability is a server-side state,
-      // matching the sync-not-active precedent.
-      errorResponse(res, 503, 'urn:ok:error:shadow-not-configured', 'Shadow repo not configured.', {
-        handler: 'history-version',
-      });
-      return;
-    }
-
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const docName = url.searchParams.get('docName') ?? '';
-
-    const resolvedContentRoot = contentRoot ?? '.';
-    const pathResult = safeDocPath(docName, resolvedContentRoot);
-    if ('error' in pathResult) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', pathResult.error, {
-        handler: 'history-version',
-      });
-      return;
-    }
-    const sg = shadowGit(shadow);
-    const branch = getCurrentBranch?.() ?? 'main';
-
-    // Validate SHA format
-    if (!/^[0-9a-f]{40}$/i.test(sha)) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid commit SHA.', {
-        handler: 'history-version',
-      });
-      return;
-    }
-
-    try {
-      // Resolve the doc's historical path at this commit by walking the
-      // rename chain (mirrors handleRollback + handleDiff). Without
-      // this, requesting a pre-rename commit's content returns 404 even
-      // though the timeline correctly shows the entry — the UI then falls
-      // back to its "Diff unavailable" / "Document did not exist" rendering.
-      const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
-      const ancestorCache = createAncestorShaSetCache();
-      const historicalPath = await resolveDocPathAtCommit(
-        shadow,
-        docName,
-        sha,
-        branch,
-        renameLogIndex,
-        (name) => docTreePathCandidates(name, resolvedContentRoot),
-        ancestorCache,
-      );
-      if (historicalPath === null) {
-        errorResponse(
-          res,
-          404,
-          'urn:ok:error:doc-not-found',
-          'Document did not exist at this version.',
-          { handler: 'history-version' },
-        );
-        return;
-      }
-
-      const content = await sg.raw('show', `${sha}:${historicalPath}`);
-
-      // Resolve commit metadata
-      const logLine = (await sg.raw('log', '-1', '--format=%aI%x00%an', sha)).trim();
-      const [timestamp = '', author = ''] = logLine.split('\x00');
-
-      successResponse(
-        res,
-        200,
-        HistoryVersionSuccessSchema,
-        { sha, content, timestamp, author },
-        { handler: 'history-version' },
-      );
-    } catch (e) {
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'history-version',
-        cause: e,
-      });
-    }
-  }
-
   // ── POST /api/rollback ────────────────────────────────────────────────────
   const handleRollback = withValidation(
     RollbackRequestSchema,
@@ -8462,385 +7994,6 @@ export function createApiExtension(
     { handler: 'rollback', method: 'POST' },
   );
 
-  /**
-   * GET /api/server-info
-   *
-   * Returns `{ ok, serverInstanceId, currentBranch, currentDiskAckSVs }`.
-   * Called by the client's `ProviderPool` as a boot-time warmup BEFORE
-   * any WebSocket provider opens, so the first provider's auth token
-   * can carry `expectedServerInstanceId` and `expectedBranch` on the
-   * very first connect (avoiding one "null-claim accept → broadcast →
-   * populate cache → next connect claim" cycle on cold start).
-   *
-   * `currentBranch` is the late-join backstop for CC1's `branch-switched`
-   * stateless broadcast — disconnected clients reconnecting compare it
-   * against their last-observed branch and trigger `handleBranchSwitched`
-   * on mismatch (also surfaced as the `expectedBranch` auth-token claim,
-   * see `auth-token-schema.ts`). Always populated — `getActiveBranch()`
-   * defaults to `'main'` when git is disabled.
-   *
-   * Gated on `ready` for the same reason `handleDocumentList` is: the
-   * boot-time `switchReconciledBaseScope(startupBranch)` lives inside
-   * `initAsync` (server-factory.ts), and a renderer that fetches before
-   * it runs would observe this server's initial `'main'` default instead of
-   * the actual HEAD branch. The renderer's `current-branch-store` is
-   * fire-once and only updates from CC1 `branch-switched`, so a stale
-   * cold-start fetch sticks until a real cross-branch checkout.
-   *
-   * `currentDiskAckSVs` is the late-join backstop for the per-doc CC1
-   * `disk-ack` channel — same recovery shape as `currentBranch` but the
-   * per-doc state vector watermark used by mismatch-recycle baseline-
-   * selection. Omitted in dev/plugin mode (no CC1 broadcaster).
-   *
-   * Gating: protected by the global `/api/*` Origin allowlist (CSRF
-   * guard against cross-origin browsers). No-Origin requests (curl,
-   * server-to-server, LAN peers using non-browser tooling) pass through
-   * — the same posture as the rest of the read-side `/api/*` surface
-   * (`/api/documents`, `/api/document`, `/api/pages`, `/api/backlinks`).
-   * Disclosure shape: `serverInstanceId` is a per-process random UUID;
-   * `currentBranch` matches the workspace's git history; the SV map
-   * enumerates the same docName set as `/api/documents` plus per-
-   * client Lamport op counts (random clientID, no wall-clock).
-   * Single-user-loopback deployment model is documented in
-   * `server-factory.ts` near the principalAuthExtension; hosted/multi-
-   * tenant deployments must wrap this entire `/api/*` class with
-   * authentication and per-caller scoping.
-   */
-  const handleServerInfo = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        // Park until `initAsync` has called `switchReconciledBaseScope` with
-        // the resolved HEAD branch. Without this gate, a renderer that fetches
-        // during the boot window reads this server's initial `'main'`
-        // default and caches it in `current-branch-store` for the lifetime of
-        // the session. Mirrors the `handleDocumentList` gate; `.catch()` keeps
-        // the handler responsive on a degraded boot.
-        if (ready) {
-          await ready.catch((err: unknown) => {
-            log.warn(
-              { err, handler: 'server-info' },
-              '[api] ready gate rejected — responding with current state',
-            );
-          });
-        }
-        const currentBranch = durabilityState.getActiveBranch();
-        // `getDiskAckSVs` is wired by standalone boot; plugin mode (dev
-        // server) doesn't have a CC1Broadcaster and omits the field. The
-        // schema's `.optional()` keeps the response shape valid in both
-        // cases without a separate "no broadcaster" branch on the client.
-        const currentDiskAckSVs = getDiskAckSVs?.();
-        // Boot-phase timings (desktop startup instrumentation). Present only
-        // when the boot path called `startBootTimings` (standalone `bootServer`);
-        // the dev-server / plugin path leaves it `undefined`, so the schema's
-        // `.optional()` keeps the response valid. All bounded numbers — safe to
-        // disclose (per-process timing, no paths/content).
-        const boot = getBootTimings();
-        const collabClients = getCollabClientCount?.();
-        // `Cache-Control: no-store` matches the disclosure semantics: every
-        // field is per-process / per-moment state. A back/forward-cached
-        // 304 carrying a stale `currentDiskAckSVs` could silently corrupt
-        // the recycle baseline-selection on the next mismatch.
-        successResponse(
-          res,
-          200,
-          ServerInfoSuccessSchema,
-          {
-            serverInstanceId,
-            currentBranch,
-            ...(currentDiskAckSVs !== undefined ? { currentDiskAckSVs } : {}),
-            ...(boot !== undefined ? { boot } : {}),
-            ...(collabClients !== undefined ? { collabClients } : {}),
-          },
-          {
-            handler: 'server-info',
-            extraHeaders: { 'Cache-Control': 'no-store' },
-          },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'server-info',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'server-info', method: 'GET', skipBodyParse: true },
-  );
-
-  const AcpCatalogAgentSchema = z.object({
-    id: z.string(),
-    name: z.string(),
-    version: z.string(),
-    description: z.string().optional(),
-    license: z.string().optional(),
-    iconUrl: z.string().optional(),
-    website: z.string().optional(),
-    source: z.enum(['registry', 'custom']),
-    /** A launchable distribution exists for this host platform. */
-    supported: z.boolean(),
-    featured: z.boolean(),
-    harness: z
-      .object({
-        cli: z.enum(['claude', 'codex', 'cursor', 'gemini', 'opencode', 'pi']),
-        availability: z.enum(['present', 'not-found', 'unknown']),
-        /** No `absent` member — see `HarnessCredentials`. */
-        credentials: z.enum(['present', 'unknown']),
-      })
-      .optional(),
-  });
-  const AcpCatalogSuccessSchema = z.object({
-    agents: z.array(AcpCatalogAgentSchema),
-    /** True when served from the offline fallback cache. */
-    stale: z.boolean(),
-    maxThreads: z.number(),
-  });
-
-  const handleAcpCatalog = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      if (acpRegistry === undefined) {
-        errorResponse(res, 404, 'urn:ok:error:not-found', 'ACP catalog unavailable.', {
-          handler: 'acp-catalog',
-        });
-        return;
-      }
-      try {
-        const platform = registryPlatformKey();
-        const { agents, stale } = await acpRegistry.getCatalog();
-        const custom = (await loadAcpCustomAgents?.()) ?? [];
-        const harnessAvailability = await acpHarnessAvailability();
-        const rows = [
-          ...agents.map((a) => {
-            const harnessCli = ACP_AGENT_HARNESS_CLIS[a.id];
-            return {
-              id: a.id,
-              name: a.name,
-              version: a.version,
-              ...(a.description !== undefined ? { description: a.description } : {}),
-              ...(a.license !== undefined ? { license: a.license } : {}),
-              ...(a.icon !== undefined ? { iconUrl: a.icon } : {}),
-              ...(a.website !== undefined ? { website: a.website } : {}),
-              source: 'registry' as const,
-              supported:
-                a.distribution.npx !== undefined ||
-                a.distribution.uvx !== undefined ||
-                (platform !== null && a.distribution.binary?.[platform] !== undefined),
-              featured: FEATURED_AGENT_IDS.includes(a.id),
-              ...(harnessCli !== undefined
-                ? {
-                    harness: {
-                      cli: harnessCli,
-                      availability: harnessAvailability[harnessCli]?.availability ?? 'unknown',
-                      credentials: harnessAvailability[harnessCli]?.credentials ?? 'unknown',
-                    },
-                  }
-                : {}),
-            };
-          }),
-          ...custom.map((c: CustomAgentEntry) => ({
-            id: c.id,
-            name: c.name,
-            version: 'custom',
-            source: 'custom' as const,
-            supported: true,
-            featured: false,
-          })),
-        ];
-        successResponse(
-          res,
-          200,
-          AcpCatalogSuccessSchema,
-          { agents: rows, stale, maxThreads: MAX_ACP_THREADS },
-          { handler: 'acp-catalog', extraHeaders: { 'Cache-Control': 'no-store' } },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          502,
-          'urn:ok:error:registry-unreachable',
-          'Agent registry unreachable.',
-          {
-            handler: 'acp-catalog',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'acp-catalog', method: 'GET', skipBodyParse: true },
-  );
-
-  async function handlePrincipal(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Loopback + Host-header gate. The principal record discloses operator
-    // PII — `display_name` (real name) and `display_email` — sourced from
-    // local `git config`. Under `--host 0.0.0.0` (demos, shared dev boxes,
-    // Codespaces) this would otherwise be readable by any LAN peer or
-    // cross-origin page that bypasses the Origin allowlist (non-browser
-    // callers send no `Origin` header). Matches the same gate
-    // `handleMetricsAgentPresence` and `handleWorkspace` apply.
-    // Authorization runs BEFORE method dispatch so a bad Host never leaks
-    // "verb the endpoint expects" via the 405 response (OWASP ASVS V4.1.1).
-    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'principal',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'principal',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'principal',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    const principal = getPrincipal?.() ?? null;
-    if (!principal) {
-      errorResponse(res, 404, 'urn:ok:error:principal-not-available', 'Principal not available.', {
-        handler: 'principal',
-      });
-      return;
-    }
-    successResponse(res, 200, PrincipalSuccessSchema, principal, { handler: 'principal' });
-  }
-
-  async function handleEmbedDetect(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Diagnostic endpoint for the Cursor / Codex / Claude Code embedded-viewer
-    // detection spikes. Reads from the in-process ring buffer populated in
-    // `onRequest` and surfaces boolean signals derived from the most recent
-    // entry's UA. Loopback + Host-header gated — same pattern as
-    // `handlePrincipal` / `handleMetricsAgentPresence`. Disclosed fields
-    // (full request headers, remote address) are local-editing-only signals.
-    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'embed-detect',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'embed-detect',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'embed-detect',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    const entries = embedProbeRing.read();
-    successResponse(
-      res,
-      200,
-      EmbedDetectSuccessSchema,
-      {
-        entries,
-        count: entries.length,
-        detection: deriveDetection(entries[0]),
-      },
-      { handler: 'embed-detect' },
-    );
-  }
-
-  async function handleWorkspace(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Authorization runs BEFORE method dispatch: reversing the order turns the
-    // method check into a fingerprinting oracle for unauth callers (GET → 403,
-    // POST → 405 discloses the verb the endpoint expects). See OWASP ASVS 4.0
-    // V4.1.1 — "perform access control on every request."
-    //
-    // Loopback-only: this endpoint discloses the absolute host filesystem path
-    // (including home directory / username). That's fine for the local-editing
-    // use case the rest of the API is designed for, but if the user configures
-    // `server.host: 0.0.0.0` (demos, shared dev boxes, Codespaces), we do NOT
-    // want to leak the host shape over the network or to cross-origin fetches.
-    // All loopback clients (including requests from a browser on the same
-    // machine) pass — connections from other interfaces are refused.
-    //
-    // DNS-rebinding defense: `req.socket.remoteAddress` will read `127.0.0.1`
-    // for any request that reached the socket via loopback, including requests
-    // triggered by a malicious page that rebinds its hostname to `127.0.0.1`.
-    // The Host-header allowlist below enforces that the caller actually spoke
-    // to us via `localhost` / `127.0.0.1` / `[::1]`, matching the mitigation
-    // in the Ethereum/geth JSON-RPC lineage. Same-origin fetches from the
-    // editor app pass; cross-origin rebinding attempts are refused.
-    if (!isRoutePeerAdmitted(req.socket.remoteAddress)) {
-      errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-        handler: 'workspace',
-      });
-      return;
-    }
-    if (!isAllowedWorkspaceHostHeader(req.headers.host)) {
-      errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-        handler: 'workspace',
-      });
-      return;
-    }
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'workspace',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    // Absolute, canonical contentDir so the client can build full filesystem
-    // paths (e.g. for the sidebar 'Copy path > Full path' action). Symlinks in
-    // the workspace root are resolved via realpath so the path matches on-disk
-    // truth. We treat error kinds in line with the persistence layer's symlink
-    // contract:
-    //   - ENOENT: contentDir missing on disk → 200 with `symlinkResolved: false`
-    //     and the unresolved path. Lets "Copy Path" still produce a meaningful
-    //     value when the directory was deleted between server start and this
-    //     request; the client decides whether to act on it.
-    //   - ELOOP / EACCES / anything else: real filesystem error → 500. Matches
-    //     persistence's stricter policy (cyclic symlinks are rejected
-    //     everywhere) and avoids handing the user a path that won't resolve.
-    const resolvedRoot = resolve(contentDir);
-    let resolvedContentDir = resolvedRoot;
-    let symlinkResolved = true;
-    try {
-      resolvedContentDir = realpathSync(resolvedRoot);
-    } catch (err) {
-      const code = errnoCode(err);
-      if (code === 'ENOENT') {
-        log.warn(
-          { path: resolvedRoot },
-          '[workspace] contentDir does not exist; returning unresolved path',
-        );
-        symlinkResolved = false;
-      } else {
-        log.warn({ path: resolvedRoot, err }, '[workspace] realpath failed for contentDir');
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Workspace realpath failed.',
-          { handler: 'workspace', detail: code ?? undefined, cause: err },
-        );
-        return;
-      }
-    }
-    // `pathSeparator` lets the client build full paths without guessing from
-    // the shape of `contentDir` (which breaks on Windows + forward-slash paths
-    // and on POSIX folders that contain a literal backslash in the name).
-    successResponse(
-      res,
-      200,
-      WorkspaceSuccessSchema,
-      {
-        contentDir: resolvedContentDir,
-        pathSeparator: sep,
-        symlinkResolved,
-      },
-      { handler: 'workspace' },
-    );
-  }
-
   const assetService = createAssetService({
     contentDir,
     // `isPathIgnored` rather than `isExcluded` so the sibling-asset heuristic
@@ -8989,79 +8142,6 @@ export function createApiExtension(
       }
     },
     { handler: 'asset-text', method: 'GET', skipBodyParse: true },
-  );
-
-  /** 24h in milliseconds — rescue buffers older than this are excluded/cleaned. */
-  const RESCUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-  const handleRescueList = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        if (!shadowRef?.current) {
-          // No shadow repo configured = no rescue buffers; emit empty list (success).
-          successResponse(res, 200, RescueListSuccessSchema, [], { handler: 'rescue-list' });
-          return;
-        }
-
-        const now = Date.now();
-        // `source: 'flat'` rows came from the shutdown-flush path (retained flat-
-        // file); `source: 'timeline'` rows came from reconcile-delete /
-        // branch-switch (migrated to saveInMemoryCheckpoint). Clients
-        // can treat both as interchangeable unless they need the checkpoint sha.
-        const entries: (RescueEntryFlat | (RescueEntryTimeline & TimelineRescueEntry))[] = [];
-
-        const rescueDir = resolve(shadowRef.current.gitDir, 'rescue');
-        if (existsSync(rescueDir)) {
-          try {
-            const files = readdirSync(rescueDir).filter((f) => isSupportedDocFile(f));
-            for (const file of files) {
-              const filePath = resolve(rescueDir, file);
-              const stat = statSync(filePath);
-              const age = now - stat.mtimeMs;
-
-              if (age > RESCUE_MAX_AGE_MS) {
-                try {
-                  unlinkSync(filePath);
-                } catch (e) {
-                  log.debug({ err: e }, '[rescue] cleanup failed (non-critical)');
-                }
-                continue;
-              }
-
-              entries.push({
-                docName: stripDocExtension(file),
-                timestamp: stat.mtime.toISOString(),
-                size: stat.size,
-                source: 'flat',
-              });
-            }
-          } catch (err) {
-            log.error({ err }, '[rescue] Failed to list flat-file rescue buffers');
-          }
-        }
-
-        // Timeline-ref source — merged in so the unified response surfaces all
-        // three rescue classes once the write migration ships.
-        try {
-          const branch = getCurrentBranch?.() ?? 'main';
-          const timelineEntries = await listRescueCheckpoints(shadowRef.current, branch);
-          for (const t of timelineEntries) {
-            entries.push({ ...t, source: 'timeline' });
-          }
-        } catch (err) {
-          log.error({ err }, '[rescue] Failed to list timeline-ref rescue checkpoints');
-        }
-
-        successResponse(res, 200, RescueListSuccessSchema, entries, { handler: 'rescue-list' });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'rescue-list',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'rescue-list', method: 'GET', skipBodyParse: true },
   );
 
   const handleCreatePage = withValidation(
@@ -12707,40 +11787,6 @@ export function createApiExtension(
     },
   );
 
-  async function handleInstalledAgentsRoute(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Loopback + DNS-rebinding gate. Same contract the rest of the host-
-    // disclosure surface uses (`/api/workspace`, every `/api/local-op/*`) —
-    // this endpoint discloses a stable OS-level fingerprint of which AI
-    // agents are installed, readable without preflight under the permissive
-    // `Access-Control-Allow-Origin: *` that `/api/*` sets. Gating on
-    // `checkLocalOpSecurity` confines the fingerprint to same-machine,
-    // same-origin callers (the editor UI) and refuses cross-origin browser
-    // contexts + DNS-rebinding attempts that would otherwise succeed.
-    // `checkLocalOpSecurity` itself emits RFC 9457 problem+json on rejection.
-    if (!checkLocalOpSecurity(req, res, { handler: 'installed-agents' })) return;
-    try {
-      await handleInstalledAgents(req, res, installedAgentsCache.probeAll);
-    } catch (e) {
-      // Defensive: `handleInstalledAgents` catches internally, so this only
-      // fires on truly unexpected throws (e.g., probeAll synchronously
-      // throwing before its internal try/catch). Guard `headersSent` so we
-      // don't double-emit if the inner handler already wrote a response.
-      if (!res.headersSent) {
-        log.error(
-          { err: e, requestId: getRequestId(req) },
-          '[installed-agents] route wrapper failed',
-        );
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'installed-agents',
-          cause: e,
-        });
-      }
-    }
-  }
-
   function validateFolderRel(
     raw: string,
     res: ServerResponse,
@@ -13272,41 +12318,6 @@ export function createApiExtension(
     }
     return false;
   }
-
-  /**
-   * Project-wide flat enumeration of every `<folder>/.ok/templates/*.md`.
-   * The single-template `/api/template` endpoint is per-folder + walks
-   * leaf → root for closest-wins resolution; this surface is the editor's
-   * empty-state list (every template the user can pick from, with the
-   * `source_folder` that owns each one). Skips the same dirs as the
-   * directory-scan walker — see `resolveProjectTemplates`.
-   */
-  const handleTemplatesList = withValidation(
-    EmptyRequestSchema,
-    catchErrors(
-      async (_req, res) => {
-        const resolvedContentDir = resolve(contentDir);
-        const result = await resolveProjectTemplates(resolvedContentDir);
-        // Drop `scope` from each entry — every flat-enumeration entry is
-        // implicitly `scope: 'local'` to its own `source_folder`, so the
-        // field carries no information here. `TemplatesListEntrySchema` is
-        // `.strict()` and would otherwise reject the response.
-        const templates = result.templates.map((t) => {
-          const { scope: _scope, ...rest } = t;
-          return rest;
-        });
-        successResponse(
-          res,
-          200,
-          TemplatesListSuccessSchema,
-          { templates, truncated: result.truncated },
-          { handler: 'templates-list' },
-        );
-      },
-      { handler: 'templates-list', title: 'Failed to list templates.' },
-    ),
-    { handler: 'templates-list', method: 'GET', skipBodyParse: true },
-  );
 
   // Generic frontmatter splitter for managed `.md` files (SKILL.md, etc.):
   // returns the parsed YAML frontmatter object + the body. Distinct from core's
@@ -20741,32 +19752,6 @@ export function createApiExtension(
     { handler: 'search' },
   );
 
-  const handleSkillInstallState = withValidation(
-    EmptyRequestSchema,
-    catchErrors(
-      async (_req, res) => {
-        const snapshot = await readSkillInstallStateSnapshot(homedir());
-        successResponse(
-          res,
-          200,
-          SkillInstallStateSuccessSchema,
-          { ...snapshot },
-          {
-            handler: 'skill-install-state',
-            extraHeaders: { 'Cache-Control': 'no-store' },
-          },
-        );
-      },
-      { handler: 'skill-install-state', title: 'Failed to read skill install state.' },
-    ),
-    {
-      handler: 'skill-install-state',
-      method: 'GET',
-      skipBodyParse: true,
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'skill-install-state' }),
-    },
-  );
-
   async function handleHandoffDispatchRoute(
     req: IncomingMessage,
     res: ServerResponse,
@@ -21634,105 +20619,6 @@ export function createApiExtension(
     },
   );
 
-  // `/api/config` — collab-bootstrap payload for the React shell. This server
-  // serves the SPA itself, so the shell fetches `/api/config` from the same
-  // origin (api-config.ts consumes it; the `--only ui` split-mode proxy in
-  // `packages/cli` emits the same shape): GET returns
-  // `{collabUrl, previewUrl, port}`. GET
-  // stays open like the other read-only bootstrap endpoints
-  // (document/pages/backlinks) — it carries no PII and only reflects the
-  // client's own Host back to itself. `lockDir` is the project's
-  // `.ok/local/` (the server-lock anchor); null when projectDir is unconfigured
-  // (some test harnesses), leaving collabUrl bootstrap intact.
-  const lockDir = projectDir ? getLocalDir(projectDir) : null;
-  async function handleApiConfig(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET' || req.method === 'HEAD') {
-      try {
-        // Same-origin collab WS: the shell loaded from this server, so
-        // `ws(s)://<host>/collab` reaches the same process the request arrived
-        // on (scheme honors X-Forwarded-Proto — see collab-bootstrap-url.ts).
-        // Avoids the cross-port WS attempt sandboxed preview panes refuse. The
-        // Host value is the client's own header reflected back to itself (the
-        // Origin CORS gate in `onRequest` already refused cross-origin
-        // browsers); it is not independently vetted here. A genuinely absent
-        // Host yields a null collabUrl — a deliberate divergence from the
-        // split-mode UI proxy's
-        // `?? localhost:${resolvedPort}` fallback: this server has no single
-        // canonical advertised port to substitute, and the client falls back
-        // to a same-origin WS URL on a null. Node HTTP/1.1 always populates
-        // Host, so the null path is a malformed-request floor, not a normal case.
-        const collabUrl = collabUrlFromRequestHeaders(req.headers);
-        const port = lockDir ? (readServerLock(lockDir)?.port ?? 0) : 0;
-        // `singleFile` tells the React shell to drop project chrome for an
-        // ephemeral single-file session (`ok <file>`).
-        const payload = { collabUrl, previewUrl: null, port, singleFile: ephemeral };
-        // HEAD carries the same headers but no body; `successResponse` always
-        // writes a body, so the no-body verb stays a manual emit.
-        if (req.method === 'HEAD') {
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.statusCode = 200;
-          res.end();
-          return;
-        }
-        successResponse(res, 200, ApiConfigSuccessSchema, payload, {
-          handler: 'api-config',
-          extraHeaders: { 'Cache-Control': 'no-store' },
-        });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'api-config',
-          cause: e,
-        });
-      }
-      return;
-    }
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'api-config',
-      extraHeaders: { Allow: 'GET, HEAD' },
-    });
-  }
-
-  // `/api/config/diagnostics` — active config diagnostics across the user,
-  // committed-project, and project-local layers. Read-only and open like
-  // `/api/config`: the collector reads the files fresh per request (so a
-  // hand-edit or `ok config migrate` is reflected without a restart) and
-  // returns only structural findings — scope, file, key path, code, redirect —
-  // never a raw config value. `no-store` so a poll always sees current disk
-  // state.
-  async function handleConfigDiagnostics(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method === 'GET' || req.method === 'HEAD') {
-      try {
-        const payload = getConfigDiagnostics?.() ?? { diagnostics: [] };
-        // HEAD mirrors GET's headers with no body; `successResponse` always
-        // writes one, so the no-body verb stays a manual emit.
-        if (req.method === 'HEAD') {
-          res.setHeader('Content-Type', 'application/json');
-          res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('X-Content-Type-Options', 'nosniff');
-          res.statusCode = 200;
-          res.end();
-          return;
-        }
-        successResponse(res, 200, ConfigDiagnosticsReportSchema, payload, {
-          handler: 'api-config-diagnostics',
-          extraHeaders: { 'Cache-Control': 'no-store' },
-        });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'api-config-diagnostics',
-          cause: e,
-        });
-      }
-      return;
-    }
-    errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-      handler: 'api-config-diagnostics',
-      extraHeaders: { Allow: 'GET, HEAD' },
-    });
-  }
-
   // ───────────────────── Embeddings API key — Account control ─────────────────
   // Loopback + Origin gated (checkLocalOpSecurity) set/clear for the
   // machine-global embeddings key. The key travels renderer → loopback POST body
@@ -21946,92 +20832,11 @@ export function createApiExtension(
     },
   );
 
-  /**
-   * GET /api/semantic-status — read-only setup/coverage probe for the Settings
-   * UI. Reports the project-local `enabled` flag, `keyPresent` / `keySource`
-   * (an API key is resolvable — a free file/env read), `ready` (has the service
-   * warmed yet), `capable` (warmed AND a usable key found), and indexed coverage
-   * (embedded / total embeddable pages). Side-effect-free: NO embed, NO egress,
-   * NO warm (warming reads the key and — under the legacy keychain backend —
-   * could prompt). Returns an inert all-false/zero shape when the service is
-   * absent (dev/plugin mode).
-   */
-  const handleSemanticStatus = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        // Report the service's CURRENT known state — do NOT call ensureWarm()
-        // (warming hydrates the cache; a read-only status GET shouldn't). `ready`
-        // stays false until the first real search warms it.
-        let enabled = false;
-        let ready = false;
-        let capable = false;
-        let embedded = 0;
-        if (semanticSearch) {
-          const status = semanticSearch.getStatus();
-          enabled = status.enabled;
-          ready = status.ready;
-          capable = status.capable;
-          embedded = status.embeddedCount;
-        }
-        // Resolve the SAME credential the embedder would, for this project +
-        // its configured endpoint, so status can't disagree with the real path.
-        // A free, prompt-free file/env read — no warm, no egress. The key itself
-        // is never returned; only `keyHint` (redacted last-4) so the UI can show
-        // WHICH key is set. `keyNotRequired` marks a loopback endpoint that needs
-        // no key at all, so the UI doesn't nag a keyless Ollama/LM Studio user.
-        const statusConfig = readSemanticProviderConfig?.();
-        const statusBaseUrl = statusConfig?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
-        const cred = await resolveEmbeddingsCredential(
-          new FileEmbeddingsBackend(embeddingsSecretsFile),
-          projectDir ?? contentDir,
-          statusBaseUrl,
-        );
-        const keyPresent = cred.apiKey !== null;
-        const keyNotRequired = !keyPresent && cred.keyless;
-        const keySource: 'project' | 'file' | 'env' | null = keyPresent
-          ? (cred.source as 'project' | 'file' | 'env')
-          : null;
-        // Last 4 chars only, and only when the key is long enough that those 4 are
-        // a negligible fraction (real provider keys are 40+ chars); never the key.
-        const keyHint = cred.apiKey && cred.apiKey.length >= 8 ? cred.apiKey.slice(-4) : null;
-        // Total embeddable pages = the same filtered set the search corpus uses.
-        let total = 0;
-        for (const [docName] of getFileIndex()) {
-          if (!isSystemDoc(docName) && !isConfigDoc(docName) && !isHiddenDocName(docName)) {
-            total += 1;
-          }
-        }
-        successResponse(
-          res,
-          200,
-          SemanticIndexStatusSchema,
-          {
-            enabled,
-            keyPresent,
-            keyNotRequired,
-            keySource,
-            keyHint,
-            ready,
-            capable,
-            embedded,
-            total,
-          },
-          { handler: 'semantic-status', extraHeaders: { 'Cache-Control': 'no-store' } },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'semantic-status',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'semantic-status', method: 'GET', skipBodyParse: true },
-  );
-
-  // ---- Markdown linter: effective config + per-doc lint + project audit ----
-  // The editor reads the effective config; the Settings GUI writes native
-  // `.markdownlint.*` rules through the markdownlint-config endpoint.
+  // ---- Markdown linter: write-side rules + the lint-config epoch/generation
+  // shared with the native lint-read group (http/lint-routes.ts) ----
+  // The Settings GUI writes native `.markdownlint.*` rules through the
+  // markdownlint-config endpoint; the read-side handlers (config, per-doc lint,
+  // project audit) moved to the native lint group.
 
   /**
    * Monotonic counter over server-side lint-config mutations, and the config
@@ -22161,55 +20966,6 @@ export function createApiExtension(
     const docFiles = collectDocFiles({ projectDir: projectDir ?? contentDir, contentDir });
     return unmatchedAppliesToProblems(slice.schemas, docFiles);
   }
-
-  const handleGetLintConfig = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        // A `?doc=` is accepted (the editor passes the active doc) but the
-        // effective config resolves per doc (cli2 cascade: nearest native
-        // file on the doc→root walk governs); no `?doc=` → root-level.
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('doc');
-        if (docName !== null && (docName === '' || !isSafeDocName(docName))) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid doc.', {
-            handler: 'lint-config',
-          });
-          return;
-        }
-        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const configProblems: string[] = [];
-        const native = resolveNativeConfigForDoc(contentDir, docName ?? undefined, (problem) =>
-          configProblems.push(problem),
-        );
-        const effective = composeFrontmatterSchemasConfig(
-          projectDir ?? contentDir,
-          composeEffectiveLinterConfig(base, native),
-          (problem) => configProblems.push(problem),
-        );
-        if (docName === null) configProblems.push(...unmatchedGlobProblems(effective));
-        successResponse(
-          res,
-          200,
-          LintConfigResponseSchema,
-          { effective, configFile: native?.file ?? null, configProblems },
-          { handler: 'lint-config' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to resolve lint config.',
-          {
-            handler: 'lint-config',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'lint-config', method: 'GET', skipBodyParse: true },
-  );
 
   // Edit one rule in the project's native `.markdownlint.*` file (the source of
   // truth). Root-level only for now; returns the recomputed effective config
@@ -22370,312 +21126,6 @@ export function createApiExtension(
       }
     },
     { handler: 'frontmatter-schema', method: 'POST' },
-  );
-
-  // Enumerate the project's `.ok/schemas/*.json` files (flat, top-level only)
-  // as project-root-relative paths for the mapping picker. A missing dir is
-  // an empty list, not an error; bounded so a pathological schemas dir can't
-  // produce an unbounded response.
-  const handleFrontmatterSchemasList = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        const root = resolve(projectDir ?? contentDir);
-        // Two discovery sources: the flat tool-created `.ok/schemas/` scan,
-        // plus a filtered content walk for the ecosystem `*.schema.json`
-        // convention anywhere in the project. The walk deliberately does NOT
-        // re-admit `.ok`: the scan above already covers `.ok/schemas/`, and
-        // lifting ContentFilter's always-skip floor here would let this
-        // surface enumerate the rest of OK's internal state to find schemas.
-        const { schemas, truncated } = listProjectSchemaFiles(root);
-        const found = new Set(schemas);
-        let walkTruncated = false;
-        if (contentFilter !== undefined) {
-          const walk = streamShowAllEntries({
-            contentDir,
-            contentFilter,
-            dirFilter: null,
-            maxEntries: 20_000,
-          });
-          let walkResult = await walk.next();
-          while (!walkResult.done) {
-            const entry = walkResult.value;
-            const entryPath = entry.kind === 'asset' ? entry.path : undefined;
-            if (entryPath !== undefined && isFrontmatterSchemaAsset(entryPath)) {
-              const projectRel = relative(root, resolve(contentDir, entryPath));
-              if (!projectRel.startsWith('..') && !isAbsolute(projectRel)) found.add(projectRel);
-            }
-            walkResult = await walk.next();
-          }
-          walkTruncated = walkResult.value.truncated;
-        }
-        const merged = [...found].sort((a, b) => a.localeCompare(b));
-        successResponse(
-          res,
-          200,
-          FrontmatterSchemasListSuccessSchema,
-          {
-            schemas: merged.slice(0, SCHEMA_LIST_CAP),
-            truncated: truncated || walkTruncated || merged.length > SCHEMA_LIST_CAP,
-          },
-          { handler: 'frontmatter-schemas-list' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to list frontmatter schemas.',
-          { handler: 'frontmatter-schemas-list', cause: e },
-        );
-      }
-    },
-    { handler: 'frontmatter-schemas-list', method: 'GET', skipBodyParse: true },
-  );
-
-  /**
-   * Live CRDT source for a currently-loaded doc, else null. Lint reads must
-   * see the same bytes the editor and `/api/lint/fix` operate on: the disk
-   * file lags the CRDT behind the persistence debounce, and if a flush is
-   * ever lost the two diverge durably — a disk-only audit then reports
-   * problems the live doc no longer has and the Fix all sweep no-ops forever.
-   * Unloaded docs have no live copy; disk is authoritative for them.
-   */
-  const liveLintSourceFor = (docRelPath: string): string | null => {
-    const docName = docRelPath.replace(/\.(md|mdx)$/i, '');
-    const doc = hocuspocus.documents.get(docName);
-    return doc === undefined ? null : doc.getText('source').toString();
-  };
-
-  const handleLintDoc = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const docName = url.searchParams.get('doc') ?? '';
-        if (docName === '' || !isSafeDocName(docName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing or invalid doc.', {
-            handler: 'lint',
-          });
-          return;
-        }
-        const docRelPath = resolveDocFilePath(contentDir, docName);
-        if (docRelPath === null) {
-          errorResponse(res, 404, 'urn:ok:error:doc-not-found', 'Document not found.', {
-            handler: 'lint',
-          });
-          return;
-        }
-        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const configWarnings: string[] = [];
-        const result = await lintDoc({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig,
-          docRelPath,
-          onConfigProblem: (problem) => configWarnings.push(problem),
-          liveSourceFor: liveLintSourceFor,
-        });
-        // Absent when there is nothing to report, matching the schema's
-        // documented contract and the three sibling lint emitters. `ran` is the
-        // field that is always present; do not carry that rule across to this one.
-        const lintWarnings = [...configWarnings, ...summarizeLintPluginFailures(result.failures)];
-        successResponse(
-          res,
-          200,
-          LintDocResultSchema,
-          { ...result, ...(lintWarnings.length > 0 ? { warnings: lintWarnings } : {}) },
-          { handler: 'lint' },
-        );
-      } catch (e) {
-        if (e instanceof SymlinkEscapeError) {
-          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-            handler: 'lint',
-          });
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to lint document.', {
-          handler: 'lint',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'lint', method: 'GET', skipBodyParse: true },
-  );
-
-  // One cache per server instance (not module-scoped): its keys carry contentDir,
-  // but a per-server lifetime also means a restart starts cold, which is the
-  // right blast radius for a disk-stamp-keyed cache.
-  const auditCache = new AuditCache();
-  /**
-   * Audits in flight, keyed by scope + config fingerprint. Every window runs the
-   * freshness triggers independently, and the Problems panel can refresh at the
-   * same moment, so a single config change can ask for the same whole-project
-   * walk several times over. Coalescing makes them one walk instead of N cold
-   * ones that each finish too late to warm the others' cache.
-   *
-   * The walk yields to the event loop, so a request issued after a config
-   * mutation or a branch switch IS parsed while an earlier walk is still
-   * running and could attach to it. The fingerprint alone would not stop that:
-   * it covers the BASE config, which never carries markdownlint `rules` (those
-   * come from the native `.markdownlint.*` cascade) nor frontmatter-schema
-   * bodies, and says nothing at all about which branch's content is on disk.
-   * {@link readAuditGeneration} is what makes the key move, which is why it is
-   * read here per request rather than captured once. The per-file cache keys on
-   * the fully-resolved config and the file's disk stamp, so nothing is cached
-   * under the wrong rules or the wrong branch's bytes either way.
-   */
-  const auditFlight = createSingleFlight<ValidationAuditResult>();
-
-  function runCoalescedAudit(
-    validators: readonly ProjectValidator[],
-    targetPath: string | undefined,
-    configFingerprint: string,
-  ): Promise<ValidationAuditResult> {
-    const key = `${configFingerprint} ${readAuditGeneration()} ${targetPath ?? ''}`;
-    return auditFlight.run(key, () => runValidationAudit(validators, { targetPath })).promise;
-  }
-
-  /**
-   * A superseded walk has no plane to report, so the caller gets a retryable
-   * 409 rather than a stale or mixed one. The store-side effect is exactly the
-   * effect of any failed audit — previous entries stand — and whichever change
-   * superseded this walk has already broadcast its own CC1 channel
-   * (`lint-config` for a config mutation, `branch-switched` for a switch), so
-   * the corrective walk is scheduled without the caller doing anything.
-   */
-  function respondAuditSuperseded(res: ServerResponse, handler: string): void {
-    errorResponse(
-      res,
-      409,
-      'urn:ok:error:audit-superseded',
-      'The lint configuration or branch changed while the audit was running; re-run it.',
-      { handler },
-    );
-  }
-
-  const handleLintAudit = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const rawTarget = url.searchParams.get('path');
-        const target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
-        // Absolute paths and traversal must not reach the walker: an audit
-        // response carries offending-text snippets, so an unchecked scope is
-        // an arbitrary-directory read for any connected agent.
-        if (target !== undefined && !isValidRelativeContentPath(target)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
-            handler: 'lint-audit',
-          });
-          return;
-        }
-        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const result = await auditProject({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig,
-          targetPath: target,
-          liveSourceFor: liveLintSourceFor,
-          cache: auditCache,
-          auditGeneration: readAuditGeneration,
-        });
-        successResponse(res, 200, LintAuditResponseSchema, result, { handler: 'lint-audit' });
-      } catch (e) {
-        if (e instanceof AuditSupersededError) {
-          respondAuditSuperseded(res, 'lint-audit');
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
-          handler: 'lint-audit',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'lint-audit', method: 'GET', skipBodyParse: true },
-  );
-
-  // Unified validation audit: every registered project validator (markdownlint
-  // walk + derived-index dead-link read) merged into one source-tagged plane.
-  // Additive alongside /api/lint/audit and /api/dead-links, which keep their
-  // single-validator contracts.
-  const handleAudit = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const rawTarget = url.searchParams.get('path');
-        let target = rawTarget === null || rawTarget === '' ? undefined : rawTarget;
-        // Absolute paths and traversal must not reach the validators: the
-        // lint walk reads file bytes under this scope, so an unchecked path
-        // is an arbitrary-directory read for any connected caller.
-        if (target !== undefined && !isValidRelativeContentPath(target)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid path.', {
-            handler: 'audit',
-          });
-          return;
-        }
-        // `doc` scopes by docName (extension-less). The client freshness path
-        // knows docNames from disk-ack frames, never file extensions, so the
-        // extension resolution has to happen here. A doc indexed from a live
-        // CRDT session may not be on disk yet — fall back to the default
-        // extension so the links validator can still scope to it (mirrors the
-        // links validator's own fallback).
-        const rawDoc = url.searchParams.get('doc');
-        const docParam = rawDoc === null || rawDoc === '' ? undefined : rawDoc;
-        if (docParam !== undefined) {
-          if (target !== undefined || !isValidRelativeContentPath(docParam)) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid doc.', {
-              handler: 'audit',
-            });
-            return;
-          }
-          target = resolveDocFilePath(contentDir, docParam) ?? `${docParam}.md`;
-        }
-        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const validators = createProjectValidators({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig,
-          liveSourceFor: liveLintSourceFor,
-          derivedDocumentIndex: derivedDocumentIndex ?? null,
-          linksValidation: getLinksValidationSetting?.(),
-          admittedDocNames: collectAdmittedDocNames,
-          docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
-          cache: auditCache,
-          auditGeneration: readAuditGeneration,
-        });
-        const result = await runCoalescedAudit(
-          validators,
-          target,
-          AuditCache.fingerprintConfig(baseConfig),
-        );
-        // `counts=1` tallies the same plane instead of enumerating it — the
-        // freshness path behind file-tree tints wants per-file counts, and on a
-        // large KB the enumerated bodies are tens of MB it discards on arrival.
-        if (url.searchParams.get('counts') === '1') {
-          successResponse(
-            res,
-            200,
-            ValidationAuditCountsResponseSchema,
-            toValidationCountsPlane(result),
-            { handler: 'audit' },
-          );
-          return;
-        }
-        successResponse(res, 200, ValidationAuditResponseSchema, result, { handler: 'audit' });
-      } catch (e) {
-        if (e instanceof AuditSupersededError) {
-          respondAuditSuperseded(res, 'audit');
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to audit project.', {
-          handler: 'audit',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'audit', method: 'GET', skipBodyParse: true },
   );
 
   const handleLintFix = withValidation(
@@ -23134,26 +21584,21 @@ export function createApiExtension(
   );
 
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
-    '/api/config': handleApiConfig,
-    '/api/config/diagnostics': handleConfigDiagnostics,
     '/api/generated-index/settings': handleGeneratedIndexSettings,
     '/api/comments': handleCommentsRoute,
     '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
     '/api/asset-text': handleAssetText,
-    '/api/comment-counts': handleCommentCounts,
     '/api/link-preview': handleLinkPreview,
     '/api/folder-config': handleFolderConfig,
     '/api/saved-themes': handleSavedThemesList,
     '/api/saved-theme': handleSavedTheme,
     '/api/template': handleTemplate,
     '/api/template/import': handleTemplateImport,
-    '/api/templates': handleTemplatesList,
     '/api/skill': handleSkill,
     '/api/skill-file': handleSkillFile,
     '/api/skill-file/rename': handleSkillFileRename,
     '/api/skills': handleSkillsList,
-    '/api/skills/installed': handleSkillsInstalled,
     '/api/skills/search': handleSkillsSearch,
     '/api/skills/popular': handleSkillsPopular,
     '/api/skills/publisher': handleSkillsPublisher,
@@ -23176,15 +21621,9 @@ export function createApiExtension(
     '/api/skill/track-in-git': handleSkillTrackInGit,
     '/api/skill-targets': handleSkillTargets,
     '/api/search': handleSearch,
-    '/api/semantic-status': handleSemanticStatus,
-    '/api/lint/config': handleGetLintConfig,
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
     '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
-    '/api/lint/frontmatter-schemas': handleFrontmatterSchemasList,
-    '/api/lint': handleLintDoc,
-    '/api/lint/audit': handleLintAudit,
     '/api/lint/fix': handleLintFix,
-    '/api/audit': handleAudit,
     '/api/create-page': handleCreatePage,
     '/api/create-folder': handleCreateFolder,
     '/api/duplicate-path': handleDuplicatePath,
@@ -23201,11 +21640,7 @@ export function createApiExtension(
     '/api/agent-activity': handleAgentActivity,
     '/api/agent-burst-diff': handleAgentBurstDiff,
     '/api/save-version': handleSaveVersion,
-    '/api/history': handleHistory,
     '/api/rollback': handleRollback,
-    '/api/__embed-detect': handleEmbedDetect,
-    '/api/server-info': handleServerInfo,
-    '/api/acp/catalog': handleAcpCatalog,
     '/api/share/construct-url': handleShareConstructUrl,
     '/api/share/target-status': handleShareTargetStatus,
     '/api/git/branch-info': handleBranchInfo,
@@ -23214,9 +21649,6 @@ export function createApiExtension(
     '/api/share/publish/owners': handleSharePublishOwners,
     '/api/share/publish/name-check': handleSharePublishNameCheck,
     '/api/share/publish': handleSharePublish,
-    '/api/principal': handlePrincipal,
-    '/api/rescue': handleRescueList,
-    '/api/workspace': handleWorkspace,
     '/api/sync/status': handleSyncStatus,
     '/api/sync/trigger': handleSyncTrigger,
     '/api/sync/conflicts': handleSyncConflicts,
@@ -23236,11 +21668,9 @@ export function createApiExtension(
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
     '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
-    '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/spawn-cursor': handleSpawnCursorRoute,
     '/api/handoff': handleHandoffDispatchRoute,
     '/api/install-skill': handleInstallSkill,
-    '/api/skill/install-state': handleSkillInstallState,
     '/api/seed/plan': handleSeedPlan,
     '/api/seed/apply': handleSeedApply,
     '/api/seed/install-pack-skill': handleSeedInstallPackSkill,
@@ -23341,19 +21771,6 @@ export function createApiExtension(
       if (handler) {
         return { template: url, dispatch: (req, res) => handler(req, res) };
       }
-      if (url.startsWith('/api/history/')) {
-        const encodedSha = url.slice('/api/history/'.length);
-        return {
-          template: '/api/history/:sha',
-          // Decode inside dispatch so a malformed encoding surfaces as the
-          // dispatch span's typed 500, not a resolve-time throw.
-          dispatch: encodedSha
-            ? async (req, res) => {
-                await handleHistoryVersion(req, res, decodeURIComponent(encodedSha));
-              }
-            : undefined,
-        };
-      }
       return { template: '/api/*' };
     },
     isMutating: (url) =>
@@ -23389,7 +21806,78 @@ export function createApiExtension(
     isAllowedWorkspaceHostHeader,
     log,
   });
-  const nativeGroups = [linkGraphRoutes, metricsRoutes, documentRoutes];
+  const configSystemRoutes = createConfigSystemRoutes({
+    contentDir,
+    projectDir,
+    ephemeral,
+    log,
+    ready,
+    durabilityState,
+    serverInstanceId,
+    getDiskAckSVs,
+    getCollabClientCount,
+    getConfigDiagnostics,
+    acpRegistry,
+    loadAcpCustomAgents,
+    acpHarnessAvailability,
+    isRoutePeerAdmitted,
+    isAllowedWorkspaceHostHeader,
+    checkLocalOpSecurity,
+    getPrincipal,
+    semanticSearch,
+    readSemanticProviderConfig,
+    embeddingsSecretsFile,
+    getFileIndex,
+    shadowRef,
+    getCurrentBranch,
+    installedAgentsCache,
+  });
+  const lintRoutes = createLintRoutes({
+    hocuspocus,
+    contentDir,
+    projectDir,
+    contentFilter,
+    isSafeDocName,
+    resolveDocFilePath,
+    isValidRelativeContentPath,
+    streamShowAllEntries,
+    getLinterBaseConfig,
+    getLinksValidationSetting,
+    derivedDocumentIndex,
+    collectAdmittedDocNames,
+    unmatchedGlobProblems,
+    readAuditGeneration,
+  });
+  const historyRoutes = createHistoryRoutes({
+    contentRoot,
+    log,
+    shadowRef,
+    flushGitCommit,
+    commitOkArtifactWrite,
+    getCurrentBranch,
+    validateFolderRel,
+    safeDocPath,
+    docTreePathCandidates,
+  });
+  const skillsReadRoutes = createSkillsReadRoutes({
+    contentDir,
+    projectDir,
+    homeDirOverride,
+    skillsHome,
+    isSafeDocName,
+    commentService,
+    enumerateInstalledSkillsCached,
+    checkLocalOpSecurity,
+  });
+  const nativeGroups = [
+    linkGraphRoutes,
+    metricsRoutes,
+    documentRoutes,
+    configSystemRoutes,
+    lintRoutes,
+    historyRoutes,
+    skillsReadRoutes,
+  ];
   // "A route lives in exactly one router" — enforced at construction, not
   // just documented; covers every group aggregated into the native paths.
   // Throw semantics pinned in `http/http-app.test.ts`.

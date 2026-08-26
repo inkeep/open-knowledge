@@ -220,6 +220,7 @@ export interface BootServerOptions
     | 'embeddingsKeyStore'
     | 'singleDocRelPath'
     | 'ephemeral'
+    | 'configHomedirOverride'
   > {
   /**
    * The project's loaded `Config` (parsed from `.ok/config.yml`,
@@ -823,6 +824,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     embeddingsKeyStore: opts.embeddingsKeyStore,
     singleDocRelPath: opts.singleDocRelPath,
     ephemeral: opts.ephemeral,
+    configHomedirOverride: opts.configHomedirOverride,
   });
 
   const {

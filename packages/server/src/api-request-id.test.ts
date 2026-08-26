@@ -11,7 +11,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+// Import the test-helper wrapper (not the base factory): its `onRequest`
+// dispatches the native route groups ahead of the legacy hook, so ported paths
+// like the dynamic `/api/history/:sha` reach their real handler + access-log
+// template instead of the legacy `/api/*` 404 fallback.
+import { createApiExtension } from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 import { loggerFactory } from './logger.ts';
 

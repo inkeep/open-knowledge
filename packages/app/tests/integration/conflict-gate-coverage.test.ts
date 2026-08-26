@@ -40,6 +40,10 @@ const HANDLER_SOURCES = [
     'http/link-graph-routes.ts',
     'http/metrics-routes.ts',
     'http/document-routes.ts',
+    'http/config-system-routes.ts',
+    'http/lint-routes.ts',
+    'http/history-routes.ts',
+    'http/skills-read-routes.ts',
   ].map((file) => readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8')),
 ];
 
