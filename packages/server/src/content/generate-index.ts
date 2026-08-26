@@ -23,7 +23,7 @@
  * without a server, a disk, or a Y.Doc.
  */
 
-import { encodeHrefPath } from '@inkeep/open-knowledge-core';
+import { encodeHrefPath, headingContentIdentity } from '@inkeep/open-knowledge-core';
 
 /** One document as the index renders it. `path` is content-root-relative. */
 export interface IndexEntry {
@@ -91,12 +91,39 @@ const SUBDIRECTORY_SECTION = 'Subdirectories';
  * One title plus level-two sections satisfies both, and is the shape the
  * hand-written index this generator replaced already used.
  *
+ * `MD024` is the third default rule over this namespace, and it compares heading
+ * content across levels, so this string is not the generator's alone: it shares a
+ * namespace with the free-form `type` values that become section headings. So a
+ * document whose `type` reduces to this string joins the title's own key in the
+ * section collection of `buildIndexMarkdown` and lists under the title, rather
+ * than opening a second heading with the same content. Absent such a document
+ * the key never exists, and the title is emitted from this constant.
+ *
  * Not localized, and not merely because this is file content rather than UI: the
  * bytes are the fixed point the write guard compares against, so a title that
  * varied by host locale would make every rebuild a write on a differently
  * configured machine — the same failure the locale-independent sort avoids.
  */
 const INDEX_TITLE = 'Index';
+
+/**
+ * Every heading the generator writes from a fixed string of its own.
+ *
+ * `type` is free-form, so any of these can also arrive as one, and the two are
+ * then indistinguishable by the time they reach a bucket. Naming the set once is
+ * what keeps that a membership question: enumerating the constants at each site
+ * is how `SUBDIRECTORY_SECTION` got a reservation while `INDEX_TITLE` did not,
+ * and adding a fourth string here is the only step a later heading needs.
+ *
+ * Exported so the suite can assert this set is exactly what the generator emits
+ * from inputs that declare no `type` at all, rather than restating the strings
+ * and drifting from them.
+ */
+export const GENERATOR_OWNED_HEADINGS: ReadonlySet<string> = new Set([
+  INDEX_TITLE,
+  UNTYPED_SECTION,
+  SUBDIRECTORY_SECTION,
+]);
 
 /** The shared shape a link line renders from — a document or a subdirectory. */
 interface RenderableLink {
@@ -136,6 +163,18 @@ function compareSections(left: string, right: string): number {
     compareCodePoints(normalizedSortKey(left), normalizedSortKey(right)) ||
     compareCodePoints(left.normalize('NFC'), right.normalize('NFC'))
   );
+}
+
+/**
+ * Whether `candidate` is the spelling a bucket should render under, given the
+ * one it currently holds. `compareSections` cannot decide this alone: it folds
+ * case and normalizes BOTH sides to NFC, so two spellings of one grapheme
+ * cluster compare equal and the answer would fall through to whichever arrived
+ * first. Raw code points break that tie, which is what keeps the rendered
+ * heading a function of the bucket's members rather than of traversal order.
+ */
+function prefersSpelling(candidate: string, current: string): boolean {
+  return (compareSections(candidate, current) || compareCodePoints(candidate, current)) < 0;
 }
 
 function compareLinks(left: RenderableLink, right: RenderableLink): number {
@@ -188,8 +227,39 @@ function renderLink(link: RenderableLink, directory: string): string {
 }
 
 /**
+ * The bullet list under one heading. Every bucket renders through here, the
+ * title's included, so within-bucket order stays a pure function of the entry
+ * set no matter which heading owns it.
+ */
+function renderBody(links: readonly RenderableLink[], directory: string): string {
+  return links
+    .slice()
+    .sort(compareLinks)
+    .map((link) => renderLink(link, directory))
+    .join('\n');
+}
+
+/**
  * Group into `## <type>` sections (plus a `## Subdirectories` section when child
  * directories are supplied) under the index title, and render.
+ *
+ * Every section heading this emits is a key of one collection, keyed by
+ * `headingContentIdentity` rather than by source text. That mirrors the rule's
+ * own reduction rather than sharing it, and it is case SENSITIVE, unlike the
+ * case-folding comparators further up this file, which order sections rather
+ * than key them. The title joins that collection only when a document's `type`
+ * reduces to its identity, which is the whole point. For every other directory
+ * no such key exists and the title is emitted from the constant, so the `?? []`
+ * read below is the ordinary path rather than a guard.
+ *
+ * A `Map` cannot hold two entries under one key, so a heading whose content
+ * already belongs to the generator merges into that bucket instead of opening a
+ * second heading with the same content. `type` is free-form, so any
+ * of the generator's own heading strings can arrive as one, and `MD024` compares
+ * heading content across levels: a heading kept outside the collection would
+ * collide. The title renders at level one and every other bucket at level two,
+ * which is what `MD025` and `MD041` require, so the title is selected by key
+ * rather than sorted with the rest.
  *
  * Sections sort alphabetically by heading and entries sort by title
  * case-insensitively, both matching the reference generator. Ordering is what
@@ -204,39 +274,92 @@ export function buildIndexMarkdown(
   const directory = options.directory ?? '';
   const subdirectories = options.subdirectories ?? [];
 
-  const grouped = new Map<string, RenderableLink[]>();
+  // Each bucket carries the heading it will render under, because the key is an
+  // identity several distinct source strings can share. Which spelling wins has
+  // to be a pure function of the bucket's members: `entries` arrives in live
+  // file-index order, which differs between a cold boot and an incremental
+  // rebuild, so picking the first one seen would make the bytes depend on
+  // traversal order and the write guard would never settle.
+  //
+  // `pinned` marks a heading the generator owns. Those keep their own spelling
+  // even when a document's `type` reaches the bucket first, which is what stops
+  // a colliding `<b></b>Subdirectories` from renaming the section the generator
+  // writes its own child-index links under.
+  interface Bucket {
+    heading: string;
+    pinned: boolean;
+    links: RenderableLink[];
+  }
+
+  const titleKey = headingContentIdentity(INDEX_TITLE);
+  const grouped = new Map<string, Bucket>();
+
+  // Whether a heading is pinned is derived here, not supplied by the caller.
+  // Every route into this function resolves a string that is either one the
+  // generator owns or one a document declared, and membership is the whole
+  // question — so a caller cannot state it wrongly, and a route added later
+  // cannot forget to. That is what makes the promise on the set's declaration
+  // true: a fourth heading needs one line there and nothing at any call site.
+  //
+  // Pinning matters because the spelling reduction otherwise hands the heading
+  // to a colliding `<b></b>` variant, whose U+003C sorts below every letter, and
+  // the generator ends up writing its own content under a heading carrying
+  // inline HTML. Both live collision routes need it: `Other` beside
+  // `<b></b>Other` with no untyped document, and `Subdirectories` beside
+  // `<b></b>Subdirectories` with no child indexes.
+  const bucketFor = (heading: string): RenderableLink[] => {
+    const key = headingContentIdentity(heading);
+    const pinned = GENERATOR_OWNED_HEADINGS.has(heading);
+    const existing = grouped.get(key);
+    if (!existing) {
+      const created: Bucket = { heading, pinned, links: [] };
+      grouped.set(key, created);
+      return created.links;
+    }
+    if (pinned && !existing.pinned) {
+      existing.heading = heading;
+      existing.pinned = true;
+    } else if (!pinned && !existing.pinned && prefersSpelling(heading, existing.heading)) {
+      existing.heading = heading;
+    }
+    return existing.links;
+  };
+
   for (const entry of entries) {
-    const section = sectionOf(entry);
-    const bucket = grouped.get(section);
-    if (bucket) bucket.push(entry);
-    else grouped.set(section, [entry]);
+    bucketFor(sectionOf(entry)).push(entry);
   }
 
   if (subdirectories.length > 0) {
     // `Subdirectories` is also a valid document type. Sharing its bucket keeps
     // the semantic heading unique when documents and child indexes coexist.
-    const bucket = grouped.get(SUBDIRECTORY_SECTION);
-    if (bucket) bucket.push(...subdirectories);
-    else grouped.set(SUBDIRECTORY_SECTION, [...subdirectories]);
+    bucketFor(SUBDIRECTORY_SECTION).push(...subdirectories);
   }
 
   const blocks = [...grouped]
-    .sort(([left], [right]) => compareSections(left, right))
-    .map(([heading, links]) => {
-      const body = links
-        .slice()
-        .sort(compareLinks)
-        .map((link) => renderLink(link, directory))
-        .join('\n');
-      return `## ${heading}\n\n${body}`;
-    });
+    .filter(([key]) => key !== titleKey)
+    .sort(([, left], [, right]) => compareSections(left.heading, right.heading))
+    .map(([, { heading, links }]) => `## ${heading}\n\n${renderBody(links, directory)}`);
 
   const header = options.isRoot ? `---\nokf_version: "${GENERATED_OKF_VERSION}"\n---\n\n` : '';
 
-  // An empty bundle keeps the title and gains no section: an empty `## Other`
-  // would claim a grouping that describes nothing, while the title alone reads
-  // as a bundle with no documents yet. Holding the title in both cases is what
-  // makes "exactly one top-level heading" unconditional rather than a property
-  // that lapses whenever the bundle happens to be empty.
-  return `${header}${[`# ${INDEX_TITLE}`, ...blocks].join('\n\n')}\n`;
+  // The title renders alone when nothing shares its bucket and above a bullet
+  // list when documents do. Emitting it on both branches is what makes "exactly
+  // one top-level heading" unconditional rather than a property that lapses
+  // whenever the bundle happens to be empty. An empty bundle also gains no
+  // section, since a heading with no links would claim a grouping that
+  // describes nothing.
+  // DRIFT WARNING: bullets sitting directly under the level-one title depend on
+  // `okf/index-shape` opening a section on a heading at ANY level
+  // (`packages/core/src/markdown/lint/rules/index-shape.ts`). Tightening that
+  // rule so only `##` opens a section would make every index for a folder
+  // holding a title-colliding document report a finding against a file its
+  // author cannot edit. The two live in different packages and TypeScript
+  // cannot see the coupling.
+  const titleLinks = grouped.get(titleKey)?.links ?? [];
+  const title =
+    titleLinks.length === 0
+      ? `# ${INDEX_TITLE}`
+      : `# ${INDEX_TITLE}\n\n${renderBody(titleLinks, directory)}`;
+
+  return `${header}${[title, ...blocks].join('\n\n')}\n`;
 }

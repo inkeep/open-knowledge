@@ -656,6 +656,7 @@ export {
 } from './i18n/resolve-locale.ts';
 export { selectFenceChar, widenFenceLength } from './markdown/code-fence.ts';
 export { MIN_CARRIED_EDGE_EMPTIES } from './markdown/doc-edge-blank-runs.ts';
+export { headingContentIdentity } from './markdown/heading-content-identity.ts';
 export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,
