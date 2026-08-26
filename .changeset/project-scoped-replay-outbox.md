@@ -1,5 +1,0 @@
----
-"@inkeep/open-knowledge": patch
----
-
-An unsynced edit can no longer cross between two open projects. When a window reconnects to a server that has restarted, it parks any edit that had not yet reached the server in browser storage and replays it once the connection is healthy again. That parking spot was named after the branch and the document path, but not after the project, and every project window in the desktop app is served from a single origin. So two projects that are worktrees of the same repository, open on the same branch, addressed one parking spot for a document at the same path. Whichever window replayed first consumed the record, which meant a project could receive text that was typed in a different project, while the window that lost the race stood down and dropped its own edit. Because the payload is document content rather than a claim about state, this crossed edits silently instead of raising an error. The parking spot is now named per project as well, so a window only ever contends with other windows of the same project.
