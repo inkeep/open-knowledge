@@ -2,7 +2,9 @@
  * Conflict-gate coverage meta-test.
  *
  * Mirror of `attribution-sweep-coverage.test.ts` for the conflict-aware
- * write-refusal contract. Statically scans `api-extension.ts` and asserts:
+ * write-refusal contract. Statically scans `api-extension.ts` plus every
+ * lifted handler source (`skills-sh-handlers.ts`, `http/*-routes.ts` — see
+ * `HANDLER_SOURCES`) and asserts:
  *
  *   (1) Every REQUIRED mutating handler (the 8 surfaces) either calls
  *       `respondDocInConflict` directly OR routes
@@ -23,6 +25,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  extractRouteHandlerNames,
+  HANDLER_RUN_END_NEEDLES,
+  listNativeRouteFiles,
+} from '../native-route-files.test-helper.ts';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
@@ -30,21 +37,15 @@ const source = readFileSync(API_EXT_PATH, 'utf8');
  * The conflict-refusal contract applies to any handler that writes user
  * content, regardless of which file it lives in — lifted route groups
  * (`skills-sh-handlers.ts`, native Wave 2 groups like
- * `http/link-graph-routes.ts` with their OWN `const routes:` record) stay
- * inside the scan, mirroring `error-envelope-coverage.test.ts`.
+ * `http/link-graph-routes.ts` with their OWN route record in any sanctioned
+ * declaration shape) stay inside the scan, mirroring `error-envelope-coverage.test.ts`.
  */
+const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
 const HANDLER_SOURCES = [
   source,
-  ...[
-    'skills-sh-handlers.ts',
-    'http/link-graph-routes.ts',
-    'http/metrics-routes.ts',
-    'http/document-routes.ts',
-    'http/config-system-routes.ts',
-    'http/lint-routes.ts',
-    'http/history-routes.ts',
-    'http/skills-read-routes.ts',
-  ].map((file) => readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8')),
+  ...['skills-sh-handlers.ts', ...listNativeRouteFiles(SERVER_SRC)].map((file) =>
+    readFileSync(join(SERVER_SRC, file), 'utf8'),
+  ),
 ];
 
 /**
@@ -392,26 +393,20 @@ function extractHandlerBody(handlerName: string): string | null {
   if (start === -1) return null;
   const nextFn = owner.indexOf('\n  async function handle', start + 1);
   const nextConst = owner.indexOf('\n  const handle', start + 1);
-  const nextRoutes = owner.indexOf('\n  const routes:', start + 1);
+  const nextRoutes = HANDLER_RUN_END_NEEDLES.map((needle) => owner.indexOf(needle, start + 1));
   // Factory modules end their handler run at the returned record.
   const nextReturn = owner.indexOf('\n  return {', start + 1);
-  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
+  const candidates = [nextFn, nextConst, ...nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
   return owner.slice(start, next === -1 ? owner.length : next);
 }
 
 function extractStaticRouteHandlerNames(): string[] {
-  // Every source's `const routes:` record participates — the legacy dispatch
-  // record in `api-extension.ts` AND each native group's own record.
-  return HANDLER_SOURCES.flatMap((text) => {
-    const routesStart = text.indexOf('\n  const routes:');
-    if (routesStart === -1) return [];
-    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
-    const nativeTable = text.indexOf('\n  const table', routesStart);
-    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
-    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
-    return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
-  });
+  // Every source's route record participates — the legacy dispatch record in
+  // `api-extension.ts` AND each native group's record in every declaration
+  // shape the helper sanctions (shared extractor:
+  // `native-route-files.test-helper.ts`).
+  return HANDLER_SOURCES.flatMap((text) => extractRouteHandlerNames(text));
 }
 
 describe('conflict-gate coverage (FR9)', () => {

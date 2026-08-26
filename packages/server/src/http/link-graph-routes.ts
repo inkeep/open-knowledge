@@ -42,7 +42,7 @@ import { toForwardLinkLocalTargets } from '../local-target-assessment.ts';
 import type { FrontmatterMetadata } from '../page-identity.ts';
 import { isInternalBundleSkillName } from '../skill-bundles.ts';
 import { SuggestLinksTargetNotFoundError, suggestLinks } from '../suggest-links.ts';
-import type { ApiRouteTable } from './api-pipeline.ts';
+import { type ApiRouteGroup, type ApiRouteRecord, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
@@ -68,14 +68,7 @@ export interface LinkGraphRouteDeps {
   ) => void;
 }
 
-export interface LinkGraphRoutes {
-  /** Hono patterns for the native mount (`NativeApiHandle.paths`). */
-  paths: readonly string[];
-  /** The group's view for the shared /api/* admission pipeline. */
-  table: ApiRouteTable;
-}
-
-export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes {
+export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): ApiRouteGroup {
   const {
     hocuspocus,
     derivedDocumentIndex,
@@ -649,7 +642,10 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
     }
   }
 
-  const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
+  // A literal declaration (`satisfies`, never a widening `: Record<...>`
+  // annotation) — the helper's `mutating` key-check needs the literal path
+  // union to survive inference.
+  const routes = {
     '/api/backlinks': handleBacklinks,
     '/api/backlink-counts': handleBacklinkCounts,
     '/api/forward-links': handleForwardLinks,
@@ -659,34 +655,18 @@ export function createLinkGraphRoutes(deps: LinkGraphRouteDeps): LinkGraphRoutes
     '/api/hubs': handleHubs,
     '/api/tags': handleTagsList,
     '/api/suggest-links': handleSuggestLinks,
-  };
+  } satisfies ApiRouteRecord;
 
-  const table: ApiRouteTable = {
-    resolve(url) {
-      const handler = routes[url];
-      if (handler) {
-        return { template: url, dispatch: (req, res) => handler(req, res) };
-      }
-      if (url.startsWith('/api/tags/')) {
-        const rawName = url.slice('/api/tags/'.length);
-        return {
-          template: '/api/tags/:name',
-          // Empty name (`/api/tags/`): no dispatch — the pipeline's explicit
-          // 404 owns it, under the same template the legacy dispatch used.
-          dispatch: rawName ? (req, res) => handleTagsForName(req, res, rawName) : undefined,
-        };
-      }
-      return null;
+  // Every route in this group is a read (none rode the legacy
+  // MUTATING_ROUTES loopback/Host gate), so no mutating set is declared.
+  return createApiRouteGroup(routes, {
+    dynamic: {
+      prefix: '/api/tags/',
+      template: '/api/tags/:name',
+      // Empty name (`/api/tags/`): no dispatch — the pipeline's explicit
+      // 404 owns it, under the same template the legacy dispatch used.
+      dispatch: (rawName) =>
+        rawName ? (req, res) => handleTagsForName(req, res, rawName) : undefined,
     },
-    // Every route in this group is a read (none rode the legacy
-    // MUTATING_ROUTES loopback/Host gate).
-    isMutating: () => false,
-  };
-
-  return {
-    // `/api/tags/*` (not `:name`) so an empty or slash-containing tail
-    // reaches the table exactly like the legacy prefix match did.
-    paths: [...Object.keys(routes), '/api/tags/*'],
-    table,
-  };
+  });
 }

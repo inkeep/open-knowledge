@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { createApiExtension } from './api-extension.ts';
+// The test-helper wrapper (not the base factory): its `onRequest` dispatches
+// the native route groups ahead of the legacy hook, so the now-native
+// `/api/search` reaches its real handler instead of the legacy 404 fallback.
+import { createApiExtension } from './api-extension.test-helper.ts';
 import type { FileIndexEntry } from './file-watcher.ts';
 
 // Count how the server maintains the search corpus: `create` = from-scratch
@@ -130,7 +133,7 @@ function createHarness(contentDir: string, options: { withGeneration: boolean })
     const req = makeReq('GET', `/api/search?query=${encodeURIComponent(query)}&intent=${intent}`);
     const { res, captured } = makeRes();
     await (
-      ext as {
+      ext as unknown as {
         onRequest: (ctx: { request: IncomingMessage; response: ServerResponse }) => Promise<void>;
       }
     ).onRequest({ request: req, response: res });

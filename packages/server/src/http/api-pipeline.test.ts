@@ -2,7 +2,11 @@ import { createServer } from 'node:http';
 import { describe, expect, test } from 'vitest';
 import { parseProblem, rawRequest } from '../composition-rig.test-helper.ts';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
-import { type ApiRouteTable, createApiRequestPipeline } from './api-pipeline.ts';
+import {
+  type ApiRouteTable,
+  createApiRequestPipeline,
+  createApiRouteGroup,
+} from './api-pipeline.ts';
 import { createHttpApp, type NativeApiHandle } from './http-app.ts';
 
 /**
@@ -326,5 +330,105 @@ describe('natively-mounted /api routes run the shared admission pipeline', () =>
     } finally {
       await rig.close();
     }
+  });
+});
+
+describe('createApiRouteGroup', () => {
+  const handler = async () => {};
+
+  test('exact paths resolve with the URL as template; everything else declines', () => {
+    const group = createApiRouteGroup({ '/api/alpha': handler, '/api/beta': handler });
+    expect(group.paths).toEqual(['/api/alpha', '/api/beta']);
+    const hit = group.table.resolve('/api/alpha');
+    expect(hit?.template).toBe('/api/alpha');
+    expect(hit?.dispatch).toBeDefined();
+    // Decline is `null`, not a template-only resolution — the multi-group
+    // chain relies on zero side effects for unclaimed URLs.
+    expect(group.table.resolve('/api/gamma')).toBeNull();
+  });
+
+  test('mutating membership is URL-keyed and defaults to none', () => {
+    const readOnly = createApiRouteGroup({ '/api/alpha': handler });
+    expect(readOnly.table.isMutating('/api/alpha')).toBe(false);
+    const mixed = createApiRouteGroup(
+      { '/api/alpha': handler, '/api/beta': handler },
+      { mutating: ['/api/beta'] },
+    );
+    expect(mixed.table.isMutating('/api/alpha')).toBe(false);
+    expect(mixed.table.isMutating('/api/beta')).toBe(true);
+  });
+
+  test('mutatingPrefixes protect a namespace family by default, matching the legacy prefix rule', () => {
+    const group = createApiRouteGroup(
+      { '/api/local-op/clone': handler },
+      { mutatingPrefixes: ['/api/local-op/'] },
+    );
+    expect(group.table.isMutating('/api/local-op/clone')).toBe(true);
+    // Default-protect: a member never enumerated anywhere still gates.
+    expect(group.table.isMutating('/api/local-op/brand-new-route')).toBe(true);
+    expect(group.table.isMutating('/api/alpha')).toBe(false);
+  });
+
+  test('a mutating dynamic namespace declares its prefix in mutatingPrefixes', () => {
+    const group = createApiRouteGroup(
+      {},
+      {
+        mutatingPrefixes: ['/api/thing/'],
+        dynamic: {
+          prefix: '/api/thing/',
+          template: '/api/thing/:id',
+          dispatch: () => undefined,
+        },
+      },
+    );
+    expect(group.table.isMutating('/api/thing/abc')).toBe(true);
+    expect(group.table.isMutating('/api/other')).toBe(false);
+  });
+
+  test('a malformed or orphaned mutatingPrefixes entry fails at construction', () => {
+    // Slash dropped: would also match unrelated siblings.
+    expect(() =>
+      createApiRouteGroup(
+        { '/api/local-op/clone': handler },
+        { mutatingPrefixes: ['/api/local-op'] },
+      ),
+    ).toThrow(/must end in '\/'/);
+    // Typo: covers nothing, so the real family would ride the read posture.
+    expect(() =>
+      createApiRouteGroup(
+        { '/api/local-op/clone': handler },
+        { mutatingPrefixes: ['/api/loca-op/'] },
+      ),
+    ).toThrow(/covers no registered route/);
+  });
+
+  test('a dynamic leg claims its namespace: wildcard path, bound template, 404-able empty tail', () => {
+    const seen: string[] = [];
+    const group = createApiRouteGroup(
+      { '/api/tags': handler },
+      {
+        dynamic: {
+          prefix: '/api/tags/',
+          template: '/api/tags/:name',
+          dispatch: (suffix) => {
+            if (!suffix) return undefined;
+            return async () => {
+              seen.push(suffix);
+            };
+          },
+        },
+      },
+    );
+    expect(group.paths).toEqual(['/api/tags', '/api/tags/*']);
+    const named = group.table.resolve('/api/tags/til');
+    expect(named?.template).toBe('/api/tags/:name');
+    expect(named?.dispatch).toBeDefined();
+    // Empty tail: the table OWNS the URL (template resolution) but binds no
+    // dispatch, so the pipeline's explicit 404 answers under the template.
+    const empty = group.table.resolve('/api/tags/');
+    expect(empty?.template).toBe('/api/tags/:name');
+    expect(empty?.dispatch).toBeUndefined();
+    // Outside the namespace still declines.
+    expect(group.table.resolve('/api/other')).toBeNull();
   });
 });

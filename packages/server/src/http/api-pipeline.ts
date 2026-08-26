@@ -92,6 +92,121 @@ export interface ApiRouteTable {
   isMutating(pathname: string): boolean;
 }
 
+/** One handler per exact `/api/...` path — a native group's routes record. */
+export type ApiRouteRecord = Readonly<
+  Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>>
+>;
+
+/**
+ * A dynamic namespace leg (`/api/tags/:name`, `/api/history/:sha`) alongside
+ * a group's exact-path record. The Hono mount claims `<prefix>*` so an empty
+ * or slash-containing tail reaches the table exactly like the legacy prefix
+ * match did.
+ */
+export interface ApiRouteGroupDynamicLeg {
+  /** The URL prefix owning the namespace, trailing slash included (`'/api/tags/'`). */
+  prefix: string;
+  /** Low-cardinality template for the leg (`'/api/tags/:name'`). */
+  template: string;
+  /**
+   * Bound dispatch for the captured (still-encoded) suffix. Return
+   * `undefined` for an unservable suffix (empty segment) — the pipeline's
+   * explicit RFC 9457 404 then owns the response under the leg's template.
+   */
+  dispatch: (
+    suffix: string,
+  ) => ((req: IncomingMessage, res: ServerResponse) => Promise<void>) | undefined;
+}
+
+/** A native group's contribution to the Hono mount + the shared pipeline. */
+export interface ApiRouteGroup {
+  /** Hono patterns for the native mount (`NativeApiHandle.paths`). */
+  paths: readonly string[];
+  /** The group's view for the shared /api/* admission pipeline. */
+  table: ApiRouteTable;
+}
+
+/**
+ * The `{paths, table}` tail every native group factory used to hand-roll
+ * byte-identically: exact-path resolve over a routes record, an optional
+ * dynamic namespace leg, decline (`null`) for everything else, and the
+ * group's mutating-gate membership in one declared place.
+ *
+ * `mutating` tracks legacy `MUTATING_ROUTES` MEMBERSHIP, not side effects —
+ * URL-keyed like the legacy set, so a multi-verb path whose any verb mutates
+ * rides the mutating gate on every verb. Omit it for a read-only group.
+ * Entries are typed against the routes record's own keys, so a typo or a
+ * rename-drift entry on this security-gate declaration is a compile error,
+ * not a silent no-op. The record must be declared as a literal
+ * (`satisfies ApiRouteRecord`, never a widening `: Record<string, ...>`
+ * annotation): a widened record collapses `keyof R` to `string`, and the
+ * conditional element type below turns that into a compile error on the
+ * `mutating` declaration rather than a silently disabled check.
+ *
+ * `mutatingPrefixes` reproduces the legacy `STATE_MUTATING_PREFIXES` rule for
+ * namespace families (`/api/local-op/`): every member — a mutating dynamic
+ * leg included — is protected by DEFAULT, so adding a route under the prefix
+ * can never silently land on the read posture. Use it rather than
+ * enumerating a mutating family's members into `mutating`. Each prefix must
+ * end in `/` and cover a registered route or the dynamic leg's namespace —
+ * asserted at construction, since a malformed entry here silently re-postures
+ * routes in both directions.
+ */
+export function createApiRouteGroup<R extends ApiRouteRecord>(
+  routes: R,
+  opts: {
+    // `string extends keyof R` is true only for a WIDENED record — the
+    // element type then collapses to `never`, turning the silently-disabled
+    // key-check into a compile error at the declaring call site.
+    mutating?: readonly (string extends keyof R ? never : keyof R & string)[];
+    mutatingPrefixes?: readonly string[];
+    dynamic?: ApiRouteGroupDynamicLeg;
+  } = {},
+): ApiRouteGroup {
+  const { dynamic } = opts;
+  const mutating: ReadonlySet<string> = new Set(opts.mutating ?? []);
+  const mutatingPrefixes: readonly string[] = opts.mutatingPrefixes ?? [];
+  const routeKeys = Object.keys(routes);
+  for (const prefix of mutatingPrefixes) {
+    if (!prefix.endsWith('/')) {
+      throw new Error(
+        `mutatingPrefixes entry '${prefix}' must end in '/' — a bare prefix also matches unrelated siblings ('/api/local-op' matches '/api/local-op-status')`,
+      );
+    }
+    if (prefix !== dynamic?.prefix && !routeKeys.some((key) => key.startsWith(prefix))) {
+      throw new Error(
+        `mutatingPrefixes entry '${prefix}' covers no registered route and is not the dynamic leg's prefix — a typo here leaves its family on the read posture`,
+      );
+    }
+  }
+  // `Map.get` is `handler | undefined` regardless of `noUncheckedIndexedAccess`,
+  // so the unregistered-path guard below stays type-enforced.
+  const routeMap = new Map<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>>(
+    Object.entries(routes),
+  );
+  const table: ApiRouteTable = {
+    resolve(url) {
+      const handler = routeMap.get(url);
+      if (handler) {
+        return { template: url, dispatch: (req, res) => handler(req, res) };
+      }
+      if (dynamic !== undefined && url.startsWith(dynamic.prefix)) {
+        return {
+          template: dynamic.template,
+          dispatch: dynamic.dispatch(url.slice(dynamic.prefix.length)),
+        };
+      }
+      return null;
+    },
+    isMutating: (url) => mutating.has(url) || mutatingPrefixes.some((p) => url.startsWith(p)),
+  };
+  return {
+    paths:
+      dynamic !== undefined ? [...Object.keys(routes), `${dynamic.prefix}*`] : Object.keys(routes),
+    table,
+  };
+}
+
 export interface ApiPipelineOptions {
   log: PinoLogger;
   /**

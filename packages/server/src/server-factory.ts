@@ -61,12 +61,7 @@ import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
-import {
-  type CommentDocHooks,
-  createApiExtension,
-  type GeneratedIndexSettingsStatus,
-  isSafeDocName,
-} from './api-extension.ts';
+import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import {
@@ -170,6 +165,7 @@ import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from '
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
 import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
+import type { GeneratedIndexSettingsStatus } from './http/workspace-tools-routes.ts';
 import {
   scanGlobalInPlaceSkills,
   scanInPlaceSkillDirs,
