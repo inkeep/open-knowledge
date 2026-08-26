@@ -1203,6 +1203,62 @@ describeEvenOnCI('bootServer — multi-address bind', () => {
     await expect(fetch(`http://127.0.0.1:${booted.port}/healthz`)).rejects.toThrow();
   });
 
+  // The lock advertises a port; nothing else recorded that a server actually
+  // bound one. Those are different claims — the lock outlives the process that
+  // wrote it — and with only the lock, a reader cannot tell a live listener
+  // from a stale advertisement, nor which pid owns a port when two servers have
+  // run for one directory. This pins the record AND pins that it agrees with
+  // the lock, since a record that disagreed would be worse than none.
+  test('the listen record names the bound port, pid and every address, and agrees with the lock', async () => {
+    const contentDir = mkdtempSync(resolve(tmpDir, 'listenlog-'));
+    await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);
+    seedOkScaffold(contentDir);
+    const entries: Array<{ fields: Record<string, unknown>; msg: string }> = [];
+    const noop = (): void => {};
+    const captureLogger = {
+      info: (fields: Record<string, unknown>, msg: string) => entries.push({ fields, msg }),
+      warn: noop,
+      error: noop,
+      debug: noop,
+      trace: noop,
+      fatal: noop,
+      level: 'info',
+      silent: noop,
+      bindings: () => ({}),
+      child: () => captureLogger,
+    };
+    const booted = await bootServer({
+      host: '127.0.0.1',
+      bind: ['127.0.0.1', '::1'],
+      config: TEST_CONFIG,
+      contentDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+      log: captureLogger as never,
+    });
+    try {
+      const listened = entries.filter((e) => e.fields.event === 'server-listening');
+      expect(listened).toHaveLength(1);
+      const fields = listened[0]?.fields ?? {};
+      expect(fields.port).toBe(booted.port);
+      expect(fields.pid).toBe(process.pid);
+      expect(fields.addresses).toEqual(['127.0.0.1', '::1']);
+      expect(typeof fields.url).toBe('string');
+      expect(String(fields.url)).toContain(String(booted.port));
+
+      // The corroboration that makes the record worth having: it must name the
+      // same port the lock advertises, from a different source.
+      const lock = JSON.parse(
+        readFileSync(resolve(contentDir, OK_DIR, 'local', 'server.lock'), 'utf-8'),
+      ) as { port: number };
+      expect(fields.port).toBe(lock.port);
+    } finally {
+      await booted.destroy();
+    }
+  });
+
   test('duplicate bind entries collapse instead of failing with EADDRINUSE', async () => {
     const contentDir = mkdtempSync(resolve(tmpDir, 'multibind-dup-'));
     await execFileAsync('git', ['init', '--initial-branch=main', contentDir]);

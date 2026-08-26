@@ -1717,9 +1717,14 @@ export {
 export {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
+  formatSpawnAttemptHeader,
   SERVER_CRASH_LOG,
   SERVER_EXIT_LOG,
+  SPAWN_ATTEMPT_MARKER,
   SPAWN_ERROR_LOG,
+  SPAWN_ERROR_LOG_MAX_BYTES,
+  sliceLastSpawnAttempt,
+  spawnErrorLogOpenMode,
 } from './constants/lifecycle.ts';
 export {
   type FrontmatterIssue,

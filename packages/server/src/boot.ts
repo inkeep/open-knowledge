@@ -1203,6 +1203,24 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   // the self-call base structurally identical rather than two literals in sync.
   const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
+  // The only record that a server actually bound this port, as opposed to a
+  // lock file claiming it did. Those are different facts: the lock outlives the
+  // process that wrote it, so a reader with only the lock cannot tell a live
+  // listener from a stale advertisement, and cannot tell WHICH pid owns a port
+  // when two servers have run for one directory. Every address is named because
+  // a client failing on one family while another answers is otherwise
+  // indistinguishable from the port being dead.
+  log.info(
+    {
+      event: 'server-listening',
+      pid: process.pid,
+      port: realPort,
+      addresses: listenAddresses,
+      url: boundBaseUrl,
+      lockDir,
+    },
+    `[boot] listening on ${boundBaseUrl}`,
+  );
 
   let destroyed = false;
   const withDestroyTimeout = async (name: string, work: () => Promise<void>): Promise<void> => {

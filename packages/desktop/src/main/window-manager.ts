@@ -32,6 +32,7 @@ import {
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   SPAWN_ERROR_LOG,
+  sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { getLocalDir } from '@inkeep/open-knowledge-server';
@@ -3403,8 +3404,18 @@ export class WindowManager {
     const STDERR_TAIL_BYTES = 8192;
     let stderrTail: string | undefined;
     try {
-      const raw = readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8');
-      stderrTail = raw.length > STDERR_TAIL_BYTES ? `…${raw.slice(-STDERR_TAIL_BYTES)}` : raw;
+      // Bound to THIS attempt first. The file appends across spawns, so a
+      // child that died having written nothing would otherwise hand the
+      // previous attempt's stack trace to this failure, labelled as its cause —
+      // a false record of exactly the kind this log exists to prevent.
+      // `.trim()` matching the sibling shim reader: without it, a child whose
+      // only output is a newline defeats the emptiness contract above and
+      // renders a stderr section containing whitespace.
+      const attempt = sliceLastSpawnAttempt(
+        readFileSync(join(lockDir, SPAWN_ERROR_LOG), 'utf-8'),
+      ).trim();
+      stderrTail =
+        attempt.length > STDERR_TAIL_BYTES ? `…${attempt.slice(-STDERR_TAIL_BYTES)}` : attempt;
     } catch (readErr) {
       // An absent log is expected — the child can die before opening the fd.
       // Anything else (permissions, a bad path) would otherwise vanish here and

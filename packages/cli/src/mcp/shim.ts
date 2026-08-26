@@ -22,7 +22,7 @@
  */
 import { type ChildProcess, spawn as nativeSpawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 import { setTimeout as wait } from 'node:timers/promises';
@@ -30,8 +30,10 @@ import {
   clientVersionHeaders,
   DEFAULT_SERVER_HOST,
   SPAWN_ERROR_LOG,
+  sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import { startKeepalive as defaultStartKeepalive } from '@inkeep/open-knowledge-core/keepalive';
+import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
 import {
   AutoStartDisabledError,
   isProcessAlive as defaultIsProcessAlive,
@@ -209,8 +211,32 @@ function liveBaseUrlFromLock(
   return lockBaseUrl(lock, { fallbackHost: DEFAULT_SERVER_HOST }) ?? undefined;
 }
 
+/**
+ * Mirrors the desktop reader's bound rather than the file's own 256 KiB cap:
+ * this string is interpolated into a JSON-RPC error handed to an MCP client,
+ * and a quarter-megabyte payload there is not a diagnostic.
+ *
+ * Counted in UTF-16 code units, not bytes, because that is what `String`
+ * length and `slice` measure. Non-ASCII stderr — a localised OS error, a CJK
+ * or Cyrillic path — can therefore reach roughly three times this in UTF-8.
+ * That is still a diagnostic rather than a blowup, which is why the simpler
+ * unit is kept; the number just should not be read as a byte ceiling.
+ */
+const SPAWN_STDERR_TAIL_UNITS = 8192;
+
+/**
+ * Bound to the CURRENT attempt, then to a tail. The file appends across spawns,
+ * so reading it whole would quote every earlier attempt's stderr as the cause
+ * of this failure — and a spawn that dies having written nothing would report
+ * the previous one's error as its own. Truncate-on-spawn is what used to make
+ * the unbounded read safe, and it no longer applies.
+ */
 function readErrorLogDefault(path: string): string {
-  return existsSync(path) ? readFileSync(path, 'utf-8').trim() : '';
+  if (!existsSync(path)) return '';
+  const attempt = sliceLastSpawnAttempt(readFileSync(path, 'utf-8')).trim();
+  return attempt.length > SPAWN_STDERR_TAIL_UNITS
+    ? `…${attempt.slice(-SPAWN_STDERR_TAIL_UNITS)}`
+    : attempt;
 }
 
 function formatTimeoutMessage(timeoutMs: number, stderr: string): string {
@@ -255,7 +281,12 @@ export async function resolveMcpHttpUrl(opts: ResolveMcpHttpUrlOptions): Promise
   const sleep = opts.sleep ?? ((ms: number) => wait(ms));
   const spawnFn = opts.spawn ?? nativeSpawn;
   const readErrorLog = opts.readErrorLog ?? readErrorLogDefault;
-  const openErrorLog = opts.openErrorLog ?? ((path: string) => openSync(path, 'w'));
+  // Appends behind a per-attempt header, matching the desktop spawn site. The
+  // two writers share this file by design, so a truncating peer would erase
+  // whatever the other accumulated and put the retry-destroys-evidence defect
+  // straight back on this path.
+  const openErrorLog =
+    opts.openErrorLog ?? ((path: string) => openSpawnErrorLog(path, process.pid));
   const closeFd = opts.closeFd ?? closeSync;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_SPAWN_TIMEOUT_MS;
   const pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;

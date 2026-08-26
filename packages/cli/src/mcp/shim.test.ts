@@ -1,8 +1,14 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
+import {
+  formatSpawnAttemptHeader,
+  LOCAL_DIR,
+  OK_DIR,
+  SPAWN_ERROR_LOG,
+} from '@inkeep/open-knowledge-core';
 import { AutoStartDisabledError, type ServerLockMetadata } from '@inkeep/open-knowledge-server';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -295,6 +301,78 @@ describe('MCP stdio shim server resolution', () => {
         pollIntervalMs: 1,
       }),
     ).rejects.toThrow('spawn failed: spawn EACCES stderr:\nboot failed loudly');
+  });
+
+  // Pins the DEFAULT reader, which every other test at this throw site
+  // replaces by injecting `readErrorLog`. The file appends across spawns now,
+  // so reading it whole would hand the previous attempt's stderr to this
+  // failure — and this is the tier where that string reaches an MCP client.
+  test('the default reader quotes only the current attempt', async () => {
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(
+      resolve(lockDir, SPAWN_ERROR_LOG),
+      `${formatSpawnAttemptHeader(new Date('2026-08-25T10:00:00.000Z'), 11)}EADDRINUSE from before\n` +
+        `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 12)}the real cause\n`,
+    );
+
+    const err = await resolveMcpHttpUrl({
+      lockDir,
+      contentDir: tmp,
+      readLock: () => null,
+      isAlive: () => false,
+      sleep: async () => {},
+      openErrorLog: () => 123,
+      closeFd: () => {},
+      spawn: (() => {
+        throw new Error('spawn EACCES');
+      }) as never,
+      timeoutMs: 1000,
+      pollIntervalMs: 1,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+
+    expect(err?.message).toContain('the real cause');
+    expect(err?.message).not.toContain('EADDRINUSE from before');
+    // Nor our own delimiter — the report quotes the child, not the parent.
+    expect(err?.message).not.toContain('spawn attempt');
+  });
+
+  // The reader's other property, and the one that decides how big a payload
+  // this hands an MCP client. The file's own cap is 256 KiB, so without this
+  // bound a single noisy attempt would be quoted whole into a JSON-RPC error.
+  test('the default reader bounds one huge attempt to a tail', async () => {
+    mkdirSync(lockDir, { recursive: true });
+    const oldest = 'FIRST-LINE-MARKER\n';
+    writeFileSync(
+      resolve(lockDir, SPAWN_ERROR_LOG),
+      `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 12)}${oldest}${'x'.repeat(20_000)}`,
+    );
+
+    const err = await resolveMcpHttpUrl({
+      lockDir,
+      contentDir: tmp,
+      readLock: () => null,
+      isAlive: () => false,
+      sleep: async () => {},
+      openErrorLog: () => 123,
+      closeFd: () => {},
+      spawn: (() => {
+        throw new Error('spawn EACCES');
+      }) as never,
+      timeoutMs: 1000,
+      pollIntervalMs: 1,
+    }).then(
+      () => null,
+      (e: unknown) => e as Error,
+    );
+
+    // Truncated from the front, marked as truncated, and nowhere near the
+    // file's own 256 KiB cap.
+    expect(err?.message).not.toContain('FIRST-LINE-MARKER');
+    expect(err?.message).toContain('…');
+    expect(err?.message.length).toBeLessThan(9_000);
   });
 
   test('async spawn failure includes captured stderr', async () => {

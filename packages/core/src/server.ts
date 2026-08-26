@@ -63,3 +63,4 @@ export {
   withFileLock,
   withFileLockSync,
 } from './util/file-lock.ts';
+export { openSpawnErrorLog } from './util/spawn-error-log-open.ts';

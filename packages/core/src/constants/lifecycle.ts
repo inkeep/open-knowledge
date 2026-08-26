@@ -38,6 +38,79 @@ export const DEFAULT_SIGTERM_POLL_MS = 200;
 export const SPAWN_ERROR_LOG = 'last-spawn-error.log';
 
 /**
+ * Cap for `SPAWN_ERROR_LOG`, checked at open time. It bounds accumulation
+ * ACROSS spawn attempts — the crash-loop case, where a stack per attempt piles
+ * up and the file stops being evidence and becomes disk usage. It does NOT
+ * bound one long-lived child: that child inherits the fd and nothing re-stats
+ * until the next spawn. Narrow in practice, since pino writes to stdout and the
+ * file sink rather than raw stderr, but the guarantee is the weaker one.
+ */
+export const SPAWN_ERROR_LOG_MAX_BYTES = 256 * 1024;
+
+/** Literal that opens every attempt header; the boundary readers scan for. */
+export const SPAWN_ATTEMPT_MARKER = '=== spawn attempt ';
+
+/**
+ * Whether a spawn site should append to `SPAWN_ERROR_LOG` or start it over.
+ *
+ * Truncating per spawn is the obvious choice and the wrong one: the retry that
+ * follows a failed spawn arrives seconds later and overwrites the output that
+ * explained the failure it is retrying. A file whose whole purpose is to
+ * survive a failed spawn cannot be opened in truncate mode by the next spawn.
+ *
+ * Both documented writers above must agree on this, or whichever spawns second
+ * erases what the first accumulated.
+ *
+ * An unknown size answers `'a'`, because `'w'` is never better there and is
+ * sometimes the destruction this exists to prevent: Node's `'a'` is
+ * `O_APPEND|O_CREAT`, so an absent file is created either way, while a file
+ * that exists but could not be statted still has contents worth keeping.
+ * Callers reach this branch through a bare catch that cannot tell `ENOENT`
+ * from a transient error, so the branch has to be safe for both.
+ */
+export function spawnErrorLogOpenMode(currentSizeBytes: number | undefined): 'a' | 'w' {
+  if (currentSizeBytes === undefined) return 'a';
+  return currentSizeBytes >= SPAWN_ERROR_LOG_MAX_BYTES ? 'w' : 'a';
+}
+
+/**
+ * Delimiter written before an attempt's output. Appending without one turns N
+ * failures into a single undelimited wall of stack traces, and — load-bearing —
+ * it is what lets a reader bound the CURRENT attempt: see
+ * `sliceLastSpawnAttempt`.
+ */
+export function formatSpawnAttemptHeader(startedAt: Date, spawningPid: number): string {
+  return `\n${SPAWN_ATTEMPT_MARKER}${startedAt.toISOString()} pid=${spawningPid} ===\n`;
+}
+
+/**
+ * The last attempt's slice of an appended `SPAWN_ERROR_LOG`.
+ *
+ * A failure report that quotes this file is claiming "this is why THIS spawn
+ * failed". Under append that is only true of the text after the final header:
+ * a child that dies having written nothing would otherwise hand the previous
+ * attempt's stack trace to the current failure, which is a false record of
+ * exactly the kind this log exists to prevent.
+ *
+ * The header itself is excluded, not just the attempts before it. The parent
+ * writes that line BEFORE the spawn, so including it would make the result
+ * non-empty for a child that printed nothing — and a caller's emptiness check
+ * is exactly how it knows the child was silent. A report that renders a
+ * `--- stderr ---` section containing only the parent's own delimiter promises
+ * the child's output and delivers punctuation.
+ *
+ * A file with no marker predates the header (or was written by a site that
+ * does not stamp one) and is returned whole — there is no boundary to honor,
+ * and dropping it would lose the only evidence there is.
+ */
+export function sliceLastSpawnAttempt(raw: string): string {
+  const lastHeader = raw.lastIndexOf(SPAWN_ATTEMPT_MARKER);
+  if (lastHeader === -1) return raw;
+  const endOfHeaderLine = raw.indexOf('\n', lastHeader);
+  return endOfHeaderLine === -1 ? '' : raw.slice(endOfHeaderLine + 1);
+}
+
+/**
  * Filename under `<projectRoot>/.ok/local/` where the desktop host records why
  * the server process last exited. Written by the desktop main process (which
  * observes the child's death even when the child could not report it) and

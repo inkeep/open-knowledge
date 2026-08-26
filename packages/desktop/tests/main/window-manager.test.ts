@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { DEFAULT_SERVER_HOST } from '@inkeep/open-knowledge-core';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { DEFAULT_SERVER_HOST, formatSpawnAttemptHeader } from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { breakServerLockHeldBy } from '../../src/main/server-lock-break.ts';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
@@ -2484,12 +2484,23 @@ describe('WindowManager', () => {
         expect(err?.message).toMatch(/exited before binding/);
       });
 
+      const spawnStderrRoots: string[] = [];
+      afterEach(() => {
+        // One of these fixtures is 20 KB, so leaving them behind costs disk per
+        // run rather than just clutter.
+        while (spawnStderrRoots.length > 0) {
+          const root = spawnStderrRoots.pop();
+          if (root) rmSync(root, { recursive: true, force: true });
+        }
+      });
+
       // The captured stderr is whatever the server printed on the way up, and
       // on a healthy boot that is routinely a config advisory. Presenting it
       // under a bare "stderr" header next to a failure sends the reader off to
       // fix a warning that had nothing to do with it.
       function projectWithSpawnErrorLog(contents: string): string {
         const root = mkdtempSync(join(tmpdir(), 'ok-spawn-stderr-'));
+        spawnStderrRoots.push(root);
         mkdirSync(join(root, '.ok', 'local'), { recursive: true });
         writeFileSync(join(root, '.ok', 'local', 'last-spawn-error.log'), contents);
         return root;
@@ -2538,6 +2549,100 @@ describe('WindowManager', () => {
         expect(err?.message).toMatch(/exited before binding/);
         expect(err?.message).toMatch(/^--- stderr ---$/m);
         expect(err?.message).not.toMatch(/probably not the cause/);
+      });
+
+      // Pins the WIRING, not the helper. `sliceLastSpawnAttempt` has its own
+      // unit tests in core, but dropping the call from this reader leaves those
+      // green — and this is the tier where the misattribution would actually
+      // reach a user. The file appends across spawns, so a second attempt that
+      // dies having written nothing must not inherit the first one's error.
+      test('a silent attempt does not report the previous attempt stderr as its cause', async () => {
+        enableSyncTimers();
+        const projectPath = projectWithSpawnErrorLog(
+          `${formatSpawnAttemptHeader(new Date('2026-08-25T10:00:00.000Z'), 4242)}` +
+            'Error: EACCES on .ok/local\n' +
+            `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 4243)}`,
+        );
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toMatch(/exited before binding/);
+        expect(err?.message).not.toMatch(/EACCES/);
+        // And no stderr section at all. The parent writes the header before the
+        // spawn, so a slice that kept it would render `--- stderr ---` over the
+        // app's own delimiter — promising the child's output and delivering
+        // punctuation. Emptiness here IS the "child printed nothing" signal.
+        expect(err?.message).not.toMatch(/^--- stderr ---$/m);
+        expect(err?.message).not.toMatch(/spawn attempt/);
+      });
+
+      // Whitespace is not output. Without the trim, a child whose only write is
+      // a newline renders a stderr section containing a blank line — which
+      // defeats the emptiness contract the attempt slice exists to preserve,
+      // and does it in the case that contract was written for.
+      test('a child that writes only whitespace still counts as silent', async () => {
+        enableSyncTimers();
+        const projectPath = projectWithSpawnErrorLog(
+          `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 4243)}\n   \n`,
+        );
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).toMatch(/exited before binding/);
+        expect(err?.message).not.toMatch(/^--- stderr ---$/m);
+      });
+
+      // The bound's other half. `shim.ts` declares that its bound "mirrors the
+      // desktop reader", so the two are a stated pair — and this side is the
+      // worse one to leave unbounded: the file caps at 256 KiB and this string
+      // lands in a dialog a human reads, where the shim's lands in JSON a
+      // client can truncate.
+      test('a huge attempt is bounded to a tail before it reaches the failure report', async () => {
+        enableSyncTimers();
+        const projectPath = projectWithSpawnErrorLog(
+          `${formatSpawnAttemptHeader(new Date('2026-08-25T11:00:00.000Z'), 4243)}` +
+            'FIRST-LINE-MARKER\n' +
+            'x'.repeat(20_000),
+        );
+        env.deps.readServerLock = () => null;
+        env.deps.isProcessAlive = () => false;
+        env.deps.hostname = () => 'my-host';
+        env.deps.probeWsUpgrade = () => Promise.resolve(true);
+        env.deps.spawnDetachedServer = () =>
+          Promise.resolve({ pid: 88001, readExit: () => ({ code: 1, signal: null }) });
+        env.deps.spawnLockPollDeadlineMs = 1;
+
+        const wm = new WindowManager(env.deps);
+        const err = await wm.createProjectWindow({ projectPath }).then(
+          () => null,
+          (e: unknown) => e as Error,
+        );
+
+        expect(err?.message).not.toMatch(/FIRST-LINE-MARKER/);
+        expect(err?.message).toContain('…');
+        expect(err?.message.length).toBeLessThan(9_000);
       });
 
       // A hung start and a crash otherwise render as the same bare deadline.

@@ -34,7 +34,6 @@ import {
   existsSync,
   promises as fsPromises,
   mkdirSync,
-  openSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -94,6 +93,7 @@ import type {
   OkTerminalDockStateWriteResult,
   OkTerminalRestartSnapshot,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
+import { openSpawnErrorLog } from '@inkeep/open-knowledge-core/server';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import {
   assertGitAvailable,
@@ -1867,9 +1867,12 @@ function ensureWindowManager() {
             // filename — one tail target for operators. `stdio: 'ignore'`
             // would route everything to /dev/null and leave the user
             // staring at a 15-second `spawn-lock-timeout` with no
-            // breadcrumb. The fd is opened in 'w' mode (truncate-on-spawn)
-            // so each boot starts with a fresh log; rotation lives at the
-            // OS level if it ever matters.
+            // breadcrumb. The fd APPENDS behind a per-attempt header, because
+            // the retry after a failed spawn would otherwise erase the output
+            // explaining the failure it is retrying; it starts over only at
+            // `SPAWN_ERROR_LOG_MAX_BYTES`, so rotation is this policy's job
+            // and not the OS's. Both writers share the mode — see
+            // `spawnErrorLogOpenMode`.
             const projectRoot = projectDir ?? contentDir;
             const lockDir = getLocalDir(projectRoot);
             if (!existsSync(lockDir)) {
@@ -1893,7 +1896,7 @@ function ensureWindowManager() {
             const spawnErrorLogPath = join(lockDir, SPAWN_ERROR_LOG);
             let spawnErrorLogFd: number;
             try {
-              spawnErrorLogFd = openSync(spawnErrorLogPath, 'w');
+              spawnErrorLogFd = openSpawnErrorLog(spawnErrorLogPath, process.pid);
             } catch (err) {
               throw Object.assign(
                 new Error(
