@@ -5882,8 +5882,11 @@ html.electron-mode [data-slot="sidebar-inner"] {
    first-insertion path is click-safe by construction (a freshly inserted
    node cannot be an ancestor of a node hit-tested earlier in the same
    dispatch), but do not rely on the deferral for newly mounted subtrees.
-   That deferred scheduling is the same rendering-update lock scheduling
-   `content-visibility: auto` has natively (see `.ok-chunk-wrapper` below).
+   Do NOT read this deferral as equivalent to what `content-visibility: auto`
+   does natively — an earlier version of this note did, and the corrected
+   account is on `.ok-chunk-wrapper` below. cv:auto defers only its
+   INTERSECTION-driven lock; a style-driven one still lands at the next
+   recalc. The deferral here is explicit and owned by this rule.
    `visibility: hidden` covers the deferral window: it removes the subtree
    from hit-testing entirely (unlike `pointer-events: none`, which does not
    invalidate a hit test captured earlier in the same dispatch), and it
@@ -5966,11 +5969,25 @@ html.electron-mode [data-slot="sidebar-inner"] {
    Scoped to `.ProseMirror` so source-mode CodeMirror DOM is untouched
    (CM6 has its own line-oriented viewport rendering).
 
-   Click-safety: cv:auto is safe under clicks because its lock state
-   changes only at rendering updates (never synchronously inside an input
-   dispatch) and hit-testing skips already-locked subtrees. Do not replace
-   `auto` with `hidden` here without the same deferred-lock + visibility
-   pair `.ok-mode-hidden` carries — an undeferred paint lock over
+   Click-safety, corrected. An earlier version of this note argued cv:auto is
+   safe under clicks because its lock state "changes only at rendering updates,
+   never synchronously inside an input dispatch". That holds for the
+   INTERSECTION path (scrolling a block out of the render margin) and NOT for
+   the style path: a newly created display-lock context starts with its
+   viewport-intersection flag false, so applying cv:auto to an element that did
+   not have it locks during the very next style recalc, on-screen, and the
+   mousedown path runs several forced style flushes between capturing a hit
+   result and reading a caret out of it.
+
+   What actually protects this site is the selection pin: a click places the
+   caret in the block, and cv:auto keeps a selection-containing element
+   relevant to the user, so the clicked wrapper cannot acquire the lock that
+   would make the CHECK reachable. That is Chromium behavior, not ours, and it
+   is pinned by `tests/stress/cv-auto-paint-lock-click.e2e.ts` — which fails if
+   a future Chromium drops it.
+
+   Do not replace `auto` with `hidden` here without the same deferred-lock +
+   visibility pair `.ok-mode-hidden` carries — an undeferred paint lock over
    hit-testable editor content trips Blink's display-lock CHECK (see the
    `.ok-mode-hidden` comment above). */
 .ProseMirror .ok-chunk-wrapper {

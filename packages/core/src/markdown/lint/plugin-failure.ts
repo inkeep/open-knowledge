@@ -1,4 +1,3 @@
-
 import type { LintPluginId } from './types.ts';
 
 export interface LintPluginFailure {

@@ -22,9 +22,19 @@
  *       the lock can form (`pointer-events: none` is NOT sufficient: it does
  *       not invalidate a hit test captured earlier in the same dispatch).
  * Additionally, no `content-visibility: hidden` may appear under a
- * `.ProseMirror` scope at all — PM blocks are always live hit-test targets,
- * and the chunk-wrapper rule relies on cv:auto's native rendering-update
- * lock scheduling for its click-safety.
+ * `.ProseMirror` scope at all — PM blocks are always live hit-test targets.
+ *
+ * The chunk-wrapper rule's own click-safety was once explained here as
+ * reliance on "cv:auto's native rendering-update lock scheduling". That
+ * explanation is withdrawn: it holds for the intersection path and not the
+ * style path, where a newly created display-lock context locks during the
+ * next style recalc, on-screen, and the mousedown path runs forced style
+ * flushes between capturing a hit result and reading a caret from it. What
+ * actually protects that site is Chromium keeping a selection-containing
+ * element relevant, which is pinned by
+ * `tests/stress/cv-auto-paint-lock-click.e2e.ts` rather than asserted here.
+ * The guard below is unaffected either way — it bans cv:hidden under
+ * `.ProseMirror` regardless of why cv:auto is tolerable.
  *
  * These are source-level regex guards by necessity: the runtime behavior is
  * only exercisable below-the-DOM in a real Chromium layout/paint engine —
