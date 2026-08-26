@@ -2462,13 +2462,14 @@ export class ProviderPool {
       // At-most-once in the tiny [consumed → server-synced] tail (matching the
       // RAM buffer, and past the crash window the outbox exists to close).
       //
-      // The consume is also the CROSS-TAB claim: tabs of the SAME project
-      // share one `(namespace, branch, docName)` record, so losing the claim
-      // means another tab of this project already replayed this edit and this
-      // one must stand down. A window of a DIFFERENT project never contends
-      // for it. That covers both orders — the other tab consuming before we
-      // read (we never see a record) and after (we see one but cannot claim
-      // it).
+      // The consume is also the CROSS-TAB claim: tabs resolving the SAME
+      // namespace share one `(namespace, branch, docName)` record, so losing
+      // the claim means another such tab has already CLAIMED this edit and
+      // owns whatever happens to it (consume-first, so that tab may still
+      // bail) — either way this one must stand down rather than apply on top.
+      // A window of a DIFFERENT project never contends for it. That covers
+      // both orders — the other tab consuming before we read (we never see a
+      // record) and after (we see one but cannot claim it).
       //
       // Only attempt it when a durable record actually backs this replay. An
       // unconditional consume would, on a RAM-only buffer, throw its way into

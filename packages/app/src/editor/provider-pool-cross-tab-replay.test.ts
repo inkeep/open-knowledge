@@ -2,10 +2,16 @@
  * Cross-tab exactly-once for the durable replay outbox.
  *
  * The outbox record is keyed `(namespace, branch, docName)` with no tab
- * component, so every tab of one project (a browser preview and the desktop
- * shell both sit on `127.0.0.1:PORT`) sees ONE record. That record is
- * therefore the cross-tab claim token: whichever tab consumes it owns the
- * replay and the others must stand down.
+ * component, so tabs that resolve the SAME namespace see ONE record — several
+ * browser tabs on one `127.0.0.1:PORT` (all null-namespace), or several
+ * desktop windows of one project. A browser preview and a desktop window are
+ * NOT such a pair: the preview resolves a null namespace and addresses the
+ * bare name, while any desktop host resolves a scoped one. That single record
+ * is the cross-tab claim token: whichever tab consumes it owns the replay and
+ * the others must stand down.
+ *
+ * These tests run the null-namespace case throughout, which is the shape a
+ * web host and every pre-scoping record use.
  *
  * They must stand down because `replayBufferedContent` is not re-entrant. It
  * decides which CRDT surface holds the un-delivered edit by asking which
