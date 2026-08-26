@@ -7835,6 +7835,10 @@ msgstr "Mark every comment to send"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Markdown checks do not apply to this file."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown source"

@@ -7835,6 +7835,10 @@ msgstr "勾选全部评论以发送"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "此文件不适用 Markdown 检查。"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown 源码"

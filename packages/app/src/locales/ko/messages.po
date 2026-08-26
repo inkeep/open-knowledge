@@ -7835,6 +7835,10 @@ msgstr "모든 댓글 전송 표시"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Markdown 검사는 이 파일에 적용되지 않습니다."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown 소스"

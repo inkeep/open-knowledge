@@ -1,4 +1,4 @@
-import type { LintDiagnostic } from '@inkeep/open-knowledge-core';
+import { isEditableTextDocFile, type LintDiagnostic } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -83,7 +83,7 @@ describe('EditorToolbar runtime layout', () => {
   });
 
   async function renderToolbar(
-    activeDocName = 'docs/Page.md',
+    activeDocName: string | null = 'docs/Page.md',
     frontmatterProblems?: readonly LintDiagnostic[],
   ) {
     const { EditorToolbar } = await import('./EditorToolbar');
@@ -147,6 +147,21 @@ describe('EditorToolbar runtime layout', () => {
     // real surfaces, unlike a text doc's single CodeMirror.
     await renderToolbar('assets/flow.mmd');
     expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
+  });
+
+  test.each([
+    'glossary.csv',
+    'settings.json',
+  ])('%s omits the Markdown-only Add properties affordance', async (docName) => {
+    expect(isEditableTextDocFile(docName)).toBe(true);
+    await renderToolbar(docName);
+
+    expect(screen.queryByRole('button', { name: /add properties/i })).toBeNull();
+  });
+
+  test('keeps Add properties available while the document name is loading', async () => {
+    await renderToolbar(null);
+    expect(screen.getByRole('button', { name: /add properties/i })).toBeTruthy();
   });
 
   test('renders the document-panel shortcut as a Kbd keycap', async () => {

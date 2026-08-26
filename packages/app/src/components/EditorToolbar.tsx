@@ -135,6 +135,10 @@ export function EditorToolbar({
   // no level/install/history/scope-move/provenance chrome; the edit-in-place
   // banner above the editor carries the messaging.
   const externalSkill = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
+  // Editable-text documents have no frontmatter region, so the ordinary
+  // Properties action cannot stage a meaningful edit for this document class.
+  const showDocumentAddPropertyButton =
+    showAddPropertyButton && (activeDocName === null || !isEditableTextDocFile(activeDocName));
   return (
     <div
       data-testid="editor-toolbar"
@@ -224,7 +228,7 @@ export function EditorToolbar({
             <SkillToolbarControls
               scope={activeSkill.scope}
               name={activeSkill.name}
-              showAddPropertyButton={showAddPropertyButton}
+              showAddPropertyButton={showDocumentAddPropertyButton}
               onAddProperty={onAddProperty}
               problemCount={stageableProblems.length}
               problemMessages={problemMessages}
@@ -235,7 +239,7 @@ export function EditorToolbar({
         null : (
           // Non-skill docs only carry add-properties here (no level/install), so
           // there's nothing to overflow — the breadcrumb truncates on its own.
-          showAddPropertyButton && (
+          showDocumentAddPropertyButton && (
             <AddPropertiesButton
               onAddProperty={onAddProperty}
               problemCount={stageableProblems.length}

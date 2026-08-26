@@ -4,6 +4,7 @@
 
 import { useDndContext } from '@dnd-kit/core';
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertTriangle,
@@ -1331,7 +1332,10 @@ export function EditorTabs({
 
                 const docName = tab.docName;
                 const skill = editableSkillsByTabId.get(docName);
-                const docExt = pageMeta.get(docName)?.docExt ?? '.md';
+                const metadataDocExt = pageMeta.get(docName)?.docExt;
+                // Explicit metadata wins. `''` means the editable-text docName
+                // is already the on-disk path, so it must survive nullish consumers.
+                const docExt = metadataDocExt ?? (isEditableTextDocFile(docName) ? '' : '.md');
                 // An editable `.md`/`.mdx` reference opens as an ordinary doc
                 // tab, not a `skill-file` one, so its bundle-file actions have
                 // to be resolved back from the doc name to reach parity with
@@ -1341,7 +1345,7 @@ export function EditorTabs({
                   : skillFileForDocName(docName, editableSkills, docExt);
                 const { baseName, extension, label, prefix } = tabParts(docName, docExt);
                 const accessibleLabel = `${prefix}${label}`;
-                const hideDocExtension = docExt === '.md' || docExt === '.mdx';
+                const hideDocExtension = docExt === '' || docExt === '.md' || docExt === '.mdx';
                 const hasFileTargetActions =
                   !isSkillDocName(docName) && !isSkillBundleShapedPath(docName);
                 return (

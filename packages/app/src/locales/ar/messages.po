@@ -7835,6 +7835,10 @@ msgstr "تحديد كل التعليقات للإرسال"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "لا تنطبق فحوصات Markdown على هذا الملف."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "مصدر Markdown"

@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { isMacOS } from '@tiptap/core';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { assetTabId, folderTabId, skillFileTabId } from '@/editor/editor-tabs';
@@ -24,6 +24,7 @@ let pageMeta: Map<string, { docExt?: string }> = new Map();
 let lifecycleStatuses: Map<string, string> = new Map();
 let focusedPaneId = 'pane-a';
 let skillsState: unknown = { status: 'idle' };
+let renderRealTabTargetMenuItems = false;
 
 const activateTab = vi.fn(() => {});
 const activateNewTab = vi.fn(() => {});
@@ -39,6 +40,8 @@ const unpinTab = vi.fn(() => {});
 const moveTabToNewPane = vi.fn(() => 'pane-new' as string | null);
 const requestSkillDelete = vi.fn(() => {});
 const requestSkillFileRename = vi.fn(() => {});
+const scheduleClipboardWrite = vi.fn(() => Promise.resolve());
+const okignorePatch = vi.fn(() => {});
 
 function primaryShortcutModifier(): Pick<KeyboardEventInit, 'ctrlKey' | 'metaKey'> {
   return isMacOS() ? { metaKey: true } : { ctrlKey: true };
@@ -189,15 +192,80 @@ vi.doMock('@/components/ui/context-menu', () => ({
     </button>
   ),
   ContextMenuSeparator: () => <hr data-testid="context-menu-separator" />,
+  ContextMenuSub: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  ContextMenuSubContent: ({ children }: { children?: ReactNode }) => <>{children}</>,
+  ContextMenuSubTrigger: ({
+    children,
+    disabled,
+    ...props
+  }: {
+    children?: ReactNode;
+    disabled?: boolean;
+    [key: string]: unknown;
+  }) => (
+    <button type="button" role="menuitem" disabled={disabled} {...props}>
+      {children}
+    </button>
+  ),
   ContextMenuTrigger: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }));
 
-vi.doMock('@/components/EditorTabTargetMenuItems', () => ({
-  EditorTabTargetMenuItems: () => null,
-}));
+vi.doMock('@/components/EditorTabTargetMenuItems', async () => {
+  const actual = await vi.importActual<typeof import('./EditorTabTargetMenuItems')>(
+    '@/components/EditorTabTargetMenuItems',
+  );
+  return {
+    ...actual,
+    EditorTabTargetMenuItems: (props: ComponentProps<typeof actual.EditorTabTargetMenuItems>) =>
+      renderRealTabTargetMenuItems ? <actual.EditorTabTargetMenuItems {...props} /> : null,
+  };
+});
 
 vi.doMock('@/components/FileTargetRenameDialog', () => ({
-  FileTargetRenameDialog: () => null,
+  FileTargetRenameDialog: ({ currentName }: { currentName: string }) => (
+    <div data-testid="file-target-rename-dialog">{currentName}</div>
+  ),
+}));
+
+vi.doMock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+vi.doMock('@/lib/use-workspace', () => ({
+  useWorkspace: () => ({ contentDir: '/workspace', pathSeparator: '/' }),
+}));
+
+vi.doMock('@/lib/config-provider', () => ({
+  useConfigContext: () => ({ okignoreBinding: { current: () => '', patch: okignorePatch } }),
+}));
+
+vi.doMock('@/hooks/use-git-sync-status', () => ({
+  useGitSyncStatusDetailed: () => ({ status: { hasRemote: false } }),
+}));
+
+vi.doMock('@/components/handoff/useHandoffDispatch', () => ({
+  useHandoffDispatch: () => ({ dispatch: vi.fn() }),
+}));
+
+vi.doMock('@/components/handoff/useInstalledAgents', () => ({
+  useInstalledAgents: () => ({ states: {} }),
+}));
+
+vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
+  OpenInAgentEmptySpaceSubmenu: () => null,
+}));
+
+vi.doMock('@/components/template-menu-rows', () => ({
+  TemplateMenuRows: () => null,
+}));
+
+vi.doMock('@/lib/share/clipboard-adapter', () => ({ scheduleClipboardWrite }));
+
+vi.doMock('@/lib/file-menu-target-resolvers', () => ({
+  buildSendToAiInputForActiveTarget: () => null,
+  resolveActiveTargetRelativePath: (target: {
+    kind: string;
+    docName?: string;
+    folderPath?: string;
+  }) => (target.kind === 'folder' ? (target.folderPath ?? '') : (target.docName ?? '')),
 }));
 
 vi.doMock('@/components/skill-actions', () => ({
@@ -348,6 +416,7 @@ function resetState() {
   lifecycleStatuses = new Map();
   focusedPaneId = 'pane-a';
   skillsState = { status: 'idle' };
+  renderRealTabTargetMenuItems = false;
   activeDrag = null;
   dndContextProps.length = 0;
   sensorCalls.length = 0;
@@ -368,6 +437,8 @@ function resetState() {
     moveTabToNewPane,
     requestSkillDelete,
     requestSkillFileRename,
+    scheduleClipboardWrite,
+    okignorePatch,
   ]) {
     fn.mockClear();
   }
@@ -440,6 +511,56 @@ describe('EditorTabs runtime behavior', () => {
     const txtTab = tabButton('docs/team/readme.txt');
     expect(txtTab.textContent).toBe('readme.txt');
     expect(txtTab.getAttribute('title')).toBeNull();
+  });
+
+  test.each([
+    'glossary.csv',
+    'settings.json',
+  ])('%s without page metadata keeps its filename across tab and file-menu actions', async (docName) => {
+    activeDocName = docName;
+    activeTabId = docName;
+    openTabs = [docName];
+    visibleTabIds = [docName];
+    newTabIds = [];
+    pageMeta = new Map();
+    renderRealTabTargetMenuItems = true;
+
+    await renderEditorTabs();
+
+    expect(tabButton(docName).textContent).toBe(docName);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(screen.getByTestId('file-target-rename-dialog').textContent).toBe(docName);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Relative path' }));
+    expect.soft(scheduleClipboardWrite).toHaveBeenCalledWith(docName);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide this file' }));
+    expect.soft(okignorePatch).toHaveBeenCalledWith(`/${docName}\n`);
+  });
+
+  test('explicit Markdown metadata stays authoritative for an extension-shaped docName', async () => {
+    const docName = 'notes.ts';
+    activeDocName = docName;
+    activeTabId = docName;
+    openTabs = [docName];
+    visibleTabIds = [docName];
+    newTabIds = [];
+    pageMeta = new Map([[docName, { docExt: '.md' }]]);
+    renderRealTabTargetMenuItems = true;
+
+    await renderEditorTabs();
+
+    const explicitMarkdownTab = screen
+      .queryAllByRole('button', { name: 'notes.ts.md' })
+      .find((element) => !element.hasAttribute('data-sortable-id'));
+    expect.soft(explicitMarkdownTab?.textContent).toBe('notes.ts');
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect.soft(screen.getByTestId('file-target-rename-dialog').textContent).toBe('notes.ts.md');
+
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Hide this file' }));
+    expect.soft(okignorePatch).toHaveBeenCalledWith('/notes.ts.md\n');
   });
 
   // The visible label is only the base name, so two same-named files in

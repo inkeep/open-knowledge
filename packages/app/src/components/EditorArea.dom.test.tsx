@@ -1,3 +1,4 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -93,7 +94,12 @@ const ASSET_DOC_CTX = {
 // true (the effect only needs a non-null provider) through an already-mocked
 // branch, so a later provider-null render counts as a mid-session navigation
 // rather than a cold start.
-const FOLDER_LIVE_CTX = { ...FOLDER_DOC_CTX, activeProvider: {} as never };
+const FOLDER_LIVE_CTX = {
+  ...FOLDER_DOC_CTX,
+  activeProvider: {
+    configuration: { name: 'docs/notes' },
+  } as unknown as HocuspocusProvider,
+};
 // A folder view drilled into an agent's activity — the case that used to render
 // its own `agent-panel` and now fills the shared document slot.
 const FOLDER_AGENT_CTX = {

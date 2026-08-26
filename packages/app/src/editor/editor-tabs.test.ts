@@ -1,3 +1,4 @@
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { hashFromSkillPreview, skillPreviewFromHash } from '@/lib/doc-hash';
 import {
@@ -873,6 +874,17 @@ describe('tabParts — non-`.md` call-site shapes (folder + asset)', () => {
       extension: '',
       label: 'guide.mdx',
       prefix: 'docs/',
+    });
+  });
+
+  test('an explicit Markdown extension stays authoritative for an extension-shaped docName', () => {
+    const docName = 'notes.ts';
+    expect(isEditableTextDocFile(docName)).toBe(true);
+    expect(tabParts(docName, '.md')).toEqual({
+      baseName: docName,
+      extension: '.md',
+      label: `${docName}.md`,
+      prefix: '',
     });
   });
 

@@ -7835,6 +7835,10 @@ msgstr "بھیجنے کے لیے تمام تبصرے منتخب کریں"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Markdown کی جانچیں اس فائل پر لاگو نہیں ہوتیں۔"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown سورس"

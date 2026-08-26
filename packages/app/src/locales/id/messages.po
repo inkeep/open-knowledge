@@ -7831,6 +7831,10 @@ msgstr "Tandai semua komentar untuk dikirim"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Pemeriksaan Markdown tidak berlaku untuk file ini."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Sumber markdown"

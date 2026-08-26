@@ -7831,6 +7831,10 @@ msgstr "পাঠানোর জন্য সব মন্তব্য চি�
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Markdown যাচাই এই ফাইলে প্রযোজ্য নয়।"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown সোর্স"

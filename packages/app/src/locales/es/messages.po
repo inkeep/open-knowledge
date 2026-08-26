@@ -7835,6 +7835,10 @@ msgstr "Marcar todos los comentarios para enviar"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Las comprobaciones de Markdown no se aplican a este archivo."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Código markdown"
