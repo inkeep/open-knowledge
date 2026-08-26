@@ -665,6 +665,9 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
         appVersion: 'test-0.0.0',
         instanceLabel: null,
         getPathForFile: () => null,
+        // Crash annotations have no meaning in a fixture; the reporter only
+        // needs the method to exist so it attaches its observer at all.
+        setDisplayLockCrashKey: () => undefined,
       } satisfies OkDesktopBridge;
 
       // biome-ignore lint/suspicious/noExplicitAny: test-only global attachment.

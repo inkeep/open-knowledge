@@ -59,6 +59,7 @@
  */
 
 import { closeSync, openSync, readSync, realpathSync } from 'node:fs';
+import { DISPLAY_LOCK_CRASH_KEY } from '../shared/display-lock-crash-key.ts';
 import { asReportableAppVersion } from './crashed-app-version.ts';
 import { isPathWithinProject } from './path-containment.ts';
 
@@ -805,40 +806,57 @@ function findModuleAnnotation(
  * descendant processes. Classify first.
  */
 export function readMinidumpAccessibilityMode(dumpPath: string): MinidumpAccessibilityModeRead {
+  const read = readDumpAnnotation(dumpPath, AX_MODE_ANNOTATION_KEY);
+  return { mode: read.value, parseFailed: read.parseFailed };
+}
+
+/**
+ * Walk `dumpPath`'s Crashpad stream and return the annotation stored under
+ * `key`, or null when the dump carries none.
+ *
+ * Shared by every annotation reader here so the minidump traversal — signature
+ * check, stream-count ceiling, directory read, Crashpad-stream selection — has
+ * one implementation rather than one per key. The value/parseFailed split is
+ * the callers' contract: null with `parseFailed: false` is "the dump does not
+ * say", null with `parseFailed: true` is "the parser broke".
+ */
+function readDumpAnnotation(
+  dumpPath: string,
+  key: string,
+): { value: string | null; parseFailed: boolean } {
   let fd: number | null = null;
   try {
     fd = openSync(dumpPath, 'r');
     const header = readExactly(fd, HEADER_BYTES, 0);
     if (header === null || header.readUInt32LE(0) !== MINIDUMP_SIGNATURE) {
-      return { mode: null, parseFailed: false };
+      return { value: null, parseFailed: false };
     }
     const streamCount = header.readUInt32LE(NUMBER_OF_STREAMS_OFFSET);
-    if (streamCount === 0 || streamCount > MAX_STREAMS) return { mode: null, parseFailed: false };
+    if (streamCount === 0 || streamCount > MAX_STREAMS) return { value: null, parseFailed: false };
 
     const directory = readExactly(
       fd,
       streamCount * DIRECTORY_ENTRY_BYTES,
       header.readUInt32LE(STREAM_DIRECTORY_RVA_OFFSET),
     );
-    if (directory === null) return { mode: null, parseFailed: false };
+    if (directory === null) return { value: null, parseFailed: false };
 
     for (let i = 0; i < streamCount; i += 1) {
       const at = i * DIRECTORY_ENTRY_BYTES;
       if (directory.readUInt32LE(at) !== CRASHPAD_INFO_STREAM_TYPE) continue;
-      const read = readModuleAnnotation(
+      return readModuleAnnotation(
         fd,
         directory.readUInt32LE(at + DIRECTORY_ENTRY_RVA_OFFSET),
         directory.readUInt32LE(at + DIRECTORY_ENTRY_SIZE_OFFSET),
-        AX_MODE_ANNOTATION_KEY,
+        key,
       );
-      return { mode: read.value, parseFailed: read.parseFailed };
     }
-    return { mode: null, parseFailed: false };
+    return { value: null, parseFailed: false };
   } catch {
     // Unopenable file, torn read, permissions change mid-scan, or a dump that
     // is not a minidump — none of which is a broken parser, so none of which
     // sets the flag. Matches what `readMinidumpFacts` does with the same shapes.
-    return { mode: null, parseFailed: false };
+    return { value: null, parseFailed: false };
   } finally {
     if (fd !== null) {
       try {
@@ -848,4 +866,45 @@ export function readMinidumpAccessibilityMode(dumpPath: string): MinidumpAccessi
       }
     }
   }
+}
+
+export interface MinidumpDisplayLockRead {
+  /**
+   * OK's `ok_display_lock` crash key as the crashed renderer last published it,
+   * or null when the dump does not carry one.
+   *
+   * Null is "we do not know", never "no display lock was active". A renderer
+   * that died before the editor mounted never published a value; so does a dump
+   * for a process with no renderer in it, a build predating the key, and a dump
+   * truncated before its Crashpad stream. The only thing null rules out is a
+   * confident "nothing was locked".
+   *
+   * What a NON-null value means, since it is equally easy to over-read. The
+   * shape is `v1 lock=<0|1> f=<n> n=<n> s=<0|1>`, written by the app's
+   * `display-lock-crash-key` reporter, and it describes `.ok-chunk-wrapper`
+   * (`content-visibility: auto`) transitions ONLY. The other display-lock site,
+   * `.ok-mode-hidden`, is `content-visibility: hidden` and cannot fire the
+   * event this is built on, so a crash there carries whatever the chunk
+   * wrappers last did and says nothing about the pane.
+   *
+   * `s` is the field that dates the reading: `s=0` means a transition burst was
+   * still in flight when the process died, `s=1` means the last burst had
+   * already settled and the rest of the value is residue rather than something
+   * that coincided with the crash.
+   */
+  state: string | null;
+  /** True only when the parser itself threw, which is a bug in this module. */
+  parseFailed: boolean;
+}
+
+/**
+ * Read OK's display-lock crash key out of `dumpPath`.
+ *
+ * Same ownership caveat as `readMinidumpAccessibilityMode`: call this only on a
+ * dump already classified as ours, because Crashpad stamps our annotations onto
+ * dumps it writes for descendant processes too.
+ */
+export function readMinidumpDisplayLockState(dumpPath: string): MinidumpDisplayLockRead {
+  const read = readDumpAnnotation(dumpPath, DISPLAY_LOCK_CRASH_KEY);
+  return { state: read.value, parseFailed: read.parseFailed };
 }

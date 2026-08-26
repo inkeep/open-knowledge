@@ -31,6 +31,7 @@ import { selectDesktopRootApp } from '@/components/desktop-root-app';
 import { ReportBugCrashInviteTrigger } from '@/components/ReportBugCrashInviteTrigger';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { startDisplayLockCrashKeyReporter } from '@/editor/display-lock-crash-key';
 // Side-effect import to load the `Window.okDesktop?` global augmentation.
 import '@/lib/desktop-bridge-types';
 import { useHydrateRegisteredAgentMeta } from '@/lib/acp/catalog';
@@ -247,6 +248,15 @@ function RegisteredAgentHydrator(): null {
   useHydrateRegisteredAgentMeta();
   return null;
 }
+
+// Publish editor display-lock transitions as a desktop crash key for the whole
+// life of this renderer. Deliberately not scoped to an editor mount: the key
+// describes the renderer Crashpad may be about to dump, and a display-lock
+// abort can land during a remount, when a mount-scoped observer would be
+// detached. Self-declines to a no-op when there is no desktop bridge to
+// annotate, so the browser build pays nothing. Never stopped — the only
+// terminal event for it is the renderer going away.
+startDisplayLockCrashKeyReporter({ root: document });
 
 createRoot(root).render(
   <StrictMode>
