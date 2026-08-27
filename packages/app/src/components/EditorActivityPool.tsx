@@ -65,9 +65,9 @@ import type { ServerRestartRecoveryState } from '@/editor/provider-pool';
 import {
   BODY_ANCHOR_ATTR,
   getDocScrollState,
-  isScrollRestoreSuppressed,
   rememberDocScrollState,
   scrollFraction,
+  scrollSuppressionHolder,
 } from '@/editor/scroll-restore-coordination';
 import { TiptapEditor } from '@/editor/TiptapEditor';
 import type { EditorModeValue } from '@/editor/use-editor-mode';
@@ -820,7 +820,17 @@ export function ScrollPreservingContainer({
     // A mode-switch landing owns the scroll for this document during its settle
     // window; stand down so there is a single writer and the restore does not
     // overwrite the landing with the pre-landing position.
-    if (isScrollRestoreSuppressed(docName)) return;
+    //
+    // For a LANDING only, because this effect gets exactly one chance: it reads
+    // the holder once and its deps carry no signal that fires when a hold
+    // lapses, so returning here is a restore that never runs rather than one
+    // that runs later. Standing down for a landing still leaves a deliberate
+    // position, since the landing writes one. Standing down for an explicit
+    // navigation would not: it has already written its position and is only
+    // defending it, while `display:none` zeroed this scroller on the way out
+    // (the reason the position is captured by the scroll listener above and not
+    // read here) — so the reader would be handed the top of the document.
+    if (scrollSuppressionHolder(docName) === 'landing') return;
 
     const saved = getDocScrollState(docName);
     // Cross-mode re-activation floor. The saved offset was measured against the
@@ -971,15 +981,43 @@ export function ScrollPreservingContainer({
     el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
-      // A landing acquired the scroll for this document mid-restore — stop
-      // competing so the landing is the single writer. Probed BEFORE the
-      // external-scroll check below: a landing's own writes would otherwise
-      // read as a takeover of unknown origin, and the named reason is the more
-      // precise signal for an exit we can attribute exactly.
-      if (isScrollRestoreSuppressed(docName)) {
+      // Another writer acquired the scroll for this document mid-restore — a
+      // mode-switch landing for its settle window, or an explicit navigation
+      // for its brief hold. Stop competing either way, so that writer is the
+      // single one. Probed BEFORE the external-scroll check below: its own
+      // writes would otherwise read as a takeover of unknown origin, and the
+      // holder attributes the exit exactly.
+      //
+      // `reason` carries the holder rather than a fixed value. Each of the
+      // sibling reasons names a real actor, and this is the branch that used to
+      // absorb every navigation under the wrong one: an operator reading a
+      // trace for "why did scroll restore stop here" would go to the landing
+      // controller and find no matching mode-switch mark, when the cause was an
+      // outline click.
+      //
+      // The handover gets a mark of its own, UNGATED, because `yielded` cannot
+      // carry it: `yielded` means a restore that never completed, which is why
+      // IT is gated — and a restore that HAS landed and is re-applying its
+      // target frame after frame is exactly the state an explicit navigation
+      // collides with. Reported only through `yielded`, that common case is
+      // silent: the last thing recorded is a phase-success, so a restore cut
+      // short by a named writer reads the same as one that ran undisturbed.
+      // Widening `yielded` instead would make a healthy restore read as an
+      // incomplete one, trading one attribution error for another. Both marks
+      // fire when a restore that never landed is taken over, and they say
+      // different things: one that it did not complete, one who has the
+      // scroller now. No seam here — this reader sees the holder kind the
+      // registry keeps, not the click that produced it.
+      const holder = scrollSuppressionHolder(docName);
+      if (holder) {
+        mark('ok/scroll-restore/superseded', {
+          holder,
+          elapsedMs: performance.now() - startTs,
+          finalScrollTop: el.scrollTop,
+        });
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
-            reason: 'landing',
+            reason: holder,
             elapsedMs: performance.now() - startTs,
             finalScrollTop: el.scrollTop,
           });

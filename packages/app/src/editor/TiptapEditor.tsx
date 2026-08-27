@@ -1409,9 +1409,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       const scrollToChange = (): void => {
         const sv = liveView();
         if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
-        // Following an agent's write is not the user navigating, so it defers to
-        // a mode-switch landing rather than pre-empting one; the later follow-up
-        // attempts run once the landing has settled and released.
+        // Following an agent's write is not the user navigating, so it yields to
+        // whoever holds the scroller rather than pre-empting them. Whether a
+        // later rung of the follow-up ladder gets through is the holder's to
+        // decide: a landing may settle and release inside the ladder, but a
+        // navigation's hold outlasts every rung, so a follow that coincides with
+        // one is dropped outright rather than deferred. That is the intended
+        // order — the place the user just asked for outranks the place the agent
+        // wrote.
         if (isScrollRestoreSuppressed(docName)) return;
         try {
           const docSize = sv.state.doc.content.size;
@@ -1544,7 +1549,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       // A deep link is an explicit navigation and supersedes a position-
       // preserving landing. Reporting a stand-down as "not scrolled" feeds the
       // retry ladder below, which re-tries once the other navigation released.
-      return runScrollNavigation(docName, () => {
+      return runScrollNavigation(docName, 'deep-link', () => {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
@@ -1656,7 +1661,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       const headings = realView.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
       const target = headings[detail.index];
       if (!target) return;
-      runScrollNavigation(docName, () => {
+      runScrollNavigation(docName, 'outline', () => {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }

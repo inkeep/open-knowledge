@@ -8,9 +8,9 @@
  *
  * Naming convention: `ok/<subsystem>/<event>` where subsystem is
  * one of `nav`, `sync`, `activity`, `render`, `editor`, `sidebar`, `outline`,
- * `vitals`, `mount`, `cold`, `startup`, `scroll-restore`. `validatePerfMarkName` is a dev-only lint of the
- * shape; it `console.warn`s in dev and returns silently so emission is always
- * best-effort.
+ * `vitals`, `mount`, `cold`, `startup`, `scroll-restore`, `scroll-nav`.
+ * `validatePerfMarkName` is a dev-only lint of the shape; it `console.warn`s in
+ * dev and returns silently so emission is always best-effort.
  *
  * Production cost is one `performance.measure` call. The collector push is
  * `no-op` in non-DEV builds (see `collector.ts`).

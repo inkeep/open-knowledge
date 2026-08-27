@@ -79,7 +79,7 @@ function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docN
   const heading = sourceHeadingLines(view.state.doc)[detail.index];
   if (!heading) return;
 
-  runScrollNavigation(docName, () => {
+  runScrollNavigation(docName, 'outline', () => {
     view.dispatch({
       selection: EditorSelection.cursor(heading.from),
       effects: EditorView.scrollIntoView(heading.from, { y: 'start' }),
@@ -103,7 +103,7 @@ export function applyRawMdxNavigation(
     // Clamp offset to doc length (offset may exceed doc length if content
     // differs between Y.Text and originalSpan).
     const pos = Math.min(detail.offset, doc.length);
-    runScrollNavigation(docName, () => {
+    runScrollNavigation(docName, 'raw-mdx', () => {
       view.dispatch({
         selection: EditorSelection.cursor(pos),
         effects: EditorView.scrollIntoView(pos, { y: 'center' }),
@@ -114,13 +114,19 @@ export function applyRawMdxNavigation(
 }
 
 /** Jump to a lint diagnostic's 1-based line/column. Lines/columns are clamped —
- *  the doc may shift between the click and this dispatch. */
-function applyLintNavigation(view: EditorView, detail: LintNavDetail, docName: string): void {
+ *  the doc may shift between the click and this dispatch.
+ *
+ *  Returns whether the jump ran. A landing that is itself an explicit navigation
+ *  keeps the scroller and this click stands down whole, so a caller holding the
+ *  banked intent must keep it for a later replay rather than spend it on a jump
+ *  that did not happen. The WYSIWYG half of this seam gates its clear the same
+ *  way. */
+function applyLintNavigation(view: EditorView, detail: LintNavDetail, docName: string): boolean {
   const doc = view.state.doc;
   const lineNumber = Math.min(Math.max(detail.line, 1), doc.lines);
   const line = doc.line(lineNumber);
   const pos = Math.min(line.from + Math.max(0, detail.column - 1), line.to);
-  runScrollNavigation(docName, () => {
+  return runScrollNavigation(docName, 'problems-row', () => {
     view.dispatch({
       selection: EditorSelection.cursor(pos),
       // `y: 'start'` (not 'center'/'nearest'): in full-page source mode the editor
@@ -275,7 +281,7 @@ export function SourceEditor({
               // landing's own target milliseconds later.
               search({
                 scrollToMatch: (range) =>
-                  claimScrollerForNavigation(resolvedDocName)
+                  claimScrollerForNavigation(resolvedDocName, 'find-match')
                     ? EditorView.scrollIntoView(range, { y: 'start' })
                     : noScrollEffect.of(null),
               }),
@@ -540,8 +546,7 @@ export function SourceEditor({
       if (!detail || detail.docName !== docName || !isSourceModeActive) return;
       const view = viewRef.current;
       if (!view) return;
-      applyLintNavigation(view, detail, docName);
-      clearPendingSourceNavigation(docName);
+      if (applyLintNavigation(view, detail, docName)) clearPendingSourceNavigation(docName);
     }
     window.addEventListener(LINT_NAV_EVENT, onLintNav);
     return () => window.removeEventListener(LINT_NAV_EVENT, onLintNav);

@@ -380,14 +380,18 @@ describe('startLanding — explicit navigation pre-emption', () => {
     });
     expect(container.scrollTop).toBe(2000 - TOOLBAR);
 
-    const ran = runScrollNavigation('doc', () => {
+    const ran = runScrollNavigation('doc', 'outline', () => {
       container.scrollTop = NAV_SCROLL_TOP;
     });
 
     expect(ran).toBe(true);
     expect(container.scrollTop).toBe(NAV_SCROLL_TOP);
     expect(outcomes).toEqual([{ status: 'cancelled', reason: 'superseded' }]);
-    expect(isScrollRestoreSuppressed('doc')).toBe(false); // released before the scroll
+    // The superseded landing let go of the flag as it unwound; the only hold
+    // left is the navigation's own. Ref-counting is what makes this pair a leak
+    // check: a landing handle that survived its supersede would keep the count
+    // above zero even after the navigation released.
+    expect(isScrollRestoreSuppressed('doc')).toBe(true);
     // The queued intent was already consumed to start this landing, so there is
     // nothing stale left to replay — same as a user-scroll cancel.
     expect(discard).not.toHaveBeenCalled();
@@ -399,6 +403,7 @@ describe('startLanding — explicit navigation pre-emption', () => {
     vi.advanceTimersByTime(2000);
     expect(container.scrollTop).toBe(NAV_SCROLL_TOP);
     expect(outcomes).toHaveLength(1);
+    expect(isScrollRestoreSuppressed('doc')).toBe(false); // and neither hold leaked
   });
 
   test('does not persist the position it would have erased', () => {
@@ -410,7 +415,7 @@ describe('startLanding — explicit navigation pre-emption', () => {
       intent: 'toggle',
     });
 
-    runScrollNavigation('doc', () => {
+    runScrollNavigation('doc', 'outline', () => {
       container.scrollTop = NAV_SCROLL_TOP;
     });
     vi.advanceTimersByTime(2000);
@@ -435,7 +440,7 @@ describe('startLanding — explicit navigation pre-emption', () => {
     });
     const landingTarget = container.scrollTop;
 
-    const ran = runScrollNavigation('doc', scroll);
+    const ran = runScrollNavigation('doc', 'outline', scroll);
 
     // A jump has already placed the caret, so pre-empting it would split caret
     // from viewport — the failure this contract exists to prevent.
@@ -459,7 +464,7 @@ describe('startLanding — explicit navigation pre-emption', () => {
       onOutcome: (o) => outcomes.push(o),
     });
 
-    expect(runScrollNavigation('some-other-doc', () => {})).toBe(true);
+    expect(runScrollNavigation('some-other-doc', 'outline', () => {})).toBe(true);
 
     expect(outcomes).toEqual([]);
     vi.advanceTimersByTime(150);
@@ -477,7 +482,7 @@ describe('startLanding — explicit navigation pre-emption', () => {
     vi.advanceTimersByTime(150); // land
 
     const scroll = vi.fn();
-    expect(runScrollNavigation('doc', scroll)).toBe(true);
+    expect(runScrollNavigation('doc', 'outline', scroll)).toBe(true);
     expect(scroll).toHaveBeenCalledTimes(1);
   });
 });
@@ -500,7 +505,7 @@ describe('startLanding — a throwing measurer releases every hold', () => {
   function expectHoldsReleased(): void {
     expect(isScrollRestoreSuppressed('doc')).toBe(false);
     const scroll = vi.fn();
-    expect(runScrollNavigation('doc', scroll)).toBe(true);
+    expect(runScrollNavigation('doc', 'outline', scroll)).toBe(true);
     expect(scroll).toHaveBeenCalledTimes(1);
   }
 

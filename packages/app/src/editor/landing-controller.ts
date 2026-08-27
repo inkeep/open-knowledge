@@ -173,7 +173,7 @@ export function startLanding(params: StartLandingParams): LandingHandle {
   } = params;
   const contentColumn = params.contentColumn ?? container.firstElementChild;
 
-  const suppression = acquireScrollRestoreSuppression(docName);
+  const suppression = acquireScrollRestoreSuppression(docName, 'landing');
   const scrollOwner = registerLandingScrollOwner(docName, {
     yieldsToNavigation: intent === 'toggle',
     supersede: () => cancel('superseded'),

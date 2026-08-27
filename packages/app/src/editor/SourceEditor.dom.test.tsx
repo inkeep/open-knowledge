@@ -8,6 +8,7 @@ import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
 import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';
@@ -493,5 +494,68 @@ describe('SourceEditor cross-mode landing replay', () => {
     await mountWithQueuedJump('source-landing-started');
 
     expect(peekPendingSourceNavigation('source-landing-started')).toBeNull();
+  });
+});
+
+/**
+ * The Problems row banks its intent and then dispatches a live event, so
+ * whichever editor is visible consumes the event and clears the bank. A click
+ * the scroller refuses moved nothing, so clearing on it spends the intent on a
+ * jump that never happened. The WYSIWYG half of this seam gates its clear on
+ * the same answer.
+ */
+describe('SourceEditor Problems-row navigation', () => {
+  const detailFor = (docName: string): LintNavDetail => ({ docName, line: 3, column: 1 });
+
+  beforeEach(() => {
+    __resetScrollRestoreCoordination();
+    clearPendingSourceNavigationsForTest();
+    globalThis.fetch = vi.fn(async () => Response.json({})) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    __resetScrollRestoreCoordination();
+    clearPendingSourceNavigationsForTest();
+    cleanup();
+    for (const docName of mountedDocNames) evictCmEditor(docName);
+    mountedDocNames.clear();
+    globalThis.fetch = originalFetch;
+  });
+
+  /**
+   * Mount source mode, then bank and click in the panel's own order. Banking
+   * before the mount would be replayed and consumed by the mount-time effect,
+   * which is a different path from the live click under test.
+   */
+  async function clickProblemsRow(docName: string): Promise<void> {
+    const { provider, ytext } = makeProvider(docName, '# heading\n\nbody\n\nmore body');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+    await findCmContent(container);
+    rememberPendingSourceNavigation(docName, { kind: 'lint', detail: detailFor(docName) });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail: detailFor(docName) }));
+    });
+  }
+
+  test('keeps the banked intent when a landing refuses the scroller', async () => {
+    const docName = 'source-problems-row-refused';
+    // A landing that is itself an explicit navigation keeps the scroller: it has
+    // already placed the caret, so this click stands down whole.
+    registerLandingScrollOwner(docName, { yieldsToNavigation: false, supersede: () => {} });
+
+    await clickProblemsRow(docName);
+
+    expect(peekPendingSourceNavigation(docName)).toEqual({
+      kind: 'lint',
+      detail: detailFor(docName),
+    });
+  });
+
+  test('consumes it once the jump has run', async () => {
+    const docName = 'source-problems-row-granted';
+
+    await clickProblemsRow(docName);
+
+    expect(peekPendingSourceNavigation(docName)).toBeNull();
   });
 });

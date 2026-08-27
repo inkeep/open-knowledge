@@ -16,10 +16,7 @@
  */
 
 import type { Editor } from '@tiptap/react';
-import {
-  acquireScrollRestoreSuppression,
-  runScrollNavigation,
-} from '@/editor/scroll-restore-coordination';
+import { runScrollNavigation } from '@/editor/scroll-restore-coordination';
 import { getEditorView } from '@/editor/utils/get-editor-view';
 
 /**
@@ -31,44 +28,6 @@ const BOTTOM_ROOM_PX = 220;
 
 /** Breathing room below the toolbar when we do move, so it isn't flush. */
 const LEAD_PX = 24;
-
-/**
- * How long a jump holds the document's scroller after writing to it.
- *
- * Long enough for the scroll-restore loop to see the flag on its next frame and
- * stand down (it exits for good at that point), short enough that the other
- * readers of this flag — the agent-follow scroll, the composer's bottom pin —
- * are barely affected.
- */
-const JUMP_OWNERSHIP_MS = 600;
-
-/**
- * Perform a jump's scroll as the document's single scroll writer, or decline.
- *
- * TWO writers have to be told, and they take different signals:
- *
- *   - Mode-switch landings register as scroll owners; `runScrollNavigation`
- *     pre-empts the ones that yield and refuses for one that does not.
- *   - The pool's scroll-restore loop watches `isScrollRestoreSuppressed`. Left
- *     untold it does NOT yield to a jump toward the top of the document: its
- *     takeover test is directional, and a scrollTop DECREASE is indistinguishable
- *     from the browser's shrink-clamp, so it re-applies its own target over ours,
- *     frame after frame, until its 10-second backstop expires. That is why a
- *     comment above the current view did nothing for click after click and then
- *     suddenly worked — the clicks were not accumulating, the backstop was
- *     running out.
- *
- * Returns whether the scroll ran.
- */
-function applyJumpScroll(docName: string, write: () => void): boolean {
-  return runScrollNavigation(docName, () => {
-    // Acquired BEFORE the write: the restore loop reads the flag on the frame it
-    // measures, and a write it sees first is measured as drift to correct.
-    const suppression = acquireScrollRestoreSuppression(docName);
-    write();
-    window.setTimeout(() => suppression.release(), JUMP_OWNERSHIP_MS);
-  });
-}
 
 export interface AnchorViewport {
   /** The passage, in viewport coordinates. */
@@ -121,10 +80,10 @@ export function scrollportInsetTop(container: HTMLElement): number {
 /**
  * Bring a comment's passage into a readable position, with room beneath it.
  *
- * Returns whether the navigation RAN — see {@link applyJumpScroll} for what can
- * decline it and for the two scroll writers a jump has to out-rank. `docName` is
- * required so that contract is enforced by this producer rather than by each
- * call site remembering to ask.
+ * Returns whether the navigation RAN — see `claimScrollerForNavigation` for what
+ * can decline it and for the two scroll writers a jump has to out-rank.
+ * `docName` is required so that contract is enforced by that producer rather
+ * than by each call site remembering to ask.
  */
 export function scrollAnchorIntoView(
   editor: Editor,
@@ -148,7 +107,7 @@ export function scrollAnchorIntoView(
   // No scrollport of our own to drive (an embedded or content-sized editor):
   // ProseMirror's minimal scroll is still better than not moving at all.
   if (!container) {
-    return applyJumpScroll(docName, () => editor.commands.scrollIntoView());
+    return runScrollNavigation(docName, 'comment-reveal', () => editor.commands.scrollIntoView());
   }
   let start: { top: number; bottom: number };
   let end: { top: number; bottom: number };
@@ -172,7 +131,7 @@ export function scrollAnchorIntoView(
   // not jolt the page for each.
   if (delta === 0) return true;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  return applyJumpScroll(docName, () =>
+  return runScrollNavigation(docName, 'comment-reveal', () =>
     container.scrollTo({
       top: container.scrollTop + delta,
       behavior: opts?.instant || reduceMotion ? 'auto' : 'smooth',

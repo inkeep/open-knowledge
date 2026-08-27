@@ -430,7 +430,7 @@ describe('TipTap cache — lifecycle', () => {
     h.editorDom.scrollTop = 1234;
     parkTiptapEditor(entry);
 
-    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppression = acquireScrollRestoreSuppression(h.docName, 'landing');
     const suppressed = makeNode();
     mountTiptapEditor({
       docName: h.docName,
@@ -450,6 +450,33 @@ describe('TipTap cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     expect(released.scrollTop).toBe(1234);
+  });
+
+  test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
+    // A navigation's hold is not a landing's, and this reader gets one chance.
+    // A landing is still placing a position and will write one, so standing down
+    // for it preserves a deliberate position. A navigation has already written
+    // its position, and the parked scrollTop IS that result — so standing down
+    // here would not defer the restore, it would drop it, and the reader would
+    // arrive at the top of the document rather than where they navigated to.
+    const h = makeTiptapHarness('doc-a');
+    const entry = mountTiptapEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.editorDom.scrollTop = 1234;
+    parkTiptapEditor(entry);
+
+    acquireScrollRestoreSuppression(h.docName, 'navigation');
+    const held = makeNode();
+    mountTiptapEditor({
+      docName: h.docName,
+      container: held as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+
+    expect(held.scrollTop).toBe(1234);
   });
 
   test('mount: cache-hit restores focus ONLY when editor owned focus at park time', () => {
@@ -1217,7 +1244,7 @@ describe('CM6 cache — lifecycle', () => {
     h.viewDom.scrollTop = 42;
     parkCmEditor(entry);
 
-    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppression = acquireScrollRestoreSuppression(h.docName, 'landing');
     const suppressed = makeNode();
     mountCmEditor({
       docName: h.docName,
@@ -1235,6 +1262,31 @@ describe('CM6 cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     expect(released.scrollTop).toBe(42);
+  });
+
+  test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
+    // Source-mode twin of the TipTap case: a navigation has already written its
+    // position, and the parked scrollTop is that result. This write is a
+    // one-shot into a target at zero, so standing down for it drops the position
+    // rather than deferring it.
+    const h = makeCmHarness('cm-doc-a');
+    const entry = mountCmEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.viewDom.scrollTop = 42;
+    parkCmEditor(entry);
+
+    acquireScrollRestoreSuppression(h.docName, 'navigation');
+    const held = makeNode();
+    mountCmEditor({
+      docName: h.docName,
+      container: held as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+
+    expect(held.scrollTop).toBe(42);
   });
 
   test('evict: destroys view + provider + ydoc', () => {

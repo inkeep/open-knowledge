@@ -66,7 +66,7 @@ import { getMountId } from './mount-id-registry';
 // module — keep it that way to preserve coordinated lifecycle between this
 // V2 cache and the mount-promise cache.
 import { invalidateMountPromise } from './mount-promise';
-import { isScrollRestoreSuppressed } from './scroll-restore-coordination';
+import { scrollSuppressionHolder } from './scroll-restore-coordination';
 
 /**
  * Read the per-editor Yjs UndoManager so the caller can null its `restore`
@@ -673,11 +673,18 @@ export function mountTiptapEditor(params: MountTiptapParams): TiptapCacheEntry {
     reuse.activeMountKey = docName;
     touchLru(tiptapLru, docName);
     // Restore scroll AFTER DOM is re-attached (scrollTop on detached nodes
-    // is a no-op in real browsers). Stand down when a mode-switch landing owns
+    // is a no-op in real browsers). Stand down when a mode-switch LANDING owns
     // the scroller for this doc — this warm-mount restore fires at the same
     // moment as a landing and would otherwise overwrite it with the parked
     // position.
-    if (!isScrollRestoreSuppressed(docName)) container.scrollTop = reuse.scrollTop;
+    //
+    // A navigation's hold does NOT stand it down. This write happens once, with
+    // no retry, into a reparent target sitting at scrollTop 0, so deferring to a
+    // writer that has already finished loses the position outright rather than
+    // postponing it. And the parked scrollTop IS a navigation's result whenever
+    // the navigation preceded the park, so writing it re-applies the very
+    // position the hold is defending.
+    if (scrollSuppressionHolder(docName) !== 'landing') container.scrollTop = reuse.scrollTop;
     // Focus restore is gated on "had focus at park time". Blindly calling
     // .focus() on every mount hijacks focus from keyboard users
     // Tab-navigating through the sidebar and from deep-link cold loads
@@ -996,9 +1003,12 @@ export function mountCmEditor(params: MountCmParams): CmCacheEntry {
     reparentCmDom(reuse, container);
     reuse.activeMountKey = docName;
     touchLru(cmLru, docName);
-    // Stand down when a mode-switch landing owns the scroller for this doc, so
-    // the warm-mount restore cannot overwrite the landing with the parked scroll.
-    if (!isScrollRestoreSuppressed(docName)) container.scrollTop = reuse.scrollTop;
+    // Stand down when a mode-switch LANDING owns the scroller for this doc, so
+    // the warm-mount restore cannot overwrite the landing with the parked
+    // scroll. A navigation's hold does not stand it down, for the reason spelled
+    // out at the Tiptap reparent above: this write is a one-shot into a target
+    // at zero, and the parked position is the navigation's own result.
+    if (scrollSuppressionHolder(docName) !== 'landing') container.scrollTop = reuse.scrollTop;
     if (reuse.hadFocus) {
       try {
         reuse.view.focus();

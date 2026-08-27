@@ -124,13 +124,13 @@ describe('ScrollPreservingContainer scroll-restore suppression', () => {
   });
 
   test('stands down and writes no scroll position while a landing holds suppression', () => {
-    acquireScrollRestoreSuppression('doc-b');
+    acquireScrollRestoreSuppression('doc-b', 'landing');
     const { container } = render(<Harness active docName="doc-b" />);
     expect(scrollerOf(container).scrollTop).toBe(0);
   });
 
   test('resumes restoring on the next activation after the landing releases', () => {
-    const handle = acquireScrollRestoreSuppression('doc-c');
+    const handle = acquireScrollRestoreSuppression('doc-c', 'landing');
     const { container, rerender } = render(<Harness active={false} docName="doc-c" />);
     // Activate while suppressed → the restore stands down.
     rerender(<Harness active docName="doc-c" />);

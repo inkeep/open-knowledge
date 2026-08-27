@@ -1,0 +1,7 @@
+---
+"@inkeep/open-knowledge": patch
+---
+
+Clicking an outline row that sits above where you are reading now moves you there, instead of doing nothing for the first ten seconds after a document opens. A freshly opened document keeps a loop running that puts you back where you left off, and that loop only recognized someone else taking the scroller when the page moved **down**. A click aimed **up** the document looked like drift to it, so it put the page back, frame after frame, until the loop gave up ten seconds later. The click was never lost; it was being undone. Every explicit navigation now stands that loop down while it lands, so the same fix covers outline rows in both editing modes, Problems rows, raw-MDX jumps, deep links, and find/replace matches.
+
+One behavior worth knowing, because it is new: for about half a second after a jump, other things that scroll the page hold off — the view following an agent's writes, the pull to the bottom of the document while the composer resizes, and revealing the caret as you type. The place you just asked for outranks all of them. Following a link straight to a heading holds a little longer, because it re-aims a few times while the page settles. While you are stepping through find results, or while a linked comment settles into place, the hold-off lasts as long as that does. Reopening a document you had jumped in still returns you to where the jump left you.
