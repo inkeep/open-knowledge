@@ -580,23 +580,27 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     // Single-shot here holds a candidate to a STRICTER bar than the tier that
     // gates main, which retries each package once and treats a retry-pass as
     // green. These tiers spawn real processes (an orphaned CLI reaped on host
-    // death), so one flake under runner contention refused a sound fix on
-    // 2026-08-04 and the page blamed the fix for it.
+    // death), so one flake under runner contention has refused a sound fix and left
+    // the page blaming the fix for it.
     const runs = [...verify.matchAll(/turbo run typecheck test/g)];
     expect(
       runs.length,
       'verify must invoke the tiers twice: once, then one flake retry',
     ).toBe(2);
-    expect(verify).toContain('elif pnpm exec turbo run typecheck test');
+    // The retry now sits in the ordinary-failure arm of a case, because a
+    // budget blow is deliberately routed past it.
+    expect(verify).toContain('case "$FIRST_STATUS" in');
+    const ordinaryArm = verify.indexOf('*)', verify.indexOf('case "$FIRST_STATUS" in'));
+    expect(ordinaryArm, 'the ordinary-failure arm must exist').toBeGreaterThan(-1);
+    expect(verify.indexOf('| tee "$RETRY_LOG"')).toBeGreaterThan(ordinaryArm);
   });
 
   test('the first attempt runs to completion so the retry stays incremental', () => {
-    // Load-bearing against this job's cancel window, not a style choice.
-    // turbo defaults to `--continue=never`, which cancels every in-flight and
-    // unstarted task on the first failure — none of those cache, so the retry
-    // re-runs them and a late failure costs close to two full passes. With
-    // `cancel-in-progress: true` a tick that outruns the next one is killed
-    // before it can page, losing the refusal entirely.
+    // A cost guard, not a style choice. turbo defaults to `--continue=never`,
+    // which cancels every in-flight and unstarted task on the first failure —
+    // none of those cache, so the retry re-runs them and a late failure costs
+    // close to two full passes. That matters because each attempt now runs
+    // under its own budget, and two near-full passes is how a tick reaches it.
     // Scoped to the invocation LINES, not the step text: the comment above
     // them names both flags to explain the choice, and a ratchet that bans
     // naming what it rules out just gets worked around.
@@ -612,14 +616,85 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(retry).not.toContain('--force');
   });
 
-  test('only a second consecutive failure mints verdict=fail', () => {
-    const failAt = verify.indexOf('verdict=fail');
-    const elifAt = verify.indexOf('elif pnpm exec turbo run typecheck test');
-    expect(elifAt).toBeGreaterThan(-1);
-    // The install-failure guard mints its own verdict=fail earlier; the one
-    // that matters here is the tier verdict, which must sit after the retry.
-    expect(verify.lastIndexOf('verdict=fail')).toBeGreaterThan(elifAt);
-    expect(failAt).toBeGreaterThan(-1);
+  test('only a second consecutive failure mints a refusing verdict', () => {
+    const installGuardAt = verify.indexOf('verdict=fail');
+    const retryAt = verify.indexOf('| tee "$RETRY_LOG"');
+    expect(retryAt).toBeGreaterThan(-1);
+    // The install-failure guard mints its own verdict=fail before the tiers
+    // run. The tier verdict is the one that matters here, and it is emitted
+    // from a variable now, because a blown budget is a different verdict from
+    // a red tier. Either way it must sit after the retry.
+    expect(installGuardAt).toBeGreaterThan(-1);
+    expect(installGuardAt).toBeLessThan(retryAt);
+    expect(verify.indexOf('verdict=${TIER_VERDICT}')).toBeGreaterThan(retryAt);
+  });
+
+  test('each tier attempt runs under its own budget, and a blown one still pages', () => {
+    // The job's `timeout-minutes` is a hard kill that sets no verdict, and every
+    // paging step gates on one — so a job that hits it refuses NOTHING and, since
+    // this group queues rather than cancels, stacks the next verify behind it. A
+    // silent tick is strictly worse than a wrong one here, and bounding turbo's
+    // concurrency made overrun likelier by design. Both attempts are wrapped so a
+    // budget blow arrives as exit 124 and is reported as "could not verify"
+    // rather than as a verdict on the batch.
+    const wrappers = [...verify.matchAll(/timeout --foreground --kill-after=\d+s/g)];
+    expect(wrappers.length, 'both attempts must carry their own budget').toBe(2);
+
+    // Substrings alone would not pin this: 124 and 137 also appear in prose a
+    // few lines up, so deleting the functional branch and keeping the comments
+    // would stay green, and so would transposing the two messages. Anchor on
+    // the gate and require each message on the correct side of it.
+    const gateAt = verify.indexOf('"${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then\n              echo');
+    expect(gateAt, 'the warning must branch on the computed budget flag').toBeGreaterThan(-1);
+    const couldNotVerifyAt = verify.indexOf('COULD NOT VERIFY', gateAt);
+    const notFlakeAt = verify.indexOf('not flake-class', gateAt);
+    expect(couldNotVerifyAt).toBeGreaterThan(gateAt);
+    expect(notFlakeAt).toBeGreaterThan(couldNotVerifyAt);
+
+    // A blown budget must NOT be retried: a second attempt burns another full
+    // budget and buries the signal, which is the PR tier's stated rule. Scoped
+    // INSIDE the FIRST_STATUS case and required to precede the ordinary arm --
+    // `124|137)` also spells the flag computation below, so a bare substring
+    // would survive deleting this arm entirely.
+    const caseAt = verify.indexOf('case "$FIRST_STATUS" in');
+    expect(caseAt).toBeGreaterThan(-1);
+    const blowArm = verify.indexOf('124|137)', caseAt);
+    const ordinaryRetryArm = verify.indexOf('*)', caseAt);
+    expect(blowArm, 'the budget arm must sit inside the FIRST_STATUS case').toBeGreaterThan(caseAt);
+    expect(blowArm, 'the budget arm must precede the retry arm').toBeLessThan(ordinaryRetryArm);
+  });
+
+  test('a tick that mints no verdict still refuses out loud', () => {
+    // Every paging step gates on a verdict and steps default to `if: success()`,
+    // so anything that dies before the tiers -- a bad stable ref, a failed
+    // install, the job ceiling reached during checkout -- skips all of them. The
+    // tier budget closes the commonest door; this is what closes the rest.
+    const guard = bugLaneVerify.indexOf("steps.verify.outputs.verdict == ''");
+    expect(guard, 'a no-verdict tick must still page').toBeGreaterThan(-1);
+    const always = bugLaneVerify.lastIndexOf('always()', guard);
+    expect(always, 'the guard is useless without always()').toBeGreaterThan(-1);
+    expect(guard - always).toBeLessThan(40);
+    // A guard that runs and says nothing is the same silence it exists to end,
+    // so require the step to actually emit -- and to say which class it is.
+    const emits = bugLaneVerify.indexOf('::warning::', guard);
+    expect(emits, 'the guarded step must emit something').toBeGreaterThan(guard);
+    expect(bugLaneVerify.slice(guard, emits + 200)).toContain('COULD NOT VERIFY');
+  });
+
+  test('a budget blow and a real refusal do not share a page signature', () => {
+    // They differ by VERDICT, which the signature already hashes. That is the
+    // whole reason a blow mints its own verdict instead of riding `fail` with a
+    // flag: a flag has to be threaded to the page, the signature and the gates
+    // separately, and a missed wiring is silent because each reader defaults it.
+    const sigFrom = bugLaneVerify.indexOf('- name: Refusal signature');
+    const sigTo = bugLaneVerify.indexOf('- name: Has this refusal already been paged?');
+    expect(sigFrom).toBeGreaterThan(-1);
+    expect(sigTo).toBeGreaterThan(sigFrom);
+    const sig = bugLaneVerify.slice(sigFrom, sigTo);
+    expect(sig).toContain('"$VERDICT"');
+    expect(verify).toContain('TIER_VERDICT=could-not-verify');
+    // The flag is gone; if it comes back, the threading hazard comes with it.
+    expect(bugLaneVerify).not.toContain('budget_blown');
   });
 
   test('an unchanged refusal is paged once, not once per tick', () => {
