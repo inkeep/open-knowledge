@@ -7,10 +7,13 @@
  * through the socket's async path.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ThreadServerFrame } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type {
+  ThreadEvent,
+  ThreadServerFrame,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
@@ -622,6 +625,141 @@ describe('/collab/thread socket — queue ops', () => {
     expect(manager.getInfo(threadId)?.queue?.[0]?.content).toBe('edited text');
 
     writeFileSync(releasePath, 'go');
+    socket.close();
+  }, 45_000);
+});
+
+describe('/collab/thread socket — crash-recovered replay bound', () => {
+  /**
+   * A crash leaves the meta behind the log: meta rewrites ride info changes,
+   * not each appended event, so `lastSeq` on disk can name an event far short
+   * of the log's real end. Both files are written by hand because that skew is
+   * only reachable by killing a server mid-stream.
+   */
+  function writeCrashStaleThread(
+    localDir: string,
+    threadId: string,
+    events: readonly ThreadEvent[],
+    staleLastSeq: number,
+  ): void {
+    const threadsDir = join(localDir, 'threads');
+    mkdirSync(threadsDir, { recursive: true });
+    writeFileSync(
+      join(threadsDir, `${threadId}.ndjson`),
+      `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+    );
+    writeFileSync(
+      join(threadsDir, `${threadId}.meta.json`),
+      JSON.stringify({
+        version: 1,
+        info: {
+          threadId,
+          agent: { id: 'codex-acp', name: 'Codex', source: 'registry' },
+          title: 'Crashed thread',
+          status: 'running',
+          createdAt: 1,
+          lastActivityAt: 2,
+          modes: null,
+          configOptions: null,
+          lastSeq: staleLastSeq,
+        },
+        sessionId: 'sess-fixed',
+        cwd: localDir,
+        agentRef: { source: 'registry', id: 'codex-acp' },
+      }),
+    );
+  }
+
+  /** Longer than one replay chunk, so the log walks back in more than one frame. */
+  const MULTI_CHUNK_EVENTS: ThreadEvent[] = Array.from({ length: 600 }, (_, i) => ({
+    kind: 'user_message',
+    content: `m${i}`,
+    ts: i + 1,
+  }));
+
+  test('subscribed announces the durable log end, ahead of every replayed event', async () => {
+    const localDir = tmp();
+    const threadId = 'crash-stale';
+    writeCrashStaleThread(localDir, threadId, MULTI_CHUNK_EVENTS, 2);
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    // The rehydrated record still believes the stale meta until the log is read.
+    expect(manager.getInfo(threadId)?.lastSeq).toBe(2);
+
+    const socket = attachFakeSocket(manager);
+    socket.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
+    const subscribed = await socket.awaitFrame('subscribed');
+
+    // The announced bound covers the whole log, so a client that waits for
+    // delivery to reach it cannot mistake a later replay chunk for live traffic.
+    expect(subscribed.info.lastSeq).toBe(MULTI_CHUNK_EVENTS.length - 1);
+    const ops = socket.frames.map((f) => f.op);
+    expect(ops.indexOf('subscribed')).toBeLessThan(ops.indexOf('events'));
+
+    const deadline = Date.now() + 10_000;
+    for (;;) {
+      const replayed = socket.frames.filter(
+        (f): f is Extract<ThreadServerFrame, { op: 'events' }> => f.op === 'events',
+      );
+      const delivered = replayed.reduce((n, f) => n + f.events.length, 0);
+      if (delivered === MULTI_CHUNK_EVENTS.length) {
+        // More than one frame is the point: a single-chunk replay could not
+        // separate an accurate bound from a stale one.
+        expect(replayed.length).toBeGreaterThan(1);
+        expect(replayed[0].fromSeq).toBe(0);
+        break;
+      }
+      if (Date.now() > deadline) throw new Error(`replay stalled at ${delivered} events`);
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    socket.close();
+  }, 45_000);
+
+  test('a failed log resolution is retried rather than cached for the process', async () => {
+    const localDir = tmp();
+    const threadId = 'unreadable-log';
+    const events: ThreadEvent[] = [{ kind: 'user_message', content: 'hello', ts: 1 }];
+    writeCrashStaleThread(localDir, threadId, events, 0);
+    // A directory where the log belongs: it exists, so resolution reaches it,
+    // and reading it throws the way an EACCES/EIO log would.
+    const logPath = join(localDir, 'threads', `${threadId}.ndjson`);
+    rmSync(logPath);
+    mkdirSync(logPath);
+
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+
+    const failing = attachFakeSocket(manager);
+    failing.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
+    await failing.awaitFrame('error');
+    expect(failing.frames.map((f) => f.op)).not.toContain('subscribed');
+    failing.close();
+
+    // Whatever made the log unreadable is gone. The next subscribe has to read
+    // it again: a memoized rejection would answer every later subscribe and
+    // resume for the life of the process, and since `subscribed` is emitted
+    // behind that resolution the thread would stay dark rather than merely
+    // lose its transcript.
+    rmSync(logPath, { recursive: true });
+    writeFileSync(logPath, `${events.map((event) => JSON.stringify(event)).join('\n')}\n`);
+
+    const retry = attachFakeSocket(manager);
+    retry.emit(JSON.stringify({ op: 'subscribe', threadId, sinceSeq: 0 }));
+    const subscribed = await retry.awaitFrame('subscribed');
+    expect(subscribed.info.lastSeq).toBe(events.length - 1);
+    retry.close();
+  }, 45_000);
+
+  test('subscribing to a thread that does not exist errors without announcing a window', async () => {
+    const manager = makeManager(tmp(), tmp());
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(JSON.stringify({ op: 'subscribe', threadId: 'nope', sinceSeq: 0 }));
+    const err = await socket.awaitFrame('error');
+
+    expect(err.code).toBe('unknown-thread');
+    expect(socket.frames.map((f) => f.op)).not.toContain('subscribed');
     socket.close();
   }, 45_000);
 });

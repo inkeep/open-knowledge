@@ -24,5 +24,9 @@ export function transcriptItemId(item: RenderedItem, index: number): string {
       return `pi-bridge:${item.prompt?.requestId ?? index}`;
     case 'notice':
       return `notice:${index}`;
+    case 'agent_notice':
+      // Runtime status carries no producer identity of its own, and two
+      // identical warnings in one turn are two rows.
+      return `agent-notice:${index}`;
   }
 }

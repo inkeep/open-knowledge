@@ -482,6 +482,10 @@ msgstr "{agentName} couldn't start."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} doesn't accept image attachments."
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} reported: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} ahead"
@@ -14594,6 +14598,7 @@ msgstr "Waiting for authorization"
 msgid "Waiting for your approval"
 msgstr "Waiting for your approval"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

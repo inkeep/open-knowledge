@@ -2727,6 +2727,7 @@
     "d2uTPx": ["服务器错误（HTTP ", ["status"], "）"],
     "d3dX3w": ["查询“", ["word"], "”"],
     "d5rK4X": [["chars", "plural", { "other": ["字符"] }]],
+    "d6qW27": [["agentName"], " 报告：", ["headline"]],
     "dD7NPy": ["大纲"],
     "dDpCOp": ["重命名成功，但侧边栏可能不是最新的——请刷新以重新同步"],
     "dEgA5A": ["取消"],

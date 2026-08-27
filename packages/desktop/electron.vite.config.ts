@@ -9,8 +9,13 @@ import { rendererHtmlInput } from '../app/vite.entries';
 import { RENDERER_BABEL_OPTIONS } from '../app/vite.react-babel';
 
 // Inject the app's version onto import.meta.env.VITE_APP_VERSION for the
-// Electron renderer bundle — the separate build path the desktop app ships.
-// `packages/app/vite.config.ts` covers dev + `ok ui`; this covers the renderer.
+// renderer this config builds, which serves unpackaged runs only. A PACKAGED
+// window loads `packages/app`'s own `dist` instead: the CLI copies it to
+// `cli/dist/public` and electron-builder ships that as `Resources/app` (see
+// `electron-builder.yml` `extraResources`, and the `app.isPackaged` branch in
+// `src/main/index.ts`). Both bundles come out of `packages/app` by the same
+// pipeline, so treat this as the second consumer of that source, not as a
+// separate artifact the app ships.
 injectAppVersionEnv();
 
 /**

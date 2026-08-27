@@ -482,6 +482,10 @@ msgstr "{agentName} tidak dapat dijalankan."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} tidak menerima lampiran gambar."
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} melaporkan: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} di depan"
@@ -14590,6 +14594,7 @@ msgstr "Menunggu otorisasi"
 msgid "Waiting for your approval"
 msgstr "Menunggu persetujuan Anda"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

@@ -27,6 +27,8 @@
  *  10. Selection halo transition uses bare `ease-out` instead of
  *      `var(--ease-out-strong)` — consistency with the repo's custom
  *      easing token
+ *  11. Static value imports of the DEV ACP thread harness, which would
+ *      defeat the dynamic-import gate that keeps it out of production
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -138,6 +140,23 @@ function findSpawnIsolationViolations(
     }
   }
   return violations;
+}
+
+/**
+ * Core predicate of the DEV-harness import STOP rule, extracted so the rule
+ * carries a planted-positive self-test (an absence-checker without one is a
+ * vacuous no-op waiting to happen).
+ *
+ * The harness reaches production only if something pulls it into the module
+ * graph eagerly. Its one sanctioned reference is the dynamic `import()` inside
+ * `AgentThreadClientBinder.tsx`'s `import.meta.env.DEV` branch, which Vite
+ * folds away; a static import would survive that gate. Type-only imports are
+ * erased before bundling, so they are left alone.
+ */
+function isStaticDevHarnessImport(line: string): boolean {
+  return /^\s*(?:import|export)\s+(?!type\b)[^;]*from\s+['"][^'"]*dev-thread-harness['"]/.test(
+    line,
+  );
 }
 
 function collectMatches(
@@ -275,6 +294,17 @@ describe('E2E STOP rule — zero allowlist', () => {
     if (violations.length > 0) {
       throw new Error(
         `Ungated window.__ write outside the dev-gate allowlist — wrap in if (import.meta.env.DEV) and add to dev-gate-allowlist.ts:\n${violations.join('\n')}`,
+      );
+    }
+  });
+
+  test('no static value import of the DEV ACP thread harness', () => {
+    const violations = collectMatches(listAppSrcTsFiles(), (line) =>
+      isStaticDevHarnessImport(line),
+    );
+    if (violations.length > 0) {
+      throw new Error(
+        `Static import of dev-thread-harness in app source — it must be reached only through the DEV-gated dynamic import:\n${violations.join('\n')}`,
       );
     }
   });
@@ -506,6 +536,34 @@ describe('E2E STOP rule — zero allowlist', () => {
       '});',
     ];
     expect(findSpawnIsolationViolations(multiSpawn).length).toBe(0);
+  });
+
+  /**
+   * Planted-positive + adjacent-negative self-test for the DEV-harness import
+   * rule, so the absence check above cannot rot into a no-op.
+   *
+   */
+  test('dev-harness import rule fires on a static import and not on the sanctioned shapes', () => {
+    expect(
+      isStaticDevHarnessImport("import { installAcpThreadHarness } from './dev-thread-harness';"),
+    ).toBe(true);
+    expect(
+      isStaticDevHarnessImport(
+        "import { installAcpThreadHarness } from '@/lib/acp/dev-thread-harness';",
+      ),
+    ).toBe(true);
+    expect(isStaticDevHarnessImport("export * from './dev-thread-harness';")).toBe(true);
+
+    // Type-only: erased before bundling, so it cannot carry the module in.
+    expect(
+      isStaticDevHarnessImport("import type { AcpThreadHarness } from './dev-thread-harness';"),
+    ).toBe(false);
+    // The sanctioned reference — a dynamic import Vite folds away with its gate.
+    expect(
+      isStaticDevHarnessImport("  void import('@/lib/acp/dev-thread-harness').then(fn);"),
+    ).toBe(false);
+    // A neighbouring module whose name merely shares a prefix.
+    expect(isStaticDevHarnessImport("import { x } from './thread-client';")).toBe(false);
   });
 
   test('window.__activeEditor is published only by DocumentContext.tsx (regression — PR #168 merge collision)', () => {

@@ -14,6 +14,7 @@ import {
   fireEvent,
   render as rtlRender,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -33,6 +34,18 @@ import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
 let model: ThreadRenderModel | null = null;
+/**
+ * The subscribed thread's store entry. `lastSeq` is how far the client has
+ * folded the server's log and `replayThroughSeq` is the upper bound of the
+ * replay the subscription announced, so a transcript still coming out of
+ * history is one whose `lastSeq` has not reached that bound yet.
+ */
+let threadState = {
+  info: undefined,
+  events: [] as unknown[],
+  lastSeq: 5,
+  replayThroughSeq: 5,
+};
 const respondPermission = vi.fn((_threadId: string, _requestId: string, _outcome: unknown) => {});
 const setConfigOption = vi.fn(
   (_threadId: string, _configId: string, _value: string | boolean) => {},
@@ -83,7 +96,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       this.code = code;
     }
   },
-  useAgentThread: () => ({ info: undefined, events: [], lastSeq: 5 }),
+  useAgentThread: () => threadState,
   useAgentThreadModel: () => model,
 }));
 
@@ -204,6 +217,7 @@ afterEach(() => {
   authenticateThread.mockClear();
   authenticateResult = Promise.resolve();
   model = null;
+  threadState = { info: undefined, events: [], lastSeq: 5, replayThroughSeq: 5 };
 });
 
 describe('ThreadView agent settings', () => {
@@ -2705,6 +2719,317 @@ describe('ThreadView failure notices', () => {
     const rootCause = screen.getByTestId('agent-thread-notice-root-cause');
     expect(rootCause.textContent).toContain('code EUSAGE');
     expect(rootCause.textContent).not.toContain('complete log of this run');
+  });
+});
+
+/**
+ * Runtime status the agent reported, drawn as chrome rather than speech.
+ *
+ * The defect this row exists to fix is misattribution: an operational warning
+ * that reads as the agent's answer gets acted on as if the agent had said it.
+ * So the assertions here are about what separates the two — a label, a glyph,
+ * a box — and about what the row must NOT offer, since passive guidance with a
+ * Retry button invites an action that does nothing.
+ */
+describe('ThreadView agent notices', () => {
+  const WARNING_TEXT = 'Warning: Skill "foo" was not loaded because its manifest is invalid.\n\n';
+
+  function agentNotice(text = WARNING_TEXT): Extract<RenderedItem, { kind: 'agent_notice' }> {
+    return { kind: 'agent_notice', source: 'codex_legacy', severity: 'warning', text, seq: 0 };
+  }
+
+  test('reads as a runtime warning, not as the agent speaking', () => {
+    model = makeModel({ turnActive: false, items: [agentNotice()] });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const card = screen.getByRole('note');
+    expect(card).toBe(screen.getByTestId('agent-thread-agent-notice'));
+    // Three cues, because any one of them can be unavailable: the label for a
+    // reader who cannot see the box, the glyph for one skimming, and the
+    // border for forced-colors mode, where the amber fill is discarded.
+    expect(card.textContent).toContain('Warning');
+    expect(card.className).toContain('border');
+    expect(card.className).toContain('amber');
+    const glyph = card.querySelector('svg');
+    expect(glyph?.getAttribute('aria-hidden')).toBe('true');
+    // Not an assistant bubble — that is the whole point of the row.
+    expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
+  });
+
+  test('shows the producer text verbatim through the same renderer as a reply', () => {
+    model = makeModel({ turnActive: false, items: [agentNotice()] });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const rendered = within(screen.getByTestId('agent-thread-agent-notice')).getByTestId(
+      'rendered-markdown',
+    );
+    expect(rendered.textContent).toBe(WARNING_TEXT);
+  });
+
+  test('offers nothing to act on and opens no toast', () => {
+    model = makeModel({ turnActive: false, items: [agentNotice()] });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const card = screen.getByTestId('agent-thread-agent-notice');
+    expect(within(card).queryAllByRole('button')).toHaveLength(0);
+    expect(within(card).queryAllByRole('link')).toHaveLength(0);
+    expect(screen.queryByTestId('agent-thread-retry')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  test('sits in source order between the turns it interrupted', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'ship it', messageId: 'u1' },
+        agentNotice(),
+        { kind: 'message', role: 'agent', text: 'Done.', messageId: 'a1' },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const card = screen.getByTestId('agent-thread-agent-notice');
+    const answer = screen.getByTestId('agent-thread-agent-message');
+    expect(screen.getByTestId('agent-thread-user-message').compareDocumentPosition(card)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(card.compareDocumentPosition(answer)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    // The answer keeps its own bubble: warning chrome never absorbs it.
+    expect(within(answer).getByTestId('rendered-markdown').textContent).toBe('Done.');
+  });
+
+  test('two warnings in one turn stay two rows', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [agentNotice('Warning: first\n\n'), agentNotice('Warning: second\n\n')],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const cards = screen.getAllByTestId('agent-thread-agent-notice');
+    expect(cards.map((card) => within(card).getByTestId('rendered-markdown').textContent)).toEqual([
+      'Warning: first\n\n',
+      'Warning: second\n\n',
+    ]);
+  });
+
+  test('leaves an adjacent failure notice its own actions', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        agentNotice(),
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'error',
+          attempts: 1,
+          failure: { reason: 'connect', agentMessage: 'initialize failed' },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+
+    const failure = screen.getByTestId('agent-thread-notice');
+    expect(failure.textContent).toContain("Claude couldn't start");
+    // Retry belongs to the failure card, and the warning card sits outside it.
+    const retry = screen.getByTestId('agent-thread-retry');
+    expect(failure.contains(retry)).toBe(true);
+    expect(screen.getByTestId('agent-thread-agent-notice').contains(retry)).toBe(false);
+
+    await userEvent.click(retry);
+    expect(retryThread).toHaveBeenCalledWith('thread-1');
+  });
+});
+
+/**
+ * Arrival announcements for runtime warnings.
+ *
+ * A warning card is silent by construction — it draws itself and offers
+ * nothing to act on — so a reader who cannot see the transcript gets no cue
+ * that one appeared. The polite region is that cue. The two failure modes it
+ * has to avoid are opposite: saying nothing when a warning lands mid-turn, and
+ * reciting a month of history to anyone who reopens an old thread.
+ */
+describe('ThreadView warning announcements', () => {
+  const CODEX = { id: 'codex-acp', name: 'Codex', source: 'registry' as const };
+  const FIRST = 'Warning: skill "alpha" was skipped\n\nIts manifest is invalid.\n\n';
+  const SECOND = 'Warning: skill "beta" was skipped\n\n';
+
+  function notice(text: string, seq: number): Extract<RenderedItem, { kind: 'agent_notice' }> {
+    return { kind: 'agent_notice', source: 'codex_legacy', severity: 'warning', text, seq };
+  }
+
+  function announcer(): HTMLElement {
+    return screen.getByTestId('agent-thread-warning-announcer');
+  }
+
+  /** A thread whose retained log has been fully folded — nothing left to replay. */
+  function settled(seq: number) {
+    threadState = { info: undefined, events: [], lastSeq: seq, replayThroughSeq: seq };
+    return makeInfo({ status: 'ready', agent: CODEX, lastSeq: seq });
+  }
+
+  test('mounts the region empty, before any warning exists', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={settled(5)} />);
+
+    const region = announcer();
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.getAttribute('aria-atomic')).toBe('true');
+    expect(region.className).toContain('sr-only');
+    expect(region.textContent).toBe('');
+  });
+
+  test('announces a warning that arrives during the session', async () => {
+    model = makeModel({ turnActive: true, items: [] });
+    const { rerender } = render(<ThreadView info={settled(5)} />);
+
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 5 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 6)] });
+    rerender(<ThreadView info={settled(5)} />);
+
+    // The agent's own opening line, framed by app copy that says who reported
+    // it — the detail paragraph stays on the card rather than in the queue.
+    await waitFor(() =>
+      expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
+    );
+  });
+
+  test('serializes two warnings from one turn in source order', async () => {
+    model = makeModel({ turnActive: true, items: [] });
+    const { rerender } = render(<ThreadView info={settled(5)} />);
+
+    threadState = { info: undefined, events: [], lastSeq: 7, replayThroughSeq: 5 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 6), notice(SECOND, 7)] });
+    rerender(<ThreadView info={settled(5)} />);
+
+    await waitFor(() =>
+      expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
+    );
+    // The second one waits its turn instead of replacing the first before it
+    // has been read out.
+    await waitFor(
+      () =>
+        expect(announcer().textContent).toBe('Codex reported: Warning: skill "beta" was skipped'),
+      { timeout: 2000 },
+    );
+  });
+
+  test('draws a replayed transcript without announcing any of it', () => {
+    // Mounted before the retained log has been folded — what arrives next is
+    // history, not news.
+    threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [] });
+    const info = makeInfo({ status: 'ready', agent: CODEX, lastSeq: 4 });
+    const { rerender } = render(<ThreadView info={info} />);
+
+    threadState = { info: undefined, events: [], lastSeq: 4, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [notice(FIRST, 2), notice(SECOND, 4)] });
+    rerender(<ThreadView info={info} />);
+
+    expect(screen.getAllByTestId('agent-thread-agent-notice')).toHaveLength(2);
+    expect(announcer().textContent).toBe('');
+  });
+
+  test('speaks the first warning that lands after a replayed transcript settles', async () => {
+    threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [] });
+    const info = makeInfo({ status: 'ready', agent: CODEX, lastSeq: 4 });
+    const { rerender } = render(<ThreadView info={info} />);
+
+    threadState = { info: undefined, events: [], lastSeq: 4, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [notice(FIRST, 3)] });
+    rerender(<ThreadView info={info} />);
+    expect(announcer().textContent).toBe('');
+
+    threadState = { info: undefined, events: [], lastSeq: 5, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 3), notice(SECOND, 5)] });
+    rerender(<ThreadView info={info} />);
+
+    await waitFor(() =>
+      expect(announcer().textContent).toBe('Codex reported: Warning: skill "beta" was skipped'),
+    );
+  });
+
+  test('speaks a warning that lands in the batch that closes the replay window', async () => {
+    // The server advances `info.lastSeq` the moment it appends while event
+    // batches coalesce on a timer, so delivery and that field cross back and
+    // forth all session. The subscription's own bound is what separates
+    // history from news, and the warning above it has to be spoken even when
+    // the batch carrying it is also the one that catches delivery up.
+    threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 4 })} />,
+    );
+
+    // The retained log lands, but an info snapshot has already raced past it.
+    threadState = { info: undefined, events: [], lastSeq: 4, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: false, items: [notice(FIRST, 2)] });
+    rerender(<ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 8 })} />);
+    expect(announcer().textContent).toBe('');
+
+    // The live batch that catches delivery up carries the warning with it.
+    threadState = { info: undefined, events: [], lastSeq: 8, replayThroughSeq: 4 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 2), notice(SECOND, 8)] });
+    rerender(<ThreadView info={makeInfo({ status: 'ready', agent: CODEX, lastSeq: 8 })} />);
+
+    await waitFor(() =>
+      expect(announcer().textContent).toBe('Codex reported: Warning: skill "beta" was skipped'),
+    );
+  });
+
+  test('stays silent when a reconnect replays a warning it already delivered', async () => {
+    const info = makeInfo({ status: 'ready', agent: CODEX, lastSeq: 6 });
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 5 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 6)] });
+    const { rerender } = render(<ThreadView info={info} />);
+    await waitFor(() =>
+      expect(announcer().textContent).toBe('Codex reported: Warning: skill "alpha" was skipped'),
+    );
+
+    // Content alone cannot tell a second announcement from the first: they
+    // are the same string. Count the writes instead.
+    const spoken: string[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of Array.from(record.addedNodes)) {
+          const text = node.textContent ?? '';
+          if (text !== '') spoken.push(text);
+        }
+      }
+    });
+    observer.observe(announcer(), { childList: true });
+
+    // The socket drops and resubscribes. The server re-announces its retained
+    // log, which now covers the warning already spoken — a bound that moves
+    // with the log is what keeps the reader from hearing it a second time.
+    threadState = { info: undefined, events: [], lastSeq: -1, replayThroughSeq: 6 };
+    model = makeModel({ turnActive: false, items: [] });
+    rerender(<ThreadView info={info} />);
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 6 };
+    model = makeModel({ turnActive: false, items: [notice(FIRST, 6)] });
+    rerender(<ThreadView info={info} />);
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    observer.disconnect();
+    expect(spoken).toEqual([]);
+  });
+
+  test('leaves the active element alone when a warning arrives', async () => {
+    model = makeModel({ turnActive: true, items: [] });
+    const { rerender } = render(<ThreadView info={settled(5)} />);
+    const composer = screen.getByTestId('agent-thread-composer');
+    composer.focus();
+    expect(document.activeElement).toBe(composer);
+
+    threadState = { info: undefined, events: [], lastSeq: 6, replayThroughSeq: 5 };
+    model = makeModel({ turnActive: true, items: [notice(FIRST, 6)] });
+    rerender(<ThreadView info={settled(5)} />);
+
+    await waitFor(() => expect(announcer().textContent).not.toBe(''));
+    expect(document.activeElement).toBe(composer);
   });
 });
 

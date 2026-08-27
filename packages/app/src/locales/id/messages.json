@@ -3109,6 +3109,7 @@
     "d2uTPx": ["Galat server (HTTP ", ["status"], ")"],
     "d3dX3w": ["Cari \"", ["word"], "\""],
     "d5rK4X": [["chars", "plural", { "other": ["karakter"] }]],
+    "d6qW27": [["agentName"], " melaporkan: ", ["headline"]],
     "dD7NPy": ["Kerangka"],
     "dDpCOp": [
       "Penggantian nama berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"

@@ -21,6 +21,10 @@
  * were folded in — a historical transcript row, which the next fold corrects.
  */
 
+import {
+  type CodexLegacyAgentIdentity,
+  isCodexLegacyWarningUpdate,
+} from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
 import type {
   PermissionOption,
   PiBridgeThreadState,
@@ -119,6 +123,36 @@ interface RenderedNotice {
 }
 
 /**
+ * Operational status the agent's runtime reported mid-turn — how the session
+ * is configured or behaving — as opposed to the answer the agent authored.
+ *
+ * Deliberately NOT a variant of `RenderedNotice`, which models a thread
+ * failure: that shape carries retry, supersession and attempt state, and none
+ * of it is answerable on passive guidance. Keeping them apart is what makes a
+ * Retry button on this row unrepresentable rather than merely unrendered.
+ *
+ * `source` and `severity` are single-member unions on purpose. The protocol's
+ * own typed notice is not deliverable by any released ACP SDK yet, so its arm
+ * gets discriminated in beside this one when it becomes reachable, rather than
+ * leaving fields nothing can populate today.
+ */
+interface RenderedAgentNotice {
+  kind: 'agent_notice';
+  source: 'codex_legacy';
+  severity: 'warning';
+  /** The producer's event text, byte for byte. Never rewritten or translated. */
+  text: string;
+  /**
+   * Seq of the retained event this was minted from. Carried because arrival
+   * behaviour depends on which side of the replay window an event fell on, and
+   * that question is only answerable per event: counting notices cannot
+   * separate the tail of a replayed log from a live arrival that landed in the
+   * same batch.
+   */
+  seq: number;
+}
+
+/**
  * Live state of one ACP terminal (a command OK ran for the agent), folded
  * from `terminal_*` events. Rendered inside the tool call that embeds the
  * terminal id — terminals are not transcript items of their own.
@@ -212,6 +246,7 @@ export type RenderedItem =
   | RenderedToolCall
   | RenderedPermission
   | RenderedNotice
+  | RenderedAgentNotice
   | RenderedRuntimeConsent
   | RenderedPiBridge;
 
@@ -260,6 +295,15 @@ function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
 }
 
 export class ThreadRenderModelBuilder {
+  /**
+   * Which agent is answering. Required rather than optional because one
+   * producer's payloads are read differently from every other's, and a
+   * defaulted identity would silently fold a thread as "not that producer" —
+   * the failure would be an absent notice, which looks exactly like a healthy
+   * transcript. Callers with no identity to offer pass null explicitly.
+   */
+  constructor(private readonly agent: CodexLegacyAgentIdentity | null) {}
+
   private items: RenderedItem[] = [];
   private plan: PlanEntry[] = [];
   private turnActive = false;
@@ -298,7 +342,11 @@ export class ThreadRenderModelBuilder {
   sync(events: readonly ThreadEvent[]): ThreadRenderModel {
     if (events.length < this.appliedCount) this.reset();
     for (let i = this.appliedCount; i < events.length; i++) {
-      this.applyEvent(events[i]);
+      // The array index IS the event's seq. The store keeps that true on the
+      // way in — it dedupes an overlapping batch and pads a batch that opens
+      // above the tail — so a caller assembling events by hand owes the same
+      // alignment.
+      this.applyEvent(events[i], i);
     }
     this.appliedCount = events.length;
     if (this.dirty) {
@@ -333,7 +381,7 @@ export class ThreadRenderModelBuilder {
     this.dirty = true;
   }
 
-  private applyEvent(event: ThreadEvent): void {
+  private applyEvent(event: ThreadEvent, seq: number): void {
     this.dirty = true;
     switch (event.kind) {
       case 'user_message': {
@@ -595,7 +643,7 @@ export class ThreadRenderModelBuilder {
         break;
       }
       case 'session_update':
-        this.applyUpdate(event.update);
+        this.applyUpdate(event.update, seq);
         break;
       default:
         break;
@@ -635,11 +683,27 @@ export class ThreadRenderModelBuilder {
     this.items.push({ kind: 'message', role, text, messageId });
   }
 
-  private applyUpdate(update: SessionUpdate): void {
+  private applyUpdate(update: SessionUpdate, seq: number): void {
     switch (update.sessionUpdate) {
       case 'agent_message_chunk': {
         const text = textFromContent(update.content);
-        if (text !== null) this.pushMessageChunk('agent', messageId(update), text);
+        if (text === null) break;
+        // Decided per retained event, before coalescing: once two events have
+        // been glued into one bubble the producer's own boundary is gone, and
+        // recovering it would mean guessing where the warning ended inside a
+        // larger body. All-or-nothing on the whole event, so a near miss keeps
+        // its bytes and follows the ordinary path untouched.
+        if (isCodexLegacyWarningUpdate(update, this.agent)) {
+          this.items.push({
+            kind: 'agent_notice',
+            source: 'codex_legacy',
+            severity: 'warning',
+            text,
+            seq,
+          });
+          break;
+        }
+        this.pushMessageChunk('agent', messageId(update), text);
         break;
       }
       case 'agent_thought_chunk': {
@@ -730,8 +794,11 @@ export class ThreadRenderModelBuilder {
 }
 
 /** One-shot fold — the non-incremental entry point for tests and tooling. */
-export function buildThreadRenderModel(events: readonly ThreadEvent[]): ThreadRenderModel {
-  return new ThreadRenderModelBuilder().sync(events);
+export function buildThreadRenderModel(
+  events: readonly ThreadEvent[],
+  agent: CodexLegacyAgentIdentity | null,
+): ThreadRenderModel {
+  return new ThreadRenderModelBuilder(agent).sync(events);
 }
 
 /**

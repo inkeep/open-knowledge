@@ -3629,6 +3629,7 @@
     "d2uTPx": ["Erreur serveur (HTTP ", ["status"], ")"],
     "d3dX3w": ["Rechercher « ", ["word"], " »"],
     "d5rK4X": [["chars", "plural", { "one": ["car."], "many": ["car."], "other": ["car."] }]],
+    "d6qW27": [["agentName"], " signale : ", ["headline"]],
     "dD7NPy": ["Plan"],
     "dDpCOp": [
       "Renommage réussi, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"

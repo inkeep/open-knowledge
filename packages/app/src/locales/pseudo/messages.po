@@ -482,6 +482,10 @@ msgstr ""
 msgid "{agentName} doesn't accept image attachments."
 msgstr ""
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr ""
@@ -14590,6 +14594,7 @@ msgstr ""
 msgid "Waiting for your approval"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

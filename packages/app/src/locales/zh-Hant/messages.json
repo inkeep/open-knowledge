@@ -2753,6 +2753,7 @@
     "d2uTPx": ["伺服器錯誤（HTTP ", ["status"], "）"],
     "d3dX3w": ["查詢「", ["word"], "」"],
     "d5rK4X": [["chars", "plural", { "other": ["字元"] }]],
+    "d6qW27": [["agentName"], " 回報：", ["headline"]],
     "dD7NPy": ["大綱"],
     "dDpCOp": ["重新命名成功，但側邊欄可能不是最新的——請重新整理以重新同步"],
     "dEgA5A": ["取消"],

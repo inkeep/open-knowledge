@@ -5,6 +5,9 @@ import type {
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { describe, expect, test } from 'vitest';
+import fixture from '../../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
+  type: 'json',
+};
 import { AgentThreadClient, ThreadChannelUnavailableError } from './thread-client';
 
 /**
@@ -482,5 +485,154 @@ describe('unread affordance (PRD-8021)', () => {
     // The bumps from `bump()` are the 5 activity-driven ones — no extras
     // from markThreadViewed under `running`.
     expect(notifications).toBe(5);
+  });
+});
+
+describe('raw frame ingestion', () => {
+  const info: ThreadInfo = {
+    threadId: 'raw-1',
+    agent: { id: 'codex-acp', name: 'Codex', source: 'registry' },
+    title: 'Raw',
+    status: 'ready',
+    createdAt: 1,
+    lastActivityAt: 1,
+    lastSeq: -1,
+  };
+
+  test('a JSON payload lands in the store the same as a parsed frame would', () => {
+    const client = new AgentThreadClient();
+
+    client.receiveServerFrame(JSON.stringify({ op: 'info', info }));
+
+    expect(client.getThread('raw-1')?.info.title).toBe('Raw');
+  });
+
+  test('an unparseable payload is dropped instead of thrown', () => {
+    const client = new AgentThreadClient();
+    client.receiveServerFrame(JSON.stringify({ op: 'info', info }));
+
+    // A peer in another process owns these bytes; one malformed frame must
+    // not take the channel — or the transcript already on screen — with it.
+    expect(() => client.receiveServerFrame('{ not json')).not.toThrow();
+    expect(client.getThread('raw-1')?.info.title).toBe('Raw');
+  });
+});
+
+/**
+ * The fold reads the producer's identity off the subscribed thread, so a
+ * classification that works in a unit fold still shows nothing on screen if
+ * the client never hands that identity over. These drive the socket boundary
+ * — raw JSON into `receiveServerFrame`, exactly as `onmessage` delivers it —
+ * and read the model the view would render.
+ */
+describe('render-model agent identity', () => {
+  const WARNING_TEXT = fixture.candidates[0].update.content.text;
+
+  const infoFor = (agent: {
+    id: string;
+    name: string;
+    source: 'registry' | 'custom';
+  }): ThreadInfo =>
+    ({
+      threadId: 'ident-1',
+      agent,
+      title: 'Identity',
+      status: 'ready',
+      createdAt: 1,
+      lastActivityAt: 1,
+      lastSeq: -1,
+    }) satisfies ThreadInfo;
+
+  const warningEvent = (ts: number): ThreadEvent => ({
+    kind: 'session_update',
+    update: structuredClone(fixture.candidates[0].update) as never,
+    ts,
+  });
+
+  function subscribed(agent: Parameters<typeof infoFor>[0]): AgentThreadClient {
+    const client = new AgentThreadClient();
+    client.receiveServerFrame(
+      JSON.stringify({ op: 'subscribed', threadId: 'ident-1', fromSeq: 0, info: infoFor(agent) }),
+    );
+    return client;
+  }
+
+  test('a warning on a registry Codex thread reaches the view as runtime status', () => {
+    const client = subscribed(fixture.agents.codexRegistry);
+
+    client.receiveServerFrame(
+      JSON.stringify({ op: 'event', threadId: 'ident-1', seq: 0, event: warningEvent(1) }),
+    );
+
+    expect(client.getThreadModel('ident-1')?.items).toEqual([
+      {
+        kind: 'agent_notice',
+        source: 'codex_legacy',
+        severity: 'warning',
+        text: WARNING_TEXT,
+        seq: 0,
+      },
+    ]);
+  });
+
+  test('the same bytes on another registry agent reach the view as prose', () => {
+    const client = subscribed(fixture.agents.claudeRegistry);
+
+    client.receiveServerFrame(
+      JSON.stringify({ op: 'event', threadId: 'ident-1', seq: 0, event: warningEvent(1) }),
+    );
+
+    const items = client.getThreadModel('ident-1')?.items ?? [];
+    expect(items.map((item) => item.kind)).toEqual(['message']);
+    expect(items[0]).toMatchObject({ role: 'agent', text: WARNING_TEXT });
+  });
+
+  test('a replay that opens above seq 0 still stamps every notice with its wire seq', () => {
+    // A thread whose in-memory window has trimmed past the durable log's reach
+    // replays from the trim point, so the first batch a client sees can open
+    // above seq 0. Position in the store's array is what the fold reads the
+    // seq off, so a batch that lands without its predecessors must not shift
+    // every later event below its true seq — the announcer compares that
+    // number against the replay bound, and understating it is silent.
+    const client = subscribed(fixture.agents.codexRegistry);
+
+    client.receiveServerFrame(
+      JSON.stringify({
+        op: 'events',
+        threadId: 'ident-1',
+        fromSeq: 4,
+        events: [warningEvent(1), warningEvent(2)],
+      }),
+    );
+
+    const notices = (client.getThreadModel('ident-1')?.items ?? []).filter(
+      (item) => item.kind === 'agent_notice',
+    );
+    expect(notices.map((item) => (item as { seq: number }).seq)).toEqual([4, 5]);
+    // The invariant the fold reads seqs off, stated directly.
+    const stored = client.getThread('ident-1');
+    expect(stored?.lastSeq).toBe(5);
+    expect(stored?.events.length).toBe((stored?.lastSeq ?? -1) + 1);
+  });
+
+  test('a batched replay and a live arrival of the same events agree', () => {
+    const events = [warningEvent(1), warningEvent(2)];
+
+    const live = subscribed(fixture.agents.codexRegistry);
+    events.forEach((event, index) => {
+      live.receiveServerFrame(
+        JSON.stringify({ op: 'event', threadId: 'ident-1', seq: index, event }),
+      );
+    });
+
+    const replayed = subscribed(fixture.agents.codexRegistry);
+    replayed.receiveServerFrame(
+      JSON.stringify({ op: 'events', threadId: 'ident-1', fromSeq: 0, events }),
+    );
+
+    expect(replayed.getThreadModel('ident-1')?.items).toEqual(
+      live.getThreadModel('ident-1')?.items,
+    );
+    expect(replayed.getThreadModel('ident-1')?.items).toHaveLength(2);
   });
 });

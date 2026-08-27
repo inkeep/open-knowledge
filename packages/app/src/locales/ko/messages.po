@@ -482,6 +482,10 @@ msgstr "{agentName} 시작 실패."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName}: 이미지 첨부 미지원"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} 보고: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead}개 앞서 있음"
@@ -14594,6 +14598,7 @@ msgstr "인증 대기 중"
 msgid "Waiting for your approval"
 msgstr "승인 대기 중"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

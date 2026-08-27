@@ -1,11 +1,11 @@
 /**
  * Tests for bundle-check.
  *
- * Strategy: rather than rebuild the app on every CI run (slow), the
- * test exercises bundle-check against a synthetic `dist/assets` fixture
- * that is faithful to the real build's structure. The integration with
- * a real `bun run build` happens at the perf-tier — local dev
- * runs `bun run build` once and re-runs assertBundleHealth manually.
+ * Strategy: rather than rebuild the app (slow), the test exercises
+ * bundle-check against a synthetic `dist/assets` fixture that is faithful to
+ * the real build's structure. No vitest tier collects this directory, so both
+ * this file and the module it covers run only when someone runs `pnpm run
+ * build` and re-runs `assertBundleHealth` by hand.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -93,6 +93,14 @@ describe('assertBundleHealth', () => {
     expect(report.forbiddenHits.some((h) => h.sentinel === 'ok-typing-burst-detector-v1')).toBe(
       true,
     );
+  });
+
+  test("fails when '__acpThreadHarness' appears in a prod chunk", () => {
+    write('telemetry-impl-abc.js', fakeTelemetryChunk());
+    write('index-def.js', `${fakeIndexChunk()}\nwindow.__acpThreadHarness = {};`);
+    const report = assertBundleHealth({ distAssetsDir: join(dir, 'assets') });
+    expect(report.ok).toBe(false);
+    expect(report.forbiddenHits.some((h) => h.sentinel === '__acpThreadHarness')).toBe(true);
   });
 
   test('reports missing telemetry chunk', () => {

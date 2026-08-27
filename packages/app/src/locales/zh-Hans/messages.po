@@ -482,6 +482,10 @@ msgstr "{agentName} 无法启动。"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} 不接受图像附件。"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} 报告：{headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "领先 {ahead} 个"
@@ -14594,6 +14598,7 @@ msgstr "正在等待授权"
 msgid "Waiting for your approval"
 msgstr "正在等待你的批准"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

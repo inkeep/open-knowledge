@@ -3515,6 +3515,7 @@
     "d5rK4X": [
       ["chars", "plural", { "one": ["caractere"], "many": ["caracteres"], "other": ["caracteres"] }]
     ],
+    "d6qW27": [["agentName"], " informou: ", ["headline"]],
     "dD7NPy": ["Estrutura"],
     "dDpCOp": [
       "A renomeação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"

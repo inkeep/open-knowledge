@@ -55,6 +55,11 @@
       "types": "./src/acp/permissive-mode.ts",
       "default": "./dist/acp-permissive-mode.mjs"
     },
+    "./acp/codex-legacy-notice": {
+      "development": "./src/acp/codex-legacy-notice.ts",
+      "types": "./src/acp/codex-legacy-notice.ts",
+      "default": "./dist/acp-codex-legacy-notice.mjs"
+    },
     "./desktop-bridge": {
       "development": "./src/desktop-bridge.ts",
       "types": "./src/desktop-bridge.ts",

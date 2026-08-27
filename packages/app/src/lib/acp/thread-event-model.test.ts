@@ -34,7 +34,7 @@ describe('buildThreadRenderModel', () => {
         } as never,
       }),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     const messages = model.items.filter((i) => i.kind === 'message');
     expect(messages).toHaveLength(2); // user + one coalesced agent message
     expect(messages[1]).toMatchObject({ role: 'agent', text: 'Hello world' });
@@ -81,7 +81,7 @@ describe('buildThreadRenderModel', () => {
       }),
       chunk(8, 'All finished.'),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     // Chronological: user, text, tool, text, tool, text — chunks coalesce only
     // while their message is still the tail, never across a tool call.
     expect(model.items.map((i) => (i.kind === 'message' ? `${i.kind}:${i.text}` : i.kind))).toEqual(
@@ -120,7 +120,7 @@ describe('buildThreadRenderModel', () => {
         } as never,
       }),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     const call = model.items.find((i) => i.kind === 'tool_call');
     expect(call).toMatchObject({ toolCallId: 'c1', status: 'completed', toolKind: 'edit' });
     if (call?.kind !== 'tool_call') throw new Error('unreachable');
@@ -138,7 +138,7 @@ describe('buildThreadRenderModel', () => {
       }),
       ev({ kind: 'permission_resolved', requestId: 'p1', optionId: 'allow', auto: false, ts: 2 }),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     const perm = model.items.find((i) => i.kind === 'permission');
     if (perm?.kind !== 'permission') throw new Error('unreachable');
     expect(perm.resolved).toEqual({ optionId: 'allow', auto: false });
@@ -171,7 +171,7 @@ describe('buildThreadRenderModel', () => {
       [request, call, resolve],
       [call, request, resolve],
     ] satisfies ThreadEvent[][]) {
-      const model = buildThreadRenderModel(events);
+      const model = buildThreadRenderModel(events, null);
       const perm = model.items.find((i) => i.kind === 'permission');
       if (perm?.kind !== 'permission') throw new Error('unreachable');
       expect(perm.toolCallId).toBe('c1');
@@ -190,7 +190,7 @@ describe('buildThreadRenderModel', () => {
         ts: 1,
       }),
     ];
-    const perm = buildThreadRenderModel(events).items.find((i) => i.kind === 'permission');
+    const perm = buildThreadRenderModel(events, null).items.find((i) => i.kind === 'permission');
     if (perm?.kind !== 'permission') throw new Error('unreachable');
     expect(perm.mergedIntoToolCall).toBe(false);
   });
@@ -209,7 +209,7 @@ describe('buildThreadRenderModel', () => {
         } as never,
       }),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     expect(model.plan).toHaveLength(2);
     expect(model.plan[0]).toMatchObject({ content: 'Step 1', status: 'completed' });
   });
@@ -219,7 +219,7 @@ describe('buildThreadRenderModel', () => {
       ev({ kind: 'status', status: 'error', detail: 'boom', ts: 1 }),
       ev({ kind: 'status', status: 'auth_required', detail: 'sign in', ts: 2 }),
     ];
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     const notices = model.items.filter((i) => i.kind === 'notice');
     // A transcript recorded before the server classified failures carries only
     // the headline string — it still renders, with nothing structured to show.
@@ -245,7 +245,7 @@ describe('buildThreadRenderModel', () => {
       ev({ kind: 'status', status: 'error', detail: 'connect failed', failure, ts: 2 }),
       ev({ kind: 'status', status: 'error', detail: 'connect failed', failure, ts: 3 }),
     ];
-    const notices = buildThreadRenderModel(events).items.filter((i) => i.kind === 'notice');
+    const notices = buildThreadRenderModel(events, null).items.filter((i) => i.kind === 'notice');
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({ attempts: 3, failure });
   });
@@ -258,11 +258,14 @@ describe('buildThreadRenderModel', () => {
     // would filter the merged card out entirely — the live failure would
     // render nowhere, with no Retry button.
     const failure = { reason: 'connect' as const, agentMessage: 'boom' };
-    const model = buildThreadRenderModel([
-      ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 1 }),
-      ev({ kind: 'status', status: 'ready', ts: 2 }),
-      ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 3 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 1 }),
+        ev({ kind: 'status', status: 'ready', ts: 2 }),
+        ev({ kind: 'status', status: 'error', detail: 'boom', failure, ts: 3 }),
+      ],
+      null,
+    );
     const notices = model.items.filter((i) => i.kind === 'notice');
     expect(notices).toHaveLength(2);
     expect(notices[0]?.kind === 'notice' && notices[0].superseded).toBe(true);
@@ -280,7 +283,7 @@ describe('buildThreadRenderModel', () => {
       ev({ kind: 'status', status: 'error', detail: 'x', failure: first, ts: 1 }),
       ev({ kind: 'status', status: 'error', detail: 'x', failure: second, ts: 2 }),
     ];
-    const notices = buildThreadRenderModel(events).items.filter((i) => i.kind === 'notice');
+    const notices = buildThreadRenderModel(events, null).items.filter((i) => i.kind === 'notice');
     expect(notices).toHaveLength(2);
     expect(notices.every((n) => n.kind === 'notice' && n.attempts === 1)).toBe(true);
   });
@@ -292,9 +295,10 @@ describe('buildThreadRenderModel', () => {
       machineDetail: '{"detail":"x"}',
       authMethods: [{ id: 'test_login', name: 'Test Login', description: 'Sign in via test' }],
     };
-    const model = buildThreadRenderModel([
-      ev({ kind: 'status', status: 'auth_required', detail: 'sign in required', failure, ts: 1 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [ev({ kind: 'status', status: 'auth_required', detail: 'sign in required', failure, ts: 1 })],
+      null,
+    );
     const notice = model.items.find((i) => i.kind === 'notice');
     if (notice?.kind !== 'notice') throw new Error('unreachable');
     expect(notice.tone).toBe('info');
@@ -302,14 +306,17 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a failure with no detail string still produces a notice', () => {
-    const model = buildThreadRenderModel([
-      ev({
-        kind: 'status',
-        status: 'error',
-        failure: { reason: 'session-setup', agentMessage: 'no session for you' },
-        ts: 1,
-      }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({
+          kind: 'status',
+          status: 'error',
+          failure: { reason: 'session-setup', agentMessage: 'no session for you' },
+          ts: 1,
+        }),
+      ],
+      null,
+    );
     const notice = model.items.find((i) => i.kind === 'notice');
     if (notice?.kind !== 'notice') throw new Error('unreachable');
     expect(notice.text).toBe('');
@@ -327,7 +334,7 @@ describe('buildThreadRenderModel', () => {
       ev({ kind: 'status', status: 'running', ts: 3 }),
       ev({ kind: 'status', status: 'exited', detail: 'agent exited (SIGTERM)', ts: 4 }),
     ];
-    expect(buildThreadRenderModel(events).turnActive).toBe(false);
+    expect(buildThreadRenderModel(events, null).turnActive).toBe(false);
   });
 
   test('a resume after an exit re-arms the turn', () => {
@@ -338,7 +345,7 @@ describe('buildThreadRenderModel', () => {
       ev({ kind: 'turn_started', ts: 3 }),
       ev({ kind: 'status', status: 'running', ts: 4 }),
     ];
-    expect(buildThreadRenderModel(events).turnActive).toBe(true);
+    expect(buildThreadRenderModel(events, null).turnActive).toBe(true);
   });
 
   const consentRequest = (): ThreadEvent =>
@@ -356,7 +363,7 @@ describe('buildThreadRenderModel', () => {
     });
 
   test('renders a pending runtime-consent card from the request event', () => {
-    const model = buildThreadRenderModel([consentRequest()]);
+    const model = buildThreadRenderModel([consentRequest()], null);
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card).toMatchObject({
@@ -370,7 +377,7 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a request with no reason reads as missing — what pre-field events were', () => {
-    const model = buildThreadRenderModel([consentRequest()]);
+    const model = buildThreadRenderModel([consentRequest()], null);
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     // The card picks its sentence off this; defaulting the other way would tell
@@ -379,9 +386,10 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a broken-interpreter request carries that through to the card', () => {
-    const model = buildThreadRenderModel([
-      { ...consentRequest(), reason: 'broken' } as ThreadEvent,
-    ]);
+    const model = buildThreadRenderModel(
+      [{ ...consentRequest(), reason: 'broken' } as ThreadEvent],
+      null,
+    );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card.reason).toBe('broken');
@@ -391,28 +399,32 @@ describe('buildThreadRenderModel', () => {
   // card must not fall back to either interpreter sentence — both describe
   // something the user installed.
   test('a damaged-runtime request carries that through to the card', () => {
-    const model = buildThreadRenderModel([
-      { ...consentRequest(), reason: 'damaged' } as ThreadEvent,
-    ]);
+    const model = buildThreadRenderModel(
+      [{ ...consentRequest(), reason: 'damaged' } as ThreadEvent],
+      null,
+    );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card.reason).toBe('damaged');
   });
 
   test('grant → progress → spawning drives the card through running to done', () => {
-    const model = buildThreadRenderModel([
-      consentRequest(),
-      ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'granted', ts: 2 }),
-      ev({
-        kind: 'runtime_install_progress',
-        runtime: 'node',
-        phase: 'downloading',
-        receivedBytes: 20,
-        totalBytes: 40,
-        ts: 3,
-      }),
-      ev({ kind: 'status', status: 'spawning', ts: 4 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        consentRequest(),
+        ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'granted', ts: 2 }),
+        ev({
+          kind: 'runtime_install_progress',
+          runtime: 'node',
+          phase: 'downloading',
+          receivedBytes: 20,
+          totalBytes: 40,
+          ts: 3,
+        }),
+        ev({ kind: 'status', status: 'spawning', ts: 4 }),
+      ],
+      null,
+    );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     // Progress captured, and the follow-on spawning status marks it done.
@@ -422,10 +434,13 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a decline resolves the card without an install lifecycle', () => {
-    const model = buildThreadRenderModel([
-      consentRequest(),
-      ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'declined', ts: 2 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        consentRequest(),
+        ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'declined', ts: 2 }),
+      ],
+      null,
+    );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card.resolved).toBe('declined');
@@ -433,11 +448,14 @@ describe('buildThreadRenderModel', () => {
   });
 
   test('a failed launch after a grant marks the install failed', () => {
-    const model = buildThreadRenderModel([
-      consentRequest(),
-      ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'granted', ts: 2 }),
-      ev({ kind: 'status', status: 'error', detail: 'checksum mismatch', ts: 3 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        consentRequest(),
+        ev({ kind: 'runtime_consent_resolved', requestId: 'r1', decision: 'granted', ts: 2 }),
+        ev({ kind: 'status', status: 'error', detail: 'checksum mismatch', ts: 3 }),
+      ],
+      null,
+    );
     const card = model.items.find((i) => i.kind === 'runtime_consent');
     if (card?.kind !== 'runtime_consent') throw new Error('unreachable');
     expect(card.install).toBe('failed');
@@ -458,7 +476,7 @@ describe('buildThreadRenderModel', () => {
     });
 
   const piCard = (events: ThreadEvent[]): Extract<RenderedItem, { kind: 'pi_bridge' }> => {
-    const card = buildThreadRenderModel(events).items.find((i) => i.kind === 'pi_bridge');
+    const card = buildThreadRenderModel(events, null).items.find((i) => i.kind === 'pi_bridge');
     if (card?.kind !== 'pi_bridge') throw new Error('no pi_bridge card');
     return card;
   };
@@ -529,14 +547,17 @@ describe('buildThreadRenderModel', () => {
   // A status with nothing to fold onto — the foreign-file case, where nobody
   // was asked anything — still has to reach the transcript as its own row.
   test('a prompt-less status stands alone as a limitation row', () => {
-    const model = buildThreadRenderModel([
-      ev({
-        kind: 'pi_bridge_status',
-        state: 'foreign-file',
-        bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
-        ts: 1,
-      }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({
+          kind: 'pi_bridge_status',
+          state: 'foreign-file',
+          bridgePath: '/proj/.pi/extensions/open-knowledge.ts',
+          ts: 1,
+        }),
+      ],
+      null,
+    );
     const rows = model.items.filter((i) => i.kind === 'pi_bridge');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
@@ -549,16 +570,19 @@ describe('buildThreadRenderModel', () => {
   // Same defense as the resolved-permission path: an answer whose question
   // fell off the retained log must not retarget some other row.
   test('an outcome for an unknown requestId becomes its own row', () => {
-    const model = buildThreadRenderModel([
-      piBridgeRequest(),
-      ev({
-        kind: 'pi_bridge_status',
-        requestId: 'gone',
-        state: 'ready',
-        bridgePath: '/other',
-        ts: 2,
-      }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        piBridgeRequest(),
+        ev({
+          kind: 'pi_bridge_status',
+          requestId: 'gone',
+          state: 'ready',
+          bridgePath: '/other',
+          ts: 2,
+        }),
+      ],
+      null,
+    );
     const rows = model.items.filter((i) => i.kind === 'pi_bridge');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({ prompt: { requestId: 'p1' }, outcome: null });
@@ -569,11 +593,14 @@ describe('buildThreadRenderModel', () => {
   // NEWER server replays on this client without losing the events it does
   // understand. `as never` is the only way past the union.
   test('an event kind this client has never heard of is skipped, not fatal', () => {
-    const model = buildThreadRenderModel([
-      ev({ kind: 'user_message', content: 'hi', ts: 1 }),
-      { kind: 'pi_bridge_teleported', ts: 2 } as never,
-      piBridgeRequest(),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({ kind: 'user_message', content: 'hi', ts: 1 }),
+        { kind: 'pi_bridge_teleported', ts: 2 } as never,
+        piBridgeRequest(),
+      ],
+      null,
+    );
     expect(model.items.map((i) => i.kind)).toEqual(['message', 'pi_bridge']);
   });
 });
@@ -583,12 +610,15 @@ describe('terminal folding', () => {
     ev({ kind: 'terminal_created', terminalId: id, command: 'npm', args: ['test'], ts });
 
   test('folds created → output chunks → exit into one terminal record', () => {
-    const model = buildThreadRenderModel([
-      created('t1'),
-      ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'compiling…\n', ts: 2 }),
-      ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'ok 12 tests\n', ts: 3 }),
-      ev({ kind: 'terminal_exit', terminalId: 't1', exitCode: 0, signal: null, ts: 4 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        created('t1'),
+        ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'compiling…\n', ts: 2 }),
+        ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'ok 12 tests\n', ts: 3 }),
+        ev({ kind: 'terminal_exit', terminalId: 't1', exitCode: 0, signal: null, ts: 4 }),
+      ],
+      null,
+    );
     expect(model.terminals.t1).toMatchObject({
       command: 'npm',
       args: ['test'],
@@ -599,11 +629,14 @@ describe('terminal folding', () => {
   });
 
   test('a running terminal has a null exit; output for unknown ids is dropped', () => {
-    const model = buildThreadRenderModel([
-      created('t1'),
-      ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'partial', ts: 2 }),
-      ev({ kind: 'terminal_output', terminalId: 'ghost', chunk: 'nope', ts: 3 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        created('t1'),
+        ev({ kind: 'terminal_output', terminalId: 't1', chunk: 'partial', ts: 2 }),
+        ev({ kind: 'terminal_output', terminalId: 'ghost', chunk: 'nope', ts: 3 }),
+      ],
+      null,
+    );
     expect(model.terminals.t1?.exit).toBeNull();
     expect(model.terminals.t1?.output).toBe('partial');
     expect(model.terminals.ghost).toBeUndefined();
@@ -620,7 +653,7 @@ describe('terminal folding', () => {
       });
     }
     events.push({ kind: 'terminal_output', terminalId: 't1', chunk: 'TAIL', ts: 99 });
-    const model = buildThreadRenderModel(events);
+    const model = buildThreadRenderModel(events, null);
     const terminal = model.terminals.t1;
     if (terminal === undefined) throw new Error('unreachable');
     expect(terminal.output.length).toBeLessThanOrEqual(64_000);
@@ -629,34 +662,43 @@ describe('terminal folding', () => {
   });
 
   test('signal exits carry the signal through', () => {
-    const model = buildThreadRenderModel([
-      created('t1'),
-      ev({ kind: 'terminal_exit', terminalId: 't1', exitCode: null, signal: 'SIGTERM', ts: 2 }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        created('t1'),
+        ev({ kind: 'terminal_exit', terminalId: 't1', exitCode: null, signal: 'SIGTERM', ts: 2 }),
+      ],
+      null,
+    );
     expect(model.terminals.t1?.exit).toEqual({ exitCode: null, signal: 'SIGTERM' });
   });
 });
 
 describe('token usage', () => {
   test('folds a spec usage_update (top-level used/size)', () => {
-    const model = buildThreadRenderModel([
-      ev({
-        kind: 'session_update',
-        ts: 1,
-        update: { sessionUpdate: 'usage_update', used: 12_345, size: 200_000 } as never,
-      }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({
+          kind: 'session_update',
+          ts: 1,
+          update: { sessionUpdate: 'usage_update', used: 12_345, size: 200_000 } as never,
+        }),
+      ],
+      null,
+    );
     expect(model.tokenUsage).toEqual({ used: 12_345, size: 200_000 });
   });
 
   test('still accepts the nested `usage` key shape from pre-spec adapters', () => {
-    const model = buildThreadRenderModel([
-      ev({
-        kind: 'session_update',
-        ts: 1,
-        update: { sessionUpdate: 'something_else', usage: { used: 7, size: 100 } } as never,
-      }),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        ev({
+          kind: 'session_update',
+          ts: 1,
+          update: { sessionUpdate: 'something_else', usage: { used: 7, size: 100 } } as never,
+        }),
+      ],
+      null,
+    );
     expect(model.tokenUsage).toEqual({ used: 7, size: 100 });
   });
 
@@ -667,7 +709,7 @@ describe('token usage', () => {
         ts,
         update: { sessionUpdate: 'usage_update', used, size: 200_000 } as never,
       });
-    const model = buildThreadRenderModel([usage(10, 1), usage(50, 2)]);
+    const model = buildThreadRenderModel([usage(10, 1), usage(50, 2)], null);
     expect(model.tokenUsage?.used).toBe(50);
   });
 });
@@ -756,11 +798,14 @@ describe('startup failures a later ready retires', () => {
   // A thread that eventually started should not open on a stack of amber
   // cards about the sign-in the user already completed.
   test('a launch that eventually worked retires the failures it took to get there', () => {
-    const model = buildThreadRenderModel([
-      statusEvent('auth_required', 'auth-required'),
-      statusEvent('auth_required', 'auth-required'),
-      statusEvent('ready'),
-    ]);
+    const model = buildThreadRenderModel(
+      [
+        statusEvent('auth_required', 'auth-required'),
+        statusEvent('auth_required', 'auth-required'),
+        statusEvent('ready'),
+      ],
+      null,
+    );
 
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(0);
     // Two identical `auth_required` events coalesce into ONE notice with
@@ -777,14 +822,17 @@ describe('startup failures a later ready retires', () => {
   // A prompt failure happened inside a live session, so a later `ready` says
   // nothing about it — the user still needs to see it.
   test('a prompt failure survives a later ready', () => {
-    const model = buildThreadRenderModel([statusEvent('error', 'prompt'), statusEvent('ready')]);
+    const model = buildThreadRenderModel(
+      [statusEvent('error', 'prompt'), statusEvent('ready')],
+      null,
+    );
 
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
   });
 
   // Still parked: nothing has been answered yet, so nothing is retired.
   test('failures stand while the thread has not started', () => {
-    const model = buildThreadRenderModel([statusEvent('auth_required', 'auth-required')]);
+    const model = buildThreadRenderModel([statusEvent('auth_required', 'auth-required')], null);
 
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
   });

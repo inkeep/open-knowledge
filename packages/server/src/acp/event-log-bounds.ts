@@ -8,6 +8,8 @@
  */
 
 import type { SessionUpdate } from '@agentclientprotocol/sdk';
+import type { CodexLegacyAgentIdentity } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
+import { isCodexLegacyWarningUpdate } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
 import type { ThreadEvent } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 
 const EVENT_TEXT_CAP = 16_000;
@@ -112,8 +114,16 @@ function chunkMessageId(u: ChunkUpdate): string {
  * Callable ONLY on the not-yet-flushed tail event: growing an event whose seq
  * was already broadcast/persisted would break the line-index-IS-the-seq
  * contract. A fold assigns no new seq, so that contract is preserved.
+ *
+ * `agent` is the thread's configured agent identity, required so no call site
+ * can reach the fold without deciding whether the Codex legacy carve-out below
+ * applies.
  */
-export function coalesceChunkInto(prev: ThreadEvent, next: ThreadEvent): boolean {
+export function coalesceChunkInto(
+  prev: ThreadEvent,
+  next: ThreadEvent,
+  agent: CodexLegacyAgentIdentity,
+): boolean {
   // Terminal output folds along the same lines as streamed text: the app
   // concatenates a terminal's chunks anyway, so consecutive chunks of the
   // SAME terminal merge into one retained event (and one seq).
@@ -124,6 +134,18 @@ export function coalesceChunkInto(prev: ThreadEvent, next: ThreadEvent): boolean
     return true;
   }
   if (prev.kind !== 'session_update' || next.kind !== 'session_update') return false;
+  // One legacy producer flattens operational warnings into this same text
+  // stream, and the only evidence that it did is the shape of the event the
+  // producer emitted. Folding either side into its neighbour destroys that
+  // evidence irreversibly, so a complete envelope is kept whole. Retention is
+  // all this changes: the bytes, the event kind, and the order are the
+  // producer's, and the warning reading is minted downstream, not here.
+  if (
+    isCodexLegacyWarningUpdate(prev.update, agent) ||
+    isCodexLegacyWarningUpdate(next.update, agent)
+  ) {
+    return false;
+  }
   const p = prev.update as ChunkUpdate;
   const n = next.update as ChunkUpdate;
   if (p.sessionUpdate !== n.sessionUpdate || !COALESCIBLE_CHUNK_KINDS.has(n.sessionUpdate)) {

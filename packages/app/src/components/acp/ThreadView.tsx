@@ -46,6 +46,7 @@ import {
   SquarePen,
   Terminal as TerminalIcon,
   Trash2,
+  TriangleAlert,
   Wrench,
   X,
   Zap,
@@ -150,6 +151,7 @@ import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
+import { AgentNoticeAnnouncer } from './AgentNoticeAnnouncer';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
@@ -1042,6 +1044,14 @@ export function ThreadView({
   // those.
   const visibleEntries = foldedEntries.filter((_, index) => !revertedPositions.has(index));
   const visibleItems = visibleEntries.map((entry) => entry.item);
+  // Read off the unfiltered fold: a warning is never superseded and never
+  // reverted, so what the announcer sees is what the agent actually sent.
+  const agentNotices =
+    model === null
+      ? []
+      : model.items.flatMap((item) =>
+          item.kind === 'agent_notice' ? [{ seq: item.seq, text: item.text }] : [],
+        );
   let retryNoticeIndex = -1;
   if (canRetry) {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -1182,6 +1192,13 @@ export function ThreadView({
       >
         <DocPathResolverReadyContext value={resolverReady}>
           <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+          {/* Outside every transcript branch so it is mounted before the first
+              warning can arrive, whichever branch is on screen. */}
+          <AgentNoticeAnnouncer
+            notices={agentNotices}
+            agentName={agentDisplayName(info.agent.name)}
+            replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
+          />
           {model !== null && model.plan.length > 0 ? (
             <PlanChecklist
               plan={model.plan}
@@ -2177,7 +2194,51 @@ function ThreadItem({
           onRestore={onRestore}
         />
       );
+    case 'agent_notice':
+      return <AgentNoticeCard item={item} />;
   }
+}
+
+/**
+ * Runtime status the agent reported mid-turn, drawn as chrome so it cannot be
+ * read as part of the answer.
+ *
+ * Severity is carried three ways — the written label, the glyph and the box's
+ * own border — because color alone is unavailable to a reader who cannot see
+ * it and is replaced outright by system colors under forced-colors mode. The
+ * border survives both, which is why the box is the load-bearing cue and the
+ * amber fill is only reinforcement.
+ *
+ * Passive by construction: `role="note"` rather than `alert`, and the card
+ * itself offers no dismissal and no action, so a replayed transcript re-draws
+ * it without interrupting and without offering the reader a control that would
+ * do nothing. Arrival announcement is the thread-level live region's job, not
+ * this row's.
+ *
+ * The agent's own words go through the same renderer as its replies and are
+ * neither translated nor trimmed — only the surrounding label is app copy.
+ */
+function AgentNoticeCard({
+  item,
+}: {
+  item: Extract<RenderedItem, { kind: 'agent_notice' }>;
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <div
+      role="note"
+      className="rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-xs"
+      data-testid="agent-thread-agent-notice"
+    >
+      <p className="flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+        <TriangleAlert aria-hidden="true" className="size-3.5 shrink-0" />
+        {t`Warning`}
+      </p>
+      <div className="mt-1 wrap-break-word text-foreground">
+        <AgentMarkdown text={item.text} />
+      </div>
+    </div>
+  );
 }
 
 /**

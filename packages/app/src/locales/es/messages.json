@@ -3597,6 +3597,7 @@
     "d5rK4X": [
       ["chars", "plural", { "one": ["carácter"], "many": ["caracteres"], "other": ["caracteres"] }]
     ],
+    "d6qW27": [["agentName"], " informa: ", ["headline"]],
     "dD7NPy": ["Esquema"],
     "dDpCOp": [
       "Se renombró correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"

@@ -482,6 +482,10 @@ msgstr "تعذّر تشغيل {agentName}."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} لا يقبل مرفقات الصور."
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} أبلغ: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} أمام"
@@ -14594,6 +14598,7 @@ msgstr "في انتظار التفويض"
 msgid "Waiting for your approval"
 msgstr "في انتظار موافقتك"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

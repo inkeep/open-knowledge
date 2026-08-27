@@ -482,6 +482,10 @@ msgstr "{agentName} शुरू नहीं हो सका।"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} छवि अनुलग्नक स्वीकार नहीं करता।"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} ने बताया: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} आगे"
@@ -14590,6 +14594,7 @@ msgstr "प्राधिकरण की प्रतीक्षा"
 msgid "Waiting for your approval"
 msgstr "आपकी स्वीकृति की प्रतीक्षा"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

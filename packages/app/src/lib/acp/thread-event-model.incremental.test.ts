@@ -120,9 +120,9 @@ describe('incremental fold equivalence', () => {
     for (let seed = 1; seed <= 20; seed++) {
       const rng = makeRng(seed * 7919);
       const events = generateEvents(rng, 120);
-      const expected = buildThreadRenderModel(events);
+      const expected = buildThreadRenderModel(events, null);
 
-      const builder = new ThreadRenderModelBuilder();
+      const builder = new ThreadRenderModelBuilder(null);
       let applied = 0;
       let model = builder.sync([]);
       while (applied < events.length) {
@@ -136,14 +136,14 @@ describe('incremental fold equivalence', () => {
 
   test('snapshot is referentially stable when no new events arrive', () => {
     const events = generateEvents(makeRng(42), 50);
-    const builder = new ThreadRenderModelBuilder();
+    const builder = new ThreadRenderModelBuilder(null);
     const first = builder.sync(events);
     expect(builder.sync(events)).toBe(first);
     expect(builder.sync(events)).toBe(first);
   });
 
   test('untouched rows keep object identity across snapshots (copy-on-write)', () => {
-    const builder = new ThreadRenderModelBuilder();
+    const builder = new ThreadRenderModelBuilder(null);
     const base: ThreadEvent[] = [
       { kind: 'user_message', content: 'hi', ts: 1 },
       {
@@ -179,9 +179,9 @@ describe('incremental fold equivalence', () => {
 
   test('a shorter log than previously seen resets the builder', () => {
     const events = generateEvents(makeRng(7), 40);
-    const builder = new ThreadRenderModelBuilder();
+    const builder = new ThreadRenderModelBuilder(null);
     builder.sync(events);
     const shorter = events.slice(0, 5);
-    expect(builder.sync(shorter)).toEqual(buildThreadRenderModel(shorter));
+    expect(builder.sync(shorter)).toEqual(buildThreadRenderModel(shorter, null));
   });
 });

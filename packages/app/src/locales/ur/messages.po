@@ -482,6 +482,10 @@ msgstr "{agentName} شروع نہ ہو سکا۔"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} تصویری منسلکات قبول نہیں کرتا۔"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} نے اطلاع دی: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} آگے"
@@ -14594,6 +14598,7 @@ msgstr "اجازت کا انتظار ہے"
 msgid "Waiting for your approval"
 msgstr "آپ کی منظوری کا انتظار ہے"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"

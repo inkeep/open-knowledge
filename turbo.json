@@ -1,6 +1,9 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["test-support/fixtures/share-url-v1-v2.json"],
+  "globalDependencies": [
+    "test-support/fixtures/share-url-v1-v2.json",
+    "test-support/fixtures/codex-legacy-warning-envelopes.json"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -121,6 +124,7 @@
         "src/**/*.tsx",
         "tests/**/*.ts",
         "tests/**/*.tsx",
+        "scripts/**",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",
@@ -140,6 +144,7 @@
         "src/**/*.tsx",
         "tests/**/*.ts",
         "tests/**/*.tsx",
+        "scripts/**",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",
@@ -159,6 +164,7 @@
         "src/**/*.tsx",
         "tests/**/*.ts",
         "tests/**/*.tsx",
+        "scripts/**",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",
@@ -178,6 +184,7 @@
         "src/**/*.tsx",
         "tests/**/*.ts",
         "tests/**/*.tsx",
+        "scripts/**",
         "playwright.config.ts",
         "vitest.integration.config.ts",
         "vitest.config.ts",

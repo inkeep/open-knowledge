@@ -37,6 +37,19 @@ export interface ThreadState {
   /** Copy-on-write: a new array reference per appended event. */
   readonly events: readonly ThreadEvent[];
   readonly lastSeq: number;
+  /**
+   * Upper bound of the replay the server is about to deliver, taken from the
+   * `subscribed` frame and held still afterwards.
+   *
+   * `info.lastSeq` cannot serve here even though it carries the same number at
+   * subscribe time: the server advances it the moment it appends while event
+   * batches coalesce on a timer, so it races ahead of the transcript for the
+   * rest of the session. Anything at or below this bound was already history
+   * when the subscription opened; anything above it arrived while the reader
+   * was watching. Infinity until the server says otherwise, so an unbounded
+   * window is treated as all-history rather than all-new.
+   */
+  readonly replayThroughSeq: number;
 }
 
 export type ThreadConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
@@ -52,6 +65,17 @@ interface PendingQueueEdit {
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
+
+/**
+ * Placeholder for a seq the server never delivered. Renders nothing (the fold
+ * has no arm for this kind) and exists only to keep an event's position in the
+ * transcript array equal to its seq.
+ */
+const SEQ_GAP_EVENT: ThreadEvent = Object.freeze({
+  kind: 'agent_stderr',
+  line: '[missing log entry]',
+  ts: 0,
+});
 
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 15_000;
@@ -238,7 +262,7 @@ export class AgentThreadClient {
     if (state === undefined) return null;
     let builder = this.modelBuilders.get(threadId);
     if (builder === undefined) {
-      builder = new ThreadRenderModelBuilder();
+      builder = new ThreadRenderModelBuilder(state.info.agent);
       this.modelBuilders.set(threadId, builder);
     }
     return builder.sync(state.events);
@@ -420,7 +444,12 @@ export class AgentThreadClient {
       this.send({ op: 'unsubscribe', threadId });
       this.openedArchived.delete(threadId);
       this.modelBuilders.delete(threadId);
-      this.threads.set(threadId, { info: state.info, events: [], lastSeq: -1 });
+      this.threads.set(threadId, {
+        info: state.info,
+        events: [],
+        lastSeq: -1,
+        replayThroughSeq: Number.POSITIVE_INFINITY,
+      });
       this.bump();
       return;
     }
@@ -590,13 +619,7 @@ export class AgentThreadClient {
     ws.onmessage = (event) => {
       if (this.ws !== ws) return;
       if (typeof event.data !== 'string') return;
-      let frame: ThreadServerFrame;
-      try {
-        frame = JSON.parse(event.data) as ThreadServerFrame;
-      } catch {
-        return;
-      }
-      this.handleFrame(frame);
+      this.receiveServerFrame(event.data);
     };
     ws.onclose = () => {
       if (this.ws !== ws) return;
@@ -677,6 +700,27 @@ export class AgentThreadClient {
     }
   }
 
+  /**
+   * The transport's whole inbound surface: one raw socket payload in, one
+   * store mutation out. Malformed JSON is dropped rather than thrown, because
+   * the peer is a separate process whose bytes this client does not control
+   * and one bad frame must not take the channel down with it.
+   *
+   * Named and reachable so a caller can hand the client a frame without a
+   * socket. Development tooling uses that to drive the real store, fold, and
+   * renderer over synthesized transcripts; the socket remains the only caller
+   * that ships.
+   */
+  receiveServerFrame(data: string): void {
+    let frame: ThreadServerFrame;
+    try {
+      frame = JSON.parse(data) as ThreadServerFrame;
+    } catch {
+      return;
+    }
+    this.handleFrame(frame);
+  }
+
   private handleFrame(frame: ThreadServerFrame): void {
     switch (frame.op) {
       case 'created': {
@@ -748,6 +792,11 @@ export class AgentThreadClient {
       }
       case 'subscribed': {
         this.upsertInfo(frame.info);
+        const state = this.threads.get(frame.threadId);
+        if (state !== undefined) {
+          this.threads.set(frame.threadId, { ...state, replayThroughSeq: frame.info.lastSeq });
+          this.bump();
+        }
         return;
       }
       case 'queue_edited': {
@@ -829,6 +878,21 @@ export class AgentThreadClient {
    * Append consecutive events starting at `fromSeq`, skipping any the store
    * already has (replay/flush overlap) — one array copy and one listener
    * notification per batch, however many events arrived.
+   *
+   * Position in `events` is the event's seq, and consumers read it that way,
+   * so a batch that opens above the tail is padded rather than closed up. A
+   * replay whose durable log cannot supply the low range starts above seq 0,
+   * and closing the hole would shift every later event below its true seq —
+   * the same reason the persistence reader substitutes a placeholder for a
+   * line it cannot parse instead of dropping it.
+   *
+   * The pad is as long as the hole, which reads as unbounded but is not: the
+   * server replays contiguously from the seq it names, so a hole only opens
+   * where the durable log has fewer lines than the thread has events, and its
+   * size is that thread's own history at the moment persistence broke.
+   * Refusing the batch instead would bound it, at the cost of freezing the
+   * transcript for good — a reconnect resubscribes from the same tail, so a
+   * server that still cannot supply the low range never gets past it.
    */
   private appendEvents(threadId: string, fromSeq: number, events: readonly ThreadEvent[]): void {
     const state = this.threads.get(threadId);
@@ -836,14 +900,27 @@ export class AgentThreadClient {
     const skip = Math.max(state.lastSeq + 1 - fromSeq, 0);
     if (skip >= events.length) return;
     const fresh = skip === 0 ? events : events.slice(skip);
+    const missing = Math.max(fromSeq - (state.lastSeq + 1), 0);
+    if (missing > 0) {
+      console.warn('[agent-threads] replay opened above the transcript tail', {
+        threadId,
+        fromSeq,
+        have: state.lastSeq,
+      });
+    }
     let info = state.info;
     for (const event of fresh) {
       info = applyEventToInfo(info, event);
     }
     this.threads.set(threadId, {
       info,
-      events: [...state.events, ...fresh],
+      events: [
+        ...state.events,
+        ...(missing > 0 ? (Array(missing).fill(SEQ_GAP_EVENT) as ThreadEvent[]) : []),
+        ...fresh,
+      ],
       lastSeq: fromSeq + events.length - 1,
+      replayThroughSeq: state.replayThroughSeq,
     });
     this.bump();
   }
@@ -851,7 +928,12 @@ export class AgentThreadClient {
   private upsertInfo(info: ThreadInfo): void {
     const existing = this.threads.get(info.threadId);
     if (existing === undefined) {
-      this.threads.set(info.threadId, { info, events: [], lastSeq: -1 });
+      this.threads.set(info.threadId, {
+        info,
+        events: [],
+        lastSeq: -1,
+        replayThroughSeq: Number.POSITIVE_INFINITY,
+      });
       // Seed the unread floor at first observation so a renderer reload
       // doesn't unread every idle `ready` tab — the pulse means "advanced
       // WHILE you were elsewhere in this window", not "you just reloaded".
@@ -864,7 +946,12 @@ export class AgentThreadClient {
       // history open replays fresh from disk.
       this.openedArchived.delete(info.threadId);
       this.modelBuilders.delete(info.threadId);
-      this.threads.set(info.threadId, { info, events: [], lastSeq: -1 });
+      this.threads.set(info.threadId, {
+        info,
+        events: [],
+        lastSeq: -1,
+        replayThroughSeq: Number.POSITIVE_INFINITY,
+      });
     } else {
       this.threads.set(info.threadId, { ...existing, info });
     }

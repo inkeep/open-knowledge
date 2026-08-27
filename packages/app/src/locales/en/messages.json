@@ -3086,6 +3086,7 @@
     "d2uTPx": ["Server error (HTTP ", ["status"], ")"],
     "d3dX3w": ["Look Up \"", ["word"], "\""],
     "d5rK4X": [["chars", "plural", { "one": ["char"], "other": ["chars"] }]],
+    "d6qW27": [["agentName"], " reported: ", ["headline"]],
     "dD7NPy": ["Outline"],
     "dDpCOp": ["Rename succeeded but the sidebar may be out of date — refresh to resync"],
     "dEgA5A": ["Cancel"],
