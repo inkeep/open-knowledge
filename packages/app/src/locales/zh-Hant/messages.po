@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok 資料夾"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills 已改回「僅自己」。"
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills 可以提交，讓團隊取得你的技能；.ok/ 的其餘內容只留在這台電腦上。"
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4076,18 +4068,6 @@ msgstr "無法傳送你的註解——工作區還沒準備好。"
 msgid "Couldn't send your prompt — please try again."
 msgstr "無法送出你的提示——請再試一次。"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "無法分享技能"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "無法分享技能——{detail}。"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "無法分享技能：內部錯誤。請重新啟動應用程式。"
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4137,14 +4117,6 @@ msgstr "無法更新 {subRoot}：{0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "無法從 {0} 更新：{1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "無法更新技能分享設定"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "無法更新技能分享設定——{detail}。"
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -5424,10 +5396,6 @@ msgstr "任何 {0}/ 資料夾底下的所有內容"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 畫布"
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "例外：技能是共享的"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "既有的分支 <0>{trimmed}</0> 會被簽出到自己的視窗中，位置在 <1>.ok/worktrees/</1> 底下。"
@@ -6260,11 +6228,6 @@ msgstr "Git 與 PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git 無法追蹤這個資料夾——它是空的，或者只有被忽略的檔案。在你加入一份被追蹤的文件之前，連結不會生效。"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "無法使用 git 設定"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -8596,11 +8559,6 @@ msgstr "沒有 git 遠端"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "沒有 git 儲存庫——設定分享在這裡不適用。"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "這裡沒有 git 儲存庫"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -11872,8 +11830,8 @@ msgid "Setup"
 msgstr "設定"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "設定檔案包括：<0>.ok/</0>、AI 工具的 MCP 設定（<1>.mcp.json</1> 以及各工具自己的檔案）、專案技能。<2/><3>已分享</3>會把它們提交到 git，所以複製這個儲存庫的人都會得到相同的設定。<4/><5>僅自己</5>會把它們排除在 git 之外（透過 <6>.git/info/exclude</6>）。"
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "設定檔案包括：<0>.ok/</0>、AI 工具的 MCP 設定（<1>.mcp.json</1> 以及各工具自己的檔案）。你的技能不在其中：它們和專案裡的其他檔案一樣受 git 管理。<2/><3>已分享</3>會把它們提交到 git，所以複製這個儲存庫的人都會得到相同的設定。<4/><5>僅自己</5>會把它們排除在 git 之外（透過 <6>.git/info/exclude</6>）。"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11896,10 +11854,6 @@ msgstr "分享意見回饋"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "分享資料夾"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "分享技能"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12224,10 +12178,6 @@ msgstr "SKILL.md 由技能本身管理——請選擇其他名稱"
 #: src/components/command-palette-commands.ts
 msgid "Skills"
 msgstr "技能"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "技能現在已分享。提交 .ok/skills 就能分享給你的團隊。"
 
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
@@ -13179,11 +13129,6 @@ msgstr "資料夾和範本都已經在這裡了，沒有東西要加。"
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "公式 <0>c = √(a² + b²)</0> 會以行內形式顯示。"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "git 的 exclude 檔案無法寫入"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "索引檔案保留在原處。 Open Knowledge 僅刪除它所新增的 Git 規則。"
@@ -13721,10 +13666,6 @@ msgstr "這個專案沒有 git 儲存庫，所以分享模式不適用。初始�
 msgid "This project has no GitHub remote."
 msgstr "這個專案沒有 GitHub 遠端儲存庫。"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "這個專案是僅本機的，所以 .ok/skills 對 git 隱藏，這些技能無法提交或分享。可以只分享技能資料夾——你 OK 設定的其餘部分仍會留在這台電腦上。"
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14135,7 +14076,6 @@ msgstr "已復原 {docName} 上的最後一次編輯"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "復原"

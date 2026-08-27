@@ -302,11 +302,7 @@ import {
   type LocalOpDeps,
 } from './ipc/local-op.ts';
 import { handleSeedApply, handleSeedListPacks, handleSeedPlan } from './ipc/seed.ts';
-import {
-  handleSharingSetMode,
-  handleSharingSetSkillsShared,
-  handleSharingStatus,
-} from './ipc/sharing.ts';
+import { handleSharingSetMode, handleSharingStatus } from './ipc/sharing.ts';
 import { handleSlidesOpen, handleSlidesStatus } from './ipc/slides.ts';
 import {
   detectProtocol as detectProtocolImpl,
@@ -6054,9 +6050,6 @@ function registerIpcHandlers() {
     if (!ctx) throw new Error('No project context for this window');
     if (request.kind === 'status') {
       return handleSharingStatus(ctx.projectPath);
-    }
-    if (request.kind === 'set-skills-shared') {
-      return handleSharingSetSkillsShared(ctx.projectPath, request.shared);
     }
     const mode: 'shared' | 'local-only' = request.mode === 'local-only' ? 'local-only' : 'shared';
     return handleSharingSetMode(ctx.projectPath, mode);

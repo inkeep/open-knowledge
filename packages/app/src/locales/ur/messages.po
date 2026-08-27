@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok فولڈرز"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills دوبارہ صرف آپ تک محدود ہے۔"
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills کمٹ کیا جا سکتا ہے تاکہ آپ کی ٹیم کو آپ کی مہارتیں ملیں؛ باقی .ok/ اسی کمپیوٹر پر رہتا ہے۔"
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4076,18 +4068,6 @@ msgstr "آپ کے تبصرے نہیں بھیجے جا سکے — ورک اسپی
 msgid "Couldn't send your prompt — please try again."
 msgstr "آپ کا پرامپٹ نہیں بھیجا جا سکا — براہِ کرم دوبارہ کوشش کریں۔"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "مہارتیں شیئر نہیں ہو سکیں"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "مہارتیں شیئر نہیں ہو سکیں — {detail}۔"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "مہارتیں شیئر نہیں ہو سکیں: داخلی خرابی۔ براہِ کرم ایپ دوبارہ چلائیں۔"
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4137,14 +4117,6 @@ msgstr "{subRoot} تازہ نہیں ہو سکا: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0} سے اپ ڈیٹ نہیں ہو سکا: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "مہارتوں کا اشتراک تازہ نہیں ہو سکا"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "مہارتوں کا اشتراک تازہ نہیں ہو سکا — {detail}۔"
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -5424,10 +5396,6 @@ msgstr "کسی بھی {0}/ فولڈر کے تحت سب کچھ"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw کینوس"
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "استثنا: مہارتیں مشترک ہیں"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "موجودہ برانچ <0>{trimmed}</0> اپنی الگ ونڈو میں، <1>.ok/worktrees/</1> کے تحت چیک آؤٹ ہو گی۔"
@@ -6260,11 +6228,6 @@ msgstr "Git اور PRs"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git اس فولڈر کو ٹریک نہیں کر سکتا — یہ خالی ہے یا اس میں صرف نظر انداز شدہ فائلیں ہیں۔ جب تک آپ کوئی ٹریک شدہ دستاویز شامل نہ کریں لنک کام نہیں کرے گا۔"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "git کی کنفیگریشن دستیاب نہیں"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -8596,11 +8559,6 @@ msgstr "کوئی git ریموٹ نہیں"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "کوئی git ریپازٹری نہیں — کنفیگ کا اشتراک یہاں لاگو نہیں ہوتا۔"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "یہاں کوئی git ریپازٹری نہیں"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -11872,8 +11830,8 @@ msgid "Setup"
 msgstr "سیٹ اپ"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "سیٹ اپ کی فائلوں میں شامل ہیں: <0>.ok/</0>، AI ٹولز کی MCP کنفیگز (<1>.mcp.json</1> اور ہر ٹول کی فائلیں)، اور پروجیکٹ کی مہارتیں۔<2/><3>مشترک</3> انہیں git میں کمٹ کرتا ہے، تاکہ جو بھی ریپو کلون کرے اسے وہی سیٹ اپ ملے۔ <4/><5>صرف میں</5> انہیں git سے باہر رکھتا ہے (<6>.git/info/exclude</6> کے ذریعے)۔"
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "سیٹ اپ کی فائلوں میں شامل ہیں: <0>.ok/</0>، AI ٹولز کی MCP کنفیگز (<1>.mcp.json</1> اور ہر ٹول کی فائلیں)۔ آپ کی مہارتیں اس میں شامل نہیں ہیں: وہ پروجیکٹ کی دیگر فائلوں کی طرح git کے تابع ہیں۔<2/><3>مشترک</3> انہیں git میں کمٹ کرتا ہے، تاکہ جو بھی ریپو کلون کرے اسے وہی سیٹ اپ ملے۔ <4/><5>صرف میں</5> انہیں git سے باہر رکھتا ہے (<6>.git/info/exclude</6> کے ذریعے)۔"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11896,10 +11854,6 @@ msgstr "رائے شیئر کریں"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "فولڈر شیئر کریں"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "مہارتیں شیئر کریں"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12224,10 +12178,6 @@ msgstr "SKILL.md کا انتظام خود اسکل کرتی ہے — کوئی ا
 #: src/components/command-palette-commands.ts
 msgid "Skills"
 msgstr "مہارتیں"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "مہارتیں اب مشترک ہیں۔ انہیں اپنی ٹیم کے ساتھ شیئر کرنے کے لیے .ok/skills کمٹ کریں۔"
 
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
@@ -13179,11 +13129,6 @@ msgstr "فولڈرز اور ٹیمپلیٹس یہاں پہلے سے موجود �
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "فارمولا <0>c = √(a² + b²)</0> اِن لائن رینڈر ہوتا ہے۔"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "git کی exclude فائل قابلِ تحریر نہیں"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "انڈیکس فائلیں اپنی جگہ پر رہتی ہیں۔ Open Knowledge صرف اس Git اصول کو ہٹاتا ہے جو اس نے شامل کیا ہے۔"
@@ -13721,10 +13666,6 @@ msgstr "اس پروجیکٹ کی کوئی git ریپازٹری نہیں — اش
 msgid "This project has no GitHub remote."
 msgstr "اس پروجیکٹ کا کوئی GitHub ریموٹ نہیں۔"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "یہ پروجیکٹ صرف مقامی ہے، اس لیے .ok/skills git سے چھپا ہے اور یہ مہارتیں کمٹ یا شیئر نہیں ہو سکتیں۔ صرف مہارتوں کا فولڈر شیئر کریں — آپ کی باقی OK کنفیگ اسی کمپیوٹر پر رہتی ہے۔"
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14135,7 +14076,6 @@ msgstr "{docName} پر آخری ترمیم واپس لے لی گئی"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "واپس لیں"

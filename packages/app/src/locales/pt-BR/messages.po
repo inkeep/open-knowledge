@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Pastas .ok"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills voltou para Somente eu."
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills pode ser versionado para que sua equipe receba suas habilidades; o resto de .ok/ fica neste computador."
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4072,18 +4064,6 @@ msgstr "Não deu para enviar seus comentários — o espaço de trabalho não es
 msgid "Couldn't send your prompt — please try again."
 msgstr "Não deu para enviar seu prompt — tente de novo."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "Não deu para compartilhar as habilidades"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "Não deu para compartilhar as habilidades — {detail}."
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "Não deu para compartilhar as habilidades: erro interno. Reinicie o app."
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4133,14 +4113,6 @@ msgstr "Não deu para atualizar {subRoot}: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "Não foi possível atualizar de {0}: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "Não deu para atualizar o compartilhamento de habilidades"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "Não deu para atualizar o compartilhamento de habilidades — {detail}."
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -5420,10 +5392,6 @@ msgstr "tudo dentro de qualquer pasta {0}/"
 msgid "Excalidraw canvas"
 msgstr "Tela do Excalidraw"
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "Exceção: as habilidades são compartilhadas"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "O ramo existente <0>{trimmed}</0> será extraído em uma janela própria, dentro de <1>.ok/worktrees/</1>."
@@ -6256,11 +6224,6 @@ msgstr "Git e PRs"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "O git não consegue rastrear esta pasta — ela está vazia ou só tem arquivos ignorados. O link não vai funcionar até você adicionar um documento rastreado."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "a configuração do git não está disponível"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -8592,11 +8555,6 @@ msgstr "Sem remoto do git"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "Sem repositório git — o compartilhamento de configuração não se aplica aqui."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "não há repositório git aqui"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -11868,8 +11826,8 @@ msgid "Setup"
 msgstr "Configuração"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta) e as habilidades do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta). Suas habilidades não são incluídas: elas seguem o git como qualquer outro arquivo do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11892,10 +11850,6 @@ msgstr "Enviar comentários"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "Compartilhar a pasta"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "Compartilhar habilidades"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12220,10 +12174,6 @@ msgstr "SKILL.md é gerenciado pela própria habilidade — escolha outro nome"
 #: src/components/command-palette-commands.ts
 msgid "Skills"
 msgstr "Habilidades"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "As habilidades agora são compartilhadas. Faça commit de .ok/skills para compartilhá-las com sua equipe."
 
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
@@ -13175,11 +13125,6 @@ msgstr "As pastas e os modelos já estão aqui, então não há nada a acrescent
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "A fórmula <0>c = √(a² + b²)</0> é renderizada em linha."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "o arquivo de exclusão do git não permite escrita"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "Os arquivos de índice permanecem no lugar. Open Knowledge remove apenas a regra Git adicionada."
@@ -13717,10 +13662,6 @@ msgstr "Este projeto não tem repositório git — o modo de compartilhamento n�
 msgid "This project has no GitHub remote."
 msgstr "Este projeto não tem nenhum remoto do GitHub."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "Este projeto é somente local, então .ok/skills fica oculto para o git e estas habilidades não podem receber commit nem ser compartilhadas. Compartilhe só a pasta de habilidades — o resto da sua configuração do OK fica neste computador."
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14131,7 +14072,6 @@ msgstr "A última edição em {docName} foi desfeita"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "Desfazer"

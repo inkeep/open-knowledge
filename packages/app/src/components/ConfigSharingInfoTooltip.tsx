@@ -28,7 +28,8 @@ export function ConfigSharingInfoTooltip() {
           <p className="leading-relaxed wrap-break-word">
             <Trans>
               Setup files include: <code>.ok/</code>, AI-tool MCP configs (<code>.mcp.json</code>{' '}
-              and per-tool files), project skills.
+              and per-tool files). Your skills are not covered — they follow git like any other file
+              in the project.
               <br />
               <strong className="font-semibold">Shared</strong> commits them to git, so anyone who
               clones the repo gets the same setup. <br />

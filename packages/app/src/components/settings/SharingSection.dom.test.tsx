@@ -35,7 +35,6 @@ const SHARED_STATUS: OkSharingStatusResult = {
   mode: 'shared',
   excluded: [],
   trackedUpstream: [],
-  skillsShared: false,
 };
 
 /** Installs a fake desktop bridge; returns the calls `setMode` received. */

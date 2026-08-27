@@ -9,8 +9,11 @@
  * actually share them with the team; this command only undoes the local
  * exclusion.
  *
- * On a project already in `shared` mode, the operation is a no-op (every
- * OK path is classified `alreadyPresent: []` and no write happens).
+ * On a project already in `shared` mode there is usually nothing to do. It is
+ * NOT unconditionally a no-op: the remove pass also drains stale skill-exclude
+ * lines an older build wrote, and a project can carry those while already
+ * reading `shared` (mode is derived from the OK artifact lines, which skill
+ * paths are no longer part of). That case writes, and says so.
  */
 
 import { resolve } from 'node:path';
@@ -21,6 +24,7 @@ import {
   removeOkPathsFromGitExclude,
 } from '../../sharing/git-exclude.ts';
 import { accent, info, success, warning } from '../../ui/colors.ts';
+import { writeClearedEntries } from './unshare.ts';
 
 interface ShareOptions {
   json: boolean;
@@ -63,6 +67,17 @@ export function sharingShareCommand(): Command {
       }
 
       if (before === 'shared') {
+        // Gated on the drain: `removeOkPathsFromGitExclude` ran above and may
+        // have rewritten the file even in `shared` mode. Claiming "nothing to
+        // do" over that write is the exact phrasing this family corrected
+        // elsewhere.
+        if (result.removed.length > 0) {
+          process.stderr.write(
+            `${success('✓')} ${info('Sharing mode is already')} ${accent('shared')}${info('.')}\n`,
+          );
+          writeClearedEntries(result.removed);
+          return;
+        }
         process.stderr.write(
           `${info('Sharing mode is already')} ${accent('shared')} ${info('— nothing to do.')}\n`,
         );

@@ -44,6 +44,7 @@ import { userGlobalSkillBundleTargets } from '../integrations/skill-teardown.ts'
 import { assertProjectRemovalSafe } from '../integrations/write-project-skill.ts';
 import {
   getExcludedOkPaths,
+  getInstalledSkillProjectionPaths,
   getOkArtifactPaths,
   removeOkPathsFromGitExclude,
 } from '../sharing/git-exclude.ts';
@@ -207,6 +208,10 @@ export function deinitOps(
   //    must sweep it here.
   const removeRelPaths = new Set<string>([
     ...getOkArtifactPaths(projectRoot),
+    // Authored-skill projections are NOT in the sharing-toggle artifact set
+    // (they are the user's content, not OK's — see `getOkArtifactPaths`), but
+    // OK did create these projections, so deinit still sweeps them.
+    ...getInstalledSkillProjectionPaths(projectRoot),
     ...PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   ]);
   for (const rel of removeRelPaths) {
@@ -672,6 +677,9 @@ async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpRe
     case 'git-exclude': {
       const excluded = getExcludedOkPaths(op.projectRoot);
       if (excluded.length === 0) return { op, status: 'not-present' };
+      // `removeOkPathsFromGitExclude` drains the legacy skill-projection lines
+      // internally, so passing the current artifact set is enough to clean an
+      // exclude file written by any build.
       const result = removeOkPathsFromGitExclude(
         op.projectRoot,
         getOkArtifactPaths(op.projectRoot),

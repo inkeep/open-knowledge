@@ -367,7 +367,6 @@
       ["0"],
       " with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
     ],
-    "4h3e0H": ["Couldn't update skills sharing — ", ["detail"], "."],
     "4hJhzz": ["Table"],
     "4ivBhl": ["Toggle the right agents panel, where agent conversations live."],
     "4jDd0j": ["Anyone can see"],
@@ -904,9 +903,6 @@
     "Bdha5y": ["Publishing..."],
     "BeWTQy": ["Loading starter packs"],
     "BgV29F": ["Visual editor find input focused"],
-    "Bh9671": [
-      "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-    ],
     "BhLPRk": ["Reverted \"", ["name"], "\" to the installed version"],
     "BjitBo": ["Download ", ["0"]],
     "BkGtRl": [
@@ -1095,7 +1091,6 @@
     "E91VZY": ["Open in New Window"],
     "E9bKSA": ["Creating"],
     "E9gh86": ["You can attach up to ", ["MAX_ATTACHMENTS"], " images."],
-    "EARn6h": ["Couldn't share skills — ", ["detail"], "."],
     "EBVbtP": ["Could not duplicate item"],
     "EDl9kS": ["Subscribe"],
     "EDm3wJ": ["Loading diff renderer"],
@@ -1543,12 +1538,8 @@
     "K-NcyU": ["This folder doesn't contain a git repository. Pick a different folder?"],
     "K-a33w": ["Start writing to create this page"],
     "K-h9cT": ["Couldn't save the resolution for ", ["filePath"], "."],
-    "K0FgsP": [
-      ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-    ],
     "K0N7zS": ["Config sharing status read failed"],
     "K1ckLX": ["Failed to create folder"],
-    "K2v7QF": ["Couldn't share skills"],
     "K4G55s": ["Checking source"],
     "K6MQQk": ["Sync is failing. See the sync status for details."],
     "K6jjWB": [["packName"], " was already set up. Nothing to do."],
@@ -1592,7 +1583,6 @@
       "> isn't a known component. Copy the source to use it elsewhere, or delete the block."
     ],
     "Khxcyu": ["Terminal access isn't enabled for this project."],
-    "Kiytqd": ["Exception: skills are shared"],
     "KjTmeO": ["Update OpenKnowledge to open this share."],
     "KkEAud": ["Create a file from the current document or folder context."],
     "KkRyMI": ["Could not classify the merge — try again."],
@@ -1954,7 +1944,6 @@
     "P-ye9o": ["Could not open folder picker"],
     "P0HC30": ["This ", ["targetNoun"], " moved to <0>", ["0"], "</0>. Open it there?"],
     "P3NS4G": ["Pattern syntax error (line ", ["lineNumber"], "): ", ["message"]],
-    "P3S14k": [".ok/skills is back to Only me."],
     "P3hnm0": ["File too large to open"],
     "P441h8": [
       "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it."
@@ -2020,7 +2009,6 @@
     "PijLsG": ["File name (created in .ok/schemas/)"],
     "PkeYXL": ["Expanded graph mode"],
     "Pkw7J9": ["This folder is empty."],
-    "PlGC6r": ["the git exclude file isn't writable"],
     "Pp0Vgd": ["Click to install in ", ["label"]],
     "PpJy-V": ["The endpoint didn't respond in time."],
     "PqYWiC": [
@@ -2037,7 +2025,6 @@
     "Q5fqMz": ["Connection error — try again"],
     "Q6hhn8": ["Preferences"],
     "Q7W-mC": ["Same folder as current file"],
-    "Q7cNKe": ["Skills are now shared. Commit .ok/skills to share them with your team."],
     "Q7xfEj": ["done"],
     "Q8A-U_": ["Connected to"],
     "Q9AxTM": ["This agent doesn't offer slash commands — your message will be sent as plain text"],
@@ -2278,7 +2265,6 @@
     "TNKAIS": ["Applying restarts this project's server."],
     "TQJCR6": [["0", "plural", { "one": ["#", " result"], "other": ["#", " results"] }]],
     "TTDXD8": ["New worktree…"],
-    "TUzThQ": ["Share skills"],
     "T_N0ro": ["Ask changes…"],
     "T_j5G0": ["This isn't a supported version of Slidev."],
     "T_wG4n": ["We couldn't check your GitHub connection."],
@@ -2627,7 +2613,6 @@
       "Couldn't restart the server — another process owns it. Quit other OpenKnowledge windows for this project, then try again."
     ],
     "Xv_ijG": ["https://github.com/owner/repo or owner/repo"],
-    "Xwump4": ["no git repository here"],
     "XyOUTJ": ["Exit merge"],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
@@ -3886,9 +3871,6 @@
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],
     "mPzgTS": ["Open ", ["docName"]],
-    "mR3Bly": [
-      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-    ],
     "mToVM9": ["Message ", ["agentName"]],
     "mU3j1b": ["Remove item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflict)"],
@@ -4090,7 +4072,6 @@
     "ojGc_T": ["Open comment"],
     "olb6oq": ["How to set up new projects with OpenKnowledge."],
     "omXJcU": ["Close others"],
-    "onTlRk": ["Couldn't update skills sharing"],
     "opPbzN": ["Copies the skill to ", ["path"]],
     "optX0N": [["0"], "h ago"],
     "oqB2ez": ["Previous match"],
@@ -4222,7 +4203,6 @@
     "qTcVwj": ["Browse or upload a skill for this project."],
     "qTcZZu": ["Failed to load tags. Press <0>Esc</0> and re-open to retry."],
     "qX-ABr": ["Or to use browser sign-in instead:"],
-    "qXN416": ["Couldn't share skills: internal error. Please restart the app."],
     "qXg5W9": ["File saves to <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publish to GitHub"],
     "qZv5ZR": ["Config sharing toggle failed"],
@@ -4539,6 +4519,9 @@
     ],
     "uUCrBv": ["symlink"],
     "uVbUP8": ["Settings…"],
+    "uX85yl": [
+      "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+    ],
     "uY5Z7P": ["Game over · press <0>Space</0> to play again"],
     "uYZTcW": ["This GitHub URL can't be shared."],
     "u_lS4C": ["Clone complete — opening project"],
@@ -4940,7 +4923,6 @@
       "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
     ],
     "zbymaY": [["0"], "m ago"],
-    "zcmYx4": ["git configuration is unavailable"],
     "zd00pH": ["Copy Path"],
     "zgSFyG": ["External link"],
     "zkz0Fg": ["Set up syncing"],

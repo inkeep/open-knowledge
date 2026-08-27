@@ -368,7 +368,6 @@
       ["0"],
       " tanpa autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel Anda akan memiliki kendali penuh atas basis pengetahuan ini, termasuk sinkronisasi, kredensial GitHub, dan operasi lokal. Pastikan tepi tunnel membatasi siapa yang dapat terhubung."
     ],
-    "4h3e0H": ["Berbagi keterampilan tidak bisa diperbarui — ", ["detail"], "."],
     "4hJhzz": ["Tabel"],
     "4ivBhl": [
       "Menampilkan atau menyembunyikan panel agen di kanan, tempat percakapan dengan agen berada."
@@ -891,9 +890,6 @@
     "Bdha5y": ["Menerbitkan..."],
     "BeWTQy": ["Memuat paket awal"],
     "BgV29F": ["Bidang pencarian penyunting visual sedang difokus"],
-    "Bh9671": [
-      "Proyek ini bersifat lokal saja, jadi .ok/skills disembunyikan dari git dan keterampilan ini tidak bisa di-commit maupun dibagikan. Bagikan folder keterampilannya saja — sisa konfigurasi OK Anda tetap di komputer ini."
-    ],
     "BhLPRk": ["\"", ["name"], "\" dikembalikan ke versi yang terpasang"],
     "BjitBo": ["Unduh ", ["0"]],
     "BkGtRl": [
@@ -1087,7 +1083,6 @@
     "E91VZY": ["Buka di Jendela Baru"],
     "E9bKSA": ["Membuat"],
     "E9gh86": ["Anda bisa melampirkan hingga ", ["MAX_ATTACHMENTS"], " gambar."],
-    "EARn6h": ["Keterampilan tidak bisa dibagikan — ", ["detail"], "."],
     "EBVbtP": ["Item tidak dapat digandakan"],
     "EDl9kS": ["Berlangganan"],
     "EDm3wJ": ["Memuat perender perbedaan"],
@@ -1558,12 +1553,8 @@
     "K-NcyU": ["Folder ini tidak berisi repositori git. Pilih folder lain?"],
     "K-a33w": ["Mulai menulis untuk membuat halaman ini"],
     "K-h9cT": ["Penyelesaian untuk ", ["filePath"], " tidak bisa disimpan."],
-    "K0FgsP": [
-      ".ok/skills dapat di-commit agar tim Anda mendapat keterampilan Anda; sisa .ok/ tetap di komputer ini."
-    ],
     "K0N7zS": ["Gagal membaca status berbagi konfigurasi"],
     "K1ckLX": ["Gagal membuat folder"],
-    "K2v7QF": ["Keterampilan tidak bisa dibagikan"],
     "K4G55s": ["Memeriksa sumber"],
     "K6MQQk": ["Sinkronisasi sedang gagal. Lihat status sinkronisasi untuk detailnya."],
     "K6jjWB": [["packName"], " sudah disiapkan. Tidak ada yang perlu dilakukan."],
@@ -1609,7 +1600,6 @@
       "> bukan komponen yang dikenal. Salin sumbernya untuk dipakai di tempat lain, atau hapus bloknya."
     ],
     "Khxcyu": ["Akses terminal belum diaktifkan untuk proyek ini."],
-    "Kiytqd": ["Pengecualian: keterampilan dibagikan"],
     "KjTmeO": ["Perbarui OpenKnowledge untuk membuka konten berbagi ini."],
     "KkEAud": ["Membuat berkas dari konteks dokumen atau folder saat ini."],
     "KkRyMI": ["Penggabungan tidak dapat diklasifikasikan — coba lagi."],
@@ -1964,7 +1954,6 @@
     "P-ye9o": ["Pemilih folder tidak dapat dibuka"],
     "P0HC30": [["targetNoun"], " ini pindah ke <0>", ["0"], "</0>. Buka di sana?"],
     "P3NS4G": ["Galat sintaks pola (baris ", ["lineNumber"], "): ", ["message"]],
-    "P3S14k": [".ok/skills kembali ke Hanya saya."],
     "P3hnm0": ["Berkas terlalu besar untuk dibuka"],
     "P441h8": [
       "Beri tahu kami apa yang salah dan kami akan mengumpulkan log. Tidak ada yang meninggalkan komputer Anda sampai Anda meninjaunya."
@@ -2027,7 +2016,6 @@
     "PijLsG": ["Nama berkas (dibuat di .ok/schemas/)"],
     "PkeYXL": ["Mode graf terbentang"],
     "Pkw7J9": ["Folder ini kosong."],
-    "PlGC6r": ["berkas exclude git tidak bisa ditulisi"],
     "Pp0Vgd": ["Klik untuk memasang di ", ["label"]],
     "PpJy-V": ["Endpoint-nya tidak merespons tepat waktu."],
     "PqYWiC": [
@@ -2044,9 +2032,6 @@
     "Q5fqMz": ["Galat koneksi — coba lagi"],
     "Q6hhn8": ["Preferensi"],
     "Q7W-mC": ["Folder yang sama dengan berkas saat ini"],
-    "Q7cNKe": [
-      "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
-    ],
     "Q7xfEj": ["selesai"],
     "Q8A-U_": ["Terhubung ke"],
     "Q9AxTM": [
@@ -2284,7 +2269,6 @@
     "TNKAIS": ["Menerapkan akan memulai ulang server proyek ini."],
     "TQJCR6": [["0", "plural", { "other": ["#", " hasil"] }]],
     "TTDXD8": ["Worktree baru…"],
-    "TUzThQ": ["Bagikan keterampilan"],
     "T_N0ro": ["Minta perubahan…"],
     "T_j5G0": ["Ini bukan versi Slidev yang didukung."],
     "T_wG4n": ["Kami tidak bisa memeriksa koneksi GitHub Anda."],
@@ -2643,7 +2627,6 @@
       "Server tidak bisa dimulai ulang — proses lain menguasainya. Tutup jendela OpenKnowledge lain untuk proyek ini, lalu coba lagi."
     ],
     "Xv_ijG": ["https://github.com/pemilik/repo atau pemilik/repo"],
-    "Xwump4": ["tidak ada repositori git di sini"],
     "XyOUTJ": ["Keluar dari penggabungan"],
     "Xzy0s0": ["Hapus ", ["fullLabel"], " dari konteks"],
     "Y-Urt2": ["Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."],
@@ -3917,9 +3900,6 @@
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."
     ],
     "mPzgTS": ["Buka ", ["docName"]],
-    "mR3Bly": [
-      "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat), keterampilan proyek.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
-    ],
     "mToVM9": ["Kirim pesan ke ", ["agentName"]],
     "mU3j1b": ["Hapus item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (konflik)"],
@@ -4113,7 +4093,6 @@
     "ojGc_T": ["Buka komentar"],
     "olb6oq": ["Cara menyiapkan proyek baru dengan OpenKnowledge."],
     "omXJcU": ["Tutup yang lain"],
-    "onTlRk": ["Berbagi keterampilan tidak bisa diperbarui"],
     "opPbzN": ["Menyalin keterampilan ke ", ["path"]],
     "optX0N": [["0"], " j lalu"],
     "oqB2ez": ["Kecocokan sebelumnya"],
@@ -4245,9 +4224,6 @@
     "qTcVwj": ["Telusuri atau unggah sebuah keterampilan untuk proyek ini."],
     "qTcZZu": ["Gagal memuat tag. Tekan <0>Esc</0> lalu buka lagi untuk mencoba ulang."],
     "qX-ABr": ["Atau, untuk memakai proses masuk lewat peramban:"],
-    "qXN416": [
-      "Keterampilan tidak bisa dibagikan: galat internal. Silakan mulai ulang aplikasinya."
-    ],
     "qXg5W9": ["Berkasnya tersimpan di <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Terbitkan ke GitHub"],
     "qZv5ZR": ["Gagal mengalihkan berbagi konfigurasi"],
@@ -4559,6 +4535,9 @@
     ],
     "uUCrBv": ["symlink"],
     "uVbUP8": ["Pengaturan…"],
+    "uX85yl": [
+      "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat). Keterampilan Anda tidak termasuk: semuanya mengikuti git seperti berkas lain di proyek ini.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
+    ],
     "uY5Z7P": ["Permainan berakhir · tekan <0>Spasi</0> untuk main lagi"],
     "uYZTcW": ["URL GitHub ini tidak dapat dibagikan."],
     "u_lS4C": ["Kloning selesai — membuka proyek"],
@@ -4951,7 +4930,6 @@
       "Blok properti di bagian atas dokumen ini punya galat format. Beralihlah ke mode sumber untuk memperbaikinya."
     ],
     "zbymaY": [["0"], " mnt lalu"],
-    "zcmYx4": ["konfigurasi git tidak tersedia"],
     "zd00pH": ["Salin Jalur"],
     "zgSFyG": ["Tautan eksternal"],
     "zkz0Fg": ["Siapkan sinkronisasi"],

@@ -21,10 +21,8 @@ import {
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
-  readSkillsShared,
   removeOkPathsFromGitExclude,
   type SharingMode,
-  setSkillsShared,
 } from '@inkeep/open-knowledge';
 
 export interface SharingStatusResult {
@@ -35,10 +33,6 @@ export interface SharingStatusResult {
   mode: SharingMode;
   excluded: string[];
   trackedUpstream: string[];
-  /** True when local-only but `.ok/skills/` is carved back out as shareable
-   *  (see `readSkillsShared`). Always false outside local-only. Drives the
-   *  Skills UI "share skills" toggle position. */
-  skillsShared: boolean;
 }
 
 export type SharingSetModeResult =
@@ -63,8 +57,7 @@ export function handleSharingStatus(projectPath: string): SharingStatusResult {
       projectPath,
       getOkArtifactPaths(projectPath),
     ).tracked;
-    const skillsShared = readSkillsShared(projectPath);
-    return { kind: 'status', mode, excluded, trackedUpstream, skillsShared };
+    return { kind: 'status', mode, excluded, trackedUpstream };
   } catch {
     // `probeTrackedOkPaths` shells out to `git` (which may be absent from
     // Electron's inherited PATH), and the fs reads can hit a TOCTOU /
@@ -75,28 +68,8 @@ export function handleSharingStatus(projectPath: string): SharingStatusResult {
       mode: 'no-git',
       excluded: [],
       trackedUpstream: [],
-      skillsShared: false,
     };
   }
-}
-
-/**
- * Toggle whether `.ok/skills/` stays shareable while the rest of `.ok/`
- * remains local-only. Delegates to the shared `setSkillsShared` primitive, so
- * desktop and CLI cannot drift. Only meaningful in local-only mode; the
- * renderer gates the toggle's visibility. Returns the same discriminated
- * result shape as `set-mode` (no `refused-tracked` arm — carving skills OUT
- * only removes exclusion, it never hides a tracked file).
- */
-export function handleSharingSetSkillsShared(
-  projectPath: string,
-  shared: boolean,
-): SharingSetModeResult {
-  const result = setSkillsShared(projectPath, shared);
-  if (result.kind === 'no-exclude') {
-    return { kind: 'no-exclude', reason: result.reason };
-  }
-  return { kind: 'applied', mode: readSharingMode(projectPath) };
 }
 
 /**

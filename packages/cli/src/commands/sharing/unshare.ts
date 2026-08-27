@@ -35,6 +35,8 @@ interface UnshareJsonReport {
   mode: 'shared' | 'local-only' | 'no-git';
   appended: string[];
   alreadyPresent: string[];
+  /** Stale skill-projection lines an older build wrote, cleared by this run. */
+  removed: string[];
 }
 
 interface UnshareRefusalReport {
@@ -43,6 +45,17 @@ interface UnshareRefusalReport {
   mode: 'refused-tracked';
   tracked: string[];
   remediation: string;
+}
+
+/**
+ * Print the stale entries a drain just cleared. Shared by the three commands
+ * that can reach a draining write so the copy cannot drift between them.
+ * No-op when nothing was cleared, so it composes onto any success path.
+ */
+export function writeClearedEntries(removed: readonly string[]): void {
+  if (removed.length === 0) return;
+  process.stderr.write(`  Cleared ${removed.length} stale entry(s) left by an older version:\n`);
+  for (const p of removed) process.stderr.write(`    ${p}\n`);
 }
 
 export function sharingUnshareCommand(): Command {
@@ -87,12 +100,23 @@ export function sharingUnshareCommand(): Command {
           mode,
           appended: result.appended,
           alreadyPresent: result.alreadyPresent,
+          removed: result.removed,
         };
         process.stdout.write(`${JSON.stringify(report)}\n`);
         return;
       }
 
       if (result.appended.length === 0) {
+        // Not necessarily a no-op: the add path also drains stale skill lines,
+        // so this branch covers both "already local-only" and "already
+        // local-only, and we just cleared entries an older build left".
+        if (result.removed.length > 0) {
+          process.stderr.write(
+            `${success('✓')} ${accent('Sharing mode is already')} ${success('local-only')}${accent('.')}\n`,
+          );
+          writeClearedEntries(result.removed);
+          return;
+        }
         process.stderr.write(
           `${accent('Sharing mode is already')} ${success('local-only')} ${accent('— nothing to do.')}\n`,
         );
@@ -104,6 +128,11 @@ export function sharingUnshareCommand(): Command {
       process.stderr.write(
         `  Added ${result.appended.length} path(s) to ${accent('.git/info/exclude')} (per-clone, not committed).\n`,
       );
+      // Composes with the line above rather than competing with it: the
+      // ordinary upgrade path both appends newer config paths and drains stale
+      // skill lines in the SAME pass, and the drain is the half the user needs
+      // to know about.
+      writeClearedEntries(result.removed);
     });
 }
 

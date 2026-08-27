@@ -434,7 +434,6 @@
       ["0"],
       " sans authentification intégrée. Toute personne pouvant atteindre votre tunnel aura un contrôle total de cette base de connaissances, y compris la synchronisation, les identifiants GitHub et les opérations locales. Assurez-vous que la périphérie du tunnel restreint qui peut se connecter."
     ],
-    "4h3e0H": ["Impossible de mettre à jour le partage des compétences — ", ["detail"], "."],
     "4hJhzz": ["Tableau"],
     "4ivBhl": [
       "Affiche ou masque le panneau des agents, à droite, où résident les conversations d'agents."
@@ -1083,9 +1082,6 @@
     "Bdha5y": ["Publication…"],
     "BeWTQy": ["Chargement des packs de démarrage"],
     "BgV29F": ["Champ de recherche de l'éditeur visuel actif"],
-    "Bh9671": [
-      "Ce projet est local uniquement, donc .ok/skills est masqué pour git et ces compétences ne peuvent être ni validées ni partagées. Partagez seulement le dossier des compétences — le reste de votre configuration OK reste sur cet ordinateur."
-    ],
     "BhLPRk": ["« ", ["name"], " » ramené à la version installée"],
     "BjitBo": ["Télécharger ", ["0"]],
     "BkGtRl": [
@@ -1316,7 +1312,6 @@
     "E91VZY": ["Ouvrir dans une nouvelle fenêtre"],
     "E9bKSA": ["Création"],
     "E9gh86": ["Vous pouvez joindre jusqu'à ", ["MAX_ATTACHMENTS"], " images."],
-    "EARn6h": ["Impossible de partager les compétences — ", ["detail"], "."],
     "EBVbtP": ["Impossible de dupliquer l'élément"],
     "EDl9kS": ["S'abonner"],
     "EDm3wJ": ["Chargement du moteur de rendu des différences"],
@@ -1833,12 +1828,8 @@
     "K-NcyU": ["Ce dossier ne contient pas de dépôt git. Choisir un autre dossier ?"],
     "K-a33w": ["Commencez à écrire pour créer cette page"],
     "K-h9cT": ["Impossible d'enregistrer la résolution pour ", ["filePath"], "."],
-    "K0FgsP": [
-      ".ok/skills peut être validé pour que votre équipe reçoive vos compétences ; le reste de .ok/ demeure sur cet ordinateur."
-    ],
     "K0N7zS": ["Échec de la lecture de l'état du partage de configuration"],
     "K1ckLX": ["Échec de la création du dossier"],
-    "K2v7QF": ["Impossible de partager les compétences"],
     "K4G55s": ["Vérification de la source"],
     "K6MQQk": [
       "La synchronisation échoue. Consultez l'état de la synchronisation pour les détails."
@@ -1886,7 +1877,6 @@
       "> n'est pas un composant connu. Copiez la source pour l'utiliser ailleurs, ou supprimez le bloc."
     ],
     "Khxcyu": ["L'accès au terminal n'est pas activé pour ce projet."],
-    "Kiytqd": ["Exception : les compétences sont partagées"],
     "KjTmeO": ["Mettez OpenKnowledge à jour pour ouvrir ce partage."],
     "KkEAud": ["Crée un fichier à partir du document ou du dossier courant."],
     "KkRyMI": ["Impossible de classer la fusion. Réessayez."],
@@ -2283,7 +2273,6 @@
     "P-ye9o": ["Impossible d'ouvrir le sélecteur de dossier"],
     "P0HC30": ["Ce ", ["targetNoun"], " a été déplacé vers <0>", ["0"], "</0>. L'ouvrir là-bas ?"],
     "P3NS4G": ["Erreur de syntaxe du motif (ligne ", ["lineNumber"], ") : ", ["message"]],
-    "P3S14k": [".ok/skills est revenu à Moi uniquement."],
     "P3hnm0": ["Fichier trop volumineux pour être ouvert"],
     "P441h8": [
       "Dites-nous ce qui s'est mal passé et nous rassemblerons les journaux. Rien ne quitte votre ordinateur avant que vous l'ayez examiné."
@@ -2356,7 +2345,6 @@
     "PijLsG": ["Nom du fichier (créé dans .ok/schemas/)"],
     "PkeYXL": ["Mode graphe développé"],
     "Pkw7J9": ["Ce dossier est vide."],
-    "PlGC6r": ["le fichier d'exclusion git n'est pas accessible en écriture"],
     "Pp0Vgd": ["Cliquez pour installer dans ", ["label"]],
     "PpJy-V": ["Le point de terminaison n'a pas répondu à temps."],
     "PqYWiC": [
@@ -2375,9 +2363,6 @@
     "Q5fqMz": ["Erreur de connexion — réessayez"],
     "Q6hhn8": ["Préférences"],
     "Q7W-mC": ["Même dossier que le fichier actuel"],
-    "Q7cNKe": [
-      "Les compétences sont maintenant partagées. Validez .ok/skills pour les partager avec votre équipe."
-    ],
     "Q7xfEj": ["terminé"],
     "Q8A-U_": ["Connecté à"],
     "Q9AxTM": [
@@ -2665,7 +2650,6 @@
       ]
     ],
     "TTDXD8": ["Nouveau worktree…"],
-    "TUzThQ": ["Partager les compétences"],
     "T_N0ro": ["Demander des modifications…"],
     "T_j5G0": ["Cette version de Slidev n'est pas prise en charge."],
     "T_wG4n": ["Nous n'avons pas pu vérifier votre connexion GitHub."],
@@ -3096,7 +3080,6 @@
       "Impossible de redémarrer le serveur — un autre processus le détient. Quittez les autres fenêtres OpenKnowledge de ce projet, puis réessayez."
     ],
     "Xv_ijG": ["https://github.com/owner/repo ou owner/repo"],
-    "Xwump4": ["aucun dépôt git ici"],
     "XyOUTJ": ["Quitter la fusion"],
     "Xzy0s0": ["Retirer ", ["fullLabel"], " du contexte"],
     "Y-Urt2": ["Équation mathématique en bloc rendue avec KaTeX à partir d'une source LaTeX."],
@@ -4539,9 +4522,6 @@
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
     ],
     "mPzgTS": ["Ouvrir ", ["docName"]],
-    "mR3Bly": [
-      "Les fichiers de configuration comprennent : <0>.ok/</0>, les configurations MCP des outils IA (<1>.mcp.json</1> et les fichiers propres à chaque outil), les compétences du projet.<2/><3>Partagé</3> les valide dans git, donc toute personne qui clone le dépôt obtient la même configuration. <4/><5>Moi uniquement</5> les tient à l'écart de git (via <6>.git/info/exclude</6>)."
-    ],
     "mToVM9": ["Envoyer un message à ", ["agentName"]],
     "mU3j1b": ["Retirer l'élément ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflit)"],
@@ -4761,7 +4741,6 @@
     "ojGc_T": ["Ouvrir le commentaire"],
     "olb6oq": ["Comment configurer de nouveaux projets avec OpenKnowledge."],
     "omXJcU": ["Fermer les autres"],
-    "onTlRk": ["Impossible de mettre à jour le partage des compétences"],
     "opPbzN": ["Copie la compétence dans ", ["path"]],
     "optX0N": ["il y a ", ["0"], " h"],
     "oqB2ez": ["Occurrence précédente"],
@@ -4927,9 +4906,6 @@
       "Échec du chargement des étiquettes. Appuyez sur <0>Échap</0> puis rouvrez pour réessayer."
     ],
     "qX-ABr": ["Ou pour utiliser plutôt la connexion via le navigateur :"],
-    "qXN416": [
-      "Impossible de partager les compétences : erreur interne. Veuillez redémarrer l'application."
-    ],
     "qXg5W9": ["Le fichier est enregistré dans <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publier sur GitHub"],
     "qZv5ZR": ["Échec du basculement du partage de configuration"],
@@ -5282,6 +5258,9 @@
     ],
     "uUCrBv": ["lien symbolique"],
     "uVbUP8": ["Paramètres…"],
+    "uX85yl": [
+      "Les fichiers de configuration comprennent : <0>.ok/</0>, les configurations MCP des outils IA (<1>.mcp.json</1> et les fichiers propres à chaque outil). Vos compétences ne sont pas concernées : elles suivent git comme n'importe quel autre fichier du projet.<2/><3>Partagé</3> les valide dans git, donc toute personne qui clone le dépôt obtient la même configuration. <4/><5>Moi uniquement</5> les tient à l'écart de git (via <6>.git/info/exclude</6>)."
+    ],
     "uY5Z7P": ["Partie terminée · appuyez sur <0>Espace</0> pour rejouer"],
     "uYZTcW": ["Cette URL GitHub ne peut pas être partagée."],
     "u_lS4C": ["Clonage terminé — ouverture du projet"],
@@ -5774,7 +5753,6 @@
       "Le bloc de propriétés en haut de ce document contient une erreur de mise en forme. Passez en mode source pour la corriger."
     ],
     "zbymaY": ["il y a ", ["0"], " min"],
-    "zcmYx4": ["la configuration git est indisponible"],
     "zd00pH": ["Copier le chemin"],
     "zgSFyG": ["Lien externe"],
     "zkz0Fg": ["Configurer la synchronisation"],

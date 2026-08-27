@@ -693,8 +693,8 @@ const bridge: OkDesktopBridge = {
   },
 
   sharing: {
-    // The three-method surface (status / setMode / setSkillsShared) maps onto a
-    // single discriminated channel (`ok:sharing:dispatch`) so the codebase's
+    // The two-method surface (status / setMode) maps onto a single
+    // discriminated channel (`ok:sharing:dispatch`) so the codebase's
     // hand-rolled-channel cap is respected. Each method narrows the result type
     // via the typed-IPC layer.
     status: async () => {
@@ -708,13 +708,6 @@ const bridge: OkDesktopBridge = {
       const result = await invoke('ok:sharing:dispatch', { kind: 'set-mode', mode });
       if (result.kind === 'status') {
         throw new Error('ok:sharing:dispatch: expected set-mode result, got status');
-      }
-      return result;
-    },
-    setSkillsShared: async (shared: boolean) => {
-      const result = await invoke('ok:sharing:dispatch', { kind: 'set-skills-shared', shared });
-      if (result.kind === 'status') {
-        throw new Error('ok:sharing:dispatch: expected set-skills-shared result, got status');
       }
       return result;
     },

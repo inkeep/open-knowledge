@@ -45,14 +45,6 @@ msgstr ""
 msgid ".ok folders"
 msgstr ""
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ""
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4072,18 +4064,6 @@ msgstr ""
 msgid "Couldn't send your prompt — please try again."
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr ""
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr ""
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr ""
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4132,14 +4112,6 @@ msgstr ""
 #. placeholder {1}: result.error
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
 msgstr ""
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
@@ -5420,10 +5392,6 @@ msgstr ""
 msgid "Excalidraw canvas"
 msgstr ""
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr ""
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr ""
@@ -6255,11 +6223,6 @@ msgstr ""
 
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8591,11 +8554,6 @@ msgstr ""
 
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
-msgstr ""
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
 msgstr ""
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
@@ -11868,7 +11826,7 @@ msgid "Setup"
 msgstr ""
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
 msgstr ""
 
 #: src/components/ConsentDialogBody.tsx
@@ -11891,10 +11849,6 @@ msgstr ""
 
 #: src/components/ShareButton.tsx
 msgid "Share folder"
-msgstr ""
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
 msgstr ""
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
@@ -12219,10 +12173,6 @@ msgstr ""
 
 #: src/components/command-palette-commands.ts
 msgid "Skills"
-msgstr ""
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
 msgstr ""
 
 #. placeholder {0}: bucket.id
@@ -13175,11 +13125,6 @@ msgstr ""
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr ""
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr ""
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr ""
@@ -13717,10 +13662,6 @@ msgstr ""
 msgid "This project has no GitHub remote."
 msgstr ""
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr ""
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14131,7 +14072,6 @@ msgstr ""
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr ""

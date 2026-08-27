@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Folder .ok"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills kembali ke Hanya saya."
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills dapat di-commit agar tim Anda mendapat keterampilan Anda; sisa .ok/ tetap di komputer ini."
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4072,18 +4064,6 @@ msgstr "Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."
 msgid "Couldn't send your prompt — please try again."
 msgstr "Prompt Anda tidak bisa dikirim — silakan coba lagi."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "Keterampilan tidak bisa dibagikan"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "Keterampilan tidak bisa dibagikan — {detail}."
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "Keterampilan tidak bisa dibagikan: galat internal. Silakan mulai ulang aplikasinya."
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4133,14 +4113,6 @@ msgstr "{subRoot} tidak bisa diperbarui: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "Tidak dapat memperbarui dari {0}: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "Berbagi keterampilan tidak bisa diperbarui"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "Berbagi keterampilan tidak bisa diperbarui — {detail}."
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -5420,10 +5392,6 @@ msgstr "semua yang ada di folder {0}/ mana pun"
 msgid "Excalidraw canvas"
 msgstr "Kanvas Excalidraw"
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "Pengecualian: keterampilan dibagikan"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "Cabang yang sudah ada <0>{trimmed}</0> akan diambil ke jendelanya sendiri, di bawah <1>.ok/worktrees/</1>."
@@ -6256,11 +6224,6 @@ msgstr "Git & PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "konfigurasi git tidak tersedia"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -8592,11 +8555,6 @@ msgstr "Tidak ada remote git"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "Tidak ada repositori git — berbagi konfigurasi tidak berlaku di sini."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "tidak ada repositori git di sini"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -11868,8 +11826,8 @@ msgid "Setup"
 msgstr "Penyiapan"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat), keterampilan proyek.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat). Keterampilan Anda tidak termasuk: semuanya mengikuti git seperti berkas lain di proyek ini.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11892,10 +11850,6 @@ msgstr "Bagikan masukan"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "Bagikan folder"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "Bagikan keterampilan"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12220,10 +12174,6 @@ msgstr "SKILL.md dikelola oleh skill itu sendiri — pilih nama lain"
 #: src/components/command-palette-commands.ts
 msgid "Skills"
 msgstr "Keterampilan"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
 
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
@@ -13175,11 +13125,6 @@ msgstr "Folder dan templatnya sudah ada di sini, jadi tidak ada yang perlu ditam
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "Rumus <0>c = √(a² + b²)</0> dirender sebaris."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "berkas exclude git tidak bisa ditulisi"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "File indeks tetap di tempatnya. Open Knowledge hanya menghapus aturan Git yang ditambahkannya."
@@ -13717,10 +13662,6 @@ msgstr "Proyek ini tidak punya repositori git — mode berbagi tidak berlaku. In
 msgid "This project has no GitHub remote."
 msgstr "Proyek ini tidak memiliki remote GitHub."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "Proyek ini bersifat lokal saja, jadi .ok/skills disembunyikan dari git dan keterampilan ini tidak bisa di-commit maupun dibagikan. Bagikan folder keterampilannya saja — sisa konfigurasi OK Anda tetap di komputer ini."
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14131,7 +14072,6 @@ msgstr "Suntingan terakhir pada {docName} dibatalkan"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "Batalkan"

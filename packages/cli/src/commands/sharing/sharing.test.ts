@@ -35,6 +35,10 @@ function readExclude(dir: string): string {
   return readFileSync(join(dir, '.git', 'info', 'exclude'), 'utf-8');
 }
 
+function writeExclude(dir: string, content: string): void {
+  writeFileSync(join(dir, '.git', 'info', 'exclude'), content, 'utf-8');
+}
+
 /**
  * Capture stdout + stderr while a Promise runs. Each `process.stdout.write`
  * and `process.stderr.write` is intercepted; the originals are restored
@@ -131,6 +135,63 @@ describe('ok config-sharing unshare → share round-trip', () => {
       await sharingShareCommand().parseAsync(['node', 'share', '--project', dir]);
     });
     expect(readExclude(dir)).toBe(original);
+  });
+});
+
+describe('draining a stale skill exclude is reported, never silently written', () => {
+  // Nothing in this file previously seeded an installed-skills marker, so
+  // `result.removed` was `[]` in every existing case and none of the drain
+  // reporting was exercised end to end.
+  let dir: string;
+  beforeEach(() => {
+    dir = uniqueDir('sharing-drain-test');
+    initGitRepo(dir);
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'installed-skills.json'),
+      JSON.stringify({
+        schema: 1,
+        skills: {
+          'trip-log': {
+            hosts: ['claude'],
+            scope: 'project',
+            scripts: false,
+            installedAt: '2026-06-05T00:00:00.000Z',
+          },
+        },
+      }),
+      'utf-8',
+    );
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    process.exitCode = 0;
+  });
+
+  it('unshare that BOTH appends and drains reports both halves', async () => {
+    // The migration population: the artifact set grew across releases, so an
+    // older local-only project appends the newer config paths and clears its
+    // stale skill line in the same pass.
+    writeExclude(dir, '.ok/\n.claude/skills/trip-log/\n');
+    const { stderr } = await capture(async () => {
+      await sharingUnshareCommand().parseAsync(['node', 'unshare', '--project', dir]);
+    });
+    expect(stderr).toMatch(/Added \d+ path\(s\)/);
+    expect(stderr).toContain('.claude/skills/trip-log/');
+    expect(stderr).toMatch(/stale entry/);
+    expect(readExclude(dir)).not.toContain('.claude/skills/trip-log/');
+  });
+
+  it('share on an already-shared project that still drains does not claim "nothing to do"', async () => {
+    // `readSharingMode` no longer consults skill paths, so a file carrying only
+    // a skill line reads `shared` — and the remove pass still rewrites it.
+    writeExclude(dir, '.claude/skills/trip-log/\n');
+    const { stderr } = await capture(async () => {
+      await sharingShareCommand().parseAsync(['node', 'share', '--project', dir]);
+    });
+    expect(stderr).not.toMatch(/nothing to do/);
+    expect(stderr).toContain('.claude/skills/trip-log/');
+    expect(readExclude(dir)).not.toContain('.claude/skills/trip-log/');
   });
 });
 

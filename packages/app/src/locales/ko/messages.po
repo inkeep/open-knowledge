@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok 폴더"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills 공유를 나만 보기로 되돌렸습니다."
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills는 커밋할 수 있으므로 팀이 스킬을 받고, .ok/의 나머지는 이 컴퓨터에만 남습니다."
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -4076,18 +4068,6 @@ msgstr "댓글 전송에 실패했습니다. 워크스페이스 준비 전입니
 msgid "Couldn't send your prompt — please try again."
 msgstr "프롬프트 전송 실패. 다시 시도하세요."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "스킬 공유 실패"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "스킬 공유 실패: {detail}."
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "스킬 공유 실패: 내부 오류입니다. 앱을 다시 시작하세요."
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4137,14 +4117,6 @@ msgstr "{subRoot} 업데이트 실패: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0}에서 업데이트할 수 없습니다: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "스킬 공유를 업데이트하지 못했습니다"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "스킬 공유를 업데이트하지 못했습니다: {detail}."
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -5424,10 +5396,6 @@ msgstr "모든 {0}/ 폴더 아래의 항목"
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 캔버스"
 
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "예외: 스킬은 공유됨"
-
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
 msgstr "기존 브랜치 <0>{trimmed}</0>는 별도 창의 <1>.ok/worktrees/</1> 아래에 체크아웃됩니다."
@@ -6260,11 +6228,6 @@ msgstr "Git 및 PR"
 #: src/components/ShareFreshnessWarning.tsx
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git이 이 폴더를 추적할 수 없습니다. 비어 있거나 무시된 파일만 포함되어 있습니다. 추적할 문서를 추가해야 링크가 작동합니다."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "git 설정을 사용할 수 없음"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -8596,11 +8559,6 @@ msgstr "git 원격 없음"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "git 저장소 없음, 여기에는 config 공유가 적용되지 않습니다."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "이곳에 git 저장소 없음"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -11872,8 +11830,8 @@ msgid "Setup"
 msgstr "설정"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "설정 파일에는 <0>.ok/</0>, AI 도구 MCP 구성(<1>.mcp.json</1> 및 도구별 파일), 프로젝트 스킬이 포함됩니다.<2/><3>공유</3>는 이를 git에 커밋하므로 리포지토리를 클론하는 누구나 동일한 설정을 받습니다. <4/><5>나만 보기</5>는 <6>.git/info/exclude</6>를 통해 git에서 제외합니다."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "설정 파일에는 <0>.ok/</0>, AI 도구 MCP 구성(<1>.mcp.json</1> 및 도구별 파일)이 포함됩니다. 스킬은 포함되지 않습니다. 프로젝트의 다른 파일과 똑같이 git을 따릅니다.<2/><3>공유</3>는 이를 git에 커밋하므로 리포지토리를 클론하는 누구나 동일한 설정을 받습니다. <4/><5>나만 보기</5>는 <6>.git/info/exclude</6>를 통해 git에서 제외합니다."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11896,10 +11854,6 @@ msgstr "피드백 공유"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "폴더 공유"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "스킬 공유"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12224,10 +12178,6 @@ msgstr "SKILL.md는 스킬 자체에서 관리합니다. 다른 이름을 선택
 #: src/components/command-palette-commands.ts
 msgid "Skills"
 msgstr "스킬"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "이제 스킬을 공유합니다. 팀과 공유하려면 .ok/skills를 커밋하세요."
 
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
@@ -13179,11 +13129,6 @@ msgstr "폴더와 템플릿이 이미 있으므로 추가할 항목이 없습니
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "수식 <0>c = √(a² + b²)</0>이 인라인으로 렌더링됩니다."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "git exclude 파일을 쓸 수 없음"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "인덱스 파일은 그대로 유지됩니다. Open Knowledge가 추가한 Git 규칙만 제거합니다."
@@ -13721,10 +13666,6 @@ msgstr "이 프로젝트에는 git 저장소가 없어 공유 모드가 적용�
 msgid "This project has no GitHub remote."
 msgstr "이 프로젝트에는 GitHub 원격이 없습니다."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "이 프로젝트는 로컬 전용이므로 .ok/skills가 git에서 숨겨지고 이 스킬을 커밋하거나 공유할 수 없습니다. 스킬 폴더만 공유하세요. 나머지 OK 설정은 이 컴퓨터에 남습니다."
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -14135,7 +14076,6 @@ msgstr "{docName}에서 마지막 편집을 실행 취소했습니다."
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "실행 취소"

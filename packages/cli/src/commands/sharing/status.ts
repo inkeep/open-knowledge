@@ -14,7 +14,6 @@ import {
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
-  readSkillsShared,
   type SharingMode,
 } from '../../sharing/git-exclude.ts';
 import { accent, info, success, warning } from '../../ui/colors.ts';
@@ -28,8 +27,6 @@ interface StatusJsonReport {
   type: 'sharing-status';
   projectRoot: string;
   mode: SharingMode;
-  /** True when local-only but `.ok/skills/` is carved back out as shareable. */
-  skillsShared: boolean;
   excluded: string[];
   trackedUpstream: string[];
 }
@@ -42,7 +39,6 @@ export function sharingStatusCommand(): Command {
     .action(async (opts: StatusOptions) => {
       const projectRoot = resolve(opts.project ?? process.cwd());
       const mode = readSharingMode(projectRoot);
-      const skillsShared = readSkillsShared(projectRoot);
       const excluded = [...getExcludedOkPaths(projectRoot)];
       const trackedUpstream = probeTrackedOkPaths(
         projectRoot,
@@ -54,7 +50,6 @@ export function sharingStatusCommand(): Command {
           type: 'sharing-status',
           projectRoot,
           mode,
-          skillsShared,
           excluded,
           trackedUpstream,
         };
@@ -64,15 +59,6 @@ export function sharingStatusCommand(): Command {
 
       const lines: string[] = [];
       lines.push(`OpenKnowledge sharing mode: ${formatMode(mode)}`);
-      if (skillsShared) {
-        // In the carve state the blanket `.ok/` line is replaced by
-        // `**/.ok/* + !**/.ok/skills/`, so `getExcludedOkPaths` no longer lists
-        // `.ok/`. Call it out explicitly so the excluded list below isn't
-        // misread as ".ok/ is shared".
-        lines.push(
-          `  ${accent('.ok/skills')} is committable (carved out); the rest of .ok/ stays local.`,
-        );
-      }
       lines.push('');
       lines.push(`Excluded from git via ${accent('.git/info/exclude')}:`);
       if (excluded.length === 0) {
@@ -91,13 +77,6 @@ export function sharingStatusCommand(): Command {
       lines.push(
         `Toggle with: ${info(mode === 'local-only' ? 'ok config-sharing share' : 'ok config-sharing unshare')}`,
       );
-      if (skillsShared) {
-        // Disambiguate: the toggle above promotes the WHOLE project to shared.
-        // Undoing only the skills carve-out is a desktop-app action today.
-        lines.push(
-          '  (that shares the whole project; to undo only the skills carve-out, use the desktop app: Settings > Sync & sharing)',
-        );
-      }
       process.stdout.write(`${lines.join('\n')}\n`);
     });
 }

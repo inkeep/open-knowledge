@@ -48,30 +48,27 @@ const CLAUDE_LAUNCH_JSON = '.claude/launch.json';
  */
 const OK_IGNORE_FILENAME = '.okignore';
 
-/** `.ok/` blanket exclude — the default local-only spelling for the whole
- *  `.ok/` tree (unanchored, matches every `.ok/` at any depth). Emitted as
- *  the first entry of `getOkArtifactPaths`. */
-const OK_BLANKET = `${OK_DIR}/`;
-
-// Skills carve-out spelling. `.ok/skills/` is shareable content (skills-as-
-// content), NOT machine-local config, yet OK_BLANKET hides it along with the
-// rest of `.ok/` in local-only mode. Git refuses to re-include a path whose
-// parent directory is excluded, so the carve cannot be a `!` line appended
-// after `.ok/` — it REPLACES the blanket with a children-exclude plus a skills
-// re-include. Both are `**/`-prefixed so they stay content.dir-independent and
-// reach folder-nested `.ok/` dirs, matching OK_BLANKET's reach. A plain
-// `!.ok/skills/` after `.ok/` does NOT re-include (git prunes the excluded dir).
+// Legacy skills carve-out spelling, RECOGNITION ONLY. Nothing writes these
+// lines any more: the carve existed to keep `.ok/skills/` committable while the
+// rest of `.ok/` stayed local, and that store is retired
+// (`LEGACY_SKILL_STORE_ROOT` — skills live in place under `.{host}/skills/`,
+// which the toggle no longer touches at all). Two read sites still match these
+// lines so a project a previous build left in the carve state is not misread:
+// `readSharingMode` still reports `local-only`, and
+// `removeOkPathsFromGitExclude` still strips both on the transition to shared.
+// A carved project normalizes to the blanket the first time it is toggled
+// shared and back.
 //
-// The carve re-includes ONLY skills, deliberately. The other team-shareable
-// `.ok/` artifacts (config.yml, `.ok/.gitignore`, schemas/, templates/, folder
-// frontmatter.yml) are admitted for sync in SHARED mode by a content-filter
-// scope that honors these excludes (precedent #55), so under the carve they
-// stay local exactly as under the blanket: skills sharing is its own
-// user-visible switch, not a general `.ok/` re-include. Any future re-include
-// of that set must follow the parent-dir rule above: re-include the directory
-// (`!**/.ok/schemas/`), never only a file pattern beneath it
-// (`!**/.ok/schemas/*.json` silently no-ops because the `schemas` dir itself
-// matches the children-exclude).
+// The two-line shape is not incidental, and the rule outlives the dead carve:
+// git refuses to re-include a path whose parent directory is excluded, so a
+// `!` line appended after `.ok/` is inert — the carve had to REPLACE the
+// blanket with a children-exclude plus a re-include. Any future `.ok/`
+// re-include needs that same pair, and must re-include the DIRECTORY
+// (`!**/.ok/schemas/`); a file pattern beneath it (`!**/.ok/schemas/*.json`)
+// silently no-ops because the dir itself still matches the children-exclude.
+//
+// ponytail: kept as constants rather than inlined so both read sites stay in
+// sync; delete once no exclude file in the wild carries the carve.
 const OK_CARVE_CHILDREN = `**/${OK_DIR}/*`;
 const OK_CARVE_SKILLS_REINCLUDE = `!**/${LEGACY_SKILL_STORE_ROOT}/`;
 
@@ -109,16 +106,35 @@ export interface TrackedRefusal {
 export type SharingMode = 'shared' | 'local-only' | 'no-git';
 
 /**
- * Return the canonical OK artifact set for a project. Artifact classes:
+ * Return the canonical OK artifact set for a project — what the sharing
+ * toggle may git-exclude. Artifact classes:
  *
  *  - `.ok/`                              — whole-tree, config + folder configs
  *  - `.okignore`                         — project ignore file (gitignore syntax)
- *  - `.mcp.json`                        — Claude Code project MCP (merged file)
- *  - `.cursor/mcp.json`                 — Cursor project MCP (merged file)
- *  - `.codex/config.toml`               — Codex project MCP (merged file)
- *  - `.claude/launch.json`              — Claude launcher entry (merged file)
+ *  - `.mcp.json`                         — Claude Code project MCP (merged file)
+ *  - `.cursor/mcp.json`                  — Cursor project MCP (merged file)
+ *  - `.codex/config.toml`                — Codex project MCP (merged file)
+ *  - `opencode.json`                     — OpenCode project config (merged file)
+ *  - `.pi/extensions/open-knowledge.ts`  — Pi bridge extension (OK's own file)
+ *  - `.claude/launch.json`               — Claude launcher entry (merged file)
  *
- * NOT here: OK's built-in `open-knowledge` project-skill projection
+ * The merged files hold entries OK did not write, and excluding one hides the
+ * whole file. That is deliberate and it is what keeps OK's MCP entry out of a
+ * team's repo when a user is only trying OK: without it, `ok init` writes an
+ * entry into `.mcp.json` and the next `git add -A` commits it. The case where
+ * hiding a merged file would bury a teammate's work is already prevented
+ * upstream of here — `addOkPathsToGitExclude` runs `probeTrackedOkPaths` first
+ * and REFUSES when any candidate path is tracked, so an already-committed
+ * `.mcp.json` is never hidden.
+ *
+ * NOT here: authored skills at `.{host}/skills/<name>/`. Those are the user's
+ * own content — OK projected them, but whether they are committed is the
+ * project's decision, not a side effect of OK's sharing mode. They were in this
+ * set until skills were taken off the toggle; `getInstalledSkillProjectionPaths`
+ * still names them for
+ * `ok deinit` and for draining the lines older builds wrote.
+ *
+ * NOT here either: OK's built-in `open-knowledge` project-skill projection
  * (`.{host}/skills/open-knowledge/`). That bundle is a LOCAL, per-machine
  * artifact — the app regenerates it on every open and different builds
  * version-stamp it differently — so it is ALWAYS git-excluded via a committed
@@ -126,8 +142,7 @@ export type SharingMode = 'shared' | 'local-only' | 'no-git';
  * `@inkeep/open-knowledge-server`), independent of this shared/local-only
  * toggle. Carving it OUT here is what makes the exclusion unconditional:
  * leaving it in would only hide it in local-only mode, and it must be hidden in
- * BOTH modes. Authored skills at `.{host}/skills/<other-name>/` stay in the
- * toggle (handled by the installed-skill marker loop below).
+ * BOTH modes.
  *
  * `.ok/` and `.okignore` are emitted UNANCHORED (slash-free). gitignore
  * matches a slash-free pattern at every depth, so one entry each covers the
@@ -142,9 +157,9 @@ export type SharingMode = 'shared' | 'local-only' | 'no-git';
  * carry a trailing `/` so the gitignore syntax in `.git/info/exclude` treats
  * them as whole-tree excludes; file entries do not.
  *
- * Derives the per-editor `projectConfigPath` / `projectSkillPath` slots from
- * `EDITOR_TARGETS` so a future editor entry with project-scope artifacts
- * flows through automatically — no hand-maintained list.
+ * Derives the per-editor `projectConfigPath` slots from `EDITOR_TARGETS` so a
+ * future editor entry with a project-scope config flows through automatically
+ * — no hand-maintained list.
  */
 export function getOkArtifactPaths(projectRoot: string): readonly string[] {
   // `.ok/` and `.okignore` are unanchored — a slash-free gitignore pattern
@@ -159,43 +174,49 @@ export function getOkArtifactPaths(projectRoot: string): readonly string[] {
     }
     // `target.projectSkillPath` (the built-in `open-knowledge` bundle
     // projection) is deliberately NOT excluded here — it is ALWAYS git-ignored
-    // via the committed `.gitignore` block, not this per-machine toggle. See
+    // via the committed `.gitignore`, not this per-machine toggle. See
     // the doc comment above.
   }
   paths.push(CLAUDE_LAUNCH_JSON);
-
-  // Authored skills (`.{host}/skills/<name>/`) and pack skills DO follow the
-  // shared/local-only toggle. Enumerate the installed-skill set and exclude
-  // each skill's projection per the hosts it was installed to. A blanket
-  // `skills/` exclude would over-reach into hand-placed non-OK skills, so this
-  // is installed-skill-set-aware (only OK-managed projections). The reserved
-  // built-in `open-knowledge` bundle is skipped — it is always git-ignored via
-  // the committed `.gitignore` block, never this toggle (see doc comment
-  // above). When no marker exists, only `.ok/` + config excludes apply.
-  const markerPath = join(projectRoot, ...INSTALLED_SKILLS_REL);
-  if (existsSync(markerPath)) {
-    try {
-      const marker = parseInstalledSkills(readFileSync(markerPath, 'utf-8'));
-      if (marker) {
-        for (const [name, entry] of Object.entries(marker.skills)) {
-          if (name === RESERVED_PROJECT_SKILL_NAME) continue;
-          for (const host of entry.hosts) {
-            const root = EDITOR_PROJECT_SKILL_ROOT[host as EditorId];
-            if (root) paths.push(`${root}/${name}/`);
-          }
-        }
-      }
-    } catch {
-      // TOCTOU: the marker (written atomically via tmp+rename) can vanish or
-      // become unreadable between the existsSync check and the read. Treat as
-      // no installs so `readSharingMode` honors its documented never-throws
-      // contract (it runs on the desktop UI mount path).
-    }
-  }
-
   // De-dupe while preserving insertion order so the artifact set's emitted
   // order is stable for tests and the `ok config-sharing status` output.
   return Array.from(new Set(paths));
+}
+
+/**
+ * Project-relative paths of the authored-skill bundles OK has projected into
+ * editor host dirs, per `.ok/local/installed-skills.json`.
+ *
+ * NOT part of the sharing toggle (see `getOkArtifactPaths`) — these are the
+ * user's content. Two callers still need to name them: `ok deinit`, which
+ * removes the projections OK created, and the legacy exclude cleanup, which
+ * strips lines older builds wrote.
+ *
+ * The reserved built-in `open-knowledge` bundle is skipped — it is always
+ * git-ignored via the committed `.gitignore` block and swept separately by
+ * deinit. Never throws: a missing or corrupt marker reads as no projections.
+ */
+export function getInstalledSkillProjectionPaths(projectRoot: string): readonly string[] {
+  const markerPath = join(projectRoot, ...INSTALLED_SKILLS_REL);
+  if (!existsSync(markerPath)) return [];
+  try {
+    const marker = parseInstalledSkills(readFileSync(markerPath, 'utf-8'));
+    if (!marker) return [];
+    const paths: string[] = [];
+    for (const [name, entry] of Object.entries(marker.skills)) {
+      if (name === RESERVED_PROJECT_SKILL_NAME) continue;
+      for (const host of entry.hosts) {
+        const root = EDITOR_PROJECT_SKILL_ROOT[host as EditorId];
+        if (root) paths.push(`${root}/${name}/`);
+      }
+    }
+    return Array.from(new Set(paths));
+  } catch {
+    // TOCTOU: the marker (written atomically via tmp+rename) can vanish or
+    // become unreadable between the existsSync check and the read. Treat as
+    // no projections so every caller keeps its never-throws contract.
+    return [];
+  }
 }
 
 /**
@@ -227,7 +248,34 @@ export function addOkPathsToGitExclude(
   const resolved = resolveExcludePath(projectRoot);
   if (resolved.kind !== 'ok') return resolved.result;
 
-  const existing = existsSync(resolved.path) ? readFileSync(resolved.path, 'utf-8') : '';
+  const rawExisting = existsSync(resolved.path) ? readFileSync(resolved.path, 'utf-8') : '';
+
+  // Drain stale skill-projection lines on the way IN, not just on the way out.
+  // Local-only is the default for a fresh project, so a user who upgrades and
+  // never flips to Shared would otherwise keep the lines an older build wrote
+  // and stay in the exact state this change exists to end — skills hidden by
+  // OK's setting. Re-applying local-only (init re-run, toggle) now self-heals.
+  // Canonical spelling ONLY — deliberately not `buildVariants`. OK writes exactly
+  // `${root}/${name}/` (see `getInstalledSkillProjectionPaths`), so the other three
+  // spellings can only have been typed by a human who wants that bundle hidden.
+  // This is the transition toward MORE hiding, so a line we did not write is a
+  // line we must not remove. The outbound drain in `removeOkPathsFromGitExclude`
+  // does match all four: there, un-hiding is what the user asked for.
+  const stale = new Set<string>(getInstalledSkillProjectionPaths(projectRoot));
+  const drained: string[] = [];
+  const existing =
+    stale.size === 0
+      ? rawExisting
+      : rawExisting
+          .split('\n')
+          .filter((line) => {
+            const trimmed = line.trim();
+            if (!stale.has(trimmed)) return true;
+            drained.push(trimmed);
+            return false;
+          })
+          .join('\n');
+
   const presentVariants = collectPresentVariants(existing);
 
   const appended: string[] = [];
@@ -240,12 +288,13 @@ export function addOkPathsToGitExclude(
     }
   }
 
-  if (appended.length === 0) {
+  if (appended.length === 0 && drained.length === 0) {
     return { kind: 'updated', appended, alreadyPresent, removed: [] };
   }
 
-  const separator = existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
-  const additions = `${appended.join('\n')}\n`;
+  const separator =
+    appended.length === 0 || existing.length === 0 || existing.endsWith('\n') ? '' : '\n';
+  const additions = appended.length === 0 ? '' : `${appended.join('\n')}\n`;
   try {
     writeFileSync(resolved.path, `${existing}${separator}${additions}`, 'utf-8');
   } catch {
@@ -256,7 +305,7 @@ export function addOkPathsToGitExclude(
     return { kind: 'no-exclude', reason: 'inaccessible' };
   }
 
-  return { kind: 'updated', appended, alreadyPresent, removed: [] };
+  return { kind: 'updated', appended, alreadyPresent, removed: drained };
 }
 
 /**
@@ -286,12 +335,26 @@ export function removeOkPathsFromGitExclude(
   for (const set of variantsByPath) {
     for (const v of set) allVariants.add(v);
   }
-  // Also strip the skills carve-out spelling so a local-only(+skills-shared)
-  // -> shared transition fully cleans up; otherwise the orphaned
-  // `**/.ok/*` line would keep excluding non-skills `.ok/` content after
-  // "share". These are OK-managed lines, safe to remove unconditionally.
+  // Also strip the legacy skills carve-out spelling so a project left in the
+  // carve state by an older build fully cleans up on the transition to shared;
+  // otherwise the orphaned `**/.ok/*` line would keep excluding `.ok/` content
+  // after "share". These are OK-managed lines, safe to remove unconditionally.
   allVariants.add(OK_CARVE_CHILDREN);
   allVariants.add(OK_CARVE_SKILLS_REINCLUDE);
+  // Drain the authored-skill projection lines older builds wrote. They left the
+  // artifact set, so callers no longer pass them here; without this
+  // a project that went local-only on an older build would keep its skill dirs
+  // hidden forever, with nothing left able to name those lines. Removal side
+  // only — never re-added.
+  // Canonical spelling only, same as the inbound drain. The wider
+  // `buildVariants` match was justified while skills were OK's to manage:
+  // owning the line meant owning every spelling of it. This change gives that
+  // ownership up, so the width goes with it — on `share` the user asked to
+  // publish OK's config, and a hand-typed `.claude/skills/trip-log` is not
+  // that. Still catches every OK-authored line, which only uses this form.
+  for (const p of getInstalledSkillProjectionPaths(projectRoot)) {
+    allVariants.add(p);
+  }
 
   let before: string;
   try {
@@ -315,15 +378,13 @@ export function removeOkPathsFromGitExclude(
     kept.push(line);
   }
 
-  // The artifact paths whose lines were actually removed this invocation —
-  // the honest set callers report (e.g. `ok config-sharing share --json`),
-  // rather than the full candidate list.
-  const removed = paths.filter((p) => {
-    for (const v of buildVariants(p)) {
-      if (removedLines.has(v)) return true;
-    }
-    return false;
-  });
+  // The lines actually removed this invocation — the honest set callers report
+  // (e.g. `ok config-sharing share --json`, and `ok deinit`'s status verdict).
+  // Reported from `removedLines`, NOT by filtering the caller's candidate list:
+  // this function also strips the carve spellings and the legacy
+  // skill-projection lines, which the caller never named, and a caller-derived
+  // set would silently under-report every one of them.
+  const removed = [...removedLines];
 
   if (removedLines.size === 0) {
     return { kind: 'updated', appended: [], alreadyPresent: [], removed: [] };
@@ -373,9 +434,10 @@ export function readSharingMode(projectRoot: string): SharingMode {
   for (const p of artifacts) {
     if (hasAnyVariant(present, p)) return 'local-only';
   }
-  // Carve state: the blanket `.ok/` line is gone (replaced by the children-
-  // exclude), but the project is still local-only. Recognize it so the mode
-  // stays correct even if every other artifact line were manually removed.
+  // Legacy carve state: an older build replaced the blanket `.ok/` line with
+  // the children-exclude, but the project is still local-only. Recognize it so
+  // the mode stays correct even if every other artifact line were manually
+  // removed.
   if (present.has(OK_CARVE_CHILDREN)) return 'local-only';
   return 'shared';
 }
@@ -402,83 +464,42 @@ export function getExcludedOkPaths(projectRoot: string): readonly string[] {
     return [];
   }
   const present = collectPresentVariants(content);
-  return getOkArtifactPaths(projectRoot).filter((p) => hasAnyVariant(present, p));
-}
+  // Report the legacy lines too. This surface exists to answer "what is OK
+  // hiding?", and a project that went local-only on an older build still
+  // carries skill-projection lines this build no longer manages. Filtering to
+  // only the current artifact set would show a tidy list that omits exactly the
+  // entries the user is trying to explain.
+  const candidates = [
+    ...getOkArtifactPaths(projectRoot),
+    ...getInstalledSkillProjectionPaths(projectRoot),
+  ];
+  const reported = candidates.filter((p) => hasAnyVariant(present, p));
 
-/**
- * True iff `.git/info/exclude` currently carves `.ok/skills/` OUT of a
- * local-only `.ok/` exclusion — the project is local-only, but skills stay
- * shareable. Detected by the presence of BOTH carve lines. Pure read — never
- * throws, never writes.
- *
- * Independent of `readSharingMode` (which reports `local-only` for both the
- * blanket and the carve state); this predicate distinguishes the two so the
- * Skills UI can render the toggle's current position.
- */
-export function readSkillsShared(projectRoot: string): boolean {
-  const resolved = resolveExcludePath(projectRoot);
-  if (resolved.kind !== 'ok' || !existsSync(resolved.path)) return false;
-  let content: string;
-  try {
-    content = readFileSync(resolved.path, 'utf-8');
-  } catch {
-    return false;
+  // Then the ORPHANS: lines OK recognizes but cannot attribute to a live
+  // candidate. A skill uninstalled after the exclude was written loses its
+  // marker entry, so `getInstalledSkillProjectionPaths` stops naming it while
+  // the line goes on hiding that directory. That is exactly the state the
+  // release note tells users to check for, so this surface has to be able to
+  // show it. Matched by SHAPE against the known host skill roots — never a bare
+  // `skills/` substring — so a hand-placed non-OK path is not claimed as ours.
+  const alreadyReported = new Set(reported);
+  const skillRoots: string[] = [];
+  for (const root of Object.values(EDITOR_PROJECT_SKILL_ROOT)) {
+    if (root !== null) skillRoots.push(root);
   }
-  const present = collectPresentVariants(content);
-  return present.has(OK_CARVE_CHILDREN) && present.has(OK_CARVE_SKILLS_REINCLUDE);
-}
-
-/**
- * Toggle whether `.ok/skills/` stays shareable while the rest of `.ok/`
- * remains local-only. Swaps the `.ok/` representation in `.git/info/exclude`
- * between the blanket spelling (`OK_BLANKET`, skills hidden) and the carve
- * spelling (`OK_CARVE_CHILDREN` + `OK_CARVE_SKILLS_REINCLUDE`, skills visible).
- * Every OTHER OK-artifact exclude line is left untouched, so the local-only
- * posture for config / MCP / editor bundles is preserved.
- *
- * Mechanical — callers gate WHEN it is offered (the desktop Skills UI shows it
- * only in local-only mode). `shared: true` on a project that is NOT local-only
- * would create a partial exclusion; don't call it there.
- *
- * No tracked-files probe: turning skills sharing ON only REMOVES exclusion
- * (never hides a tracked file); turning it OFF re-adds the blanket, which is
- * inert against already-tracked skills — the same no-op the main
- * `shared -> local-only` refusal already documents.
- */
-export function setSkillsShared(projectRoot: string, shared: boolean): ExcludeWriteResult {
-  const resolved = resolveExcludePath(projectRoot);
-  if (resolved.kind !== 'ok') return resolved.result;
-
-  let existing = '';
-  if (existsSync(resolved.path)) {
-    try {
-      existing = readFileSync(resolved.path, 'utf-8');
-    } catch {
-      return { kind: 'no-exclude', reason: 'inaccessible' };
+  const orphans: string[] = [];
+  for (const line of present) {
+    if (alreadyReported.has(line)) continue;
+    if (line === OK_CARVE_CHILDREN || line === OK_CARVE_SKILLS_REINCLUDE) {
+      orphans.push(line);
+      continue;
+    }
+    const bare = line.replace(/^\//, '').replace(/\/$/, '');
+    if (skillRoots.some((root) => bare.startsWith(`${root}/`) && bare.length > root.length + 1)) {
+      orphans.push(line);
     }
   }
-
-  // Drop every managed `.ok/` representation line (blanket variants + both
-  // carve lines), then append the target spelling. Non-`.ok` lines pass
-  // through untouched, preserving the rest of the local-only artifact set.
-  const managed = new Set<string>([
-    ...buildVariants(OK_BLANKET),
-    OK_CARVE_CHILDREN,
-    OK_CARVE_SKILLS_REINCLUDE,
-  ]);
-  const kept = existing.split('\n').filter((line) => !managed.has(line.trim()));
-  const additions = shared ? [OK_CARVE_CHILDREN, OK_CARVE_SKILLS_REINCLUDE] : [OK_BLANKET];
-
-  const body = kept.join('\n');
-  const separator = body.length === 0 || body.endsWith('\n') ? '' : '\n';
-  const next = `${body}${separator}${additions.join('\n')}\n`;
-
-  try {
-    writeFileSync(resolved.path, next, 'utf-8');
-  } catch {
-    return { kind: 'no-exclude', reason: 'inaccessible' };
-  }
-  return { kind: 'updated', appended: additions, alreadyPresent: [], removed: [] };
+  return [...reported, ...orphans];
 }
 
 /**

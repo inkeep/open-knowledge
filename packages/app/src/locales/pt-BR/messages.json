@@ -416,7 +416,6 @@
       ["0"],
       " sem autenticação integrada. Qualquer pessoa que consiga acessar seu túnel terá controle total desta base de conhecimento, incluindo sincronização, credenciais do GitHub e operações locais. Garanta que a borda do túnel restrinja quem pode se conectar."
     ],
-    "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
     "4ivBhl": [
       "Mostra ou oculta o painel direito de agentes, onde ficam as conversas com agentes."
@@ -1043,9 +1042,6 @@
     "Bdha5y": ["Publicando..."],
     "BeWTQy": ["Carregando pacotes iniciais"],
     "BgV29F": ["Campo de busca do editor visual em foco"],
-    "Bh9671": [
-      "Este projeto é somente local, então .ok/skills fica oculto para o git e estas habilidades não podem receber commit nem ser compartilhadas. Compartilhe só a pasta de habilidades — o resto da sua configuração do OK fica neste computador."
-    ],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
@@ -1264,7 +1260,6 @@
     "E91VZY": ["Abrir em nova janela"],
     "E9bKSA": ["Criando"],
     "E9gh86": ["Você pode anexar até ", ["MAX_ATTACHMENTS"], " imagens."],
-    "EARn6h": ["Não deu para compartilhar as habilidades — ", ["detail"], "."],
     "EBVbtP": ["Não foi possível duplicar o item"],
     "EDl9kS": ["Assinar"],
     "EDm3wJ": ["Carregando o visualizador de diferenças"],
@@ -1780,12 +1775,8 @@
     "K-NcyU": ["Esta pasta não contém um repositório git. Escolher outra pasta?"],
     "K-a33w": ["Comece a escrever para criar esta página"],
     "K-h9cT": ["Não deu para salvar a resolução de ", ["filePath"], "."],
-    "K0FgsP": [
-      ".ok/skills pode ser versionado para que sua equipe receba suas habilidades; o resto de .ok/ fica neste computador."
-    ],
     "K0N7zS": ["Falha ao ler o estado do compartilhamento de configuração"],
     "K1ckLX": ["Falha ao criar a pasta"],
-    "K2v7QF": ["Não deu para compartilhar as habilidades"],
     "K4G55s": ["Verificando a fonte"],
     "K6MQQk": ["A sincronização está falhando. Veja o status de sincronização para os detalhes."],
     "K6jjWB": [["packName"], " já estava configurado. Nada a fazer."],
@@ -1831,7 +1822,6 @@
       "> não é um componente conhecido. Copie o código para usá-lo em outro lugar ou exclua o bloco."
     ],
     "Khxcyu": ["O acesso ao terminal não está ativado neste projeto."],
-    "Kiytqd": ["Exceção: as habilidades são compartilhadas"],
     "KjTmeO": ["Atualize o OpenKnowledge para abrir este compartilhamento."],
     "KkEAud": ["Cria um arquivo a partir do documento ou da pasta atual."],
     "KkRyMI": ["Não foi possível classificar a mesclagem. Tente novamente."],
@@ -2224,7 +2214,6 @@
     "P-ye9o": ["Não foi possível abrir o seletor de pastas"],
     "P0HC30": ["Este ", ["targetNoun"], " foi movido para <0>", ["0"], "</0>. Abrir por lá?"],
     "P3NS4G": ["Erro de sintaxe no padrão (linha ", ["lineNumber"], "): ", ["message"]],
-    "P3S14k": [".ok/skills voltou para Somente eu."],
     "P3hnm0": ["Arquivo grande demais para abrir"],
     "P441h8": [
       "Conte o que deu errado e reuniremos os logs. Nada sai do seu computador até você revisar."
@@ -2295,7 +2284,6 @@
     "PijLsG": ["Nome do arquivo (criado em .ok/schemas/)"],
     "PkeYXL": ["Modo de grafo expandido"],
     "Pkw7J9": ["Esta pasta está vazia."],
-    "PlGC6r": ["o arquivo de exclusão do git não permite escrita"],
     "Pp0Vgd": ["Clique para instalar em ", ["label"]],
     "PpJy-V": ["O endpoint não respondeu a tempo."],
     "PqYWiC": [
@@ -2314,9 +2302,6 @@
     "Q5fqMz": ["Erro de conexão — tente de novo"],
     "Q6hhn8": ["Preferências"],
     "Q7W-mC": ["Mesma pasta do arquivo atual"],
-    "Q7cNKe": [
-      "As habilidades agora são compartilhadas. Faça commit de .ok/skills para compartilhá-las com sua equipe."
-    ],
     "Q7xfEj": ["pronto"],
     "Q8A-U_": ["Conectado a"],
     "Q9AxTM": [
@@ -2595,7 +2580,6 @@
       ]
     ],
     "TTDXD8": ["Novo worktree…"],
-    "TUzThQ": ["Compartilhar habilidades"],
     "T_N0ro": ["Solicitar alterações…"],
     "T_j5G0": ["Esta não é uma versão compatível do Slidev."],
     "T_wG4n": ["Não foi possível verificar sua conexão com o GitHub."],
@@ -3013,7 +2997,6 @@
       "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
     ],
     "Xv_ijG": ["https://github.com/dono/repo ou dono/repo"],
-    "Xwump4": ["não há repositório git aqui"],
     "XyOUTJ": ["Sair da mesclagem"],
     "Xzy0s0": ["Remover ", ["fullLabel"], " do contexto"],
     "Y-Urt2": ["Equação matemática em bloco renderizada com KaTeX a partir de código LaTeX."],
@@ -4407,9 +4390,6 @@
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
-    "mR3Bly": [
-      "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta) e as habilidades do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
-    ],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],
@@ -4629,7 +4609,6 @@
     "ojGc_T": ["Abrir o comentário"],
     "olb6oq": ["Como configurar novos projetos com o OpenKnowledge."],
     "omXJcU": ["Fechar as outras"],
-    "onTlRk": ["Não deu para atualizar o compartilhamento de habilidades"],
     "opPbzN": ["Copia a habilidade para ", ["path"]],
     "optX0N": ["há ", ["0"], " h"],
     "oqB2ez": ["Ocorrência anterior"],
@@ -4773,7 +4752,6 @@
       "Falha ao carregar as tags. Pressione <0>Esc</0> e abra de novo para tentar outra vez."
     ],
     "qX-ABr": ["Ou, para usar o login pelo navegador:"],
-    "qXN416": ["Não deu para compartilhar as habilidades: erro interno. Reinicie o app."],
     "qXg5W9": ["O arquivo é salvo em <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publicar no GitHub"],
     "qZv5ZR": ["Falha ao alternar o compartilhamento de configuração"],
@@ -5122,6 +5100,9 @@
     ],
     "uUCrBv": ["link simbólico"],
     "uVbUP8": ["Configurações…"],
+    "uX85yl": [
+      "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta). Suas habilidades não são incluídas: elas seguem o git como qualquer outro arquivo do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
+    ],
     "uY5Z7P": ["Fim de jogo · pressione <0>Espaço</0> para jogar de novo"],
     "uYZTcW": ["Não é possível compartilhar esta URL do GitHub."],
     "u_lS4C": ["Clonagem concluída — abrindo o projeto"],
@@ -5574,7 +5555,6 @@
       "O bloco de propriedades no topo deste documento tem um erro de formatação. Mude para o modo código para corrigir."
     ],
     "zbymaY": ["há ", ["0"], " min"],
-    "zcmYx4": ["a configuração do git não está disponível"],
     "zd00pH": ["Copiar caminho"],
     "zgSFyG": ["Link externo"],
     "zkz0Fg": ["Configurar a sincronização"],
