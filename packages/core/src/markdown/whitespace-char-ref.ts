@@ -1,4 +1,3 @@
-
 const INLINE_WHITESPACE_BY_CODE: ReadonlyMap<number, string> = new Map([
   [0x20, ' '],
   [0x09, '\t'],

@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, one {১টি ফাইল আপলোড করা যায়নি} other {{failedCount}টি ফাইল আপলোড করা যায়নি}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# ফাইল} other {# ফাইল}}"
 
@@ -1051,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ {addChildName} যোগ করুন"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+আরও {overflowCount}"
 
@@ -2902,6 +2904,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "সহযোগীরা সিঙ্ক হওয়ামাত্রই আপনার চলমান সম্পাদনা দেখতে পান।"
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "গুটিয়ে নিন"
 
@@ -14970,6 +14973,10 @@ msgstr "আপনি আপনার হোম ডিরেক্টরি ব�
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "আপনার সব প্রস্তুত!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "আপনি আপডেট দেখার চেয়ে বেশি ঘন ঘন পুশ করছেন। এই রিপোজিটরিতে অন্যরাও লিখলে, পুশকে প্রায়ই আগে পরিবর্তন টেনে এনে আবার চেষ্টা করতে হবে।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

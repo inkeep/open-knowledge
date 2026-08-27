@@ -4737,6 +4737,9 @@
     "wzq9Rv": [
       "A branch with that name already exists. Open its worktree from the switcher instead."
     ],
+    "x-E_vF": [
+      "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+    ],
     "x-fZxg": ["Push ", ["branch"], " to GitHub before sharing."],
     "x0RE0M": ["Are you sure you want to delete \"", ["name"], "\" and its contents?"],
     "x2fr_j": ["Graph"],

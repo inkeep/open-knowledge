@@ -5518,6 +5518,9 @@
     "wzq9Rv": [
       "Une branche portant ce nom existe déjà. Ouvrez plutôt son worktree depuis le sélecteur."
     ],
+    "x-E_vF": [
+      "Vous poussez plus souvent que vous ne recherchez des mises à jour. Si d'autres personnes écrivent aussi dans ce dépôt, les push devront souvent récupérer les modifications et réessayer."
+    ],
     "x-fZxg": ["Envoyez la branche ", ["branch"], " sur GitHub avant de partager."],
     "x0RE0M": ["Voulez-vous vraiment supprimer « ", ["name"], " » et son contenu ?"],
     "x2fr_j": ["Graphe"],

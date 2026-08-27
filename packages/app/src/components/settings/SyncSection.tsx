@@ -93,6 +93,10 @@ export function SyncSection() {
   // Absent leaves resolve to the shipped 30 s / 60 s, so a project whose config
   // predates these keys shows today's cadence rather than an empty control.
   const intervals = resolveAutoSyncIntervals(projectLocalConfig?.autoSync);
+  // Pushing faster than you pull leaves each push to discover the remote moved
+  // and reconcile before it can land. Stated, not prevented: on a repo nobody
+  // else writes to, the same setting is free, and clamping would forbid it.
+  const pushOutpacesPull = intervals.pushIntervalSeconds < intervals.pullIntervalSeconds;
   // Per-machine mode: an explicit `autoSync.mode` wins, else derive from the
   // legacy `enabled` boolean; never-answered resolves to off for display (the
   // committed shared default has its own control below).
@@ -662,6 +666,17 @@ export function SyncSection() {
                     </SelectContent>
                   </Select>
                 </div>
+              )}
+              {localMode === 'full' && pushOutpacesPull && (
+                <p
+                  className="text-1sm text-muted-foreground"
+                  data-testid="settings-sync-push-outpaces-pull-hint"
+                >
+                  <Trans>
+                    You're pushing more often than you check for updates. If others write to this
+                    repo too, pushes will often have to pull and try again.
+                  </Trans>
+                </p>
               )}
             </div>
           </CollapsibleContent>

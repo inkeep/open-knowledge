@@ -5340,6 +5340,9 @@
     "wvbc1r": ["Não deu para abrir o documento"],
     "wxRR0H": ["Tela do Excalidraw"],
     "wzq9Rv": ["Já existe um ramo com esse nome. Abra o worktree dele pelo seletor."],
+    "x-E_vF": [
+      "Você está enviando com mais frequência do que verifica atualizações. Se outras pessoas também escrevem neste repositório, os pushes muitas vezes terão que buscar as alterações e tentar de novo."
+    ],
     "x-fZxg": ["Envie o ramo ", ["branch"], " para o GitHub antes de compartilhar."],
     "x0RE0M": ["Tem certeza de que deseja excluir \"", ["name"], "\" e seu conteúdo?"],
     "x2fr_j": ["Grafo"],

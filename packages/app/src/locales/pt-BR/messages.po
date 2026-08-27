@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, one {Falha ao enviar 1 arquivo} many {Falha ao enviar {failedCount} arquivos} other {Falha ao enviar {failedCount} arquivos}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# arquivo} many {# arquivos} other {# arquivos}}"
 
@@ -1051,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ Adicionar {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount} mais"
 
@@ -2902,6 +2904,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "Os colaboradores veem suas edições em andamento assim que elas sincronizam."
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "Recolher"
 
@@ -14970,6 +14973,10 @@ msgstr "Você escolheu sua pasta pessoal. O OpenKnowledge vai indexar toda a sua
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "Está tudo pronto!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "Você está enviando com mais frequência do que verifica atualizações. Se outras pessoas também escrevem neste repositório, os pushes muitas vezes terão que buscar as alterações e tentar de novo."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

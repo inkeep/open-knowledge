@@ -205,6 +205,14 @@ export const SyncStatusSchema = z
     ahead: z.number().int().min(0),
     behind: z.number().int().min(0),
     consecutiveFailures: z.number().int().min(0),
+    /**
+     * Push-leg failure streak. Backs an independent backoff from the pull leg:
+     * a rejected push must not stretch the pull interval. Optional for
+     * version-skew safety, and declared rather than left to `.loose()` for the
+     * same reason as `lastPullOkUtc`: the success envelope serializes the
+     * validated object, so an undeclared field never reaches the client.
+     */
+    consecutivePushFailures: z.number().int().min(0).optional(),
     conflictCount: z.number().int().min(0),
     hasRemote: z.boolean(),
     syncEnabled: z.boolean(),

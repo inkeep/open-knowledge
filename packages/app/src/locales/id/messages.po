@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, other {{failedCount} berkas gagal diunggah}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# berkas}}"
 
@@ -1051,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ Tambah {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount} lagi"
 
@@ -2902,6 +2904,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "Ciutkan"
 
@@ -14970,6 +14973,10 @@ msgstr "Anda memilih direktori beranda Anda. OpenKnowledge akan mengindeks semua
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "Semuanya sudah siap!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "Anda melakukan push lebih sering daripada memeriksa pembaruan. Jika orang lain juga menulis di repo ini, push sering kali harus menarik perubahan dulu lalu mencoba lagi."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

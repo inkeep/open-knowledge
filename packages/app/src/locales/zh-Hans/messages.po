@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, other {{failedCount} 个文件上传失败}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# 个文件}}"
 
@@ -1055,6 +1056,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ 添加 {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+还有 {overflowCount} 个"
 
@@ -2906,6 +2908,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "协作者一同步就能看到你正在进行的编辑。"
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "折叠"
 
@@ -14974,6 +14977,10 @@ msgstr "你选择了主目录。OpenKnowledge 会索引整个主目录树——�
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "全都设置好了！"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "你推送的频率高于检查更新的频率。如果其他人也在这个仓库里写入，推送往往需要先拉取更改再重试。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

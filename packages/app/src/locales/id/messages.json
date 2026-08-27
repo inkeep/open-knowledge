@@ -4739,6 +4739,9 @@
     "wvbc1r": ["Dokumen tidak bisa dibuka"],
     "wxRR0H": ["Kanvas Excalidraw"],
     "wzq9Rv": ["Cabang dengan nama itu sudah ada. Buka worktree-nya dari pengalih saja."],
+    "x-E_vF": [
+      "Anda melakukan push lebih sering daripada memeriksa pembaruan. Jika orang lain juga menulis di repo ini, push sering kali harus menarik perubahan dulu lalu mencoba lagi."
+    ],
     "x-fZxg": ["Push cabang ", ["branch"], " ke GitHub sebelum berbagi."],
     "x0RE0M": ["Yakin ingin menghapus \"", ["name"], "\" beserta isinya?"],
     "x2fr_j": ["Graf"],

@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, one {1 फ़ाइल अपलोड नहीं हो सकी} other {{failedCount} फ़ाइलें अपलोड नहीं हो सकीं}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# फ़ाइल} other {# फ़ाइलें}}"
 
@@ -1051,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ {addChildName} जोड़ें"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount} और"
 
@@ -2902,6 +2904,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "सहयोगी आपके चल रहे संपादन सिंक होते ही देख लेते हैं।"
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "समेटें"
 
@@ -14970,6 +14973,10 @@ msgstr "आपने अपनी होम निर्देशिका च�
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "आपका सब कुछ तैयार है!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "आप अपडेट जाँचने की तुलना में ज़्यादा बार पुश कर रहे हैं। अगर इस रिपॉज़िटरी में दूसरे लोग भी लिखते हैं, तो पुश को अक्सर पहले बदलाव खींचकर दोबारा कोशिश करनी होगी।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

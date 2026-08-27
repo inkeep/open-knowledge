@@ -700,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, other {{failedCount}개 파일을 업로드하지 못했습니다}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {파일 #개}}"
 
@@ -1055,6 +1056,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ {addChildName} 추가"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount}개 더"
 
@@ -2906,6 +2908,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "공동 작업자는 동기화가 완료되면 진행 중인 편집 내용을 바로 볼 수 있습니다."
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "접기"
 
@@ -14974,6 +14977,10 @@ msgstr "홈 디렉터리를 선택했습니다. OpenKnowledge가 홈 트리의 �
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "설정이 완료되었습니다!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "업데이트를 확인하는 것보다 더 자주 푸시하고 있습니다. 다른 사람도 이 저장소에 쓴다면, 푸시가 먼저 변경 사항을 가져온 뒤 다시 시도해야 하는 경우가 잦아집니다."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."
