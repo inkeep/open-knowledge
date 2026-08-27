@@ -5438,6 +5438,11 @@ msgstr "Expand all file groups"
 msgid "Expand all files"
 msgstr "Expand all files"
 
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "Expand diagram"
+
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
 msgstr "Expand graph"
@@ -7868,6 +7873,7 @@ msgid "Medium section heading."
 msgstr "Medium section heading."
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Mermaid diagram"
 
@@ -14535,6 +14541,10 @@ msgstr "View in source markdown"
 #: src/lib/native-menu-catalog.ts
 msgid "View in Source Markdown"
 msgstr "View in Source Markdown"
+
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "View only"
 
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx

@@ -6,7 +6,7 @@
  * the mounted toolbar behavior, filling preview layout, and Panzoom lifecycle.
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -85,7 +85,7 @@ vi.doMock('@panzoom/panzoom', () => ({
   default: createPanzoom,
 }));
 
-const { MermaidView } = await import('./Mermaid');
+const { MermaidLightbox, MermaidView } = await import('./Mermaid');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 function renderMermaidView(chart: string) {
@@ -412,6 +412,93 @@ describe('MermaidView controls', () => {
 
     expect(await screen.findByRole('alert')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull();
+  });
+});
+
+describe('MermaidView expand control', () => {
+  test('renders only when a host passes onExpand, and forwards the click', async () => {
+    const onExpand = vi.fn(() => {});
+    render(
+      <TooltipProvider>
+        <MermaidView chart="graph TD; A-->B;" onExpand={onExpand} />
+      </TooltipProvider>,
+    );
+    await waitForPanzoomInstance();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand diagram' }));
+    expect(onExpand).toHaveBeenCalledTimes(1);
+  });
+
+  test('is absent when no host opts in', async () => {
+    renderMermaidView('graph TD; A-->B;');
+    await waitForPanzoomInstance();
+
+    expect(screen.queryByRole('button', { name: 'Expand diagram' })).toBeNull();
+  });
+});
+
+describe('MermaidLightbox', () => {
+  test('hosts a complete toolbar, a view-only cue, and no expand control', async () => {
+    render(
+      <TooltipProvider>
+        <MermaidLightbox chart="graph TD; A-->B;" open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Mermaid diagram' });
+    await waitForPanzoomInstance();
+    expect(
+      within(dialog).getByRole('toolbar', { name: 'Mermaid diagram controls' }),
+    ).not.toBeNull();
+    // No onExpand reaches the inner view, so nesting is structurally
+    // impossible rather than boolean-gated.
+    expect(within(dialog).queryByRole('button', { name: 'Expand diagram' })).toBeNull();
+    expect(within(dialog).getByText('View only')).not.toBeNull();
+  });
+
+  test('a chart edit while open reaches the canvas', async () => {
+    const { rerender } = render(
+      <TooltipProvider>
+        <MermaidLightbox chart="graph TD; A-->B;" open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+    await waitForPanzoomInstance();
+
+    rerender(
+      <TooltipProvider>
+        <MermaidLightbox chart="graph TD; C-->D;" open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    await waitFor(() => {
+      const charts = renderMermaid.mock.calls.map((call) => call[1]);
+      expect(charts.some((chart) => chart.includes('C-->D'))).toBe(true);
+    });
+  });
+
+  test('the close control reports through onOpenChange and closing tears the canvas down', async () => {
+    const onOpenChange = vi.fn((_open: boolean) => {});
+    const { rerender } = render(
+      <TooltipProvider>
+        <MermaidLightbox chart="graph TD; A-->B;" open onOpenChange={onOpenChange} />
+      </TooltipProvider>,
+    );
+    await screen.findByRole('dialog', { name: 'Mermaid diagram' });
+    const panzoom = await waitForPanzoomInstance();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+
+    // The host answers by flipping `open`; the canvas must not leak.
+    rerender(
+      <TooltipProvider>
+        <MermaidLightbox chart="graph TD; A-->B;" open={false} onOpenChange={onOpenChange} />
+      </TooltipProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    expect(panzoom.destroy.mock.calls.length).toBeGreaterThan(0);
   });
 });
 

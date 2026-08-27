@@ -1,3 +1,4 @@
+
 import type { Heading } from 'mdast';
 import { toString as headingText } from 'mdast-util-to-string';
 import { visit } from 'unist-util-visit';

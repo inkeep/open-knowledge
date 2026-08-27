@@ -5434,6 +5434,11 @@ msgstr "Bentangkan semua grup berkas"
 msgid "Expand all files"
 msgstr "Bentangkan semua berkas"
 
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "Bentangkan diagram"
+
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
 msgstr "Bentangkan graf"
@@ -7864,6 +7869,7 @@ msgid "Medium section heading."
 msgstr "Judul bagian sedang."
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Diagram Mermaid"
 
@@ -14531,6 +14537,10 @@ msgstr "Lihat di markdown sumber"
 #: src/lib/native-menu-catalog.ts
 msgid "View in Source Markdown"
 msgstr "Lihat di sumber Markdown"
+
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "Hanya lihat"
 
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx

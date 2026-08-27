@@ -1368,6 +1368,7 @@
     "F4_wQj": ["Pesquisar com o Google"],
     "F4vEsL": ["Status da sincronização: ", ["syncStateLabel"]],
     "F6pfE9": ["Ativo"],
+    "F8DaWi": ["Somente visualização"],
     "F8GW_c": [["label"], " problemas"],
     "FBIuPX": ["Limpar seleção"],
     "FBknns": ["HTML"],
@@ -1604,6 +1605,7 @@
     "HdS4Ft": ["Não foi possível restaurar seu último documento aberto."],
     "HdkSiO": ["Novo arquivo"],
     "HfI1dR": ["Já tenho isso localmente →"],
+    "HimZ41": ["Expandir o diagrama"],
     "HjNrT0": [
       [
         "0",

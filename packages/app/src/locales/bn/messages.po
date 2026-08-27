@@ -5434,6 +5434,11 @@ msgstr "সব ফাইল গোষ্ঠী মেলে ধরুন"
 msgid "Expand all files"
 msgstr "সব ফাইল মেলে ধরুন"
 
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "চিত্র মেলে ধরুন"
+
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
 msgstr "গ্রাফ মেলে ধরুন"
@@ -7864,6 +7869,7 @@ msgid "Medium section heading."
 msgstr "মাঝারি বিভাগ শিরোনাম।"
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Mermaid চিত্র"
 
@@ -14531,6 +14537,10 @@ msgstr "সোর্স markdown-এ দেখুন"
 #: src/lib/native-menu-catalog.ts
 msgid "View in Source Markdown"
 msgstr "উৎস Markdown-এ দেখুন"
+
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "শুধু দেখার জন্য"
 
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx

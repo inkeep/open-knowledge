@@ -5438,6 +5438,11 @@ msgstr "展开所有文件分组"
 msgid "Expand all files"
 msgstr "展开全部文件"
 
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "展开图示"
+
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
 msgstr "展开关系图"
@@ -7868,6 +7873,7 @@ msgid "Medium section heading."
 msgstr "中号章节标题。"
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Mermaid 图示"
 
@@ -14535,6 +14541,10 @@ msgstr "在 markdown 源码中查看"
 #: src/lib/native-menu-catalog.ts
 msgid "View in Source Markdown"
 msgstr "在 Markdown 源码中查看"
+
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "仅供查看"
 
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx

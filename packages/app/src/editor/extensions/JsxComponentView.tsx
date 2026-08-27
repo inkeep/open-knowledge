@@ -53,6 +53,7 @@ import {
   ArrowDown,
   ArrowUp,
   ExternalLink,
+  Maximize2,
   Pencil,
   Settings2,
   Sparkles,
@@ -75,6 +76,7 @@ import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { DescriptorPlaceholder } from '../components/DescriptorPlaceholder.tsx';
 import { JsxComponentHostProvider } from '../components/jsx-host-context.tsx';
+import { MermaidLightbox } from '../components/Mermaid';
 import { PropPanel } from '../components/PropPanel.tsx';
 import { getEditorDocName } from '../extensions/doc-context.ts';
 import { normalizeDocRelativeMediaRenderProps } from '../extensions/media-render-props.ts';
@@ -442,6 +444,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         ? { propName: 'formula', language: 'latex' }
         : null;
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [diagramLightboxOpen, setDiagramLightboxOpen] = useState(false);
 
   // Source-bearing self-closing leaves (today only MermaidFence) hide their
   // single required prop from the PropPanel and author it in the fullscreen
@@ -501,6 +504,22 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     translatedProps,
     sourceDocName,
   );
+  // Lightbox chart reads the sanitized render value, not raw `node.attrs`,
+  // for the same structural reason the edit-modal preview does. One predicate
+  // gates the two expand triggers AND the dialog mount, so a remote edit that
+  // empties the chart or converts the block cannot leave them disagreeing.
+  const lightboxRenderChart =
+    descriptor.name === 'MermaidFence' && typeof renderProps.chart === 'string'
+      ? renderProps.chart
+      : null;
+  const expandableChart =
+    lightboxRenderChart !== null && lightboxRenderChart.trim() !== '' ? lightboxRenderChart : null;
+  const diagramExpandable = expandableChart !== null;
+  // A remote edit can empty the chart while the dialog is open; without this
+  // the dialog would pop back open unbidden when the chart returns.
+  useEffect(() => {
+    if (!diagramExpandable) setDiagramLightboxOpen(false);
+  }, [diagramExpandable]);
   // Stable reset key for the ErrorBoundary. `JSON.stringify` on an arbitrary
   // props object produced a string whose content was key-order-sensitive
   // across engines — combined with the post-edit re-serialization that
@@ -1255,6 +1274,21 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
+          {/* Expand — Mermaid only. Non-mutating, so it deliberately
+              carries no editability check; it needs a non-empty chart or
+              there is nothing to view. */}
+          {expandableChart !== null ? (
+            <button
+              type="button"
+              className="jsx-chrome-btn"
+              aria-label={t`Expand diagram`}
+              data-testid="jsx-component-expand-btn"
+              onClick={() => setDiagramLightboxOpen(true)}
+            >
+              <Maximize2 size={12} aria-hidden="true" />
+            </button>
+          ) : null}
+
           {/* Ask AI — the same composer the text bubble menu's Ask AI opens,
               reached the way a code block reaches it: from the block's own
               chrome. A component that keeps its content in attributes rather
@@ -1501,7 +1535,12 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                   : null
               }
             >
-              <Comp {...renderProps}>
+              <Comp
+                {...renderProps}
+                {...(expandableChart !== null
+                  ? { onExpand: () => setDiagramLightboxOpen(true) }
+                  : {})}
+              >
                 <NodeViewContent
                   className={`component-children ${
                     !descriptor.hasChildren && node.childCount === 0 ? 'min-h-0 m-0 p-0' : ''
@@ -1553,6 +1592,13 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             );
           })()}
       </NodeViewWrapper>
+      {expandableChart !== null ? (
+        <MermaidLightbox
+          chart={expandableChart}
+          open={diagramLightboxOpen}
+          onOpenChange={setDiagramLightboxOpen}
+        />
+      ) : null}
       {editableSource && typeof pos === 'number' ? (
         <CodePreviewEditModal
           open={editModalOpen}
