@@ -235,6 +235,49 @@ export type OkMenuAction =
   | 'send-feedback';
 
 /**
+ * Where a menu action was dispatched from, for the few subscribers whose
+ * behavior depends on the dispatching SURFACE rather than on the action.
+ *
+ * `launcherBorne` means the surface the user reached the command through is a
+ * transient overlay that is still on screen at dispatch time and is about to
+ * dismiss itself — the Cmd+K palette, the renderer-drawn menu bar, a popover.
+ * A native menu bar item, a keyboard accelerator, and a persistent chrome
+ * button are all launcher-free: nothing is on screen that the command's own
+ * arrival will take away.
+ *
+ * The bug-report dialog is the motivating consumer: it screenshots the page
+ * beneath itself before revealing, and a launcher-borne open must let its
+ * launcher unmount first (or the report is a picture of the palette the user
+ * only opened to file it), while a launcher-free open must shoot immediately
+ * (or the report is a picture of the app after the defect went away).
+ *
+ * An object rather than a bare boolean so call sites read as prose and so a
+ * second provenance fact can be added without changing every signature.
+ *
+ * Electron already supplies one candidate for that second fact: the
+ * `KeyboardEvent` handed to a `MenuItem` click carries `triggeredByAccelerator`,
+ * separating a chord press from a click on the same item. This type deliberately
+ * collapses both into launcher-free, because a native menu is OS chrome that no
+ * renderer capture can see at any timing — but whoever adds the second fact
+ * should know the platform is already offering one, and that every menu callback
+ * in main currently discards the argument that carries it.
+ */
+export interface OkMenuActionOrigin {
+  readonly launcherBorne: boolean;
+}
+
+/**
+ * The `ok:menu-action` wire payload: the action plus where it came from. The
+ * origin is REQUIRED so main cannot forget to classify a new dispatch site —
+ * a bare action would silently default to launcher-free and leak its launcher
+ * into the next screenshot.
+ */
+export interface OkMenuActionDispatch {
+  readonly action: OkMenuAction;
+  readonly origin: OkMenuActionOrigin;
+}
+
+/**
  * Unsubscribe closure returned from `onProjectSwitched` / `onMenuAction`.
  * Calling it removes the listener. Per-electron#33328, the bridge's
  * preload-side wrapper is what actually tracks the listener reference so
@@ -1305,8 +1348,12 @@ export interface OkDesktopBridge {
 
   /** Subscribe to project-switch events. Returns unsubscribe. */
   onProjectSwitched(cb: (next: OkDesktopConfig) => void): OkUnsubscribe;
-  /** Subscribe to menu-bar actions. Returns unsubscribe. */
-  onMenuAction(cb: (action: OkMenuAction) => void): OkUnsubscribe;
+  /**
+   * Subscribe to menu-bar actions. Returns unsubscribe. The second argument
+   * carries the dispatching surface — subscribers that only branch on the
+   * action may keep a one-parameter callback.
+   */
+  onMenuAction(cb: (action: OkMenuAction, origin: OkMenuActionOrigin) => void): OkUnsubscribe;
   /**
    * Subscribe to `autoUpdater` `update-downloaded` events. Fires once per
    * pending-update version (gated in main by `AppState.versionPendingInstall`).

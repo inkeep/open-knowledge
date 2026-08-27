@@ -1140,6 +1140,9 @@
     "CFnavk": ["Ce projet n'est pas un dépôt git, les worktrees ne sont donc pas disponibles."],
     "CGj3gX": ["erreur d'analyse"],
     "CHfFN_": ["Retirer OpenKnowledge de ", ["0"]],
+    "CJpuc1": [
+      "Démarre un rapport de bug avec une capture d'écran de ce qui est affiché à cet instant."
+    ],
     "CKyk7Q": ["Retour"],
     "CMd-g-": [
       "Votre URL distante indique ",
@@ -4803,6 +4806,9 @@
     "pMPnZv": [["deleted"], " compétences supprimées"],
     "pOo4Aa": ["Texte brut"],
     "pPiV8s": ["Activer Auto (Tirer et Pousser)"],
+    "pRq670": [
+      "Une image de l'application juste avant que vous n'ouvriez ceci, avec un repère indiquant où se trouvait votre pointeur. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
+    ],
     "pSimwP": ["Nouveau nom pour la version ", ["editor"]],
     "pTPqMK": ["Bascule un bloc de code délimité."],
     "pTyA_t": ["étiquettes"],

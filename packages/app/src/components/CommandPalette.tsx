@@ -86,7 +86,12 @@ import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
 import { useWorktrees } from '@/hooks/use-worktrees';
-import type { OkDesktopBridge, OkMenuAction, RecentProjectEntry } from '@/lib/desktop-bridge-types';
+import type {
+  OkDesktopBridge,
+  OkMenuAction,
+  OkMenuActionOrigin,
+  RecentProjectEntry,
+} from '@/lib/desktop-bridge-types';
 import { hashFromDocName } from '@/lib/doc-hash';
 import { runWithToast as runWithToastBase } from '@/lib/error-state';
 import { openExternalUrl as openExternalUrlViaHost } from '@/lib/external-link';
@@ -361,7 +366,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
   const [seedDialogOpen, setSeedDialogOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
-  const [reportBugOpen, setReportBugOpen] = useState(false);
+  // The origin IS the open state, matching what `ReportBugMenuTrigger` and
+  // `NavigatorApp` already do at their multi-route mounts. Two routes reach this
+  // one compose dialog and they disagree about `launcherBorne`, so a separate
+  // boolean would need a safe default — and the safe default here is the wrong
+  // one: a third route that forgot the setter would inherit launcher-borne and
+  // silently skip the pointer marker, which is the bug this route exists to fix.
+  // Null-is-closed makes open-without-an-origin unrepresentable instead.
+  const [reportBugOrigin, setReportBugOrigin] = useState<OkMenuActionOrigin | null>(null);
+
   const [reportBugHistoryOpen, setReportBugHistoryOpen] = useState(false);
   // Defer mounting the (lazy) history dialog until it is first opened, so its
   // chunk + the `bugReport.list()` fetch don't run on every palette open.
@@ -897,7 +910,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const viewMenuState = useViewMenuState();
   const runMenuAction = (action: OkMenuAction) => {
     onOpenChange(false);
-    emitLocalMenuAction(action);
+    // The palette is itself the launcher: it closes on dispatch and is still
+    // animating out as the action lands, so anything that screenshots on the
+    // action must wait for it rather than photograph it.
+    emitLocalMenuAction(action, { launcherBorne: true });
   };
   // Route through the shared opener (scheme gate + caught bridge rejection)
   // rather than an inline bridge/window.open fork. Always pass the `okDesktop`
@@ -924,7 +940,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     openNewItemDialog: (kind) => setCreateDialogKind(kind),
     openSeedDialog: () => setSeedDialogOpen(true),
     openCreateProjectDialog: () => setCreateProjectOpen(true),
-    openReportBugDialog: () => setReportBugOpen(true),
+    openReportBugDialog: () => setReportBugOrigin({ launcherBorne: true }),
     openBugReportHistory: () => {
       setHistoryEverOpened(true);
       setReportBugHistoryOpen(true);
@@ -1685,7 +1701,15 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       ) : null}
       {/* Desktop-only — the registry gates the launching "Report a bug" command
           on `bridge !== null`, so the dialog only mounts when the bridge exists. */}
-      {bridge ? <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} /> : null}
+      {bridge ? (
+        <ReportBugDialog
+          open={reportBugOrigin !== null}
+          onOpenChange={(next) => {
+            if (!next) setReportBugOrigin(null);
+          }}
+          launcherBorne={reportBugOrigin?.launcherBorne === true}
+        />
+      ) : null}
       {/* Desktop-only — the registry gates the launching "Bug report history"
           command on the same bridge presence. Lazy + deferred until first
           opened. The empty-state CTA hands off to the compose dialog. */}
@@ -1695,8 +1719,10 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             open={reportBugHistoryOpen}
             onOpenChange={setReportBugHistoryOpen}
             onReportABug={() => {
+              // Launcher-free: the user read a list and clicked, so the palette
+              // is long gone and there is nothing for the capture to wait on.
               setReportBugHistoryOpen(false);
-              setReportBugOpen(true);
+              setReportBugOrigin({ launcherBorne: false });
             }}
           />
         </Suspense>

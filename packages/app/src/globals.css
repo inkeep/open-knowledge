@@ -6319,3 +6319,42 @@ html.electron-mode [data-slot="sidebar-inner"] {
 [data-comment-reveal]::-moz-selection {
   background-color: var(--comment-reveal-fill);
 }
+
+/* Pointer marker drawn into the frame a bug-report screenshot is taken on.
+ *
+ * `capturePage()` omits the cursor, so without this a report about a hover
+ * state shows a highlighted row and nothing explaining what highlighted it.
+ * The ring is drawn one frame before the shot and taken down as soon as the
+ * capture settles or the reveal timeout fires, so it is on screen only for the
+ * round trip main needs to answer — during which the dialog is still held
+ * closed. It is never part of the app's own UI.
+ *
+ * Deliberately unthemed and deliberately unanimated. It has to read as an
+ * annotation on top of whatever it lands on in either colour scheme, so it
+ * carries its own white piping rather than a token that could match the
+ * surface underneath; and a fade-in would risk the shot catching it
+ * half-transparent. The centre stays hollow so the pixel being pointed at is
+ * still visible. */
+.ok-pointer-marker {
+  position: fixed;
+  /* Above every layer in the app, including any that sets its own — an overlay
+     the user is reporting is exactly what this has to sit on top of. */
+  z-index: 2147483647;
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgb(220 38 38);
+  border-radius: 50%;
+  background: transparent;
+  box-shadow:
+    0 0 0 1.5px rgb(255 255 255 / 0.95),
+    inset 0 0 0 1.5px rgb(255 255 255 / 0.95);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  /* Forced colors would force the border to a system colour and strip the
+     box-shadow, collapsing both channels this ring is made of and leaving it
+     the same colour as every border underneath it — the one outcome the
+     comment above exists to prevent. Here the colours ARE the meaning, not
+     theming, so opt the element out rather than restate them as system
+     colours: the app it annotates is entirely system-coloured in this mode. */
+  forced-color-adjust: none;
+}

@@ -1234,6 +1234,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "개인 색상 테마 선택기입니다. 프로젝트와 공유되지 않으며, 켜면 사이드바의 플러그인 아래에 나타납니다."
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "앱을 열기 직전의 모습이며, 포인터가 있던 위치에 표시가 그려집니다. 비공개 처리되지 않았으므로 미리보기를 확인하고 공유하면 안 되는 내용이 있으면 선택을 해제하세요."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "앱을 열기 직전의 모습입니다. 비공개 처리되지 않았으므로 미리보기를 확인하고 공유하면 안 되는 내용이 있으면 선택을 해제하세요."
 
@@ -10899,6 +10903,7 @@ msgstr "각각에 이미 있는 OpenKnowledge 항목을 교체합니다."
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "버그 신고"
 
@@ -12483,6 +12488,10 @@ msgstr "선택한 구절을 에이전트 패널에 올려 이어서 작성하고
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "GitHub에서 별표를 눌러 주세요"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "지금 화면에 보이는 그대로의 스크린샷과 함께 버그 신고를 시작합니다."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

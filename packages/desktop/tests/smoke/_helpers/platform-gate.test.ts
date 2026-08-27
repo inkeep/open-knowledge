@@ -108,6 +108,11 @@ const PLATFORM_IRRELEVANT_PREDICATES = new Set([
   'BUILD_EXISTS',
   'ENABLED',
   'appIsRunning',
+  // Whether this host composited a readable surface for `capturePage()` at all.
+  // A headless or display-less runner returns an empty image on every platform,
+  // so the spec that reads it is skipped for want of pixels rather than for
+  // where it is running.
+  'preview',
 ]);
 
 /** Parse-only: no lib files, no dependency resolution, nothing on disk. */

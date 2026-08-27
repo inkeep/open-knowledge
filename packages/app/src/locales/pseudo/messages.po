@@ -1230,6 +1230,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr ""
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr ""
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr ""
 
@@ -10895,6 +10899,7 @@ msgstr ""
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr ""
 
@@ -12478,6 +12483,10 @@ msgstr ""
 
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
+msgstr ""
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
 msgstr ""
 
 #: src/components/SessionsHost.tsx

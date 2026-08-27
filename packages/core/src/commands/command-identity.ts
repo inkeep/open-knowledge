@@ -462,9 +462,19 @@ export const COMMAND_IDENTITIES: readonly CommandIdentity[] = [
     menuActionId: 'report-bug',
     labelKey: 'reportBug',
     keywords: ['bug report issue feedback problem', 'file'],
+    shortcutId: 'report-bug',
+    // The chord reaches this command ONLY through the native accelerator below
+    // — the app's shortcut registry declares it for display but wires no
+    // keydown listener, so nothing in the renderer gates it on the app-global
+    // overlay check the way every keydown listener does. On macOS that is the
+    // whole story: AppKit resolves menu key equivalents ahead of the web view.
+    // On Windows and Linux the accelerator still travels the renderer's input
+    // path first, so a focused surface that cancels the chord cancels the menu
+    // item with it.
+    shortcutDesktopOnly: true,
     availability: { host: 'desktop' },
     palette: { group: 'project', visibility: 'always' },
-    menu: [{ section: 'help-links', order: 1, ellipsis: true }],
+    menu: [{ section: 'help-links', order: 1, ellipsis: true, accelerator: 'CmdOrCtrl+Shift+D' }],
   },
   {
     // Palette-only sibling of report-bug (no `menu` placement): the persisted

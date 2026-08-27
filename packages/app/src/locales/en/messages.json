@@ -945,6 +945,7 @@
     "CFnavk": ["This project isn't a git repository, so worktrees aren't available."],
     "CGj3gX": ["parse error"],
     "CHfFN_": ["Remove OpenKnowledge from ", ["0"]],
+    "CJpuc1": ["Start a bug report with a screenshot of the screen as it looks right now."],
     "CKyk7Q": ["Go back"],
     "CMd-g-": [
       "Your remote URL names ",
@@ -4130,6 +4131,9 @@
     "pMPnZv": ["Deleted ", ["deleted"], " skills"],
     "pOo4Aa": ["Plain text"],
     "pPiV8s": ["Enable Auto (Pull and Push)"],
+    "pRq670": [
+      "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+    ],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
     "pTyA_t": ["tags"],

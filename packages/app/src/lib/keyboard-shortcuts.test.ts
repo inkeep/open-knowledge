@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   formatShortcut,
@@ -851,6 +854,129 @@ describe('keyboard shortcut registry', () => {
         expect(matchesKeyboardShortcut(winEvent, id, 'windowsLinux')).toBe(id === chord.id);
       }
     }
+  });
+
+  test('formats the report-bug shortcut as Shift+Cmd / Ctrl+Shift + D', () => {
+    expect(formatShortcut('report-bug', 'mac')).toBe('⇧⌘ D');
+    expect(formatShortcut('report-bug', 'windowsLinux')).toBe('Ctrl Shift D');
+  });
+
+  test('registers report-bug under the General shortcut-help category', () => {
+    const byId = new Map(KEYBOARD_SHORTCUTS.map((shortcut) => [shortcut.id, shortcut]));
+    expect(byId.get('report-bug')?.category).toBe('general');
+  });
+
+  test('the traced xterm version stays pinned', () => {
+    // The chord's immunity inside a focused terminal pane is a TRACED property of
+    // one xterm release, not a guarantee: @xterm/xterm 6.0.0 ships no
+    // modifyOtherKeys / CSI-u encoding, so its keydown path finds nothing to
+    // encode for Ctrl+Shift+<letter> and returns before the call that would
+    // `preventDefault()`. A release that adds one starts encoding exactly this
+    // shape and silently claims the chord — the terminal would swallow it and
+    // the reporter would stop opening from the surface a user is most likely to
+    // be reporting about.
+    //
+    // EQUALITY, not a floor, unlike the sibling guard in
+    // `editor/extensions/raw-mdx-nested-copy-version-pin.test.ts`: there the
+    // hazard is drifting BELOW a verified version, so forward drift is safe.
+    // Here forward drift is the hazard itself, so any move re-opens the question
+    // and has to trip this.
+    //
+    // BOTH halves, because they catch different edits. The declared string
+    // catches the manifest being loosened (`^6.0.0` is not `6.0.0`, so it trips
+    // the moment the pin stops being exact). The resolved version catches the
+    // installed package moving underneath a pin that still looks right — a
+    // lockfile edit, a stale store, a patched copy. Asserting only the manifest
+    // would miss the second; asserting only the resolved version would let a
+    // caret range through for as long as it happened to resolve to 6.0.0, and
+    // trip later on an unrelated `pnpm update` with no obvious cause.
+    //
+    // Resolution follows the sibling guard's shape in
+    // `editor/extensions/raw-mdx-nested-copy-version-pin.test.ts`.
+    //
+    // When this trips: re-run the trace in `keyboard-shortcuts.ts` against the
+    // new release before moving the pin.
+    const require_ = createRequire(import.meta.url);
+    // Node's strict exports resolver rejects a bare `<pkg>/package.json` subpath
+    // unless the package lists it, so resolve the main entry and walk up.
+    let dir = dirname(require_.resolve('@xterm/xterm'));
+    let resolved: string | undefined;
+    for (;;) {
+      try {
+        const parsed = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+          name?: string;
+          version?: string;
+        };
+        if (parsed.name === '@xterm/xterm' && parsed.version) {
+          resolved = parsed.version;
+          break;
+        }
+      } catch {
+        // no package.json here, or a nested one with a different name — walk up
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    expect(resolved).toBe('6.0.0');
+    const manifest = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    expect(manifest.dependencies?.['@xterm/xterm']).toBe('6.0.0');
+  });
+
+  test('the report-bug chord is display-only and matches no shortcut in the registry', () => {
+    // A native menu accelerator delivers this chord, so no renderer listener may
+    // claim it — not even the report-bug row itself. A `match` added to that
+    // binding would put the chord back behind the app-global overlay gate, which
+    // is the one place it must not be.
+    //
+    // The probe is READ OFF the binding rather than restated. A literal here
+    // survives a rebind by silently probing the retired chord, which leaves the
+    // sweep passing while testing a key nothing is bound to — coverage that
+    // reads as protection and is not.
+    const binding = KEYBOARD_SHORTCUTS.find((shortcut) => shortcut.id === 'report-bug')
+      ?.bindings[0];
+    const letter = binding?.mac.trim().slice(-1).toLowerCase();
+    // Guards the derivation itself: a binding whose trailing token stops being
+    // a single letter would silently probe something meaningless.
+    expect(letter).toMatch(/^[a-z]$/);
+    expect(binding?.windowsLinux.trim().slice(-1).toLowerCase()).toBe(letter);
+    const code = `Key${letter?.toUpperCase()}`;
+    const macEvent = {
+      metaKey: true,
+      ctrlKey: false,
+      altKey: false,
+      shiftKey: true,
+      key: letter as string,
+      code,
+    };
+    const winEvent = {
+      metaKey: false,
+      ctrlKey: true,
+      altKey: false,
+      shiftKey: true,
+      key: letter as string,
+      code,
+    };
+    const claimedBy: string[] = [];
+    for (const shortcut of KEYBOARD_SHORTCUTS) {
+      // The public array widens `id` to `string`; every runtime value is a
+      // registered id, so narrowing it back for the matcher lookup is sound.
+      const id = shortcut.id as KeyboardShortcutId;
+      if (matchesKeyboardShortcut(macEvent, id, 'mac')) claimedBy.push(`mac:${id}`);
+      if (matchesKeyboardShortcut(winEvent, id, 'windowsLinux')) claimedBy.push(`win:${id}`);
+      // Both hosts: a native menu bar is present on desktop, absent on web.
+      for (const hasNativeMenu of [true, false]) {
+        if (matchesRendererShortcut(macEvent, id, hasNativeMenu, 'mac')) {
+          claimedBy.push(`mac-renderer:${id}`);
+        }
+        if (matchesRendererShortcut(winEvent, id, hasNativeMenu, 'windowsLinux')) {
+          claimedBy.push(`win-renderer:${id}`);
+        }
+      }
+    }
+    expect(claimedBy).toEqual([]);
   });
 
   test('the mode toggle requires its Alt modifier so it never steals Cmd+M', () => {

@@ -20,7 +20,7 @@ import type {
   OkDesktopConfig,
   OkLocalOpAuthEvent,
   OkLocalOpCloneEvent,
-  OkMenuAction,
+  OkMenuActionDispatch,
   OkPtyData,
   OkPtyExit,
   OkRecentRemovedMissingInfo,
@@ -48,8 +48,12 @@ export interface EventChannels {
    * (boot restore, native File → Open Recent) prune silently and never send.
    */
   'ok:project:recent-removed-missing': { payload: OkRecentRemovedMissingInfo };
-  /** Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle Sidebar, etc.). */
-  'ok:menu-action': { payload: OkMenuAction };
+  /**
+   * Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle
+   * Sidebar, etc.), stamped with the dispatching surface. Each dispatcher states
+   * its own origin explicitly — see `sendMenuAction`.
+   */
+  'ok:menu-action': { payload: OkMenuActionDispatch };
   /**
    * A popped-out note window handed a conversation/comments intent to its
    * owning project window. Main focuses that window before sending.

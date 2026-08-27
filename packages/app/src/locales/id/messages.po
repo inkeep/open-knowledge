@@ -1230,6 +1230,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "Pemilih tema warna pribadi — tidak dibagikan dengan proyek Anda. Saat aktif, ia muncul di bawah Plugin pada bilah sisi."
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "Gambar aplikasi tepat sebelum Anda membuka ini, dengan penanda yang menunjukkan posisi penunjuk Anda. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "Gambar aplikasi tepat sebelum Anda membuka ini. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
 
@@ -10895,6 +10899,7 @@ msgstr "Mengganti entri OpenKnowledge yang sudah dimiliki masing-masing."
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "Laporkan bug"
 
@@ -12479,6 +12484,10 @@ msgstr "Siapkan bagian yang dipilih di panel agen, siap dilengkapi dan dikirim."
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Beri kami bintang di GitHub"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "Memulai laporan bug dengan tangkapan layar persis seperti tampilannya saat ini."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

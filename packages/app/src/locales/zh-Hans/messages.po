@@ -1234,6 +1234,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "个人配色主题选择器——不与你的项目共享。开启后会出现在侧边栏的「插件」下。"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "你打开这个界面之前的应用截图，上面有一个标记显示指针当时的位置。它没有做隐去处理，请查看预览；如果有不该分享的内容，请取消勾选。"
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "你打开这个界面之前的应用截图。它没有做隐去处理，请查看预览；如果有不该分享的内容，请取消勾选。"
 
@@ -10899,6 +10903,7 @@ msgstr "替换它们各自已有的 OpenKnowledge 条目。"
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "报告问题"
 
@@ -12483,6 +12488,10 @@ msgstr "把选中的内容放入智能体面板，随时可以补充并发送。
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "发起一份错误报告，并附上此刻画面的截图。"
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

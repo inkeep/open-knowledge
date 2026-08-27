@@ -15,6 +15,7 @@
  */
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -244,6 +245,33 @@ describe('NavigatorApp new-project menu-action subscription', () => {
     // The Navigator has no project, so the compose summary must carry the
     // system-wide labeling rather than the project-scoped line.
     expect(screen.getByText(/No project is open/)).not.toBeNull();
+  });
+
+  test('closing the report leaves it reopenable', async () => {
+    // The open state here IS the dispatch's origin, so the close path has to
+    // null it rather than flip a boolean back. Get that polarity wrong and the
+    // report opens exactly once per window lifetime — and on the Navigator this
+    // is the only report surface the window has.
+    const stub = makeNavigatorBridge();
+    render(
+      <TooltipProvider>
+        <NavigatorApp bridge={stub.bridge} />
+      </TooltipProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+
+    stub.fire('report-bug');
+    await screen.findByRole('dialog', { name: 'Report a bug' }, { timeout: ASYNC_TIMEOUT_MS });
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Report a bug' })).toBeNull();
+    });
+
+    stub.fire('report-bug');
+    expect(
+      await screen.findByRole('dialog', { name: 'Report a bug' }, { timeout: ASYNC_TIMEOUT_MS }),
+    ).not.toBeNull();
   });
 
   test('send-feedback menu action opens the feedback form', async () => {

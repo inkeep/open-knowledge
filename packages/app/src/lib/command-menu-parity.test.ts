@@ -23,6 +23,7 @@ import { PALETTE_COMMANDS } from '@/components/command-palette-commands';
 import { APP_RESERVED_IDS, PALETTE_COMMAND_IDS } from '@/lib/command-menu-parity.test-helper';
 import {
   formatShortcut,
+  KEYBOARD_SHORTCUTS,
   type KeyboardShortcutId,
   type ShortcutPlatform,
 } from '@/lib/keyboard-shortcuts';
@@ -362,8 +363,17 @@ describe('command-menu parity ratchet', () => {
     { menuLabel: 'Forward', shortcutId: 'navigate-forward' },
   ];
 
+  // A single `CmdOrCtrl+…` accelerator has to resolve on BOTH platforms, so
+  // these pairs are swept twice. The navigation pairs above cannot join them:
+  // they declare a platform-SPLIT accelerator (Cmd+[ vs Alt+Left), so each
+  // platform's leaf carries a different chord.
+  const CROSS_PLATFORM_SHORTCUT_PAIRS: readonly MenuShortcutPair[] = [
+    { menuLabel: 'Report a bug', shortcutId: 'report-bug' },
+  ];
+
   const MENU_SHORTCUT_PAIRS: readonly MenuShortcutPair[] = [
     ...NAVIGATION_HISTORY_SHORTCUT_PAIRS,
+    ...CROSS_PLATFORM_SHORTCUT_PAIRS,
     { menuLabel: 'New file', shortcutId: 'new-item' },
     { menuLabel: 'New folder', shortcutId: 'new-folder' },
     { menuLabel: 'Switch project', shortcutId: 'switch-project' },
@@ -427,6 +437,29 @@ describe('command-menu parity ratchet', () => {
 
   test('Ratchet D: Windows/Linux navigation accelerators agree with the shortcut registry', () => {
     expectMenuShortcutParity(NAVIGATION_HISTORY_SHORTCUT_PAIRS, 'win32', 'windowsLinux');
+  });
+
+  test('Ratchet D: cross-platform accelerators agree on Windows/Linux as well', () => {
+    expectMenuShortcutParity(CROSS_PLATFORM_SHORTCUT_PAIRS, 'win32', 'windowsLinux');
+  });
+
+  test('Ratchet D: cross-platform accelerators declare a platform-neutral modifier', () => {
+    // `chordTokens` folds Cmd / Ctrl / CmdOrCtrl into one MOD token, so a
+    // placement that declares a bare `Cmd+…` with no `platform` gate satisfies
+    // both sweeps above while binding nothing at all on Windows and Linux. Pin
+    // the literal string, which is the only thing that distinguishes them.
+    for (const platform of ['darwin', 'win32'] as const) {
+      const leaves = collectLeavesForPlatform(platform);
+      const accelerators = CROSS_PLATFORM_SHORTCUT_PAIRS.map((pair) => ({
+        menuLabel: pair.menuLabel,
+        accelerator: leaves.find((leaf) => normalizeLabel(leaf.label) === pair.menuLabel)
+          ?.accelerator,
+      }));
+      expect({ platform, accelerators }).toEqual({
+        platform,
+        accelerators: [{ menuLabel: 'Report a bug', accelerator: 'CmdOrCtrl+Shift+D' }],
+      });
+    }
   });
 
   // Exactly one bridge.onMenuAction listener (the bus forwarder) — no subscriber
@@ -528,6 +561,28 @@ describe('command identity registry (Phase 2b)', () => {
         ],
       },
     ]);
+  });
+
+  test('a shortcut hidden from the web hotkeys list is chordless in the web palette too', () => {
+    // Two surfaces read two flags: Settings drops a `desktopOnly` shortcut's
+    // whole row on web, the palette drops a `shortcutDesktopOnly` command's
+    // chord glyphs there. Declaring one without the other hides the row in one
+    // place while still printing the chord in the other.
+    const desktopOnlyShortcutIds = KEYBOARD_SHORTCUTS.filter(
+      (shortcut) => shortcut.desktopOnly === true,
+    ).map((shortcut) => shortcut.id);
+
+    // Pinned rather than merely counted: a new desktop-only shortcut has to be
+    // classified here, which is where the pairing below gets checked.
+    expect(desktopOnlyShortcutIds.sort()).toEqual(['report-bug']);
+
+    const chordShownOnWeb = COMMAND_IDENTITIES.filter(
+      (command) =>
+        command.shortcutId !== undefined &&
+        desktopOnlyShortcutIds.includes(command.shortcutId) &&
+        command.shortcutDesktopOnly !== true,
+    ).map((command) => command.id);
+    expect(chordShownOnWeb).toEqual([]);
   });
 
   test('every registry menuActionId is a real OkMenuAction', () => {

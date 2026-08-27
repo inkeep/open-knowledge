@@ -1096,6 +1096,9 @@
     "CFnavk": ["Este projeto não é um repositório git, então worktrees não estão disponíveis."],
     "CGj3gX": ["erro de análise"],
     "CHfFN_": ["Remover o OpenKnowledge de ", ["0"]],
+    "CJpuc1": [
+      "Inicia um relatório de erro com uma captura de tela exatamente como ela está agora."
+    ],
     "CKyk7Q": ["Voltar"],
     "CMd-g-": [
       "Sua URL remota indica ",
@@ -4667,6 +4670,9 @@
     "pMPnZv": [["deleted"], " habilidades excluídas"],
     "pOo4Aa": ["Texto simples"],
     "pPiV8s": ["Ativar Automático (Pull e Push)"],
+    "pRq670": [
+      "Uma imagem do app pouco antes de você abrir isto, com uma marca mostrando onde estava o seu ponteiro. Ela não é ocultada, então revise a pré-visualização e desmarque se houver algo que não deva ser compartilhado."
+    ],
     "pSimwP": ["Novo nome para a versão do ", ["editor"]],
     "pTPqMK": ["Liga ou desliga um bloco de código delimitado."],
     "pTyA_t": ["tags"],

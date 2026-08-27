@@ -1,5 +1,6 @@
 import { useTheme } from 'next-themes';
 import { useState } from 'react';
+import { ReportBugMenuTrigger } from '@/components/ReportBugMenuTrigger';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { ConfigProvider } from '@/lib/config-provider';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -35,6 +36,12 @@ export function TerminalWindowApp({ bridge }: TerminalWindowAppProps) {
   return (
     <ConfigProvider collabUrl={collabUrl}>
       <TerminalWindowBody bridge={bridge} />
+      {/* Help → Report a bug… lands on whichever window is focused, so this
+          root needs its own subscriber or the item and its accelerator do
+          nothing from here — silently, since nothing records an unhandled
+          dispatch. A project-less terminal window has no project logs to
+          collect, which is what `systemWide` tells the reporter. */}
+      <ReportBugMenuTrigger systemWide={collabUrl === null} />
     </ConfigProvider>
   );
 }

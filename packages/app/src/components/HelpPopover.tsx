@@ -289,7 +289,9 @@ export const HelpPopover: FC = () => {
       {/* Siblings to the Popover so the dialogs survive the menu closing on
           select. Report-a-bug is desktop-only — gated on the same bridge as
           its trigger row. */}
-      {hasDesktopBridge && <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} />}
+      {hasDesktopBridge && (
+        <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} launcherBorne />
+      )}
       <FeedbackFormDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}

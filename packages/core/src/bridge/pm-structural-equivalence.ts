@@ -32,6 +32,7 @@ const BR_SENTINEL: PmStructuralNode = { type: '__br__' };
 
 const BR_LITERAL_RE = /^<br\s*\/?>$/i;
 
+
 interface DegradeEntry {
   readonly label: string;
   readonly severity: ToleranceClassSeverity;
@@ -127,6 +128,7 @@ export interface ComparePmStructuralOptions {
   ignoreAttrs?: (attrKey: string) => boolean;
   rawSourceSide?: 'expected';
 }
+
 
 /** Rebuild a node with `fn` applied to each child; identity when childless.
  *  Shared by the degrade canonicalizers so none re-implements the walk. */
@@ -252,6 +254,7 @@ function applyDegrades(tree: PmStructuralNode): {
   }
   return { normalized: current, fired };
 }
+
 
 export function comparePmStructural(
   expected: PmStructuralNode,

@@ -378,6 +378,7 @@ export function AppMenubar() {
           </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'report-bug' })}>
             {t`Report a bug…`}
+            <MenubarShortcut>Ctrl+Shift+D</MenubarShortcut>
           </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'send-feedback' })}>
             {t`Send feedback…`}

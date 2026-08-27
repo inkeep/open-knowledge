@@ -154,6 +154,7 @@ import type {
   CliReadiness,
   OkChromeColors,
   OkMenuAction,
+  OkMenuActionOrigin,
 } from '../shared/bridge-contract.ts';
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
@@ -331,7 +332,11 @@ import {
   runMcpWiringOnFirstLaunch,
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
-import { resolveMenuActionTarget } from './menu-action-target.ts';
+import {
+  LAUNCHER_FREE_ORIGIN,
+  originForMenuDispatch,
+  resolveMenuActionTarget,
+} from './menu-action-target.ts';
 import type { MenuTranslator } from './menu-translator.ts';
 import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
 import {
@@ -1128,7 +1133,13 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
       // the menu click fires async, and a send on a destroyed webContents throws
       // and crashes main (no userland uncaughtException handler).
       if (win.isDestroyed()) return;
-      sendToRenderer(win.webContents, 'ok:menu-action', 'toggle-source');
+      // Launcher-free even though a menu is open: this one is a native
+      // `Menu.popup()`, so it is OS chrome rather than a DOM layer — nothing a
+      // renderer-side capture could see, and nothing worth waiting on.
+      sendToRenderer(win.webContents, 'ok:menu-action', {
+        action: 'toggle-source',
+        origin: { launcherBorne: false },
+      });
     },
     popMenu: (input) => {
       popSpellcheckMenu({ Menu, window: win }, { ...input, translate: currentMenuTranslator() });
@@ -4284,16 +4295,24 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
  * BrowserWindow (for a menu click from the Dock).
  * Silent no-op when no windows are open (e.g. last project closed but app
  * still running on macOS via the Dock).
+ *
+ * `sender` picks the target window and nothing else; `origin` states the
+ * dispatching surface separately, so a caller that threads a sender purely to
+ * choose a window does not accidentally claim to be a launcher.
  */
 
-function sendMenuAction(action: OkMenuAction, sender: WebContents | null = null): void {
+function sendMenuAction(
+  action: OkMenuAction,
+  sender: WebContents | null = null,
+  origin: OkMenuActionOrigin = LAUNCHER_FREE_ORIGIN,
+): void {
   const target = resolveMenuActionTarget(sender, {
     fromWebContents: (contents) => BrowserWindow.fromWebContents(contents),
     getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
     getAllWindows: () => BrowserWindow.getAllWindows(),
   });
   if (!target) return;
-  sendToRenderer(target.webContents, 'ok:menu-action', action);
+  sendToRenderer(target.webContents, 'ok:menu-action', { action, origin });
 }
 
 /**
@@ -5956,7 +5975,7 @@ function registerIpcHandlers() {
           })(),
         };
       case 'menu-action':
-        sendMenuAction(request.action, event.sender);
+        sendMenuAction(request.action, event.sender, originForMenuDispatch(request.kind));
         return undefined;
       case 'open-recent-project':
         await openProjectOrFallbackToNavigator(request.path, 'recents');
@@ -5967,6 +5986,15 @@ function registerIpcHandlers() {
       case 'role':
         applyMenuDispatchRole(request.role, event.sender);
         return undefined;
+      default: {
+        // The roster's `satisfies` forces a new dispatch kind to be CLASSIFIED;
+        // this forces it to be HANDLED. Without both, a sixth kind compiles
+        // clean and then silently no-ops here — noticed on first manual use,
+        // unlike a misclassified origin, but still a compile error we can have
+        // for four lines.
+        const _exhaustive: never = request;
+        return _exhaustive;
+      }
     }
   });
 

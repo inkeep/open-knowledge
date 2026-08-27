@@ -1234,6 +1234,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "منتقي سمة ألوان شخصي — غير مشترك مع مشروعك. عند تفعيله يظهر ضمن «الإضافات» في الشريط الجانبي."
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "صورة للتطبيق من قبل فتحك هذا مباشرةً، مع علامة تُبيّن موضع المؤشر. لم يجرِ إخفاء محتواها، لذا تحقق من المعاينة وألغِ تحديدها إن كان فيها ما لا ينبغي مشاركته."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "صورة للتطبيق من قبل فتحك هذا مباشرةً. لم يجرِ إخفاء محتواها، لذا تحقق من المعاينة وألغِ تحديدها إن كان فيها ما لا ينبغي مشاركته."
 
@@ -10899,6 +10903,7 @@ msgstr "يستبدل إدخال OpenKnowledge الموجود لدى كل منه�
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "الإبلاغ عن علة"
 
@@ -12483,6 +12488,10 @@ msgstr "تجهيز المقطع المحدد في لوحة الوكلاء، جا
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "امنحنا نجمة على GitHub"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "ابدأ تقرير علة مع لقطة شاشة كما تبدو في هذه اللحظة."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

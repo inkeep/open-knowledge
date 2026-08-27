@@ -1234,6 +1234,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "Un sélecteur de thème de couleurs personnel — non partagé avec votre projet. Une fois activé, il apparaît sous Plugins dans la barre latérale."
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "Une image de l'application juste avant que vous n'ouvriez ceci, avec un repère indiquant où se trouvait votre pointeur. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "Une image de l'application juste avant que vous n'ouvriez ceci. Elle n'est pas masquée, alors vérifiez l'aperçu et décochez-la si quelque chose ne doit pas être partagé."
 
@@ -10899,6 +10903,7 @@ msgstr "Remplace l'entrée OpenKnowledge que chacun possède déjà."
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "Signaler un bug"
 
@@ -12483,6 +12488,10 @@ msgstr "Prépare le passage sélectionné dans le panneau des agents, prêt à �
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Mettez-nous une étoile sur GitHub"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "Démarre un rapport de bug avec une capture d'écran de ce qui est affiché à cet instant."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

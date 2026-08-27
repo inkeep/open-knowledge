@@ -217,6 +217,13 @@ export interface ReportBugDialogProps {
    */
   screenshot?: OkBugReportScreenshot | null;
   /**
+   * The captured image carries a ring drawn at the pointer's last position.
+   * Only the immediate-capture triggers draw one, and only when the pointer has
+   * moved since load, so the hint below has to say which image the user is
+   * actually looking at rather than promise a marker on all of them.
+   */
+  pointerMarked?: boolean;
+  /**
    * Whether main is holding a crash dump this report could carry, as probed by
    * the gate for a report the user opened themselves. Ignored under
    * `crashInvite`, which carries main's answer for its own crash on the event.
@@ -231,6 +238,7 @@ function ReportBugDialog({
   crashContext,
   crashInvite,
   screenshot = null,
+  pointerMarked = false,
   crashDumpAvailable: probedCrashDumpAvailable = false,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
@@ -545,10 +553,19 @@ function ReportBugDialog({
                         <Trans>Screenshot</Trans>
                       </label>
                       <p id={screenshotHintId} className="text-1sm text-muted-foreground">
-                        <Trans>
-                          A picture of the app from just before you opened this. It isn't redacted,
-                          so check the preview and uncheck it if anything shouldn't be shared.
-                        </Trans>
+                        {pointerMarked ? (
+                          <Trans>
+                            A picture of the app from just before you opened this, with a marker
+                            showing where your pointer was. It isn't redacted, so check the preview
+                            and uncheck it if anything shouldn't be shared.
+                          </Trans>
+                        ) : (
+                          <Trans>
+                            A picture of the app from just before you opened this. It isn't
+                            redacted, so check the preview and uncheck it if anything shouldn't be
+                            shared.
+                          </Trans>
+                        )}
                       </p>
                       {/* Preview dims when excluded so the checkbox state reads
                           at a glance; the label above already names it. */}

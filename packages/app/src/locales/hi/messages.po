@@ -1230,6 +1230,10 @@ msgid "A personal color-theme picker — not shared with your project. When on, 
 msgstr "एक निजी रंग-थीम चयनकर्ता — आपके प्रोजेक्ट के साथ साझा नहीं। चालू होने पर यह साइडबार में Plugins के नीचे दिखता है।"
 
 #: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "इसे खोलने से ठीक पहले के ऐप का एक चित्र, जिसमें एक निशान बताता है कि आपका पॉइंटर कहाँ था। इससे गोपनीय जानकारी नहीं हटाई जाती, इसलिए पूर्वावलोकन जाँच लें और यदि कुछ साझा नहीं करना है तो इसे अनचेक कर दें।"
+
+#: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
 msgstr "इसे खोलने से ठीक पहले के ऐप का एक चित्र। इससे गोपनीय जानकारी नहीं हटाई जाती, इसलिए पूर्वावलोकन जाँच लें और यदि कुछ साझा नहीं करना है तो इसे अनचेक कर दें।"
 
@@ -10895,6 +10899,7 @@ msgstr "हर एक में पहले से मौजूद OpenKnowledg
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "बग की रिपोर्ट करें"
 
@@ -12479,6 +12484,10 @@ msgstr "चयनित अंश को एजेंट पैनल में 
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "GitHub पर हमें स्टार दें"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "स्क्रीन अभी जैसी दिख रही है उसका स्क्रीनशॉट लेकर बग रिपोर्ट शुरू करें।"
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."

@@ -47,8 +47,10 @@ vi.mock('electron', () => ({
   webUtils: { getPathForFile: () => '' },
 }));
 
+type MenuOrigin = { launcherBorne: boolean };
+
 type MenuBridge = {
-  onMenuAction(cb: (action: string) => void): () => void;
+  onMenuAction(cb: (action: string, origin: MenuOrigin) => void): () => void;
 };
 
 async function loadBridge(): Promise<MenuBridge> {
@@ -61,15 +63,19 @@ async function loadBridge(): Promise<MenuBridge> {
   return bridge as unknown as MenuBridge;
 }
 
-/** Push one `ok:menu-action` exactly as main does. */
-function pushMenuAction(action: string): void {
+/**
+ * Push one `ok:menu-action` exactly as main does — a whole dispatch envelope,
+ * not a bare action. Defaults to the launcher-free origin main stamps for a
+ * native menu item or a keyboard accelerator.
+ */
+function pushMenuAction(action: string, origin: MenuOrigin = { launcherBorne: false }): void {
   const listeners = channelListeners.get('ok:menu-action');
   if (listeners === undefined || listeners.size === 0) {
     throw new Error(
       'the preload registered no ok:menu-action listener at load — a menu action arriving before the renderer subscribes would be dropped',
     );
   }
-  for (const listener of listeners) listener({}, action);
+  for (const listener of listeners) listener({}, { action, origin });
 }
 
 /** Let the replay microtask run. */
@@ -270,5 +276,61 @@ describe('preload menu-action delivery', () => {
     expect(seen).toHaveLength(32);
     expect(seen.at(0)).toBe('action-8');
     expect(seen.at(-1)).toBe('action-39');
+  });
+});
+
+/**
+ * The dispatching surface travels with the action, and the buffer is the place
+ * it is easiest to lose: replaying a queued action without its origin would
+ * hand the renderer a launcher-borne dispatch dressed as a native one.
+ */
+describe('preload menu-action origin', () => {
+  it('hands a live subscriber the origin main stamped', async () => {
+    const bridge = await loadBridge();
+    const seen: Array<[string, MenuOrigin]> = [];
+    bridge.onMenuAction((action, origin) => seen.push([action, origin]));
+
+    pushMenuAction('report-bug', { launcherBorne: true });
+
+    expect(seen).toEqual([['report-bug', { launcherBorne: true }]]);
+  });
+
+  it('replays a buffered action with the origin it was dispatched with', async () => {
+    const bridge = await loadBridge();
+    pushMenuAction('report-bug', { launcherBorne: true });
+
+    const seen: Array<[string, MenuOrigin]> = [];
+    bridge.onMenuAction((action, origin) => seen.push([action, origin]));
+    await settle();
+
+    expect(seen).toEqual([['report-bug', { launcherBorne: true }]]);
+  });
+
+  it('keeps distinct origins apart across a replayed batch', async () => {
+    const bridge = await loadBridge();
+    pushMenuAction('report-bug', { launcherBorne: true });
+    pushMenuAction('report-bug', { launcherBorne: false });
+
+    const seen: MenuOrigin[] = [];
+    bridge.onMenuAction((_action, origin) => seen.push(origin));
+    await settle();
+
+    // `report-bug` is additive, so both survive — and neither inherits the
+    // other's origin.
+    expect(seen).toEqual([{ launcherBorne: true }, { launcherBorne: false }]);
+  });
+
+  it('collapses a repeated parity action on the action alone, keeping the queued origin', async () => {
+    const bridge = await loadBridge();
+    pushMenuAction('toggle-terminal', { launcherBorne: false });
+    pushMenuAction('toggle-terminal', { launcherBorne: true });
+
+    const seen: Array<[string, MenuOrigin]> = [];
+    bridge.onMenuAction((action, origin) => seen.push([action, origin]));
+    await settle();
+
+    // A repeat with nothing on screen is the same intent restated, so the
+    // queued dispatch stands whole — origin included.
+    expect(seen).toEqual([['toggle-terminal', { launcherBorne: false }]]);
   });
 });

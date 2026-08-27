@@ -38,7 +38,7 @@ let requestDocPanelTabCalls: string[] = [];
 let seedDialogProps: Array<{ open: boolean }> = [];
 let newItemDialogProps: Array<{ open: boolean; kind: string; initialDir: string }> = [];
 let createProjectDialogProps: Array<{ open: boolean; bridge: unknown }> = [];
-let reportBugDialogProps: Array<{ open: boolean }> = [];
+let reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
 let feedbackDialogProps: Array<{ open: boolean; source?: string }> = [];
 let commandDialogProps: CommandDialogProps[] = [];
 let refreshInstallStatesCalls = 0;
@@ -156,10 +156,20 @@ vi.doMock('@/components/CreateProjectDialog', () => ({
 }));
 
 vi.doMock('@/components/ReportBugDialog', () => ({
-  ReportBugDialog: (props: { open: boolean }) => {
+  ReportBugDialog: (props: { open: boolean; launcherBorne?: boolean }) => {
     reportBugDialogProps.push(props);
     return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
   },
+}));
+
+// `lazy()`-loaded in CommandPalette, so the mock must expose a `default`.
+vi.doMock('@/components/BugReportHistoryDialog', () => ({
+  default: (props: { open: boolean; onReportABug: () => void }) =>
+    props.open ? (
+      <button data-testid="history-report-cta" onClick={props.onReportABug} type="button">
+        history-cta
+      </button>
+    ) : null,
 }));
 
 vi.doMock('@/components/FeedbackFormDialog', () => ({
@@ -441,6 +451,20 @@ describe('CommandPalette DOM behavior', () => {
     );
   });
 
+  test('report-bug row shows its chord on the desktop host', async () => {
+    await renderPalette({ bridge: createBridge() });
+
+    expect(screen.getByTestId('command-palette-report-bug').textContent).toMatch(
+      /⇧⌘ D|Ctrl Shift D/,
+    );
+  });
+
+  test('report-bug row is absent on the web host, so its desktop-only chord never shows there', async () => {
+    await renderPalette({ bridge: null });
+
+    expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
+  });
+
   test('new-file command closes the palette and opens the New Item dialog with kind file', async () => {
     const { onOpenChange } = await renderPalette({ bridge: null });
 
@@ -530,6 +554,31 @@ describe('CommandPalette DOM behavior', () => {
       expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
     });
     expect(reportBugDialogProps.at(-1)?.open).toBe(true);
+    // The palette closes on select and is still animating out as the dialog
+    // opens, so its screenshot must wait for the cmdk root to unmount rather
+    // than photograph the surface the user only passed through.
+    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
+  });
+
+  test('the bug-report-history CTA opens the compose dialog launcher-free', async () => {
+    // The negative image of the assertion above, and the branch this route
+    // exists for. By the time the user clicks this button they have read a list
+    // of past reports, so the palette is long gone and there is nothing to wait
+    // on — waiting anyway is what cost this route its pointer marker.
+    const bridge = createBridge();
+    await renderPalette({ bridge });
+
+    await setQuery('bug report history');
+    fireEvent.click(screen.getByTestId('command-palette-bug-report-history'));
+
+    const cta = await screen.findByTestId('history-report-cta');
+    fireEvent.click(cta);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+    });
+    expect(reportBugDialogProps.at(-1)?.open).toBe(true);
+    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(false);
   });
 
   test('send-feedback command renders on both hosts and opens FeedbackFormDialog', async () => {

@@ -18,6 +18,17 @@ vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
 }));
 
+// The popover is a Radix popper that closes on select, so the report it opens
+// must declare itself launcher-borne. Stubbing the dialog keeps that assertion
+// off the real capture gate, which has its own tests.
+const reportBugDialogProps: Array<{ open: boolean; launcherBorne?: boolean }> = [];
+vi.doMock('@/components/ReportBugDialog', () => ({
+  ReportBugDialog: (props: { open: boolean; launcherBorne?: boolean }) => {
+    reportBugDialogProps.push(props);
+    return <div data-open={String(props.open)} data-testid="report-bug-dialog" />;
+  },
+}));
+
 async function renderOpenHelpPopover() {
   const { HelpPopover } = await import('./HelpPopover');
   render(
@@ -200,6 +211,21 @@ describe('HelpPopover with the desktop bridge present', () => {
     // report-bug is desktop-only, so it only appears with the bridge present.
     expect(docs.compareDocumentPosition(reportBug)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(docs.compareDocumentPosition(sendFeedback)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  test('the report it opens waits for the popover to clear before shooting', async () => {
+    reportBugDialogProps.length = 0;
+    await renderOpenHelpPopover();
+
+    const nav = screen.getByRole('navigation', { name: 'Resources' });
+    await userEvent.click(within(nav).getByRole('button', { name: 'Report a bug' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-bug-dialog').getAttribute('data-open')).toBe('true');
+    });
+    // The row closes the popover as it opens the dialog, so the popper is still
+    // animating out and would land in a shot taken on the next frame.
+    expect(reportBugDialogProps.at(-1)?.launcherBorne).toBe(true);
   });
 
   test('keeps the download route available for reinstalling or sharing from desktop', async () => {

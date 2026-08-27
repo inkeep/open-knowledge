@@ -932,6 +932,7 @@
     "CFnavk": ["Proyek ini bukan repositori git, jadi worktree tidak tersedia."],
     "CGj3gX": ["galat penguraian"],
     "CHfFN_": ["Hapus OpenKnowledge dari ", ["0"]],
+    "CJpuc1": ["Memulai laporan bug dengan tangkapan layar persis seperti tampilannya saat ini."],
     "CKyk7Q": ["Kembali"],
     "CMd-g-": [
       "URL remote Anda menyebut ",
@@ -4155,6 +4156,9 @@
     "pMPnZv": [["deleted"], " keterampilan dihapus"],
     "pOo4Aa": ["Teks biasa"],
     "pPiV8s": ["Aktifkan Otomatis (Pull dan Push)"],
+    "pRq670": [
+      "Gambar aplikasi tepat sebelum Anda membuka ini, dengan penanda yang menunjukkan posisi penunjuk Anda. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
+    ],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
     "pTPqMK": ["Menyalakan atau mematikan blok kode berpagar."],
     "pTyA_t": ["tag"],

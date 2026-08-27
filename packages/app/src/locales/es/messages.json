@@ -1120,6 +1120,9 @@
     ],
     "CGj3gX": ["error de análisis"],
     "CHfFN_": ["Quitar OpenKnowledge de ", ["0"]],
+    "CJpuc1": [
+      "Inicia un informe de error con una captura de pantalla tal como se ve ahora mismo."
+    ],
     "CKyk7Q": ["Volver"],
     "CMd-g-": [
       "Tu URL remota indica ",
@@ -4769,6 +4772,9 @@
     "pMPnZv": [["deleted"], " habilidades eliminadas"],
     "pOo4Aa": ["Texto sin formato"],
     "pPiV8s": ["Activar Automático (Pull y Push)"],
+    "pRq670": [
+      "Una imagen de la aplicación justo antes de que abrieras esto, con una marca que indica dónde estaba tu puntero. No está censurada, así que revisa la vista previa y desmárcala si hay algo que no deba compartirse."
+    ],
     "pSimwP": ["Nombre nuevo para la versión de ", ["editor"]],
     "pTPqMK": ["Activa o desactiva un bloque de código delimitado."],
     "pTyA_t": ["etiquetas"],

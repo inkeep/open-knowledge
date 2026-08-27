@@ -28,6 +28,7 @@ import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
+import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 vi.doMock('@lingui/react/macro', () => ({
@@ -189,6 +190,25 @@ function clearBridge() {
   }
 }
 
+/**
+ * Let `count` animation frames elapse. The capture gate schedules on rAF, so a
+ * test that only flushes microtasks cannot tell a gate that waits from one that
+ * does not — it asserts before the first frame either way.
+ */
+async function waitFrames(count: number): Promise<void> {
+  for (let i = 0; i < count; i += 1) {
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
+    });
+  }
+}
+
+function movePointerTo(x: number, y: number): void {
+  window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -257,8 +277,19 @@ async function createReport(note?: string) {
 }
 
 describe('ReportBugDialog', () => {
+  let stopPointerTracking: (() => void) | undefined;
+
   afterEach(async () => {
     cleanup();
+    // Restore any global a test replaced. Neither vitest config sets
+    // `restoreMocks`, and this file's whole subject is rAF-scheduled capture
+    // timing — a stub that survives one failing assertion turns a single real
+    // failure into a dozen whose blast radius points away from the cause.
+    vi.restoreAllMocks();
+    // Uninstalling also forgets the recorded position, so one test's pointer
+    // cannot draw a marker into the next test's capture.
+    stopPointerTracking?.();
+    stopPointerTracking = undefined;
     // The send manager is a module singleton every test in this file shares.
     // An operation left mid-flight keeps its progress interval ticking and
     // makes the next start for the same zip join the stale one instead of
@@ -932,12 +963,217 @@ describe('ReportBugDialog', () => {
     expect(log.sendCalls[0]?.includeScreenshot).toBe(true);
   });
 
-  test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
-    // Stand in for the command palette still animating out as the dialog opens
-    // (the reported leak: the palette was opened only to reach Report a bug).
-    const launcher = document.createElement('div');
-    launcher.setAttribute('cmdk-root', '');
-    document.body.appendChild(launcher);
+  test('a trigger with no launcher captures at once, overlay still on screen', async () => {
+    // The case the shortcut exists for: the Radix popper on screen IS the bug.
+    // Waiting for it to unmount photographs the app after the defect went away.
+    const popper = document.createElement('div');
+    popper.setAttribute('data-radix-popper-content-wrapper', '');
+    document.body.appendChild(popper);
+
+    let popperAtCapture: boolean | null = null;
+    let capturedAfterMs = Number.POSITIVE_INFINITY;
+    let openedAt = Number.NaN;
+    const log = installBridge({
+      captureScreenshot: () => {
+        popperAtCapture = document.querySelector('[data-radix-popper-content-wrapper]') !== null;
+        capturedAfterMs = performance.now() - openedAt;
+        return Promise.resolve(SCREENSHOT);
+      },
+    });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    // Sampled after the dynamic import: on the first test to load the module a
+    // cold transform would otherwise land inside the measured window and race
+    // the 200ms assertion below.
+    openedAt = performance.now();
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    await screen.findByRole('dialog');
+    expect(log.screenshotCalls).toBe(1);
+    // The whole point: the overlay was in the frame rather than waited out.
+    expect(popperAtCapture).toBe(true);
+    // A capture that waited out the settle deadline would ALSO find the popper
+    // present (it never unmounts here), so the two cases are told apart by the
+    // clock: the deadline is 500ms, and this path must not consult it at all.
+    // The bound sits well above the handful of milliseconds this path actually
+    // takes — it measures real wall-clock across two real rAF ticks, so a
+    // contended runner needs headroom — while staying under the deadline a
+    // waiting gate would hit.
+    expect(capturedAfterMs).toBeLessThan(400);
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
+  });
+
+  test('a known pointer position is in the frame that gets captured, and gone once it settles', async () => {
+    // `capturePage()` omits the cursor, so a hover-state report would otherwise
+    // show a highlighted row and nothing explaining what highlighted it.
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(420, 260);
+
+    let markerAtCapture: { left: string; top: string } | null = null;
+    const log = installBridge({
+      captureScreenshot: () => {
+        const marker = document.querySelector<HTMLElement>('.ok-pointer-marker');
+        markerAtCapture = marker && { left: marker.style.left, top: marker.style.top };
+        return Promise.resolve(SCREENSHOT);
+      },
+    });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    await screen.findByRole('dialog');
+    expect(log.screenshotCalls).toBe(1);
+    // The marker is centred on the pointer by CSS, so these are the pointer's
+    // own viewport coordinates rather than a corner offset.
+    expect(markerAtCapture).toEqual({ left: '420px', top: '260px' });
+    // It belongs to the shot, not to the app: nothing is left behind for the
+    // user to see once the dialog reveals.
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+  });
+
+  test('with the pointer never moved, the capture runs with no marker and nothing else changes', async () => {
+    // A window reached by keyboard: there is no position to draw, and the spec
+    // is to omit the ring rather than guess one.
+    stopPointerTracking = installPointerPositionTracker();
+
+    let markersAtCapture = -1;
+    const log = installBridge({
+      captureScreenshot: () => {
+        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
+        return Promise.resolve(SCREENSHOT);
+      },
+    });
+    await renderDialog();
+
+    expect(markersAtCapture).toBe(0);
+    expect(log.screenshotCalls).toBe(1);
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
+  });
+
+  test('the screenshot hint promises a pointer marker only when one was drawn', async () => {
+    // The hint describes the image the user is deciding whether to share, so it
+    // has to track what the image actually carries. Three of the seven triggers
+    // never draw a ring; a blanket promise sends them looking for one.
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(120, 140);
+    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+
+    expect(screen.getByText(/with a marker showing where your pointer was/)).not.toBeNull();
+  });
+
+  test('with no marker drawn, the hint does not mention one', async () => {
+    // Same launcher-free path, but the pointer never moved, so
+    // `markPointerPosition` draws nothing and the copy must drop the clause.
+    stopPointerTracking = installPointerPositionTracker();
+    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
+    expect(screen.queryByText(/with a marker showing where your pointer was/)).toBeNull();
+    expect(
+      screen.getByText(/A picture of the app from just before you opened this\./),
+    ).not.toBeNull();
+  });
+
+  test('a rejected capture still takes the marker off the screen', async () => {
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(80, 90);
+
+    let markersAtCapture = -1;
+    installBridge({
+      captureScreenshot: () => {
+        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
+        return Promise.reject(new Error('capture failed'));
+      },
+    });
+    await renderDialog();
+
+    expect(markersAtCapture).toBe(1);
+    // Past the shot the ring is not in a screenshot, it is on the user's screen.
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+  });
+
+  test('closing before the capture resolves takes the marker with it', async () => {
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(80, 90);
+
+    const pending = deferred<OkBugReportScreenshot>();
+    installBridge({ captureScreenshot: () => pending.promise });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    const { rerender } = render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    await waitFrames(3);
+    expect(document.querySelectorAll('.ok-pointer-marker')).toHaveLength(1);
+
+    rerender(
+      <TooltipProvider>
+        <ReportBugDialog open={false} onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+
+    // Let the abandoned capture land so it can't settle into the next test.
+    pending.resolve(SCREENSHOT);
+    await waitFrames(1);
+  });
+
+  test('a capture that lands after the reveal timeout is discarded, not offered', async () => {
+    // The marker is taken off screen when the reveal timer fires, so a capture
+    // still sampling at that moment comes back without the ring in it. Nothing
+    // bad ships only because `settled` latches first and drops the late result.
+    // That guard is the whole safety here, so pin it: a change that let a
+    // post-timeout capture through would offer a screenshot whose pointer
+    // marker is silently missing.
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(140, 200);
+
+    const pending = deferred<OkBugReportScreenshot>();
+    const log = installBridge({ captureScreenshot: () => pending.promise });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} />
+      </TooltipProvider>,
+    );
+
+    // The timer wins the race, so the dialog reveals with nothing to offer.
+    // Comfortably past the gate's 1200ms reveal timeout.
+    await screen.findByRole('dialog', {}, { timeout: 3000 });
+    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+
+    // The late capture must not retroactively become the offered screenshot.
+    pending.resolve(SCREENSHOT);
+    await waitFrames(3);
+    expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
+    expect(log.screenshotCalls).toBe(1);
+  });
+
+  test('a frame that lands after the reveal timeout draws no marker to strand on screen', async () => {
+    // The reveal timer and the capture's animation frame run off independent
+    // clocks: a window that stops compositing suspends its frames while its
+    // timers keep firing, so the gate can reveal before the frame it queued
+    // ever runs. A ring drawn past that point is not in a screenshot — it is
+    // welded over the whole app at the top of the z-order with nothing left
+    // to take it down until the dialog closes.
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(310, 190);
+
+    const queued: FrameRequestCallback[] = [];
+    const rafSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => queued.push(cb));
 
     const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     const { ReportBugDialog } = await import('./ReportBugDialog');
@@ -947,9 +1183,108 @@ describe('ReportBugDialog', () => {
       </TooltipProvider>,
     );
 
-    // While the launcher is on screen the shot is held back: nothing captured
-    // and the dialog stays hidden.
-    await Promise.resolve();
+    try {
+      // No frame has run, so the reveal timeout is the only thing that can end
+      // the wait. Wait on its observable outcome — the dialog appearing — rather
+      // than on a fixed sleep longer than the 1200ms budget: a sleep only has to
+      // out-race a starved event loop, and losing that race would look like a
+      // regression rather than the flake it is.
+      await vi.waitFor(() => expect(queued.length).toBeGreaterThan(0), { timeout: 5000 });
+      await screen.findByRole('dialog', {}, { timeout: 5000 });
+      expect(log.screenshotCalls).toBe(0);
+    } finally {
+      // Frames resume. Restored in `finally` because everything above can
+      // throw, and leaving rAF stubbed would strand every later test in this
+      // file — all of which schedule their capture on it.
+      rafSpy.mockRestore();
+    }
+
+    // Whatever the gate queued before it settled must find the wait already
+    // over and do nothing.
+    await act(async () => {
+      for (let i = 0; i < 4 && queued.length > 0; i += 1) {
+        for (const cb of queued.splice(0)) cb(performance.now());
+        await Promise.resolve();
+      }
+    });
+
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+    // And no capture was paid for either: main would encode a full PNG whose
+    // result `settled` drops on arrival.
+    expect(log.screenshotCalls).toBe(0);
+  });
+
+  test('a crash invite draws no marker — it takes no screenshot to draw one into', async () => {
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(80, 90);
+
+    const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    expect(log.screenshotCalls).toBe(0);
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+  });
+
+  test('a launcher-borne capture draws no marker — the row it would mark is gone', async () => {
+    // The launcher-borne shot is deliberately taken AFTER the surface the user
+    // clicked has unmounted, so the last recorded pointer position is a row
+    // that no longer exists. Drawing there rings whatever slid underneath and
+    // claims a hover nobody is making — the same thing the tracker refuses to
+    // do once the pointer leaves the viewport.
+    stopPointerTracking = installPointerPositionTracker();
+    movePointerTo(500, 300);
+
+    const launcher = document.createElement('div');
+    launcher.setAttribute('cmdk-root', '');
+    document.body.appendChild(launcher);
+
+    let markersAtCapture = -1;
+    const log = installBridge({
+      captureScreenshot: () => {
+        markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
+        return Promise.resolve(SCREENSHOT);
+      },
+    });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} launcherBorne />
+      </TooltipProvider>,
+    );
+
+    await waitFrames(3);
+    launcher.remove();
+    await screen.findByRole('dialog');
+
+    expect(log.screenshotCalls).toBe(1);
+    expect(markersAtCapture).toBe(0);
+    expect(document.querySelector('.ok-pointer-marker')).toBeNull();
+  });
+
+  test('the capture waits for the launcher (⌘K palette) to clear before revealing', async () => {
+    // Stand in for the command palette still animating out as the dialog opens
+    // (the reported leak: the palette was opened only to reach Report a bug).
+    const launcher = document.createElement('div');
+    launcher.setAttribute('cmdk-root', '');
+    document.body.appendChild(launcher);
+
+    let launcherAtCapture: boolean | null = null;
+    const log = installBridge({
+      captureScreenshot: () => {
+        launcherAtCapture = document.querySelector('[cmdk-root]') !== null;
+        return Promise.resolve(SCREENSHOT);
+      },
+    });
+    const { ReportBugDialog } = await import('./ReportBugDialog');
+    render(
+      <TooltipProvider>
+        <ReportBugDialog open onOpenChange={() => {}} launcherBorne />
+      </TooltipProvider>,
+    );
+
+    // Hold the launcher on screen well past the frame a launcher-free trigger
+    // would have shot on: nothing is captured and the dialog stays hidden.
+    await waitFrames(6);
     expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('dialog')).toBeNull();
 
@@ -957,6 +1292,7 @@ describe('ReportBugDialog', () => {
     launcher.remove();
     await screen.findByRole('dialog');
     expect(log.screenshotCalls).toBe(1);
+    expect(launcherAtCapture).toBe(false);
     expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
   });
 
