@@ -44,7 +44,10 @@ import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-b
 import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
 import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
-import { readMinidumpAccessibilityMode } from '../minidump-ownership.ts';
+import {
+  readMinidumpAccessibilityMode,
+  readMinidumpDisplayLockState,
+} from '../minidump-ownership.ts';
 import { isPathWithinProject } from '../path-containment.ts';
 import type { UpdateChannel } from '../state-store.ts';
 
@@ -420,6 +423,7 @@ export async function handleBugReportCreate(
   // describes ride the same report rather than being correlated later.
   const dumpAccessibilityMode =
     minidumpPath === null ? null : readMinidumpAccessibilityMode(minidumpPath);
+  const dumpDisplayLock = minidumpPath === null ? null : readMinidumpDisplayLockState(minidumpPath);
 
   // Deliberately says nothing about WHICH dump: a minidump is unredactable
   // process memory and its filename is a per-crash identifier, so the record
@@ -450,6 +454,16 @@ export async function handleBugReportCreate(
       : {
           accessibilityMode: dumpAccessibilityMode.mode,
           accessibilityModeParseFailed: dumpAccessibilityMode.parseFailed,
+        }),
+    // Same present-as-null discipline as the accessibility mode above, and for
+    // the same reason: on a display-lock crash, "the renderer published no lock
+    // state" and "no dump was read" are different findings, and one absent
+    // field for both would collapse them.
+    ...(dumpDisplayLock === null
+      ? {}
+      : {
+          displayLock: dumpDisplayLock.state,
+          displayLockParseFailed: dumpDisplayLock.parseFailed,
         }),
   };
 

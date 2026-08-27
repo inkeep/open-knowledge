@@ -188,6 +188,11 @@ export function computeBodyStats(fullText: string): DocumentStats {
   return countStats(extractVisibleText(body));
 }
 
+/** Count a plain-text document's literal source without Markdown interpretation. */
+export function computePlainTextStats(fullText: string): DocumentStats {
+  return countStats(fullText);
+}
+
 /**
  * Compute stats for an editor selection, sharing the document-level counting
  * core so the same passage yields the same numbers in either edit mode.

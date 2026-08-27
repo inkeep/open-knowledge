@@ -2163,6 +2163,31 @@ export interface OkDesktopBridge {
   getPathForFile(file: File): string | null;
 
   /**
+   * Publish the editor's current `content-visibility` display-lock state as a
+   * crash key on THIS renderer's Crashpad annotations (renderer-side, no IPC).
+   *
+   * It has to be this process: Crashpad annotations are per-process, so a value
+   * set from main would ride main's dumps and never appear on the renderer dump
+   * that a display-lock crash actually produces.
+   *
+   * And it has to be continuous, not on-demand at crash time. The abort this
+   * exists to explain is a Blink `CHECK` in `HitTestResult::GetPosition()`,
+   * which fires when a click's hit-tested node has a paint-blocked ancestor —
+   * an immediate process abort, with no JS running afterwards. Only the value
+   * last published before it survives into the dump, so the caller keeps this
+   * current as lock state changes and the dump carries whatever was true in the
+   * crashing frame.
+   *
+   * `state` is an opaque compact string owned by the caller; this bridge only
+   * transports it and owns the key name. Over-budget values are dropped rather
+   * than sent, because Crashpad truncates silently and a half-written value in
+   * a dump would read as a complete reading.
+   *
+   * No-ops outside the desktop app.
+   */
+  setDisplayLockCrashKey(state: string): void;
+
+  /**
    * Debug-only namespace — populated by preload ONLY when the
    * `OK_DEBUG_KEYRING_SMOKE=1` env var is set OR the app is unpacked (dev
    * mode). Absent in normal production runs.

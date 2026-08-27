@@ -7868,6 +7868,10 @@ msgstr "भेजने के लिए सभी टिप्पणिया�
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "Markdown जाँच इस फ़ाइल पर लागू नहीं होती है।"
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Markdown स्रोत"
@@ -12542,6 +12546,10 @@ msgstr "क्लोन शुरू किया जा रहा है"
 #: src/components/AuthModal.tsx
 msgid "Starting sign-in flow"
 msgstr "साइन-इन प्रक्रिया शुरू की जा रही है"
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "टर्मिनल शुरू हो रहा है…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"

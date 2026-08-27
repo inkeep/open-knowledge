@@ -9,26 +9,32 @@
  *
  * The mount waits for the project-local binding to sync, so an opted-out project
  * never flashes the shell (nor fires a PTY spawn the main backstop would refuse)
- * during the cold-start window before the real value is known.
+ * during the cold-start window before the real value is known. That wait is
+ * unbounded — the binding syncs over the collab WebSocket, and a congested cold
+ * start can hold it for seconds — so both pre-mount states render a pending
+ * notice rather than an empty pane: withholding the shell is right, but saying
+ * nothing while withholding it reads as a dead keystroke and gets re-invoked.
  *
  * Opting out while a shell is running unmounts TerminalPanel, whose cleanup kills
  * the PTY — turning the terminal off takes effect immediately.
  */
 import { useLingui } from '@lingui/react/macro';
-import { lazy, Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useTerminalConsentState, useTerminalEnabledWriter } from '@/hooks/use-terminal-enabled';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { lazyWithPreload } from '@/lib/lazy-with-preload';
 import type { TerminalLaunchIntent } from './EditorPane';
 import type { TerminalCommandId } from './handoff/terminal-command-events';
+import { TerminalStartingNotice } from './TerminalStartingNotice';
 
 // xterm + its addons + xterm.css (a heavy, WebGL-bearing payload) import only
 // through TerminalPanel, so lazy-loading it keeps them out of the initial
 // bundle — including the web host, where the bridge is null and the terminal
 // can never render.
-const TerminalPanel = lazy(() =>
+const TerminalPanel = lazyWithPreload(() =>
   import('./TerminalPanel').then((m) => ({ default: m.TerminalPanel })),
 );
 
@@ -65,6 +71,30 @@ export function TerminalGate({
 
   const optedOut = synced && enabled === false;
 
+  // Warm the panel chunk without waiting for the gate to open. Plain `lazy()`
+  // runs its factory only when the lazy element first renders, and that render
+  // sits behind `synced` — so the chunk fetch and the binding sync, which have
+  // no dependency on each other, ran back to back. Preloading spawns no PTY, so
+  // it does not weaken what the gate withholds; it only stops the two waits from
+  // being serialized. `.preload()` is idempotent, so repeat calls are free.
+  //
+  // Skipped once the project is known to have opted out. `synced` is NOT
+  // monotonic — ConfigProvider re-keys its bindings on `[collabUrl,
+  // serverInstanceId]` and every rebuild nulls the state, so it goes back to
+  // false on the boot-time epoch landing, on a server respawn, and on a project
+  // switch. So this is a best-effort skip, not a guarantee: `optedOut` reads
+  // false during each of those windows and the warm proceeds. The cost when it
+  // does is a chunk fetched and never mounted — genuinely new here, since plain
+  // `lazy()` only ran its factory from inside the opened gate and so an
+  // opted-out project fetched nothing at all. It stays bounded because
+  // `.preload()` memoizes: one fetch per renderer, worst case. What the guard
+  // buys is the common dock-reveal case on an opted-out project, where the
+  // value is already known at mount.
+  useEffect(() => {
+    if (optedOut) return;
+    TerminalPanel.preload();
+  }, [optedOut]);
+
   function handleEnable() {
     if (writer === null) {
       toast.error(t`Terminal settings not loaded yet — try again in a moment.`);
@@ -93,7 +123,7 @@ export function TerminalGate({
           );
         }}
       >
-        <Suspense fallback={<div className="h-full w-full bg-background" aria-hidden="true" />}>
+        <Suspense fallback={<TerminalStartingNotice />}>
           <TerminalPanel
             bridge={bridge}
             className="h-full"
@@ -112,7 +142,7 @@ export function TerminalGate({
   return optedOut ? (
     <TerminalNotEnabledNotice onEnable={handleEnable} />
   ) : (
-    <div className="h-full w-full bg-background" aria-hidden="true" />
+    <TerminalStartingNotice />
   );
 }
 

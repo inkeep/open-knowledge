@@ -1136,7 +1136,15 @@ test.describe('Docked terminal — live Electron', () => {
     // Apostrophe-free substring (same rationale as the not-found banner) — distinctive
     // to the MCP-rewire banner variant, which the 'Connect tools' affordance below confirms.
     await expect(banner).toContainText('OpenKnowledge tools');
-    await expect(page.getByRole('button', { name: 'Connect tools' })).toBeVisible();
+    // Trial click, not `toBeVisible()`: this is the only tier with a real layout
+    // engine, so it is the only one whose hit-target check can catch the button
+    // being painted over by an overlay — `toBeVisible()` passes on a covered
+    // element, and jsdom has no layout at all. `trial: true` runs the full
+    // actionability sequence (attached / visible / stable / receives-events /
+    // enabled) and then skips the dispatch, so it buys the occlusion signal
+    // without invoking `rewireClaudeMcp` and dismissing the banner on the way
+    // out, neither of which this test asserts anything about.
+    await page.getByRole('button', { name: 'Connect tools' }).click({ trial: true });
   });
 
   // A renderer reload (View → Reload, or an OS resume-triggered reload) must

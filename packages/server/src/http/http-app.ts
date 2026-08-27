@@ -11,6 +11,7 @@ import {
 } from '../ingress-policy.ts';
 import type { PinoLogger } from '../logger.ts';
 import { errorResponse } from './error-response.ts';
+import type { McpDispatch } from './mcp-route.ts';
 
 /**
  * The canonical HTTP application, introduced strangler-fig style: a Hono app
@@ -54,11 +55,12 @@ export interface NativeApiHandle {
 
 /**
  * The surface-wide admission prelude every request runs before dispatch —
- * shared verbatim between the legacy `mcp-mount` dispatch and natively-mounted
- * `/api/*` routes (which sit above the strangler catch-all and would otherwise
- * bypass it). Returns `false` after writing the 403 when the request is
- * refused. Both gates consult the ONE boot-built `IngressPolicy` — the same
- * object the WS upgrade path and per-route gates consume.
+ * shared verbatim between the legacy `mcp-mount` dispatch and the
+ * natively-mounted `/mcp` route and `/api/*` groups (which sit above the
+ * strangler catch-all and would otherwise bypass it). Returns `false` after
+ * writing the 403 when the request is refused. Both gates consult the ONE
+ * boot-built `IngressPolicy` — the same object the WS upgrade path and
+ * per-route gates consume.
  *
  * Gate 1 — tripwire: proxy-forwarding headers the policy does not tolerate
  * mean a tunnel is pointed at a server that never opted into exposure.
@@ -72,15 +74,19 @@ export interface NativeApiHandle {
  * failures.
  *
  * `handler` is the caller's tag on the `ok.api.error.count` counter for
- * rejections ('mcp-mount' for the legacy dispatch, 'native-api-surface' for
- * the native mount) — the primary triage dimension, so refusals attribute to
- * the surface that actually refused.
+ * rejections ('mcp-mount' for the legacy dispatch, 'native-mcp-surface' for
+ * the native /mcp route, 'native-api-surface' for the native /api groups) —
+ * the primary triage dimension, so refusals attribute to the surface that
+ * actually refused. The closed union keeps a typo'd tag at a future call
+ * site from silently minting an uncorrelated metric series.
  */
+export type SurfaceAdmissionCaller = 'mcp-mount' | 'native-api-surface' | 'native-mcp-surface';
+
 export function admitRequestSurface(
   req: IncomingMessage,
   res: ServerResponse,
   policy: IngressPolicy,
-  handler: string,
+  handler: SurfaceAdmissionCaller,
 ): boolean {
   if (tripsForwardedHeaderTripwire(req, policy)) {
     errorResponse(
@@ -181,6 +187,15 @@ export interface CreateHttpAppOptions {
    */
   nativeApi?: NativeApiHandle;
   /**
+   * The bound `/mcp` dispatch (`createMcpDispatch` in `mcp-route.ts`) for the
+   * natively-mounted `/mcp` route — injected like `nativeApi.dispatch`, so
+   * this module stays a composition layer with no MCP semantics. When
+   * omitted, `/mcp` is NOT mounted and the URL falls through the strangler
+   * catch-all like any other unclaimed path — the restartable test harness
+   * and ephemeral single-file mode take this path.
+   */
+  mcpDispatch?: McpDispatch;
+  /**
    * The boot-built ingress policy for the surface admission gates on native
    * routes (same object the mount applies to the legacy dispatch). Omitted
    * (test rigs) ⇒ the loopback-only default policy.
@@ -263,11 +278,44 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
     });
   }
 
+  const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
+
+  // The natively-mounted /mcp route, ABOVE the strangler catch-all. Once the
+  // raw path is confirmed to be exactly `/mcp` (below), admission ordering
+  // matches the legacy dispatch: the surface prelude first (tripwire +
+  // remote-admit pair), then the leg's own unconditional gates.
+  const mcpDispatch = opts.mcpDispatch;
+  if (mcpDispatch !== undefined) {
+    app.all('/mcp', (c) => {
+      const req = c.env.incoming;
+      const res = c.env.outgoing;
+      // Hono routes on a NORMALIZED path (dot segments resolved, non-reserved
+      // percent-escapes decoded), while the legacy dispatch matched the raw
+      // `req.url` exactly. Re-derive the raw path and decline mismatches
+      // (`/./mcp`, `/mc%70`) to the legacy dispatch, which serves them the
+      // same static-fallback/404 it always has — mirrors the native /api
+      // groups' table-decline fall-through. (An app-wide raw-path `getPath`
+      // on the Hono constructor would make this guard unnecessary, but it
+      // was considered and deferred: it also flips `/./healthz`-style
+      // aliases on the ALWAYS-mounted health routes from natively served to
+      // legacy 404s, a behavior change out of scope for a byte-parity wave.)
+      const url = req.url?.split('?')[0];
+      if (url !== '/mcp') {
+        opts.legacyDispatch(req, res);
+        return RESPONSE_ALREADY_SENT;
+      }
+      if (!admitRequestSurface(req, res, ingressPolicy, 'native-mcp-surface')) {
+        return RESPONSE_ALREADY_SENT;
+      }
+      mcpDispatch(req, res);
+      return RESPONSE_ALREADY_SENT;
+    });
+  }
+
   // Natively-served /api/* routes, ABOVE the strangler catch-all. Each runs
   // the surface admission gates first (the tripwire + remote-admit pair the
   // legacy dispatch applies in mcp-mount's onRequest), then the shared
   // /api/* pipeline — request-id, CORS, DNS-rebinding gates, dispatch span.
-  const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
   const nativeApi = opts.nativeApi;
   if (nativeApi !== undefined) {
     for (const path of nativeApi.paths) {

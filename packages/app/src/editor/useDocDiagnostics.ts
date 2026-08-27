@@ -11,15 +11,23 @@
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { type LintDiagnostic, type LinterConfig, lintDocument } from '@inkeep/open-knowledge-core';
+import {
+  isEditableTextDocFile,
+  type LintDiagnostic,
+  type LinterConfig,
+  lintDocument,
+} from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
 
 const RELINT_DEBOUNCE_MS = 300;
+const EMPTY_DIAGNOSTICS: readonly LintDiagnostic[] = Object.freeze([]);
 
 /**
  * Live diagnostics for `provider`'s doc under `config`. Returns `[]` when either
- * is null or linting is disabled. Recomputes on every `Y.Text('source')` change
- * (debounced) and whenever the provider or the config VALUE changes.
+ * is null, linting is disabled, or the doc is editable text because Markdown
+ * and OKF rules do not apply to that document class. Recomputes on every
+ * `Y.Text('source')` change (debounced) and whenever the provider, doc name, or
+ * config VALUE changes.
  *
  * The effect keys on a serialized config hash rather than object identity:
  * callers routinely pass a freshly-built config object each render (e.g.
@@ -31,12 +39,16 @@ const RELINT_DEBOUNCE_MS = 300;
 export function useDocDiagnostics(
   provider: HocuspocusProvider | null,
   config: LinterConfig | null,
-): LintDiagnostic[] {
-  const configKey = config?.enabled ? JSON.stringify(config) : null;
+): readonly LintDiagnostic[] {
+  const docName = provider?.configuration.name ?? null;
+  const configKey =
+    docName !== null && config?.enabled && !isEditableTextDocFile(docName)
+      ? JSON.stringify(config)
+      : null;
   const [diagnostics, setDiagnostics] = useState<LintDiagnostic[]>([]);
 
   useEffect(() => {
-    if (!provider || configKey === null) {
+    if (!provider || docName === null || configKey === null) {
       setDiagnostics((prev) => (prev.length === 0 ? prev : []));
       return;
     }
@@ -44,7 +56,6 @@ export function useDocDiagnostics(
     const ytext = provider.document.getText('source');
     let timer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
-    const docName = provider.configuration.name;
     // The lint pass is async: drop a resolution that lands after this effect
     // has been torn down (provider/config changed) so it can't clobber the
     // next pair's diagnostics.
@@ -70,7 +81,9 @@ export function useDocDiagnostics(
       if (timer) clearTimeout(timer);
       ytext.unobserve(schedule);
     };
-  }, [provider, configKey]);
+  }, [provider, docName, configKey]);
 
-  return diagnostics;
+  // Derive emptiness during render: `configKey` goes null for no doc, disabled
+  // linting, or an editable-text doc; the effect reset lands a frame later.
+  return configKey === null ? EMPTY_DIAGNOSTICS : diagnostics;
 }

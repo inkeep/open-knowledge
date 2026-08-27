@@ -468,11 +468,90 @@ describe('workflow wiring', () => {
   // The guarantee the whole change rests on: an all-already tick is silent
   // BY CONSTRUCTION, because the paging chain only ever fires on the two
   // verdicts that represent a real question for a human.
-  test('only conflict and fail can reach the pager', () => {
+  test('only conflict, fail and could-not-verify can reach the pager', () => {
     const gate = step('Refusal signature');
     const verdicts = [...gate.matchAll(/verdict == '([a-z-]+)'/g)].map((m) => m[1]);
-    expect(new Set(verdicts)).toEqual(new Set(['conflict', 'fail']));
+    // `could-not-verify` is a refusal an operator must see: the tiers never
+    // finished, so the batch stays pending with nothing said about it.
+    expect(new Set(verdicts)).toEqual(new Set(['conflict', 'fail', 'could-not-verify']));
     expect(verdicts).not.toContain('already-in-stable');
+  });
+
+  // The page is the only channel this workflow has — its own header notes that
+  // `workflow_dispatch` runs are excluded from the status rollup and can never
+  // colour a commit. So the distinction has to exist HERE, not just in the run
+  // log, or it does not exist for the person it is for.
+  describe('a budget blow does not read as a red tier', () => {
+    const payload = (verdict) =>
+      buildSlackPayload({
+        verdict,
+        stable: 'v0.63.6',
+        refs: [],
+        runUrl: 'https://example.test/run',
+        failures: ['the tiers did not finish within 1500s'],
+      });
+    const page = (verdict) => payload(verdict).blocks[1].text.text;
+
+    test('says nothing was verified, rather than naming a cause', () => {
+      // The headline is its own surface: it is what Slack shows in a list, so
+      // "failed" there is the first thing an operator reads and acts on.
+      expect(JSON.stringify(payload('could-not-verify'))).toContain('could not verify');
+      const body = page('could-not-verify');
+      expect(body).toContain('Nothing was verified');
+
+      // ROUTING, not just the branch. Every assertion below this comment used
+      // to be satisfiable by rendering NOTHING: revert the verdict test on the
+      // `failureLines` call and this page becomes a `*Why it refused*` heading
+      // over a blank line, which is the exact shape `refLines` warns about --
+      // stating a refusal and listing no evidence for it.
+      expect(body).toContain('did not finish within 1500s');
+      expect(body).not.toMatch(/\*Why it refused\*\n\n/);
+      // The one thing this whole verdict exists to tell an operator. Nothing
+      // else in this file asserts any `optionsFor` string for it, so emptying
+      // that branch rendered a bare header and stayed green.
+      expect(body).toContain('IS a retry candidate');
+      // Every one of these is false on a blow, and the last is the inverse of
+      // the truth — the batch is precisely a retry candidate.
+      expect(body).not.toContain('not flake-class');
+      expect(body).not.toContain('depends on later work');
+      expect(body).not.toContain('not a retry candidate');
+      expect(body).not.toContain('the stable is red on its own');
+    });
+
+    // Mirrors the `fail` parity case: a partial drop followed by a budget blow
+    // arrives here with real drop evidence, and the partial-drop page cannot
+    // cover it because its own step gates on `verdict == 'pass'`.
+    test('still accounts for refs dropped before the tiers ran', () => {
+      const body = buildSlackPayload({
+        verdict: 'could-not-verify',
+        stable: 'v0.63.6',
+        refs: [
+          {
+            ref: 'abc1234',
+            inert: false,
+            files: [
+              { path: 'packages/core/src/index.ts', inert: false, detail: 'carries behavior' },
+            ],
+          },
+        ],
+        runUrl: 'https://example.test/run',
+        failures: ['the tiers did not finish within 1500s (exit 124)'],
+      }).blocks[1].text.text;
+      expect(body).toContain('Also dropped from this batch');
+      expect(body).toContain('abc1234');
+      // Rendering the page showed `undefined - CARRIES BEHAVIOR (undefined)`
+      // from a fixture that passed bare strings where refLines reads objects.
+      // Asserting the ref alone did not see it, so assert the file line too.
+      expect(body).toContain('packages/core/src/index.ts');
+      expect(body).not.toContain('undefined');
+    });
+
+    test('still says all of that for a genuine red tier', () => {
+      const body = page('fail');
+      expect(body).toContain('not flake-class');
+      expect(body).toContain('not a retry candidate');
+      expect(body).not.toContain('ran out of');
+    });
   });
 
   // `${V:-{\}}` expands to a LITERAL `{\}` — a brace in a parameter-expansion

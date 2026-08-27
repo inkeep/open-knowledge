@@ -7872,6 +7872,10 @@ msgstr "تحديد كل التعليقات للإرسال"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "لا تنطبق فحوصات Markdown على هذا الملف."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "مصدر Markdown"
@@ -12546,6 +12550,10 @@ msgstr "يجري بدء الاستنساخ"
 #: src/components/AuthModal.tsx
 msgid "Starting sign-in flow"
 msgstr "يجري بدء تدفق تسجيل الدخول"
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "جارٍ بدء تشغيل الطرفية…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"

@@ -61,12 +61,7 @@ import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
-import {
-  type CommentDocHooks,
-  createApiExtension,
-  type GeneratedIndexSettingsStatus,
-  isSafeDocName,
-} from './api-extension.ts';
+import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
 import { seedBasenameIndex, seedSingleDirBasenameIndex } from './asset-walk.ts';
 import {
@@ -171,6 +166,7 @@ import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from '
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
 import type { LocalApiDispatch } from './http/local-api-dispatch.ts';
+import type { GeneratedIndexSettingsStatus } from './http/workspace-tools-routes.ts';
 import {
   scanGlobalInPlaceSkills,
   scanInPlaceSkillDirs,
@@ -2808,13 +2804,16 @@ export function createServer(options: ServerOptions): ServerInstance {
     // etc., which the file-watcher pipeline then reflects into runtime
     // behavior (e.g. flipping git auto-sync on).
     //
-    // The /collab WS upgrade in `mcp-mount.ts` does NOT enforce loopback or
-    // host-header validation today (the keepalive sibling does). Even if it
-    // did, the server's `host` option allows binding non-loopback addresses
-    // (`0.0.0.0`/`::`), so config-doc admission must be gated independently
-    // at the document level. Match the DNS-rebinding defense pattern used by
-    // /api/* mutating routes (`api-extension.ts`) and /mcp + keepalive
-    // (`mcp-mount.ts`):
+    // The /collab WS upgrade (`collaboration-host.ts`) enforces loopback +
+    // host-header validation only when the surface is exposed; unexposed it
+    // admits without those two checks, though a present-but-foreign Origin is
+    // refused in every mode (the keepalive sibling gates loopback + Host in
+    // every mode too). Even if /collab always did, the server's `host` option
+    // allows binding non-loopback addresses (`0.0.0.0`/`::`), so config-doc
+    // admission must be gated independently at the document level. Match the
+    // DNS-rebinding defense pattern used by /api/* mutating routes
+    // (`api-extension.ts`), /mcp (`http/mcp-route.ts`), and keepalive
+    // (`collaboration-host.ts`):
     //   - TCP peer must be loopback (when the socket is observable).
     //   - Host header must be a loopback shape (`localhost` / `127.x.y.z` /
     //     `[::1]`, with optional port) — defends against a rebinding page
@@ -2834,7 +2833,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         }
         // `payload.request` is typed as Web `Request` by Hocuspocus but is in
         // fact the Node `IncomingMessage` we hand to `handleConnection` in
-        // `mcp-mount.ts` — `req as unknown as Request`. Read the runtime
+        // `collaboration-host.ts` — `req as unknown as Request`. Read the runtime
         // shape via a structural cast so we can inspect the underlying
         // socket and headers. Test harnesses that invoke `onAuthenticate`
         // directly with a synthetic payload may omit the socket; treat

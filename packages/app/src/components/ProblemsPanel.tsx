@@ -1,9 +1,10 @@
 // biome-ignore-all lint/plugin/no-raw-html-interactive-element: matches sibling OutlinePanel — positional list of <button> rows awaiting a shared shadcn list primitive; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
-import type {
-  FrontmatterScope,
-  ValidationAuditResponse,
-  ValidationDocResult,
+import {
+  type FrontmatterScope,
+  isEditableTextDocFile,
+  type ValidationAuditResponse,
+  type ValidationDocResult,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
@@ -622,6 +623,7 @@ export function ProblemsPanel({
   const panelRef = useRef<HTMLElement>(null);
   const panelTitleId = useId();
   const [scope, setScope] = useState<PanelScope>('doc');
+  const markdownChecksApply = !isEditableTextDocFile(docName);
   // Which lint plugins actually check content, from the server-resolved
   // effective config (the same truth the diagnostics come from). Null while
   // the config hasn't loaded — the panel then makes no claim either way.
@@ -633,6 +635,12 @@ export function ProblemsPanel({
         ? LINT_PLUGIN_META.filter((plugin) => lintConfig.effective.plugins[plugin.id].enabled)
         : [];
   const noPluginsEnabled = activePlugins !== null && activePlugins.length === 0;
+  // The pill lives above the scope branch. In project scope it describes the
+  // whole tree, so the active document's class is irrelevant.
+  const showActivePluginsPill =
+    (scope === 'project' || markdownChecksApply) &&
+    activePlugins !== null &&
+    activePlugins.length > 0;
   const [audit, setAudit] = useState<ProjectAuditState>({ status: 'idle' });
   // The sweep itself lives in a module store, not here, so it outlives this
   // panel — a tab switch unmounts the Problems tab, and the run must not end
@@ -923,7 +931,7 @@ export function ProblemsPanel({
           <PanelTitle id={panelTitleId}>
             <Trans>Problems</Trans>
           </PanelTitle>
-          {activePlugins !== null && activePlugins.length > 0 && (
+          {showActivePluginsPill && (
             <Tooltip>
               {/* Bare trigger = a real (focusable) button, so keyboard focus
                   opens the tooltip too; dressed as a PanelCount pill to match
@@ -964,7 +972,11 @@ export function ProblemsPanel({
             </PanelError>
           ) : null}
           {sorted.length === 0 ? (
-            linkFindingsStatus !== 'loaded' ? null : noPluginsEnabled ? (
+            linkFindingsStatus !== 'loaded' ? null : !markdownChecksApply ? (
+              <PanelEmpty className="px-2" data-testid="problems-markdown-not-applicable">
+                <Trans>Markdown checks do not apply to this file.</Trans>
+              </PanelEmpty>
+            ) : noPluginsEnabled ? (
               // Zero lint plugins narrows the plane to link validation alone —
               // say so instead of an unqualified "no problems", and point at
               // the switch. Only the empty list carries the hint: link

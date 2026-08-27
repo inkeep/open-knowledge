@@ -97,12 +97,13 @@ let server: ServerInstance;
 let observedLoaderInput: LoadOpenAiEmbedderInput | undefined;
 
 /**
- * Drive one `POST /api/search` through the booted server's wired extension
- * chain. Several extensions expose `onRequest`; Hocuspocus calls them in
- * registration order until one writes a response. We mirror that here (a fresh
- * request per attempt so an early extension can't consume the body the api
- * extension needs) rather than reaching for one extension by index — that keeps
- * the test honest about which extension actually serves `/api/search`.
+ * Drive one `POST /api/search` through the booted server's request surface in
+ * the production order: the native group dispatch first, then the legacy
+ * `onRequest` extension chain (Hocuspocus calls those in registration order
+ * until one writes a response; a fresh request per attempt so an early
+ * extension can't consume the body the api extension needs). Mirroring the
+ * composed order keeps the test honest about which surface actually serves a
+ * path as routes migrate.
  */
 async function callViaServer(
   srv: ServerInstance,
@@ -113,8 +114,8 @@ async function callViaServer(
   // Natively-routed groups take precedence in the composed server — their Hono
   // routes match ahead of the legacy `onRequest` catch-all — so mirror that
   // order here: try the native dispatch first, then fall back to the legacy
-  // `onRequest` chain. Several `/api/*` reads (e.g. `semantic-status`) now serve
-  // from a native group, where the legacy pipeline would answer 404.
+  // `onRequest` chain. Several `/api/*` routes (e.g. `search`, `semantic-status`)
+  // now serve from a native group, where the legacy pipeline would answer 404.
   {
     const req = makeReq(method, url, bodyObj === undefined ? '' : JSON.stringify(bodyObj));
     const { res, captured } = makeRes();

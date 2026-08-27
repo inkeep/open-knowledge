@@ -91,7 +91,13 @@ jobs:
   bug-lane-verify:
     name: Verify the synthetic tree and (when armed) dispatch
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # 60 not 45: bounding turbo's concurrency below trades wall clock for the
+    # contention that was refusing good fixes, and the 25m06s this used to run
+    # in was measured in the UNBOUNDED shape. This is the outer backstop only.
+    # It does not protect a verdict -- reaching it is a hard kill that mints
+    # none -- which is why the tiers carry their own budget and why the step
+    # below refuses out loud when no verdict was produced.
+    timeout-minutes: 60
     steps:
       - name: Refuse an empty batch
         # Only reachable via a hand-typed dispatch: the evaluator never asks
@@ -260,14 +266,14 @@ jobs:
           # under runner contention. Unretried, one such flake refuses a fix
           # that is fine, and the refusal reads as a real incompatibility.
           #
-          # `--continue` on the FIRST attempt is what keeps the retry cheap,
-          # and it is load-bearing against this job's own cancel window. turbo
+          # `--continue` on the FIRST attempt is what keeps the retry cheap. turbo
           # defaults to `--continue=never`: the first failure cancels every
           # in-flight and unstarted task, so none of those cache and the retry
           # re-runs them too — a failure late in the tiers would cost close to
-          # two full passes, and with `cancel-in-progress` a tick that outruns
-          # the next one is killed before it can page, which is the one outcome
-          # the install guard above exists to prevent. Running the first
+          # two full passes, which this job's wall-clock budget has no room
+          # for. (The cancel window that once made this urgent belongs to
+          # bug-lane.yml; since the split this half queues rather than
+          # cancels, per the group above.) Running the first
           # attempt to completion caches every task that genuinely passed, so
           # the retry re-executes only what actually failed. `--force` is
           # omitted for the same reason: it would discard those cached passes.
@@ -278,14 +284,96 @@ jobs:
           # how it reached the tiers at all. So the most severe verdict was the
           # one paging with an empty reason, sending a reader to the run log to
           # discover what this step already knew.
+          #
+          # `--concurrency=2` caps how many turbo task-graph nodes are
+          # SCHEDULED at once. It does not reach inside a node: each of the two
+          # still runs its Vitest fork pool at the default width, so the shape
+          # is two supervisors sharing four cores, not the one-tier-per-box the
+          # PR tier gets. A fivefold cut from turbo's default of ten, which is
+          # not the same thing as isolation.
+          #
+          # The workspace does own a cap that WOULD reach the pools --
+          # `boundedMaxForks` in test-support/vitest.base.ts -- and it cannot
+          # help here: it applies only when `!CI && cpuCount >= 8`, and this
+          # runner fails BOTH halves. Widening the `CI` guard alone would change
+          # nothing on a four-core box, which is why the bound has to come from
+          # this side instead.
+          #
+          # Contention is not a hypothesis about this step: it is the mechanism
+          # the retry note above already names, and a tier that blows a
+          # per-test timeout under it refuses a fix that is fine.
           RETRY_LOG="${RUNNER_TEMP}/bug-lane-tiers-retry.log"
-          if pnpm exec turbo run typecheck test --continue --output-logs=errors-only; then
+          # Created up front because a first-attempt blow skips the retry
+          # entirely, and the extraction below reads this file either way.
+          : > "$RETRY_LOG"
+          # The tiers carry their own ceiling because the job's is a hard kill:
+          # it sets no verdict, and every paging step below gates on one, so a
+          # tick that hits it refuses NOTHING. And nothing queues behind it:
+          # bug-lane.yml declines to dispatch while a verify is in flight, so
+          # the ~20-minute ticks in that window evaluate and skip, and the lane
+          # simply stops verifying for as long as the wedge lasts. Wrapping
+          # turns that into exit 124, which this step can report and the page
+          # can render.
+          #
+          # Sized from the one measurement taken on THIS runner: the last
+          # unbounded tick spent 1460s in this step, covering cherry-pick,
+          # install and BOTH attempts, which bounds a single attempt well under
+          # 1500s without measuring it directly.
+          #
+          # The bounded single-attempt cost is still unmeasured -- it needs a
+          # dispatch of this workflow -- and it is the number to re-check if a
+          # tick ever runs out of budget. Both attempts carry this ceiling, so the bound
+          # is 2x1500s, about 50 minutes against the job's 60 -- the remaining
+          # ten cover checkout, setup, the cherry-pick loop and the install,
+          # none of which are bounded themselves.
+          TIER_BUDGET_SECONDS=1500
+          FIRST_STATUS=0
+          timeout --foreground --kill-after=10s "${TIER_BUDGET_SECONDS}s" \
+            pnpm exec turbo run typecheck test --concurrency=2 --continue --output-logs=errors-only \
+            || FIRST_STATUS=$?
+          RETRY_STATUS=0
+          if [[ "$FIRST_STATUS" -ne 0 ]]; then
+            case "$FIRST_STATUS" in
+              124|137)
+                # NOT retried, which is where this parts company with the PR
+                # tier's idiom it otherwise copies: that tier refuses to retry a
+                # budget blow because a second attempt burns another full budget
+                # and buries the signal. Here it would also race attempt 1's
+                # orphans, since `--foreground` signals the command and not its
+                # children, on the four cores whose contention is the whole
+                # reason for the bound.
+                RETRY_STATUS="$FIRST_STATUS"
+                ;;
+              *)
+                if timeout --foreground --kill-after=10s "${TIER_BUDGET_SECONDS}s" \
+                  pnpm exec turbo run typecheck test --concurrency=2 --output-logs=errors-only 2>&1 | tee "$RETRY_LOG"; then
+                  RETRY_STATUS=0
+                else
+                  # Read BEFORE any other command: the next one clobbers it.
+                  RETRY_STATUS="${PIPESTATUS[0]}"
+                fi
+                ;;
+            esac
+          fi
+          # 124 is timeout's own signal, 137 the SIGKILL that --kill-after
+          # escalates to. Reading it here is sufficient because a blow is never
+          # retried: reaching the retry at all implies attempt 1 failed the
+          # ordinary way, so this is whichever attempt produced the verdict.
+          #
+          # It becomes its OWN verdict rather than riding `fail` with a flag
+          # beside it. The page, the refusal signature and the step gates all
+          # key on the verdict, so a flag has to be threaded to each of them
+          # separately -- and one wiring mistake is silent, because every reader
+          # defaults it. A verdict cannot be half-delivered that way.
+          TIER_VERDICT=fail
+          case "$RETRY_STATUS" in 124|137) TIER_VERDICT=could-not-verify ;; esac
+          if [[ "$FIRST_STATUS" -eq 0 ]]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
-          elif pnpm exec turbo run typecheck test --output-logs=errors-only 2>&1 | tee "$RETRY_LOG"; then
+          elif [[ "$RETRY_STATUS" -eq 0 ]]; then
             echo "verdict=pass" >> "$GITHUB_OUTPUT"
             echo "::warning::bug-lane: fast tiers passed on retry for ${STABLE} + ${SURVIVING_REFS} — the first attempt failed (flake-class); see its log before trusting this tick."
           else
-            echo "verdict=fail" >> "$GITHUB_OUTPUT"
+            echo "verdict=${TIER_VERDICT}" >> "$GITHUB_OUTPUT"
             # Vitest names the failing test on a `FAIL` line. A typecheck-only
             # failure produces none, so fall back to turbo's own failed-task
             # lines rather than paging empty again. Sorted-unique and capped:
@@ -316,6 +404,17 @@ jobs:
               # failure, two of them redundant and one naming nothing at all.
               FAILURES="$(strip_ansi | grep -E '#[^ ]+:.*exited \([0-9]+\)' | sort -u | head -200 || true)"
             fi
+            # A budget blow names no test, so the extraction above has nothing
+            # to find. Saying that outright is the point of separating it: the
+            # incident this lane exists to avoid is a refusal that blames a fix
+            # for something the runner did. Defaulted so the block above stays
+            # liftable and runnable on its own.
+            if [[ "${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then
+              # Just the fact. The page's own framing carries what it means,
+              # in the meaning line and again in the options, and rendering all
+              # three showed the same sentence three times over.
+              FAILURES="the tiers did not finish within ${TIER_BUDGET_SECONDS}s (exit ${RETRY_STATUS})"
+            fi
             # Encoded into a variable BEFORE the heredoc block, with a fallback.
             # Under `set -e` a jq that exits non-zero mid-block (invalid UTF-8
             # surviving in the captured log, say) would abort between the
@@ -336,7 +435,11 @@ jobs:
             # the causes: a tier can equally be red because the stable's own
             # tree is red, and reading a base failure as an incompatible fix is
             # how a lane-wide outage looks like a series of bad fixes.
-            echo "::warning::bug-lane: fast tiers failed TWICE on ${STABLE} + ${SURVIVING_REFS} — not flake-class. Either the fix assumes something the stable does not have, or the stable is red on its own; the named failures below decide which. It stays on its cycle's path."
+            if [[ "${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then
+              echo "::warning::bug-lane: fast tiers ran out of budget on ${STABLE} + ${SURVIVING_REFS} — COULD NOT VERIFY, which is not a verdict on the batch. What ran out is the clock; whether that is the runner or the tree, this tick cannot say. It stays on its cycle's path."
+            else
+              echo "::warning::bug-lane: fast tiers failed TWICE on ${STABLE} + ${SURVIVING_REFS} — not flake-class. Either the fix assumes something the stable does not have, or the stable is red on its own; the named failures below decide which. It stays on its cycle's path."
+            fi
           fi
 
       - name: Dispatch the point release (or log what would ship)
@@ -480,6 +583,32 @@ jobs:
           path: ${{ steps.drop.outputs.marker }}
           key: bug-lane-drop-${{ steps.drop.outputs.sig }}
 
+      # Everything above gates on a verdict, and a step that dies before minting
+      # one skips all of it: a bad stable ref, a checkout or setup step dying,
+      # or the job's own ceiling reached while the cherry-pick loop or install
+      # runs, none of which are inside the tiers' budget. (A failed install is
+      # NOT one of these -- the guard above mints `fail` for it explicitly.)
+      # The tier wrapper closes the commonest door. This leaves a trace for the
+      # rest of the class -- but only in the run log, and this workflow's whole
+      # argument for a `could-not-verify` VERDICT is that the run log is not a
+      # channel anyone reads. So the honest claim is narrow: no tick ends
+      # without a record, and a tick that dies before minting a verdict still
+      # does not reach Slack. Closing that properly means paging from here, in
+      # the bare jq+curl shape the drop notifier already uses, which needs no
+      # file from a workspace that may be detached or half-built.
+      - name: A tick that produced no verdict is still a refusal
+        if: always() && steps.verify.outputs.verdict == ''
+        env:
+          STABLE: ${{ inputs.stable }}
+        run: |
+          echo "::warning::bug-lane: verify produced no verdict for ${STABLE} — COULD NOT VERIFY. Nothing here is evidence about the queued fixes; read the run log for where it stopped."
+
+      # `could-not-verify` is enrolled here too, and it is the one verdict that
+      # is NOT a standing answer: it is a fact about one runner's clock. The
+      # trade is deliberate and bounded -- the batch churns as new fixes
+      # qualify, so the signature moves and the lane re-pages -- and the page
+      # itself tells the reader to check recent runs rather than wait.
+      #
       # A refusal is a STANDING ANSWER, not an event. The refused ref stays in
       # the pending pile and re-qualifies and re-conflicts on every tick, so a
       # page-per-tick turns one durable fact into a message every 20 minutes
@@ -513,7 +642,7 @@ jobs:
       # ever stops being true, put "$STABLE" back in the printf below.
       - name: Refusal signature
         id: refusal
-        if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail')
+        if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail' || steps.verify.outputs.verdict == 'could-not-verify')
         env:
           VERDICT: ${{ steps.verify.outputs.verdict }}
           FIX_REFS: ${{ inputs.fix_refs }}
@@ -530,6 +659,10 @@ jobs:
           # cause is paged. That is the right trade — the first page already
           # tells an operator the lane is refusing and hands them the run log,
           # which carries every subsequent cause.
+          #
+          # `could-not-verify` is its own verdict, so it distinguishes itself
+          # here for free: a tick that could not verify can no longer suppress
+          # the genuinely red tick behind it for the same ref set.
           sig="$(printf '%s|%s|%s' "$VERDICT" "$FIX_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
           echo "sig=${sig}" >> "$GITHUB_OUTPUT"
           echo "marker=${RUNNER_TEMP}/bug-lane-refusal-marker" >> "$GITHUB_OUTPUT"

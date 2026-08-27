@@ -301,6 +301,23 @@ describe('ProblemsPanel', () => {
     expect(screen.getByText('No problems found.')).toBeTruthy();
   });
 
+  test('qualifies the empty state when Markdown checks do not apply', () => {
+    render(<ProblemsPanel docName="glossary.csv" diagnostics={[]} />);
+    expect(screen.getByTestId('problems-markdown-not-applicable').textContent).toBe(
+      'Markdown checks do not apply to this file.',
+    );
+    expect(screen.queryByText('No problems found.')).toBeNull();
+  });
+
+  test('hides the plugin pill for editable text in doc scope but keeps it in project scope', () => {
+    projectLintConfigData = lintConfigWith({ markdownlint: true, frontmatter: true });
+    render(<ProblemsPanel docName="glossary.csv" diagnostics={[]} />);
+    expect(screen.queryByTestId('problems-active-plugins')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('panel-scope-project'));
+    expect(screen.getByTestId('problems-active-plugins')).toBeTruthy();
+  });
+
   test('does not claim the document is clean while link validation is loading', () => {
     render(<ProblemsPanel docName="notes" diagnostics={[]} linkFindingsStatus="loading" />);
     expect(screen.getByRole('status').textContent).toContain('Checking links');

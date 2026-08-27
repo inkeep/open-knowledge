@@ -36,12 +36,12 @@ import {
   type HealthProvider,
   type NativeApiHandle,
 } from './http/http-app.ts';
+import { createMcpDispatch } from './http/mcp-route.ts';
 import {
   buildIngressPolicy,
   HOST_NOT_ADMITTED_REMEDIATION,
   type IngressPolicy,
   isHostAdmitted,
-  isOriginAdmitted,
   isPeerAdmitted,
   tripsForwardedHeaderTripwire,
 } from './ingress-policy.ts';
@@ -51,23 +51,16 @@ import type { McpHttpHandler } from './mcp-http.ts';
 
 export type { ReadinessState } from './http/http-app.ts';
 
-const MCP_CORS_HEADERS = {
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers':
-    'Content-Type, Authorization, traceparent, tracestate, baggage, mcp-session-id, mcp-protocol-version',
-  // 24 h preflight cache — prevents a round-trip OPTIONS on every sequential tool call.
-  'Access-Control-Max-Age': '86400',
-};
-
 export interface MountMcpAndApiOptions {
   /** HTTP server constructed with no constructor callback (the helper installs `'request'` + `'upgrade'` listeners). */
   httpServer: HttpServer;
   /** Hocuspocus instance whose `onRequest` extensions answer `/api/*` and whose `handleConnection` answers `/collab`. */
   hocuspocus: Hocuspocus;
   /**
-   * MCP Streamable HTTP handler. When omitted, `/mcp` is NOT mounted — the
-   * `createRestartableServer` test helper takes this path because its
-   * fast-restart contract has no MCP component.
+   * MCP Streamable HTTP handler. Served natively by the Hono app
+   * (`createHttpApp`), never the legacy dispatch. When omitted, `/mcp` is
+   * NOT mounted — the `createRestartableServer` test helper takes this path
+   * because its fast-restart contract has no MCP component.
    */
   mcpHttpHandler?: McpHttpHandler;
   /** Logger for upgrade / request errors. */
@@ -129,9 +122,10 @@ export interface MountMcpAndApiOptions {
   /**
    * No-project ephemeral single-file mode (`ok <file>`). When `true`, the
    * content-asset surface is gated by the same loopback + workspace-host
-   * checks the `/mcp` + `/collab/keepalive` legs use. In ephemeral mode
-   * `contentDir` is the opened file's parent — often a user-data dir
-   * (`~/Downloads`, `~/Documents`) the user never consciously chose to serve —
+   * checks the `/mcp` (`http/mcp-route.ts`) + `/collab/keepalive`
+   * (`collaboration-host.ts`) legs use. In ephemeral mode `contentDir` is the
+   * opened file's parent — often a user-data dir (`~/Downloads`,
+   * `~/Documents`) the user never consciously chose to serve —
    * so an ungated asset endpoint would let any localhost-reaching caller,
    * including a DNS-rebound malicious page, read those files. Project / desktop
    * modes leave this `false` (the user chose the served root) so their asset
@@ -227,60 +221,10 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
   const onRequest = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url?.split('?')[0];
     // Surface-wide admission prelude — the proxied-request tripwire plus the
-    // exposure admit decision. Shared with the natively-mounted /api/*
-    // routes (`admitRequestSurface` in http-app.ts), which sit above the
-    // strangler catch-all and would otherwise bypass it.
+    // exposure admit decision. Shared with the natively-mounted /mcp route
+    // and /api/* groups (`admitRequestSurface` in http-app.ts), which sit
+    // above the strangler catch-all and would otherwise bypass it.
     if (!admitRequestSurface(req, res, ingressPolicy, 'mcp-mount')) return;
-    if (mcpHttpHandler !== undefined && url === '/mcp') {
-      const origin = req.headers.origin;
-      const sessionId = Array.isArray(req.headers['mcp-session-id'])
-        ? req.headers['mcp-session-id'][0]
-        : req.headers['mcp-session-id'];
-      // The policy's peer + Host gate pair.
-      if (!isPeerAdmitted(req.socket.remoteAddress, ingressPolicy)) {
-        errorResponse(res, 403, 'urn:ok:error:loopback-required', 'Loopback required.', {
-          handler: 'mcp',
-        });
-        return;
-      }
-      if (!isHostAdmitted(req.headers.host, ingressPolicy)) {
-        errorResponse(res, 403, 'urn:ok:error:host-not-allowed', 'Host header not allowed.', {
-          handler: 'mcp',
-          detail: HOST_NOT_ADMITTED_REMEDIATION,
-        });
-        return;
-      }
-      if (origin !== undefined && !isOriginAdmitted(origin, ingressPolicy)) {
-        errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
-          handler: 'mcp',
-        });
-        return;
-      }
-      if (origin !== undefined) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Vary', 'Origin');
-      }
-      for (const [header, value] of Object.entries(MCP_CORS_HEADERS)) {
-        res.setHeader(header, value);
-      }
-      if (req.method === 'OPTIONS') {
-        res.writeHead(204);
-        res.end();
-        return;
-      }
-      mcpHttpHandler.handle(req, res).catch((err) => {
-        log.error({ err, sessionId }, 'Unhandled MCP HTTP error');
-        if (!res.writableEnded && !res.headersSent) {
-          errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-            handler: 'mcp',
-            cause: err,
-          });
-        } else if (!res.writableEnded) {
-          res.end();
-        }
-      });
-      return;
-    }
     if (url?.startsWith('/api/')) {
       hocuspocus
         // biome-ignore lint/suspicious/noExplicitAny: Hocuspocus `hooks()` has no exported payload type for onRequest
@@ -316,14 +260,18 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     // Static serving for non-`/mcp`, non-`/api/*` requests. Two middlewares
     // may be wired (desktop mode): `contentAssetMiddleware` over the content
     // dir and `reactShellMiddleware` (sirv) over the bundled SPA `dist/`.
-    // Never sees `/mcp` or `/api/*` (handled above), so no shadowing risk.
+    // Never sees `/mcp` while an MCP handler is wired (the native Hono route
+    // claims it); with no handler — ephemeral single-file mode, the restartable
+    // harness — `/mcp` lands here like any other unclaimed path. Never sees
+    // `/api/*` (handled above). Either way, no shadowing risk.
     //
     // Both runners wrap their middleware in try/catch: sirv reaches the
     // filesystem synchronously (`fs.existsSync` / `fs.statSync` in `viaLocal`),
     // so under FD exhaustion (`EMFILE`/`ENFILE`) or transient FS errors those
     // calls throw — without the catch the throw propagates to `http.Server`'s
     // 'request' listener and the response hangs until `requestTimeout`. Mirrors
-    // the `.catch()` posture on the `/mcp` and `/api/*` legs.
+    // the `.catch()` posture on the `/mcp` (`http/mcp-route.ts`) and `/api/*`
+    // legs.
     const runMiddleware = (
       middleware:
         | ((req: IncomingMessage, res: ServerResponse, next: () => void) => void)
@@ -354,10 +302,10 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     };
     const runContent = (onMiss: () => void): void => {
       // Ephemeral single-file mode serves assets out of the opened file's
-      // parent dir; mirror the `/mcp` peer + Host gate so a DNS-rebound or
-      // non-admitted caller can't read that user-data dir. Origin is
-      // intentionally NOT checked: no-cors `<img>` / CSS asset loads omit
-      // it, and the Host-header check already rejects the rebinding
+      // parent dir; mirror the `/mcp` peer + Host gate (`http/mcp-route.ts`) so
+      // a DNS-rebound or non-admitted caller can't read that user-data dir.
+      // Origin is intentionally NOT checked: no-cors `<img>` / CSS asset loads
+      // omit it, and the Host-header check already rejects the rebinding
       // content-exfil vector without that dependency. This surface gate
       // refuses EVERY path in ephemeral mode (even ones that would miss and
       // fall to the shell); project / desktop modes rely on the in-middleware
@@ -453,13 +401,17 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
     socket.destroy();
   };
 
-  // The canonical Hono app owns top-level routing (health + ported /api/*
-  // groups natively; every unmigrated surface falls through its catch-all
-  // into `onRequest` unchanged). The WS upgrade path stays a raw listener —
-  // it never routes through HTTP dispatch.
+  // The canonical Hono app owns top-level routing (health, /mcp, and ported
+  // /api/* groups natively; every unmigrated surface falls through its
+  // catch-all into `onRequest` unchanged). The WS upgrade path stays a raw
+  // listener — it never routes through HTTP dispatch.
   const { requestListener } = createHttpApp({
     health: opts.health,
     nativeApi: opts.nativeApi,
+    mcpDispatch:
+      mcpHttpHandler !== undefined
+        ? createMcpDispatch(mcpHttpHandler, ingressPolicy, log)
+        : undefined,
     ingressPolicy,
     legacyDispatch: onRequest,
     log,

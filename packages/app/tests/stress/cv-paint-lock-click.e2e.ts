@@ -24,13 +24,17 @@
  * app's own DOM, then asserts the renderer survived.
  *
  * Only the `.ok-mode-hidden` site is pinned here. The `.ok-chunk-wrapper`
- * (cv:auto) site shares the same invariant and the same fix surface, but its
- * crashing precondition — a paint-locked (off-viewport) wrapper as ancestor
- * of a hit-tested node — is not deterministically constructible from script:
- * cv:auto lock state flips only at rendering-update time, never inside an
- * input dispatch (verified empirically: removing + re-applying the class with
- * forced layout inside the mousedown does not paint-lock an on-viewport
- * block, so no crash), and a click cannot land inside an off-viewport block.
+ * (cv:auto) site is pinned separately, by `cv-auto-paint-lock-click.e2e.ts`.
+ *
+ * An earlier version of this note claimed that site's crashing precondition was
+ * not constructible from script, citing an experiment that removed and
+ * re-applied the class with a forced layout inside the mousedown. That
+ * experiment was inert: Blink's requested-state setter early-returns when the
+ * computed value did not change, so a same-task remove-and-re-add is a no-op
+ * and could not have locked anything either way. The conclusion survived
+ * re-testing, but on different evidence — see the sibling file's header for
+ * what actually keeps the cv:auto site safe, and for the six shapes that were
+ * tried against it.
  *
  * This seam only exists in a real Chromium layout/paint engine — jsdom has
  * no display-lock machinery, so the pin lives at Playwright fidelity.

@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { computeBodyStats, computeSelectionStats, EMPTY_STATS } from './document-stats';
+import {
+  computeBodyStats,
+  computePlainTextStats,
+  computeSelectionStats,
+  EMPTY_STATS,
+} from './document-stats';
 
 describe('computeBodyStats', () => {
   test('empty string returns zeros', () => {
@@ -154,6 +159,20 @@ describe('computeBodyStats', () => {
     const stats = computeBodyStats(md);
     expect(stats.words).toBe(5);
     expect(stats.chars).toBe('card body text\nnote body'.length);
+  });
+});
+
+describe('computePlainTextStats', () => {
+  test('counts Markdown syntax as literal source', () => {
+    const source = '**bold** and *italic*';
+    expect(computePlainTextStats(source).chars).toBe(source.length);
+    expect(computePlainTextStats(source)).not.toEqual(computeBodyStats(source));
+  });
+
+  test('counts frontmatter-shaped text as literal source', () => {
+    const source = '---\n{"a":1}\n---\n';
+    expect(computePlainTextStats(source).chars).toBe(source.length);
+    expect(computePlainTextStats(source)).not.toEqual(computeBodyStats(source));
   });
 });
 

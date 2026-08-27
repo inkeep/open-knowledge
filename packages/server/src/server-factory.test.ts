@@ -3340,8 +3340,16 @@ describe('createServer() — shouldUnloadDocument forceUnloadSet branched guard'
       if (!apiExt) throw new Error('api-extension not found in extensions array');
 
       const { createServer: createNodeHttp } = await import('node:http');
+      // Same production dispatch order as `apiBaseUrl()`'s seam: native
+      // groups first, then the legacy hook — so this driver stays faithful
+      // as routes migrate rather than relying on its target staying
+      // legacy-owned.
+      const nativeApi = server.nativeApi;
       localHttp = createNodeHttp((req, res) => {
-        void apiExt.onRequest({ request: req, response: res });
+        void (async () => {
+          if (await nativeApi.dispatch(req, res)) return;
+          await apiExt.onRequest({ request: req, response: res });
+        })();
       });
       await new Promise<void>((resolve) => localHttp?.listen(0, '127.0.0.1', resolve));
       const address = localHttp.address();
@@ -3813,8 +3821,16 @@ describe('createServer() — generated index wiring', () => {
     if (!apiExt) throw new Error('api-extension not found in extensions array');
 
     const { createServer: createNodeHttp } = await import('node:http');
+    // Mirror the composed production order: natively-routed groups dispatch
+    // ahead of the legacy onRequest catch-all, so ported paths (e.g.
+    // `/api/generated-index/settings`) reach their real handler instead of
+    // the legacy pipeline's 404 fallback.
+    const nativeApi = server?.nativeApi;
     localHttp = createNodeHttp((req, res) => {
-      void apiExt.onRequest({ request: req, response: res });
+      void (async () => {
+        if (nativeApi !== undefined && (await nativeApi.dispatch(req, res))) return;
+        await apiExt.onRequest({ request: req, response: res });
+      })();
     });
     await new Promise<void>((resolve) => localHttp?.listen(0, '127.0.0.1', resolve));
     const address = localHttp.address();

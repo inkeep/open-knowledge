@@ -23,6 +23,7 @@ import {
   classifyMinidumpOwnership,
   readMinidumpAccessibilityMode,
   readMinidumpAppVersion,
+  readMinidumpDisplayLockState,
 } from './minidump-ownership.ts';
 
 const tmpDirs: string[] = [];
@@ -1025,5 +1026,63 @@ describe('readMinidumpAccessibilityMode', () => {
     // separate "this dump has no mode" from "the parser broke", and a flag that
     // fired on every missing file would say neither.
     expect(readMinidumpAccessibilityMode(absent)).toEqual({ mode: null, parseFailed: false });
+  });
+});
+
+describe('readMinidumpDisplayLockState', () => {
+  /**
+   * The shape the renderer publishes: a chunk-wrapper transition into the paint
+   * lock, one in that frame and twelve in the session, with the burst still in
+   * flight (`s=0`) when the process died.
+   */
+  const REAL_STATE = 'v1 lock=1 f=1 n=12 s=0';
+
+  function stateOf(patch: MinidumpPatch): string | null {
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    writeFileSync(dumpPath, buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], patch));
+    const read = readMinidumpDisplayLockState(dumpPath);
+    expect(read.parseFailed).toBe(false);
+    return read.state;
+  }
+
+  test('a renderer dump names the display-lock state it died with', () => {
+    expect(stateOf({ annotationObjects: [{ ok_display_lock: REAL_STATE }] })).toBe(REAL_STATE);
+  });
+
+  test('a dump from a renderer that never published one has no state', () => {
+    // A renderer that died before the editor mounted, or any build predating
+    // the key. Null is "we do not know", never "no lock was active" — the
+    // contract that says so is on `MinidumpDisplayLockRead`.
+    expect(stateOf({ annotationObjects: [{ process_type: 'renderer' }] })).toBeNull();
+  });
+
+  test('the state is found on a later module, not just the first', () => {
+    expect(stateOf({ annotationObjects: [{}, { ok_display_lock: REAL_STATE }] })).toBe(REAL_STATE);
+  });
+
+  test('a missing dump reads as no state rather than as a broken parser', () => {
+    expect(readMinidumpDisplayLockState(join(makeDir(), 'nope.dmp'))).toEqual({
+      state: null,
+      parseFailed: false,
+    });
+  });
+
+  test('reading the display lock does not cost the accessibility mode its answer', () => {
+    // Both readers share one minidump traversal. Extracting that shared walk
+    // must not let either key shadow the other: a dump carrying both has to
+    // answer both, from independent calls, on the same bytes.
+    const dir = makeDir();
+    const dumpPath = join(dir, 'crash.dmp');
+    const axMode = 'kNativeAPIs | kWebContents';
+    writeFileSync(
+      dumpPath,
+      buildMinidump([ownModule(join(dir, 'OpenKnowledge.app'))], {
+        annotations: { _productName: 'OpenKnowledge', _version: '0.62.1' },
+        annotationObjects: [{ ax_mode: axMode, ok_display_lock: REAL_STATE }],
+      }),
+    );
+    expect(readMinidumpDisplayLockState(dumpPath).state).toBe(REAL_STATE);
+    expect(readMinidumpAccessibilityMode(dumpPath).mode).toBe(axMode);
   });
 });

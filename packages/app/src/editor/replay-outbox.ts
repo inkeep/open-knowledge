@@ -23,7 +23,7 @@
  * client nulls its cached id and only relearns it from the reconnect
  * handshake), so the epoch cannot be part of the key.
  *
- * The project component is REQUIRED for every packaged window, and omitted
+ * The project component is REQUIRED for every desktop window, and omitted
  * only for a null namespace, where the origin already isolates — that is
  * `precedent #59`, applied here through `scopedStorageKey`
  * (`lib/storage-scope.ts`), not re-derived. What is specific to THIS
@@ -49,15 +49,16 @@
  *    content this scoping removes, which is the bug. Electron only, since a
  *    null namespace reproduces the old name exactly. The stranded set is
  *    every LIVE pre-scoping record, not just one caught mid-recycle. Every
- *    consume path runs INSIDE a live session: a reopen's replay (from the RAM
- *    buffer when one survived, straight from the outbox when the tab died and
- *    none did), or an intentional discard through `discardBufferedUpdate`
- *    (explicit close, LRU eviction, cross-branch invalidation) — that second
- *    family is the one gated on the RAM buffer's `durable` flag. Ordinary app
- *    termination — quit, force-quit, `quitAndInstall` — runs none of them. So
- *    a doc not reopened between its write and the upgrade keeps an
- *    unreachable record. Stranding is also silent: a null read is
- *    indistinguishable from "nothing to recover".
+ *    consume path runs INSIDE a live session: a reopen's replay, or an
+ *    intentional discard through `discardBufferedUpdate` (explicit close, LRU
+ *    eviction, cross-branch invalidation). The RAM buffer's `durable` flag
+ *    gates every one of those EXCEPT the reopen that finds no RAM buffer at
+ *    all — the tab-died case this outbox exists for, which reads the record
+ *    directly and claims it unconditionally. Ordinary app termination — quit,
+ *    force-quit, `quitAndInstall` — runs none of them. So a doc not reopened
+ *    between its write and the upgrade keeps an unreachable record. Stranding
+ *    is also silent: a null read is indistinguishable from "nothing to
+ *    recover".
  * 2. Ongoing: the namespace is the project path AS THE USER PICKED IT, not
  *    its realpath (`window-manager.ts` keeps `projectPath` and `canonicalKey`
  *    deliberately distinct, and the renderer is handed the former). So
@@ -84,7 +85,7 @@
  * RAM-only.
  *
  * The single `(namespace, branch, docName)` record is also the CROSS-TAB
- * exactly-once token: tabs of the same project share it, so
+ * exactly-once token: tabs resolving the same namespace share it, so
  * `consumeReplayOutboxEntry` reports whether THIS caller was the one that
  * removed a live record. Its count+delete run in one `readwrite` transaction,
  * and IndexedDB serializes overlapping readwrite transactions across
@@ -334,18 +335,18 @@ export async function readReplayOutboxEntry(
  * Consume a doc's buffer by deleting its record, and report whether THIS
  * caller was the one that removed a live record.
  *
- * That boolean is the cross-tab exactly-once claim. Tabs of the SAME project
- * share one `(namespace, branch, docName)` record, so a `false` return means
- * another such tab already consumed it and owns the replay — re-applying on
- * top would not be idempotent (see `replayBufferedContent`'s surface
- * attribution). The count and the delete run in ONE `readwrite` transaction
- * and IndexedDB serializes overlapping readwrite transactions across
- * connections, so the pair is an atomic compare-and-claim, not a
+ * That boolean is the cross-tab exactly-once claim. Tabs resolving the SAME
+ * namespace share one `(namespace, branch, docName)` record, so a `false`
+ * return means another such tab already consumed it and owns the replay —
+ * re-applying on top would not be idempotent (see `replayBufferedContent`'s
+ * surface attribution). The count and the delete run in ONE `readwrite`
+ * transaction and IndexedDB serializes overlapping readwrite transactions
+ * across connections, so the pair is an atomic compare-and-claim, not a
  * check-then-act.
  *
  * A window of a DIFFERENT project must never lose this claim: its buffered
  * edit belongs to a different document that merely shares a path and a branch
- * name. That is what the `namespace` component guarantees.
+ * name. That is what the project component guarantees.
  *
  * Idempotent for callers that only want the record gone (consuming an absent
  * record resolves `false` rather than throwing).

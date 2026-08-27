@@ -19,23 +19,61 @@ const ipcTypeAliases = [
 ] as const;
 const ipcTypeReexports = ['OkSharingStatusResult', 'OkSharingSetModeResult'] as const;
 
-const project = new Project({
+const projectOptions = {
   skipFileDependencyResolution: true,
   skipLoadingLibFiles: true,
   skipAddingFilesFromTsConfig: true,
   compilerOptions: { noLib: true },
-});
+} as const;
 
-const contractSources = project.addSourceFilesAtPaths([
+/**
+ * The barrel check below is the only assertion here that pays for a type
+ * checker over the real corpus: `getExportedDeclarations()` follows `export *`
+ * chains, which the syntactic APIs cannot. (The discrimination test further
+ * down builds one too, over a four-file in-memory tree, so its cost does not
+ * scale with anything.) Building that checker is by far the most expensive
+ * thing this file does, and its cost scales with how many files the project
+ * holds rather than with the two this check actually reads.
+ *
+ * So it gets its own project scoped to `core/src`. That changes how many files
+ * the checker takes as program roots, not what it can reach: the compiler host
+ * still loads dependencies from disk on demand, so a chain leaving `core/src`
+ * resolves either way and this scoped check is no blinder than the shared one.
+ * Measured on this tree, each shape in its own process so neither warms the
+ * other: 0.64s scoped against 2.74s shared, and 0.23s against 1.18s for the
+ * checker alone, with an identical result on both sides.
+ *
+ * `skipFileDependencyResolution` is not what bounds any of that — it only stops
+ * ts-morph eagerly adding a file's imports to the project. That is the whole
+ * story in the syntactic-only ts-morph tests elsewhere in the tree, which never
+ * build a program at all; it stops being the story here, in the one test that
+ * asks for a checker.
+ */
+const coreProject = new Project(projectOptions);
+const coreSources = coreProject.addSourceFilesAtPaths(
   join(packagesRoot, 'core', 'src', '**', '*.{ts,tsx}'),
-  join(packagesRoot, 'app', 'src', '**', '*.{ts,tsx}'),
-  join(packagesRoot, 'desktop', 'src', '**', '*.{ts,tsx}'),
-]);
-const coreBridgeSource = project.getSourceFileOrThrow(coreBridge);
+);
+const coreBridgeSource = coreProject.getSourceFileOrThrow(coreBridge);
+const coreIndexSource = coreProject.getSourceFileOrThrow(
+  join(packagesRoot, 'core', 'src', 'index.ts'),
+);
+
+const project = new Project(projectOptions);
+
+// The first test needs core in the syntactic set as well, to prove
+// `OkDesktopBridge` is declared nowhere else across the three packages. It only
+// ever reads file paths off what it finds, so composing the two projects'
+// sources is transparent to it and keeps `core/src` from being parsed twice.
+const contractSources = [
+  ...coreSources,
+  ...project.addSourceFilesAtPaths([
+    join(packagesRoot, 'app', 'src', '**', '*.{ts,tsx}'),
+    join(packagesRoot, 'desktop', 'src', '**', '*.{ts,tsx}'),
+  ]),
+];
 const appShimSource = project.addSourceFileAtPath(appShim);
 const desktopShimSource = project.addSourceFileAtPath(desktopShim);
 const ipcChannelsSource = project.addSourceFileAtPath(ipcChannels);
-const coreIndexSource = project.addSourceFileAtPath(join(packagesRoot, 'core', 'src', 'index.ts'));
 const buildConfigSource = project.addSourceFileAtPath(
   join(packagesRoot, 'core', 'tsdown.config.ts'),
 );
@@ -49,6 +87,14 @@ function expectTypeOnlyExportStar(sourceFile: SourceFile): void {
   expect(exportDeclaration?.isTypeOnly()).toBe(true);
   expect(exportDeclaration?.isNamespaceExport()).toBe(true);
   expect(exportDeclaration?.hasNamedExports()).toBe(false);
+}
+
+function leafDeclarationNames(bridge: SourceFile): string[] {
+  return [...bridge.getExportedDeclarations()]
+    .filter(([, declarations]) =>
+      declarations.some((declaration) => declaration.getSourceFile() === bridge),
+    )
+    .map(([typeName]) => typeName);
 }
 
 function isWindowGlobalAugmentation(declaration: import('ts-morph').InterfaceDeclaration): boolean {
@@ -102,15 +148,68 @@ describe('desktop host contract single source', () => {
   });
 
   test('keeps desktop bridge types off the core barrel', () => {
-    const bridgeLeafDeclarations = [...coreBridgeSource.getExportedDeclarations()]
-      .filter(([, declarations]) =>
-        declarations.some((declaration) => declaration.getSourceFile() === coreBridgeSource),
-      )
-      .map(([typeName]) => typeName);
+    const bridgeLeafDeclarations = leafDeclarationNames(coreBridgeSource);
     const coreBarrelExports = coreIndexSource.getExportedDeclarations();
+
+    // An empty side would satisfy the intersection below while checking
+    // nothing, so a resolution regression could retire this test silently.
+    // These floors sit far enough under both counts to catch a collapse
+    // without tracking ordinary growth -- deliberately not near them, since
+    // both drift with the tree in either direction, and a floor that tracks a
+    // moving count becomes maintenance rather than a guard.
+    expect(bridgeLeafDeclarations.length).toBeGreaterThan(50);
+    expect(coreBarrelExports.size).toBeGreaterThan(500);
+
     expect(bridgeLeafDeclarations.filter((typeName) => coreBarrelExports.has(typeName))).toEqual(
       [],
     );
+  });
+
+  /**
+   * The check above reads the real corpus, so it goes green either because
+   * nothing leaks or because it stopped being able to see a leak. Only the
+   * second is a regression, and the counts it asserts cannot tell them apart.
+   *
+   * This pins the discrimination directly, on an in-memory tree small enough
+   * to state: a mutant that MUST be caught, and a control that MUST stay
+   * clean. The mutant routes the leak through an intermediate `export *`,
+   * which is reachable only by following the chain, so this fails if
+   * `getExportedDeclarations()` ever stops resolving transitively -- the one
+   * property that justifies paying for a checker here at all.
+   */
+  test('the barrel check can still see a leak only a checker would follow', () => {
+    const fixture = new Project({ ...projectOptions, useInMemoryFileSystem: true });
+    const bridge = fixture.createSourceFile('/bridge.ts', 'export type Leaked = 1;\n');
+    fixture.createSourceFile('/relay.ts', "export * from './relay-target.ts';\n");
+    fixture.createSourceFile('/relay-target.ts', "export * from './bridge.ts';\n");
+    const barrel = fixture.createSourceFile('/index.ts', "export * from './relay.ts';\n");
+
+    const leaked = leafDeclarationNames(bridge).filter((typeName) =>
+      barrel.getExportedDeclarations().has(typeName),
+    );
+    expect(leaked).toEqual(['Leaked']);
+
+    // The control is a NEAR miss rather than a non-miss. Two files sharing no
+    // names would pass even if `getExportedDeclarations()` returned nothing at
+    // all, which the mutant above already covers. This instead puts a name on
+    // BOTH sides that the check must still not flag, because the bridge only
+    // passes `Shared` through and does not declare it -- so it exercises the
+    // one filter standing between the real check and a false positive.
+    const control = new Project({ ...projectOptions, useInMemoryFileSystem: true });
+    control.createSourceFile('/origin.ts', 'export type Shared = 1;\n');
+    const cleanBridge = control.createSourceFile(
+      '/bridge.ts',
+      "export type Held = 2;\nexport type { Shared } from './origin.ts';\n",
+    );
+    const cleanBarrel = control.createSourceFile(
+      '/index.ts',
+      "export type { Shared } from './origin.ts';\n",
+    );
+    expect(
+      leafDeclarationNames(cleanBridge).filter((typeName) =>
+        cleanBarrel.getExportedDeclarations().has(typeName),
+      ),
+    ).toEqual([]);
   });
 
   test('keeps IPC payloads as aliases of the core contract', () => {

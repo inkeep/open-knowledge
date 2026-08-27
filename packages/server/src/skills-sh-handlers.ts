@@ -1,5 +1,5 @@
 /**
- * The six skills.sh discovery handlers, lifted out of `api-extension.ts`.
+ * The seven skills.sh discovery handlers, lifted out of `api-extension.ts`.
  *
  * Stateless proxy and cache reads: no `session`, no `dc`, no `transact`. What
  * they closed over in the extension arrives as {@link SkillsShHandlerDeps} so

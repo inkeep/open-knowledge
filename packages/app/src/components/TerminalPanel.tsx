@@ -28,6 +28,7 @@ import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { TerminalCliUnverifiedBanner } from './TerminalCliUnverifiedBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
+import { TerminalStartingNotice } from './TerminalStartingNotice';
 import { createTerminalFileLinkProvider } from './terminal-link-provider';
 import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
@@ -217,6 +218,12 @@ function TerminalSession({
   // theme changes flow through the dedicated effect below.
   const initialXtermThemeRef = useRef(xtermTheme);
   const [status, setStatus] = useState<SessionStatus>('starting');
+  // Whether any shell byte has landed yet. `status` cannot answer this: it flips
+  // to 'running' the instant a ptyId comes back, which is BEFORE the utility
+  // process forks a PTY host and the login shell sources its rc chain — the
+  // seconds a user actually waits. Without this the pane looks identical whether
+  // a shell is coming or nothing happened at all.
+  const [hasOutput, setHasOutput] = useState(false);
   const [readiness, setReadiness] = useState<ClaudeReadiness | null>(null);
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
   // Live PTY id, mirrored out of the mount effect for the keyboard handlers.
@@ -653,6 +660,20 @@ function TerminalSession({
       return false;
     });
 
+    // First byte from the shell: drop the pending notice. Idempotent — the data
+    // subscription fires per chunk, and an adopted session replays its retained
+    // screen through here too. The guard is a plain effect-scoped `let` because
+    // nothing outside this effect reads it; a ref would work identically (every
+    // new session is a fresh TerminalSession instance, so a ref could not carry
+    // state across sessions either), it just puts an instance-lifetime cell
+    // where an effect-lifetime one is what the code means.
+    let sawFirstOutput = false;
+    const markFirstOutput = () => {
+      if (sawFirstOutput) return;
+      sawFirstOutput = true;
+      setHasOutput(true);
+    };
+
     // Wire a now-live ptyId (freshly created OR adopted from a survivor) into
     // this session: route xterm I/O, exit, and resize through it, and focus it.
     // The wiring is identical for both acquisition paths — only how the id is
@@ -673,6 +694,7 @@ function TerminalSession({
 
       unsubData = bridge.terminal.onData((msg) => {
         if (msg.ptyId !== ptyId) return;
+        markFirstOutput();
         // Ack consumed code units only once xterm has processed the chunk, so
         // the main-side backpressure window tracks real consumption.
         term.write(msg.data, () => bridge.terminal.drain(msg.ptyId, msg.data.length));
@@ -859,7 +881,10 @@ function TerminalSession({
           // comes back blank (the shell reconnects but its
           // screen is gone). Written synchronously here, ahead of attachSession's
           // onData subscription, so no live byte can interleave before the replay.
-          if (adopted.replay) term.write(adopted.replay);
+          if (adopted.replay) {
+            markFirstOutput();
+            term.write(adopted.replay);
+          }
           attachSession(adoptPtyId);
           // Nudge the surviving shell to repaint at the current viewport so a
           // full-screen TUI (claude, vim) redraws its screen after the reload.
@@ -1137,7 +1162,21 @@ function TerminalSession({
           <TerminalCliUnverifiedBanner cli={cliNotice.cli} onDismiss={() => setCliNotice(null)} />
         )
       ) : null}
-      <div ref={containerRef} data-terminal-status={status} className="min-h-0 flex-1 px-1.5" />
+      {/* This wrapper exists so the pending notice covers the CANVAS only. The
+          readiness / CLI banners above are gated on `status === 'running'`, and
+          `resolveLaunchCommand` sets their verdicts BEFORE `create()` resolves,
+          so on any CLI launch with a banner due the banner is mounted for the
+          whole pre-first-byte window — a column-wide overlay hid it. The
+          wrapper one level up in TerminalPanel would have served as a
+          containing block, but it spans the column, and spanning the column is
+          the bug. Per-class rationale lives on `TerminalStartingNotice`'s
+          `className` prop. */}
+      <div className="relative min-h-0 flex-1">
+        <div ref={containerRef} data-terminal-status={status} className="h-full w-full px-1.5" />
+        {status === 'starting' || (status === 'running' && !hasOutput) ? (
+          <TerminalStartingNotice className="pointer-events-none absolute inset-0 z-20" />
+        ) : null}
+      </div>
       {status === 'exited' && exitInfo ? (
         <TerminalExitNotice info={exitInfo} onRestart={onRestart} />
       ) : null}

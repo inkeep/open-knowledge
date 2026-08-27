@@ -179,6 +179,17 @@ export function classifyRefs(refs, gitShow) {
 const classifiedWithNoPaths = (r) => Array.isArray(r.files) && r.files.length === 0;
 
 export function describeRefusal({ verdict, refs }) {
+  if (verdict === 'could-not-verify') {
+    return {
+      // Deliberately not "failed": the tiers ran out of budget, so there is no
+      // result to report about the batch either way. Every clause of the `fail`
+      // wording below would be false here, and the one an operator acts on
+      // ("not a retry candidate") would be the exact inverse of the truth.
+      headline: 'Bug lane: could not verify the synthetic tree',
+      meaning:
+        'The fast tiers ran out of their time budget rather than finishing. Nothing was verified, so this says nothing about the queued fixes.',
+    };
+  }
   if (verdict === 'fail') {
     return {
       headline: 'Bug lane: verification failed on the synthetic tree',
@@ -228,6 +239,13 @@ export function describeRefusal({ verdict, refs }) {
  * to a door that is locked is worse than saying it is locked.
  */
 export function optionsFor({ verdict, refs }) {
+  if (verdict === 'could-not-verify') {
+    return [
+      'Nothing here is evidence about the fixes — the tiers did not finish, so no test passed or failed on their account.',
+      'The batch stays pending and the next tick retries it. Unlike a red verification, this IS a retry candidate.',
+      'If this keeps happening the runner or the budget is the thing to look at — but identical refusals stay silent, so check the lane\u2019s recent runs rather than waiting to be paged again.',
+    ];
+  }
   if (verdict === 'fail') {
     return [
       'Check the failures above against the fixes first — a failure in code no fix touches means the STABLE is red, which no amount of re-running or re-picking will clear.',
@@ -261,7 +279,9 @@ function refLines(refs) {
   const lines = [];
   for (const entry of refs.slice(0, MAX_REFS_SHOWN)) {
     const tickets = (entry.tickets ?? []).join(', ');
-    const label = [`\`${entry.ref.slice(0, 9)}\``, tickets && `(${tickets})`].filter(Boolean).join(' ');
+    const label = [`\`${entry.ref.slice(0, 9)}\``, tickets && `(${tickets})`]
+      .filter(Boolean)
+      .join(' ');
     const shown = entry.files.slice(0, MAX_FILES_SHOWN);
     // "conflicted in 0 files:" followed by nothing is the shape that made a
     // page unreadable — it states a conflict and then lists no evidence for
@@ -315,7 +335,21 @@ const MAX_FAILURES_SHOWN = 8;
  * without opening anything: a failing test in a package the fixes never touched
  * is the stable being red on its own, not a fix that depends on later work.
  */
-function failureLines(failures) {
+function failureLines(failures, verdict) {
+  if (verdict === 'could-not-verify') {
+    // No lead line: the bullet already carries the budget and the exit code,
+    // and a heading restating it was the redundancy the previous commit set out
+    // to remove. The `fail` arm's lead earns its place by adding the attempt
+    // count; there is nothing equivalent to add here.
+    //
+    // Which attempt ran out is deliberately not claimed. A first-attempt blow
+    // is never retried, but the RETRY can blow its own budget too, so "there
+    // was no second attempt" holds on one path and not the other.
+    if (failures.length === 0) {
+      return ['The tiers ran out of their time budget. Read the run log for where the time went.'];
+    }
+    return failures.map((f) => `    • ${f}`);
+  }
   if (failures.length === 0) {
     // Hedged, because `verdict=fail` has two sites in the workflow: the
     // retry-exhausted tier path, and the `pnpm install --frozen-lockfile`
@@ -353,7 +387,9 @@ export function buildSlackPayload({
     `*Over \`${stable}\` on \`${repo}\`.* ${meaning}`,
     '',
     '*Why it refused*',
-    ...(verdict === 'fail' ? failureLines(failures) : refLines(refs)),
+    ...(verdict === 'fail' || verdict === 'could-not-verify'
+      ? failureLines(failures, verdict)
+      : refLines(refs)),
     // A red tier does not imply an empty `refs`. The pick loop writes its
     // `conflicts` output for every DROPPED ref and then lets the survivors run
     // the tiers, so a partial drop followed by a red tier arrives here with
@@ -361,7 +397,7 @@ export function buildSlackPayload({
     // partial-drop page cannot cover the gap because its own step is gated on
     // `verdict == 'pass'`. Losing the labelling problem must not also lose the
     // information, so the drops keep their own heading.
-    ...(verdict === 'fail' && refs.length > 0
+    ...((verdict === 'fail' || verdict === 'could-not-verify') && refs.length > 0
       ? ['', '*Also dropped from this batch, before the tiers ran*', ...refLines(refs)]
       : []),
     '',

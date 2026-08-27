@@ -29,6 +29,41 @@ const scratch = mkdtempSync(join(tmpdir(), 'bug-lane-extraction-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 /**
+ * The verify step's own shell options, lifted rather than pasted.
+ *
+ * `pipefail` is load-bearing for the chain below, not housekeeping: without it
+ * `timeout … | tee "$RETRY_LOG"` reports tee's status, which is 0 whenever the
+ * log is writable, so a genuinely red retry takes the `then` arm, clears
+ * RETRY_STATUS, and mints a PASS that dispatches a release. Pasting a copy here
+ * would supply the option the shipped step is supposed to prove it sets.
+ */
+function shellOptions() {
+  const lines = workflow.split('\n');
+  // Scoped to the verify step, not the file: other steps set their own options,
+  // and finding one of those would let this step lose pipefail unnoticed --
+  // which is the whole failure being guarded against.
+  const step = lines.findIndex((line) => line.includes('- name: Verify the synthetic tree'));
+  const next = lines.findIndex((line, i) => i > step && /^ {6}- name:/.test(line));
+  const line = lines
+    .slice(step, next === -1 ? undefined : next)
+    .find((candidate) => candidate.trim().startsWith('set -'));
+  // Separate messages because these are separate failures: a renamed step and a
+  // dropped option need different fixes, and one diagnostic naming both would
+  // report the wrong cause for whichever it was not.
+  if (step === -1) {
+    throw new Error(
+      'bug-lane-verify.yml no longer has a step named "Verify the synthetic tree", so this test cannot find the shell options it runs under. Re-anchor on the current step name.',
+    );
+  }
+  if (!line?.includes('pipefail')) {
+    throw new Error(
+      "bug-lane-verify.yml's verify step no longer sets pipefail — the retry status read depends on it, and without it a red retry mints a pass. Re-anchor this test rather than pasting the option back.",
+    );
+  }
+  return line.trim();
+}
+
+/**
  * The extraction block, lifted verbatim from the workflow and dedented.
  *
  * Anchored on the first and last statements of the block rather than on line
@@ -49,13 +84,102 @@ function extractionSnippet() {
   return block.map((line) => line.slice(indent)).join('\n');
 }
 
+/**
+ * Lifts the WHOLE chain from an exit code to a verdict, starting at the
+ * RETRY_STATUS seed rather than at the mapping, because the mapping is not
+ * where a first-attempt blow is decided. That path never reaches the retry, so
+ * its status has to be propagated across the case arm first; lifting only the
+ * mapping and injecting RETRY_STATUS steps over that line entirely.
+ *
+ * Deleting it is the one mutation in this region that manufactures an
+ * APPROVAL rather than a wrong page: RETRY_STATUS stays 0, the mapping does
+ * not fire, and the `elif` mints verdict=pass with a warning claiming the
+ * tiers passed on retry when no retry ran. The dispatch step gates on that
+ * verdict, so the lane ships a point release off a tick that never finished.
+ */
+function verdictSnippet() {
+  const lines = workflow.split('\n');
+  const start = lines.findIndex((line) => line.trim() === 'RETRY_STATUS=0');
+  const end = lines.findIndex((line) => line.includes('TIER_VERDICT=could-not-verify ;; esac'));
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(
+      'bug-lane-verify.yml no longer contains the exit-code-to-verdict chain this test lifts (the RETRY_STATUS seed through the mapping arm). Re-anchor rather than deleting.',
+    );
+  }
+  const block = lines.slice(start, end + 1);
+  const indent = block[0].length - block[0].trimStart().length;
+  return block.map((line) => line.slice(indent)).join('\n');
+}
+
+/**
+ * Run the shipped chain for one FIRST_STATUS and return both the propagated
+ * retry status and the verdict.
+ *
+ * Only the retry's INVOCATION is substituted, not the arm around it and not the
+ * `| tee` it feeds -- so PIPESTATUS still has two elements, and the two
+ * assignments that read its outcome are the shipped ones and actually execute.
+ * Replacing the whole arm would excise `RETRY_STATUS="${PIPESTATUS[0]}"`, and
+ * that line has the same failure mode this harness exists to catch: index it
+ * `[1]` and it reads `tee`'s status, which is 0 whenever the log is writable,
+ * so a genuinely red retry mints a PASS and the lane dispatches a release.
+ * Nothing else in the repo executes it — the sibling shape assertions are all
+ * textual.
+ *
+ * Anchored on `if timeout` rather than the bare word so the match cannot start
+ * anywhere but the invocation, and so a future line above it cannot capture the
+ * anchor away from the retry.
+ *
+ * The throw on a miss is what keeps the harness honest. `String.replace` returns
+ * its input unchanged, so a drifted anchor would leave the real invocation in
+ * the chain -- and the two budget-code cases never enter the retry arm at all,
+ * so they would keep passing while testing a chain nobody had substituted.
+ * Silently green is the failure mode worth refusing.
+ */
+function verdictFor(firstStatus, retryOutcome = 1) {
+  const snippet = verdictSnippet();
+  const chain = snippet.replace(
+    /if timeout[\s\S]*?--output-logs=errors-only 2>&1/,
+    `if (exit ${retryOutcome})`,
+  );
+  if (chain === snippet) {
+    throw new Error(
+      'verdictFor no longer matches the retry invocation in bug-lane-verify.yml — re-anchor rather than deleting.',
+    );
+  }
+  const script = [
+    shellOptions(),
+    `FIRST_STATUS=${firstStatus}`,
+    'RETRY_LOG=/dev/null',
+    chain,
+    'printf "%s %s" "$RETRY_STATUS" "$TIER_VERDICT"',
+  ].join('\n');
+  const result = spawnSync('bash', ['-c', script], { encoding: 'utf8' });
+  expect(result.status, `chain exited ${result.status}: ${result.stderr}`).toBe(0);
+  const [retryStatus, verdict] = result.stdout.split(' ');
+  return { retryStatus, verdict };
+}
+
 /** Run the shipped snippet over a log file and return the JSON it emits. */
-function extract(logContents) {
+function extract(logContents, tierVerdict) {
   const logPath = join(scratch, `log-${Math.abs(hash(logContents))}.txt`);
   writeFileSync(logPath, logContents);
   const script = [
+    // Pasted rather than lifted, unlike verdictFor above, because the option
+    // cannot change what this returns: every pipe in the extraction block ends
+    // in `|| true` or `|| echo`, so pipefail has nothing to propagate. Routing
+    // it through shellOptions() would redden these six cases for a regression
+    // they say nothing about.
     'set -euo pipefail',
     'RETRY_LOG="$1"',
+    // Omitting these exercises the ordinary red-tier path: the snippet defaults
+    // TIER_VERDICT, and the budget-blow branch it guards is simply not taken, so
+    // the two variables that branch would read are never dereferenced.
+    // 999 is deliberately not the shipped budget: this pins that the value
+    // interpolates, not what it currently is, so re-sizing the real one cannot
+    // leave a green test asserting a retired number.
+    ...(tierVerdict === undefined
+      ? []
+      : [`TIER_VERDICT=${tierVerdict}`, 'RETRY_STATUS=124', 'TIER_BUDGET_SECONDS=999']),
     extractionSnippet(),
     'printf %s "$FAILURES_JSON"',
   ].join('\n');
@@ -76,6 +200,57 @@ const ESC = '\u001b';
 const failLine = (file, name) =>
   `${ESC}[41m${ESC}[1m FAIL ${ESC}[22m${ESC}[49m ${file}${ESC}[2m > ${ESC}[22m${name}`;
 
+describe('exit code to verdict', () => {
+  // 124 is timeout's own signal. 137 is the SIGKILL --kill-after escalates to,
+  // which fires precisely when a tier ignores SIGTERM -- so dropping it is the
+  // realistic mutation, and it would reclassify a hard-killed run as a red tier
+  // and page "failed TWICE, not flake-class" over a truncated failure list.
+  test('both budget codes mint could-not-verify', () => {
+    expect(verdictFor(124).verdict).toBe('could-not-verify');
+    expect(verdictFor(137).verdict).toBe('could-not-verify');
+  });
+
+  // Asserted alongside the verdict because this is what the verdict is derived
+  // FROM on a first-attempt blow, and it is the step the mapping cannot see.
+  // Left at 0, the mapping never fires and the `elif` below mints a PASS.
+  test('a first-attempt blow propagates its status past the retry arm', () => {
+    expect(verdictFor(124).retryStatus).toBe('124');
+    expect(verdictFor(137).retryStatus).toBe('137');
+  });
+
+  test('an ordinary failure still mints fail', () => {
+    expect(verdictFor(1).verdict).toBe('fail');
+    expect(verdictFor(2).verdict).toBe('fail');
+  });
+
+  // The success branch of the retry's if/else: a retry that succeeds must leave
+  // the status clear, or an ordinary red tier that recovered would be refused.
+  test('a recovered retry leaves nothing for the mapping to fire on', () => {
+    expect(verdictFor(1, 0).retryStatus).toBe('0');
+  });
+
+  // Reading the wrong element of PIPESTATUS gives `tee`'s status, which is 0
+  // whenever the log is writable -- so a doubly-red tick would mint a pass and
+  // dispatch. This asserts the failing command's own status survives.
+  test('a red retry reports its own status, not the tee it pipes into', () => {
+    // The recovered-retry case above is the same FIRST_STATUS with the opposite
+    // retryOutcome: there the retry succeeds and must clear the status, here it
+    // fails and must report its own rather than the tee's.
+    //
+    // The verdict is deliberately not asserted. TIER_VERDICT starts at `fail`
+    // and is only overridden on 124/137, so it reads `fail` under the shipped
+    // line and under the mutant alike.
+    expect(verdictFor(1, 1).retryStatus).toBe('1');
+  });
+
+  // The second route into could-not-verify, exercised nowhere before: the
+  // first attempt fails ordinarily and the RETRY runs out of budget.
+  test('a retry that blows its own budget still mints could-not-verify', () => {
+    expect(verdictFor(1, 124).verdict).toBe('could-not-verify');
+    expect(verdictFor(1, 137).verdict).toBe('could-not-verify');
+  });
+});
+
 describe('bug-lane failure extraction', () => {
   test('names each failing vitest test, with the escape codes stripped', () => {
     const failures = extract(
@@ -93,6 +268,37 @@ describe('bug-lane failure extraction', () => {
       'src/skill-bundles.test.ts > every bundle has a SKILL.md on disk whose frontmatter name matches',
     );
     expect(failures.join('\n')).not.toContain(ESC);
+  });
+
+  // A budget blow is the one red verdict that is NOT evidence about the batch.
+  // The lane's whole reason to exist is paging correctly, and the incident that
+  // prompted this wrapper was a refusal that read as a bad fix. So the page must
+  // say "could not verify" even though the log underneath is full of real FAIL
+  // lines from tiers that did finish before the clock ran out.
+  test('replaces the named failures when the attempt ran out of budget', () => {
+    const log = [
+      failLine('src/acp/thread-socket.test.ts', 'rename round-trips'),
+      ' Test Files  1 failed | 474 passed (492)',
+    ].join('\n');
+
+    const failures = extract(log, 'could-not-verify');
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toContain('did not finish within 999s');
+    // The exit code separates a clean timeout from a SIGKILL escalation, which
+    // is the difference between a slow tier and one that ignored the signal.
+    expect(failures[0]).toContain('exit 124');
+    // The point of the override: no test name survives to be blamed.
+    expect(failures[0]).not.toContain('thread-socket');
+  });
+
+  // The override must fire ONLY on the budget codes. An ordinary red tier is
+  // still the common case and must keep naming what went red.
+  test('leaves an ordinary red tier naming its failures', () => {
+    const failures = extract(
+      failLine('src/acp/thread-socket.test.ts', 'rename round-trips'),
+      'fail',
+    );
+    expect(failures).toEqual(['src/acp/thread-socket.test.ts > rename round-trips']);
   });
 
   // A typecheck failure prints no FAIL line at all, so the fallback is the only

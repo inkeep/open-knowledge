@@ -3,12 +3,12 @@
  *
  * The skills bundle-file tree (`SkillsSidebarSection.tsx`) renders through
  * `<OkFileTree>` (which mounts Pierre + the generic decoration observers). This
- * module holds the reusable pieces — the ones the main Files tree (`FileTree.tsx`,
- * still on its own inline Pierre mount) also needs when it migrates onto
- * `<OkFileTree>`: the custom markdown glyph sprite, the generic
- * lucide-sprite helpers, the read-only `unsafeCSS` base (colored-icon color
- * rule + indent guides + sticky headers + extension badges), and the
- * `useFileTree` options builder that produces the generic option slice.
+ * module holds the reusable pieces. The read-only `unsafeCSS` base (see
+ * `OK_FILE_TREE_READONLY_UNSAFE_CSS` below) is already shared by both trees. The
+ * custom markdown glyph sprite, the generic lucide-sprite helpers, and the
+ * `useFileTree` options builder that produces the generic option slice are what
+ * the main Files tree (`FileTree.tsx`, still on its own inline Pierre mount)
+ * picks up when it migrates onto `<OkFileTree>`.
  *
  * Kept free of React and Lingui macros (like `file-tree-density.ts`) so it stays
  * unit-testable without pulling in the editor build graph.
@@ -100,12 +100,40 @@ export const FILE_TREE_USER_NAME_DIRECTION_CSS = `
 `;
 
 /**
- * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
- * badges + indent guides + sticky headers + per-name writing direction. This is
- * everything a NON-editing tree needs. The main tree extends this with its
- * rename / drop / creation CSS.
+ * Pierre paints the marker from `@container measure (height > 1lh)` against a
+ * size container on `[data-truncate-marker-cell]`. Blink can round a fitting
+ * line just above `1lh` at fractional zoom, while real overflow wraps the
+ * measured copy to at least `2lh`, so `1.5lh` separates the two cases.
+ *
+ * Re-declare Pierre's own `opacity` lever rather than reaching for a different
+ * property: the guard stays a same-property override of the base rule and
+ * degrades to a dead selector if that rule goes away. This works around
+ * pierrecomputer/pierre#816. An unmerged upstream rewrite,
+ * pierrecomputer/pierre#939, would replace the private marker mechanism with
+ * native text overflow; if a version of it ships, delete this guard rather
+ * than re-tuning its threshold.
  */
-export const OK_FILE_TREE_READONLY_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
+export const FILE_TREE_FRACTIONAL_ZOOM_TRUNCATION_GUARD_CSS = `
+  @container measure (height <= 1.5lh) {
+    [data-truncate-marker] {
+      opacity: 0;
+    }
+  }
+`;
+
+/**
+ * The read-only-safe `unsafeCSS` base: colored-icon selected-fg rule + extension
+ * badges + indent guides + sticky headers + per-name writing direction + the
+ * fractional-zoom truncation guard. This is everything a NON-editing tree
+ * needs. The main tree extends this with its own editing and validation CSS.
+ */
+export const OK_FILE_TREE_READONLY_UNSAFE_CSS = [
+  FILE_TREE_EXT_BADGE_CSS,
+  FILE_TREE_INDENT_GUIDE_CSS,
+  FILE_TREE_STICKY_HEADER_CSS,
+  FILE_TREE_USER_NAME_DIRECTION_CSS,
+  FILE_TREE_FRACTIONAL_ZOOM_TRUNCATION_GUARD_CSS,
+].join('\n');
 
 export interface OkFileTreeOptionsInput {
   readonly paths: readonly string[];

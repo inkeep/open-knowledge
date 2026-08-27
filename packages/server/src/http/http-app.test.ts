@@ -1,11 +1,14 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { describe, expect, test } from 'vitest';
+import { rawRequest } from '../composition-rig.test-helper.ts';
+import { buildIngressPolicy } from '../ingress-policy.ts';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
 import {
   assertSingleRouterOwnership,
   type CreateHttpAppOptions,
   createHttpApp,
 } from './http-app.ts';
+import { createMcpDispatch } from './mcp-route.ts';
 
 /**
  * Adapter-boundary pins the composition suite cannot see: these assert
@@ -22,12 +25,22 @@ const fakeLog = {
   child: () => fakeLog,
 } as never;
 
-async function serveWith(legacyDispatch: CreateHttpAppOptions['legacyDispatch']) {
-  const { requestListener } = createHttpApp({ legacyDispatch, log: fakeLog });
+async function serveWith(
+  legacyDispatch: CreateHttpAppOptions['legacyDispatch'],
+  mcpDispatch?: CreateHttpAppOptions['mcpDispatch'],
+  ingressPolicy?: CreateHttpAppOptions['ingressPolicy'],
+) {
+  const { requestListener } = createHttpApp({
+    legacyDispatch,
+    mcpDispatch,
+    ingressPolicy,
+    log: fakeLog,
+  });
   const server = createServer(requestListener);
   const { baseUrl } = await listenOnLoopback(server);
   return {
     baseUrl,
+    port: Number(new URL(baseUrl).port),
     close: () =>
       new Promise<void>((resolvePromise, reject) => {
         server.close((err) => (err ? reject(err) : resolvePromise()));
@@ -86,6 +99,95 @@ describe('createHttpApp adapter boundary', () => {
       });
       expect(res.status).toBe(200);
       expect(await res.text()).toBe('');
+    } finally {
+      await rig.close();
+    }
+  });
+});
+
+describe('createHttpApp native /mcp mount', () => {
+  // ONE policy object for both the dispatch closure and createHttpApp —
+  // the leg's gates and the surface prelude are two layers of one admission
+  // decision (see createMcpDispatch's docblock), and the rig models that.
+  const policy = buildIngressPolicy({});
+
+  function mcpDispatchOver(handle: (req: IncomingMessage, res: ServerResponse) => Promise<void>) {
+    return createMcpDispatch({ handle, close: async () => {} }, policy, fakeLog);
+  }
+
+  test('/mcp serves from the native route with zero legacy-dispatch involvement', async () => {
+    let legacyCalls = 0;
+    let handled = 0;
+    const dispatch = mcpDispatchOver(async (_req, res) => {
+      handled += 1;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{}');
+    });
+    const rig = await serveWith(
+      (_req, res) => {
+        legacyCalls += 1;
+        res.writeHead(204);
+        res.end();
+      },
+      dispatch,
+      policy,
+    );
+    try {
+      const res = await fetch(`${rig.baseUrl}/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      expect(res.status).toBe(200);
+      expect(handled).toBe(1);
+      expect(legacyCalls).toBe(0);
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('a Hono-normalized alias of /mcp falls through to the legacy dispatch', async () => {
+    // `/./mcp` normalizes to `/mcp` inside the router, but the raw URL is what
+    // the legacy dispatch always matched — the alias must keep its historical
+    // legacy-dispatch answer instead of reaching the MCP handler.
+    let handled = 0;
+    let legacyUrl: string | undefined;
+    const dispatch = mcpDispatchOver(async (_req, res) => {
+      handled += 1;
+      res.writeHead(200);
+      res.end();
+    });
+    const rig = await serveWith(
+      (req, res) => {
+        legacyUrl = req.url;
+        res.writeHead(404);
+        res.end();
+      },
+      dispatch,
+      policy,
+    );
+    try {
+      // fetch normalizes dot segments client-side; drive the raw path.
+      const res = await rawRequest(rig.port, '/./mcp', { method: 'POST' });
+      expect(res.status).toBe(404);
+      expect(handled).toBe(0);
+      expect(legacyUrl).toBe('/./mcp');
+    } finally {
+      await rig.close();
+    }
+  });
+
+  test('without an MCP handler /mcp falls through the strangler catch-all', async () => {
+    let legacyUrl: string | undefined;
+    const rig = await serveWith((req, res) => {
+      legacyUrl = req.url;
+      res.writeHead(404);
+      res.end();
+    });
+    try {
+      const res = await fetch(`${rig.baseUrl}/mcp`, { method: 'POST' });
+      expect(res.status).toBe(404);
+      expect(legacyUrl).toBe('/mcp');
     } finally {
       await rig.close();
     }

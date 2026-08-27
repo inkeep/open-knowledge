@@ -34,7 +34,13 @@ import type {
   WorktreeCreateResult,
   WorktreeListResult,
 } from '@inkeep/open-knowledge-core';
-import { contextBridge, type IpcRendererEvent, ipcRenderer, webUtils } from 'electron';
+import {
+  contextBridge,
+  crashReporter,
+  type IpcRendererEvent,
+  ipcRenderer,
+  webUtils,
+} from 'electron';
 import type {
   OkChromeColors,
   OkDesktopBridge,
@@ -64,6 +70,10 @@ import type {
   OkUpdateStuckHintInfo,
   OkWhatsNewInfo,
 } from '../shared/bridge-contract.ts';
+import {
+  DISPLAY_LOCK_CRASH_KEY,
+  DISPLAY_LOCK_CRASH_KEY_MAX_BYTES,
+} from '../shared/display-lock-crash-key.ts';
 import type {
   IntegrationsSetResult,
   IntegrationsStatus,
@@ -1108,6 +1118,23 @@ const bridge: OkDesktopBridge = {
   getPathForFile: (file) => {
     const path = webUtils.getPathForFile(file);
     return path === '' ? null : path;
+  },
+
+  // Renderer-side call (no IPC) because Crashpad annotations are per-process:
+  // the same call from main would annotate main's dumps, never the renderer
+  // dump a display-lock crash produces. `crashReporter` is one of the six
+  // Electron renderer modules a sandboxed preload may import, so this stays
+  // inside the sandbox budget.
+  setDisplayLockCrashKey: (state) => {
+    // Crashpad truncates an over-long value silently, and a truncated reading
+    // in a dump is worse than none: it still parses, so triage would trust it.
+    // Drop instead. Measured in BYTES via `TextEncoder` rather than in string
+    // length, which would undercount anything non-ASCII — and via TextEncoder
+    // rather than `Buffer`, because that is a renderer standard here while
+    // `Buffer` in a sandboxed preload is a Node polyfill this file otherwise
+    // never leans on.
+    if (new TextEncoder().encode(state).length > DISPLAY_LOCK_CRASH_KEY_MAX_BYTES) return;
+    crashReporter.addExtraParameter(DISPLAY_LOCK_CRASH_KEY, state);
   },
 };
 

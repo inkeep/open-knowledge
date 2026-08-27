@@ -2,7 +2,9 @@
  * Error-envelope coverage meta-test — fail-on-any-occurrence mode.
  *
  * Mirrors the precedent #20 / `attribution-sweep-coverage.test.ts` style:
- * static AST scan over `packages/server/src/api-extension.ts` enforcing that
+ * static source scan over `api-extension.ts` plus every lifted handler source
+ * (`skills-sh-handlers.ts`, `http/*-routes.ts` — see `HANDLER_SOURCES`),
+ * enforcing that
  *
  *   1. Every handler emits errors via `errorResponse(...)` and never via an
  *      inline `json(res, NNN, { ok: false, ... })` envelope.
@@ -19,11 +21,16 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  extractRouteHandlerNames,
+  HANDLER_RUN_END_NEEDLES,
+  listNativeRouteFiles,
+} from '../native-route-files.test-helper.ts';
 
 const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
 /**
- * Route handlers do not all live in one file: the six skills.sh handlers sit in
- * `skills-sh-handlers.ts`, built by a factory the route table destructures. Every
+ * Route handlers do not all live in one file: the seven skills.sh handlers sit in
+ * `skills-sh-handlers.ts`, whose record lives in `skills-sh-routes.ts`. Every
  * scan below runs over each source, because a handler that moves out of
  * `api-extension.ts` would otherwise escape these rules silently rather than
  * failing anything.
@@ -31,42 +38,25 @@ const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
 const HANDLER_SOURCES = [
   'api-extension.ts',
   'skills-sh-handlers.ts',
-  'http/link-graph-routes.ts',
-  'http/metrics-routes.ts',
-  'http/document-routes.ts',
-  'http/config-system-routes.ts',
-  'http/lint-routes.ts',
-  'http/history-routes.ts',
-  'http/skills-read-routes.ts',
+  ...listNativeRouteFiles(SERVER_SRC),
 ].map((file) => ({
   file,
   text: readFileSync(join(SERVER_SRC, file), 'utf8'),
 }));
 /** The shared success spine lives in `api-extension.ts` only (fallback owner
- * for `extractHandlerBody`). Route-table records, by contrast, now live in
- * `api-extension.ts` AND each native group file — see
- * `extractRouteTableHandlerNames`. */
+ * for `extractHandlerBody`). Route records, by contrast, now live in
+ * `api-extension.ts` AND each native group file, in any sanctioned
+ * declaration shape — see `extractRouteRecordHandlerNames`. */
 const source = HANDLER_SOURCES[0]?.text ?? '';
 
 /**
  * Every `'/api/…': handle<X>` binding across all handler sources — the legacy
- * dispatch record in `api-extension.ts` AND each native group's own `const
- * routes:` record. Mirrors `attribution-sweep-coverage.test.ts` /
- * `conflict-gate-coverage.test.ts`'s `extractStaticRouteHandlerNames`: bound
- * each record on the `if (enableTestRoutes)` block (api-extension) or the
- * group file's `const table` so the table's `resolve`/`dispatch` bindings are
- * not scooped up.
+ * dispatch record in `api-extension.ts` AND each native group's route record
+ * in every declaration shape the helper sanctions (shared extractor:
+ * `native-route-files.test-helper.ts`).
  */
-function extractRouteTableHandlerNames(): string[] {
-  return HANDLER_SOURCES.flatMap(({ text }) => {
-    const routesStart = text.indexOf('\n  const routes:');
-    if (routesStart === -1) return [];
-    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
-    const nativeTable = text.indexOf('\n  const table', routesStart);
-    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
-    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
-    return [...slice.matchAll(/:\s*(handle\w+)/g)].flatMap((m) => (m[1] ? [m[1]] : []));
-  });
+function extractRouteRecordHandlerNames(): string[] {
+  return HANDLER_SOURCES.flatMap(({ text }) => extractRouteHandlerNames(text));
 }
 
 function listAllHandlers(): string[] {
@@ -124,15 +114,15 @@ function extractHandlerBody(name: string): string | null {
   const searchFrom = innerIdx === -1 ? start + 1 : innerIdx + 1;
   const nextFn = owner.indexOf('\n  async function handle', searchFrom);
   const nextConst = owner.indexOf('\n  const handle', searchFrom);
-  // The last handler in the file has no successor — bound at the route table
-  // declaration `\n  const routes:` so we don't accidentally fold the
-  // onRequest extension (which itself uses `errorResponse(...)` for the
-  // /api/* Origin gate) into the prior handler's slice.
-  const nextRoutes = owner.indexOf('\n  const routes:', searchFrom);
-  // The factory module ends its handler run at the returned record instead of
-  // a route table, so bound on that too or the last handler swallows it.
+  // The last handler in the file has no successor — bound at the route
+  // record declaration (any sanctioned shape) so the module tail after the
+  // handler run — the record itself and the table plumbing — is never folded
+  // into the last handler's slice.
+  const nextRoutes = HANDLER_RUN_END_NEEDLES.map((needle) => owner.indexOf(needle, searchFrom));
+  // The factory module ends its handler run at the returned record instead,
+  // so bound on that too or the last handler swallows it.
   const nextReturn = owner.indexOf('\n  return {', searchFrom);
-  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
+  const candidates = [nextFn, nextConst, ...nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
   return owner.slice(start, next === -1 ? owner.length : next);
 }
@@ -249,20 +239,22 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
 
   test('handler discovery covers every entry in the route table (cross-check)', () => {
     // Stronger anti-vacuousness guard: every `'/api/<path>': handle<X>`
-    // entry in the route table at the bottom of `api-extension.ts` must
-    // resolve to a handler the discovery regex finds. A novel handler
+    // entry across the route records (the legacy dispatch record and each
+    // native group's own) must resolve to a handler the discovery regex
+    // finds. A novel handler
     // shape (e.g., `const handleFoo = someOtherWrapper(...)`) that the
     // baseline floor above happens to clear (because deletions elsewhere
     // offset the addition) would still trip this check, because the
-    // route-table entry references a handler name the regex would miss.
+    // route-record entry references a handler name the regex would miss.
     //
-    // The route-table block is the single source of truth for which
-    // handlers are HTTP-reachable; the meta-test's job is only valuable
-    // if every reachable handler is scanned.
-    const routeTableHandlerNames = extractRouteTableHandlerNames();
-    expect(routeTableHandlerNames.length).toBeGreaterThan(0);
+    // The route records — the legacy dispatch record plus each native
+    // group's own — are the source of truth for which handlers are
+    // HTTP-reachable; the meta-test's job is only valuable if every
+    // reachable handler is scanned.
+    const routeRecordHandlerNames = extractRouteRecordHandlerNames();
+    expect(routeRecordHandlerNames.length).toBeGreaterThan(0);
     const discovered = new Set(listAllHandlers());
-    const missingFromDiscovery = routeTableHandlerNames.filter(
+    const missingFromDiscovery = routeRecordHandlerNames.filter(
       (name): name is string => !!name && !discovered.has(name),
     );
     expect(missingFromDiscovery).toEqual([]);
@@ -385,8 +377,8 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
 
   test('zero inline { ok: false } envelopes in any handler source', () => {
     // Whole-file sweep: catches inline literals outside per-handler bodies
-    // (helper functions, the onRequest extension, route-table fallthroughs).
-    // The per-handler scan above bounds at the `\n  const routes:` declaration
+    // (helper functions, the onRequest extension, route-record fallthroughs).
+    // The per-handler scan above bounds at the route-record declaration
     // and would miss anything below; this assertion is the structural
     // backstop.
     const matches = HANDLER_SOURCES.flatMap((h) =>
@@ -429,8 +421,8 @@ describe('error envelope coverage (FR17, D36 a) — fail-on-any-occurrence', () 
     // schema-vs-server drift class is closed structurally at the wire
     // boundary. Whole-file sweep mirrors the `{ ok: false/true }` ratchets
     // above: catches inline literals outside per-handler bodies (helper
-    // functions, the route table, the onRequest extension). The per-handler
-    // scan above bounds at the `\n  const routes:` declaration and would
+    // functions, the route records, the onRequest extension). The per-handler
+    // scan above bounds at the route-record declaration and would
     // miss anything below; this assertion is the structural backstop.
     //
     // The inline `json()` helper itself was deleted — every

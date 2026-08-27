@@ -91,7 +91,8 @@ export default defineConfig({
   // (WebSocket EPIPE/ECONNRESET, transient CC1 broadcast jitter) to PR-red,
   // compounding the architectural CRDT fuzz/stress residual into an effective
   // ~22% PR-tier green rate on correct code. Persistent-flake detection runs
-  // as ad-hoc CI-log audits rather than a nightly sweep.
+  // daily in the e2e-stability workflow, which drives this same task at
+  // --repeat-each=3 --retries=0 so a flake surfaces as a real failure.
   retries: isCI ? 2 : 0,
   failOnFlakyTests: false,
   forbidOnly: isCI,

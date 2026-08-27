@@ -1,11 +1,13 @@
 /**
  * Attribution sweep meta-test — static analysis gate.
  *
- * Asserts: (1) every mutating POST handler in api-extension.ts threads
+ * Asserts: (1) every mutating POST handler — scanned over `api-extension.ts`
+ * plus every lifted handler source (`skills-sh-handlers.ts`,
+ * `http/*-routes.ts` — see `HANDLER_SOURCES`) — threads
  * identity at entry (via either `extractAgentIdentity` for agent-write
  * handlers or `extractActorIdentity` for rename + rollback); (2) no new
- * POST handler can be added to the route registry without being explicitly
- * tracked here; (3) `extract-actor-identity.ts` never reads body-supplied
+ * POST handler can be added to those sources' route records without being
+ * explicitly tracked here; (3) `extract-actor-identity.ts` never reads body-supplied
  * `principalId` — server's `getPrincipal()` is the sole source (HTTP body
  * is unauthenticated; structurally enforcing the trust boundary).
  */
@@ -13,29 +15,29 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  extractRouteHandlerNames,
+  HANDLER_RUN_END_NEEDLES,
+  listNativeRouteFiles,
+} from '../native-route-files.test-helper.ts';
 
 const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
 const source = readFileSync(API_EXT_PATH, 'utf8');
 /**
  * Handlers and route records no longer all live in `api-extension.ts`: lifted
  * groups (`skills-sh-handlers.ts`, and native Wave 2 groups like
- * `http/link-graph-routes.ts`, which carry their OWN `const routes:` record)
- * must stay inside the sweep, mirroring `error-envelope-coverage.test.ts` —
+ * `http/link-graph-routes.ts`, which carry their OWN route record in any
+ * sanctioned declaration shape) must stay inside the sweep, mirroring
+ * `error-envelope-coverage.test.ts` —
  * otherwise a mutating handler added to a lifted file would ship without a
  * categorization decision.
  */
+const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
 const HANDLER_SOURCES = [
   source,
-  ...[
-    'skills-sh-handlers.ts',
-    'http/link-graph-routes.ts',
-    'http/metrics-routes.ts',
-    'http/document-routes.ts',
-    'http/config-system-routes.ts',
-    'http/lint-routes.ts',
-    'http/history-routes.ts',
-    'http/skills-read-routes.ts',
-  ].map((file) => readFileSync(join(import.meta.dirname, '../../../server/src', file), 'utf8')),
+  ...['skills-sh-handlers.ts', ...listNativeRouteFiles(SERVER_SRC)].map((file) =>
+    readFileSync(join(SERVER_SRC, file), 'utf8'),
+  ),
 ];
 const ACTOR_HELPER_PATH = join(
   import.meta.dirname,
@@ -488,29 +490,24 @@ function extractHandlerBody(handlerName: string): string | null {
   if (start === -1) return null;
   const nextFn = owner.indexOf('\n  async function handle', start + 1);
   const nextConst = owner.indexOf('\n  const handle', start + 1);
-  // Bound the last handler at the route table so the onRequest extension
-  // body (which uses `errorResponse(...)` for the /api/* Origin gate) is
-  // never folded into the handler slice. Factory modules end their handler
-  // run at the returned record instead, so bound on that too.
-  const nextRoutes = owner.indexOf('\n  const routes:', start + 1);
+  // Bound the last handler at the route-record declaration (any sanctioned
+  // shape) so the module tail after the handler run — the record itself and
+  // the table plumbing — is never folded into the last handler's slice.
+  // Factory modules end their handler run at the returned record instead,
+  // so bound on that too.
+  const nextRoutes = HANDLER_RUN_END_NEEDLES.map((needle) => owner.indexOf(needle, start + 1));
   const nextReturn = owner.indexOf('\n  return {', start + 1);
-  const candidates = [nextFn, nextConst, nextRoutes, nextReturn].filter((i) => i !== -1);
+  const candidates = [nextFn, nextConst, ...nextRoutes, nextReturn].filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
   return owner.slice(start, next === -1 ? owner.length : next);
 }
 
 function extractStaticRouteHandlerNames(): string[] {
-  // Every source's `const routes:` record participates — the legacy dispatch
-  // record in `api-extension.ts` AND each native group's own record.
-  return HANDLER_SOURCES.flatMap((text) => {
-    const routesStart = text.indexOf('\n  const routes:');
-    if (routesStart === -1) return [];
-    const enableTestRoutes = text.indexOf('\n  if (enableTestRoutes)', routesStart);
-    const nativeTable = text.indexOf('\n  const table', routesStart);
-    const bounds = [enableTestRoutes, nativeTable].filter((i) => i !== -1);
-    const slice = text.slice(routesStart, bounds.length === 0 ? text.length : Math.min(...bounds));
-    return [...slice.matchAll(/:\s*(handle\w+)/g)].map((m) => m[1]);
-  });
+  // Every source's route record participates — the legacy dispatch record in
+  // `api-extension.ts` AND each native group's record in every declaration
+  // shape the helper sanctions (shared extractor:
+  // `native-route-files.test-helper.ts`).
+  return HANDLER_SOURCES.flatMap((text) => extractRouteHandlerNames(text));
 }
 
 describe('attribution sweep coverage (FR-5, D42)', () => {

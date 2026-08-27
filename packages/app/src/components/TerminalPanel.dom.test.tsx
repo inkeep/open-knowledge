@@ -454,6 +454,11 @@ describe('TerminalPanel', () => {
     // main-process test pins on the producing side.
     expect(lastTerm?.write).toHaveBeenCalledWith('REPLAYED-SCREEN-BYTES');
     expect(terminal.create).not.toHaveBeenCalled();
+    // Replayed bytes are output, so the pending notice must clear. Without the
+    // markFirstOutput() call on this path a reload-recovered terminal would sit
+    // under a permanent "Starting terminal…" over already-restored content until
+    // the shell happened to emit a fresh byte.
+    expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
   test('reload rehydration: a refused adopt (session died in the gap) falls through to a fresh create', async () => {
@@ -562,6 +567,63 @@ describe('TerminalPanel', () => {
     expect(lastTerm?.write).toHaveBeenCalledTimes(1);
     expect(lastTerm?.write.mock.calls[0]?.[0]).toBe(payload);
     expect(terminal.drain).toHaveBeenCalledWith('pty-1', payload.length);
+  });
+
+  test('says the terminal is starting until the first shell byte, then gets out of the way (PRD-8313)', async () => {
+    const { bridge, terminal, pushData } = makeBridge({ ok: true, ptyId: 'pty-1' });
+    render(<TerminalPanel bridge={bridge} />);
+
+    // Attached — a ptyId came back, so the status machine already reads
+    // 'running'. But the PTY host still has to fork and the login shell still
+    // has to source its rc chain, and until a byte arrives the pane is empty.
+    // This is the window the user reads as "my keystroke did nothing".
+    await waitFor(() => expect(terminal.onData).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('terminal-starting-notice')).toBeTruthy();
+
+    act(() => pushData({ ptyId: 'pty-1', data: '$ ' }));
+
+    // The shell is talking; the notice must not sit on top of live output.
+    expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
+  });
+
+  test('the starting notice never covers or click-blocks the readiness banner (PRD-8313)', async () => {
+    const { bridge, pushData } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      { claude: 'present', mcp: 'needs-rewire' },
+    );
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
+
+    // The readiness verdict is resolved BEFORE create() returns a ptyId, so a
+    // banner-bearing launch always has the banner mounted for the whole
+    // pre-first-byte window. The two coexist by construction, not by race.
+    const banner = await screen.findByTestId('terminal-readiness-banner');
+    const notice = screen.getByTestId('terminal-starting-notice');
+
+    // jsdom has no layout engine, so occlusion itself cannot be measured here
+    // (a click on a covered button still "succeeds"). What it can pin are the
+    // two properties whose absence caused it. First: the overlay's CONTAINING
+    // BLOCK — the positioned ancestor `inset-0` resolves against — must not span
+    // the banner. Asserting on the notice itself would be a tautology, since the
+    // broken tree had banner and notice as SIBLINGS: the occlusion never came
+    // from nesting, it came from the containing block being the whole column.
+    const containingBlock = notice.parentElement;
+    expect(containingBlock).not.toBeNull();
+    expect(containingBlock?.contains(banner)).toBe(false);
+    // ...and it must actually BE the containing block. Without this, dropping
+    // `relative` from the canvas wrapper re-resolves `inset-0` against the
+    // column wrapper one level up — which spans the banner strips — while
+    // `parentElement` still points at the now-unpositioned canvas box and every
+    // other assertion here stays green. That is the column-wide overlay
+    // occlusion this test exists to kill, reachable by deleting one class.
+    // Token match, not substring: `sm:relative` would satisfy `toContain` while
+    // leaving the wrapper unpositioned below the breakpoint.
+    expect(containingBlock?.className.split(/\s+/)).toContain('relative');
+    // Second: even where it does overlay, it must not intercept pointer events.
+    expect(notice.className).toContain('pointer-events-none');
+    expect(screen.getByRole('button', { name: 'Connect tools' })).toBeTruthy();
+
+    act(() => pushData({ ptyId: 'pty-1', data: '$ ' }));
+    expect(screen.queryByTestId('terminal-starting-notice')).toBeNull();
   });
 
   test('forwards user keystrokes to the PTY via input', async () => {
@@ -1390,7 +1452,7 @@ describe('TerminalPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect tools' }));
     expect(rewireClaudeMcp).toHaveBeenCalledTimes(1);
     // The banner hands off to the consent dialog and dismisses itself.
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull());
   });
 
   test('a claude launch shows no readiness banner when claude is present and OK tools are wired', async () => {
@@ -1401,7 +1463,7 @@ describe('TerminalPanel', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
   });
 
   test('the readiness banner is dismissible', async () => {

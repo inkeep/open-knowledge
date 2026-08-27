@@ -1431,17 +1431,17 @@ describe('cross-project storage-key isolation', () => {
   });
 
   test('an empty namespace is scoped, not treated as a web host', () => {
-    // `''` reaches the pool when an Electron host resolves a workspace with
-    // no contentDir — a broken config. It must not fall through to the
-    // app-wide key that correctly-configured windows would then share.
+    // `''` is what a window opened WITHOUT a project reports (the preload
+    // defaults `projectPath` to `''`). It must not fall through to the
+    // app-wide key that project windows would then share.
     const { stub, store } = makeStubStorage();
-    const broken = new ProviderPool(3, DUMMY_WS, { storage: stub, storageNamespace: '' });
+    const projectless = new ProviderPool(3, DUMMY_WS, { storage: stub, storageNamespace: '' });
     try {
-      broken.setObservedBranch('main');
+      projectless.setObservedBranch('main');
       expect(store.has('ok-last-observed-branch')).toBe(false);
       expect(store.get('ok-last-observed-branch:811c9dc5')).toBe('main');
     } finally {
-      broken.dispose();
+      projectless.dispose();
     }
   });
 

@@ -79,16 +79,8 @@ import {
   treePathToAppPath,
   uploadedPathForSidebarDrop,
 } from '@/components/file-tree-adapter';
-import {
-  createFileTreeStyle,
-  FILE_TREE_DENSITY_OPTIONS,
-  FILE_TREE_INDENT_GUIDE_CSS,
-  FILE_TREE_STICKY_HEADER_CSS,
-} from '@/components/file-tree-density';
-import {
-  applyExtensionBadges,
-  FILE_TREE_EXT_BADGE_CSS,
-} from '@/components/file-tree-extension-badge';
+import { createFileTreeStyle, FILE_TREE_DENSITY_OPTIONS } from '@/components/file-tree-density';
+import { applyExtensionBadges } from '@/components/file-tree-extension-badge';
 import {
   AGENT_DECORATION_ICON_ID,
   EXCALIDRAW_FILE_ICON_ID,
@@ -145,7 +137,7 @@ import {
   resolveFileTreeSelection,
   resolveFileTreeSelectionAction,
 } from '@/components/file-tree-selection';
-import { FILE_TREE_USER_NAME_DIRECTION_CSS } from '@/components/file-tree-shared';
+import { OK_FILE_TREE_READONLY_UNSAFE_CSS } from '@/components/file-tree-shared';
 import { selectTrashConfirmCopy, trashTargetDisplayName } from '@/components/file-tree-trash-copy';
 import {
   classifyEmptyTree,
@@ -436,12 +428,14 @@ const FILE_TREE_CREATION_CLEARED_CSS = `
   }
 `;
 
-// Pierre's per-extension icon color (specificity 0,1,0 on the inner [data-icon-token]
-// element) wins over the inherited selected-fg color from the parent row, so the
-// markdown icon stays gray when its row is selected. The full styling block lives
-// alongside the badge-injection processor in file-tree-extension-badge.ts so the
-// CSS + DOM-mutation contract stays in one place.
-const FILE_TREE_UNSAFE_CSS = `${FILE_TREE_EXT_BADGE_CSS}\n${FILE_TREE_PROBLEM_CSS}\n${FILE_TREE_RENAME_INPUT_CSS}\n${FILE_TREE_ROOT_DROP_CSS}\n${FILE_TREE_EXTERNAL_FILE_DROP_CSS}\n${FILE_TREE_CREATION_CLEARED_CSS}\n${FILE_TREE_INDENT_GUIDE_CSS}\n${FILE_TREE_STICKY_HEADER_CSS}\n${FILE_TREE_USER_NAME_DIRECTION_CSS}`;
+const FILE_TREE_UNSAFE_CSS = [
+  OK_FILE_TREE_READONLY_UNSAFE_CSS,
+  FILE_TREE_PROBLEM_CSS,
+  FILE_TREE_RENAME_INPUT_CSS,
+  FILE_TREE_ROOT_DROP_CSS,
+  FILE_TREE_EXTERNAL_FILE_DROP_CSS,
+  FILE_TREE_CREATION_CLEARED_CSS,
+].join('\n');
 
 interface PendingCreate {
   kind: 'file' | 'folder';

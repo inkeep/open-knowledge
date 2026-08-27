@@ -1,6 +1,12 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
-import { computeBodyStats, type DocumentStats, EMPTY_STATS } from '@/lib/document-stats';
+import {
+  computeBodyStats,
+  computePlainTextStats,
+  type DocumentStats,
+  EMPTY_STATS,
+} from '@/lib/document-stats';
 
 /**
  * Debounce window for recomputing stats. Observers fire on every Y.Text
@@ -22,12 +28,15 @@ export function useDocumentStats(
     }
 
     const ytext = provider.document.getText('source');
+    const computeStats = isEditableTextDocFile(activeDocName)
+      ? computePlainTextStats
+      : computeBodyStats;
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
 
     function compute() {
       if (cancelled) return;
-      setStats(computeBodyStats(ytext.toString()));
+      setStats(computeStats(ytext.toString()));
     }
 
     compute();

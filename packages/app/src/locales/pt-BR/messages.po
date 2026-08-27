@@ -7868,6 +7868,10 @@ msgstr "Marcar todos os comentários para enviar"
 msgid "Markdown"
 msgstr "Markdown"
 
+#: src/components/ProblemsPanel.tsx
+msgid "Markdown checks do not apply to this file."
+msgstr "As verificações de Markdown não se aplicam a este arquivo."
+
 #: src/components/EditorModeToggle.tsx
 msgid "Markdown source"
 msgstr "Código markdown"
@@ -12542,6 +12546,10 @@ msgstr "Começando a clonagem"
 #: src/components/AuthModal.tsx
 msgid "Starting sign-in flow"
 msgstr "Iniciando o fluxo de login"
+
+#: src/components/TerminalStartingNotice.tsx
+msgid "Starting terminal…"
+msgstr "Iniciando terminal…"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting the agent…"
