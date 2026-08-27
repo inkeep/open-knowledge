@@ -12,7 +12,7 @@
  * stubbed verdict. Lingui macros resolve to the English-passthrough shim.
  */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -45,6 +45,21 @@ vi.doMock('../../components/InteractionPropPanel', () => ({
   InteractionPropPanel: ({ children }: { children: ReactNode }) => (
     <div data-testid="prop-panel">{children}</div>
   ),
+}));
+
+// The create-missing-page boundary. The real implementation writes a file;
+// the panel's contract is what it does with the name it gets back, so the mock
+// hands one straight to `onCreated`.
+let createdDocName = 'created/doc';
+vi.doMock('../../lib/create-page', () => ({
+  createPageFromSeedAndUpdate: async (
+    _seed: unknown,
+    options: { addPage: (d: string) => void; onCreated: (d: string) => void },
+  ) => {
+    options.addPage(createdDocName);
+    options.onCreated(createdDocName);
+    return { docName: createdDocName };
+  },
 }));
 
 vi.doMock('../../components/PageListContext', () => ({
@@ -93,6 +108,8 @@ async function renderPanel(target: string) {
   );
 }
 
+const { docNameFromHash } = await import('@/lib/doc-hash');
+
 function card(container: HTMLElement): HTMLElement | null {
   return container.querySelector('[data-slot="internal-doc-preview-card"]');
 }
@@ -123,5 +140,25 @@ describe('WikiLinkPropPanel — unresolved target keeps create-page, no card', (
     expect(card(container)).toBeNull();
     expect(container.querySelector('[data-slot="wiki-link-prop-panel-create"]')).toBeTruthy();
     expect(screen.getByText('Create page')).toBeTruthy();
+  });
+});
+
+describe('WikiLinkPropPanel — creating the missing page navigates to it', () => {
+  test('a created name carrying a `#` opens that doc, not a truncation of it', async () => {
+    // The writer here is the one the source lint rule cannot see: the rule
+    // catches a re-inlined `#/` prefix, not a builder called on the wrong value
+    // or an assignment dropped altogether. Asserted through the reader, so the
+    // test states the contract the user cares about.
+    createdDocName = 'ghost/# 2 - Tokens';
+    window.location.hash = '#/somewhere-else';
+    const { container } = await renderPanel('ghost/# 2 - Tokens');
+
+    const create = container.querySelector('[data-slot="wiki-link-prop-panel-create"]');
+    expect(create).toBeTruthy();
+    fireEvent.click(create as Element);
+
+    await waitFor(() => {
+      expect(docNameFromHash(window.location.hash)).toBe('ghost/# 2 - Tokens');
+    });
   });
 });

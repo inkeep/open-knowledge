@@ -5,6 +5,7 @@ import { CreatePageSuccessSchema } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { emitDocumentsChanged } from '@/lib/documents-events';
 import { parseServerResponse } from '@/lib/parse-server-response';
+import { hashFromDocName } from './doc-hash';
 
 /**
  * `POST /api/create-page` with the canonical response parse.
@@ -53,7 +54,7 @@ export async function createPageRequest(args: {
  * seed it into the page list optimistically, and fan out the change event.
  */
 export function openCreatedPage(docName: string, addPage: (docName: string) => void) {
-  window.location.hash = `#/${docName}`;
+  window.location.hash = hashFromDocName(docName);
   addPage(docName);
   emitDocumentsChanged(['files', 'backlinks', 'graph']);
 }

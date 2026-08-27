@@ -31,6 +31,7 @@ import { usePageList } from '@/components/PageListContext';
 import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
 import { openAgentDiff, setAgentDiffMax } from '@/lib/agent-diff-store';
+import { hashFromDocName } from '@/lib/doc-hash';
 import { closeTimelineDiff } from '@/lib/timeline-diff-store';
 import type { FileData } from '@/lib/use-activity-panel';
 import { useActivityPanel } from '@/lib/use-activity-panel';
@@ -67,15 +68,8 @@ async function postAgentUndo(body: {
 }
 
 // ---------------------------------------------------------------
-// `window.location.hash` helper — mirrors PresenceBar's navigateToDoc.
+// `window.location.hash` helper
 // ---------------------------------------------------------------
-
-function hashFromDocName(docName: string): string {
-  return `#/${docName
-    .split('/')
-    .map((part) => encodeURIComponent(part))
-    .join('/')}`;
-}
 
 function navigateToDoc(docName: string): void {
   if (typeof window === 'undefined') return;

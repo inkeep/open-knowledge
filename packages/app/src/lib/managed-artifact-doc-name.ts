@@ -3,10 +3,10 @@
  * (`__skill__/global/<name>`); a PROJECT skill is a content doc at its real path
  * (`.ok/skills/<name>/SKILL`). These are real CRDT doc names opened as ordinary
  * editor tabs, so they follow the SAME convention as document doc names: the
- * canonical key is the raw/decoded string. `hashFromDocName` builds the `#/…`
- * hash without encoding (the browser encodes the URL); `docNameFromHash` decodes
- * it back — so a builder that encoded here would round-trip to a different key
- * than the tab/provider uses.
+ * canonical key is the raw/decoded string. `hashFromDocName` percent-encodes
+ * that key per segment on the way into the hash and `docNameFromHash` decodes
+ * it back — so build the name here raw. Encoding it a second time here would
+ * round-trip to a different key than the tab/provider uses.
  *
  * Templates are content docs too — build their doc name with
  * `templateContentDocName` from `@inkeep/open-knowledge-core`, not here.

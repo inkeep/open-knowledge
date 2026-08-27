@@ -13,6 +13,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { type Components, defaultRemarkPlugins, Streamdown } from 'streamdown';
 import { codeHighlighter } from '@/lib/acp/code-highlighter';
 import { remarkHardBreaks } from '@/lib/acp/remark-hard-breaks';
+import { docNameFromHash } from '@/lib/doc-hash';
 import { remarkDocPathLinks } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 
@@ -31,7 +32,12 @@ function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode 
   const { t } = useLingui();
   const { href, children } = props;
   if (href?.startsWith('#/')) {
-    const docName = decodeDocNameFromHash(href);
+    // Parse with the canonical reader rather than a local slice. The href is
+    // percent-encoded by the time it lands here either way: `hashFromDocName`
+    // escapes what it builds, and the markdown renderer's URL sanitizer
+    // escapes whatever a hand-written link left unescaped. A reader that
+    // slices without decoding therefore shows the escapes to the user.
+    const docName = docNameFromHash(href) ?? href;
     return (
       <a
         href={href}
@@ -54,15 +60,6 @@ function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode 
       {children}
     </a>
   );
-}
-
-/** `#/<docName>[#anchor]` → `<docName>`. Mirrors `docNameFromHash`'s shape
- *  without pulling in its stricter validation — the href we're reading was
- *  built by `hashFromDocName` in the same render pass. */
-function decodeDocNameFromHash(hash: string): string {
-  const withoutPrefix = hash.slice(2);
-  const anchorAt = withoutPrefix.indexOf('#');
-  return anchorAt === -1 ? withoutPrefix : withoutPrefix.slice(0, anchorAt);
 }
 
 export function AgentMarkdown({ text }: { text: string }): ReactNode {

@@ -53,7 +53,7 @@ import {
 import { Input } from '../../components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '../../lib/create-page';
-import { hashFromAssetPath } from '../../lib/doc-hash';
+import { hashFromAssetPath, hashFromDocName } from '../../lib/doc-hash';
 import { cn } from '../../lib/utils';
 import { handleChipLinkClick, toInternalHashHref } from '../internal-link-helpers';
 import {
@@ -439,7 +439,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
         addPage,
         onCreated(docName) {
           updateMissingLinkTarget(docName);
-          window.location.hash = `#/${docName}`;
+          window.location.hash = hashFromDocName(docName);
           onClose();
         },
       });

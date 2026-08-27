@@ -5,9 +5,11 @@
  * that folder's page, and steps aside — letting @pierre/trees toggle the row —
  * only when the URL already points at that folder. That check compared
  * `window.location.hash` (which the browser percent-encodes) against
- * `hashFromFolderPath` (which emits the path raw), so for a name with a space
- * it was never true: every click was swallowed, and the folder could be
- * expanded but never collapsed. A space-free sibling is the control.
+ * `hashFromFolderPath`, which then emitted the path raw, so for a name with a
+ * space it was never true: every click was swallowed, and the folder could be
+ * expanded but never collapsed. The builder percent-encodes now, so the two
+ * agree directly; `isSameHash` still bridges hashes persisted by older builds.
+ * A space-free sibling is the control.
  */
 import { expect, resetContentToFixtureBaseline, test } from './_helpers';
 

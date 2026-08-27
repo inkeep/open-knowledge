@@ -48,9 +48,9 @@ const captured = {
 
 vi.doMock('@/components/doc-panel-events', () => ({ requestDocPanelTab: () => {} }));
 
-vi.doMock('@/lib/doc-hash', () => ({
-  hashFromDocName: (docName: string) => `#/${docName}`,
-}));
+// doc-hash is deliberately NOT stubbed: nothing here needs it isolated, only
+// present. A stub would be a second copy of the route-hash contract, and this
+// file asserts nothing about the hash.
 
 /** False models a scroller owned by a landing that does not yield. */
 let scrollAllowed = true;

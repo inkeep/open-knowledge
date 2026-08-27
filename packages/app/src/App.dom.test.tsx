@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { pushHashWithoutNavigation } from '@/lib/doc-hash';
+import { hashFromDocName, pushHashWithoutNavigation } from '@/lib/doc-hash';
 import { matchesKeyboardShortcut, type ShortcutEventLike } from '@/lib/keyboard-shortcuts';
 import {
   __resetLocalMenuActionBusForTests,
@@ -537,6 +537,35 @@ describe('App runtime wiring', () => {
         consumeActiveNewTab: true,
       });
     });
+  });
+
+  test('a document whose name contains a "#" opens instead of clearing the target', async () => {
+    const target: NavigationTarget = {
+      kind: 'doc',
+      target: '# 2 - Tokens',
+      docName: '# 2 - Tokens',
+    };
+    resolveNavigationTargetMock = vi.fn(() => target);
+    // Built, then round-tripped through the same URL normalization the browser
+    // applies on assignment. `#` is not in the fragment percent-encode set, so
+    // an unescaped one survives into `location.hash` and reads as the start of
+    // the anchor: the document resolves to nothing and the app clears the
+    // target, which opens a New Tab over the document the user asked for.
+    setHash(hashFromDocName('# 2 - Tokens'));
+
+    renderApp();
+
+    await waitFor(() => {
+      // Assert the docName the hash PARSED to, not just that something opened:
+      // the resolver mock answers unconditionally, so without this a fix that
+      // resolved the user to a different document would still pass.
+      expect(resolveNavigationTargetMock).toHaveBeenCalledWith('# 2 - Tokens', expect.anything());
+      expect(openTargetTransitionMock).toHaveBeenCalledWith(target, {
+        disposition: 'permanent',
+        consumeActiveNewTab: true,
+      });
+    });
+    expect(clearTargetMock).not.toHaveBeenCalled();
   });
 
   test('hash navigation keeps an open extension-qualified markdown tab exact', async () => {

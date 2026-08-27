@@ -340,6 +340,20 @@ The rule does NOT catch:
 
 Plugin: [`biome-plugins/no-physical-direction-utility.grit`](no-physical-direction-utility.grit). Fixture: [`biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx`](__fixtures__/no-physical-direction-utility.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts`](../packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
+### `no-raw-route-hash-construction.grit`
+
+Sole route-hash builder. [`packages/app/src/lib/doc-hash.ts`](../packages/app/src/lib/doc-hash.ts) owns the `#/` route prefix. Every other file in the app asks it for a hash — `hashFromDocName`, `hashFromFolderPath`, `hashFromAssetPath` or `encodeShareTargetForHash` — rather than joining a name onto the prefix itself.
+
+**Why.** A doc or folder name reaches the router through `window.location.hash`, and the WHATWG fragment percent-encode set does not include `#`, `?` or `%`. A hash built by hand therefore hands those characters to `docNameFromHash` as routing syntax: it reads the text before the first one, so a leading `#` yields null and the app opens a New Tab instead of the document, while a `#` mid-name resolves silently to a truncation. The rule is structural rather than a set of fixes because the prefix is trivially easy to spell, so hand-built copies accumulate faster than they are found, and each one fails silently: the link is still built, it just points somewhere else.
+
+**Scoped via `overrides[].plugins`** to `packages/app/src/**/*.{ts,tsx}`, with `!packages/app/src/lib/doc-hash.ts` (the sanctioned builder) and `!**/*.test.{ts,tsx}` (tests write expected hashes as literals) excluded. `packages/server` builds preview URLs through its own `encodeDocName` and is out of scope.
+
+Reading a hash is untouched: `hash.startsWith('#/')`, `hash === '#/'` and the bare `'#/'` content-root sentinel are comparisons, not constructions, and the fixture pins that they stay legal.
+
+The rule matches a node's own source text, so a comment, JSX text or a regex literal spelling the shape cannot trigger it — the fixture pins all three. The rule does NOT catch: the prefix behind a named constant (`const P = '#/'; P + name`), which needs dataflow and has no occurrence today; `name + '#/'`, the prefix on the right of a concatenation, which does not build a route hash; a helper that takes the prefix as a parameter; and the read side, where [`editor/internal-link-helpers.ts`](../packages/app/src/editor/internal-link-helpers.ts) still carries a hand-rolled parser — a different rule.
+
+Plugin: [`biome-plugins/no-raw-route-hash-construction.grit`](no-raw-route-hash-construction.grit). Fixture: [`biome-plugins/__fixtures__/no-raw-route-hash-construction.fixture.tsx`](__fixtures__/no-raw-route-hash-construction.fixture.tsx). Test: [`packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts`](../packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
 ### `no-demoted-dialog-confirm.grit`
 
 Dialog-footer emphasis hierarchy. A confirmation dialog's footer holds two actions, and the confirm has to outrank the dismiss. `secondary` is the one Button variant that draws no border and whose fill is imperceptible: `bg-secondary` sits within roughly 1.1:1 of the dialog surface in both light and dark, so the button reads as flat text rather than an action. Every other variant either fills with a contrasting color or draws a border, so `secondary` is the only one that can lose that contest with the `outline` Cancel standing beside it. A footer authored that way inverts the hierarchy: the escape action reads as the primary one, and the actual primary CTA reads as de-emphasized text. The rule flags a `DialogFooter` or `AlertDialogFooter` containing `variant="secondary"` and asks for `default` (or `destructive`, when the action is irreversible removal).

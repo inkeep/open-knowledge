@@ -35,10 +35,19 @@ describe('seedInitialDocHash', () => {
     expect(harness('todo', '#/').hash).toBe('#/todo');
   });
 
-  test('preserves a docName with a space (browser percent-encodes on assignment)', () => {
-    // `hashFromDocName` writes the raw name; the browser encodes it and
-    // `docNameFromHash` decodes per-segment, so the round-trip holds.
-    expect(harness('My Notes', '').hash).toBe('#/My Notes');
+  test('percent-encodes a docName with a space', () => {
+    // `setHash` here just records; in production it assigns
+    // `window.location.hash`. `hashFromDocName` encodes per segment and
+    // `docNameFromHash` decodes per segment, so the round-trip holds.
+    expect(harness('My Notes', '').hash).toBe('#/My%20Notes');
+  });
+
+  test('percent-encodes a docName containing a route metacharacter', () => {
+    // An ephemeral window opened on a `#`-named file seeds through this seam.
+    // Left raw, the `#` survives assignment (the browser does not escape it)
+    // and the parser reads it as the anchor delimiter, so the window opens on
+    // no document at all.
+    expect(harness('# 2 - Tokens', '').hash).toBe('#/%23%202%20-%20Tokens');
   });
 
   test('no-op when initialDoc is null (every non-ephemeral window)', () => {

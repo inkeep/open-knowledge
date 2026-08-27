@@ -26,6 +26,7 @@
 
 import type { ReactNode } from 'react';
 import { UserText } from '@/components/UserText';
+import { hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { cn } from '@/lib/utils';
 import {
@@ -33,20 +34,6 @@ import {
   type PropertyInlineSegment,
   tokenizePropertyInlineLinks,
 } from './property-inline-link-tokens';
-
-/**
- * Hash route a wikilink target points to. Matches the `navigateToDoc`
- * helpers in `ActivityModeContent.tsx`, `CommandPalette.tsx`, etc. —
- * one source of truth would be nice.
- */
-function hashFromTarget(target: string, anchor: string | null): string {
-  const docHash = target
-    .split('/')
-    .map((part) => encodeURIComponent(part))
-    .join('/');
-  const anchorSuffix = anchor ? `#${encodeURIComponent(anchor)}` : '';
-  return `#/${docHash}${anchorSuffix}`;
-}
 
 interface PropertyInlineLinksProps {
   text: string;
@@ -92,7 +79,7 @@ function renderSegment(seg: PropertyInlineSegment, index: number): ReactNode {
       return (
         <a
           key={key}
-          href={hashFromTarget(seg.target, seg.anchor)}
+          href={hashFromDocName(seg.target, seg.anchor)}
           data-testid="property-inline-wikilink"
           data-target={seg.target}
           title={seg.target}

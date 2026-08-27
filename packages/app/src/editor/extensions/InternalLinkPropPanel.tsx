@@ -52,6 +52,7 @@ import { Input } from '../../components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip';
 import { useConfigContext } from '../../lib/config-provider';
 import { type CreatePageSeed, createPageFromSeedAndUpdate } from '../../lib/create-page';
+import { hashFromDocName } from '../../lib/doc-hash';
 import { normalizeDocNameInput } from '../../lib/doc-paths';
 import { cn } from '../../lib/utils';
 import {
@@ -647,7 +648,7 @@ export function InternalLinkPropPanel({
         addPage,
         onCreated(docName) {
           updateMissingLinkHref(docName);
-          window.location.hash = `#/${docName}`;
+          window.location.hash = hashFromDocName(docName);
           onClose();
         },
       });

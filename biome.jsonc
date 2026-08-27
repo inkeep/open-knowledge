@@ -57,6 +57,25 @@
   },
   "overrides": [
     {
+      // Sole route-hash builder. `lib/doc-hash.ts` owns the `#/` prefix; every
+      // other file in the app asks it for a hash. Building one by hand emits
+      // the doc name unescaped, and the browser leaves `#`, `?` and `%` alone
+      // in a fragment, so the parser reads them as routing syntax and the
+      // navigation lands somewhere else. Excluded: `lib/doc-hash.ts` itself
+      // (the sanctioned site) and tests, which build expected hashes as
+      // literals. `packages/server` has its own `encodeDocName` for preview
+      // URLs and is out of scope.
+      "includes": [
+        "packages/app/src/**/*.ts",
+        "packages/app/src/**/*.tsx",
+        "!packages/app/src/lib/doc-hash.ts",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "biome-plugins/__fixtures__/no-raw-route-hash-construction.fixture.tsx"
+      ],
+      "plugins": ["./biome-plugins/no-raw-route-hash-construction.grit"]
+    },
+    {
       // Observer A origin discipline. Scoped to the one file that owns the
       // observer-cross-CRDT transact spine. Inside this file every
       // `doc.transact(fn, origin)` must pass `OBSERVER_SYNC_ORIGIN` as the
