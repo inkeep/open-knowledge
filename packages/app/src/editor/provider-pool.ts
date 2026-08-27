@@ -55,9 +55,17 @@ interface BufferedReplayUpdate {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array | null;
   /**
-   * The branch this buffer was captured under — the outbox key's first
-   * component. Captured rather than re-read at use time because the discard
-   * paths run AFTER a branch switch has already moved the observed branch.
+   * The branch this buffer was captured under — one component of the outbox
+   * key, alongside the project namespace and the docName. Deliberately not
+   * stated as an ordinal: `outboxDbName` composes those into a name whose
+   * project segment is absent for a null namespace, so the branch's position
+   * there moves by host.
+   *
+   * Captured rather than re-read at use time because a discard CAN run after
+   * a branch switch has already moved the observed branch — and
+   * `discardBufferedUpdate` keys its detached consume off this field for that
+   * reason. See its docblock for which discards those are, and for what the
+   * captured branch does and does not protect.
    */
   readonly branch: string;
   /**
@@ -2464,12 +2472,17 @@ export class ProviderPool {
       //
       // The consume is also the CROSS-TAB claim: tabs resolving the SAME
       // namespace share one `(namespace, branch, docName)` record, so losing
-      // the claim means another such tab has already CLAIMED this edit and
-      // owns whatever happens to it (consume-first, so that tab may still
-      // bail) — either way this one must stand down rather than apply on top.
-      // A window of a DIFFERENT project never contends for it. That covers
-      // both orders — the other tab consuming before we read (we never see a
-      // record) and after (we see one but cannot claim it).
+      // the claim usually means another such tab has already CLAIMED this
+      // edit and owns whatever happens to it (consume-first, so that tab may
+      // still bail). It can also mean a stale detached consume took the key
+      // and nobody owns the edit — `discardBufferedUpdate` documents that
+      // race. Stand down regardless: this caller cannot distinguish them, and
+      // applying against a real winner splices this tab's stale pre-recycle
+      // bytes back over the content just recovered — a silent revert, not a
+      // duplicate. A window of a
+      // DIFFERENT project never contends for it. That covers both orders —
+      // the other tab consuming before we read (we never see a record) and
+      // after (we see one but cannot claim it).
       //
       // Only attempt it when a durable record actually backs this replay. An
       // unconditional consume would, on a RAM-only buffer, throw its way into
@@ -3382,16 +3395,43 @@ export class ProviderPool {
   }
 
   /**
-   * Drop one doc's pending replay buffer on an INTENTIONAL discard (explicit
-   * close, LRU eviction, cross-branch invalidation) — RAM copy and durable
-   * mirror together.
+   * Drop one doc's pending replay buffer on an INTENTIONAL discard — RAM copy
+   * and durable mirror together. Two families of trigger, and the split is
+   * what the race note below turns on: those that follow a BRANCH MOVE (the
+   * cross-branch invalidation, and the replay path's own provenance fence when
+   * a buffer turns out to belong to another branch), and those on the branch
+   * still current (everything reaching here through `close()` — an explicit
+   * close, LRU eviction, the rename flow's close-and-clear).
    *
    * Dropping only the RAM copy would leave the outbox record behind as an
    * immortal orphan: a later open of the same doc reads it back and replays an
    * arbitrarily old edit, which is exactly the surprise `close()` and the
-   * cross-branch invalidation were each written to prevent. Fire-and-forget —
-   * both call sites are synchronous and the record is idempotent to consume —
-   * but a failure is reported, since it leaves a resurrectable edit behind.
+   * cross-branch invalidation were each written to prevent. The consume is
+   * detached (`void`) for every caller — none needs the result — and it always
+   * keys on `buffered.branch`, the branch captured WITH the buffer, never the
+   * branch now current. So a discard triggered by a branch move cannot reach a
+   * post-switch record: that record lives under a different key.
+   *
+   * The still-current-branch family has no such disjointness, and
+   * `consumeReplayOutboxEntry` claims the KEY rather than the record — so if
+   * the same doc is recaptured before a pending consume lands, that consume
+   * takes the NEW record, and the replay behind it then finds its claim gone
+   * and stands down, having ALREADY dropped its RAM copy. No tab owns the
+   * edit at that point, so it is lost, and reported as
+   * `claimed-by-another-tab`, which misnames both the cause and the outcome.
+   * Accepted on likelihood: the consume is three IDB hops even nominally (the
+   * `databases()` probe, the open, the claim transaction), and
+   * `withOutboxTimeout` only REJECTS at its deadline — it cannot abort the
+   * transaction — so a stalled one lands arbitrarily later. What keeps the
+   * race remote is the other leg. A record only ever appears under that key
+   * from `handleServerInstanceMismatch`, and every still-current-branch
+   * discard runs through `close()`, which destroys the POOL entry first (not
+   * the outbox record) — so the doc has to be REOPENED and hit a SECOND
+   * mismatch inside that window.
+   * Closing it properly means identifying the record (stamp a token at write,
+   * delete only on match) rather than trusting the key.
+   *
+   * A failure is still reported, since it leaves a resurrectable edit behind.
    *
    * Deliberately NOT called from `dispose()`: that is a pool-lifecycle end
    * (HMR remount, collab-URL swap, test teardown), not a user discard, and the
