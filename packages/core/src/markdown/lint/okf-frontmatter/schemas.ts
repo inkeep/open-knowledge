@@ -5,7 +5,7 @@ export const OKF_REQUIRED_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — required frontmatter',
   description:
-    'The OKF v0.2 conformance floor. A bundle is conformant when every non-reserved .md file contains a parseable YAML frontmatter block whose `type` is non-empty. This schema is the whole of that floor: a concept carrying only `type` is fully conformant. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#11-conformance',
+    'The OKF v0.2 conformance floor. A bundle is conformant when every non-reserved .md file contains a parseable YAML frontmatter block whose `type` is non-empty. This schema is the whole of that floor: a concept carrying only `type` is fully conformant. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#11-conformance',
   type: 'object',
   required: ['type'],
   properties: {
@@ -22,7 +22,7 @@ export const OKF_RECOMMENDED_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — recommended frontmatter',
   description:
-    'Shapes for the OKF v0.2 recommended keys. Every key here is optional, and nothing is constrained beyond the shape OKF states: declaring a key pins its YAML type when present (so `tags` written as a comma-separated string warns) and advertises it to agents at read time. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#41-frontmatter',
+    'Shapes for the OKF v0.2 recommended keys. Every key here is optional, and nothing is constrained beyond the shape OKF states: declaring a key pins its YAML type when present (so `tags` written as a comma-separated string warns) and advertises it to agents at read time. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#41-frontmatter',
   type: 'object',
   properties: {
     title: {
@@ -60,7 +60,7 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — provenance, trust, and lifecycle frontmatter',
   description:
-    'The optional OKF v0.2 families that make "where did this come from", "how much should I trust it", and "is it still current" answerable from frontmatter alone. Every key is optional, and absence carries meaning rather than being an error: a concept with no `verified` is unverified, and a consumer must not reject it. Only `sources[].resource` and `generated.by` are required-when-their-parent-is-present, because those are the two fields OKF marks REQUIRED in this family; every other field is described but not mandated, so nothing else is enforced. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#5-provenance-trust-and-lifecycle',
+    'The optional OKF v0.2 families that make "where did this come from", "how much should I trust it", and "is it still current" answerable from frontmatter alone. Every key is optional, and absence carries meaning rather than being an error: a concept with no `verified` is unverified, and a consumer must not reject it. Only `sources[].resource` and `generated.by` are required-when-their-parent-is-present, because those are the two fields OKF marks REQUIRED in this family; every other field is described but not mandated, so nothing else is enforced. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#5-provenance-trust-and-lifecycle',
   type: 'object',
   properties: {
     sources: {
@@ -97,9 +97,9 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
           },
           last_modified: {
             type: 'string',
-            format: 'date',
+            format: 'date-time',
             description:
-              'Optional credibility signal — a recency signal: when the source itself last changed, as `YYYY-MM-DD`. Distinct from `generated.at`, which records when the concept was written. OKF v0.2 §5.1.',
+              'Optional credibility signal — a recency signal: when the source itself last changed, as an ISO 8601 datetime with an explicit UTC offset (`2026-06-15T00:00:00Z`). Distinct from `generated.at`, which records when the concept was written. OKF v0.2 §5, §5.1.',
           },
           usage_window: {
             type: 'object',
@@ -108,15 +108,15 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
             properties: {
               from: {
                 type: 'string',
-                format: 'date',
+                format: 'date-time',
                 description:
-                  "Start of the window framing this entry's `usage_count`, as `YYYY-MM-DD`. OKF v0.2 §5.1.",
+                  "Start of the window framing this entry's `usage_count`, as an ISO 8601 datetime with an explicit UTC offset (`2026-06-01T00:00:00Z`). OKF v0.2 §5, §5.1.",
               },
               to: {
                 type: 'string',
-                format: 'date',
+                format: 'date-time',
                 description:
-                  "End of the window framing this entry's `usage_count`, as `YYYY-MM-DD`. OKF v0.2 §5.1.",
+                  "End of the window framing this entry's `usage_count`, as an ISO 8601 datetime with an explicit UTC offset (`2026-06-30T00:00:00Z`). OKF v0.2 §5, §5.1.",
               },
             },
           },
@@ -126,17 +126,19 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
     usage_window: {
       type: 'object',
       description:
-        'Written once as a sibling of `sources`, this frames every `usage_count` in the list with a `{ from, to }` date range. A single entry may carry its own `usage_window` to override it. OKF v0.2 §5.1.',
+        'Written once as a sibling of `sources`, this frames every `usage_count` in the list with a `{ from, to }` range. A single entry may carry its own `usage_window` to override it. OKF v0.2 §5, §5.1.',
       properties: {
         from: {
           type: 'string',
-          format: 'date',
-          description: 'Start of the shared usage window, as `YYYY-MM-DD`. OKF v0.2 §5.1.',
+          format: 'date-time',
+          description:
+            'Start of the shared usage window, as an ISO 8601 datetime with an explicit UTC offset (`2026-06-01T00:00:00Z`). OKF v0.2 §5, §5.1.',
         },
         to: {
           type: 'string',
-          format: 'date',
-          description: 'End of the shared usage window, as `YYYY-MM-DD`. OKF v0.2 §5.1.',
+          format: 'date-time',
+          description:
+            'End of the shared usage window, as an ISO 8601 datetime with an explicit UTC offset (`2026-06-30T00:00:00Z`). OKF v0.2 §5, §5.1.',
         },
       },
     },
@@ -155,7 +157,7 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
           type: 'string',
           format: 'date-time',
           description:
-            "An ISO 8601 datetime marking the content's last meaningful change. Consumers use it to tell a recent edit from a stale fact. Supersedes v0.1's top-level `timestamp`. OKF v0.2 §5.2, §13.1.",
+            "An ISO 8601 datetime with an explicit UTC offset (`2026-06-30T14:00:00Z`) marking the content's last meaningful change. Consumers use it to tell a recent edit from a stale fact. Supersedes v0.1's top-level `timestamp`. OKF v0.2 §5, §5.2, §13.1.",
         },
       },
     },
@@ -175,7 +177,8 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
             at: {
               type: 'string',
               format: 'date-time',
-              description: 'ISO 8601 datetime of the verification event. OKF v0.2 §5.2.',
+              description:
+                'An ISO 8601 datetime with an explicit UTC offset (`2026-07-01T09:00:00Z`) recording when the verification event happened. OKF v0.2 §5, §5.2.',
             },
           },
         },
@@ -194,7 +197,8 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
               at: {
                 type: 'string',
                 format: 'date-time',
-                description: 'ISO 8601 datetime of the verification event. OKF v0.2 §5.2.',
+                description:
+                  'An ISO 8601 datetime with an explicit UTC offset (`2026-07-01T09:00:00Z`) recording when the verification event happened. OKF v0.2 §5, §5.2.',
               },
             },
           },
@@ -208,9 +212,9 @@ export const OKF_PROVENANCE_SCHEMA: Record<string, unknown> = {
     },
     stale_after: {
       type: 'string',
-      format: 'date',
+      format: 'date-time',
       description:
-        'An absolute date, `YYYY-MM-DD`: the concept is stale when `today >= stale_after`. Absolute rather than a relative TTL so staleness stays a plain date comparison with no reference to when the concept was read. A date in the past is a freshness signal for consumers, not a violation. OKF v0.2 §5.5, §10.5.',
+        'An absolute instant, an ISO 8601 datetime with an explicit UTC offset (`2026-12-31T00:00:00Z`): the concept is stale when `now >= stale_after`. Absolute rather than a relative TTL so staleness stays a plain comparison with no reference to when the concept was read. An instant in the past is a freshness signal for consumers, not a violation. OKF v0.2 §5, §5.5, §10.5.',
     },
   },
 };
@@ -219,7 +223,7 @@ export const OKF_ATTESTED_COMPUTATION_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — Attested Computation frontmatter',
   description:
-    'Shapes for the OKF v0.2 computation keys, which turn a concept into a sanctioned way to compute a value so a consumer can confirm the agent ran the blessed computation instead of improvising its own. Provenance answers "where did this claim come from"; attestation answers "was this number produced the way we said it must be". This file also carries the one value-shaped rule in the pack: `runtime` is the single key OKF marks REQUIRED here, and only when `type` is `Attested Computation`. Ordinary concepts never match that condition and are unaffected, and no other key in the family is mandated. OKF records the computation and the means to check it and executes nothing itself; receipts and verdicts are runtime artifacts that are never stored in the bundle. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#10-attested-computations-concept',
+    'Shapes for the OKF v0.2 computation keys, which turn a concept into a sanctioned way to compute a value so a consumer can confirm the agent ran the blessed computation instead of improvising its own. Provenance answers "where did this claim come from"; attestation answers "was this number produced the way we said it must be". This file also carries the one value-shaped rule in the pack: `runtime` is the single key OKF marks REQUIRED here, and only when `type` is `Attested Computation`. Ordinary concepts never match that condition and are unaffected, and no other key in the family is mandated. OKF records the computation and the means to check it and executes nothing itself; receipts and verdicts are runtime artifacts that are never stored in the bundle. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#10-attested-computations-concept',
   type: 'object',
   if: {
     required: ['type'],
@@ -313,7 +317,7 @@ export const OKF_RESERVED_INDEX_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — index files carry no frontmatter',
   description:
-    "`index.md` is a reserved filename at any level of the hierarchy and must not be used for a concept document. Index files contain no frontmatter, with exactly one exception — a bundle-root `index.md` may carry `okf_version` — which the scope carves out with a `!index` exclusion rather than a keyword here. `maxProperties: 0` is the mechanism rather than the boolean schema `false`, because a document with no frontmatter block validates as `{}` and `false` would reject that too, flagging the very documents that are correct. `log.md` is deliberately NOT covered: §9 constrains a log's date headings, ordering, and prose entries but never its frontmatter, and OKF's own reference bundle ships a `log.md` carrying `type` and `title`. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#8-index-files",
+    "`index.md` is a reserved filename at any level of the hierarchy and must not be used for a concept document. Index files contain no frontmatter, with exactly one exception — a bundle-root `index.md` may carry `okf_version` — which the scope carves out with a `!index` exclusion rather than a keyword here. `maxProperties: 0` is the mechanism rather than the boolean schema `false`, because a document with no frontmatter block validates as `{}` and `false` would reject that too, flagging the very documents that are correct. `log.md` is deliberately NOT covered: §9 constrains a log's date headings, ordering, and prose entries but never its frontmatter, and OKF's own reference bundle ships a `log.md` carrying `type` and `title`. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#8-index-files",
   type: 'object',
   maxProperties: 0,
 };
@@ -322,7 +326,7 @@ export const OKF_ROOT_INDEX_SCHEMA: Record<string, unknown> = {
   $schema: 'http://json-schema.org/draft-07/schema#',
   title: 'OKF v0.2 — bundle-root index.md',
   description:
-    "The bundle-root `index.md` is the only index file OKF permits frontmatter in, and `okf_version` is the key it names there. OKF states the declaration as a MAY, so it is not required here. Nor is the frontmatter closed to other keys: §8 grants the exception for `okf_version` specifically, but §11 tells consumers not to reject a bundle over unknown additional keys, and that ambiguity is resolved in favor of the looser reading. The one thing pinned is the value's shape, because a YAML float is provably lossy where a version string is not. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md#12-versioning",
+    "The bundle-root `index.md` is the only index file OKF permits frontmatter in, and `okf_version` is the key it names there. OKF states the declaration as a MAY, so it is not required here. Nor is the frontmatter closed to other keys: §8 grants the exception for `okf_version` specifically, but §11 tells consumers not to reject a bundle over unknown additional keys, and that ambiguity is resolved in favor of the looser reading. The one thing pinned is the value's shape, because a YAML float is provably lossy where a version string is not. Section numbers cite OKF v0.2: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/ad30107c31c06aec8a7d5636e0d1058118604e6f/SPEC.md#12-versioning",
   type: 'object',
   properties: {
     okf_version: {

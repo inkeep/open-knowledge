@@ -4,7 +4,7 @@ icon: LuGlobe
 description: Keep a project portable to Google's Open Knowledge Format with advisory rules, agent-readable schemas, an optional index generator, and a companion skill.
 ---
 
-The **OKF** project plugin checks whether a knowledge base stays portable to [Google's Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) v0.2. Findings are advisory warnings and never block a save or an agent edit.
+The **OKF** project plugin checks whether a knowledge base stays portable to [Google's Open Knowledge Format](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) v0.2. Findings are advisory warnings and never block a save or an agent edit.
 
 <Callout>
   **Beta.** Off until a project enables it. The [Open Knowledge Format starter pack](/docs/workflows/supporting-open-knowledge-format) enables it while creating an OKF-ready bundle.
@@ -44,13 +44,23 @@ Every rule is on while the plugin is enabled unless you switch it off. Findings 
 | Document structure | `reserved-casing` | Flags reserved `Index.md` or `Log.md` filenames that are not lowercase |
 | Frontmatter | `frontmatter-required` | Requires a non-empty `type` on every non-reserved document |
 | Frontmatter | `frontmatter-recommended` | Validates the shape of optional `title`, `description`, `resource`, and `tags` fields |
-| Frontmatter | `frontmatter-provenance` | Validates optional `sources`, `generated`, `verified`, `status`, and `stale_after` metadata |
+| Frontmatter | `frontmatter-provenance` | Validates optional `sources`, `usage_window`, `generated`, `verified`, `status`, and `stale_after` metadata, including the [timestamp shape](#provenance-timestamps) |
 | Frontmatter | `frontmatter-computation` | Requires `runtime` on documents typed `Attested Computation` |
 | Frontmatter | `frontmatter-reserved-index` | Disallows frontmatter on `index.md`, except at the bundle root |
 | Frontmatter | `frontmatter-root-index` | Checks the bundle root's quoted `okf_version` value |
 | Project | `project-no-mdx` | Flags `.mdx` files because OKF consumers scan for `.md` |
 
 Reserved filenames match exactly and case-sensitively: `5-index.md` and `notes-log.md` are ordinary documents that need a `type`, and `reserved-casing` catches `Index.md` and `Log.md`.
+
+### Provenance timestamps
+
+Every timestamp-valued provenance key is an ISO 8601 datetime carrying an explicit UTC offset, not a calendar date: `stale_after: 2026-12-31T00:00:00Z`. That covers `generated.at`, each `verified[].at`, `stale_after`, each `sources[].last_modified`, and both bounds of a `usage_window`, whether the window is written beside `sources` or inside one entry.
+
+A datetime with no offset (`2026-12-31T00:00:00`) is flagged too, so adding a time is not enough on its own.
+
+Other OKF consumers may not agree yet. Upstream revised this part of the spec in place under the same v0.2 label, so a checker pinned to the earlier reading still expects a bare `YYYY-MM-DD` for `stale_after` and will flag a document written to the rule above. The declared `okf_version` is `0.2` under both readings, so it cannot tell them apart. Check the consumer you are targeting before treating either spelling as portable.
+
+Log entry headings are the exception, and they are governed by a different rule: `log.md` uses plain `YYYY-MM-DD`, checked by `log-shape`.
 
 ### Where rules run
 
