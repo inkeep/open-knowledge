@@ -7019,6 +7019,10 @@ msgstr "{0} 설치"
 msgid "Install {brand} →"
 msgstr "{brand} 설치 →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "여기에 먼저 스킬을 설치하세요"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7507,6 +7511,10 @@ msgstr "링크 그래프 응답 형식이 예상과 일치하지 않습니다."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "연결된 테마 파일은 지원되지 않습니다"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "연결하면 다른 폴더가 이 폴더로 병합됩니다. 이 폴더는 아직 없으므로 여기에 먼저 스킬을 설치하세요."
 
 #: src/components/DocPanel.tsx
 msgid "Links"

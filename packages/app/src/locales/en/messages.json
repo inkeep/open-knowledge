@@ -2051,6 +2051,9 @@
     "QLgdT6": ["any doc named ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["empty"],
+    "QP9OU3": [
+      "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+    ],
     "QPWyTw": ["Group skills by source"],
     "QQbwzK": ["No agents available."],
     "QQghPu": ["Install in Claude Desktop"],
@@ -3870,6 +3873,7 @@
     "mLAjyL": [
       "Give the AI tools you use access to read and update your projects. Checking a box sets it up right away; unchecking removes it."
     ],
+    "mPoOmg": ["install a skill here first"],
     "mPy9lS": [
       "Organize my existing specs into a linked index grouped by area, and flag any that have drifted out of sync with the current code."
     ],

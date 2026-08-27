@@ -25,6 +25,7 @@ import {
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
   estimateSkillCost,
+  HUB_READER_EDITORS,
   LEGACY_SKILL_STORE_ROOT,
   parseFrontmatterRecord,
   type SkillCostTiers,
@@ -230,11 +231,39 @@ export function standardSkillRoots(scope: SkillScope): ReadonlySet<string> {
  * Deliberately NOT folded into `knownSkillRootsFor`: cleanup paths
  * (`removableSkillOccurrenceDirs`, the reclaim sweeps) must keep seeing every
  * root, or a stray bundle under a since-removed dotdir becomes unreachable.
+ * The `.agents/skills` hub takes its activation from a DIFFERENT signal, not
+ * from an exemption. An agent-owned root activates when its own dotdir appears,
+ * because that dotdir is evidence its tool was installed. The hub has no owning
+ * tool, so nothing about the base could ever produce that evidence — which left
+ * it reachable only by typing the path into "Add custom path", i.e. offered
+ * only to people who already knew the answer.
+ *
+ * Its equivalent signal is a host that READS it being installed on this machine
+ * (`HUB_READER_EDITORS`: LM Studio reads `<project>/.agents/skills`, OpenClaw
+ * `~/.agents/skills`). With one present, `.agents` is a folder something here
+ * would actually read, so offering it is the same promise every other row makes.
+ * With none, it is a folder nothing would read, and it stays hidden — the hub is
+ * NOT unconditionally offered.
+ *
  * This gates what is OFFERED, never what is SEEN.
  */
-export function isActivatedSkillRoot(base: string, scope: SkillScope, root: string): boolean {
+export function isActivatedSkillRoot(
+  base: string,
+  scope: SkillScope,
+  root: string,
+  /** Where hub-reading tools are detected. Separate from `base` because a
+   *  project-scope hub reader is still a USER-level install. Required, not
+   *  defaulted: a `homedir()` fallback would let a caller silently bypass the
+   *  `homeDirOverride` seam and probe the real user home from a rig or embedded
+   *  host, and the failure mode is a wrong OFFER rather than an error. */
+  home: string,
+): boolean {
   if (!standardSkillRoots(scope).has(root)) return true;
-  return existsSync(join(base, skillRootActivationPath(root)));
+  if (existsSync(join(base, skillRootActivationPath(root)))) return true;
+  return (
+    root === AGENTS_SKILLS_ROOT &&
+    HUB_READER_EDITORS.some((r) => r.scope === scope && existsSync(join(home, r.dotDir)))
+  );
 }
 
 /**

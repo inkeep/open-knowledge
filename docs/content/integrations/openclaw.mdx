@@ -119,6 +119,12 @@ One practical constraint: a vendor cannot POST to `127.0.0.1`. Keep hook endpoin
 
 Write and edit responses include a route-only preview path like `/#/notes/mcp-round-trip` — a route id, **not** a full URL. Call `preview_url` for the openable browser address, and don't screenshot the preview to confirm an edit (the tool response is the confirmation). See [MCP reference → Preview links](/docs/reference/mcp#preview-links) for the full semantics.
 
+## Skill folder
+
+OpenClaw loads skills from `~/.agents/skills`, the shared folder several tools read rather than a `.openclaw/` directory of its own. OpenKnowledge now offers that folder as a skill destination whenever it can see OpenClaw installed, so it appears when you install a skill instead of having to type the path into **Add custom path**. It is also listed in **Settings → Skills → Folders**, though that row stays inert until the folder exists — folder linking merges one folder into another, which is not how it should first be created.
+
+It is offered as a destination only, not as a merge target, until the folder actually exists. Linking another tool's folder into a folder you do not have yet would create it and move your existing skills into it; OpenKnowledge does not do that on your behalf.
+
 ## Agent contract
 
 The **OpenKnowledge skill** — the authoritative agent contract for tool use, grounding, and linking — is project-scoped, written for Claude, Cursor, Codex, and OpenCode; OpenClaw has no project skill directory to receive it. The bundles OpenKnowledge installs to `~/.agents/skills/` (which OpenClaw loads) cover discovery and skill authoring, not tool use — so for OpenClaw agents, the contract is these two reminders:

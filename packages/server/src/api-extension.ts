@@ -572,6 +572,7 @@ import {
 } from './http/workspace-tools-routes.ts';
 import {
   aliasedSourceRoots,
+  isActivatedSkillRoot,
   removableSkillOccurrenceDirs,
   resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
@@ -13937,6 +13938,39 @@ export function createApiExtension(
         const globalInstallableEditors: string[] = detectUserSkillHosts(skillsHome).map(
           (h) => h.editorId,
         );
+        // Probed against `projectDir`, not `contentDir`, for the same reason the
+        // sibling gate above states: that is what `skillInstallBase('project')`
+        // resolves to, so this must ask about the base the install it gates will
+        // actually write into. They differ when `content.dir` names a subdir.
+        //
+        // ONE predicate, TWO bases — each consumer probes the base it writes
+        // into. The install menu consumes this flag and installs to
+        // `skillInstallBase('project')` = `projectDir`; the Folders surface and
+        // the folder verbs write under `contentDir` and probe that. The two
+        // coincide unless `content.dir` names a subdirectory of the project.
+        //
+        // Where they diverge, only the `HUB_READER_EDITORS` branch is
+        // base-independent, so the split is narrow: `<contentDir>/.agents`
+        // present with no reader installed and no `<projectDir>/.agents` gives
+        // Folders an `absent` hub row while the menu gets `hubOffered: false`.
+        // ACCEPTED rather than papered over — probing one base for both would
+        // make one of the two gates answer about a directory its own writes
+        // never touch, which is the failure the sibling comment above documents.
+        //
+        // What is NOT accepted is the old split: the menu keying off a skill
+        // ALREADY living under `.agents/`, so a reader-activated hub showed in
+        // Settings and was absent from the menu the docs pointed at — with the
+        // hub not a link target until it exists, that left no non-circular way
+        // to make the first placement.
+        const projectHubOffered: boolean = projectDir
+          ? isActivatedSkillRoot(projectDir, 'project', AGENTS_SKILLS_ROOT, skillsHome)
+          : false;
+        const globalHubOffered: boolean = isActivatedSkillRoot(
+          skillsHome,
+          'global',
+          AGENTS_SKILLS_ROOT,
+          skillsHome,
+        );
         const projectInstalled = projectDir ? readInstalledSkills(projectDir).skills : {};
         const globalInstalled = readInstalledSkills(skillsHome).skills;
         // Import provenance (project skills only — the global store is unversioned
@@ -14140,6 +14174,7 @@ export function createApiExtension(
                 hosts: [...s.hosts],
                 size: s.size,
                 installableEditors: projectInstallableEditors,
+                hubOffered: projectHubOffered,
                 ...(s.pack !== undefined ? { pack: s.pack } : {}),
                 ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
                 ...(Object.keys(projectAliases).length > 0 ? { hostAliases: projectAliases } : {}),
@@ -14216,6 +14251,7 @@ export function createApiExtension(
             ...(hostQualifier !== undefined ? { hostQualifier } : {}),
             size: s.size,
             installableEditors: globalInstallableEditors,
+            hubOffered: globalHubOffered,
             ...(s.pack !== undefined ? { pack: s.pack } : {}),
             ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
             ...(Object.keys(globalAliases).length > 0 ? { hostAliases: globalAliases } : {}),

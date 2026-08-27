@@ -5,7 +5,7 @@
  * configuration. This module encodes those differences declaratively so that
  * `init.ts` can loop over targets without per-editor branching.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, posix, resolve, sep, win32 } from 'node:path';
 import {
@@ -784,36 +784,84 @@ export function resolveAntigravityConfigPath(options: AppSupportOptions = {}): s
 /**
  * Candidate `mcp.json` locations for LM Studio, ordered so the first element is
  * the platform default when none exist yet. LM Studio's own docs say
- * `~/.lmstudio/mcp.json`, but on macOS the file actually lives at
- * `~/.cache/lm-studio/mcp.json` — a documented-vs-real mismatch that is still
- * open upstream (lmstudio-ai/lmstudio-bug-tracker#1371, seen through v0.3.33).
- * So we probe both rather than trust either, and default macOS to the observed
- * cache path (writing the documented path there would be a silent no-op LM
- * Studio never reads).
+ * `~/.lmstudio/mcp.json`; on macOS through v0.3.33 the file actually lived at
+ * `~/.cache/lm-studio/mcp.json` (lmstudio-ai/lmstudio-bug-tracker#1371). Verified
+ * on 0.4.21: the documented path is now the real one — a fresh install creates
+ * `~/.lmstudio/mcp.json` and no `~/.cache/lm-studio` at all.
+ *
+ * We still probe both, because an install upgraded from 0.3.x may hold a real
+ * `mcp.json` at the cache path. Step 1 (an existing FILE) is order-free, so that
+ * install keeps resolving there whatever this list says.
+ *
+ * Step 2 (an existing DIR) is where the two populations are genuinely ambiguous,
+ * and `~/.lmstudio` cannot discriminate them — BOTH old and new installs have
+ * it (the app creates it as the models home). So step 2 does not guess by
+ * platform: a `~/.cache/lm-studio` that holds anything is evidence of a real
+ * pre-0.3.34 cache home and wins; an EMPTY one is the upgrade leftover that made
+ * the old macOS-first ordering write a config 0.4.21 never reads, and loses.
+ * Only when neither discriminates does the documented path win.
  */
-function lmStudioConfigCandidates(home: string, platformName: NodeJS.Platform): string[] {
+interface LmStudioCandidate {
+  /** Absolute `mcp.json` path. */
+  readonly file: string;
+  /** Its parent dir, resolved with the SAME platform path API — never the
+   *  ambient `dirname`, which degenerates to `.` on a foreign-platform path and
+   *  silently makes the emptiness probe read the process cwd. */
+  readonly dir: string;
+}
+
+function lmStudioConfigCandidates(
+  home: string,
+  platformName: NodeJS.Platform,
+): [LmStudioCandidate, LmStudioCandidate] {
   const pathApi = pathApiForPlatform(platformName);
-  const dotDir = pathApi.join(home, '.lmstudio', 'mcp.json');
-  const cacheDir = pathApi.join(home, '.cache', 'lm-studio', 'mcp.json');
-  return platformName === 'darwin' ? [cacheDir, dotDir] : [dotDir, cacheDir];
+  return [
+    { file: pathApi.join(home, '.lmstudio', 'mcp.json'), dir: pathApi.join(home, '.lmstudio') },
+    {
+      file: pathApi.join(home, '.cache', 'lm-studio', 'mcp.json'),
+      dir: pathApi.join(home, '.cache', 'lm-studio'),
+    },
+  ];
+}
+
+/** True when `dir` exists AND holds at least one entry. An empty dir is the
+ *  upgrade leftover; a populated one is a real home. Unreadable → not evidence. */
+function isNonEmptyDir(dir: string): boolean {
+  try {
+    return readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Resolve LM Studio's user-global `mcp.json`. LM Studio is an MCP *host* that
  * follows Cursor's `mcp.json` notation, so OK's entry shape is identical to
- * Cursor's — only the (unstable, see {@link lmStudioConfigCandidates}) location
- * differs. Prefers an existing `mcp.json`, then an existing candidate dir, then
- * the platform default, so we write where LM Studio will actually read.
+ * Cursor's — only the location differs (see {@link lmStudioConfigCandidates}).
+ * Two tiers, not three, and the same on every platform: an existing `mcp.json`
+ * wins wherever it sits; otherwise a POPULATED `~/.cache/lm-studio` marks a real
+ * pre-0.3.34 home and wins; otherwise the documented path. There is deliberately
+ * no "some candidate dir exists" tier — it only ever differed by handing the win
+ * to an EMPTY cache home, which is the upgrade leftover the populated check
+ * exists to reject.
  */
 export function resolveLmStudioConfigPath(options: AppSupportOptions = {}): string {
   const platformName = options.platformName ?? process.platform;
   const home = options.home ?? homedir();
-  const candidates = lmStudioConfigCandidates(home, platformName);
-  const existingFile = candidates.find((candidate) => existsSync(candidate));
-  if (existingFile) return existingFile;
-  const existingDir = candidates.find((candidate) => existsSync(dirname(candidate)));
-  if (existingDir) return existingDir;
-  return candidates[0];
+  const [documented, cache] = lmStudioConfigCandidates(home, platformName);
+  const existingFile = [documented, cache].find((c) => existsSync(c.file));
+  if (existingFile) return existingFile.file;
+  // Step 2: only the CACHE home discriminates. `~/.lmstudio` exists on both
+  // populations (the app creates it as the models home), so an emptiness check
+  // there proves nothing — it is specifically a POPULATED `~/.cache/lm-studio`
+  // that marks a real pre-0.3.34 install. An empty one is the upgrade leftover.
+  if (isNonEmptyDir(cache.dir)) return cache.file;
+  // No step for "some dir exists": its ONLY behaviourally distinct outcome is
+  // `~/.lmstudio` absent + an EMPTY `~/.cache/lm-studio`, which would hand the
+  // win to the leftover the check above exists to reject. Every other input
+  // already resolves to the documented path. So the body reads as the rule does:
+  // existing file, then populated cache home, then documented.
+  return documented.file;
 }
 
 export interface EditorMcpTarget {

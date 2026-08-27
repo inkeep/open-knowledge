@@ -2062,6 +2062,9 @@
     "QLgdT6": ["dokumen mana pun bernama ", ["0"]],
     "QM3SBZ": ["Rencana (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["kosong"],
+    "QP9OU3": [
+      "Menautkan akan menggabungkan folder lain ke folder ini. Folder ini belum ada, jadi instal dulu sebuah skill di sini."
+    ],
     "QPWyTw": ["Kelompokkan keterampilan menurut sumber"],
     "QQbwzK": ["Tidak ada agen yang tersedia."],
     "QQghPu": ["Pasang di Claude Desktop"],
@@ -3899,6 +3902,7 @@
     "mLAjyL": [
       "Beri alat AI yang Anda pakai akses untuk membaca dan memperbarui proyek Anda. Mencentang kotak langsung menyiapkannya; melepas centang menghapusnya."
     ],
+    "mPoOmg": ["instal dulu sebuah skill di sini"],
     "mPy9lS": [
       "Tata spesifikasi saya yang sudah ada menjadi indeks tertaut yang dikelompokkan per bidang, dan tandai mana saja yang sudah tidak selaras dengan kode saat ini."
     ],

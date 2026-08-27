@@ -1,6 +1,10 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import type { SkillFolderLinkPreview, SkillScope } from '@inkeep/open-knowledge-core';
+import {
+  AGENTS_SKILLS_ROOT,
+  type SkillFolderLinkPreview,
+  type SkillScope,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -162,17 +166,37 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
             // still in the list" bug — picking it could only fail. Order is list
             // order: no name-based promotion of any root.
             //
-            // `absent` stays offerable, and only because the server now filters
-            // this list to roots whose agent home exists. So an absent row means
+            // `absent` stays offerable, and only because the server filters this
+            // list to roots whose agent home exists. So an absent row means
             // "`.claude` is here, `.claude/skills` is not yet" — linking it
             // creates a skills dir inside a dotdir the user already has, which is
             // squarely inside the consent boundary. Before that filter the same
             // disjunct offered `~/.copilot/skills` on a machine with no Copilot,
             // and accepting it created `~/.copilot` — after which OK's own
             // directory-based detection reported Copilot as installed.
+            //
+            // THE HUB IS THE ONE ROOT THAT BREAKS THAT PREMISE. `.agents/skills`
+            // is offered on a reader's presence (`HUB_READER_EDITORS`), so it can
+            // be `absent` on a base with no `.agents` at all — the agent-home
+            // guarantee above does not hold for it. A link does `mkdir` on either
+            // side and, in the merge-target direction, RENAMES the source's
+            // bundles into the target. Offering an absent hub as a target would
+            // therefore create a dotdir the user does not have AND relocate their
+            // existing skills into it, from a surface whose own copy promises it
+            // does not. So the hub is a destination, not a merge target, until it
+            // exists: `own` only. Once real, it behaves like any other root.
+            const isAbsentHub = (r: { root: string; state: string }): boolean =>
+              r.root === AGENTS_SKILLS_ROOT && r.state === 'absent';
             const targets = folders.filter(
-              (o) => o.root !== f.root && (o.state === 'own' || o.state === 'absent'),
+              (o) =>
+                o.root !== f.root && (o.state === 'own' || o.state === 'absent') && !isAbsentHub(o),
             );
+            // The row you act on is the merge TARGET — it survives and RECEIVES
+            // the picked folder's bundles. So an absent hub is excluded from BOTH
+            // roles, not just from the pick list: acting on it would create
+            // `.agents` and rename the picked folder's skills into it, which is
+            // precisely the consent boundary the comment above describes.
+            const canLink = (f.state === 'own' || f.state === 'absent') && !isAbsentHub(f);
             return (
               <li key={f.host} className="text-sm" data-testid={`skill-folder-row-${f.host}`}>
                 <div className="flex items-center gap-2">
@@ -202,7 +226,19 @@ export function SkillTargetsPicker({ scope }: { scope: SkillScope }) {
                       <Trans>symlinked via parent</Trans>
                     </span>
                   ) : null}
-                  {(f.state === 'own' || f.state === 'absent') && targets.length > 0 ? (
+                  {isAbsentHub(f) ? (
+                    // Without this the hub is the one row on the page with no
+                    // verb and no reason given — it reads as broken rather than
+                    // as deliberately destination-only. Says what to do instead.
+                    <span
+                      className="shrink-0 text-[10px] text-muted-foreground"
+                      title={t`Linking merges another folder into this one. This folder does not exist yet, so install a skill here first.`}
+                      data-testid="skill-folder-hub-destination-only"
+                    >
+                      <Trans>install a skill here first</Trans>
+                    </span>
+                  ) : null}
+                  {canLink && targets.length > 0 ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button

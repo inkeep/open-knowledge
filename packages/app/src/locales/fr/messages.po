@@ -7019,6 +7019,10 @@ msgstr "Installer {0}"
 msgid "Install {brand} →"
 msgstr "Installer {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "installez d'abord une compétence ici"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7507,6 +7511,10 @@ msgstr "La réponse du graphe de liens ne correspond pas à la forme attendue."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "Les fichiers de thème liés ne sont pas pris en charge"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "Lier fusionne un autre dossier dans celui-ci. Ce dossier n'existe pas encore, installez donc d'abord une compétence ici."
 
 #: src/components/DocPanel.tsx
 msgid "Links"

@@ -23,8 +23,10 @@
  * every `/api/*` request, so admission outcomes are identical either way.
  */
 
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
+  AGENTS_SKILLS_ROOT,
   EmptyRequestSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
@@ -416,7 +418,7 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
             folders: [
               ...(projectDir
                 ? scanSkillFolderStates(contentDir, knownSkillRootsFor(contentDir, 'project'))
-                    .filter((f) => isActivatedSkillRoot(contentDir, 'project', f.root))
+                    .filter((f) => isActivatedSkillRoot(contentDir, 'project', f.root, skillsHome))
                     .map((f) => ({
                       ...f,
                       scope: 'project' as const,
@@ -424,7 +426,7 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
                     }))
                 : []),
               ...scanSkillFolderStates(skillsHome, knownSkillRootsFor(skillsHome, 'global'))
-                .filter((f) => isActivatedSkillRoot(skillsHome, 'global', f.root))
+                .filter((f) => isActivatedSkillRoot(skillsHome, 'global', f.root, skillsHome))
                 .map((f) => ({
                   ...f,
                   scope: 'global' as const,
@@ -525,6 +527,33 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
             );
             return;
           }
+          // CONSENT is enforced inside the link primitive via `mayCreate`, which
+          // is REQUIRED there — so both operands are covered (a link mkdirs the
+          // target root AND the folder's parent dotdir) and no caller can reach
+          // the primitive without answering. An earlier version guarded only the
+          // target, here in the route, which left the other operand reachable
+          // from MCP and any direct call; making the parameter optional would
+          // have left the same hole one omitted argument away.
+          // ONE emitter for this refusal, reached from BOTH the preview and the
+          // commit branch. They were hand-written twice and had already drifted:
+          // same status, different message — the preview one omitted the roots,
+          // and preview is the path the Folders UI always takes, so the audience
+          // that most needs to know WHICH folder was refused was the one not
+          // told. `parseApiError` reads `title` only, so `detail` does not
+          // rescue it. Parity is now structural rather than remembered.
+          const refuseNotPermitted = (roots: string[]): void => {
+            errorResponse(
+              res,
+              400,
+              'urn:ok:error:invalid-request',
+              `That link would create a folder OpenKnowledge may not create on this machine: ${roots.join(', ')}.`,
+              { handler: 'skill-targets-put', detail: roots.join(', ') },
+            );
+          };
+          const mayCreate = (rootRel: string): boolean =>
+            isActivatedSkillRoot(base, fa.scope, rootRel, skillsHome) &&
+            !(rootRel === AGENTS_SKILLS_ROOT && !existsSync(join(base, rootRel)));
+
           // PREVIEW: classify the merge and return it, writing nothing — the
           // Folders surface discloses what a link moves and deletes before it
           // asks for it. No receipt, no change signal: nothing changed.
@@ -533,7 +562,12 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
               base,
               folderRel: fa.root,
               targetRootRel: target,
+              mayCreate,
             });
+            if (p.kind === 'not-permitted') {
+              refuseNotPermitted(p.roots);
+              return;
+            }
             const plan = p.kind === 'plan' ? p.plan : null;
             successResponse(
               res,
@@ -561,23 +595,32 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
           }
           const result =
             fa.action === 'link'
-              ? linkEditorSkillFolder({ base, folderRel: fa.root, targetRootRel: target })
+              ? linkEditorSkillFolder({
+                  base,
+                  folderRel: fa.root,
+                  targetRootRel: target,
+                  mayCreate,
+                })
               : unlinkEditorSkillFolder({
                   base,
                   folderRel: fa.root,
                   ...(fa.exclude !== undefined ? { exclude: fa.exclude } : {}),
                 });
+          if (!result.ok && result.reason === 'not-permitted') {
+            refuseNotPermitted(result.roots);
+            return;
+          }
           if (!result.ok) {
             errorResponse(
               res,
               409,
               'urn:ok:error:invalid-request',
               result.reason === 'conflicts'
-                ? `Cannot link — differing skills exist in both folders: ${(result.conflicts ?? []).join(', ')}. Resolve them first.`
+                ? `Cannot link — differing skills exist in both folders: ${result.conflicts.join(', ')}. Resolve them first.`
                 : result.reason === 'stray-entries'
-                  ? `Cannot link — the folder holds non-skill entries: ${(result.strays ?? []).join(', ')}.`
+                  ? `Cannot link — the folder holds non-skill entries: ${result.strays.join(', ')}.`
                   : result.reason === 'partial-move'
-                    ? `The merge stopped partway (${(result.moved ?? []).length} skill(s) already moved — nothing lost). Run Link again to resume and complete it. (${result.error ?? ''})`
+                    ? `The merge stopped partway (${result.moved.length} skill(s) already moved — nothing lost). Run Link again to resume and complete it. (${result.error ?? ''})`
                     : result.reason === 'not-linked'
                       ? 'That folder is not a symlink — nothing to unlink.'
                       : 'That folder cannot be linked (it is already a link or the same directory).',

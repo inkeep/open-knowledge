@@ -74,8 +74,13 @@ export const EDITOR_LABELS = {
  *       reads `.opencode/skills` natively AND `.agents/skills`) → duplicate /
  *       name-collision (the `<name>-<editor>` churn class), and
  *   (c) CLOBBER the symlink where `.codex`/`.cursor` symlink to `.agents`.
- * The per-editor fan-out already reaches every harness OK supports, so `.agents`
- * adds NO reach at project scope — only conflation. A genuinely new harness that
+ * The per-editor fan-out reaches every harness that HAS a project dir of its
+ * own, so for those `.agents` adds no reach at project scope — only conflation.
+ * That is not universal: a harness whose project skill surface IS the hub has
+ * no per-editor dir to fan out to, and for it `.agents` is the only reach there
+ * is (today `lm-studio`, whose entry below documents the case). Such a harness
+ * keeps a null root here — the hub is not its per-editor dir — and is declared
+ * in `HUB_READER_EDITORS` instead. A genuinely new harness that
  * adopts the vendor-neutral `.agents/` convention is onboarded by adding it to
  * this map (one line; flows to every dependent + lock-step test), NOT by
  * broadcasting into a shared dir.
@@ -114,8 +119,21 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
   // Like OpenClaw, its integration is the user-global MCP config; OK ships no
   // per-project skill for it.
   antigravity: null,
-  // LM Studio is an MCP host (its chat connects to MCP servers) with no Agent
-  // Skills surface at all — OK's only integration is the user-global MCP config.
+  // LM Studio DOES read project skills, but from the vendor-neutral
+  // `<project>/.agents/skills` hub rather than a `.lmstudio/` dotdir (verified
+  // in 0.4.21: `NGProjectSkillsProvider` watches `resolve(workingDir, '.agents',
+  // 'skills')`, createIfMissing false). That hub is already a first-class OK
+  // install target (`AGENTS_SKILLS_ROOT` / the `agents` pseudo-host), so a
+  // project skill installed there ALREADY reaches LM Studio.
+  //
+  // Null here is therefore "no dedicated per-editor project dir", not "no
+  // project skills". Naming `.agents/skills` as lm-studio's project root would
+  // make one directory the write target for two different picker rows, which is
+  // exactly the Cursor/Codex conflation the header above rejects. The hub stays
+  // vendor-neutral and undecorated — no per-host rows or icons on it. It becomes
+  // an offered destination when a host that READS it is installed, via
+  // `HUB_READER_EDITORS` + `isActivatedSkillRoot`, so LM Studio's presence is
+  // what makes `.agents` available rather than LM Studio taking a row of its own.
   'lm-studio': null,
   // Hermes Agent (Nous Research) is a user-global terminal agent: its whole
   // config lives at `~/.hermes/config.yaml` with no project-scoped skill dir OK
@@ -125,8 +143,8 @@ export const EDITOR_PROJECT_SKILL_ROOT = {
 
 /**
  * User-global skills root per editor (`~`-relative, POSIX), or `null` when OK
- * reads no user-global skill dir for it — either it keeps no skills (`lm-studio`
- * and `hermes` are config-only) or its skills live in a shared hub OK already
+ * reads no user-global skill dir for it — either it keeps no skills (`hermes` is
+ * config-only) or its skills live in a shared hub OK already
  * scans (`claude-desktop` shares `~/.claude/skills`; `openclaw` reads the
  * `~/.agents/skills` hub). Unlike the project map, the user dir does NOT follow
  * the `<dotdir>/skills` convention for every editor — Pi nests its agent home
@@ -145,9 +163,50 @@ export const EDITOR_USER_SKILL_ROOT = {
   openclaw: null,
   pi: '.pi/agent/skills',
   antigravity: '.gemini/skills',
-  'lm-studio': null,
+  // LM Studio loads Agent Skills from `~/.lmstudio/skills` (verified against
+  // 0.4.21: the app creates the dir on first launch, resolves it as
+  // `userGlobalSkillsFolder`, and lists what lands there). Its project skills
+  // come from the `.agents/skills` hub instead, which is why
+  // `EDITOR_PROJECT_SKILL_ROOT` stays null — see the note there.
+  'lm-studio': '.lmstudio/skills',
   hermes: null,
 } as const satisfies Record<EditorId, string | null>;
+
+/**
+ * Editors that read the vendor-neutral `.agents/skills` hub instead of owning a
+ * skills root of their own, mapped to the dotdir whose presence proves the tool
+ * is actually installed, and the scope at which it reads the hub.
+ *
+ * These are the reason the hub can be a live destination on a project that has
+ * never used it: an agent-owned root activates when its own dotdir appears, but
+ * the hub has no owning tool, so nothing about the project could ever activate
+ * it. A host that READS it being present on this machine is the equivalent
+ * signal — without one, offering `.agents` is offering a folder nothing here
+ * would read.
+ *
+ * Scope is where the host reads the hub BY DEFAULT. LM Studio's project skills
+ * dir IS `<project>/.agents/skills` (verified 0.4.21). It can additionally be
+ * pointed at `~/.agents/skills` through its "use skills found in other apps"
+ * toggles, but those are off by default and per-user, so that is not a default
+ * OK may assume.
+ *
+ * MEMBERSHIP IS NARROWER THAN "reads the hub". A host belongs here only when it
+ * reads the hub AND has no root of its own at that scope — i.e. the hub is its
+ * ONLY destination. OpenCode (`.opencode/skills`) and Pi (`.pi/skills`) both
+ * read `.agents/skills` too and are deliberately absent: OK already writes their
+ * own roots, so activating the hub for them would not reach an agent it was
+ * missing, it would add a SECOND place the same agent reads. That is the
+ * double-load hazard `EDITOR_PROJECT_SKILL_ROOT`'s header warns about, which is
+ * also why this list is not derived from "who reads `.agents`".
+ */
+export const HUB_READER_EDITORS: ReadonlyArray<{
+  readonly editorId: EditorId;
+  readonly dotDir: string;
+  readonly scope: 'project' | 'global';
+}> = [
+  { editorId: 'lm-studio', dotDir: '.lmstudio', scope: 'project' },
+  { editorId: 'openclaw', dotDir: '.openclaw', scope: 'global' },
+];
 
 /**
  * Repo/home dirs that hold a skills root but are NOT owned by an agent.

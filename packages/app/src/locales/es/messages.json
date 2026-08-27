@@ -2370,6 +2370,9 @@
     "QLgdT6": ["cualquier documento llamado ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["vacío"],
+    "QP9OU3": [
+      "Enlazar fusiona otra carpeta en esta. Esta carpeta aún no existe, así que instala primero una habilidad aquí."
+    ],
     "QPWyTw": ["Agrupar habilidades por origen"],
     "QQbwzK": ["No hay agentes disponibles."],
     "QQghPu": ["Instalar en Claude Desktop"],
@@ -4487,6 +4490,7 @@
     "mLAjyL": [
       "Da a las herramientas de IA que usas acceso para leer y actualizar tus proyectos. Al marcar una casilla se configura al momento; al desmarcarla se quita."
     ],
+    "mPoOmg": ["instala primero una habilidad aquí"],
     "mPy9lS": [
       "Organiza mis especificaciones existentes en un índice enlazado y agrupado por área, y señala las que se hayan desincronizado del código actual."
     ],

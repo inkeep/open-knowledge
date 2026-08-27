@@ -7015,6 +7015,10 @@ msgstr "{0} ইনস্টল করুন"
 msgid "Install {brand} →"
 msgstr "{brand} ইনস্টল করুন →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "প্রথমে এখানে একটি স্কিল ইনস্টল করুন"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7503,6 +7507,10 @@ msgstr "লিংক-গ্রাফের সাড়া প্রত্যা
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "লিঙ্ক করা থিম ফাইল সমর্থিত নয়"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "লিংক করলে অন্য একটি ফোল্ডার এই ফোল্ডারে মার্জ হয়ে যায়। এই ফোল্ডারটি এখনও নেই, তাই প্রথমে এখানে একটি স্কিল ইনস্টল করুন।"
 
 #: src/components/DocPanel.tsx
 msgid "Links"

@@ -80,7 +80,7 @@ Delete the block and the app **won't re-add it** — the removal is recorded and
 
 ### User-global Agent Skills
 
-OpenKnowledge ships two user-global [Agent Skills](../features/skills.mdx) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) plus the shared `~/.agents/skills/` hub.
+OpenKnowledge ships two user-global [Agent Skills](../features/skills.mdx) — `open-knowledge-discovery` (helps your coding agent recognize and route through OpenKnowledge projects) and `open-knowledge-write-skill` (a workflow for authoring new skills). They install into each detected editor's global skill folder (`~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/`) plus the shared `~/.agents/skills/` hub.
 
 Only `open-knowledge-discovery` is set up at first launch — it is what lets an agent recognize an OpenKnowledge project at all, so it comes with the MCP wiring. `open-knowledge-write-skill` is an authoring convenience with no bearing on whether your tools work, so setup neither installs it nor records a decision about it; it is offered the first time you open **Settings → Skills Studio**, and remains installable there afterwards.
 
@@ -125,7 +125,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
-On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`) **only when they are missing and you previously installed them** — a bundle you never installed or declined is not seeded, and an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
+On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and **seeds** the built-in OpenKnowledge skill bundles (`open-knowledge-discovery` and `open-knowledge-write-skill`, in `~/.agents/skills/` and each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/`) **only when they are missing and you previously installed them** — a bundle you never installed or declined is not seeded, and an existing copy is left untouched (updates to a built-in flow through the skills.sh "update available" path, never a force-refresh). It also removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -199,6 +199,7 @@ With `--scope user` or `both` (the default), `ok init` also registers the `open-
 | --- | --- | --- |
 | `~/.agents/skills/open-knowledge-*/` | Shared hub read natively by Codex, OpenCode, and Cursor | Outside-project (home dir) |
 | `~/.claude/skills/open-knowledge-*/` | Written only when `~/.claude/` already exists | Outside-project (home dir) |
+| `~/.lmstudio/skills/open-knowledge-*/` | Written only when `~/.lmstudio/` already exists (LM Studio reads these in agent mode) | Outside-project (home dir) |
 | `~/.cursor/skills/open-knowledge-*/` | Written only when `~/.cursor/` already exists | Outside-project (home dir) |
 | `~/.codex/skills/open-knowledge-*/` | Written only when `~/.codex/` already exists | Outside-project (home dir) |
 | `~/.opencode/skills/open-knowledge-*/` | Written only when `~/.opencode/` already exists | Outside-project (home dir) |
@@ -245,7 +246,7 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | What it re-checks | Where | Scope |
 | --- | --- | --- |
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
-| OpenKnowledge skill bundles (`open-knowledge-discovery`, `open-knowledge-write-skill`) | Project (`.claude/skills/…`) and user-global — `~/.agents/skills/` plus each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/` | In-project **and** outside-project (home dir) |
+| OpenKnowledge skill bundles (`open-knowledge-discovery`, `open-knowledge-write-skill`) | Project (`.claude/skills/…`) and user-global — `~/.agents/skills/` plus each detected editor's `~/.claude/skills/`, `~/.cursor/skills/`, `~/.codex/skills/`, `~/.opencode/skills/`, `~/.lmstudio/skills/` | In-project **and** outside-project (home dir) |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
 Disable all three with `OK_RECLAIM_DISABLE=1`.

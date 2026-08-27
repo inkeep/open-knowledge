@@ -24,6 +24,24 @@ After `ok init` writes the config, open LM Studio's **Program** tab and enable t
 
 MCP tools only work when the chat model can call functions, and small local models vary a lot in how reliably they do. For the best results, load a model with strong tool-use / function-calling support and enough context to hold OK's tool descriptions. If the model answers in prose instead of calling `exec` / `search` / `write`, it either doesn't support tools or the server isn't enabled — check both before assuming OpenKnowledge is misconfigured.
 
+## Two surfaces: chat and agent mode
+
+LM Studio has a chat and an agent mode, and what OpenKnowledge gives you differs between them.
+
+The MCP server is app-wide, so `ok init` wires up both at once and the tools are there either way. **Agent Skills exist only in agent mode.** In chat you get the tools on their own. In agent mode you also get whatever skills are installed — which by default is the discovery skill, not the read/write contract; see [Agent contract](#agent-contract) below for what that means in practice.
+
+If you plan to have a model read and write a knowledge base rather than answer one-off questions, use agent mode.
+
+## Skills
+
+Agent mode reads your skills from `~/.lmstudio/skills`, where OpenKnowledge's user-global skills install like they do for any other tool. They show up under **Bionic Skills** in LM Studio's skills settings, available across all projects.
+
+For a project, LM Studio reads `.agents/skills` in the project's working directory rather than a `.lmstudio/` folder. That folder is shared ground rather than LM Studio's own, so OpenKnowledge offers it as a destination once it can see LM Studio installed, and never picks it for you: choose **`.agents`** when you install a project skill and LM Studio will find it. Nothing lands there until you choose it, and LM Studio does not create the folder itself.
+
+The folder also appears in **Settings → Skills → Folders**, where it can be linked once it exists. Until then it is a destination only — OpenKnowledge will not create it by merging another tool's folder into it.
+
+LM Studio can also read other tools' skill folders (`~/.claude/skills`, `~/.agents/skills`, `~/.cursor/skills` and more), listed under **Use skills found in other apps**. Those are off by default, and turning one on imports everything in that folder, not just OpenKnowledge's skills.
+
 ## Verify
 
 Load a tool-capable model, open a knowledge base, and ask:
@@ -32,6 +50,15 @@ Load a tool-capable model, open a knowledge base, and ask:
 
 If the model doesn't call the tool, confirm the `open-knowledge` server is toggled on in the **Program** tab and that the loaded model supports tool use.
 
+## Agent contract
+
+The **OpenKnowledge skill** — the authoritative agent contract for tool use, grounding, and linking — is project-scoped. What installs into `~/.lmstudio/skills` by default is the discovery skill; skill authoring is available alongside it. Between them they cover what OpenKnowledge is, how to open and install it, and how to write a skill, and deliberately do not carry the in-project read/write contract. LM Studio can receive that contract, but only through the `.agents` route above, so until you install a project skill there the contract for LM Studio is these two reminders:
+
+- **Markdown is MCP-owned.** Inside an OK project, read and write `.md` / `.mdx` through OK's tools (`exec`, `search`, `write`, `edit`, `links`), not native shell or file tools — native access loses attribution and skips the frontmatter, backlinks, and history OK returns. This matters most in agent mode, where the model can run shell commands in your project folder.
+- **Discover before concluding the MCP is missing.** Not seeing `exec` in the initial tool list isn't the escape hatch; reload the MCP servers first.
+
+For the complete tool surface, see the [MCP reference](/docs/reference/mcp).
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -39,7 +66,7 @@ If the model doesn't call the tool, confirm the `open-knowledge` server is toggl
 | `ok init` showed LM Studio as `config root missing; skipped` | LM Studio's config dir doesn't exist yet, so it wasn't detected | Launch LM Studio once (it creates its config dir), then re-run `ok init` |
 | `ok init` reported the config was `left unchanged` | OpenKnowledge declined to edit `mcp.json` for the reason shown in parentheses | Fix what the reason names (invalid JSON, a duplicated server block, an oversize config), then re-run `ok init` |
 | Model answers in prose, never calls a tool | the loaded model doesn't support tool use, or the server is disabled | Load a tool-capable model and enable `open-knowledge` in the **Program** tab |
-| MCP call fails with `... exceeds the available context size ...` (400) | OpenKnowledge's MCP tools + skill are larger than a small local model's context window (e.g. 8K tokens), so the request can't fit | Load the model with the largest context window it supports (or pick a bigger model). If that still isn't enough, [open an issue](https://github.com/inkeep/open-knowledge/issues) or reach out — trimming the tool surface for small local models is on our radar. |
+| MCP call fails with `... exceeds the available context size ...` (400) | OpenKnowledge's MCP tool surface is larger than a small local model's context window (e.g. 8K tokens), so the request can't fit | Load the model with the largest context window it supports (or pick a bigger model). If that still isn't enough, [open an issue](https://github.com/inkeep/open-knowledge/issues) or reach out — trimming the tool surface for small local models is on our radar. |
 | `write` / `edit` -> "Hocuspocus server is not running" | OK server not started | Run `ok start` (or leave the desktop app running) and retry |
 
 New to OpenKnowledge itself? Start with the [quickstart](/docs/get-started/quickstart) for `ok init` and `ok start`.

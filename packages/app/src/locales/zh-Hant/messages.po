@@ -7019,6 +7019,10 @@ msgstr "安裝 {0}"
 msgid "Install {brand} →"
 msgstr "安裝 {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "請先在此處安裝一個技能"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7507,6 +7511,10 @@ msgstr "連結關係圖回應的結構與預期不符。"
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "不支援連結的主題檔案"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "連結會將另一個資料夾合併到此資料夾中。此資料夾尚不存在，因此請先在此處安裝一個技能。"
 
 #: src/components/DocPanel.tsx
 msgid "Links"

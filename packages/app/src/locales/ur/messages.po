@@ -7019,6 +7019,10 @@ msgstr "{0} نصب کریں"
 msgid "Install {brand} →"
 msgstr "{brand} نصب کریں ←"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "پہلے یہاں ایک اسکل انسٹال کریں"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7507,6 +7511,10 @@ msgstr "لنک گراف کا جواب متوقع ساخت سے میل نہیں �
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "منسلک تھیم فائلوں کی معاونت نہیں ہے"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "لنک کرنے سے دوسرا فولڈر اس فولڈر میں ضم ہو جاتا ہے۔ یہ فولڈر ابھی موجود نہیں ہے، اس لیے پہلے یہاں ایک اسکل انسٹال کریں۔"
 
 #: src/components/DocPanel.tsx
 msgid "Links"

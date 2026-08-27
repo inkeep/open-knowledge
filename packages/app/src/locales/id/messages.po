@@ -7015,6 +7015,10 @@ msgstr "Pasang {0}"
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "instal dulu sebuah skill di sini"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7503,6 +7507,10 @@ msgstr "Respons graf tautan tidak sesuai bentuk yang diharapkan."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "Berkas tema tertaut tidak didukung"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "Menautkan akan menggabungkan folder lain ke folder ini. Folder ini belum ada, jadi instal dulu sebuah skill di sini."
 
 #: src/components/DocPanel.tsx
 msgid "Links"

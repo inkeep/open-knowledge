@@ -7015,6 +7015,10 @@ msgstr "Instalar {0}"
 msgid "Install {brand} →"
 msgstr "Instalar {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "instale primeiro uma habilidade aqui"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7503,6 +7507,10 @@ msgstr "A resposta do grafo de links não tinha o formato esperado."
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "Arquivos de tema vinculados não são compatíveis"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "Vincular mescla outra pasta nesta. Esta pasta ainda não existe, então instale primeiro uma habilidade aqui."
 
 #: src/components/DocPanel.tsx
 msgid "Links"

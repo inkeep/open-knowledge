@@ -1331,6 +1331,52 @@ describe('folder-level verbs via PUT /api/skill-targets (slice 2)', () => {
       body: JSON.stringify({ folderAction: action }),
     });
 
+  test('refuses a link whose SOURCE root does not exist, and creates nothing', async () => {
+    // The composition, not the plumbing. Nothing tested that the route's
+    // `mayCreate` closure is wired to either call site: drop `mayCreate:` from
+    // the commit path and this goes green again while the consent boundary is
+    // gone. `.codex` is absent in this fixture, so linking it would mkdir a
+    // dotdir for a tool the user never installed — the circularity the whole
+    // rule exists to prevent.
+    const res = await putFolder({
+      scope: 'project',
+      root: '.codex/skills',
+      action: 'link',
+      target: '.agents/skills',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { title?: string };
+    // Pin that it is the CONSENT refusal, not the known-roots 400 above it — an
+    // earlier draft of this test used `.copilot/skills`, which is Copilot's USER
+    // root, so it never reached this branch and passed for the wrong reason.
+    expect(body.title).toContain('may not create on this machine');
+    expect(existsSync(join(contentDir, '.codex'))).toBe(false);
+    // The source bundles are untouched — a refusal must not half-apply.
+    expect(existsSync(join(contentDir, '.agents/skills/shared/SKILL.md'))).toBe(true);
+  });
+
+  test('refuses the same link on the PREVIEW path, with the same status', async () => {
+    // Preview exists to tell a caller what commit will decide, so it must refuse
+    // too — and pin the SAME status, which is the second call site of the same
+    // closure. Dropping `mayCreate:` from the preview call alone leaves the
+    // commit test above green.
+    const res = await putFolder({
+      scope: 'project',
+      root: '.codex/skills',
+      action: 'link',
+      target: '.agents/skills',
+      preview: true,
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { title?: string };
+    // Preview is the path the Folders UI always takes, and it used to emit the
+    // sentence WITHOUT the roots — so the audience that most needs to know which
+    // folder was refused was the one not told. `parseApiError` reads `title`
+    // only, so `detail` never reached the toast.
+    expect(body.title).toContain('.codex/skills');
+    expect(existsSync(join(contentDir, '.codex'))).toBe(false);
+  });
+
   test('link merges own-only skills into the target and swaps in a symlink; unlink materializes per-skill links', async () => {
     const { lstatSync: lstat, realpathSync: realpath } = await import('node:fs');
     const linkRes = await putFolder({
@@ -1622,5 +1668,94 @@ describe('repo-declared plugin identity on /api/skills (no harness registry)', (
       url: 'https://github.com/acme/tools',
     });
     expect(skills.find((s) => s.name === 'handmade')?.plugin).toBeUndefined();
+  });
+});
+
+/**
+ * `hubOffered` and the `folders[]` activation filter, computed by a REAL server.
+ *
+ * Both were only ever exercised through unit tests that inject the answer:
+ * `skill-install-rows.test.ts` passes `hubOffered` as a stub boolean, and
+ * `in-place-skills.test.ts` calls `isActivatedSkillRoot` directly. Neither can
+ * see WHICH base the handler measures against — and that base already regressed
+ * once in this PR (`contentDir` where the install writes to `projectDir`).
+ *
+ * Same shape as the `outsideProject` block above: split `contentDir` from
+ * `projectDir` so a wrong base is observable rather than coincidentally right.
+ */
+describe('hub activation computed server-side', () => {
+  let server: TestServer | undefined;
+  const trash: string[] = [];
+
+  afterEach(async () => {
+    await server?.cleanup();
+    server = undefined;
+    for (const d of trash.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+
+  const fetchTargets = async (): Promise<{
+    folders?: Array<{ scope: string; root: string; state: string }>;
+  }> => {
+    const res = await fetch(`http://127.0.0.1:${(server as TestServer).port}/api/skill-targets`);
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      folders?: Array<{ scope: string; root: string; state: string }>;
+    };
+  };
+
+  const fetchHubOffered = async (): Promise<boolean | undefined> => {
+    const res = await fetch(`http://127.0.0.1:${(server as TestServer).port}/api/skills`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { skills: Array<{ scope: string; hubOffered?: boolean }> };
+    return body.skills.find((s) => s.scope === 'project')?.hubOffered;
+  };
+
+  test('the hub is NOT a project folder row when nothing on the machine reads it', async () => {
+    // No `.agents` anywhere and no hub reader installed: the row must not appear.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-none-'));
+    trash.push(projectRoot);
+    writeSkill(projectRoot, '.claude/skills/x', '# X');
+    const skillsHome = mkdtempSync(join(tmpdir(), 'ok-hub-home-'));
+    trash.push(skillsHome);
+
+    server = await createTestServer({ contentDir: projectRoot, skillsHome });
+
+    const rows = (await fetchTargets()).folders ?? [];
+    expect(rows.some((f) => f.scope === 'project' && f.root === '.agents/skills')).toBe(false);
+  });
+
+  test('an existing .agents makes it a project folder row', async () => {
+    // The base-independent half: adoption activates it wherever the reader
+    // question lands, so this pins the filter is wired at all.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-adopted-'));
+    trash.push(projectRoot);
+    writeSkill(projectRoot, '.agents/skills/shared', '# Shared');
+    const skillsHome = mkdtempSync(join(tmpdir(), 'ok-hub-home2-'));
+    trash.push(skillsHome);
+
+    server = await createTestServer({ contentDir: projectRoot, skillsHome });
+
+    const rows = (await fetchTargets()).folders ?? [];
+    expect(rows.some((f) => f.scope === 'project' && f.root === '.agents/skills')).toBe(true);
+  });
+
+  test('hubOffered is computed against projectDir, not contentDir', async () => {
+    // The regression this PR already shipped once. `content.dir: docs`, and
+    // `.agents` sits at the PROJECT root — where the install actually writes,
+    // since `skillInstallBase('project')` is `projectDir`. Measuring against
+    // contentDir answers about `<projectRoot>/docs/.agents`, which is absent,
+    // and returns false for a hub the install would land in.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'ok-hub-base-'));
+    trash.push(projectRoot);
+    const docsDir = join(projectRoot, 'docs');
+    mkdirSync(docsDir, { recursive: true });
+    writeSkill(docsDir, '.claude/skills/indocs', '# In docs');
+    mkdirSync(join(projectRoot, '.agents', 'skills'), { recursive: true });
+    const skillsHome = mkdtempSync(join(tmpdir(), 'ok-hub-home3-'));
+    trash.push(skillsHome);
+
+    server = await createTestServer({ contentDir: docsDir, projectDir: projectRoot, skillsHome });
+
+    expect(await fetchHubOffered()).toBe(true);
   });
 });

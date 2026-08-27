@@ -15,7 +15,8 @@
  *
  * Only editors with a project skill surface are valid targets
  * (`claude` / `cursor` / `codex` / `copilot` / `opencode` / `pi`; Claude Desktop, OpenClaw,
- * and Antigravity read user-global skills only).
+ * Antigravity, LM Studio, and Hermes read user-global skills only — LM Studio's
+ * project skills come from the shared `.agents/skills` hub, not a dir of its own).
  */
 
 import { z } from 'zod';
@@ -30,11 +31,12 @@ import {
  * single source `PROJECT_SKILL_EDITOR_IDS` (derived from `EDITOR_PROJECT_SKILL_ROOT`)
  * so the two can't drift. z.enum needs a literal tuple, which the derived array's
  * `.filter` widens to `EditorId`, so the cast restates the narrow literal shape:
- * `Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity' | 'hermes'>`
+ * `Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'antigravity' | 'lm-studio' | 'hermes'>`
  * is exactly the set of editors WITH a project skill surface (`claude` /
  * `cursor` / `codex` / `copilot` / `opencode` / `pi`). claude-desktop, openclaw,
- * antigravity, and hermes have a null project skill root (user-global skills
- * only), so they are excluded. schema.test.ts asserts the cast stays
+ * antigravity, lm-studio, and hermes have a null project skill root, so they are
+ * excluded — for lm-studio that means "no per-editor project dir", not "no
+ * project skills": it reads the shared `.agents/skills` hub instead. schema.test.ts asserts the cast stays
  * value-equal to the derived list as a backstop.
  */
 type ProjectSkillEditorId = Exclude<
@@ -52,10 +54,11 @@ export type SkillTargetEditor = z.infer<typeof SkillTargetEditorSchema>;
 /**
  * Editor ids valid as USER-GLOBAL install targets — the project set plus the
  * user-root-only editors (today: `antigravity`, whose skills live at
- * `~/.gemini/skills`). Same derived-tuple cast discipline as above;
- * schema.test.ts pins value-equality with `USER_SKILL_EDITOR_IDS`.
+ * `~/.gemini/skills`, and `lm-studio`, at `~/.lmstudio/skills`). Same
+ * derived-tuple cast discipline as above; schema.test.ts pins value-equality
+ * with `USER_SKILL_EDITOR_IDS`.
  */
-type UserSkillEditorId = Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'lm-studio' | 'hermes'>;
+type UserSkillEditorId = Exclude<EditorId, 'claude-desktop' | 'openclaw' | 'hermes'>;
 export const SkillUserTargetEditorSchema = z.enum(
   USER_SKILL_EDITOR_IDS as unknown as readonly [UserSkillEditorId, ...UserSkillEditorId[]],
 );

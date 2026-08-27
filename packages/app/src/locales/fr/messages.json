@@ -2393,6 +2393,9 @@
     "QLgdT6": ["tout document nommé ", ["0"]],
     "QM3SBZ": ["Plan (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["vide"],
+    "QP9OU3": [
+      "Lier fusionne un autre dossier dans celui-ci. Ce dossier n'existe pas encore, installez donc d'abord une compétence ici."
+    ],
     "QPWyTw": ["Grouper les compétences par source"],
     "QQbwzK": ["Aucun agent disponible."],
     "QQghPu": ["Installer dans Claude Desktop"],
@@ -4521,6 +4524,7 @@
     "mLAjyL": [
       "Donnez aux outils IA que vous utilisez l'accès en lecture et en écriture à vos projets. Cocher une case configure l'outil immédiatement ; décocher le retire."
     ],
+    "mPoOmg": ["installez d'abord une compétence ici"],
     "mPy9lS": [
       "Organise mes spécifications existantes en un index lié, groupé par domaine, et signale celles qui ont divergé du code actuel."
     ],

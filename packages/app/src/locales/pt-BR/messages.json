@@ -2332,6 +2332,9 @@
     "QLgdT6": ["qualquer documento chamado ", ["0"]],
     "QM3SBZ": ["Plano (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["vazio"],
+    "QP9OU3": [
+      "Vincular mescla outra pasta nesta. Esta pasta ainda não existe, então instale primeiro uma habilidade aqui."
+    ],
     "QPWyTw": ["Agrupar habilidades por origem"],
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
@@ -4389,6 +4392,7 @@
     "mLAjyL": [
       "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Marcar uma caixa configura na hora; desmarcar remove."
     ],
+    "mPoOmg": ["instale primeiro uma habilidade aqui"],
     "mPy9lS": [
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
     ],

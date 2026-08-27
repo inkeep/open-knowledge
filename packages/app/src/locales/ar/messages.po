@@ -7019,6 +7019,10 @@ msgstr "تثبيت {0}"
 msgid "Install {brand} →"
 msgstr "تثبيت {brand} ←"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "ثبّت مهارة هنا أولاً"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7507,6 +7511,10 @@ msgstr "لم تطابق استجابة رسم الروابط الشكل المت
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Linked theme files aren’t supported"
 msgstr "ملفات السمات المرتبطة غير مدعومة"
+
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "الربط يدمج مجلداً آخر في هذا المجلد. هذا المجلد غير موجود بعد، لذا ثبّت مهارة هنا أولاً."
 
 #: src/components/DocPanel.tsx
 msgid "Links"
