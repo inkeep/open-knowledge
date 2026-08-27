@@ -1245,6 +1245,7 @@
     "Fhp4Gn": ["View plugin"],
     "FiyNln": ["Jump to selected text in property"],
     "FjkaiT": ["Zoom out"],
+    "Fjz6aJ": ["Send to a new chat"],
     "FqGWeR": ["Couldn't reach the agent registry."],
     "FqTpiN": ["Bird wiki"],
     "Fqr8BP": ["Multi-page PDF viewer with toolbar controls (thumbnails, page nav, zoom)."],
@@ -1631,6 +1632,7 @@
     "LE7t79": ["Clone to a new folder"],
     "LGvaif": ["View the ", ["plugin"], " plugin repo"],
     "LHH461": ["Finish setup"],
+    "LJHTS5": ["Choose where to send this message"],
     "LJXDjm": ["Couldn't save your theme preference."],
     "LJeFU6": [
       "Launch OpenKnowledge from any terminal — <0>ok</0> opens a project, <1>ok init</1> connects your agents."
@@ -2223,6 +2225,7 @@
     "SXCSQd": ["Copied path"],
     "SXEdCq": ["Move to ", ["0"], "?"],
     "SYfHmN": ["Unpin tab"],
+    "Sad2tK": ["Sending…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -2658,6 +2661,7 @@
     "YLMBSd": ["e.g. The editor froze after I pasted a large table"],
     "YMlS7s": ["Open in default app"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" still exists on disk"],
+    "YPJfPD": ["Send in this chat"],
     "YRavYS": [
       "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
     ],
@@ -3175,6 +3179,7 @@
     "e9sHSO": ["Pick up where you left off"],
     "eBIT9h": ["Paste failed.", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "one": ["#", " problem"], "other": ["#", " problems"] }]],
+    "eCOktA": ["Already starting a chat with this agent — try again in a moment."],
     "eFJkVt": ["Clone failed: ", ["cloneError"]],
     "eG8Jsg": ["Toggle source tab focus mode"],
     "eGUbmF": ["Copy selected file or folder"],
@@ -3699,6 +3704,7 @@
     "kNGLX6": ["Retrying…"],
     "kNiQp6": ["Pinned"],
     "kNqMMd": ["Folder"],
+    "kPOw9O": ["Copy message"],
     "kRTXGw": [
       "Point semantic search at any OpenAI-compatible embeddings endpoint — a self-hosted server or another provider. The API key above is for whichever endpoint you set here."
     ],
@@ -4361,6 +4367,7 @@
     "sKEgGd": ["Send to chat"],
     "sKHiNR": [["count"], " behind"],
     "sNeKjP": ["Failed to store the token — try again"],
+    "sOafXU": ["Edit and send again"],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
     "sR0I-f": ["Collapse all files"],

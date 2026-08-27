@@ -1733,6 +1733,11 @@ msgstr "Sudah disiapkan — ok tersedia di terminal Anda"
 msgid "Already signed in?"
 msgstr "Sudah masuk?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "Obrolan dengan agen ini sudah mulai dibuka — coba lagi sebentar lagi."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Selalu disertakan"
@@ -2361,6 +2366,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2606,6 +2612,10 @@ msgstr "Pilih apa yang dimulai tab baru"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "Pilih ke mana komentar ini dikirim"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "Pilih ke mana pesan ini dikirim"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3392,6 +3402,10 @@ msgstr "Salin ke sini"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "Salin tautan"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "Salin pesan"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5008,6 +5022,10 @@ msgstr "Sunting salinan"
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
 msgstr "Ubah dan kirim ulang"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "Sunting dan kirim lagi"
 
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
@@ -11610,6 +11628,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "Pencarian semantik aktif, tetapi tidak ada kunci API yang disetel — pencarian kembali ke pencocokan kata kunci. Tambahkan satu di bawah."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Kirim"
@@ -11635,6 +11654,10 @@ msgstr "Kirim masukan"
 msgid "Send feedback…"
 msgstr "Kirim masukan…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "Kirim di obrolan ini"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Kirim laporan"
@@ -11642,6 +11665,10 @@ msgstr "Kirim laporan"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "Kirim komentar ini"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "Kirim ke obrolan baru"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11668,6 +11695,10 @@ msgstr "Mengirim"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "Mengirim laporan"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "Mengirim…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

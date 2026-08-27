@@ -17,6 +17,7 @@
  */
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 // CopyButton mounts a Radix Tooltip (focus-scope) which reaches for DOM globals
@@ -42,7 +43,10 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 }
 
 const { CopyButton } = await import('./CopyButton');
-const { TooltipProvider } = await import('@/components/ui/tooltip');
+const { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } = await import(
+  '@/components/ui/tooltip'
+);
+const { Button } = await import('@/components/ui/button');
 
 function renderCopyButton(props: Parameters<typeof CopyButton>[0]) {
   return render(
@@ -63,6 +67,31 @@ describe('CopyButton', () => {
   });
   afterEach(() => {
     cleanup();
+  });
+
+  test('leaving Copy for a flush neighbor hands the tooltip off', async () => {
+    // Pins `disableHoverableContent`: without it, leaving the trigger arms the
+    // grace polygon and sets the provider's in-transit flag before the
+    // neighbor's trigger sees its first pointermove, so the neighbor's tooltip
+    // never opens on that move. The prop produces no DOM difference at rest,
+    // so this hand-off is the only honest place to catch its deletion.
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <CopyButton copyContent="x" ariaLabel="Copy message" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button type="button" size="icon-xs" variant="ghost" aria-label="Edit" />
+          </TooltipTrigger>
+          <TooltipContent>Edit</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'Copy message' }));
+    await user.hover(screen.getByRole('button', { name: 'Edit' }));
+
+    expect(screen.getByRole('tooltip').textContent).toBe('Edit');
   });
 
   test('mounts in the Copy state by default', () => {

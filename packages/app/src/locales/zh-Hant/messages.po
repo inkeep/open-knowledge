@@ -1737,6 +1737,11 @@ msgstr "已經設定好了——ok 現在可以在你的終端機中使用"
 msgid "Already signed in?"
 msgstr "已經登入了？"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "已經在與該代理開啟對話了，請稍後再試。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "一律包含"
@@ -2365,6 +2370,7 @@ msgstr "無法分享這個路徑。"
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2610,6 +2616,10 @@ msgstr "選擇新分頁啟動的內容"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "選擇要把這些註解送到哪裡"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "選擇要將這則訊息傳送到哪裡"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3396,6 +3406,10 @@ msgstr "複製進來"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "複製連結"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "複製訊息"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5012,6 +5026,10 @@ msgstr "編輯一份副本"
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
 msgstr "編輯並重新傳送"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "編輯後重新傳送"
 
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
@@ -11614,6 +11632,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "語意搜尋已開啟，但沒有設定 API 金鑰——搜尋會退回關鍵字比對。請在下面加一個。"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "傳送"
@@ -11639,6 +11658,10 @@ msgstr "傳送意見回饋"
 msgid "Send feedback…"
 msgstr "傳送意見回饋…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "在目前對話中傳送"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "傳送回報"
@@ -11646,6 +11669,10 @@ msgstr "傳送回報"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "傳送這則註解"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "傳送到新對話"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11672,6 +11699,10 @@ msgstr "正在傳送"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "正在傳送回報"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "正在傳送…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

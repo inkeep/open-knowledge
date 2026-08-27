@@ -1737,6 +1737,11 @@ msgstr "مُعدّ بالفعل — الأمر ok متاح في طرفيتك"
 msgid "Already signed in?"
 msgstr "هل سجّلت الدخول بالفعل؟"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "يجري بالفعل بدء محادثة مع هذا الوكيل — أعد المحاولة بعد قليل."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "مُدرج دائمًا"
@@ -2365,6 +2370,7 @@ msgstr "تعذّرت مشاركة هذا المسار."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2610,6 +2616,10 @@ msgstr "اختر ما تبدأ به علامة تبويب جديدة"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "اختر إلى أين تُرسل هذه التعليقات"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "اختيار وجهة إرسال هذه الرسالة"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3396,6 +3406,10 @@ msgstr "النسخ إلى هنا"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "نسخ الرابط"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "نسخ الرسالة"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5012,6 +5026,10 @@ msgstr "تحرير نسخة"
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
 msgstr "تعديل وإعادة الإرسال"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "تحرير وإرسال مرة أخرى"
 
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
@@ -11614,6 +11632,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "البحث الدلالي مفعّل، لكن لم يُضبط مفتاح API — يعود البحث إلى مطابقة الكلمات المفتاحية. أضف واحدًا أدناه."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "إرسال"
@@ -11639,6 +11658,10 @@ msgstr "إرسال ملاحظات"
 msgid "Send feedback…"
 msgstr "إرسال ملاحظات…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "إرسال في هذه المحادثة"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "إرسال التقرير"
@@ -11646,6 +11669,10 @@ msgstr "إرسال التقرير"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "إرسال هذا التعليق"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "إرسال إلى محادثة جديدة"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11672,6 +11699,10 @@ msgstr "يجري الإرسال"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "يجري إرسال التقرير"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "جارٍ الإرسال…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

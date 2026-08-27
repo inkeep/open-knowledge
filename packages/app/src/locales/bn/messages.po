@@ -1733,6 +1733,11 @@ msgstr "আগে থেকেই সেট আপ করা — ok আপনা
 msgid "Already signed in?"
 msgstr "আগে থেকেই সাইন ইন করা আছে?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "এই এজেন্টের সাথে ইতিমধ্যেই একটি চ্যাট শুরু হচ্ছে — একটু পরে আবার চেষ্টা করুন।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "সবসময় অন্তর্ভুক্ত"
@@ -2361,6 +2366,7 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2606,6 +2612,10 @@ msgstr "নতুন ট্যাব কী চালু করবে তা ব
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "এই মন্তব্যগুলো কোথায় পাঠাবেন তা বাছুন"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "এই বার্তাটি কোথায় পাঠাবেন তা বেছে নিন"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3392,6 +3402,10 @@ msgstr "এখানে কপি করুন"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "লিংক কপি করুন"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "বার্তা কপি করুন"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5007,6 +5021,10 @@ msgstr "একটি অনুলিপি সম্পাদনা করুন
 
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
+msgstr "সম্পাদনা করে আবার পাঠান"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
 msgstr "সম্পাদনা করে আবার পাঠান"
 
 #: src/components/settings/rule-option-field.tsx
@@ -11610,6 +11628,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "অর্থভিত্তিক অনুসন্ধান চালু, কিন্তু কোনো API কী নির্ধারিত নেই — অনুসন্ধান কীওয়ার্ড মিলানোয় ফিরে যায়। নিচে একটি যোগ করুন।"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "পাঠান"
@@ -11635,6 +11654,10 @@ msgstr "মতামত পাঠান"
 msgid "Send feedback…"
 msgstr "মতামত পাঠান…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "এই চ্যাটেই পাঠান"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "রিপোর্ট পাঠান"
@@ -11642,6 +11665,10 @@ msgstr "রিপোর্ট পাঠান"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "এই মন্তব্যটি পাঠান"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "নতুন চ্যাটে পাঠান"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11668,6 +11695,10 @@ msgstr "পাঠানো হচ্ছে"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "রিপোর্ট পাঠানো হচ্ছে"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "পাঠানো হচ্ছে…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

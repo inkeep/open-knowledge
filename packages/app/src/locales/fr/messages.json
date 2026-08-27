@@ -1469,6 +1469,7 @@
     "Fhp4Gn": ["Voir le plugin"],
     "FiyNln": ["Aller au texte sélectionné dans la propriété"],
     "FjkaiT": ["Zoom arrière"],
+    "Fjz6aJ": ["Envoyer dans un nouveau chat"],
     "FqGWeR": ["Impossible de joindre le registre des agents."],
     "FqTpiN": ["Wiki des oiseaux"],
     "Fqr8BP": ["Visionneuse PDF multipage avec barre d'outils (miniatures, navigation, zoom)."],
@@ -1931,6 +1932,7 @@
     "LE7t79": ["Cloner dans un nouveau dossier"],
     "LGvaif": ["Voir le dépôt du plugin ", ["plugin"]],
     "LHH461": ["Terminer la configuration"],
+    "LJHTS5": ["Choisir où envoyer ce message"],
     "LJXDjm": ["Impossible d'enregistrer votre préférence de thème."],
     "LJeFU6": [
       "Lancez OpenKnowledge depuis n'importe quel terminal : <0>ok</0> ouvre un projet, <1>ok init</1> connecte vos agents."
@@ -2581,6 +2583,7 @@
     "SXCSQd": ["Chemin copié"],
     "SXEdCq": ["Déplacer vers ", ["0"], " ?"],
     "SYfHmN": ["Détacher l'onglet"],
+    "Sad2tK": ["Envoi…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -3136,6 +3139,7 @@
       ["createdPath"],
       " » existe encore sur le disque"
     ],
+    "YPJfPD": ["Envoyer dans ce chat"],
     "YRavYS": [
       "Un sélecteur de thème de couleurs personnel — non partagé avec votre projet. Une fois activé, il apparaît sous Plugins dans la barre latérale."
     ],
@@ -3737,6 +3741,9 @@
         { "one": ["#", " problème"], "many": ["#", " problèmes"], "other": ["#", " problèmes"] }
       ]
     ],
+    "eCOktA": [
+      "Un chat avec cet agent est déjà en cours de démarrage — réessayez dans un instant."
+    ],
     "eFJkVt": ["Échec du clonage : ", ["cloneError"]],
     "eG8Jsg": ["Basculer le mode focus de la touche Tab dans la source"],
     "eGUbmF": ["Copier le fichier ou dossier sélectionné"],
@@ -4320,6 +4327,7 @@
     "kNGLX6": ["Nouvelle tentative…"],
     "kNiQp6": ["Épinglés"],
     "kNqMMd": ["Dossier"],
+    "kPOw9O": ["Copier le message"],
     "kRTXGw": [
       "Dirigez la recherche sémantique vers n'importe quel point de terminaison d'embeddings compatible OpenAI — un serveur auto-hébergé ou un autre fournisseur. La clé API ci-dessus vaut pour le point de terminaison que vous définissez ici."
     ],
@@ -5079,6 +5087,7 @@
     "sKEgGd": ["Envoyer dans la discussion"],
     "sKHiNR": [["count"], " en retard"],
     "sNeKjP": ["Échec de l'enregistrement du jeton — réessayez"],
+    "sOafXU": ["Modifier et renvoyer"],
     "sOxZaS": ["Échec du chargement du graphe"],
     "sQoLn0": ["Quitter"],
     "sR0I-f": ["Réduire tous les fichiers"],

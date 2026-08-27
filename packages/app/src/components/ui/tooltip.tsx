@@ -18,6 +18,15 @@ function TooltipProvider({
   );
 }
 
+/**
+ * In a row of flush icon buttons, pass `disableHoverableContent` on each
+ * sibling whose content merely echoes the trigger's accessible name: an open
+ * tooltip's hover grace polygon covers the neighboring trigger's near edge,
+ * holding the stale tooltip open there and suppressing the neighbor's from
+ * opening until the pointer moves well inside. Keep hoverable content where
+ * the tooltip carries text the trigger truncates (the link PropPanels' full
+ * path tooltips), where the reader needs to reach the content.
+ */
 function Tooltip({ ...props }: React.ComponentProps<typeof TooltipPrimitive.Root>) {
   return <TooltipPrimitive.Root data-slot="tooltip" {...props} />;
 }

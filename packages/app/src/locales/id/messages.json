@@ -1241,6 +1241,7 @@
     "Fhp4Gn": ["Lihat plugin"],
     "FiyNln": ["Lompat ke teks terpilih di properti"],
     "FjkaiT": ["Perkecil"],
+    "Fjz6aJ": ["Kirim ke obrolan baru"],
     "FqGWeR": ["Registri agen tidak bisa dihubungi."],
     "FqTpiN": ["Wiki burung"],
     "Fqr8BP": [
@@ -1654,6 +1655,7 @@
     "LE7t79": ["Kloning ke folder baru"],
     "LGvaif": ["Lihat repositori plugin ", ["plugin"]],
     "LHH461": ["Selesaikan penyiapan"],
+    "LJHTS5": ["Pilih ke mana pesan ini dikirim"],
     "LJXDjm": ["Tidak dapat menyimpan preferensi tema Anda."],
     "LJeFU6": [
       "Jalankan OpenKnowledge dari terminal mana pun — <0>ok</0> membuka proyek, <1>ok init</1> menghubungkan agen Anda."
@@ -2224,6 +2226,7 @@
     "SXCSQd": ["Jalur disalin"],
     "SXEdCq": ["Pindahkan ke ", ["0"], "?"],
     "SYfHmN": ["Lepas sematan tab"],
+    "Sad2tK": ["Mengirim…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -2674,6 +2677,7 @@
     "YLMBSd": ["mis. Penyunting membeku setelah saya menempelkan tabel besar"],
     "YMlS7s": ["Buka di aplikasi bawaan"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" masih ada di disk"],
+    "YPJfPD": ["Kirim di obrolan ini"],
     "YRavYS": [
       "Pemilih tema warna pribadi — tidak dibagikan dengan proyek Anda. Saat aktif, ia muncul di bawah Plugin pada bilah sisi."
     ],
@@ -3197,6 +3201,7 @@
     "e9sHSO": ["Lanjutkan dari tempat Anda berhenti"],
     "eBIT9h": ["Penempelan gagal.", ["restoreSuffix"]],
     "eCDwNN": [["total", "plural", { "other": ["#", " masalah"] }]],
+    "eCOktA": ["Obrolan dengan agen ini sudah mulai dibuka — coba lagi sebentar lagi."],
     "eFJkVt": ["Kloning gagal: ", ["cloneError"]],
     "eG8Jsg": ["Alihkan mode fokus Tab di sumber"],
     "eGUbmF": ["Salin berkas atau folder terpilih"],
@@ -3733,6 +3738,7 @@
     "kNGLX6": ["Mencoba lagi…"],
     "kNiQp6": ["Disematkan"],
     "kNqMMd": ["Folder"],
+    "kPOw9O": ["Salin pesan"],
     "kRTXGw": [
       "Arahkan pencarian semantik ke endpoint embedding mana pun yang kompatibel dengan OpenAI — server milik sendiri atau penyedia lain. Kunci API di atas berlaku untuk endpoint mana pun yang Anda setel di sini."
     ],
@@ -4377,6 +4383,7 @@
     "sKEgGd": ["Kirim ke obrolan"],
     "sKHiNR": [["count"], " di belakang"],
     "sNeKjP": ["Gagal menyimpan token — coba lagi"],
+    "sOafXU": ["Sunting dan kirim lagi"],
     "sOxZaS": ["Gagal memuat graf"],
     "sQoLn0": ["Keluar"],
     "sR0I-f": ["Ciutkan semua berkas"],

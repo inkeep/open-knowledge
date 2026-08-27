@@ -5,8 +5,10 @@ import type { RenderedItem } from '@/lib/acp/thread-event-model';
 // a unique domain id. A message's `messageId` is NOT unique — adapters that send
 // none all key to 'default', and a fresh block starts whenever anything
 // interrupts the tail — and notices have none at all, so both fold in the index.
-// The index is stable because the transcript is append-only and coalescing
-// rewrites an item in place at the same position.
+// `index` MUST be a position in `model.items`, which is append-only and where
+// coalescing rewrites an item in place rather than moving it. A position in a
+// filtered view (the folded or visible transcript) shifts whenever something
+// ahead of it is removed, which renumbers every later key and remounts the row.
 export function transcriptItemId(item: RenderedItem, index: number): string {
   switch (item.kind) {
     case 'message':

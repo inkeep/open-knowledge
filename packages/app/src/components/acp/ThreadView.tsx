@@ -125,6 +125,7 @@ import {
   fileToAttachment,
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
+import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
@@ -163,6 +164,7 @@ import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
 import { transcriptItemId } from './transcript-item-id';
+import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 /**
@@ -809,6 +811,52 @@ export function ThreadView({
       .finally(() => setResumePending(false));
   };
 
+  /**
+   * Send a revision of an already-sent message, either back into this
+   * conversation or into a fresh one.
+   *
+   * The original turn is left alone. A transcript is the record of what the
+   * agent was actually told, and the agent has already answered — rewriting the
+   * bubble in place would leave its reply answering words that no longer appear
+   * anywhere. So a revision is a new turn, which is also what lets it go to a
+   * different thread at all.
+   */
+  const resendMessage = async (
+    text: string,
+    target: ResendTarget,
+    attachments: readonly AttachmentPart[],
+  ): Promise<boolean> => {
+    if (target.kind === 'this-thread') {
+      // `sendText` reports its own outcome: a live thread resolves true once the
+      // prompt is dispatched, and an archived one resolves FALSE when the resume
+      // it needs first fails.
+      //
+      // Null failure text, the escape hatch `failureText` documents for a caller
+      // whose content survives elsewhere: on a failed resume the editor stays
+      // open holding this revision AND its attachments, so also stashing it as a
+      // failed prompt would offer a second, attachment-less copy of the same
+      // words through the amber banner.
+      return sendText(text, null, attachments);
+    }
+    // A new thread activates its own dock tab on arrival, so the revision lands
+    // in front of the user without this surface reaching for focus.
+    const outcome = await launchAgentThread(
+      { source: target.agent.source, id: target.agent.id },
+      text,
+      null,
+      null,
+      null,
+      attachments,
+    );
+    // A failed creation already toasted. A deduped one said nothing at all, and
+    // here the revision exists nowhere but the field the caller is about to tear
+    // down — so silence would read as the click doing nothing and lose it.
+    if (outcome === 'deduped') {
+      toast.error(t`Already starting a chat with this agent — try again in a moment.`);
+    }
+    return outcome === 'started';
+  };
+
   const submit = (): void => {
     const text = composerText();
     const attachments = composerAttachments();
@@ -975,11 +1023,25 @@ export function ThreadView({
   // aligned indices with the transcript the reverse-scan walks), then hide
   // pairs the user reverted this session. `visibleItems` is what renders and
   // what `retryNoticeIndex` / `restoreNoticeIndex` index against.
-  const foldedItems =
+  const foldedEntries =
     model === null
       ? []
-      : model.items.filter((item) => item.kind !== 'notice' || item.superseded !== true);
-  const visibleItems = foldedItems.filter((_, index) => !revertedPositions.has(index));
+      : model.items.flatMap((item, modelIndex) =>
+          item.kind !== 'notice' || item.superseded !== true ? [{ item, modelIndex }] : [],
+        );
+  const foldedItems = foldedEntries.map((entry) => entry.item);
+  // Each visible row keeps the `model.items` position it came from, rather than
+  // that being rebuilt alongside and re-paired by ordinal. Both filters remove
+  // items, so a visible position shifts when one lands ahead of it, and the
+  // React key is what holds a bubble (and the revision being typed in it)
+  // mounted. Of the three index spaces only `model.items` is append-only, and
+  // only for as long as the thread's model builder lives: archiving a live
+  // thread discards it, which unmounts the whole view rather than a row.
+  //
+  // `foldedItems` and the visible ordinal both stay, since six index maps read
+  // those.
+  const visibleEntries = foldedEntries.filter((_, index) => !revertedPositions.has(index));
+  const visibleItems = visibleEntries.map((entry) => entry.item);
   let retryNoticeIndex = -1;
   if (canRetry) {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -1047,6 +1109,20 @@ export function ThreadView({
     }
     return -1;
   };
+
+  // The newest sent message keeps its actions on screen rather than waiting for
+  // a hover. Sending a revision to a DIFFERENT agent is a capability nothing
+  // else in the app points at, so hiding every entry point behind a hover would
+  // leave it undiscovered; showing it on one turn surfaces it per thread
+  // without doubling the chrome down a long transcript.
+  let lastUserTurnIndex = -1;
+  for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+    const item = visibleItems[index];
+    if (item?.kind === 'message' && item.role === 'user') {
+      lastUserTurnIndex = index;
+      break;
+    }
+  }
 
   // A thread waiting on sign-in has nothing else to show: it never opened a
   // session, so its transcript is startup diagnostics the sign-in supersedes.
@@ -1185,8 +1261,8 @@ export function ThreadView({
                   data-testid="agent-thread-transcript"
                 >
                   <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                    {visibleItems.map((item, index) => {
-                      const id = transcriptItemId(item, index);
+                    {visibleEntries.map(({ item, modelIndex }, index) => {
+                      const id = transcriptItemId(item, modelIndex);
                       return (
                         <MessageScrollerItem
                           key={id}
@@ -1217,6 +1293,14 @@ export function ThreadView({
                             onRetry={retryThread}
                             showRestore={index === restoreNoticeIndex}
                             onRestore={() => restoreFailedPromptToComposer(index)}
+                            onResend={resendMessage}
+                            // Only the "send it here" destination needs this
+                            // thread alive. A revision handed to a fresh thread
+                            // never touches it — and a crashed agent is exactly
+                            // when handing the prompt to a different one is
+                            // worth the most.
+                            canSendHere={canPrompt || canQueue}
+                            isLatestUserTurn={index === lastUserTurnIndex}
                           />
                         </MessageScrollerItem>
                       );
@@ -2015,6 +2099,9 @@ function ThreadItem({
   onRetry,
   showRestore,
   onRestore,
+  onResend,
+  canSendHere,
+  isLatestUserTurn,
 }: {
   item: RenderedItem;
   threadId: string;
@@ -2032,10 +2119,33 @@ function ThreadItem({
   /** This notice is the one that offers Edit-and-resend (at most one). */
   showRestore: boolean;
   onRestore: () => void;
+  /** Re-send a revision of a sent message. Settles false when the send demonstrably
+   *  did not happen: a deduped or failed launch, or an archived thread whose resume
+   *  rejected. True on a live thread means dispatched, not acknowledged. */
+  onResend: (
+    text: string,
+    target: ResendTarget,
+    attachments: readonly AttachmentPart[],
+  ) => Promise<boolean>;
+  /** Whether THIS thread still accepts sends. Gates only the same-thread
+   *  destination; the new-thread ones never needed it. */
+  canSendHere: boolean;
+  /** This is the transcript's last sent message. Its actions stay visible
+   *  rather than waiting for a hover. */
+  isLatestUserTurn: boolean;
 }): ReactNode {
   switch (item.kind) {
     case 'message':
-      return <MessageBubble item={item} streaming={streaming} />;
+      return (
+        <MessageBubble
+          item={item}
+          streaming={streaming}
+          agent={agent}
+          onResend={onResend}
+          canSendHere={canSendHere}
+          isLatestUserTurn={isLatestUserTurn}
+        />
+      );
     case 'tool_call':
       return (
         <ToolCallCard
@@ -2539,43 +2649,147 @@ function ThreadNotice({
 function MessageBubble({
   item,
   streaming,
+  agent,
+  onResend,
+  canSendHere,
+  isLatestUserTurn,
 }: {
   item: Extract<RenderedItem, { kind: 'message' }>;
   streaming?: boolean;
+  /** The agent answering this thread — the "new chat" default in the editor's
+   *  send menu. */
+  agent: ThreadInfo['agent'];
+  /** Re-send a revision of this message. Resolves false when the send demonstrably
+   *  did not happen: a launch the dedup guard swallowed or that failed to create,
+   *  or an archived thread whose resume rejected. On a live thread the prompt is
+   *  dispatched fire-and-forget, so true there means handed to the socket, not
+   *  acknowledged. */
+  onResend: (
+    text: string,
+    target: ResendTarget,
+    attachments: readonly AttachmentPart[],
+  ) => Promise<boolean>;
+  /** Whether this thread still accepts sends. Only the same-thread destination
+   *  is withdrawn without it — Edit stays, because a revision can still be
+   *  handed to a fresh thread. */
+  canSendHere: boolean;
+  /** The transcript's last sent message keeps its actions on screen. */
+  isLatestUserTurn: boolean;
 }): ReactNode {
+  const [editing, setEditing] = useState(false);
+  // Assigned by every close, so it always describes the most recent one rather
+  // than latching. State rather than an unconditional autofocus because a bubble
+  // that remounts for any other reason must not pull focus out of wherever the
+  // reader actually is.
+  const [restoreFocus, setRestoreFocus] = useState(false);
+  // Bumped by every open and every close. `onSend` awaits, so its continuation
+  // outlives the editor that started it: cancelling a slow send, reopening and
+  // retyping would otherwise let the abandoned one tear down the SECOND editor
+  // and take that revision with it.
+  const editSession = useRef(0);
+  const openEditor = (): void => {
+    editSession.current += 1;
+    setEditing(true);
+  };
+  const closeEditor = (restore: boolean): void => {
+    editSession.current += 1;
+    setEditing(false);
+    setRestoreFocus(restore);
+  };
   if (item.role === 'thought') {
     return <ThoughtBlock item={item} streaming={streaming === true} />;
   }
-  const isUser = item.role === 'user';
-  const attachments = isUser ? item.attachments : undefined;
+  if (item.role !== 'user') {
+    return (
+      // Agent reply reads as full-width prose — no bubble, no fill.
+      <div
+        className="w-full wrap-break-word text-sm text-foreground"
+        data-testid="agent-thread-agent-message"
+      >
+        {/* Rendered as markdown, by the same renderer that sanitizes the
+            transcript's other prose. */}
+        <AgentMarkdown text={item.text} />
+      </div>
+    );
+  }
+  const attachments = item.attachments;
   return (
+    // The hover scope spans the bubble AND the action row beneath it, so
+    // travelling from the words to the buttons never crosses un-hovered ground
+    // and blinks them away. Extra vertical margin (on top of the transcript's
+    // gap-2) enlarges only the turn boundary — the gap before the agent's
+    // response starts — while the response's own items stay tight.
     <div
       className={cn(
-        'wrap-break-word text-sm text-foreground',
-        isUser
-          ? // Sent-message bubble: light-gray fill, right-aligned, with the
-            // squared bottom-right corner (the sender-side "tail"). Extra bottom
-            // margin (on top of the transcript's gap-2) enlarges only the turn
-            // boundary — the gap before the agent's response starts — while the
-            // response's own items (reply text + its tool calls) stay tight.
-            // No `whitespace-pre-wrap`: it fights the renderer, which decides
-            // its own block spacing. The cost is that a single newline in a
-            // typed message collapses, the way it does in any markdown chat.
-            'my-3 ml-auto max-w-[85%] rounded-2xl rounded-br-xs bg-muted px-3 py-1.5'
-          : // Agent reply reads as full-width prose — no bubble, no fill.
-            'w-full',
+        'group/user-message my-3 ml-auto flex flex-col',
+        // Editing needs the room the read view doesn't: a revision is typed,
+        // not skimmed, and 85% of a docked panel is a column too narrow to work
+        // a paragraph in.
+        editing ? 'w-full' : 'max-w-[85%]',
       )}
-      data-testid={isUser ? 'agent-thread-user-message' : 'agent-thread-agent-message'}
     >
-      {/* Both sides render as markdown. Sent messages used to print verbatim,
-          which was fine for a typed sentence and wrong for a comment batch: that
-          prompt is composed markdown, so the reader saw the raw `>` blockquotes
-          and backticks the agent parses rather than the passages they mark. The
-          same renderer that sanitizes agent output handles this text. */}
-      <AgentMarkdown text={item.text} />
-      {attachments !== undefined && attachments.length > 0 ? (
-        <UserMessageAttachments attachments={attachments} />
-      ) : null}
+      <div
+        className={cn(
+          // Sent-message bubble: light-gray fill, right-aligned, with the
+          // squared bottom-right corner (the sender-side "tail").
+          // No `whitespace-pre-wrap`: it fights the renderer, which decides its
+          // own block spacing. The cost is that a single newline in a typed
+          // message collapses, the way it does in any markdown chat.
+          'wrap-break-word rounded-2xl rounded-br-xs bg-muted text-sm text-foreground',
+          editing ? 'p-2' : 'px-3 py-1.5',
+        )}
+        data-testid="agent-thread-user-message"
+      >
+        {editing ? (
+          <UserMessageEditor
+            initialText={item.text}
+            currentAgent={agent}
+            canSendHere={canSendHere}
+            onCancel={() => closeEditor(true)}
+            onSend={async (text, target, chips) => {
+              // The original message's parts ride along: a revision of "look at
+              // this screenshot and…" that arrived without the screenshot is a
+              // different ask. Chips typed into the revision itself are added,
+              // not substituted.
+              //
+              // Awaited, so a send that reports back as not-having-happened
+              // leaves the field standing. The revision exists nowhere else, so
+              // closing on a launch that turns out to be swallowed would delete
+              // what was typed.
+              const session = editSession.current;
+              if (!(await onResend(text, target, [...(attachments ?? []), ...chips]))) return;
+              // Whoever is in the field now did not start this send.
+              if (editSession.current !== session) return;
+              // Focus goes back to the turn only when the answer arrives here.
+              // A new thread activates its own dock tab and moves focus into
+              // that composer, so reaching for it would teleport twice and land
+              // the user on a control that no longer describes their state.
+              closeEditor(target.kind === 'this-thread');
+            }}
+          />
+        ) : (
+          <>
+            {/* Both sides render as markdown. Sent messages used to print
+                verbatim, which was fine for a typed sentence and wrong for a
+                comment batch: that prompt is composed markdown, so the reader
+                saw the raw `>` blockquotes and backticks the agent parses
+                rather than the passages they mark. */}
+            <AgentMarkdown text={item.text} />
+            {attachments !== undefined && attachments.length > 0 ? (
+              <UserMessageAttachments attachments={attachments} />
+            ) : null}
+          </>
+        )}
+      </div>
+      {editing ? null : (
+        <UserMessageActions
+          text={item.text}
+          sentAt={item.sentAt}
+          alwaysVisible={isLatestUserTurn}
+          restoreFocus={restoreFocus}
+          onEdit={openEditor}
+        />
+      )}
     </div>
   );
 }

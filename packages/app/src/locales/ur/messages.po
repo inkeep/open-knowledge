@@ -1737,6 +1737,11 @@ msgstr "پہلے سے ترتیب دیا جا چکا ہے — ok آپ کے ٹرم
 msgid "Already signed in?"
 msgstr "پہلے سے سائن اِن ہیں؟"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "اس ایجنٹ کے ساتھ پہلے ہی چیٹ شروع ہو رہی ہے — تھوڑی دیر بعد دوبارہ کوشش کریں۔"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "ہمیشہ شامل"
@@ -2365,6 +2370,7 @@ msgstr "یہ راستہ شیئر نہیں کیا جا سکتا۔"
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2610,6 +2616,10 @@ msgstr "منتخب کریں کہ نیا ٹیب کیا شروع کرے"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "منتخب کریں کہ یہ تبصرے کہاں بھیجے جائیں"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "منتخب کریں کہ یہ پیغام کہاں بھیجنا ہے"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3396,6 +3406,10 @@ msgstr "یہاں کاپی کریں"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "لنک کاپی کریں"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "پیغام نقل کریں"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5011,6 +5025,10 @@ msgstr "ایک نقل میں ترمیم کریں"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
+msgstr "ترمیم کر کے دوبارہ بھیجیں"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
 msgstr "ترمیم کر کے دوبارہ بھیجیں"
 
 #: src/components/settings/rule-option-field.tsx
@@ -11614,6 +11632,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "معنوی تلاش فعال ہے، مگر کوئی API کلید مقرر نہیں — تلاش کلیدی الفاظ کی مماثلت پر واپس آ جاتی ہے۔ نیچے ایک شامل کریں۔"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "بھیجیں"
@@ -11639,6 +11658,10 @@ msgstr "رائے بھیجیں"
 msgid "Send feedback…"
 msgstr "رائے بھیجیں…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "اسی چیٹ میں بھیجیں"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "رپورٹ بھیجیں"
@@ -11646,6 +11669,10 @@ msgstr "رپورٹ بھیجیں"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "یہ تبصرہ بھیجیں"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "نئی چیٹ میں بھیجیں"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11672,6 +11699,10 @@ msgstr "بھیجا جا رہا ہے"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "رپورٹ بھیجی جا رہی ہے"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "بھیجا جا رہا ہے…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

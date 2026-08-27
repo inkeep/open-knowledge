@@ -30,16 +30,30 @@ import type {
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
 
-interface RenderedMessage {
-  kind: 'message';
-  role: 'user' | 'agent' | 'thought';
-  text: string;
-  messageId: string;
-  /** Attachment parts that rode this message on send — user turns only, and
-   *  omitted for the streaming agent variants. Frozen at send time by the
-   *  server so a replayed transcript renders exactly what was sent. */
-  attachments?: readonly import('@inkeep/open-knowledge-core/acp/thread-protocol').AttachmentPart[];
-}
+/**
+ * A rendered turn. Discriminated on `role` so the compiler holds the
+ * "user turns only" rule the two extra fields carry, rather than a comment:
+ * agent text arrives as chunks that coalesce into one bubble, so no single
+ * instant describes it, and it never carries attachment parts.
+ */
+type RenderedMessage =
+  | {
+      kind: 'message';
+      role: 'user';
+      text: string;
+      messageId: string;
+      /** Attachment parts that rode this message on send. Frozen at send time
+       *  by the server so a replayed transcript renders exactly what was sent. */
+      attachments?: readonly import('@inkeep/open-knowledge-core/acp/thread-protocol').AttachmentPart[];
+      /** When the event carrying this message was logged. */
+      sentAt?: number;
+    }
+  | {
+      kind: 'message';
+      role: 'agent' | 'thought';
+      text: string;
+      messageId: string;
+    };
 
 export interface RenderedToolCall {
   kind: 'tool_call';
@@ -328,6 +342,7 @@ export class ThreadRenderModelBuilder {
           role: 'user',
           text: event.content,
           messageId: `user-${this.items.length}`,
+          sentAt: event.ts,
         };
         if (event.attachments !== undefined && event.attachments.length > 0) {
           message.attachments = event.attachments;

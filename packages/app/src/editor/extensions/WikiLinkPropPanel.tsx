@@ -626,7 +626,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
                 {isCreating ? <Trans>Creating...</Trans> : <Trans>Create page</Trans>}
               </Button>
             ) : null}
-            <Tooltip>
+            <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
@@ -644,7 +644,7 @@ export function WikiLinkPropPanel({ editor, getPos, onClose, onNavigate }: WikiL
               </TooltipContent>
             </Tooltip>
             <CopyButton copyContent={copyContent} />
-            <Tooltip>
+            <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <Button
                   type="button"

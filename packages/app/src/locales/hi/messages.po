@@ -1733,6 +1733,11 @@ msgstr "पहले से सेट अप है — ok आपके टर�
 msgid "Already signed in?"
 msgstr "पहले से साइन इन हैं?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "इस एजेंट के साथ पहले से ही एक चैट शुरू हो रही है — कुछ ही देर में फिर कोशिश करें।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "हमेशा शामिल"
@@ -2361,6 +2366,7 @@ msgstr "यह पथ साझा नहीं किया जा सकता
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2606,6 +2612,10 @@ msgstr "चुनें कि नया टैब क्या शुरू क
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "चुनें कि ये टिप्पणियाँ कहाँ भेजनी हैं"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "चुनें कि यह संदेश कहाँ भेजना है"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3392,6 +3402,10 @@ msgstr "यहाँ कॉपी करें"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "लिंक कॉपी करें"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "संदेश कॉपी करें"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5008,6 +5022,10 @@ msgstr "एक प्रति संपादित करें"
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
 msgstr "संपादित करें और फिर से भेजें"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "संपादित करके फिर भेजें"
 
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
@@ -11610,6 +11628,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "अर्थ-आधारित खोज चालू है, पर कोई API कुंजी सेट नहीं है — खोज कीवर्ड मिलान पर लौट आती है। नीचे एक जोड़ें।"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "भेजें"
@@ -11635,6 +11654,10 @@ msgstr "प्रतिक्रिया भेजें"
 msgid "Send feedback…"
 msgstr "प्रतिक्रिया भेजें…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "इसी चैट में भेजें"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "रिपोर्ट भेजें"
@@ -11642,6 +11665,10 @@ msgstr "रिपोर्ट भेजें"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "यह टिप्पणी भेजें"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "नई चैट में भेजें"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11668,6 +11695,10 @@ msgstr "भेजा जा रहा है"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "रिपोर्ट भेजी जा रही है"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "भेजा जा रहा है…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

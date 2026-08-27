@@ -1440,6 +1440,7 @@
     "Fhp4Gn": ["Ver el complemento"],
     "FiyNln": ["Ir al texto seleccionado en la propiedad"],
     "FjkaiT": ["Alejar"],
+    "Fjz6aJ": ["Enviar a un chat nuevo"],
     "FqGWeR": ["No se pudo contactar con el registro de agentes."],
     "FqTpiN": ["Wiki de aves"],
     "Fqr8BP": [
@@ -1902,6 +1903,7 @@
     "LE7t79": ["Clonar en una carpeta nueva"],
     "LGvaif": ["Ver el repositorio del complemento ", ["plugin"]],
     "LHH461": ["Finalizar configuración"],
+    "LJHTS5": ["Elegir a dónde enviar este mensaje"],
     "LJXDjm": ["No se pudo guardar tu preferencia de tema."],
     "LJeFU6": [
       "Inicia OpenKnowledge desde cualquier terminal: <0>ok</0> abre un proyecto y <1>ok init</1> conecta tus agentes."
@@ -2554,6 +2556,7 @@
     "SXCSQd": ["Ruta copiada"],
     "SXEdCq": ["¿Mover a ", ["0"], "?"],
     "SYfHmN": ["Dejar de fijar la pestaña"],
+    "Sad2tK": ["Enviando…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -3109,6 +3112,7 @@
       ["createdPath"],
       "\" sigue existiendo en el disco"
     ],
+    "YPJfPD": ["Enviar en este chat"],
     "YRavYS": [
       "Un selector de tema de color personal, no compartido con tu proyecto. Al activarlo aparece en Complementos, en la barra lateral."
     ],
@@ -3707,6 +3711,7 @@
         { "one": ["#", " problema"], "many": ["#", " problemas"], "other": ["#", " problemas"] }
       ]
     ],
+    "eCOktA": ["Ya se está iniciando un chat con este agente; inténtalo de nuevo en un momento."],
     "eFJkVt": ["No se pudo clonar: ", ["cloneError"]],
     "eG8Jsg": ["Activar o desactivar el modo de foco del tabulador en el código"],
     "eGUbmF": ["Copiar el archivo o la carpeta seleccionados"],
@@ -4292,6 +4297,7 @@
     "kNGLX6": ["Reintentando…"],
     "kNiQp6": ["Fijados"],
     "kNqMMd": ["Carpeta"],
+    "kPOw9O": ["Copiar el mensaje"],
     "kRTXGw": [
       "Apunta la búsqueda semántica a cualquier endpoint de embeddings compatible con OpenAI: un servidor propio u otro proveedor. La clave de API de arriba vale para el endpoint que definas aquí."
     ],
@@ -5029,6 +5035,7 @@
     "sKEgGd": ["Enviar al chat"],
     "sKHiNR": [["count"], " por detrás"],
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
+    "sOafXU": ["Editar y enviar de nuevo"],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
     "sR0I-f": ["Contraer todos los archivos"],

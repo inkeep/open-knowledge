@@ -789,3 +789,33 @@ describe('startup failures a later ready retires', () => {
     expect(model.items.filter((i) => i.kind === 'notice' && i.superseded !== true)).toHaveLength(1);
   });
 });
+
+describe('sent-message timestamps', () => {
+  test('a user turn keeps the instant its event was logged', () => {
+    const model = buildThreadRenderModel([
+      ev({ kind: 'user_message', content: 'hi', ts: 1_700_000_000_000 }),
+    ]);
+
+    const message = model.items[0];
+    if (message?.kind !== 'message') throw new Error('unreachable');
+    expect(message.sentAt).toBe(1_700_000_000_000);
+  });
+
+  test('agent text carries no instant — it arrives as chunks, not a moment', () => {
+    const model = buildThreadRenderModel([
+      ev({
+        kind: 'session_update',
+        ts: 3,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'm1',
+          content: { type: 'text', text: 'Hello' },
+        } as never,
+      }),
+    ]);
+
+    const message = model.items[0];
+    if (message?.kind !== 'message') throw new Error('unreachable');
+    expect(message.sentAt).toBeUndefined();
+  });
+});

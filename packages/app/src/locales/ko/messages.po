@@ -1737,6 +1737,11 @@ msgstr "이미 설정됨. 터미널에서 ok 사용 가능"
 msgid "Already signed in?"
 msgstr "이미 로그인했나요?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "이 에이전트와의 채팅을 이미 시작하는 중입니다. 잠시 후 다시 시도하세요."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "항상 포함"
@@ -2365,6 +2370,7 @@ msgstr "이 경로는 공유할 수 없습니다."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2610,6 +2616,10 @@ msgstr "새 탭 시작 화면 선택"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "댓글 보낼 곳을 선택합니다"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "이 메시지를 보낼 곳 선택"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3396,6 +3406,10 @@ msgstr "복사해 넣기"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "링크 복사"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "메시지 복사"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5012,6 +5026,10 @@ msgstr "복사본 편집"
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
 msgstr "편집하여 다시 보내기"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "편집 후 다시 전송"
 
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
@@ -11614,6 +11632,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "의미 기반 검색이 켜져 있지만 API 키가 설정되지 않아 검색이 키워드 매칭으로 대체됩니다. 아래에 추가합니다."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "전송"
@@ -11639,6 +11658,10 @@ msgstr "피드백 보내기"
 msgid "Send feedback…"
 msgstr "피드백 보내기…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "이 채팅에서 전송"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "보고서 보내기"
@@ -11646,6 +11669,10 @@ msgstr "보고서 보내기"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "이 댓글 보내기"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "새 채팅으로 전송"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11672,6 +11699,10 @@ msgstr "보내는 중"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "보고서 보내는 중"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "보내는 중…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

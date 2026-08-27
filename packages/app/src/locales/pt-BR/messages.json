@@ -1418,6 +1418,7 @@
     "Fhp4Gn": ["Ver o plugin"],
     "FiyNln": ["Ir para o texto selecionado na propriedade"],
     "FjkaiT": ["Afastar"],
+    "Fjz6aJ": ["Enviar para um novo chat"],
     "FqGWeR": ["Não deu para contatar o registro de agentes."],
     "FqTpiN": ["Wiki de aves"],
     "Fqr8BP": [
@@ -1870,6 +1871,7 @@
     "LE7t79": ["Clonar em uma nova pasta"],
     "LGvaif": ["Ver o repositório do plugin ", ["plugin"]],
     "LHH461": ["Concluir configuração"],
+    "LJHTS5": ["Escolher para onde enviar esta mensagem"],
     "LJXDjm": ["Não foi possível salvar sua preferência de tema."],
     "LJeFU6": [
       "Inicie o OpenKnowledge de qualquer terminal: <0>ok</0> abre um projeto e <1>ok init</1> conecta seus agentes."
@@ -2516,6 +2518,7 @@
     "SXCSQd": ["Caminho copiado"],
     "SXEdCq": ["Mover para ", ["0"], "?"],
     "SYfHmN": ["Desafixar a aba"],
+    "Sad2tK": ["Enviando…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -3042,6 +3045,7 @@
     "YLMBSd": ["ex.: O editor travou depois que colei uma tabela grande"],
     "YMlS7s": ["Abrir no aplicativo padrão"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" ainda existe no disco"],
+    "YPJfPD": ["Enviar neste chat"],
     "YRavYS": [
       "Um seletor de tema de cores pessoal — não compartilhado com seu projeto. Quando ativado, aparece em Plugins na barra lateral."
     ],
@@ -3623,6 +3627,7 @@
         { "one": ["#", " problema"], "many": ["#", " problemas"], "other": ["#", " problemas"] }
       ]
     ],
+    "eCOktA": ["Já está sendo iniciado um chat com este agente; tente de novo em um instante."],
     "eFJkVt": ["Falha ao clonar: ", ["cloneError"]],
     "eG8Jsg": ["Ativar ou desativar o modo de foco do Tab no código"],
     "eGUbmF": ["Copiar o arquivo ou a pasta selecionados"],
@@ -4200,6 +4205,7 @@
     "kNGLX6": ["Tentando novamente…"],
     "kNiQp6": ["Fixados"],
     "kNqMMd": ["Pasta"],
+    "kPOw9O": ["Copiar a mensagem"],
     "kRTXGw": [
       "Aponte a busca semântica para qualquer endpoint de embeddings compatível com a OpenAI — um servidor próprio ou outro provedor. A chave de API acima vale para o endpoint que você definir aqui."
     ],
@@ -4925,6 +4931,7 @@
     "sKEgGd": ["Enviar para o chat"],
     "sKHiNR": [["count"], " atrás"],
     "sNeKjP": ["Falha ao guardar o token — tente de novo"],
+    "sOafXU": ["Editar e enviar de novo"],
     "sOxZaS": ["Falha ao carregar o grafo"],
     "sQoLn0": ["Sair"],
     "sR0I-f": ["Recolher todos os arquivos"],

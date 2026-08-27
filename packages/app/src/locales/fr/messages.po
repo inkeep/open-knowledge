@@ -1737,6 +1737,11 @@ msgstr "Déjà configuré — ok est disponible dans votre terminal"
 msgid "Already signed in?"
 msgstr "Déjà connecté ?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "Un chat avec cet agent est déjà en cours de démarrage — réessayez dans un instant."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Toujours inclus"
@@ -2365,6 +2370,7 @@ msgstr "Impossible de partager ce chemin."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2610,6 +2616,10 @@ msgstr "Choisissez ce qu'ouvre un nouvel onglet"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "Choisissez où envoyer ces commentaires"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "Choisir où envoyer ce message"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -3396,6 +3406,10 @@ msgstr "Copier ici"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "Copier le lien"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "Copier le message"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -5011,6 +5025,10 @@ msgstr "Modifier une copie"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Edit and resend"
+msgstr "Modifier et renvoyer"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
 msgstr "Modifier et renvoyer"
 
 #: src/components/settings/rule-option-field.tsx
@@ -11614,6 +11632,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "La recherche sémantique est activée, mais aucune clé API n'est définie — la recherche revient à la correspondance par mots-clés. Ajoutez-en une ci-dessous."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Envoyer"
@@ -11639,6 +11658,10 @@ msgstr "Envoyer un retour"
 msgid "Send feedback…"
 msgstr "Envoyer un retour…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "Envoyer dans ce chat"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Envoyer le rapport"
@@ -11646,6 +11669,10 @@ msgstr "Envoyer le rapport"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "Envoyer ce commentaire"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "Envoyer dans un nouveau chat"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11672,6 +11699,10 @@ msgstr "Envoi en cours"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "Envoi du rapport"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "Envoi…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"

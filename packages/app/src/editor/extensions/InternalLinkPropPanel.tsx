@@ -738,7 +738,7 @@ export function InternalLinkPropPanel({
               </Button>
             ) : null}
             {canEditDestination ? (
-              <Tooltip>
+              <Tooltip disableHoverableContent>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
@@ -757,7 +757,7 @@ export function InternalLinkPropPanel({
               </Tooltip>
             ) : null}
             <CopyButton copyContent={href} />
-            <Tooltip>
+            <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
