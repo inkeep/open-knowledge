@@ -149,6 +149,23 @@ describe('installClientLogForwarder', () => {
     expect(entries[0]?.message).toContain('[REDACTED-GH-PAT]');
   });
 
+  test('scrubs credentials out of the LIFTED FIELDS too, which no later layer masks', () => {
+    // The message and the fields are parsed from different strings, so scrubbing
+    // the message alone leaves the fields raw — and the ingest handler spreads
+    // them straight into pino, whose keyed redact covers a fixed denylist this
+    // key is not on. The scrub-coverage guard cannot catch the gap either: it
+    // asks whether the file scrubs anywhere, and it does, on the message path.
+    const fetchSpy = makeFetchSpy();
+    const { con } = install(fetchSpy);
+    const secret = 'ghp_0123456789abcdefghijklmnopqrstuvwxyz';
+    con.warn(JSON.stringify({ event: 'ok-pool-recycle-all', detail: `token ${secret}` }));
+    handle?.flushNow();
+    const { entries } = bodyOf(fetchSpy);
+    const fields = entries[0]?.fields as Record<string, unknown>;
+    expect(fields?.detail).not.toContain(secret);
+    expect(fields?.detail).toContain('[REDACTED-GH-PAT]');
+  });
+
   test('keeps the 8192-byte message cap after scrubbing', () => {
     const fetchSpy = makeFetchSpy();
     const { con } = install(fetchSpy);

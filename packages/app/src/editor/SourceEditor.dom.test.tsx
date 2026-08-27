@@ -7,7 +7,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
-import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import {
+  OUTLINE_NAV_BREADCRUMB,
+  OUTLINE_NAV_EVENT,
+  type OutlineNavDetail,
+} from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
@@ -366,6 +370,77 @@ describe('SourceEditor outline navigation', () => {
     const headingLine = view.state.doc.line(8);
     expect(headingLine.text).toBe('## Second');
     expect(view.state.selection.main.head).toBe(headingLine.from);
+  });
+
+  describe('breadcrumb', () => {
+    // Only one of the two outline consumers ever answers a given click, so a
+    // bundle that instruments the WYSIWYG side alone cannot separate "the user
+    // was in source mode" from "the event never fired".
+    let infoSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      __resetScrollRestoreCoordination();
+      infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      __resetScrollRestoreCoordination();
+      vi.restoreAllMocks();
+    });
+
+    function breadcrumbs(): Array<Record<string, unknown>> {
+      return infoSpy.mock.calls.flatMap(([first]) => {
+        if (typeof first !== 'string') return [];
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(first) as Record<string, unknown>;
+        } catch {
+          return [];
+        }
+        return parsed.event === OUTLINE_NAV_BREADCRUMB ? [parsed] : [];
+      });
+    }
+
+    async function mountSource(docName: string, content: string): Promise<void> {
+      const { provider, ytext } = makeProvider(docName, content);
+      const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+      await findCmContent(container);
+    }
+
+    test('a jump reports the line it landed on', async () => {
+      await mountSource('source-outline-crumb', '# First\n\n## Second\n\n## Third');
+      await dispatchOutlineNav('source-outline-crumb', 2, 'third');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({
+          docName: 'source-outline-crumb',
+          mode: 'source',
+          index: 2,
+          sourceHeadingCount: 3,
+          outcome: 'scrolled',
+          targetLine: 5,
+        }),
+      ]);
+    });
+
+    test('a declined claim is recorded rather than read as a completed jump', async () => {
+      await mountSource('source-outline-crumb-declined', '# First\n\n## Second');
+      registerLandingScrollOwner('source-outline-crumb-declined', {
+        yieldsToNavigation: false,
+        supersede: () => {},
+      });
+      await dispatchOutlineNav('source-outline-crumb-declined', 1, 'second');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({ mode: 'source', index: 1, outcome: 'declined' }),
+      ]);
+    });
+
+    test('an out-of-range ordinal reports the count that made it out of range', async () => {
+      await mountSource('source-outline-crumb-range', '# Only');
+      await dispatchOutlineNav('source-outline-crumb-range', 7, 'nowhere');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({ index: 7, sourceHeadingCount: 1, outcome: 'no-target' }),
+      ]);
+    });
   });
 });
 

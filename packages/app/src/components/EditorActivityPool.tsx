@@ -598,6 +598,30 @@ interface ActivityEntryProps {
 }
 
 /**
+ * The scroller's measurements at the instant a restore mark fires. Every mark in
+ * the `ok/scroll-restore` family carries them, because the family is routed into
+ * diagnostic bundles and re-deriving them after the fact is precisely what a
+ * bundle cannot do.
+ *
+ * How they are READ differs by outcome — by enough that no summary of it is
+ * safe. The `yielded` sites pass `contentBottom: null` unconditionally, so an
+ * absent value there means "not measured" rather than "not measurable" and
+ * inverts the reading that holds elsewhere; `abandoned` splits again on
+ * `anchorMeasurable`. The triage playbook in the bug-triage skill is the single
+ * statement of all of it, kept there rather than restated here so the two
+ * cannot drift — a short version lived here for several revisions and was
+ * wrong about `yielded` for all of them.
+ */
+function geometry(el: HTMLElement, contentBottom: number | null) {
+  return {
+    scrollTop: el.scrollTop,
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    ...(contentBottom !== null ? { contentBottom } : {}),
+  };
+}
+
+/**
  * Owns one imperative host for a document Activity. Moving that host between
  * pane mounts reparents DOM without changing the ActivityEntry's React key,
  * preserving its scroll state and exclusive TipTap portal target.
@@ -854,6 +878,11 @@ export function ScrollPreservingContainer({
         fraction: Number(saved.fraction.toFixed(4)),
         target,
         applied: applicable && el.scrollTop === target,
+        // Measured here rather than passed null: this branch lands on a
+        // fraction of the OTHER mode's geometry, which makes it the restore
+        // most likely to come to rest past where the document actually
+        // reaches — the one case where the content extent is the whole answer.
+        ...geometry(el, measureContentExtent(el)),
       });
       return;
     }
@@ -929,8 +958,10 @@ export function ScrollPreservingContainer({
       ) {
         hasLandedOnce = true;
         mark('ok/scroll-restore/phase1-success', {
+          docName,
           target: frame.target,
           elapsedMs: performance.now() - startTs,
+          ...geometry(el, frame.contentBottom),
         });
       }
     }
@@ -965,9 +996,10 @@ export function ScrollPreservingContainer({
         // invisible (no phase1/phase2-success, no abandoned) — surface it so
         // operators can distinguish "user took over" from "never ran".
         mark('ok/scroll-restore/yielded', {
+          docName,
           reason: 'user',
           elapsedMs: performance.now() - startTs,
-          finalScrollTop: el.scrollTop,
+          ...geometry(el, null),
         });
       }
       finish();
@@ -1011,15 +1043,20 @@ export function ScrollPreservingContainer({
       const holder = scrollSuppressionHolder(docName);
       if (holder) {
         mark('ok/scroll-restore/superseded', {
+          // Carried for the same reason as every other mark on this track: this
+          // one reaches a diagnostic bundle now, and a line there that names no
+          // document cannot be tied to the restore it describes.
+          docName,
           holder,
           elapsedMs: performance.now() - startTs,
           finalScrollTop: el.scrollTop,
         });
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
+            docName,
             reason: holder,
             elapsedMs: performance.now() - startTs,
-            finalScrollTop: el.scrollTop,
+            ...geometry(el, null),
           });
         }
         finish();
@@ -1034,9 +1071,10 @@ export function ScrollPreservingContainer({
       if (isExternalScroll(prevScrollTop, el.scrollTop)) {
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
+            docName,
             reason: 'external',
             elapsedMs: performance.now() - startTs,
-            finalScrollTop: el.scrollTop,
+            ...geometry(el, null),
           });
         }
         finish();
@@ -1058,8 +1096,10 @@ export function ScrollPreservingContainer({
           // At-most-once per restore session: phase2-success fires on the
           // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
+            docName,
             target: frame.target,
             elapsedMs: performance.now() - startTs,
+            ...geometry(el, frame.contentBottom),
           });
           phase2Marked = true;
           hasLandedOnce = true;
@@ -1092,11 +1132,11 @@ export function ScrollPreservingContainer({
         // the unmeasurable-anchor case is carried by `anchorMeasurable`
         // with `target` omitted.
         mark('ok/scroll-restore/abandoned', {
+          docName,
           ...(finalTarget !== null ? { target: finalTarget } : {}),
           anchorMeasurable: finalTarget !== null,
           elapsedMs: performance.now() - startTs,
-          scrollHeight: el.scrollHeight,
-          finalScrollTop: el.scrollTop,
+          ...geometry(el, final.contentBottom),
         });
       }
       finish();
@@ -1109,7 +1149,7 @@ export function ScrollPreservingContainer({
     <div
       ref={ref}
       data-testid="editor-scroll-container"
-      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Six
+      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Seven
       // load-bearing constants must move together if the toolbar height changes:
       //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
       //     start behind the absolute-positioned EditorToolbar overlay.
@@ -1133,6 +1173,12 @@ export function ScrollPreservingContainer({
       //   - editorToolbarOverlapPx in editor/utils/editor-visible-region.ts: the
       //     top inset of the region selection-anchored floating surfaces clip
       //     and clamp against, so the toolbar band counts as occluded.
+      //   - the outline-click section of the bug-triage skill's
+      //     references/bundle-forensics.md: a healthy `block: 'start'` landing
+      //     rests AT this inset, so the playbook states it as the value
+      //     `targetTopAfter` is read against. The only entry outside the app,
+      //     and the only one nothing here would fail on — it goes stale silently
+      //     and a triager measures against the wrong number.
       // The toolbar itself: components/EditorToolbar.tsx.
       className={cn(
         'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',

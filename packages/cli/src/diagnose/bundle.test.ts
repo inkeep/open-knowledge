@@ -670,6 +670,44 @@ describe('collectBundle — summary', () => {
     collected.cleanup();
   });
 
+  test('docNameCount also counts the renderer-log spelling, in the log files', async () => {
+    // The number this feeds is printed to a user deciding whether to share the
+    // bundle. Frontend spans are opt-in and off by default, so a scan that saw
+    // only the span attribute in only `telemetry/` reported zero over a zip
+    // carrying a document path per activation.
+    const contentDir = makeTmpDir();
+    writeAt(
+      contentDir,
+      '.ok/local/logs/server-current.jsonl',
+      '{"source":"renderer-console","event":"ok-outline-nav","docName":"notes/a"}\n' +
+        '{"source":"renderer-console","event":"ok/scroll-restore/abandoned","docName":"notes/b"}\n',
+    );
+    const collected = await collectBundle({ contentDir, deps: makeDeterministicDeps() });
+    expect(collected.summary.docNameCount).toBe(2);
+    collected.cleanup();
+  });
+
+  test('docNameCount sees the `.log` sink, which is the only one the desktop build writes', async () => {
+    // Everything staged under `logs/` is `.log`, and on desktop the web
+    // forwarder is switched off — so `desktop.<date>.log` carries every
+    // breadcrumb and a `.jsonl`-only scan reports zero over all of them.
+    const contentDir = makeTmpDir();
+    const userLogsDir = makeTmpDir();
+    writeAt(
+      userLogsDir,
+      'desktop.2026-08-25.log',
+      '{"subsystem":"renderer","event":"ok-outline-nav","docName":"notes/a"}\n' +
+        '{"subsystem":"renderer","event":"ok-outline-nav-settled","docName":"notes/a"}\n',
+    );
+    const collected = await collectBundle({
+      contentDir,
+      userLogFiles: [join(userLogsDir, 'desktop.2026-08-25.log')],
+      deps: makeDeterministicDeps(),
+    });
+    expect(collected.summary.docNameCount).toBe(2);
+    collected.cleanup();
+  });
+
   test('contentDirVisible flips true when path appears in any staged file', async () => {
     const contentDir = makeTmpDir();
     // A log line referencing the content-dir path verbatim.

@@ -248,6 +248,8 @@ export function installClientLogForwarder(
         typeof firstArg === 'string' && firstArg.length <= RENDERER_LOG_MAX_BATCH_BYTES
           ? firstArg
           : undefined;
+      // The parser scrubs its own input, so the lifted fields are masked the
+      // same way `message` is — this path does not need its own scrub call.
       const structured = firstString ? parseStructuredConsoleMessage(firstString) : null;
       // Bound the lifted fields so a single oversized structured entry can't
       // blow past the batch byte budget (and the keepalive limit). Drop fields

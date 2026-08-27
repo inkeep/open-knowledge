@@ -12,14 +12,41 @@
  * `validatePerfMarkName` is a dev-only lint of the shape; it `console.warn`s in
  * dev and returns silently so emission is always best-effort.
  *
- * Production cost is one `performance.measure` call. The collector push is
- * `no-op` in non-DEV builds (see `collector.ts`).
+ * Production cost is one `performance.measure` call for most marks; the
+ * collector push is `no-op` in non-DEV builds (see `collector.ts`). A mark on a
+ * `BUNDLED_TRACKS` track additionally writes one line to the renderer log — see
+ * that constant for what a track must satisfy to earn it.
  */
 
+import { emitDiagnosticBreadcrumb } from '../diagnostic-breadcrumb';
 import { recordCounter, recordHistogram, recordMark } from './collector';
 import type { DevToolsTrackEntry, PerfMarkDetail } from './types';
 
 const NAME_RE = /^ok\/[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
+
+/**
+ * Tracks whose marks are ALSO written to the renderer log, so their numbers
+ * survive into a user-uploaded diagnostic bundle.
+ *
+ * Both of `mark`'s own sinks are unreachable after the fact: a
+ * `performance.measure` entry lives in the page's own timeline, readable only
+ * from inside that page while it is still alive — this repo's e2e substrate does
+ * read them back, but nothing writes them anywhere, so they go with the window —
+ * and the collector ring is compiled out of production entirely. A scroll bug
+ * therefore reached triage three times running with rich marks defined and not
+ * one scroll number anywhere on disk.
+ *
+ * This is the egress boundary, so keep it deliberate on two axes:
+ *   - **Sensitivity.** Every prop of an allowlisted mark ships to whoever reads
+ *     the bundle. Scroll geometry plus a `docName` matches what the pool's
+ *     `ok-pool-*` breadcrumbs already carry; anything richer wants its own call.
+ *   - **Volume.** A line per emission, uncapped. Every mark under
+ *     `ok/scroll-restore` is at-most-once per restore session, which is what
+ *     makes always-on safe here. A per-frame or per-keystroke mark added to an
+ *     allowlisted track would flood the log and age the 45 MB dir cap out from
+ *     under the very session being diagnosed.
+ */
+export const BUNDLED_TRACKS: ReadonlySet<string> = new Set(['ok/scroll-restore']);
 
 export function validatePerfMarkName(name: string): boolean {
   return NAME_RE.test(name);
@@ -83,9 +110,18 @@ function markImpl(name: string, props?: Record<string, unknown>, opts?: MarkOpti
     console.warn(`[perf] mark name "${name}" does not match ok/<subsystem>/<event>`);
   }
 
+  const track = deriveTrack(name);
+  // Emitted BEFORE the `performance.measure` guard below. The breadcrumb is the
+  // only one of this function's three sinks that survives to a file a user can
+  // send us, and gating it on a DevTools tracing API being present would
+  // rebuild, one layer down, exactly the dependency this route exists to break.
+  //
+  // The full mark name is the event, so one string finds the mark in a trace
+  // and the line in a bundle.
+  if (BUNDLED_TRACKS.has(track)) emitDiagnosticBreadcrumb(name, props);
+
   if (typeof performance === 'undefined' || !performance.measure) return;
 
-  const track = deriveTrack(name);
   const properties = propsToDevToolsTuples(props);
   const devtools: DevToolsTrackEntry = {
     dataType: 'track-entry',

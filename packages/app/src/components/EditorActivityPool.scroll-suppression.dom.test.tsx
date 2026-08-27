@@ -18,7 +18,8 @@
  */
 
 import { cleanup, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import type { RefObject } from 'react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   __resetScrollRestoreCoordination,
   acquireScrollRestoreSuppression,
@@ -27,6 +28,7 @@ import {
 import type { EditorModeValue } from '@/editor/use-editor-mode';
 import { getCollector } from '@/lib/perf/collector';
 import { ScrollPreservingContainer } from './EditorActivityPool';
+import { RESTORE_BACKSTOP_MS } from './scroll-restore';
 
 const scrollTops = new WeakMap<HTMLElement, number>();
 let stubScrollHeight = 5000;
@@ -57,7 +59,13 @@ beforeEach(() => {
       return scrollTops.get(this) ?? 0;
     },
     set(this: HTMLElement, value: number) {
-      scrollTops.set(this, value);
+      // Clamped like a real scroller rather than accepting any number: a
+      // browser refuses a scrollTop outside [0, scrollHeight - clientHeight],
+      // so a restore aiming past the rendered runway comes to rest SHORT of
+      // its target. An unclamped stub makes every write land, which is the one
+      // behaviour that would hide the failures these marks exist to report.
+      const maxScroll = Math.max(0, stubScrollHeight - stubClientHeight);
+      scrollTops.set(this, Math.min(Math.max(0, value), maxScroll));
     },
   });
   Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
@@ -88,10 +96,37 @@ function scrollerOf(container: HTMLElement): HTMLDivElement {
   return el;
 }
 
+/**
+ * Re-apply the scroller's current offset so the stub clamps it against the
+ * height that just changed — what a browser does on its own the moment content
+ * shrinks under a scrolled viewport.
+ */
+function reclampToCurrentHeight(el: HTMLElement) {
+  const current = el.scrollTop;
+  el.scrollTop = current;
+}
+
 function crossModeMark(): { properties?: Record<string, unknown> } | undefined {
   return getCollector()
     ?.marks.toArray()
     .find((m) => m.name === 'ok/scroll-restore/cross-mode');
+}
+
+/**
+ * The diagnostic breadcrumbs a `console.info` spy captured, in emission order.
+ * Both log transports agree on one wire shape — a lone `console.info` whose
+ * only argument is `JSON.stringify({ event, ...props })` — so parsing the
+ * argument back is what a bundle reader would see, non-JSON noise dropped.
+ */
+function breadcrumbLines(info: { mock: { calls: unknown[][] } }): Array<Record<string, unknown>> {
+  return info.mock.calls.flatMap(([first]) => {
+    if (typeof first !== 'string') return [];
+    try {
+      return [JSON.parse(first) as Record<string, unknown>];
+    } catch {
+      return [];
+    }
+  });
 }
 
 function Harness({
@@ -99,11 +134,15 @@ function Harness({
   docName,
   mode = 'wysiwyg',
   initialScrollTop = 500,
+  anchorRef,
 }: {
   active: boolean;
   docName: string;
   mode?: EditorModeValue;
   initialScrollTop?: number;
+  /** Optional body-top anchor. Omitted, the restore sees no anchor at all and
+   *  falls back to the raw saved scrollTop. */
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
   return (
     <ScrollPreservingContainer
@@ -111,6 +150,7 @@ function Harness({
       docName={docName}
       mode={mode}
       initialScrollTop={initialScrollTop}
+      bodyAnchorRef={anchorRef}
     >
       <div>body content</div>
     </ScrollPreservingContainer>
@@ -121,6 +161,37 @@ describe('ScrollPreservingContainer scroll-restore suppression', () => {
   test('restores scroll position when no landing is active', () => {
     const { container } = render(<Harness active docName="doc-a" />);
     expect(scrollerOf(container).scrollTop).toBe(500);
+  });
+
+  test('the ordinary restore reports the document and the geometry, not just a target', () => {
+    // The whole point of routing these marks: a bundle without `docName` cannot
+    // attribute the numbers, and one without the geometry cannot separate a
+    // landing past real content from content that had not painted. Both were
+    // absent from this mark before, which is why three scroll tickets shipped
+    // with no scroll number on disk.
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      render(<Harness active docName="doc-geo" />);
+      const lines = breadcrumbLines(info);
+      // Matched exactly, not by containment: the risk this guards is a field
+      // being DROPPED from the payload, which any objectContaining would wave
+      // through. `contentBottom` is absent here because jsdom lays nothing out,
+      // so the extent probe finds none — its presence on a real restore is what
+      // the assertion's exactness protects for the day layout exists.
+      expect(lines).toEqual([
+        {
+          event: 'ok/scroll-restore/phase1-success',
+          docName: 'doc-geo',
+          target: 500,
+          elapsedMs: expect.any(Number),
+          scrollTop: 500,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
   });
 
   test('stands down and writes no scroll position while a landing holds suppression', () => {
@@ -165,6 +236,40 @@ describe('ScrollPreservingContainer cross-mode re-activation floor', () => {
     expect(m?.properties?.applied).toBe(true);
   });
 
+  test('the same mark reaches the renderer log, where a bundle can carry it', () => {
+    // The end of the route, exercised through the real restore rather than
+    // through `mark()` directly: the collector this mark also lands in is
+    // compiled out of production and `performance.measure` needs DevTools
+    // attached, so the log line is the only one of the three a user can send us.
+    // Three scroll tickets shipped without a single scroll number on disk.
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      rememberDocScrollState('doc-x', { offset: 4321, mode: 'source', fraction: 0.4 });
+      render(<Harness active docName="doc-x" mode="wysiwyg" initialScrollTop={0} />);
+      const lines = breadcrumbLines(info);
+      expect(lines).toEqual([
+        // `docName` correlates the numbers to a document, and the geometry
+        // triple is what separates "landed past the content" from "content had
+        // not painted yet" — the question that previously took an instrumented
+        // reproduction to answer. Matched exactly so a dropped field fails.
+        {
+          event: 'ok/scroll-restore/cross-mode',
+          docName: 'doc-x',
+          savedMode: 'source',
+          mode: 'wysiwyg',
+          fraction: 0.4,
+          target: 2000,
+          applied: true,
+          scrollTop: 2000,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
   test('a same-mode re-activation is unaffected — no floor, no cross-mode mark', () => {
     // Same mode → the cross-mode branch is skipped and the normal restore drives
     // the saved position (raw target 777, since this harness renders no body
@@ -189,5 +294,206 @@ describe('ScrollPreservingContainer cross-mode re-activation floor', () => {
     );
     expect(scrollerOf(container).scrollTop).toBe(0);
     expect(crossModeMark()?.properties?.applied).toBe(false);
+  });
+});
+
+/**
+ * The three `yielded` reasons and the `abandoned` backstop only fire on a
+ * restore that is still in flight when something else claims the scroll, so
+ * they need the rAF poll to actually run — faked here and driven a frame at a
+ * time, rather than left to jsdom's real clock where the test would end first.
+ */
+describe('ScrollPreservingContainer restore-outcome marks', () => {
+  /** One faked animation frame, plus margin: the fake clock schedules the
+   *  callback on the next 16ms boundary rather than exactly 16ms out. */
+  const ONE_FRAME_MS = 20;
+
+  beforeEach(() => {
+    vi.useFakeTimers({
+      toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'setTimeout', 'clearTimeout'],
+    });
+  });
+
+  afterEach(() => {
+    // Unmount under the fake clock so the loop's teardown runs against the same
+    // timer implementation that scheduled it.
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  /**
+   * A restore that can never land: a saved body offset makes the target
+   * anchor-relative, and an anchor that generates no layout boxes (detached
+   * here; a Suspense fallback window in production) yields no measurement, so
+   * every frame holds instead of writing. That is the state all three
+   * `yielded` reasons require — the mark exists precisely to make a restore
+   * that never landed visible instead of silent.
+   */
+  function renderNeverLandingRestore(docName: string) {
+    rememberDocScrollState(docName, { offset: 300, mode: 'wysiwyg', fraction: 0.1 });
+    const anchorRef: RefObject<HTMLElement | null> = { current: document.createElement('div') };
+    const { container } = render(<Harness active docName={docName} anchorRef={anchorRef} />);
+    const scroller = scrollerOf(container);
+    expect(scroller.scrollTop).toBe(0); // held: no valid evidence to write through
+    return scroller;
+  }
+
+  test('a user scroll during a restore that never landed is reported, with geometry', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const scroller = renderNeverLandingRestore('doc-yield-user');
+      scroller.dispatchEvent(new WheelEvent('wheel'));
+      // Exact match, not containment: a dropped field is the failure this
+      // guards. `contentBottom` is deliberately absent — the loop passes no
+      // extent to the yielded marks.
+      expect(breadcrumbLines(info)).toEqual([
+        {
+          event: 'ok/scroll-restore/yielded',
+          docName: 'doc-yield-user',
+          reason: 'user',
+          elapsedMs: expect.any(Number),
+          scrollTop: 0,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test('a landing taking over mid-restore is reported as its own reason', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      renderNeverLandingRestore('doc-yield-landing');
+      // Acquired AFTER mount: acquiring first makes the layout effect stand
+      // down at setup, and there is then no restore to take over.
+      acquireScrollRestoreSuppression('doc-yield-landing', 'landing');
+      vi.advanceTimersByTime(ONE_FRAME_MS);
+      // Two lines, not one: a takeover that finds a holder reports WHO has the
+      // scroller now (`superseded`) as well as that this restore never landed
+      // (`yielded`). Both reach a bundle, so both are asserted whole — a
+      // `superseded` line that stopped naming its document would otherwise pass
+      // here unread.
+      expect(breadcrumbLines(info)).toEqual([
+        {
+          event: 'ok/scroll-restore/superseded',
+          docName: 'doc-yield-landing',
+          holder: 'landing',
+          elapsedMs: expect.any(Number),
+          finalScrollTop: 0,
+        },
+        {
+          event: 'ok/scroll-restore/yielded',
+          docName: 'doc-yield-landing',
+          reason: 'landing',
+          elapsedMs: expect.any(Number),
+          scrollTop: 0,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test('an upward scroll we did not write is reported as an external takeover', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const scroller = renderNeverLandingRestore('doc-yield-external');
+      // What an outline click or find-in-doc does: moves the scroller UP from
+      // where the loop left it, between two of its frames.
+      scroller.scrollTop = 300;
+      vi.advanceTimersByTime(ONE_FRAME_MS);
+      expect(breadcrumbLines(info)).toEqual([
+        {
+          event: 'ok/scroll-restore/yielded',
+          docName: 'doc-yield-external',
+          reason: 'external',
+          elapsedMs: expect.any(Number),
+          scrollTop: 300,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test('a restore the layout can never satisfy is reported at the backstop', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      // Runway enough to keep trying (scrollHeight reaches past the target) but
+      // never enough to arrive: the scroller clamps every write to 200 while
+      // the target stays 500, so the loop re-applies until the backstop and
+      // this mark is the only record that the position was never reached.
+      stubScrollHeight = 1000;
+      stubClientHeight = 800;
+      const { container } = render(<Harness active docName="doc-abandon" />);
+      expect(scrollerOf(container).scrollTop).toBe(200);
+      vi.advanceTimersByTime(RESTORE_BACKSTOP_MS);
+      expect(breadcrumbLines(info)).toEqual([
+        {
+          event: 'ok/scroll-restore/abandoned',
+          docName: 'doc-abandon',
+          target: 500,
+          anchorMeasurable: true,
+          elapsedMs: expect.any(Number),
+          scrollTop: 200,
+          scrollHeight: 1000,
+          clientHeight: 800,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  test('a re-apply after the height collapses and regrows is reported as phase 2', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    try {
+      const { container } = render(<Harness active docName="doc-phase2" />);
+      const scroller = scrollerOf(container);
+      expect(scroller.scrollTop).toBe(500); // phase 1 landed
+
+      // The warm-fallback -> real-editor swap: content height collapses, which
+      // re-clamps the scroller downward — a shrink-clamp, not a takeover...
+      stubScrollHeight = 100;
+      reclampToCurrentHeight(scroller);
+      expect(scroller.scrollTop).toBe(100);
+      vi.advanceTimersByTime(ONE_FRAME_MS); // no runway below the target: hold
+      expect(scroller.scrollTop).toBe(100);
+
+      // ...and regrows once the real editor hydrates, which is the frame the
+      // poll exists for.
+      stubScrollHeight = 5000;
+      vi.advanceTimersByTime(ONE_FRAME_MS);
+      expect(scroller.scrollTop).toBe(500);
+
+      expect(breadcrumbLines(info)).toEqual([
+        {
+          event: 'ok/scroll-restore/phase1-success',
+          docName: 'doc-phase2',
+          target: 500,
+          elapsedMs: expect.any(Number),
+          scrollTop: 500,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+        {
+          event: 'ok/scroll-restore/phase2-success',
+          docName: 'doc-phase2',
+          target: 500,
+          elapsedMs: expect.any(Number),
+          scrollTop: 500,
+          scrollHeight: 5000,
+          clientHeight: 0,
+        },
+      ]);
+    } finally {
+      info.mockRestore();
+    }
   });
 });

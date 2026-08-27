@@ -62,7 +62,12 @@ vi.doMock('../presence/identity', () => ({
 vi.doMock('./mount-promise', () => ({
   mountTiptapEditorPromise: () => Promise.resolve(editorEntry),
 }));
-vi.doMock('./editor-cache', () => ({
+// Spread the original rather than listing exports: the editor also reads
+// `editorScrollContainerOf` from here, and a hand-listed mock silently drops
+// whatever it does not name — which surfaces as an unrelated assertion failing
+// on an empty array, not as a missing export.
+vi.doMock('./editor-cache', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./editor-cache')>()),
   parkTiptapEditor: () => {},
   peekRenameSnapshot: () => null,
   clearRenameSnapshot: () => {},

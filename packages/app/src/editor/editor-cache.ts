@@ -449,13 +449,36 @@ export function __resetRenameSnapshotStore(): void {
  */
 export function visibleEditorScrollContainer(): HTMLDivElement | null {
   if (typeof document === 'undefined') return null;
-  const containers = document.querySelectorAll<HTMLDivElement>(
-    '[data-testid="editor-scroll-container"]',
-  );
+  const containers = document.querySelectorAll<HTMLDivElement>(EDITOR_SCROLL_CONTAINER_SELECTOR);
   for (const el of containers) {
     if (el.getClientRects().length > 0) return el;
   }
   return null;
+}
+
+const EDITOR_SCROLL_CONTAINER_SELECTOR = '[data-testid="editor-scroll-container"]';
+
+/**
+ * The scroll container a given element actually sits in — the one a
+ * `scrollIntoView` on it would move.
+ *
+ * Reach for this over {@link visibleEditorScrollContainer} when the answer has
+ * to be a SPECIFIC document's scroller. That accessor answers "which container
+ * is painted", a different question with a different answer as soon as two
+ * panes are open: both are painted, and it returns whichever comes first in the
+ * DOM. Reading a position off the wrong pane is worse than reading none,
+ * because the number still looks answerable.
+ *
+ * The painted-container form stays correct where the caller genuinely means
+ * whichever document is on screen, which the mode-switch landing does. The
+ * rename snapshot does not: `readActiveScrollTop` takes no document, so one
+ * painted-container read is stored against every entry of a rename batch, and a
+ * backgrounded doc ends up holding another pane's position. Fixing that wants
+ * the snapshotted editor's own container and is a behaviour change with its own
+ * blast radius, so it is named here rather than smuggled in.
+ */
+export function editorScrollContainerOf(el: Element): HTMLDivElement | null {
+  return el.closest<HTMLDivElement>(EDITOR_SCROLL_CONTAINER_SELECTOR);
 }
 
 /**

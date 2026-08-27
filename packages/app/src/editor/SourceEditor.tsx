@@ -12,7 +12,11 @@ import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import type * as Y from 'yjs';
-import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import {
+  OUTLINE_NAV_BREADCRUMB,
+  OUTLINE_NAV_EVENT,
+  type OutlineNavDetail,
+} from '@/components/OutlinePanel';
 import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import {
   createNestedCMExtensions,
@@ -21,6 +25,7 @@ import {
 } from '@/editor/extensions/nested-cm-extensions';
 import type { RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { useConfigContext } from '@/lib/config-provider';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
 import { registerSourceView, unregisterSourceView } from './active-source-view';
@@ -73,18 +78,47 @@ interface SourceEditorProps {
   isSourceModeActive: boolean;
 }
 
+/**
+ * Both outcomes report themselves under the same event the WYSIWYG consumer
+ * uses, distinguished by `mode`. A bundle has to answer "the outline click did
+ * nothing" whichever surface the user was looking at, and only one of the two
+ * consumers ever sees a given click — so instrumenting one of them leaves half
+ * the reports as silent as before.
+ */
 function applyOutlineNavigation(view: EditorView, detail: OutlineNavDetail, docName: string): void {
   // The outline row's index maps 1:1 onto this enumeration, which shares its
   // line-admission rules with the server producer that emitted the row.
-  const heading = sourceHeadingLines(view.state.doc)[detail.index];
-  if (!heading) return;
+  const lines = sourceHeadingLines(view.state.doc);
+  const heading = lines[detail.index];
+  const trace = {
+    docName,
+    mode: 'source',
+    index: detail.index,
+    // Named for the enumeration it counted. This scan shares its line-admission
+    // rules with the server producer, so it should equal the dispatch line's
+    // `outlineCount`; the WYSIWYG DOM is a third enumeration that need not.
+    sourceHeadingCount: lines.length,
+  };
+  if (!heading) {
+    emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, { ...trace, outcome: 'no-target' });
+    return;
+  }
 
-  runScrollNavigation(docName, 'outline', () => {
+  const claimed = runScrollNavigation(docName, 'outline', () => {
     view.dispatch({
       selection: EditorSelection.cursor(heading.from),
       effects: EditorView.scrollIntoView(heading.from, { y: 'start' }),
     });
     view.focus();
+  });
+  emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, {
+    ...trace,
+    outcome: claimed ? 'scrolled' : 'declined',
+    // Where the caret was sent, as a line number. Unlike the WYSIWYG side there
+    // is no pixel geometry to read — CodeMirror owns its own scroller and the
+    // effect is queued — and a line number is the coordinate a triager can
+    // check against the document without converting anything.
+    targetLine: view.state.doc.lineAt(heading.from).number,
   });
 }
 
@@ -103,6 +137,10 @@ export function applyRawMdxNavigation(
     // Clamp offset to doc length (offset may exceed doc length if content
     // differs between Y.Text and originalSpan).
     const pos = Math.min(detail.offset, doc.length);
+    // The only jump here that still discards the claim result: the outline
+    // path captures it and the problems-row jump returns it, so a navigation a
+    // landing declined leaves no trace on this one alone. Known gap, not the
+    // pattern: the outline click is what carries a reported bug today.
     runScrollNavigation(docName, 'raw-mdx', () => {
       view.dispatch({
         selection: EditorSelection.cursor(pos),
@@ -531,7 +569,15 @@ export function SourceEditor({
       if (!detail || detail.docName !== docName || detail.mode !== 'source' || !isSourceModeActive)
         return;
       const view = viewRef.current;
-      if (!view) return;
+      if (!view) {
+        emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, {
+          docName,
+          mode: 'source',
+          index: detail.index,
+          outcome: 'no-view',
+        });
+        return;
+      }
       applyOutlineNavigation(view, detail, docName);
       clearPendingSourceNavigation(docName);
     }

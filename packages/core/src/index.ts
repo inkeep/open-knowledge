@@ -79,6 +79,7 @@ export {
 // and the web renderer forwarder, plus the server `/api/client-logs` ingest
 // that receives what the forwarder captured.
 export {
+  LOGGER_OWNED_FIELDS,
   mapConsoleLevel,
   parseStructuredConsoleMessage,
   prepareCapturedConsoleMessage,

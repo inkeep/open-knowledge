@@ -187,8 +187,21 @@ async function collectFullBundle(
  * levels produce the same system-wide bundle.
  *
  * With `redact` on, the secret-pattern scrub applies at both levels; the full
- * level additionally masks the content-dir path. Doc names ship raw under the
- * user's explicit Detailed-diagnostics consent.
+ * level additionally masks the content-dir path.
+ *
+ * Doc names ship raw only at `full`, under the user's explicit
+ * Detailed-diagnostics consent. At `standard` a name is replaced by a digest
+ * before staging, because that level's consent copy names logs and system info
+ * and says nothing about which documents a session opened. The digest still
+ * groups a document's marks for triage.
+ *
+ * Scope, precisely, because the mechanism is field-anchored: it digests the
+ * `docName` / `doc.name` / `documentName` FIELD, then sweeps the names it
+ * learned through the rest of that same file, which is what also covers a name
+ * interpolated into a message body. A name that never appears as a field in the
+ * file carrying it is not reached. See `pseudonymizeDocNames` for that bound and
+ * for what a digest does and does not buy against a recipient who can hash
+ * guesses.
  */
 export async function collectReportBundle(
   opts: CollectReportBundleOptions,
@@ -202,6 +215,9 @@ export async function collectReportBundle(
   const { zipPath, summary } = await collectStandardBundle({
     projectDir,
     redact: opts.redact,
+    // Reached at `full` only when there is no `projectDir` — see the option's
+    // docblock. At `standard` this is the tier gate.
+    revealDocNames: opts.level === 'full',
     outputPath: opts.outputPath,
     userLogsDir: opts.userLogsDir,
     shipItLogFiles: collectShipItLogFiles(opts.cachesDir ?? join(homedir(), 'Library', 'Caches')),

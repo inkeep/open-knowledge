@@ -24,6 +24,7 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { HttpResponseParseError } from '@/editor/http-client';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { useActiveHeading } from '@/hooks/useActiveHeading';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { ProfilerBoundary } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
@@ -79,6 +80,20 @@ export interface OutlineNavDetail {
 }
 
 export const OUTLINE_NAV_EVENT = 'open-knowledge:outline-nav';
+
+/**
+ * Event name the two outline-nav consumers report under, so one grep over a
+ * diagnostic bundle finds every click regardless of which editor answered it.
+ * Lives beside the event it traces rather than in either consumer, because
+ * neither consumer is the one both of them share.
+ */
+export const OUTLINE_NAV_BREADCRUMB = 'ok-outline-nav';
+
+/** The click as the panel dispatched it, before any consumer has seen it. */
+export const OUTLINE_NAV_DISPATCH_BREADCRUMB = 'ok-outline-nav-dispatch';
+
+/** Where the scroll came to rest, once the smooth animation has finished. */
+export const OUTLINE_NAV_SETTLED_BREADCRUMB = 'ok-outline-nav-settled';
 
 export function OutlinePanel(props: {
   docName: string;
@@ -162,6 +177,31 @@ function OutlinePanelInner({
     if (detail.mode === 'source') {
       rememberPendingSourceNavigation(docName, { kind: 'outline', detail });
     }
+    // Emitted here, at the dispatch, and not left to the consumers. Every
+    // consumer guard is a bare return — wrong document, wrong mode, view not
+    // mounted — so without this line a click that reaches no consumer is
+    // indistinguishable from a click that never happened, and "the row did
+    // nothing" is exactly the report this instrumentation has to answer.
+    // A consumer line that never follows this one is itself the finding.
+    emitDiagnosticBreadcrumb(OUTLINE_NAV_DISPATCH_BREADCRUMB, {
+      docName,
+      index,
+      mode: detail.mode,
+      // Named for the enumeration it counted, not generically: each consumer
+      // reports the count of ITS OWN list under its own name, and the three
+      // disagreeing is the drift this instrumentation exists to expose. A
+      // shared `headingCount` would hide that behind one word.
+      outlineCount: headings.length,
+      // NOT `level`: that name belongs to the log record's own producer, so the
+      // emitter and the capture chokepoint both drop it. Using it would cost
+      // the heading depth entirely rather than corrupt anything — the field
+      // would simply never reach the line.
+      headingLevel: headings[index]?.level,
+      // What the panel's own marker believed was current, resolved by slug
+      // rather than by ordinal. The two disagreeing is the panel disagreeing
+      // with itself about the same document.
+      activeIndex,
+    });
     window.dispatchEvent(new CustomEvent(OUTLINE_NAV_EVENT, { detail }));
   }
 

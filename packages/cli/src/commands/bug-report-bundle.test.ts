@@ -888,3 +888,168 @@ describe('defaultBugReportZipPath', () => {
     expect(okBugReportsDir()).toBe(join(homedir(), '.ok', 'bug-reports'));
   });
 });
+
+describe('collectStandardBundle — document names are a Detailed-diagnostics field', () => {
+  // One renderer breadcrumb per document activation, in the wire shape both
+  // capture transports produce: `docName` lifted to a top-level pino key.
+  const scrollLog = [
+    '{"level":30,"msg":"ok-outline-nav-dispatch","docName":"notes/salary-negotiation.md","index":3}',
+    '{"level":30,"msg":"ok-scroll-restore","docName":"notes/salary-negotiation.md","top":120}',
+    '{"level":30,"msg":"ok-outline-nav","docName":"private/board-deck.md","index":0}',
+  ].join('\n');
+
+  test('replaces every docName with a digest that still groups one document', async () => {
+    const userLogsDir = makeTmpDir();
+    writeAt(userLogsDir, 'desktop.2026-08-27.log', `${scrollLog}\n`);
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+
+    // The names are gone — checked as substrings, so a partial replacement that
+    // left a stem behind cannot pass.
+    expect(staged).not.toContain('salary-negotiation');
+    expect(staged).not.toContain('board-deck');
+    expect(staged).not.toContain('notes/');
+    expect(staged).not.toContain('private/');
+
+    // Every record still parses and still carries the field, because triage
+    // reads these as JSON.
+    const records = staged
+      .trim()
+      .split('\n')
+      .map(
+        (line) =>
+          JSON.parse(line) as { msg: string; docName: string; index?: number; top?: number },
+      );
+    expect(records).toHaveLength(3);
+    expect(records.every((r) => /^doc#[0-9a-f]{12}$/.test(r.docName))).toBe(true);
+
+    // The correlation the outline-click playbook needs survives: two marks on
+    // one document share a digest, and a different document gets a different one.
+    expect(records[0].docName).toBe(records[1].docName);
+    expect(records[0].docName).not.toBe(records[2].docName);
+
+    // Sibling keys are intact — a body that ran past the closing quote would
+    // have eaten them.
+    expect(records[0].index).toBe(3);
+    expect(records[1].top).toBe(120);
+  });
+
+  test('holds when the caller turns the secret scrub off — this is a tier rule, not a redaction rule', async () => {
+    const userLogsDir = makeTmpDir();
+    writeAt(userLogsDir, 'desktop.2026-08-27.log', `${scrollLog}\n`);
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: false, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).not.toContain('salary-negotiation');
+    expect(staged).toContain('doc#');
+  });
+
+  test('a name carrying an escaped quote is replaced whole, not up to the escape', async () => {
+    const userLogsDir = makeTmpDir();
+    // `notes/she said "hi".md` as it appears on the wire.
+    writeAt(
+      userLogsDir,
+      'desktop.2026-08-27.log',
+      '{"level":30,"msg":"ok-scroll-restore","docName":"notes/she said \\"hi\\".md","top":9}\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).not.toContain('she said');
+    const record = JSON.parse(staged.trim()) as { docName: string; top: number };
+    expect(record.docName).toMatch(/^doc#[0-9a-f]{12}$/);
+    expect(record.top).toBe(9);
+  });
+  test('revealDocNames ships the names as written — the Detailed-diagnostics tier', async () => {
+    const userLogsDir = makeTmpDir();
+    writeAt(userLogsDir, 'desktop.2026-08-27.log', `${scrollLog}\n`);
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir, revealDocNames: true });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).toContain('notes/salary-negotiation.md');
+    expect(staged).not.toContain('doc#');
+  });
+  test('masks the same name where it is interpolated into a message body', async () => {
+    const userLogsDir = makeTmpDir();
+    // The renderer's success-path line, which fires on EVERY document open, next
+    // to the breadcrumb that fields the same name. Before the sweep, the field
+    // was digested and this line shipped the name in full.
+    writeAt(
+      userLogsDir,
+      'desktop.2026-08-27.log',
+      `${[
+        '{"level":30,"msg":"ok-scroll-restore","docName":"notes/salary-negotiation.md","top":1}',
+        '{"level":30,"msg":"[syncPromise] notes/salary-negotiation.md resolved synchronously (warm provider)"}',
+      ].join('\n')}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).not.toContain('salary-negotiation');
+    const records = staged
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { msg: string; docName?: string });
+    // Same digest in both shapes, so a triager can still join the message to the
+    // breadcrumb that names the document.
+    const digest = records[0].docName as string;
+    expect(digest).toMatch(/^doc#[0-9a-f]{12}$/);
+    expect(records[1].msg).toBe(`[syncPromise] ${digest} resolved synchronously (warm provider)`);
+  });
+
+  test('masks documentName, which does not contain the literal docName', async () => {
+    const userLogsDir = makeTmpDir();
+    writeAt(
+      userLogsDir,
+      'desktop.2026-08-27.log',
+      '{"level":50,"documentName":"private/board-deck.md","msg":"[persistence] Failed to save private/board-deck.md"}\n',
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).not.toContain('board-deck');
+    const record = JSON.parse(staged.trim()) as { documentName: string; msg: string };
+    expect(record.documentName).toMatch(/^doc#[0-9a-f]{12}$/);
+    expect(record.msg).toBe(`[persistence] Failed to save ${record.documentName}`);
+  });
+
+  test('a name that is a prefix of another does not corrupt the longer one', async () => {
+    const userLogsDir = makeTmpDir();
+    writeAt(
+      userLogsDir,
+      'desktop.2026-08-27.log',
+      `${[
+        '{"level":30,"docName":"notes/plan","msg":"opened notes/plan"}',
+        '{"level":30,"docName":"notes/plan-b","msg":"opened notes/plan-b"}',
+      ].join('\n')}\n`,
+    );
+    const outputPath = join(makeTmpDir(), 'report.zip');
+
+    await collectStandardBundle({ redact: true, outputPath, userLogsDir });
+
+    const staged = readZipEntry(outputPath, 'logs/desktop.2026-08-27.log');
+    expect(staged).not.toContain('notes/plan');
+    // Longest-first: had the shorter name been swept first, the longer line would
+    // read `doc#<short>-b` and leak the suffix.
+    expect(staged).not.toContain('-b"');
+    const records = staged
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { docName: string; msg: string });
+    expect(records[0].docName).not.toBe(records[1].docName);
+    expect(records[1].msg).toBe(`opened ${records[1].docName}`);
+  });
+});
