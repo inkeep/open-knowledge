@@ -1479,74 +1479,54 @@
  * delete typed text from the surface it was typed into. Reading surfaces
  * still hide them — the mdast→hast renderer emits a literal HTML comment.
  *
- * The delimiters are not in the document (the promoter strips them and
- * records the form as an attribute), so they are drawn as pseudo-elements.
- * That keeps them out of the text content ProseMirror maps positions
- * against and out of the serialized bytes. */
+ * No delimiter glyphs are drawn. Every other construct in this editor keeps
+ * its syntax out of the page — `**`, backticks and `[](…)` all live in
+ * attributes and render nothing — and a comment painting `%%` into the middle
+ * of a sentence was the one that didn't. Source mode shows the raw
+ * `%%…%%` / `<!-- … -->` bytes, which is where the delimiters are edited.
+ *
+ * Nothing names the construct to assistive technology: the mark renders a bare
+ * `span`, and no `role`, `aria-label` or `title` is attached anywhere.
+ *
+ * The dimming is paired with a SHAPE cue, per the house rule stated with the
+ * slash-token rules earlier in this file: a signal must never ride colour
+ * alone. Without one, an inline comment differed from `*emphasis*` by colour
+ * only — `em` gets no rule anywhere here, so it renders UA italic at
+ * `--foreground`, which means italic is on both and discriminates nothing.
+ * That matters more than it looks: a claimed run is emitted as a real HTML
+ * comment on reading surfaces, so "can I see the difference" is really "will
+ * readers see this text", and a reader who cannot resolve the step can publish
+ * away something they meant to hide.
+ *
+ * `underline dashed` specifically, for three reasons. It is the only line
+ * style still free inside `.ProseMirror` (`solid` is links, `dotted` is
+ * missing skill refs and the loading state, `wavy` is lint and unresolved
+ * refs; the other `dashed` belongs to the composer, a separate surface).
+ * Forced-colors mode forces `text-decoration-color` but preserves
+ * `-line` and `-style`, so the cue survives there with no media arm — unlike
+ * a background or box-shadow, which are suppressed. And it is the idiom this
+ * stylesheet already ships twice for the same "not ordinary prose" semantic.
+ *
+ * The delimiters themselves stay unpainted: the point was to stop printing a
+ * construct's syntax into the middle of a sentence, not to leave the construct
+ * unmarked. */
 .comment-mark {
   color: var(--muted-foreground);
   font-style: italic;
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
 }
 
-/* The delimiters are chrome, not prose. `content: "…" / ""` supplies an empty
- * alternative text so assistive technology does not read the punctuation out
- * as part of the sentence — `user-select: none` only governs mouse selection
- * and in-editor copy, it says nothing to AT. No extra opacity: these glyphs
- * are the only signifier that a run is an annotation, so dimming them below
- * the body they label put them under the 3:1 non-text contrast floor in the
- * light theme. */
-.comment-mark::before,
-.comment-mark::after {
-  content: "%%" / "";
-  font-style: normal;
-  user-select: none;
-}
-
-.comment-mark[data-source-form="html"]::before {
-  content: "<!--" / "";
-  margin-right: 0.15em;
-}
-
-.comment-mark[data-source-form="html"]::after {
-  content: "-->" / "";
-  margin-left: 0.15em;
-}
-
-/* The block form needs an affordance the inline form gets from its delimiter
- * glyphs, and it has to stay distinguishable from a blockquote, which sits a
- * few rules below with its own muted left rail. A dashed rail plus a `%%`
- * marker in the gutter carries both: dashed reads as "not part of the prose"
- * where blockquote's solid rail reads as "quoted prose", and the marker names
- * the construct the way the inline glyphs do. */
 .comment-block {
-  position: relative;
   color: var(--muted-foreground);
   font-style: italic;
+  /* Dashed, where blockquote's rail a few rules below is solid: dashed reads as
+   * "not part of the prose", solid as "quoted prose". That contrast plus the
+   * dimming is the whole signal — the construct carries no gutter label, so the
+   * rail is what has to distinguish it. */
   border-left: 2px dashed color-mix(in oklab, var(--muted-foreground) 45%, transparent);
   padding-left: 0.75rem;
-  margin: 0.5rem 0;
-}
-
-/* `background: inherit` rather than the page token so the knockout tracks the
- * local surface when the block sits inside a callout, a card, or a selection
- * highlight. The offset stays inside the block's own margin box so the marker
- * cannot collide with the previous line's descenders or clip when the block is
- * a first child. */
-.comment-block::before {
-  content: "%%" / "";
-  position: absolute;
-  left: 0.35rem;
-  top: -0.45em;
-  font-style: normal;
-  font-size: 0.7em;
-  line-height: 1;
-  padding: 0 0.15rem;
-  background: inherit;
-  user-select: none;
-}
-
-.comment-block[data-source-form="html"]::before {
-  content: "<!--" / "";
+  margin: 0.6rem 0;
 }
 
 .ProseMirror .ok-find-match {

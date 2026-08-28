@@ -18,7 +18,9 @@
 import { expect, test, waitForActiveProviderSynced } from './_helpers';
 
 const SEED = [
-  'Ordinary prose above.',
+  'Ordinary prose above with *plain emphasis* in it.',
+  '',
+  '> An ordinary blockquote.',
   '',
   'A sentence with %%an inline percent note%% inside it.',
   '',
@@ -73,16 +75,51 @@ test('promoted comment annotations render visibly, not hidden', async ({ page, a
     expect(computed.opacity).toBeGreaterThan(0);
   }
 
-  // The delimiter glyphs are the affordance that names the construct, and they
-  // are pseudo-element content — invisible to `textContent`, so assert them
-  // where they live.
-  const inlineGlyph = await inlineMark.evaluate(
-    (element) => getComputedStyle(element, '::before').content,
-  );
-  expect(inlineGlyph).toContain('%%');
+  // With no delimiter glyphs, the dimming and the italic ARE the affordance
+  // that names an inline annotation, so this tier has to prove they survive
+  // the compiled cascade. Comparing against the surrounding prose rather than
+  // against the token: a rule that resolved `--muted-foreground` to the body
+  // colour would satisfy a token assertion while leaving the run
+  // indistinguishable from the sentence it sits in.
+  const inlineStyle = await inlineMark.evaluate((element) => {
+    const own = getComputedStyle(element);
+    return {
+      color: own.color,
+      fontStyle: own.fontStyle,
+      textDecorationLine: own.textDecorationLine,
+    };
+  });
+  const emStyle = await page
+    .locator('.ProseMirror em')
+    .first()
+    .evaluate((element) => {
+      const own = getComputedStyle(element);
+      return {
+        color: own.color,
+        fontStyle: own.fontStyle,
+        textDecorationLine: own.textDecorationLine,
+      };
+    });
+
+  // Compared against `em`, not against the comment's own container: `em` is
+  // what an inline comment is actually confusable with (both italic, both
+  // inline), and a rule that dimmed BOTH would satisfy a self-comparison while
+  // leaving them indistinguishable.
+  expect(inlineStyle.fontStyle).toBe('italic');
+  expect(emStyle.fontStyle).toBe('italic');
+  expect(inlineStyle.color).not.toBe(emStyle.color);
+  // Colour must not be the only discriminator (WCAG 1.4.1): the two have to
+  // differ on a channel that survives forced colors, where `color` does not.
+  expect(inlineStyle.textDecorationLine).not.toBe(emStyle.textDecorationLine);
+  expect(inlineStyle.textDecorationLine).toContain('underline');
 
   // The annotation must not be confusable with the blockquote that shares the
   // muted-left-rail treatment a few rules away in the same stylesheet.
   const blockBorder = await block.evaluate((element) => getComputedStyle(element).borderLeftStyle);
+  const quoteBorder = await page
+    .locator('.ProseMirror blockquote')
+    .first()
+    .evaluate((element) => getComputedStyle(element).borderLeftStyle);
   expect(blockBorder).toBe('dashed');
+  expect(blockBorder).not.toBe(quoteBorder);
 });

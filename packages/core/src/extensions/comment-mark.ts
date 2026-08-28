@@ -9,6 +9,14 @@
  * `comment-mark` class the app styles as dimmed annotation. Source mode
  * (CodeMirror) shows the literal `%%…%%` / `<!-- … -->` bytes.
  *
+ * The WYSIWYG draws no delimiters of its own. Every other construct in this
+ * schema keeps its syntax in an attribute and renders none of it
+ * (`sourceDelimiter` on emphasis, `sourceFenceChar` on code); a comment is the
+ * same. The app marks the run with dimming plus a dashed underline instead —
+ * the underline is load-bearing, not decoration, since dimming alone leaves a
+ * comment differing from `*emphasis*` by colour only. Delimiters are edited in
+ * source mode.
+ *
  * The mark deliberately does NOT hide the run in the editing surface. The
  * promoter claims literal comment syntax wherever it appears, including
  * prose a user typed without meaning it as a comment, so hiding the run
@@ -39,9 +47,10 @@
  * `sourceLiteral` — the mark doesn't extend into trailing typed input.
  *
  * Schema name `comment` is unique in the workspace (no prior PM mark with
- * this name; no upstream TipTap collision). Style hooks key off
- * `data-comment-mark` so app/docs CSS layers can swap the visual treatment
- * without touching the mark schema.
+ * this name; no upstream TipTap collision). Style hooks key off the
+ * `comment-mark` CLASS — no stylesheet targets `data-comment-mark`, which
+ * exists for `parseHTML` round-trip and as a DOM/test locator, while
+ * `data-clipboard-omit` carries clipboard omission.
  */
 
 import { Mark } from '@tiptap/core';

@@ -51,8 +51,12 @@ interface EntityRefSpan {
   raw: string;
 }
 
-function sliceTextNode(source: Text, from: number, to: number): Text {
+function sliceTextNode(source: Text, from: number, to: number, rawSource?: string): Text {
   const out: Text = { type: 'text', value: source.value.slice(from, to) };
+  if (rawSource !== undefined) {
+    const pos = deriveFragmentPosition(rawSource, source, from, to);
+    if (pos) out.position = pos;
+  }
   const spans = (source.data as { entityRefSpans?: EntityRefSpan[] } | undefined)?.entityRefSpans;
   if (spans?.length) {
     const inside = spans
@@ -180,10 +184,10 @@ function promoteCrossChildren(parent: Parent, source: string): void {
 
     const bodyChildren: PhrasingContent[] = [];
     if (openTrailing.length > 0) {
-      bodyChildren.push(sliceTextNode(openChild, openPos + 2, openValue.length));
+      bodyChildren.push(sliceTextNode(openChild, openPos + 2, openValue.length, source));
     }
     for (let k = outerI + 1; k < closeChildIdx; k++) bodyChildren.push(children[k]);
-    if (closeLeading.length > 0) bodyChildren.push(sliceTextNode(closeChild, 0, closePos));
+    if (closeLeading.length > 0) bodyChildren.push(sliceTextNode(closeChild, 0, closePos, source));
 
     if (!bodyCrossesInline) {
       outerI++;
@@ -196,10 +200,10 @@ function promoteCrossChildren(parent: Parent, source: string): void {
     };
 
     const replacement: PhrasingContent[] = [];
-    if (leadValue.length > 0) replacement.push(sliceTextNode(openChild, 0, openPos));
+    if (leadValue.length > 0) replacement.push(sliceTextNode(openChild, 0, openPos, source));
     replacement.push(markNode as unknown as PhrasingContent);
     if (tailValue.length > 0) {
-      replacement.push(sliceTextNode(closeChild, closePos + 2, closeChild.value.length));
+      replacement.push(sliceTextNode(closeChild, closePos + 2, closeChild.value.length, source));
     }
 
     children.splice(outerI, closeChildIdx - outerI + 1, ...replacement);
