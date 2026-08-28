@@ -10,7 +10,8 @@
  * or (c) is a fresh standalone folder.
  *
  * `homeDir` and `gitTopLevel` are injectable so tests don't depend on the real
- * process environment or shell out to git.
+ * process environment or shell out to git. `openProject` also injects
+ * `gitTopLevel`, wrapping the exported default to bracket it with a log line.
  */
 
 import { execFile } from 'node:child_process';
@@ -161,10 +162,12 @@ export interface DiscoverProjectOptions {
    * never promotes to a git root at-or-above home). Tests inject a fixed
    * value to keep assertions stable. */
   homeDir?: string;
-  /** Resolves the git working-tree root for a given cwd. Defaults to shelling
-   * out to `git rev-parse --show-toplevel`; tests inject a deterministic
-   * stub. Returns `null` when the cwd is not inside a git working tree (or
-   * when `git` itself is unavailable). */
+  /** Resolves the git working-tree root for a given cwd. Defaults to
+   * `defaultGitTopLevel`, which shells out to `git rev-parse --show-toplevel`;
+   * tests inject a deterministic stub, and `openProject` injects a wrapper
+   * around the exported default so the subprocess is bracketed by a log line.
+   * Returns `null` when the cwd is not inside a git working tree (or when
+   * `git` itself is unavailable). */
   gitTopLevel?: (cwd: string) => Promise<string | null>;
   /**
    * Required. Consulted only when the ancestor walk would strictly promote —
@@ -409,7 +412,13 @@ function isPickedPathLinkedWorktreeRoot(pickedPath: string): boolean {
   }
 }
 
-async function defaultGitTopLevel(cwd: string): Promise<string | null> {
+/**
+ * The `gitTopLevel` default. Exported so a caller can wrap it rather than
+ * reimplement it: `openProject` does exactly that to log around the call,
+ * which is otherwise the one unbounded step in `discoverProject` with no
+ * timeout and no trace.
+ */
+export async function defaultGitTopLevel(cwd: string): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd });
     const trimmed = stdout.trim();

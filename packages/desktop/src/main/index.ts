@@ -270,7 +270,7 @@ import {
   runDriverBootSmoke,
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
-import { discoverProject, validateFolderPick } from './folder-admission.ts';
+import { defaultGitTopLevel, discoverProject, validateFolderPick } from './folder-admission.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
@@ -2321,7 +2321,7 @@ async function openProject(
 ) {
   getLogger('project').info(
     {
-      projectName: basename(projectPath),
+      pickedName: basename(projectPath),
       entryPoint,
       hasDeepLinkTarget: !!pendingDeepLinkTarget,
       hasPendingBranch: !!pendingBranch,
@@ -2336,6 +2336,10 @@ async function openProject(
   // Admission funnel. Resolve the pick BEFORE any window/utility spawn so we
   // know whether to ancestor-promote, silent-onboard, dialog, or refuse.
   const validation = validateFolderPick(projectPath);
+  // Open-bracket: discoverProject is one await spanning several unbounded fs
+  // and subprocess steps, so without a mark here a stall inside it is
+  // indistinguishable from a stall anywhere else in the funnel.
+  getLogger('project').info({ pickedName: basename(projectPath) }, 'resolving project admission');
   const discovery = await discoverProject(projectPath, {
     // Probe consulted only when the ancestor walk strictly promotes — gates
     // silent fork against an ancestor too large to boot in 15s (the dragon-wiki
@@ -2343,15 +2347,76 @@ async function openProject(
     // utility against `~/Documents` and timed out). Failsafe to "show the
     // dialog" on any throw so a probe failure can't reintroduce silent fork.
     dirSizeProbe: async (dir) => {
+      getLogger('project').info(
+        { projectName: basename(dir), pickedName: basename(projectPath) },
+        'probing ancestor size',
+      );
       try {
         const exceedsCap = await walkExceedsCap(dir, BOOT_BUDGET_FILE_CAP);
         return { exceedsCap };
       } catch (err) {
-        console.warn('[openProject] dirSizeProbe failed, failsafe to exceedsCap:true', err);
+        // Pino, not console: this failsafe silently forces the confirmation
+        // dialog, so the branch would flip with no surviving record of why.
+        getLogger('project').warn(
+          { err },
+          'project admission size probe failed, treating as over cap',
+        );
         return { exceedsCap: true };
       }
     },
+    // The other arm of the same await, and the unbounded one: `git rev-parse`
+    // runs without a timeout, so a locked index or a network-mounted `.git`
+    // hangs here. Reached only when the ancestor walk promoted nothing.
+    // create-new's own pre-scaffold `discoverProject` call is deliberately not
+    // wrapped; the open that follows it lands in this funnel.
+    gitTopLevel: async (cwd) => {
+      // Not `projectName`: `cwd` is the resolved pick, and on this arm the
+      // project dir is whatever the git root turns out to be, which is not
+      // known until the call returns. `pickedName` rides along because neither
+      // the `projectName` const nor `discovery` exists yet at this point in the
+      // function, so the pick is the only name in scope here, and a symlinked
+      // pick makes the two basenames differ.
+      getLogger('project').info(
+        { pickedName: basename(projectPath), resolvedPickedName: basename(cwd) },
+        'resolving git root',
+      );
+      return defaultGitTopLevel(cwd);
+    },
   });
+
+  // Payloads stay basenames and enums, matching the entry log above.
+  getLogger('project').info(
+    discovery.kind === 'rejected'
+      ? {
+          // `rejected` carries no `projectDir`, so the pick is the only name
+          // this arm can correlate on.
+          pickedName: basename(projectPath),
+          discoveryKind: discovery.kind,
+          reason: discovery.reason,
+        }
+      : {
+          // Not the `projectName` const below: this line precedes the `rejected`
+          // early return that narrows `discovery`, so the const does not exist yet.
+          projectName: basename(discovery.projectDir),
+          // Ungated, unlike `resolvedPickedName` below: on a symlinked direct
+          // open that gate drops out and `projectName` is the realpath
+          // basename, while the entry logs carry the raw pick. On a managed
+          // direct hit neither bridging milestone fires, because the ancestor
+          // walk returns before the git-root lookup is reached, so this is the
+          // only line that can carry both.
+          pickedName: basename(projectPath),
+          discoveryKind: discovery.kind,
+          // The pair is what separates an ancestor / git-root promote from a
+          // direct open.
+          ...(discovery.projectDir === discovery.pickedPath
+            ? {}
+            : { resolvedPickedName: basename(discovery.pickedPath) }),
+          ...(discovery.kind === 'fresh'
+            ? { gitState: discovery.gitState, gitRootPromoted: discovery.gitRootPromoted }
+            : { ancestorPromoted: discovery.ancestorPromoted }),
+        },
+    'project admission resolved',
+  );
 
   if (discovery.kind === 'rejected') {
     dialog.showErrorBox(
@@ -2370,6 +2435,7 @@ async function openProject(
 
   const warningsCount = validation.warnings.length;
   const resolvedProjectDir = discovery.projectDir;
+  const projectName = basename(resolvedProjectDir);
   void checkAndRepairProjectMcpOnProjectOpen({
     projectDir: resolvedProjectDir,
     executablePath: app.getPath('exe'),
@@ -2410,21 +2476,28 @@ async function openProject(
     // existing managed-promote silent flow. This is the only path that can
     // reach this branch (cursor !== realPicked), so ancestorPromoted is
     // guaranteed true.
-    const ancestorName = basename(discovery.projectDir);
-    const pickedName = basename(discovery.pickedPath);
+    const resolvedPickedName = basename(discovery.pickedPath);
     // Async dialog matches the codebase convention (every other dialog in
     // packages/desktop/src/main/ uses await dialog.showMessageBox); sync would
     // freeze IPC, the auto-updater pipeline, and the cc1-broadcast debouncer
     // until the user clicks. Button order [Cancel, Open <ancestor>] with
     // cancelId:0 / defaultId:0: Enter and Escape both land on the safe path.
+    getLogger('project').info(
+      { projectName, resolvedPickedName },
+      'project admission confirmation requested',
+    );
     const { response } = await dialog.showMessageBox({
       type: 'question',
-      buttons: ['Cancel', `Open ${ancestorName}`],
+      buttons: ['Cancel', `Open ${projectName}`],
       cancelId: 0,
       defaultId: 0,
       title: 'Open existing project?',
-      message: `OpenKnowledge wants to open the existing project at ${discovery.projectDir} (because it contains an .ok/ config). The folder you picked, ${pickedName}, is inside that project. Open ${ancestorName}?`,
+      message: `OpenKnowledge wants to open the existing project at ${discovery.projectDir} (because it contains an .ok/ config). The folder you picked, ${resolvedPickedName}, is inside that project. Open ${projectName}?`,
     });
+    getLogger('project').info(
+      { projectName, confirmed: response !== 0 },
+      'project admission confirmation answered',
+    );
     if (response === 0) {
       recordOnboardingFlow({
         flowKind: 'managed-promote-cancelled',
@@ -2487,6 +2560,7 @@ async function openProject(
       const navigatorWebContents = (navigator as unknown as { webContents: Electron.WebContents })
         .webContents;
       if (navigatorWebContents.isLoading()) {
+        getLogger('project').info({ projectName }, 'awaiting navigator load');
         // Promise.race the load against the renderer being destroyed —
         // a closed Navigator window or a crashed renderer mid-load would
         // otherwise leave openProject stuck on a Promise that never
@@ -2525,6 +2599,12 @@ async function openProject(
       gitRootPromoted: discovery.gitRootPromoted,
       warnings: validation.warnings.map((w) => ({ kind: w.kind })),
     };
+    // The dialog's own content probe walks the picked tree synchronously on the
+    // main thread, so this pair brackets the funnel's least bounded step.
+    getLogger('project').info(
+      { projectName, gitState: discovery.gitState },
+      'onboarding consent requested',
+    );
     const decision = await requestUserConsent(
       {
         // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
@@ -2534,6 +2614,10 @@ async function openProject(
         previewContent,
       },
       showPayload,
+    );
+    getLogger('project').info(
+      { projectName, outcome: decision.outcome },
+      'onboarding consent answered',
     );
     if (decision.outcome === 'cancel') {
       // Return to Navigator with no fs changes, no Recents add.
@@ -2562,12 +2646,21 @@ async function openProject(
       request.initGit &&
       (discovery.gitState === 'absent' || discovery.gitState === 'shell-only')
     ) {
+      getLogger('project').info(
+        { projectName, gitState: discovery.gitState },
+        'ensuring project git',
+      );
       await ensureProjectGit(discovery.projectDir);
       didEnsureGit = true;
+      // No gitState: `discovery.gitState` is the pre-init value and is never
+      // recomputed, so echoing it here would pair "ensured" with "absent".
+      getLogger('project').info({ projectName }, 'ensured project git');
     }
+    getLogger('project').info({ projectName, contentDirChanged }, 'initializing project content');
     await initContent(discovery.projectDir, {
       contentDir: request.contentDir !== '.' ? request.contentDir : undefined,
     });
+    getLogger('project').info({ projectName, contentDirChanged }, 'initialized project content');
     if (request.additionalIgnores.trim().length > 0) {
       appendOkIgnoreSync(discovery.projectDir, request.additionalIgnores);
     }
@@ -2622,6 +2715,15 @@ async function openProject(
         pickedPath: discovery.pickedPath,
       };
     }
+    getLogger('project').info(
+      {
+        projectName,
+        aiIntegrationsFailedCount,
+        sharing: request.sharing,
+        toastKind: toastPayload?.kind,
+      },
+      'project artifacts written',
+    );
   }
 
   // Project-skill reclaim — gated to committed managed opens. Reaching here
@@ -2635,6 +2737,10 @@ async function openProject(
   // double-write, and no seeding a folder the consent dialog just configured a
   // different way.
   if (discovery.kind === 'managed' || discovery.kind === 'managed-requires-confirmation') {
+    // A managed open skips the whole fresh branch above, so without this the
+    // only marks on that path are admission and the window itself — and the
+    // gitignore ensure below is synchronous.
+    getLogger('project').info({ projectName }, 'reclaiming project skills');
     void reclaimProjectSkillsOnProjectOpen({
       projectDir: resolvedProjectDir,
       executablePath: app.getPath('exe'),
@@ -2712,6 +2818,9 @@ async function openProject(
     failedCount: aiIntegrationsFailedCount,
   });
 
+  // Paired with the window-created line below, which only lands once the fork
+  // resolves — a stall inside the utility spawn would otherwise be silent.
+  getLogger('project').info({ projectName, flowKind, didEnsureGit }, 'creating project window');
   const ctx = await wm.createProjectWindow({
     projectPath: resolvedProjectDir,
     pendingDeepLinkTarget,
@@ -2728,7 +2837,7 @@ async function openProject(
   });
   getLogger('project').info(
     {
-      projectName: basename(resolvedProjectDir),
+      projectName,
       apiOrigin: ctx.apiOrigin,
       flowKind,
       didEnsureGit,
