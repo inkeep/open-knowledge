@@ -223,7 +223,7 @@ Windows console-flash prevention. Every hand-rolled `node:child_process` process
 
 `simple-git` already sets `windowsHide: true` internally, so git routed through it (shadow repo, share, conflicts) is out of scope by nature — this rule governs only the hand-rolled call sites that bypass it.
 
-**Scoped via `overrides[].plugins`** to `packages/{server,cli}/src/**/*.ts` (the packages that spawn processes at runtime on Windows), with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded. `packages/desktop` is deliberately **out of scope** — the Electron app is macOS-only and never runs on Windows.
+**Scoped via `overrides[].plugins`** to `packages/{server,cli,desktop}/src/**/*.ts` (the packages that spawn processes at runtime on Windows), with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded.
 
 **Opting out (macOS/Linux-only spawns).** For a spawn that only ever runs on macOS and/or Linux — `codesign`, `sw_vers`, an `open(1)` launch — hiding a console is meaningless. Either add the flag anyway (a harmless no-op that keeps the rule uniform) or suppress that one call with a reason:
 

@@ -78,6 +78,7 @@
     "0NkNB5": [["0"], " 个月前"],
     "0QVrvp": ["运行中的智能体已达上限"],
     "0TnCvC": ["重命名 ", ["0"]],
+    "0WsUA2": ["提示词已粘贴，但未自动提交。请检查内容，然后按 Enter 发送。"],
     "0YUS3Q": ["当前文件夹下的子文件夹"],
     "0_J12R": [
       "在 ",
@@ -112,6 +113,9 @@
     "0pZmTP": ["无法共享此路径。"],
     "0qyKG6": ["已从磁盘同步"],
     "0r6d6v": ["更改已自动保存。"],
+    "0rT21w": [
+      ".ok/local/config.yml 中的 terminal.shell 支持使用 PowerShell、cmd.exe 或 Git Bash 执行 OpenKnowledge 管理的启动以及插入拖放文件的路径。此 shell 仅打开普通终端；智能体和命令启动无法在其中运行。"
+    ],
     "0rwwOn": ["按标签"],
     "0s8-e8": ["从键盘边界选中、进入或离开块组件和回退源码块。"],
     "0t0bbC": ["无法保存同步偏好：", ["detail"]],
@@ -446,6 +450,9 @@
     "65Ea2s": ["公开时会固定一个端口，使隧道的目标在重启后保持稳定。"],
     "67Dpmh": ["斜杠命令建议"],
     "67f-3g": ["副本创建成功，但侧边栏可能不是最新的——请刷新以重新同步"],
+    "69E1Pq": [
+      ".ok/local/config.yml 中的 terminal.shell 必须是字符串，将改用可用的 Windows shell。"
+    ],
     "69KLIV": ["Esc"],
     "6ASTuj": ["命令将以你在本机用户账户的完整权限运行。关闭此项可禁用 shell。"],
     "6Aih4U": ["离线"],
@@ -727,6 +734,9 @@
     "AJ7_B2": ["创建新主题"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
     "ALhMYW": ["终端"],
+    "AN-UPd": [
+      ".ok/local/config.yml 中的 terminal.shell 必须是 Windows 绝对路径，将改用可用的 Windows shell。"
+    ],
     "ANFxWn": ["无法删除此主题。请刷新后重试。"],
     "APNlbk": ["退出 ", ["0"]],
     "AQ-Lfg": ["无法加载模板"],
@@ -767,6 +777,7 @@
     "AqnqMJ": ["API 密钥已设置"],
     "AsqRE_": ["新附件的默认位置"],
     "AtBdnD": ["无法删除技能：", ["error"]],
+    "AvqEDl": ["部分拖放的文件无法安全插入。"],
     "AwLCZA": ["端点有响应，但返回的不是兼容 OpenAI 的嵌入响应。请检查基础 URL。"],
     "AwrGuz": ["这个文档缺少必需的属性"],
     "AyKwqp": ["位于你的主目录中——此电脑上的每个项目，仅限你自己。"],
@@ -888,6 +899,9 @@
     "D12vtS": ["（游离状态）"],
     "D2emTw": ["发送你的反馈时出了点问题。请重试。"],
     "D4H2N6": ["移除 ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge 无法在 .ok/local/terminal 下写入启动设置，因为该文件夹未安全地包含在此项目中。请确认它是项目内的真实文件夹，而不是链接。Claude 将要求你批准 OpenKnowledge。"
+    ],
     "D7hnvB": ["正在思量…"],
     "D8JJwQ": ["反馈功能暂时不可用。请稍后再试。"],
     "D8OV7J": ["仅协作者"],
@@ -1364,6 +1378,9 @@
     "K6jxcj": ["添加键"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " 个文件"],
     "K8-WWn": ["在表格单元格之间移动"],
+    "K8EvAV": [
+      "OpenKnowledge 无法读取 .ok/local/config.yml 中的 terminal.shell，将改用可用的 Windows shell。"
+    ],
     "K9J00P": ["克隆失败——连接出错"],
     "KDrbNG": ["OpenKnowledge 查找了 ", ["subject"], " 的链接"],
     "KDuPiY": ["正在上传 ", ["fileName"]],
@@ -1376,6 +1393,9 @@
     ],
     "KOZud0": [
       "搭建一个竞品调研知识库。先写一页总览，再为每个竞争对手、他们的产品与定价，以及每条论断背后的信息来源添加相互链接的页面。"
+    ],
+    "KOeFXa": [
+      "OpenKnowledge 此次无法在 .ok/local/terminal 下写入启动设置。请确认该文件夹可写。Claude 将要求你批准 OpenKnowledge。"
     ],
     "KPW5WC": ["已移动模板"],
     "KQGZuq": ["如果已存在就复用，否则就新建。"],
@@ -3251,6 +3271,9 @@
     "kCqCyf": ["打开 CodeMirror 的检查诊断面板。"],
     "kEiVv6": [
       "它们教你的 AI 工具如何使用 OpenKnowledge。安装其中一个，会把它添加到本机的每个 AI 工具。"
+    ],
+    "kF2Yua": [
+      "未找到 .ok/local/config.yml 中指定的 terminal.shell 可执行文件，将改用可用的 Windows shell。"
     ],
     "kFLlsI": ["插入一个脚注引用及其对应的定义占位。"],
     "kGp168": ["无法为发布准备此项目。"],

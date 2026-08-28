@@ -8,9 +8,10 @@
  * fake, not the guard. These build genuine symlinks in a temp dir and let the
  * real `realpathSync` resolve them.
  *
- * `realpath` stays injected only for the throwing paths (ENOENT / ELOOP), where
- * provoking the real errno is either slow or platform-fragile — and those cases
- * assert the refusal, not a resolved value.
+ * `realpath` stays injected for OS-returned canonical-path edge cases and the
+ * throwing paths (ENOENT / ELOOP), where provoking the real behavior is either
+ * slow or platform-fragile — and those cases assert the refusal, not a resolved
+ * value.
  */
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -121,6 +122,41 @@ describe('resolveDeckPath — refuses an escape', () => {
 
   test('refuses a relative path before it ever reaches the filesystem', () => {
     const result = resolveDeckPath({ ...real, docPath: 'decks/talk.md', projectRoot });
+    expect(result).toEqual({ ok: false, reason: 'invalid-path' });
+  });
+
+  test.each([
+    {
+      name: 'resolved deck path',
+      docPath: 'C:\\project\\decks\\talk.md',
+      projectRoot: 'C:\\project',
+      resolvedDocPath: 'C:\\project\\decks\\%CMDCMDLINE%.md',
+    },
+    {
+      name: 'canonical project root',
+      docPath: 'C:\\project\\decks\\talk.md',
+      projectRoot: 'C:\\project%CMDCMDLINE%',
+      resolvedDocPath: 'C:\\project%CMDCMDLINE%\\decks\\talk.md',
+    },
+    {
+      name: 'quoted resolved deck path',
+      docPath: 'C:\\project\\decks\\talk.md',
+      projectRoot: 'C:\\project',
+      resolvedDocPath: 'C:\\project\\decks\\talk"notes.md',
+    },
+    {
+      name: 'quoted canonical project root',
+      docPath: 'C:\\project\\decks\\talk.md',
+      projectRoot: 'C:\\project"notes',
+      resolvedDocPath: 'C:\\project"notes\\decks\\talk.md',
+    },
+  ])('refuses cmd.exe grammar in the post-realpath $name', (input) => {
+    const result = resolveDeckPath({
+      platform: 'win32',
+      docPath: input.docPath,
+      projectRoot: input.projectRoot,
+      realpath: () => input.resolvedDocPath,
+    });
     expect(result).toEqual({ ok: false, reason: 'invalid-path' });
   });
 

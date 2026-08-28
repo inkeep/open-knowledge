@@ -226,6 +226,8 @@ function makeRig(
      * another process claiming the app's bundle URL and so cannot see these.
      */
     prepareForRelaunch?: () => void;
+    /** Windows install-tree console-host cleanup immediately before install. */
+    sweepUpdateSurvivors?: Parameters<typeof startAutoUpdater>[0]['sweepUpdateSurvivors'];
     /**
      * Menu-driven check-result dispatcher — production renders a
      * `dialog.showMessageBox`. Tests pass a spy to assert the
@@ -276,6 +278,7 @@ function makeRig(
     updaterSetup,
     extraWindowCount = 0,
     prepareForRelaunch,
+    sweepUpdateSurvivors,
     showCheckNowResult,
     reclaimStagedUpdateCache,
     linuxInstallSupport,
@@ -332,6 +335,7 @@ function makeRig(
     feedUrl,
     proxyFeed,
     prepareForRelaunch,
+    sweepUpdateSurvivors,
     showCheckNowResult,
     reclaimStagedUpdateCache,
     linuxInstallSupport,
@@ -3241,7 +3245,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(rig.ipc.handlers.has('ok:update:relaunch-now')).toBe(false);
   });
 
-  test('prepareForRelaunch fires BEFORE quitAndInstall — utility kill ordering', async () => {
+  test('teardown and survivor sweep fire before quitAndInstall in that order', async () => {
     const calls: string[] = [];
     const updater = new FakeUpdater();
     updater.quitAndInstall = vi.fn(() => {
@@ -3267,6 +3271,9 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       prepareForRelaunch: async () => {
         calls.push('prepareForRelaunch');
       },
+      sweepUpdateSurvivors: () => {
+        calls.push('sweepUpdateSurvivors');
+      },
       clock: makeFakeClock(),
       now: () => new Date(),
       logger: {
@@ -3277,7 +3284,7 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
       },
     });
     await ipc.invoke('ok:update:relaunch-now');
-    expect(calls).toEqual(['prepareForRelaunch', 'quitAndInstall']);
+    expect(calls).toEqual(['prepareForRelaunch', 'sweepUpdateSurvivors', 'quitAndInstall']);
   });
 
   test('prepareForRelaunch does NOT fire when versionPendingInstall is null', () => {
@@ -3297,6 +3304,36 @@ describe('ok:update:relaunch-now IPC handler (AC18)', () => {
     expect(prepareForRelaunch).toHaveBeenCalledTimes(1);
     expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
     expect(rig.logger.warn).toHaveBeenCalled();
+  });
+
+  test('survivor sweep throw does NOT block quitAndInstall', async () => {
+    const sweepUpdateSurvivors = vi.fn(() => {
+      throw new Error('process query failed');
+    });
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2', sweepUpdateSurvivors });
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    expect(sweepUpdateSurvivors).toHaveBeenCalledTimes(1);
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(rig.logger.warn).toHaveBeenCalled();
+  });
+
+  test('incomplete survivor sweep is observable and does NOT block quitAndInstall', async () => {
+    const sweepUpdateSurvivors = vi.fn(() => ({
+      candidateCount: 2,
+      terminatedCount: 0,
+      failedCount: 0,
+      scanFailed: false,
+      revalidationFailed: true,
+    }));
+    const { rig } = makeRig({ versionPendingInstall: '0.3.2', sweepUpdateSurvivors });
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(rig.logger.warn).toHaveBeenCalledWith(
+      'update survivor sweep incomplete — proceeding to quitAndInstall anyway',
+      { result: expect.objectContaining({ revalidationFailed: true }) },
+    );
   });
 });
 

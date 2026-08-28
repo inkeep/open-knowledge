@@ -37,6 +37,7 @@ import {
   manualInstallPlanFor,
 } from './linux-install-fallback.ts';
 import type { AppState, UpdateChannel } from './state-store.ts';
+import type { WindowsUpdateSurvivorSweepResult } from './windows-update-survivor-sweep.ts';
 
 /** GitHub provider coordinates — must match `electron-builder.yml` `publish:`. */
 const GITHUB_OWNER = 'inkeep';
@@ -264,6 +265,13 @@ interface StartAutoUpdaterOpts {
    * shutdown (SIGTERM → poll → SIGKILL) can complete cleanly.
    */
   prepareForRelaunch?: () => void | Promise<void>;
+  /**
+   * Last-moment recovery sweep before the updater replaces installed files.
+   * Production uses this on Windows to terminate console hosts proven to
+   * belong to this installation. Kept separate from server teardown so the
+   * updater owns the ordering immediately before `quitAndInstall()`.
+   */
+  sweepUpdateSurvivors?: () => WindowsUpdateSurvivorSweepResult | undefined;
   /**
    * Reclaim electron-updater's staged-installer cache (`pending/` under the
    * updater cache dir). Invoked once per boot, from the reconciliation
@@ -2331,6 +2339,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         logger.warn('prepareForRelaunch threw — proceeding to quitAndInstall anyway', {
           err,
         });
+      }
+    }
+    if (opts.sweepUpdateSurvivors) {
+      try {
+        const result = opts.sweepUpdateSurvivors();
+        if (result && (result.scanFailed || result.revalidationFailed || result.failedCount > 0)) {
+          logger.warn('update survivor sweep incomplete — proceeding to quitAndInstall anyway', {
+            result,
+          });
+        }
+      } catch (err) {
+        logger.warn('update survivor sweep threw — proceeding to quitAndInstall anyway', { err });
       }
     }
     logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', {

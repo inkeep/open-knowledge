@@ -102,6 +102,9 @@
     "0NkNB5": ["hace ", ["0"], " meses"],
     "0QVrvp": ["Ya hay el máximo de agentes en marcha"],
     "0TnCvC": ["Renombrar ", ["0"]],
+    "0WsUA2": [
+      "El prompt se pegó, pero no se envió automáticamente. Revísalo y pulsa Enter para enviarlo."
+    ],
     "0YUS3Q": ["Subcarpeta dentro de la carpeta actual"],
     "0_J12R": [
       "Archivo nuevo a partir de la plantilla \"",
@@ -137,6 +140,9 @@
     "0pZmTP": ["No se puede compartir esta ruta."],
     "0qyKG6": ["Sincronizado desde el disco"],
     "0r6d6v": ["Los cambios se guardaron automáticamente."],
+    "0rT21w": [
+      "terminal.shell en .ok/local/config.yml admite PowerShell, cmd.exe o Git Bash para los inicios administrados por OpenKnowledge y las rutas de archivos soltados. Este shell solo abre un terminal normal; los inicios de agentes y comandos no se ejecutan en él."
+    ],
     "0rwwOn": ["Por etiqueta"],
     "0s8-e8": [
       "Selecciona, entra o sale de componentes de bloque y bloques de código alternativos desde los límites del teclado."
@@ -569,6 +575,9 @@
     "67f-3g": [
       "Se duplicó correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
     ],
+    "69E1Pq": [
+      "terminal.shell en .ok/local/config.yml debe ser una cadena. Se usará un shell de Windows disponible."
+    ],
     "69KLIV": ["Esc"],
     "6ASTuj": [
       "Los comandos se ejecutan con todo el acceso de tu cuenta de usuario en este equipo. Desactiva esto para deshabilitar el shell."
@@ -957,6 +966,9 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell en .ok/local/config.yml debe ser una ruta absoluta de Windows. Se usará un shell de Windows disponible."
+    ],
     "ANFxWn": ["No se pudo eliminar este tema. Actualiza e inténtalo de nuevo."],
     "APNlbk": ["salida ", ["0"]],
     "AQ-Lfg": ["No se pudieron cargar las plantillas"],
@@ -1003,6 +1015,7 @@
     "AqnqMJ": ["Clave de API definida"],
     "AsqRE_": ["Ubicación por defecto de los adjuntos nuevos"],
     "AtBdnD": ["No se pudo eliminar la habilidad: ", ["error"]],
+    "AvqEDl": ["Algunos archivos soltados no se pudieron insertar de forma segura."],
     "AwLCZA": [
       "El endpoint respondió, pero no con una respuesta de embeddings compatible con OpenAI. Revisa la URL base."
     ],
@@ -1186,6 +1199,9 @@
     "D12vtS": ["(desacoplado)"],
     "D2emTw": ["Algo salió mal al enviar tus comentarios. Inténtalo de nuevo."],
     "D4H2N6": ["Quitar ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge no pudo escribir la configuración de inicio en .ok/local/terminal porque la carpeta no está contenida de forma segura en este proyecto. Comprueba que sea una carpeta real dentro del proyecto y no un enlace. Claude te pedirá que apruebes OpenKnowledge."
+    ],
     "D7hnvB": ["Meditando…"],
     "D8JJwQ": ["Ahora mismo no se pueden enviar comentarios. Inténtalo más tarde."],
     "D8OV7J": ["Solo colaboradores"],
@@ -1814,6 +1830,9 @@
     "K6jxcj": ["Añadir una clave"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " archivos"],
     "K8-WWn": ["Moverse entre celdas de la tabla"],
+    "K8EvAV": [
+      "OpenKnowledge no pudo leer terminal.shell en .ok/local/config.yml. Se usará un shell de Windows disponible."
+    ],
     "K9J00P": ["No se pudo clonar: error de conexión"],
     "KDrbNG": ["OpenKnowledge consultó los enlaces de ", ["subject"]],
     "KDuPiY": ["Subiendo ", ["fileName"]],
@@ -1828,6 +1847,9 @@
     ],
     "KOZud0": [
       "Crea una base de conocimiento de investigación de la competencia. Empieza con una página general y añade después páginas enlazadas entre sí para cada competidor, sus productos y precios, y las fuentes que respaldan cada afirmación."
+    ],
+    "KOeFXa": [
+      "OpenKnowledge no pudo escribir la configuración de inicio en .ok/local/terminal esta vez. Comprueba que se pueda escribir en la carpeta. Claude te pedirá que apruebes OpenKnowledge."
     ],
     "KPW5WC": ["plantilla movida"],
     "KQGZuq": ["Se reutiliza si ya existe; si no, se crea."],
@@ -4273,6 +4295,9 @@
     "kCqCyf": ["Abre el panel de diagnóstico de análisis de CodeMirror."],
     "kEiVv6": [
       "Estas enseñan a tus herramientas de IA a trabajar con OpenKnowledge. Al instalar una se añade a todas las herramientas de IA de este equipo."
+    ],
+    "kF2Yua": [
+      "No se encontró el ejecutable terminal.shell de .ok/local/config.yml. Se usará un shell de Windows disponible."
     ],
     "kFLlsI": ["Inserta una referencia a nota al pie y su definición correspondiente."],
     "kGp168": ["No se pudo preparar este proyecto para publicarlo."],

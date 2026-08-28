@@ -20,6 +20,7 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
   return {
     appName: 'OpenKnowledge',
     showDevToolsMenu: true,
+    terminalCapable: true,
     dialog: {} as Dialog,
     openNavigator: vi.fn(),
     openProject: vi.fn(async () => {}),

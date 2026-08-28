@@ -24,7 +24,21 @@
  * unit-testable without an Electron runtime.
  */
 
-import type { OkPtyAdoptResult, OkPtyListEntry } from '../shared/bridge-contract.ts';
+import {
+  isWindowsShellFamily,
+  type TerminalLaunchCommand,
+  type WindowsShellFamily,
+} from '@inkeep/open-knowledge-core';
+import {
+  isTerminalShellNoticeReason,
+  isTerminalSupportFileNoticeReason,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
+import type {
+  OkPtyAdoptResult,
+  OkPtyListEntry,
+  OkPtyNotice,
+  TerminalShellNoticeReason,
+} from '../shared/bridge-contract.ts';
 import type { SendableWebContents } from '../shared/ipc-send.ts';
 import type { PtyHostIncomingMessage, PtyHostOutgoingMessage } from '../utility/pty-host.ts';
 
@@ -49,6 +63,8 @@ export interface TerminalManagerDeps {
     webContents: SendableWebContents,
     payload: { ptyId: string; exitCode: number; signal: number | null; error?: string },
   ) => void;
+  /** Push a shell-resolution notice to the addressed terminal panel. */
+  sendNotice?: (webContents: SendableWebContents, payload: OkPtyNotice) => void;
   /** Fresh PTY id — `randomUUID` in production; deterministic in tests. */
   newPtyId: () => string;
   /** Schedule a coalesce flush. `setTimeout` in production; captured in tests. */
@@ -64,6 +80,8 @@ export interface TerminalManagerDeps {
   /** Cap on the per-session reload-replay ring (retained screen + scrollback the
    *  reloaded renderer repaints on adopt). Default 256 KiB. */
   replayCapBytes?: number;
+  /** Grace period after host shutdown IPC before force-kill. Default 2 seconds. */
+  shutdownMs?: number;
   /** Optional structured warn sink (pino `getLogger` in production). */
   logger?: { warn: (o: Record<string, unknown>) => void };
   /**
@@ -98,14 +116,17 @@ interface TerminalCreateRequest {
   projectRoot: string | null;
   cols: number;
   rows: number;
+  /** Project-local executable override; the utility resolver validates it. */
+  shell?: string;
+  /** A present project-local override could not be used. */
+  shellInvalidReason?: TerminalShellNoticeReason;
   /**
-   * "Open in <Agent>" launch command — the fixed `<bin> [pre-approve] '<prompt>'`
-   * shape (no trailing `\r`). When present, the host bakes it into the shell
-   * spawn (`$SHELL -l -i -c '<this>; exec …'`) so the agent runs without the
-   * command being typed into the shell and thus recorded in the user's history.
-   * Omitted for a plain terminal tab. Forwarded verbatim to the host's create.
+   * "Open in <Agent>" launch. POSIX uses its composed command string; Windows
+   * uses structured executable + argv data. The host bakes either form into the
+   * resolved shell's startup args, bypassing the interactive line editor and
+   * persistent history. Omitted for a plain terminal tab.
    */
-  launchCommand?: string;
+  launchCommand?: string | TerminalLaunchCommand;
 }
 
 interface TerminalAddressedRequest {
@@ -163,6 +184,10 @@ interface SessionState {
    *  overwrites it via set-order on a drag / keyboard reorder, and `listSessions`
    *  sorts by it so a reload restores the user's arrangement. */
   order: number;
+  /** Resolved Windows shell parser, retained so reload adoption keeps path escaping correct. */
+  shellFamily: WindowsShellFamily | null;
+  /** Standing capability limit retained so reload adoption restores its explanation. */
+  shellNoticeReason: Extract<TerminalShellNoticeReason, 'unsupported-family'> | null;
 }
 
 interface PtyWindowHandle {
@@ -170,6 +195,9 @@ interface PtyWindowHandle {
   utility: PtyUtilityLike;
   /** Live sessions keyed by ptyId — one per terminal tab in this window. */
   sessions: Map<string, SessionState>;
+  shutdownToken: TimerToken | null;
+  shutdownPromise: Promise<void> | null;
+  shutdownResolve: (() => void) | null;
 }
 
 /**
@@ -192,6 +220,7 @@ const DEFAULT_LOW_WATER = 256 * 1024;
  * the session exits). Overridable via `deps.replayCapBytes`.
  */
 const DEFAULT_REPLAY_CAP = 256 * 1024;
+const DEFAULT_SHUTDOWN_MS = 2000;
 
 /** Sane fallback PTY size when the renderer sends an out-of-range dimension. */
 export const DEFAULT_PTY_COLS = 80;
@@ -262,7 +291,7 @@ export interface TerminalManager {
   /** Window-close reap. Idempotent. */
   killForWindow(windowId: number): void;
   /** App-quit reap of every window's PTY host. */
-  killAll(): void;
+  killAll(): Promise<void>;
 }
 
 export function createTerminalManager(deps: TerminalManagerDeps): TerminalManager {
@@ -270,7 +299,9 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
   const highWater = deps.highWaterBytes ?? DEFAULT_HIGH_WATER;
   const lowWater = deps.lowWaterBytes ?? DEFAULT_LOW_WATER;
   const replayCap = deps.replayCapBytes ?? DEFAULT_REPLAY_CAP;
+  const shutdownMs = deps.shutdownMs ?? DEFAULT_SHUTDOWN_MS;
   const handles = new Map<number, PtyWindowHandle>();
+  const pendingShutdowns = new Set<Promise<void>>();
 
   /** Kill a host without letting a throw abort a multi-window reap loop. The
    *  utilityProcess may already be gone (TOCTOU) so `kill()` can throw; mirrors
@@ -290,6 +321,51 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     }
   }
 
+  function warnPostFailed(event: string, err: unknown, extra?: Record<string, unknown>): void {
+    deps.logger?.warn({
+      event,
+      code: (err as { code?: string } | null)?.code ?? 'unknown',
+      ...extra,
+    });
+  }
+
+  function clearShutdownDeadline(handle: PtyWindowHandle): void {
+    if (handle.shutdownToken === null) return;
+    deps.clearTimer(handle.shutdownToken);
+    handle.shutdownToken = null;
+  }
+
+  function finishHostShutdown(handle: PtyWindowHandle): void {
+    clearShutdownDeadline(handle);
+    handle.shutdownResolve?.();
+    handle.shutdownResolve = null;
+  }
+
+  function beginHostShutdown(handle: PtyWindowHandle): Promise<void> {
+    if (handle.shutdownPromise !== null) return handle.shutdownPromise;
+    const shutdownPromise = new Promise<void>((resolve) => {
+      handle.shutdownResolve = resolve;
+    });
+    handle.shutdownPromise = shutdownPromise;
+    pendingShutdowns.add(shutdownPromise);
+    void shutdownPromise.finally(() => pendingShutdowns.delete(shutdownPromise));
+    handle.shutdownToken = deps.setTimer(() => {
+      handle.shutdownToken = null;
+      deps.logger?.warn({ event: 'terminal-manager-shutdown-deadline' });
+      safeKillUtility(handle);
+      finishHostShutdown(handle);
+    }, shutdownMs);
+    try {
+      handle.utility.postMessage({ type: 'shutdown' });
+    } catch (err) {
+      clearShutdownDeadline(handle);
+      warnPostFailed('terminal-manager-shutdown-send-failed', err);
+      safeKillUtility(handle);
+      finishHostShutdown(handle);
+    }
+    return shutdownPromise;
+  }
+
   function pushData(handle: PtyWindowHandle, ptyId: string, data: string): void {
     // The window can close mid-stream — `webContents.send` throws on a
     // destroyed WebContents and crashes main. Cross-time-mutation boundary;
@@ -300,10 +376,20 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
 
   function pushExit(
     handle: PtyWindowHandle,
-    payload: { ptyId: string; exitCode: number; signal: number | null; error?: string },
+    payload: {
+      ptyId: string;
+      exitCode: number | undefined;
+      signal: number | null;
+      error?: string;
+    },
   ): void {
     if (handle.webContents.isDestroyed?.()) return;
-    deps.sendExit(handle.webContents, payload);
+    deps.sendExit(handle.webContents, { ...payload, exitCode: payload.exitCode ?? -1 });
+  }
+
+  function pushNotice(handle: PtyWindowHandle, payload: OkPtyNotice): void {
+    if (handle.webContents.isDestroyed?.()) return;
+    deps.sendNotice?.(handle.webContents, payload);
   }
 
   /**
@@ -365,11 +451,18 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       case 'data':
         return typeof m.data === 'string' ? (raw as PtyHostOutgoingMessage) : null;
       case 'exit':
-        return typeof m.exitCode === 'number' && (m.signal === null || typeof m.signal === 'number')
+        return (m.exitCode === undefined || typeof m.exitCode === 'number') &&
+          (m.signal === null || typeof m.signal === 'number')
           ? (raw as PtyHostOutgoingMessage)
           : null;
       case 'spawn-error':
         return typeof m.message === 'string' ? (raw as PtyHostOutgoingMessage) : null;
+      case 'shell-notice':
+        return (m.notice === 'invalid-shell-override' && isTerminalShellNoticeReason(m.reason)) ||
+          (m.notice === 'shell-resolved' && isWindowsShellFamily(m.shellFamily)) ||
+          (m.notice === 'support-file-degraded' && isTerminalSupportFileNoticeReason(m.reason))
+          ? (raw as PtyHostOutgoingMessage)
+          : null;
       default:
         return null;
     }
@@ -428,12 +521,39 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         pushExit(handle, { ptyId, exitCode: 1, signal: null, error: message.message });
         break;
       }
+      case 'shell-notice':
+        if (message.notice === 'shell-resolved') {
+          session.shellFamily = message.shellFamily;
+          pushNotice(handle, {
+            ptyId: message.ptyId,
+            notice: message.notice,
+            shellFamily: message.shellFamily,
+          });
+          // Keep the reason-carrying notices split: their reason unions differ,
+          // so merging them would lose the notice-to-reason correlation.
+        } else if (message.notice === 'invalid-shell-override') {
+          if (message.reason === 'unsupported-family') {
+            session.shellNoticeReason = message.reason;
+          }
+          pushNotice(handle, {
+            ptyId: message.ptyId,
+            notice: message.notice,
+            reason: message.reason,
+          });
+        } else {
+          pushNotice(handle, {
+            ptyId: message.ptyId,
+            notice: message.notice,
+            reason: message.reason,
+          });
+        }
+        break;
     }
   }
 
-  function onUtilityExit(windowId: number, code: number | null): void {
-    const handle = handles.get(windowId);
-    if (!handle) return;
+  function onUtilityExit(windowId: number, handle: PtyWindowHandle, code: number | null): void {
+    finishHostShutdown(handle);
+    if (handles.get(windowId) !== handle) return;
     // The host process itself died (a native crash escaping pty-host's own
     // containment), taking every shell it multiplexed with it. Surface an exit
     // on each live session so no panel hangs, then drop the dead host so the
@@ -482,10 +602,13 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       webContents: req.webContents,
       utility,
       sessions: new Map(),
+      shutdownToken: null,
+      shutdownPromise: null,
+      shutdownResolve: null,
     };
     handles.set(req.windowId, handle);
     utility.on('message', (raw) => onUtilityMessage(req.windowId, raw));
-    utility.on('exit', (code) => onUtilityExit(req.windowId, code));
+    utility.on('exit', (code) => onUtilityExit(req.windowId, handle, code));
     return handle;
   }
 
@@ -518,6 +641,8 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         customLabel: null,
         ordinal: null,
         order: nextOrder,
+        shellFamily: null,
+        shellNoticeReason: null,
       });
       // Record the concurrency reached by this open (1 for a solo tab, N for the
       // Nth concurrent tab). Concurrency only rises on create, so the per-window
@@ -529,7 +654,11 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         cwd: req.projectRoot,
         cols: req.cols,
         rows: req.rows,
-        launchCommand: req.launchCommand,
+        ...(req.shell === undefined ? {} : { shell: req.shell }),
+        ...(req.shellInvalidReason === undefined
+          ? {}
+          : { shellInvalidReason: req.shellInvalidReason }),
+        ...(req.launchCommand === undefined ? {} : { launchCommand: req.launchCommand }),
       });
       return { ok: true, ptyId };
     },
@@ -639,21 +768,12 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       try {
         handle.utility.postMessage({ type: 'resume', ptyId: req.ptyId });
       } catch (err) {
-        // The PTY host can exit in the same list()->adopt TOCTOU window the
-        // session-presence check above guards (postMessage on a dead
-        // utilityProcess throws). A dead host means a dead session, so refuse
-        // the adopt and let the panel spawn fresh rather than wire xterm to it.
-        // ESRCH is the expected host-already-gone code; surface anything else
-        // for diagnostics. Mirrors safeKillUtility's TOCTOU handling.
-        const code = (err as { code?: string } | null)?.code;
-        if (code !== 'ESRCH') {
-          deps.logger?.warn({
-            event: 'terminal-manager-adopt-resume-failed',
-            code: code ?? 'unknown',
-            windowId: req.windowId,
-            ptyId: req.ptyId,
-          });
-        }
+        // A host we cannot post to is one we cannot drive, so refuse the adopt
+        // and let the panel spawn fresh rather than wire xterm to it.
+        warnPostFailed('terminal-manager-adopt-resume-failed', err, {
+          windowId: req.windowId,
+          ptyId: req.ptyId,
+        });
         return { ok: false, reason: 'unknown-session' };
       }
       // Rebind delivery to the reloaded page's webContents (a normal in-page
@@ -664,8 +784,16 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       handle.webContents = req.webContents;
       // Hand back the retained screen + scrollback so the fresh xterm repaints it
       // before live delivery resumes — without this the adopted tab is blank
-      // (issue #351 follow-up). The renderer writes `replay`, then wires onData.
-      return { ok: true, replay: session.replay };
+      // (issue #351 follow-up). The renderer wires delivery first, then writes
+      // `replay`, gating its own input until xterm finishes parsing it.
+      return {
+        ok: true,
+        replay: session.replay,
+        ...(session.shellFamily === null ? {} : { shellFamily: session.shellFamily }),
+        ...(session.shellNoticeReason === null
+          ? {}
+          : { shellNoticeReason: session.shellNoticeReason }),
+      };
     },
 
     killForWindow(windowId): void {
@@ -680,18 +808,21 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       // Delete first so the resulting utility `'exit'` event no-ops instead of
       // pushing spurious `ok:pty:exit`s into the closing window.
       handles.delete(windowId);
-      safeKillUtility(handle);
+      void beginHostShutdown(handle);
     },
 
-    killAll(): void {
+    async killAll(): Promise<void> {
+      const shutdowns: Promise<void>[] = [];
       for (const handle of handles.values()) {
         for (const session of handle.sessions.values()) {
           clearFlush(session);
           maybeRecordSession(session);
         }
-        safeKillUtility(handle);
+        shutdowns.push(beginHostShutdown(handle));
       }
       handles.clear();
+      shutdowns.push(...pendingShutdowns);
+      await Promise.all(shutdowns);
     },
   };
 }

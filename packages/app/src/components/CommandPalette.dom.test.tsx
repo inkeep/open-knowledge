@@ -1412,7 +1412,7 @@ describe('Cmd+K menu-parity backfill', () => {
     }
   });
 
-  test('off-mac and incomplete desktop bridges hide every PTY-backed palette command', async () => {
+  test('PTY-less and incomplete desktop bridges hide every PTY-backed palette command', async () => {
     const terminalCommands = [
       ['show terminal', 'toggle-terminal'],
       ['new terminal', 'new-terminal'],

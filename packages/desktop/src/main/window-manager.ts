@@ -3101,11 +3101,9 @@ export class WindowManager {
         // Drop any stale show-gate state — a window destroyed before either
         // signal arrives must not hold a slot in the registry's Map.
         disposeShowGate();
-        // Guard against detached IPC port — the utility may have already exited
-        // (e.g. crash, parent-death poll beat us) in which case `postMessage`
-        // throws ERR_IPC_CHANNEL_CLOSED. The utility's shutdown drain +
-        // parentLifecycleBound takes care of the forked process regardless;
-        // windowsByPath.delete fires from the utility's exit event above.
+        // A send failure must not keep a closing window alive. The utility's
+        // shutdown drain + parentLifecycleBound takes care of the forked
+        // process regardless; windowsByPath.delete fires from its exit event.
         try {
           utility.postMessage({ type: 'shutdown' });
         } catch (err) {

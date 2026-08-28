@@ -200,7 +200,11 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
   const addArgs = buildAddArgs(args, worktreePath);
 
   try {
-    await execFileAsync('git', addArgs, { cwd: args.anchorPath, env: gitSpawnEnv() });
+    await execFileAsync('git', addArgs, {
+      cwd: args.anchorPath,
+      env: gitSpawnEnv(),
+      windowsHide: true,
+    });
   } catch (err) {
     const classified = classifyAddError(err);
     // A repo with no commits has no resolvable base ref, so git rejects the add
@@ -331,6 +335,7 @@ async function refExists(anchorPath: string, ref: string): Promise<boolean> {
       cwd: anchorPath,
       env: gitSpawnEnv(),
       timeout: 5_000,
+      windowsHide: true,
     });
     return true;
   } catch (err) {
@@ -360,6 +365,7 @@ async function fetchShareBranch(
       cwd: anchorPath,
       env: fetchGitEnv(),
       timeout: timeoutMs,
+      windowsHide: true,
     });
     return null;
   } catch (err) {
@@ -449,7 +455,7 @@ async function listLocalBranches(anchorPath: string): Promise<string[]> {
     const { stdout } = await execFileAsync(
       'git',
       ['for-each-ref', '--format=%(refname:short)', 'refs/heads/'],
-      { cwd: anchorPath, env: gitSpawnEnv() },
+      { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
     );
     return parseBranchList(String(stdout));
   } catch {
@@ -472,7 +478,7 @@ async function listRemoteBranches(anchorPath: string): Promise<string[]> {
     const { stdout } = await execFileAsync(
       'git',
       ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/'],
-      { cwd: anchorPath, env: gitSpawnEnv() },
+      { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
     );
     // `refname:short` renders a `<remote>/HEAD` pointer as `<remote>` (no
     // trailing `/HEAD`) — drop any ref with no slash (a bare remote name), plus
@@ -512,7 +518,7 @@ async function computeBehindCounts(
         const { stdout } = await execFileAsync(
           'git',
           ['rev-list', '--count', `${branch}..${upstream}`],
-          { cwd: anchorPath, env: gitSpawnEnv() },
+          { cwd: anchorPath, env: gitSpawnEnv(), windowsHide: true },
         );
         const n = Number.parseInt(String(stdout).trim(), 10);
         if (Number.isFinite(n) && n >= 0) out[branch] = n;
@@ -576,6 +582,7 @@ async function repoHasAnyRef(cwd: string): Promise<boolean> {
     const { stdout } = await execFileAsync('git', ['for-each-ref', '--count=1', 'refs/'], {
       cwd,
       env: gitSpawnEnv(),
+      windowsHide: true,
     });
     return stdout.trim().length > 0;
   } catch {
@@ -588,7 +595,9 @@ async function repoHasAnyRef(cwd: string): Promise<boolean> {
 /** Synchronous git read that returns the trimmed stdout, or null on failure. */
 function execFileSyncTrim(cmd: string, cmdArgs: string[], cwd: string): string | null {
   try {
-    return String(execFileSync(cmd, cmdArgs, { cwd, env: gitSpawnEnv() })).trim();
+    return String(
+      execFileSync(cmd, cmdArgs, { cwd, env: gitSpawnEnv(), windowsHide: true }),
+    ).trim();
   } catch {
     return null;
   }

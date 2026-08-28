@@ -78,6 +78,7 @@
     "0NkNB5": [["0"], " 個月前"],
     "0QVrvp": ["同時執行的代理已達上限"],
     "0TnCvC": ["重新命名 ", ["0"]],
+    "0WsUA2": ["提示詞已貼上，但未自動提交。請檢查內容，然後按 Enter 傳送。"],
     "0YUS3Q": ["目前資料夾底下的子資料夾"],
     "0_J12R": [
       "在 ",
@@ -112,6 +113,9 @@
     "0pZmTP": ["無法分享這個路徑。"],
     "0qyKG6": ["已從磁碟同步"],
     "0r6d6v": ["變更已自動儲存。"],
+    "0rT21w": [
+      ".ok/local/config.yml 中的 terminal.shell 支援使用 PowerShell、cmd.exe 或 Git Bash 執行 OpenKnowledge 管理的啟動以及插入拖放檔案的路徑。此 shell 僅開啟一般終端；代理程式和命令啟動無法在其中執行。"
+    ],
     "0rwwOn": ["依標籤"],
     "0s8-e8": ["從鍵盤邊界選取、進入或離開區塊元件和備用的原始碼區塊。"],
     "0t0bbC": ["無法儲存同步偏好設定：", ["detail"]],
@@ -450,6 +454,7 @@
     "65Ea2s": ["公開會鎖定一個固定連接埠，讓通道的目標在重新啟動後保持穩定。"],
     "67Dpmh": ["斜線指令建議"],
     "67f-3g": ["副本已建立，但側邊欄可能不是最新的——請重新整理以重新同步"],
+    "69E1Pq": [".ok/local/config.yml 中的 terminal.shell 必須是字串，將改用可用的 Windows shell。"],
     "69KLIV": ["Esc"],
     "6ASTuj": ["命令會以你在這台電腦上使用者帳戶的完整權限執行。關閉此項可停用 shell。"],
     "6Aih4U": ["離線"],
@@ -731,6 +736,9 @@
     "AJ7_B2": ["建立新主題"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
     "ALhMYW": ["終端機"],
+    "AN-UPd": [
+      ".ok/local/config.yml 中的 terminal.shell 必須是 Windows 絕對路徑，將改用可用的 Windows shell。"
+    ],
     "ANFxWn": ["無法刪除這個主題。請重新整理後再試一次。"],
     "APNlbk": ["結束 ", ["0"]],
     "AQ-Lfg": ["無法載入範本"],
@@ -771,6 +779,7 @@
     "AqnqMJ": ["API 金鑰已設定"],
     "AsqRE_": ["新附件的預設位置"],
     "AtBdnD": ["無法刪除技能：", ["error"]],
+    "AvqEDl": ["部分拖放的檔案無法安全插入。"],
     "AwLCZA": ["端點有回應，但傳回的不是相容 OpenAI 的嵌入回應。請檢查基底 URL。"],
     "AwrGuz": ["這份文件缺少必要的屬性"],
     "AyKwqp": ["位於你的主目錄中——此電腦上的每個專案，僅限你自己。"],
@@ -894,6 +903,9 @@
     "D12vtS": ["（分離狀態）"],
     "D2emTw": ["傳送你的意見回饋時出了點問題。請再試一次。"],
     "D4H2N6": ["移除 ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge 無法在 .ok/local/terminal 下寫入啟動設定，因為該資料夾未安全地包含在此專案中。請確認它是專案內的真實資料夾，而不是連結。Claude 將要求你核准 OpenKnowledge。"
+    ],
     "D7hnvB": ["思量中…"],
     "D8JJwQ": ["意見回饋功能目前無法使用。請稍後再試。"],
     "D8OV7J": ["僅協作者"],
@@ -1378,6 +1390,9 @@
     "K6jxcj": ["新增索引鍵"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " 個檔案"],
     "K8-WWn": ["在表格儲存格之間移動"],
+    "K8EvAV": [
+      "OpenKnowledge 無法讀取 .ok/local/config.yml 中的 terminal.shell，將改用可用的 Windows shell。"
+    ],
     "K9J00P": ["複製失敗——連線出錯"],
     "KDrbNG": ["OpenKnowledge 查詢了 ", ["subject"], " 的連結"],
     "KDuPiY": ["正在上傳 ", ["fileName"]],
@@ -1390,6 +1405,9 @@
     ],
     "KOZud0": [
       "建立一個競品研究知識庫。先寫一頁總覽，再為每個競爭對手、他們的產品與定價，以及每項說法背後的來源，加上互相連結的頁面。"
+    ],
+    "KOeFXa": [
+      "OpenKnowledge 此次無法在 .ok/local/terminal 下寫入啟動設定。請確認該資料夾可寫入。Claude 將要求你核准 OpenKnowledge。"
     ],
     "KPW5WC": ["已移動範本"],
     "KQGZuq": ["如果已經存在就重複使用，否則就建立。"],
@@ -3277,6 +3295,9 @@
     "kCqCyf": ["開啟 CodeMirror 的檢查診斷面板。"],
     "kEiVv6": [
       "它們教你的 AI 工具如何使用 OpenKnowledge。安裝其中一個，會把它加入本機的每個 AI 工具。"
+    ],
+    "kF2Yua": [
+      "找不到 .ok/local/config.yml 中指定的 terminal.shell 執行檔，將改用可用的 Windows shell。"
     ],
     "kFLlsI": ["插入一個註腳參照，以及對應的定義草稿。"],
     "kGp168": ["無法為發布準備這個專案。"],

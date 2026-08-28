@@ -19,6 +19,7 @@ import { describe, expect, test } from 'vitest';
 import {
   isTerminalConsented,
   isTerminalConsentedWithGrace,
+  readTerminalShellSetting,
   TERMINAL_CONSENT_GRACE_TIMEOUT_MS,
 } from './terminal-consent.ts';
 
@@ -116,6 +117,64 @@ describe('isTerminalConsented (fail-open backstop)', () => {
       expect(isTerminalConsented(dir)).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('readTerminalShellSetting', () => {
+  test('reads a configured non-empty string from project-local config', () => {
+    const dir = makeProjectDir();
+    try {
+      writeRaw(dir, 'terminal:\n  shell: C:\\Tools\\pwsh.exe\n');
+      expect(readTerminalShellSetting(dir)).toEqual({
+        kind: 'configured',
+        shell: 'C:\\Tools\\pwsh.exe',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each(['', '   '])('treats %j as unset', (shell) => {
+    const dir = makeProjectDir();
+    try {
+      writeRaw(dir, `terminal:\n  shell: ${JSON.stringify(shell)}\n`);
+      expect(readTerminalShellSetting(dir)).toEqual({ kind: 'unset' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('classifies a present non-string override as invalid', () => {
+    const dir = makeProjectDir();
+    try {
+      writeRaw(dir, 'terminal:\n  shell: 42\n');
+      expect(readTerminalShellSetting(dir)).toEqual({
+        kind: 'invalid',
+        reason: 'invalid-value',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('missing and absent settings are unset while malformed YAML is diagnosed', () => {
+    const missing = makeProjectDir();
+    const malformed = makeProjectDir();
+    const absent = makeProjectDir();
+    try {
+      writeRaw(malformed, 'terminal:\n  shell: [');
+      writeRaw(absent, 'terminal:\n  enabled: true\n');
+      expect(readTerminalShellSetting(missing)).toEqual({ kind: 'unset' });
+      expect(readTerminalShellSetting(malformed)).toEqual({
+        kind: 'invalid',
+        reason: 'config-unreadable',
+      });
+      expect(readTerminalShellSetting(absent)).toEqual({ kind: 'unset' });
+    } finally {
+      for (const dir of [missing, malformed, absent]) {
+        rmSync(dir, { recursive: true, force: true });
+      }
     }
   });
 });

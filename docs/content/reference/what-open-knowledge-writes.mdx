@@ -64,7 +64,7 @@ The first two rows below live in OpenKnowledge's own `~/.ok/` directory and are 
 | `~/.ok/env.sh` | A managed shim that prepends `~/.ok/bin` to your `PATH` | Outside-project (home dir) |
 | `~/.zshrc`, `~/.bash_profile`, `~/.config/fish/conf.d/open-knowledge.fish` | A **fenced managed block** that sources `~/.ok/env.sh` — written **only if you consent** in the first-launch dialog | Outside-project (shell config) |
 
-If you decline, only `ok` typed in an *external* terminal (Terminal, iTerm) is affected — the app's built-in terminal on macOS and Linux, the MCP server, and the "Open with AI" launches all work without it. You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
+If you decline, only `ok` typed in an *external* terminal (Terminal, iTerm) is affected — the app's built-in terminal, the MCP server, and the "Open with AI" launches all work without it. You can add it later from **File → Set up OpenKnowledge integrations…**. Machines that already had the block from a version before the consent dialog are treated as consented: the block is left in place and maintained.
 
 The managed block is clearly fenced so you can see and remove it:
 
@@ -119,6 +119,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/terminal/claude-settings-{mcp,tools,mcp-tools}.json` | Windows-only Claude launch settings written when **Open in Claude** requests MCP or tool preapproval; one of three possible files, overwritten rather than appended on each launch that uses that combination. macOS and Linux pass the same settings inline | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.ok/worktrees/<branch>/` | Git worktree checkout created when you open a branch in its own window (project switcher); the path is also added to `.git/info/exclude` | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs; always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |

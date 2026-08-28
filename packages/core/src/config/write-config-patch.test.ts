@@ -259,6 +259,20 @@ describe('writeConfigPatch — project-local scope', () => {
     expect(after).not.toContain('enabled: true');
   });
 
+  test('persists terminal.shell only to .ok/local/config.yml', async () => {
+    const result = await writeConfigPatch({
+      cwd: testDir,
+      scope: 'project-local',
+      patch: { terminal: { shell: 'C:\\Tools\\pwsh.exe' } },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected success');
+    expect(result.appliedPaths).toContain('terminal.shell');
+    expect(result.effective.terminal.shell).toBe('C:\\Tools\\pwsh.exe');
+    expect(readFileSync(projectLocalConfigPath(), 'utf-8')).toContain('shell: C:\\Tools\\pwsh.exe');
+    expect(existsSync(projectConfigPath())).toBe(false);
+  });
+
   test('terminal.enabled grant lands ONLY in the gitignored .ok/local/ file, never the committed project file', async () => {
     // The grant must never reach <cwd>/.ok/config.yml — that file is committed
     // and would carry the consent across a clone/sync/share, which the
@@ -572,6 +586,26 @@ describe('writeConfigPatch — scope-violation gate', () => {
     expect(result.error.expectedScope).toBe('project-local');
     expect(result.error.actualScope).toBe('user');
     expect(existsSync(userConfigPath(testDir))).toBe(false);
+  });
+
+  test.each([
+    'project',
+    'user',
+  ] as const)('%s writer rejects terminal.shell with SCOPE_VIOLATION', async (scope) => {
+    const result = await writeConfigPatch({
+      cwd: testDir,
+      scope,
+      homedirOverride: testDir,
+      patch: { terminal: { shell: 'C:\\Tools\\pwsh.exe' } },
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected SCOPE_VIOLATION');
+    if (!isKnownConfigError(result.error)) throw new Error('expected known error');
+    expect(result.error.code).toBe('SCOPE_VIOLATION');
+    if (result.error.code !== 'SCOPE_VIOLATION') throw new Error('wrong code');
+    expect(result.error.path).toEqual(['terminal', 'shell']);
+    expect(result.error.expectedScope).toBe('project-local');
+    expect(result.error.actualScope).toBe(scope);
   });
 });
 

@@ -25,7 +25,7 @@
  * proving the per-session isolation the single-PTY scenarios above cannot reach.
  */
 
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -42,6 +42,7 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
+import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -376,11 +377,7 @@ async function runFloodScenario(opts: FloodOptions): Promise<FloodMetrics> {
       // Best-effort: the shell may already be gone.
     }
     bridge.reap();
-    try {
-      rmSync(tmp, { recursive: true, force: true });
-    } catch {
-      // Best-effort tmpdir cleanup.
-    }
+    removeTempDirBestEffort(tmp);
   }
 }
 
@@ -575,11 +572,7 @@ function createMultiSessionRig(opts: {
     }
     bridge.reap();
     activeRigCleanups.delete(cleanup);
-    try {
-      rmSync(tmp, { recursive: true, force: true });
-    } catch {
-      // Best-effort tmpdir cleanup.
-    }
+    removeTempDirBestEffort(tmp);
   };
   activeRigCleanups.add(cleanup);
 

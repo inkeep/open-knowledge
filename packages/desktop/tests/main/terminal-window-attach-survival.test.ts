@@ -78,6 +78,7 @@ function makeWebContents(): SendableWebContents & { destroyed: boolean } {
 function makeTerminalManager() {
   const forked: FakeHost[] = [];
   const dataPushes: Array<{ ptyId: string; data: string }> = [];
+  const shutdownTimers: Array<() => void> = [];
   let idn = 0;
   const mgr = createTerminalManager({
     forkPtyHost: () => {
@@ -90,14 +91,18 @@ function makeTerminalManager() {
     newPtyId: () => `pty-${++idn}`,
     // Fire the coalesce flush synchronously so a host->renderer `data` push is
     // observable within the test without real timers.
-    setTimer: (cb: () => void) => {
-      cb();
-      return 0;
+    setTimer: (cb: () => void, ms: number) => {
+      if (ms === 2000) shutdownTimers.push(cb);
+      else cb();
+      return shutdownTimers.length;
     },
     clearTimer: () => {},
     logger: { warn: () => {} },
   });
-  return { mgr, forked, dataPushes };
+  const runShutdownTimers = (): void => {
+    for (const cb of shutdownTimers) cb();
+  };
+  return { mgr, forked, dataPushes, runShutdownTimers };
 }
 
 // --- WindowManager attach harness (owner editor window owns the server) ------
@@ -220,7 +225,7 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
     expect(cwd).toBe(PROJECT);
 
     // 3) The terminal window spawns a live PTY at the inherited cwd.
-    const { mgr, forked, dataPushes } = makeTerminalManager();
+    const { mgr, forked, dataPushes, runShutdownTimers } = makeTerminalManager();
     const termWc = makeWebContents();
     const created = mgr.create({
       windowId: TERM_WIN_ID,
@@ -272,6 +277,9 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
     // Sanity: reaping the TERMINAL window (its own close) is what kills its PTY
     // — proving step 5 was not a no-op because nothing reaps anything.
     mgr.killForWindow(TERM_WIN_ID);
+    expect(host.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(host.killed).toBe(false);
+    runShutdownTimers();
     expect(host.killed).toBe(true);
   });
 });

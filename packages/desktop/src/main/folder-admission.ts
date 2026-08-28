@@ -420,7 +420,10 @@ function isPickedPathLinkedWorktreeRoot(pickedPath: string): boolean {
  */
 export async function defaultGitTopLevel(cwd: string): Promise<string | null> {
   try {
-    const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], { cwd });
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      windowsHide: true,
+    });
     const trimmed = stdout.trim();
     return trimmed.length > 0 ? trimmed : null;
   } catch {

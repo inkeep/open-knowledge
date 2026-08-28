@@ -5,12 +5,27 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+} from './_helpers/terminal-smoke-shell';
+import {
+  expectTerminalTabOrder,
+  openBareTerminalTab,
+  renameTerminalTab,
+  terminalTabById,
+  terminalTabIds,
+  terminalTabs,
+} from './_helpers/terminal-tabs.test-helper';
 
 const TARGET = resolveDesktopTarget();
 const ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 interface RestartSeed {
@@ -26,9 +41,8 @@ function seedRestartProfile(): RestartSeed {
   writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Terminal restart\n');
-  writeFileSync(join(tmpHome, '.zprofile'), 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n');
-  writeFileSync(join(tmpHome, '.zshrc'), 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n');
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   writeFileSync(
     join(userDataDir, 'state.json'),
@@ -54,9 +68,10 @@ async function launchRestartProfile(seed: RestartSeed): Promise<ElectronApplicat
       args: [`--user-data-dir=${seed.userDataDir}`, deepLink],
       env: {
         ...process.env,
-        HOME: seed.tmpHome,
-        PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
-        SHELL: '/bin/zsh',
+        ...terminalSmokeEnvironment(seed.tmpHome, {
+          restrictPath: true,
+          pinPosixZsh: true,
+        }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -115,9 +130,6 @@ async function dispatchRendererMenuAction(
   }, action);
 }
 
-const terminalTabs = (page: Page) =>
-  page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
-
 async function openTerminal(page: Page): Promise<void> {
   const terminal = page.locator('section[aria-label="Terminal"]:visible');
   await expect(async () => {
@@ -134,9 +146,11 @@ async function openTerminal(page: Page): Promise<void> {
 }
 
 async function openBareTab(page: Page): Promise<void> {
-  await page.getByTestId('terminal-new-chat-menu').click();
-  await page.getByRole('menuitem', { name: 'Terminal' }).click();
-  await expect(terminalTabs(page)).toHaveCount(2, { timeout: 25_000 });
+  await openBareTerminalTab(page, async () => {
+    await expect(
+      page.locator('section[aria-label="Terminal"]:visible [data-terminal-status]'),
+    ).toHaveAttribute('data-terminal-status', 'running', { timeout: 25_000 });
+  });
 }
 
 async function applyPersistedRightTerminalWidth(page: Page, width: number): Promise<number> {
@@ -190,24 +204,39 @@ test.describe('terminal process restart', () => {
     const firstPage = await findEditorWindow(firstApp);
     await setWindowSize(firstApp, firstPage, 1900, 900);
     await openTerminal(firstPage);
+    const [firstTabId] = await terminalTabIds(firstPage);
+    if (firstTabId === undefined) throw new Error('first terminal tab was not created');
     await openBareTab(firstPage);
+    const [, secondTabId] = await terminalTabIds(firstPage);
+    if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+    await renameTerminalTab(firstPage, terminalTabById(firstPage, firstTabId), 'process first');
+    // The default label pins ordinal persistence on POSIX. ConPTY can replace
+    // default labels with OSC titles, so Windows needs a durable custom label.
+    const secondLabel = process.platform === 'win32' ? 'process second' : 'Terminal 2';
+    if (process.platform === 'win32') {
+      await renameTerminalTab(firstPage, terminalTabById(firstPage, secondTabId), secondLabel);
+    }
+    await terminalTabById(firstPage, secondTabId).click();
+    await expect(terminalTabById(firstPage, secondTabId)).toHaveAttribute('aria-selected', 'true');
     // This test owns process-restart persistence; the dedicated terminal-tabs
     // smoke owns pointer-drag behavior. Reordering in the bottom dock keeps
     // this setup independent of right-column overlay geometry.
     await firstPage.locator('section[aria-label="Terminal"]:visible .xterm').click();
     await firstPage.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
-    await expect(terminalTabs(firstPage)).toHaveText(['Terminal 2', 'Terminal 1']);
-    await expect(firstPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+    await expectTerminalTabOrder(firstPage, [secondTabId, firstTabId]);
+    await expect(terminalTabById(firstPage, secondTabId)).toHaveAttribute('aria-selected', 'true');
+    await dispatchRendererMenuAction(firstPage, 'move-terminal');
+    await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
+    await expect(terminalTabs(firstPage)).toHaveText([secondLabel, 'process first']);
+    await expect(firstPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    await dispatchRendererMenuAction(firstPage, 'move-terminal');
-    await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
     // Pointer-drag behavior has its own live smoke. Here a deterministic
     // persisted width isolates the cross-process contract this test owns.
     const retainedWidth = await applyPersistedRightTerminalWidth(firstPage, 860);
-    await expect(terminalTabs(firstPage)).toHaveText(['Terminal 2', 'Terminal 1']);
-    await expect(firstPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+    await expect(terminalTabs(firstPage)).toHaveText([secondLabel, 'process first']);
+    await expect(firstPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -219,10 +248,10 @@ test.describe('terminal process restart', () => {
     await setWindowSize(secondApp, secondPage, 1900, 900);
     await expect(secondPage.locator('#terminal-column')).toBeVisible({ timeout: 25_000 });
     await expect(secondPage.locator('#terminal-dock-panel')).toHaveCount(0);
-    await expect(terminalTabs(secondPage)).toHaveText(['Terminal 2', 'Terminal 1'], {
+    await expect(terminalTabs(secondPage)).toHaveText([secondLabel, 'process first'], {
       timeout: 25_000,
     });
-    await expect(secondPage.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+    await expect(secondPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
     );

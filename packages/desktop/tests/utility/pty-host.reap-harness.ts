@@ -14,7 +14,7 @@
  * which is exactly the mechanism under test.
  */
 
-import { chmodSync, existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -25,6 +25,7 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
+import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -43,13 +44,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 async function main(): Promise<void> {
   ensureSpawnHelperExecutable();
   const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'ok-pty-reap-')));
-  process.on('exit', () => {
-    try {
-      rmSync(tmp, { recursive: true, force: true });
-    } catch {
-      // Best-effort tmpdir cleanup on the way out.
-    }
-  });
+  process.on('exit', () => removeTempDirBestEffort(tmp));
 
   let data = '';
   let handler: ((event: { data: unknown }) => void) | null = null;

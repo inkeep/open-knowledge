@@ -23,6 +23,7 @@ import type {
   OkMenuActionDispatch,
   OkPtyData,
   OkPtyExit,
+  OkPtyNotice,
   OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
@@ -328,6 +329,8 @@ export interface EventChannels {
    * normal exit carries `exitCode`/`signal`.
    */
   'ok:pty:exit': { payload: OkPtyExit };
+  /** Main → renderer when shell discovery skips an invalid configured override. */
+  'ok:pty:notice': { payload: OkPtyNotice };
   /**
    * Main → every window when Electron's assistive-tech signal flips
    * (`app.on('accessibility-support-changed')` — a screen reader such as

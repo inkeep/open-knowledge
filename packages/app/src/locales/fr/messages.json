@@ -104,6 +104,9 @@
     "0NkNB5": ["il y a ", ["0"], " mois"],
     "0QVrvp": ["Nombre maximal d'agents déjà en cours d'exécution"],
     "0TnCvC": ["Renommer ", ["0"]],
+    "0WsUA2": [
+      "Le prompt a été collé, mais pas envoyé automatiquement. Vérifiez-le, puis appuyez sur Entrée pour l’envoyer."
+    ],
     "0YUS3Q": ["Sous-dossier du dossier actuel"],
     "0_J12R": [
       "Nouveau fichier à partir du modèle « ",
@@ -139,6 +142,9 @@
     "0pZmTP": ["Impossible de partager ce chemin."],
     "0qyKG6": ["Synchronisé depuis le disque"],
     "0r6d6v": ["Modifications enregistrées automatiquement."],
+    "0rT21w": [
+      "terminal.shell dans .ok/local/config.yml prend en charge PowerShell, cmd.exe ou Git Bash pour les lancements gérés par OpenKnowledge et les chemins des fichiers déposés. Ce shell ouvre uniquement un terminal simple ; les lancements d’agents et de commandes ne s’y exécutent pas."
+    ],
     "0rwwOn": ["Par étiquette"],
     "0s8-e8": [
       "Sélectionnez, entrez dans ou quittez les composants de bloc et les blocs source de repli depuis les limites clavier."
@@ -587,6 +593,9 @@
     "67f-3g": [
       "Duplication réussie, mais la barre latérale n'est peut-être pas à jour — actualisez pour resynchroniser"
     ],
+    "69E1Pq": [
+      "terminal.shell dans .ok/local/config.yml doit être une chaîne. Un shell Windows disponible sera utilisé à la place."
+    ],
     "69KLIV": ["Échap"],
     "6ASTuj": [
       "Les commandes s'exécutent avec tous les droits de votre compte utilisateur sur cette machine. Désactivez ceci pour désactiver le shell."
@@ -979,6 +988,9 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell dans .ok/local/config.yml doit être un chemin Windows absolu. Un shell Windows disponible sera utilisé à la place."
+    ],
     "ANFxWn": ["Impossible de supprimer ce thème. Actualisez la page et réessayez."],
     "APNlbk": ["quitter ", ["0"]],
     "AQ-Lfg": ["Impossible de charger les modèles"],
@@ -1025,6 +1037,7 @@
     "AqnqMJ": ["Clé API définie"],
     "AsqRE_": ["Emplacement par défaut des nouvelles pièces jointes"],
     "AtBdnD": ["Impossible de supprimer la compétence : ", ["error"]],
+    "AvqEDl": ["Certains fichiers déposés n’ont pas pu être insérés en toute sécurité."],
     "AwLCZA": [
       "Le point de terminaison a répondu, mais pas avec une réponse d'embeddings compatible OpenAI. Vérifiez l'URL de base."
     ],
@@ -1208,6 +1221,9 @@
     "D12vtS": ["(détaché)"],
     "D2emTw": ["Une erreur s'est produite lors de l'envoi de votre retour. Veuillez réessayer."],
     "D4H2N6": ["Retirer ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge n’a pas pu écrire les paramètres de lancement dans .ok/local/terminal, car le dossier n’est pas contenu de manière sûre dans ce projet. Vérifiez qu’il s’agit d’un vrai dossier du projet, et non d’un lien. Claude vous demandera d’approuver OpenKnowledge."
+    ],
     "D7hnvB": ["Réflexion…"],
     "D8JJwQ": [
       "Le retour d'expérience n'est pas disponible pour le moment. Veuillez réessayer plus tard."
@@ -1841,6 +1857,9 @@
     "K6jxcj": ["Ajouter une clé"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " fichiers"],
     "K8-WWn": ["Se déplacer entre les cellules du tableau"],
+    "K8EvAV": [
+      "OpenKnowledge n’a pas pu lire terminal.shell dans .ok/local/config.yml. Un shell Windows disponible sera utilisé à la place."
+    ],
     "K9J00P": ["Échec du clonage — erreur de connexion"],
     "KDrbNG": ["OpenKnowledge a consulté les liens de ", ["subject"]],
     "KDuPiY": ["Envoi de ", ["fileName"]],
@@ -1855,6 +1874,9 @@
     ],
     "KOZud0": [
       "Construis une base de connaissances d'étude concurrentielle. Commence par une page de synthèse, puis ajoute des pages liées entre elles pour chaque concurrent, leurs produits et leurs tarifs, ainsi que les sources derrière chaque affirmation."
+    ],
+    "KOeFXa": [
+      "OpenKnowledge n’a pas pu écrire les paramètres de lancement dans .ok/local/terminal cette fois-ci. Vérifiez que le dossier est accessible en écriture. Claude vous demandera d’approuver OpenKnowledge."
     ],
     "KPW5WC": ["modèle déplacé"],
     "KQGZuq": ["Réutilisé s'il existe déjà, créé sinon."],
@@ -4301,6 +4323,9 @@
     "kCqCyf": ["Ouvre le panneau de diagnostics de vérification de CodeMirror."],
     "kEiVv6": [
       "Elles apprennent à vos outils IA à travailler avec OpenKnowledge. En installer une l'ajoute à tous les outils IA de cette machine."
+    ],
+    "kF2Yua": [
+      "L’exécutable terminal.shell indiqué dans .ok/local/config.yml est introuvable. Un shell Windows disponible sera utilisé à la place."
     ],
     "kFLlsI": [
       "Insère une référence de note de bas de page et l'ébauche de définition correspondante."

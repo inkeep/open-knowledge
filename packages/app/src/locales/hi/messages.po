@@ -4725,12 +4725,10 @@ msgstr "कनेक्शन तोड़ा जा रहा है"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "ख़ारिज करें"
 
@@ -9418,6 +9416,18 @@ msgstr "OpenKnowledge ने विरोधों की जाँच की"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge ने प्रोजेक्ट की जाँच की"
 
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge .ok/local/config.yml में terminal.shell नहीं पढ़ सका। इसके बजाय उपलब्ध Windows शेल का उपयोग किया जा रहा है।"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge .ok/local/terminal में लॉन्च सेटिंग्स नहीं लिख सका, क्योंकि फ़ोल्डर इस प्रोजेक्ट के अंदर सुरक्षित रूप से मौजूद नहीं है। जाँचें कि यह प्रोजेक्ट के अंदर एक वास्तविक फ़ोल्डर है, लिंक नहीं। Claude आपसे OpenKnowledge को मंज़ूरी देने के लिए कहेगा।"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge इस बार .ok/local/terminal में लॉन्च सेटिंग्स नहीं लिख सका। जाँचें कि फ़ोल्डर में लिखा जा सकता है। Claude आपसे OpenKnowledge को मंज़ूरी देने के लिए कहेगा।"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
 msgstr "OpenKnowledge ने साझा लिंक बनाया"
@@ -12338,6 +12348,10 @@ msgstr "Slidev शुरू होने में बहुत समय लग
 msgid "Small section heading."
 msgstr "छोटा अनुभाग शीर्षक।"
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "छोड़ी गई कुछ फ़ाइलों को सुरक्षित रूप से सम्मिलित नहीं किया जा सका।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "कुछ फ़ाइलें सूचीबद्ध नहीं हैं: वर्किंग ट्री में बहुत अधिक बदलाव हैं।"
@@ -12999,6 +13013,18 @@ msgstr "टर्मिनल सेटिंग अभी लोड नही�
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "टर्मिनल सेटिंग अभी लोड नहीं हुईं — कुछ देर बाद फिर कोशिश करें"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml में terminal.shell एक स्ट्रिंग होना चाहिए। इसके बजाय उपलब्ध Windows शेल का उपयोग किया जा रहा है।"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml में terminal.shell एक निरपेक्ष Windows पथ होना चाहिए। इसके बजाय उपलब्ध Windows शेल का उपयोग किया जा रहा है।"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr ".ok/local/config.yml में terminal.shell, OpenKnowledge द्वारा प्रबंधित लॉन्च और ड्रॉप की गई फ़ाइलों के पाथ के लिए PowerShell, cmd.exe या Git Bash का समर्थन करता है। यह शेल केवल एक सामान्य टर्मिनल खोलता है; एजेंट और कमांड लॉन्च इसमें नहीं चलते।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "कनेक्शन जाँचें"
@@ -13199,6 +13225,10 @@ msgstr "पूर्वावलोकन उन संसाधनों को
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "इस प्रोजेक्ट का सर्वर इस विंडो से अलग ब्रांच पर है — सामग्री लोड नहीं हो सकती।"
 
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "प्रॉम्प्ट पेस्ट किया गया, लेकिन अपने आप सबमिट नहीं हुआ। इसकी समीक्षा करें, फिर भेजने के लिए Enter दबाएँ।"
+
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "इस दस्तावेज़ के ऊपर मौजूद प्रॉपर्टी ब्लॉक में एक फ़ॉर्मैटिंग त्रुटि है। इसे ठीक करने के लिए स्रोत मोड पर जाएँ।"
@@ -13310,6 +13340,10 @@ msgstr "टर्मिनल सत्र समाप्त हो गया�
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "टर्मिनल अप्रत्याशित रूप से रुक गया।"
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml में terminal.shell एक्ज़ीक्यूटेबल नहीं मिला। इसके बजाय उपलब्ध Windows शेल का उपयोग किया जा रहा है।"
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."

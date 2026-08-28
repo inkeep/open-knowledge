@@ -4729,12 +4729,10 @@ msgstr "Disconnecting"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "Dismiss"
 
@@ -9422,6 +9420,18 @@ msgstr "OpenKnowledge checked for conflicts"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge checked the project"
 
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
 msgstr "OpenKnowledge created a share link"
@@ -12342,6 +12352,10 @@ msgstr "Slidev timed out while starting. Try again."
 msgid "Small section heading."
 msgstr "Small section heading."
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "Some dropped files could not be inserted safely."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "Some files are not listed — the working tree has too many changes."
@@ -13003,6 +13017,18 @@ msgstr "Terminal settings not loaded yet — try again in a moment."
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Terminal settings not yet loaded — try again in a moment"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "Test connection"
@@ -13203,6 +13229,10 @@ msgstr "The preview blocks resources that don't meet its security rules (for exa
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "The project's server is on a different branch than this window — content can't load."
 
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13314,6 +13344,10 @@ msgstr "The terminal session ended."
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "The terminal stopped unexpectedly."
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."

@@ -64,6 +64,7 @@ export async function listGitWorktrees(anchorPath: string): Promise<BridgeWorktr
       cwd: anchorPath,
       env: gitSpawnEnv(),
       maxBuffer: MAX_STDOUT_BYTES,
+      windowsHide: true,
     });
     stdout = String(result.stdout);
   } catch (err) {

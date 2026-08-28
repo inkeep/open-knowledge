@@ -610,14 +610,13 @@ describe('WindowManager', () => {
     expect(wm.closeProjectWindow('/tmp/never-opened')).toBe(false);
   });
 
-  test('closeProjectWindow swallows postMessage errors (utility already exited)', async () => {
+  test('closeProjectWindow swallows postMessage errors', async () => {
     const wm = new WindowManager(env.deps);
     const p = wm.createProjectWindow({ projectPath: '/tmp/detached-port' });
     env.utilities[0]?.fire({ type: 'ready', port: 51099, apiOrigin: 'http://localhost:51099' });
     await p;
 
-    // Simulate the utility having already exited — postMessage throws
-    // (ERR_IPC_CHANNEL_CLOSED in production).
+    // Inject a transport failure at the utilityProcess boundary.
     const utility = env.utilities[0];
     if (!utility) throw new Error('utility missing');
     utility.postMessage = vi.fn(() => {

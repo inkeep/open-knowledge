@@ -4725,12 +4725,10 @@ msgstr "Memutus koneksi"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "Tutup"
 
@@ -9418,6 +9416,18 @@ msgstr "OpenKnowledge memeriksa konflik"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge memeriksa proyek"
 
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal karena folder tersebut tidak berada dengan aman di dalam proyek ini. Pastikan folder tersebut adalah folder nyata di dalam proyek, bukan tautan. Claude akan meminta Anda menyetujui OpenKnowledge."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal kali ini. Pastikan folder tersebut dapat ditulisi. Claude akan meminta Anda menyetujui OpenKnowledge."
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
 msgstr "OpenKnowledge membuat tautan berbagi"
@@ -12338,6 +12348,10 @@ msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 msgid "Small section heading."
 msgstr "Judul bagian kecil."
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "Beberapa file yang dilepas tidak dapat disisipkan dengan aman."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."
@@ -12999,6 +13013,18 @@ msgstr "Pengaturan terminal belum dimuat — coba lagi sebentar."
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Pengaturan terminal belum dimuat — coba lagi sebentar"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr "terminal.shell di .ok/local/config.yml harus berupa string. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr "terminal.shell di .ok/local/config.yml harus berupa jalur Windows absolut. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr "terminal.shell di .ok/local/config.yml mendukung PowerShell, cmd.exe, atau Git Bash untuk peluncuran yang dikelola OpenKnowledge dan jalur file yang diletakkan. Shell ini hanya membuka terminal biasa; peluncuran agen dan perintah tidak berjalan di dalamnya."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "Uji koneksi"
@@ -13199,6 +13225,10 @@ msgstr "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "Server proyek ini berada di branch yang berbeda dari jendela ini — konten tidak dapat dimuat."
 
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "Prompt telah ditempel, tetapi tidak dikirim secara otomatis. Tinjau prompt tersebut, lalu tekan Enter untuk mengirimnya."
+
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "Blok properti di bagian atas dokumen ini punya galat format. Beralihlah ke mode sumber untuk memperbaikinya."
@@ -13310,6 +13340,10 @@ msgstr "Sesi terminal berakhir."
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "Terminal berhenti tak terduga."
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "Executable terminal.shell di .ok/local/config.yml tidak ditemukan. Shell Windows yang tersedia akan digunakan sebagai gantinya."
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."

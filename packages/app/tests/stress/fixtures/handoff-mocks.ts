@@ -637,6 +637,7 @@ export async function installHandoffMocks(page: Page, cfg: HandoffMockConfig): P
           setDockState: async () => ({ ok: true as const }),
           onData: () => () => {},
           onExit: () => () => {},
+          onNotice: () => () => {},
           claudePreflight: async () => ({ claude: 'present' as const, mcp: 'wired' as const }),
           cliPreflight: async () => ({ onPath: 'present' as const }),
           cliInstalledMap: async () => ({

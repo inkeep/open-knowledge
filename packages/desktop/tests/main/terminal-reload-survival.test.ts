@@ -347,6 +347,56 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
     expect(replay).toContain('hi');
   });
 
+  test('adoption retains the resolved Windows shell family for path escaping', () => {
+    const h = makeManager();
+    const created = h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const ptyId = (created as { ok: true; ptyId: string }).ptyId;
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId,
+      notice: 'shell-resolved',
+      shellFamily: 'powershell',
+    });
+
+    const outcome = adoptViaManager(h.mgr, {
+      windowId: 1,
+      ptyId,
+      webContents: makeWebContents(),
+    });
+    expect(outcome).toMatchObject({ ok: true, shellFamily: 'powershell' });
+  });
+
+  test('adoption retains a standing unsupported-shell capability notice', () => {
+    const h = makeManager();
+    const created = h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const ptyId = (created as { ok: true; ptyId: string }).ptyId;
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId,
+      notice: 'invalid-shell-override',
+      reason: 'unsupported-family',
+    });
+
+    const outcome = adoptViaManager(h.mgr, {
+      windowId: 1,
+      ptyId,
+      webContents: makeWebContents(),
+    });
+    expect(outcome).toMatchObject({ ok: true, shellNoticeReason: 'unsupported-family' });
+  });
+
   test('adopt clears the stale outbound buffer so replayed bytes are not also delivered live (no duplicate)', () => {
     // Controllable timer + delivery capture: the default harness never fires
     // flushes, but this bug is exactly about a flush firing post-adopt against the
@@ -446,13 +496,13 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
     });
     const idLive = (created as { ok: true; ptyId: string }).ptyId;
 
-    // The genuine TOCTOU on the WRITE: the session is present, but the pty host
-    // exits in the instant before adopt's resume post — posting to a dead
-    // utilityProcess throws. An unexpected (non-ESRCH) code is surfaced.
+    // A failure on the WRITE: the session is present, but the resume post to
+    // the pty host throws. Even a kill-shaped ESRCH code must be surfaced here;
+    // send failures do not inherit kill()'s host-already-gone suppression.
     const host = h.forked[0];
     if (!host) throw new Error('expected window 1 to have forked a pty host');
     host.postMessage = (m: PtyHostIncomingMessage) => {
-      if (m.type === 'resume') throw Object.assign(new Error('gone'), { code: 'EPERM' });
+      if (m.type === 'resume') throw Object.assign(new Error('gone'), { code: 'ESRCH' });
     };
 
     const outcome = adoptViaManager(h.mgr, {
@@ -466,39 +516,10 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
     expect(warns).toHaveLength(1);
     expect(warns[0]).toMatchObject({
       event: 'terminal-manager-adopt-resume-failed',
-      code: 'EPERM',
+      code: 'ESRCH',
       windowId: 1,
       ptyId: idLive,
     });
-  });
-
-  test('the expected ESRCH host-already-gone code is refused silently (a normal reload race, not a fault)', () => {
-    const warns: Record<string, unknown>[] = [];
-    const h = makeManager({ logger: { warn: (o) => warns.push(o) } });
-    const created = h.mgr.create({
-      windowId: 1,
-      webContents: makeWebContents(),
-      projectRoot: PROJECT,
-      cols: 80,
-      rows: 24,
-    });
-    const idLive = (created as { ok: true; ptyId: string }).ptyId;
-
-    const host = h.forked[0];
-    if (!host) throw new Error('expected window 1 to have forked a pty host');
-    host.postMessage = (m: PtyHostIncomingMessage) => {
-      if (m.type === 'resume') throw Object.assign(new Error('gone'), { code: 'ESRCH' });
-    };
-
-    const outcome = adoptViaManager(h.mgr, {
-      windowId: 1,
-      ptyId: idLive,
-      webContents: makeWebContents(),
-    });
-    expect(outcome).toEqual({ ok: false, reason: 'unknown-session' });
-    // ESRCH is the expected host-gone signal — refuse, but do not log it as a
-    // diagnostic; mirrors safeKillUtility's TOCTOU handling.
-    expect(warns).toHaveLength(0);
   });
 
   test('a ptyId belonging to another window is refused (no cross-window adoption)', () => {

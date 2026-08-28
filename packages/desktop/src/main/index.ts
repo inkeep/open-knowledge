@@ -166,8 +166,8 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
-import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
+import { getWindowsEnvValue } from '../shared/windows-env.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
 import {
@@ -219,10 +219,14 @@ import {
 } from './check-target-exists.ts';
 import {
   cliProbeArgs,
+  type ProbeChild,
+  type ProbeTimers,
+  probePlatformCliOnPath,
   resolveClaudeReadiness,
   resolveCliOnPath,
   resolvePlatformCliInstalledMap,
   runLoginShellProbe,
+  runWindowsPathProbe,
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
 import { copyImageToClipboard } from './copy-image-clipboard.ts';
@@ -446,7 +450,12 @@ import {
   windowRestoreKey,
 } from './state-store.ts';
 import { quoteStopCommandPath } from './stop-command.ts';
-import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
+import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
+import {
+  isTerminalConsented,
+  isTerminalConsentedWithGrace,
+  readTerminalShellSetting,
+} from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
@@ -456,6 +465,7 @@ import {
   DEFAULT_PTY_ROWS,
   type PtyUtilityLike,
 } from './terminal-manager.ts';
+import { createTerminalQuitDrain } from './terminal-quit-drain.ts';
 import { terminalStateKeyForContext } from './terminal-state-key.ts';
 import {
   recordConcurrentSessions,
@@ -504,6 +514,10 @@ import {
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
+import {
+  sweepWindowsUpdateSurvivors,
+  type WindowsUpdateSurvivorSweepResult,
+} from './windows-update-survivor-sweep.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -1153,6 +1167,17 @@ let wm: WindowManager;
  * quit — callers guard with `?.` / a truthiness check.
  */
 let terminalReaper: TerminalReaper | null = null;
+
+function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
+  const logger = getLogger('updater');
+  return sweepWindowsUpdateSurvivors({
+    installTree: process.resourcesPath,
+    logger: {
+      info: (event) => logger.info(event, 'Windows update console-host sweep complete'),
+      warn: (event) => logger.warn(event, 'Windows update console-host sweep warning'),
+    },
+  });
+}
 /**
  * Every open Slidev deck (server + its window), keyed by deck path. Module-scoped
  * so the `ok:slides:dispatch` `open` handler can focus-existing / open, each
@@ -1645,15 +1670,12 @@ function runDriverBootSmokeInProduction(): void {
   });
 }
 
-/**
- * Appends the `--ok-debug-keyring-smoke=1` argv flag when the gate allows it,
- * so the preload can populate `bridge.debug`. Preload reads the flag via
- * `parseArg` just like the other window-bound config fields.
- */
-function withDebugFlagIfAllowed(args: readonly string[]): string[] {
+/** Add main-owned runtime facts to every editor-renderer window. */
+function withWindowRuntimeArgs(args: readonly string[]): string[] {
   const withDebug = isDebugKeyringSmokeAllowed()
     ? [...args, '--ok-debug-keyring-smoke=1']
     : [...args];
+  const withTerminalCapability = withTerminalCapabilityArg(withDebug, isTerminalAvailable());
   // Under the Electron smoke suite, force xterm's DOM renderer (not the WebGL
   // canvas) via this flag — the canvas can't be read by the DOM-based smoke
   // assertions and captures focus from synthetic keystrokes. Gating only xterm
@@ -1661,7 +1683,9 @@ function withDebugFlagIfAllowed(args: readonly string[]): string[] {
   // suite doesn't trigger whole-app software rendering that starves CPU on
   // constrained CI runners. See TerminalPanel's WebGL gate.
   const withSmoke =
-    process.env.OK_DESKTOP_E2E_SMOKE === '1' ? [...withDebug, '--ok-e2e-smoke=1'] : withDebug;
+    process.env.OK_DESKTOP_E2E_SMOKE === '1'
+      ? [...withTerminalCapability, '--ok-e2e-smoke=1']
+      : withTerminalCapability;
   // Cold-start assistive-tech signal for the preload's live mirror (see
   // `ok:accessibility:changed` in ipc-events.ts): the terminal gates xterm's
   // costly `screenReaderMode` on it. Read per window creation so a window
@@ -1757,7 +1781,7 @@ function ensureWindowManager() {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -1945,7 +1969,10 @@ function ensureWindowManager() {
             let childRef: ReturnType<typeof spawn>;
             startupWaterfall.mark('serverSpawned');
             try {
-              childRef = spawn(spawnArgs.file, spawnArgs.args, spawnArgs.opts);
+              childRef = spawn(spawnArgs.file, spawnArgs.args, {
+                ...spawnArgs.opts,
+                windowsHide: true,
+              });
             } catch (spawnErr) {
               // Synchronous spawn failure — close fd before rethrowing.
               // Re-throw with the same `kind: 'spawn-error'` discriminant the
@@ -2234,7 +2261,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
         height: 680,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -3513,6 +3540,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // `-beta.N` via `--config.extraMetadata.version=X.Y.Z`. Reuses
     // `channelFromVersion` so this stays aligned with the auto-updater channel.
     showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+    terminalCapable: isTerminalAvailable(),
     dialog,
     openNavigator,
     openProject: (path, entryPoint) => openProjectOrFallbackToNavigator(path, entryPoint),
@@ -3661,7 +3689,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
     // `onToggleAgentPanel` is deliberately absent from the strip list: agent
     // threads are server-hosted, so the agents panel works everywhere pty does not.
-    ...(isTerminalPlatform(process.platform)
+    ...(isTerminalAvailable()
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
           onToggleTerminal: undefined,
@@ -4449,7 +4477,7 @@ function openTerminalWindow(): void {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -4644,7 +4672,7 @@ function openNoteWindowForDoc(args: {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -5014,56 +5042,60 @@ function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The real `child_process` + timer wiring behind both platform probes. The
+ *  timeout/exit-code/settle-once routing they share is unit-tested in
+ *  claude-readiness.test.ts against these seams. */
+function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
+  const child = spawn(file, [...spawnArgs], {
+    stdio: 'ignore',
+    shell: false,
+    windowsHide: true,
+  });
+  return {
+    onExit: (cb) => {
+      child.on('exit', (code) => cb(code));
+    },
+    onError: (cb) => {
+      child.on('error', (err) => cb(err));
+    },
+    kill: () => {
+      child.kill('SIGKILL');
+    },
+  };
+}
+
+const realProbeTimers: ProbeTimers = {
+  setTimer: (cb, ms) => setTimeout(cb, ms),
+  clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
+};
+
+/**
+ * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
+ * this process's PATH? Resolves `where.exe` under the real `SystemRoot` and
+ * hands the tri-state routing to {@link runWindowsPathProbe} — exit code, or
+ * `null` when the probe could not produce a verdict.
+ */
+function probeWindowsPath(bin: string): Promise<number | null> {
+  const systemRoot = getWindowsEnvValue(process.env, 'SystemRoot') ?? 'C:\\Windows';
+  return runWindowsPathProbe(
+    realProbeSpawn,
+    join(systemRoot, 'System32', 'where.exe'),
+    bin,
+    realProbeTimers,
+  );
+}
+
 /**
  * Run an interactive-shell `command -v <bin>` probe in the real shell (the same
  * `resolveShell` the PTY spawns), with `spawn` + timers wired to the OS. Shared
- * by the Claude readiness path and the generic non-Claude CLI path; the
- * timeout/exit-code routing is unit-tested in claude-readiness.test.ts via an
- * injected spawn. `args` selects the binary (`cliProbeArgs(bin)`); it defaults
- * to the `claude` probe.
+ * by the Claude readiness path and the generic non-Claude CLI path. `args`
+ * selects the binary (`cliProbeArgs(bin)`); it defaults to the `claude` probe.
  */
-/**
- * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
- * this process's PATH? `where.exe` honours PATHEXT, so it finds the `.cmd`
- * shim that `CreateProcess` can actually run — an extension-less existence
- * check would report a POSIX shim that then fails to spawn. Exit 0 = found.
- */
-function probeWindowsPath(bin: string): Promise<boolean> {
-  return new Promise((resolveProbe) => {
-    try {
-      // `where`, not `where.exe` — matches the binary name the CLI's git
-      // preflight already uses (and the one knip's ignore list declares).
-      // CreateProcess resolves it via PATHEXT either way.
-      const child = spawn('where', [bin], { stdio: 'ignore', shell: false, windowsHide: true });
-      child.on('exit', (code) => resolveProbe(code === 0));
-      child.on('error', () => resolveProbe(false));
-    } catch {
-      resolveProbe(false);
-    }
-  });
-}
-
 function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null> {
   return runLoginShellProbe(
-    (file, spawnArgs) => {
-      const child = spawn(file, [...spawnArgs], { stdio: 'ignore', shell: false });
-      return {
-        onExit: (cb) => {
-          child.on('exit', (code) => cb(code));
-        },
-        onError: (cb) => {
-          child.on('error', (err) => cb(err));
-        },
-        kill: () => {
-          child.kill('SIGKILL');
-        },
-      };
-    },
+    realProbeSpawn,
     resolveShell(process.env, { platform: process.platform }),
-    {
-      setTimer: (cb, ms) => setTimeout(cb, ms),
-      clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-    },
+    realProbeTimers,
     undefined,
     args,
   );
@@ -5097,7 +5129,13 @@ function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
  */
 function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promise<ClaudeReadiness> {
   return resolveClaudeReadiness({
-    probeClaude: () => probeLoginShellOnPath(),
+    probeClaude: () =>
+      probePlatformCliOnPath({
+        platform: process.platform,
+        bin: 'claude',
+        probePosix: (args) => probeLoginShellOnPath(args),
+        probeWindows: (bin) => probeWindowsPath(bin),
+      }),
     classifyMcpEntry: () =>
       createMcpWiringCliSurface().classifyExistingMcpEntry('claude', osHomedir()).kind,
     isProjectMcpPreApprovable: () => isProjectClaudeMcpOwn(projectRoot),
@@ -5112,7 +5150,13 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
  */
 function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   return resolveCliOnPath({
-    probe: () => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin, process.platform)),
+    probe: () =>
+      probePlatformCliOnPath({
+        platform: process.platform,
+        bin: TERMINAL_CLIS[cli].bin,
+        probePosix: (args) => probeLoginShellOnPath(args),
+        probeWindows: (bin) => probeWindowsPath(bin),
+      }),
     // Codex-only: report whether OK's `open-knowledge` server is already in the
     // user's codex config, so the launch site adds the `-c` tool-auto-approve
     // override only when it won't break config load (a `-c` under an undefined
@@ -5321,6 +5365,7 @@ function registerIpcHandlers() {
       utilityProcess.fork(join(__dirname, 'utility/pty-host.js')) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
+    sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
     newPtyId: () => randomUUID(),
     setTimer: (cb, ms) => setTimeout(cb, ms),
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
@@ -5378,12 +5423,18 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'not-consented' };
     }
+    const shellSetting =
+      process.platform === 'win32'
+        ? readTerminalShellSetting(projectPath)
+        : { kind: 'unset' as const };
     return terminalManager.create({
       windowId: win.id,
       webContents: win.webContents,
       projectRoot: projectPath,
       cols: clampPtyDimension(opts.cols, DEFAULT_PTY_COLS),
       rows: clampPtyDimension(opts.rows, DEFAULT_PTY_ROWS),
+      ...(shellSetting.kind === 'configured' ? { shell: shellSetting.shell } : {}),
+      ...(shellSetting.kind === 'invalid' ? { shellInvalidReason: shellSetting.reason } : {}),
       launchCommand: opts.launchCommand,
     });
   });
@@ -5638,6 +5689,7 @@ function registerIpcHandlers() {
                 shell: false,
                 timeout: timeoutMs,
                 stdio: ['ignore', 'ignore', 'pipe'],
+                windowsHide: true,
               });
               // Drain stderr so a chatty child can't block on a full pipe buffer.
               child.stderr?.on('data', () => {});
@@ -6136,7 +6188,7 @@ function registerIpcHandlers() {
       singleFile: ctx.ephemeral !== undefined,
       // Mirrors the preload's cold-start config: PTY capability is the same
       // platform fact for a re-queried live window.
-      ptyAvailable: isTerminalPlatform(process.platform),
+      ptyAvailable: isTerminalAvailable(),
       // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
@@ -6184,24 +6236,15 @@ function registerIpcHandlers() {
       // has neither that problem (a GUI process inherits the user PATH from the
       // registry) nor a POSIX login shell to run `-l -i -c` against, so it uses
       // `where.exe`, which also honours PATHEXT and finds the `.cmd` shim.
+      // This yes/no surface admits only a verified exit-zero probe.
       isOnLoginPath: async (bin: string) =>
-        process.platform === 'win32'
-          ? await probeWindowsPath(bin)
-          : (await probeLoginShellOnPath(cliProbeArgs(bin, process.platform))) === 0,
+        (await (process.platform === 'win32'
+          ? probeWindowsPath(bin)
+          : probeLoginShellOnPath(cliProbeArgs(bin, process.platform)))) === 0,
     };
     if (request.kind === 'status') {
       return handleSlidesStatus(projectRoot, probes);
     }
-    // Trust boundary: the deck path is a renderer-supplied string over IPC.
-    // Require a bound project and a well-formed absolute path, then canonicalize
-    // via realpath and enforce project containment on the RESOLVED path before
-    // spawning a server against it — the same order the trash / asset handlers
-    // apply. Lexical containment alone would let an in-project symlink whose
-    // target is OUTSIDE the project pass, and Slidev/Vite would then serve that
-    // out-of-project target over loopback; realpath collapses the symlink so the
-    // escape is refused (the window's projectPath is already realpath-canonical
-    // via discoverProject). A window with no project has nothing to contain
-    // against, so it is refused.
     // Trust boundary: the deck path is a renderer-supplied string over IPC.
     // The admission decision (bound project + well-formed absolute path +
     // realpath-then-contain, so an in-project symlink cannot escape) lives in
@@ -8156,7 +8199,7 @@ function bootPrimaryInstance(): void {
   // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
   // the preload's live mirror stays current and an open terminal can toggle
   // xterm's `screenReaderMode` in place. Cold-start value rides window
-  // creation via `--ok-screen-reader-active` (see withDebugFlagIfAllowed).
+  // creation via `--ok-screen-reader-active` (see withWindowRuntimeArgs).
   app.on('accessibility-support-changed', (_event, screenReaderActive) => {
     // Logged before the fan-out, so the record survives a send that throws.
     // The timestamp is the point: it places an AT client attaching against the
@@ -9142,6 +9185,10 @@ function bootPrimaryInstance(): void {
           // that completes well before `stopAllOwnedServers` returns or
           // `quitAndInstall()` fires.
           captureWindowRestoreSnapshot('prepare-for-relaunch');
+          // Start the terminal hosts' graceful shutdown before waiting on the
+          // server drain. Any bundled console host still present after that
+          // wait is then removed by the install-tree-owned survivor sweep.
+          await terminalReaper?.killAll();
           // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
           // dev-path utilityProcess.fork helpers), then poll the lock files
           // until they release or 10 s elapses, then escalate to SIGKILL on
@@ -9155,6 +9202,7 @@ function bootPrimaryInstance(): void {
           // never reach disk (the destination is `sync: false`).
           flushDesktopLogger();
         },
+        sweepUpdateSurvivors: sweepConsoleHostsBeforeUpdate,
         // User feedback for menu-driven `Check for Updates…` clicks. The
         // periodic hourly check stays silent on a no-update outcome (the
         // existing `update-not-available` log-only handler), but a manual
@@ -9315,6 +9363,18 @@ function bootPrimaryInstance(): void {
     // capture point. Write-once, so the "Relaunch now" path (already
     // snapshotted in `prepareForRelaunch`) no-ops here.
     captureWindowRestoreSnapshot('before-quit-for-update');
+    // The silent install-on-quit path bypasses prepareForRelaunch. Start the
+    // same bounded terminal drain; the will-quit barrier below keeps the main
+    // process alive, and the survivor sweep follows only after the drain.
+    void (terminalReaper?.killAll() ?? Promise.resolve()).then(() => {
+      const result = sweepConsoleHostsBeforeUpdate();
+      if (result.scanFailed || result.revalidationFailed || result.failedCount > 0) {
+        getLogger('updater').warn(
+          { result },
+          'Silent update console-host sweep incomplete — continuing shutdown',
+        );
+      }
+    });
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on
@@ -9331,9 +9391,16 @@ function bootPrimaryInstance(): void {
 
   // Cleared on `will-quit` (canonical shutdown ordering — NOT `before-quit`,
   // which fires earlier in the shutdown sequence). Each handle's teardown
-  // method (`destroy()` or `stop()`) is idempotent, and the null-assignment
-  // after each call makes subsequent will-quit re-entrances no-ops.
-  app.on('will-quit', () => {
+  // method (`destroy()` or `stop()`) is idempotent. The first pass holds quit
+  // for the terminal drain; the re-entrant pass performs the remaining teardown.
+  // Windows session-end terminates without `will-quit`, so this drain does not run there.
+  const runTerminalQuitDrain = createTerminalQuitDrain({
+    defer: (callback) => setImmediate(callback),
+    drain: () => terminalReaper?.killAll() ?? Promise.resolve(),
+    resumeQuit: () => app.quit(),
+  });
+  app.on('will-quit', (event) => {
+    if (runTerminalQuitDrain(event)) return;
     getLogger('lifecycle').info({}, 'will-quit');
     // A quit that reaches here was orderly — clear the dirty-shutdown
     // sentinel so the next boot doesn't read this session as a crash.
@@ -9351,7 +9418,7 @@ function bootPrimaryInstance(): void {
     rendererRecovery = null;
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
-    terminalReaper?.killAll();
+    void terminalReaper?.killAll();
     // Reap every spawned Slidev server for the same reason. Idempotent.
     slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();

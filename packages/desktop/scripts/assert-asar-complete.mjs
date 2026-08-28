@@ -20,16 +20,20 @@
  *   <search-root>  directory to find app.asar under (e.g. dist-desktop)
  */
 
-import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { readAsarHeader } from './lib/asar-header.mjs';
 
 /**
  * Packages asserted present by name. `pino` is the one that actually broke —
  * `desktop-logger` imports it at module scope, so it is the first bare specifier
  * the main process resolves and thus the observed failure. The others are listed
  * so a partial collection (rather than a wholesale omission) still fails.
+ * `node-pty` pins the terminal payload on every platform: the win files rules
+ * once excluded it wholesale, and a regressed exclude would ship a
+ * dead-on-arrival terminal while every other packaging control stays green.
  */
-const REQUIRED_PACKAGES = ['pino', 'electron-updater'];
+const REQUIRED_PACKAGES = ['pino', 'electron-updater', 'node-pty'];
 
 /**
  * EVERY asar under the root, not the first one found. A single `electron-builder
@@ -58,32 +62,6 @@ function findAsars(root) {
     }
   }
   return found.sort();
-}
-
-/** Guards against a truncated or corrupt asar producing a bare stack trace. */
-const MAX_HEADER_BYTES = 64 * 1024 * 1024;
-
-function readAsarHeader(asarPath) {
-  const fd = openSync(asarPath, 'r');
-  try {
-    const prefix = Buffer.alloc(16);
-    if (readSync(fd, prefix, 0, 16, 0) < 16) {
-      throw new Error('file is shorter than the 16-byte asar header prefix');
-    }
-    const jsonSize = prefix.readUInt32LE(12);
-    if (jsonSize === 0 || jsonSize > MAX_HEADER_BYTES) {
-      throw new Error(
-        `implausible asar header length (${jsonSize} bytes) — file is not a valid asar`,
-      );
-    }
-    const json = Buffer.alloc(jsonSize);
-    if (readSync(fd, json, 0, jsonSize, 16) < jsonSize) {
-      throw new Error(`asar header truncated (wanted ${jsonSize} bytes)`);
-    }
-    return JSON.parse(json.toString('utf8'));
-  } finally {
-    closeSync(fd);
-  }
 }
 
 const searchRoot = process.argv[2];

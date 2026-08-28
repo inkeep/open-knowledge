@@ -245,6 +245,16 @@ describe('AppMenubar View terminal toggle', () => {
     expect(screen.queryByRole('menuitem', { name: /Show Terminal/ })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /Hide Terminal/ })).toBeNull();
   });
+
+  test('Windows exposes the terminal toggle when the build supports PTYs', async () => {
+    installBridge('win32', 'editor', {
+      ptyAvailable: true,
+      queryResult: snapshot(false),
+    });
+    await openMenu('View');
+
+    expect(await screen.findByRole('menuitem', { name: /Show Terminal/ })).not.toBeNull();
+  });
 });
 
 describe('AppMenubar drag-suspension attributes', () => {

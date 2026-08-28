@@ -64,11 +64,10 @@ describe('require-windowshide-on-spawn GritQL plugin', () => {
     expect(matchingOverride).toBeDefined();
 
     const includes = matchingOverride?.includes ?? [];
-    // Scoped to server + cli runtime spawns; desktop has separate launch
-    // wrappers and coverage. Tests are excluded.
+    // Scoped to every package with runtime Windows spawns. Tests are excluded.
     expect(includes).toContain('packages/server/src/**/*.ts');
     expect(includes).toContain('packages/cli/src/**/*.ts');
-    expect(includes).not.toContain('packages/desktop/src/**/*.ts');
+    expect(includes).toContain('packages/desktop/src/**/*.ts');
     expect(includes).toContain('!**/*.test.ts');
     // Fixture self-include so this test's positive cases still trigger.
     expect(includes).toContain(

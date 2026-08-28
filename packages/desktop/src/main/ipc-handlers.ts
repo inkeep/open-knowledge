@@ -104,7 +104,7 @@ function xdgMimeReal(scheme: string, timeoutMs: number): Promise<{ stdout: strin
     execFile(
       'xdg-mime',
       ['query', 'default', `x-scheme-handler/${scheme}`],
-      { timeout: timeoutMs, encoding: 'utf-8' },
+      { timeout: timeoutMs, encoding: 'utf-8', windowsHide: true },
       (err, stdout) => {
         if (err) {
           // Treat timeout / missing xdg-mime / non-zero exit as "not registered"

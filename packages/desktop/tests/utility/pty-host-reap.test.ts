@@ -83,12 +83,18 @@ async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> 
   }
 }
 
-describe('PTY host — no orphan on host teardown (Node runtime)', () => {
-  test('a SIGTERM to the host leaves no orphan shell (graceful reap path)', async () => {
-    await assertNoOrphan('SIGTERM');
-  }, 60_000);
+// This harness requires POSIX signals and master-fd SIGHUP behavior. Windows
+// update-time cleanup has separate survivor-sweep coverage; real Windows
+// forced-host-crash orphan behavior remains an external packaged-runtime gate.
+describe.skipIf(process.platform === 'win32')(
+  'PTY host — no orphan on host teardown (Node runtime)',
+  () => {
+    test('a SIGTERM to the host leaves no orphan shell (graceful reap path)', async () => {
+      await assertNoOrphan('SIGTERM');
+    }, 60_000);
 
-  test('a SIGKILL to the host leaves no orphan shell (OS backstop, no handler runs)', async () => {
-    await assertNoOrphan('SIGKILL');
-  }, 60_000);
-});
+    test('a SIGKILL to the host leaves no orphan shell (OS backstop, no handler runs)', async () => {
+      await assertNoOrphan('SIGKILL');
+    }, 60_000);
+  },
+);

@@ -777,9 +777,8 @@ function AppBody() {
   // carries: the terminal launches next to an already-open editor, so that
   // directive would point the agent at a surface the user is already viewing.
   // Null on the web host (no real OS shell) AND on desktop hosts where the PTY
-  // is unavailable (`config.ptyAvailable` is false on Windows), so the menu
-  // rows that consume it render
-  // nothing rather than a silent no-op: the docked terminal in EditorPane is
+  // is unavailable (`config.ptyAvailable` is false), so the menu rows that
+  // consume it render nothing rather than a silent no-op: the docked terminal in EditorPane is
   // gated on the same `ptyAvailable` flag, so a Terminal row here would launch
   // into a surface that never mounts. Mirrors the gate in EditorPane / Settings
   // / AppMenubar.

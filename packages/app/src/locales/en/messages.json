@@ -86,6 +86,9 @@
     "0NkNB5": [["0"], "mo ago"],
     "0QVrvp": ["Maximum agents already running"],
     "0TnCvC": ["Rename ", ["0"]],
+    "0WsUA2": [
+      "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+    ],
     "0YUS3Q": ["Subfolder under current folder"],
     "0_J12R": [
       "New file from template \"",
@@ -119,6 +122,9 @@
     "0pZmTP": ["Can't share this path."],
     "0qyKG6": ["Synced from disk"],
     "0r6d6v": ["Changes saved automatically."],
+    "0rT21w": [
+      "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+    ],
     "0rwwOn": ["By tag"],
     "0s8-e8": [
       "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
@@ -480,6 +486,9 @@
     "65Ea2s": ["Exposing pins a fixed port so the tunnel's target stays stable across restarts."],
     "67Dpmh": ["Slash command suggestions"],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
+    "69E1Pq": [
+      "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+    ],
     "69KLIV": ["Escape"],
     "6ASTuj": [
       "Commands run with the full access of your user account on this machine. Turn this off to disable the shell."
@@ -812,6 +821,9 @@
     "AJ7_B2": ["Create new theme"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+    ],
     "ANFxWn": ["Couldn’t delete this theme. Refresh and try again."],
     "APNlbk": ["exit ", ["0"]],
     "AQ-Lfg": ["Couldn't load templates"],
@@ -854,6 +866,7 @@
     "AqnqMJ": ["API key set"],
     "AsqRE_": ["Default location for new attachments"],
     "AtBdnD": ["Couldn't delete skill: ", ["error"]],
+    "AvqEDl": ["Some dropped files could not be inserted safely."],
     "AwLCZA": [
       "The endpoint answered, but not with an OpenAI-compatible embeddings response. Check the base URL."
     ],
@@ -1003,6 +1016,9 @@
     "D12vtS": ["(detached)"],
     "D2emTw": ["Something went wrong sending your feedback. Please try again."],
     "D4H2N6": ["Remove ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+    ],
     "D7hnvB": ["Pondering…"],
     "D8JJwQ": ["Feedback isn't available right now. Please try again later."],
     "D8OV7J": ["Only collaborators"],
@@ -1549,6 +1565,9 @@
     "K6jxcj": ["Add a key"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " files"],
     "K8-WWn": ["Move between table cells"],
+    "K8EvAV": [
+      "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+    ],
     "K9J00P": ["Clone failed — connection error"],
     "KDrbNG": ["OpenKnowledge looked up links for ", ["subject"]],
     "KDuPiY": ["Uploading ", ["fileName"]],
@@ -1563,6 +1582,9 @@
     ],
     "KOZud0": [
       "Build a competitor research knowledge base. Start with an overview page, then add cross-linked pages for each competitor, their products and pricing, and the sources behind every claim."
+    ],
+    "KOeFXa": [
+      "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
     ],
     "KPW5WC": ["moved template"],
     "KQGZuq": ["Reused if it already exists, created if not."],
@@ -3680,6 +3702,9 @@
     "kCqCyf": ["Open CodeMirror's lint diagnostics panel."],
     "kEiVv6": [
       "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+    ],
+    "kF2Yua": [
+      "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
     ],
     "kFLlsI": ["Insert a footnote reference + matching definition stub."],
     "kGp168": ["Couldn't prepare this project for publish."],

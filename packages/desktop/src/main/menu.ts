@@ -50,7 +50,6 @@ import {
 import type { Dialog, MenuItemConstructorOptions } from 'electron';
 import type { EntryPoint } from '../shared/entry-point.ts';
 import type { EditorActiveTargetSnapshot } from '../shared/ipc-channels.ts';
-import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 
@@ -65,6 +64,8 @@ export interface MenuDeps {
    * Caller decides; this module just renders.
    */
   showDevToolsMenu: boolean;
+  /** Main-owned host capability, including the Windows ConPTY build floor. */
+  terminalCapable: boolean;
   /** `electron.dialog` — injected so the File → Open folder click handler
    *  can call `promptForExistingFolder(dialog)` without importing `dialog`
    *  at module scope (breaks Vitest module load). */
@@ -700,7 +701,7 @@ function menuCommandContext(deps: MenuDeps): CommandContext {
     activeTargetKind: menuTargetKind(deps.activeTarget),
     // The native menu has no single-file concept; those commands never gate here.
     singleFile: false,
-    terminalCapable: isTerminalPlatform(process.platform),
+    terminalCapable: deps.terminalCapable,
     terminalLive: deps.terminalLive === true,
     canExpandAll: deps.canExpandAll ?? true,
     canCollapseAll: deps.canCollapseAll ?? true,

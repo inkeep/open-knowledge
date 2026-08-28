@@ -614,10 +614,10 @@ describe('deriveGates — predicate bindings', () => {
  * the check meaningful wherever it runs.
  */
 describe('shared predicates — meaning', () => {
-  test('the terminal platform set is macOS and Linux', () => {
+  test('the terminal platform set is the three desktop targets', () => {
     expect(isTerminalPlatform('darwin')).toBe(true);
     expect(isTerminalPlatform('linux')).toBe(true);
-    expect(isTerminalPlatform('win32')).toBe(false);
+    expect(isTerminalPlatform('win32')).toBe(true);
   });
 
   test('the harness-supported platform set is the three desktop targets', () => {

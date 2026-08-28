@@ -86,6 +86,9 @@
     "0NkNB5": [["0"], " bln lalu"],
     "0QVrvp": ["Jumlah agen yang berjalan sudah maksimal"],
     "0TnCvC": ["Ganti nama ", ["0"]],
+    "0WsUA2": [
+      "Prompt telah ditempel, tetapi tidak dikirim secara otomatis. Tinjau prompt tersebut, lalu tekan Enter untuk mengirimnya."
+    ],
     "0YUS3Q": ["Subfolder di bawah folder saat ini"],
     "0_J12R": [
       "Berkas baru dari templat \"",
@@ -119,6 +122,9 @@
     "0pZmTP": ["Tidak dapat membagikan jalur ini."],
     "0qyKG6": ["Tersinkron dari disk"],
     "0r6d6v": ["Perubahan disimpan otomatis."],
+    "0rT21w": [
+      "terminal.shell di .ok/local/config.yml mendukung PowerShell, cmd.exe, atau Git Bash untuk peluncuran yang dikelola OpenKnowledge dan jalur file yang diletakkan. Shell ini hanya membuka terminal biasa; peluncuran agen dan perintah tidak berjalan di dalamnya."
+    ],
     "0rwwOn": ["Berdasarkan tag"],
     "0s8-e8": [
       "Memilih, masuk, atau keluar dari komponen blok dan blok sumber cadangan dari batas papan ketik."
@@ -499,6 +505,9 @@
     "67f-3g": [
       "Penggandaan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
     ],
+    "69E1Pq": [
+      "terminal.shell di .ok/local/config.yml harus berupa string. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+    ],
     "69KLIV": ["Escape"],
     "6ASTuj": [
       "Perintah berjalan dengan akses penuh akun pengguna Anda di mesin ini. Matikan ini untuk menonaktifkan shell."
@@ -813,6 +822,9 @@
     "AJ7_B2": ["Buat tema baru"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell di .ok/local/config.yml harus berupa jalur Windows absolut. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+    ],
     "ANFxWn": ["Tema ini tidak dapat dihapus. Muat ulang lalu coba lagi."],
     "APNlbk": ["keluar ", ["0"]],
     "AQ-Lfg": ["Templat tidak bisa dimuat"],
@@ -855,6 +867,7 @@
     "AqnqMJ": ["Kunci API disetel"],
     "AsqRE_": ["Lokasi bawaan untuk lampiran baru"],
     "AtBdnD": ["Keterampilan tidak bisa dihapus: ", ["error"]],
+    "AvqEDl": ["Beberapa file yang dilepas tidak dapat disisipkan dengan aman."],
     "AwLCZA": [
       "Endpoint-nya menjawab, tetapi bukan dengan respons embedding yang kompatibel dengan OpenAI. Periksa URL dasarnya."
     ],
@@ -992,6 +1005,9 @@
     "D12vtS": ["(terlepas)"],
     "D2emTw": ["Ada yang tidak beres saat mengirim masukan Anda. Silakan coba lagi."],
     "D4H2N6": ["Hapus ", ["tag"]],
+    "D7gKrd": [
+      "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal karena folder tersebut tidak berada dengan aman di dalam proyek ini. Pastikan folder tersebut adalah folder nyata di dalam proyek, bukan tautan. Claude akan meminta Anda menyetujui OpenKnowledge."
+    ],
     "D7hnvB": ["Menimbang…"],
     "D8JJwQ": ["Masukan tidak tersedia saat ini. Silakan coba lagi nanti."],
     "D8OV7J": ["Hanya kolaborator"],
@@ -1564,6 +1580,9 @@
     "K6jxcj": ["Tambahkan kunci"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " berkas"],
     "K8-WWn": ["Berpindah antarsel tabel"],
+    "K8EvAV": [
+      "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+    ],
     "K9J00P": ["Kloning gagal — galat koneksi"],
     "KDrbNG": ["OpenKnowledge mencari tautan untuk ", ["subject"]],
     "KDuPiY": ["Mengunggah ", ["fileName"]],
@@ -1578,6 +1597,9 @@
     ],
     "KOZud0": [
       "Bangun basis pengetahuan riset pesaing. Mulai dengan halaman ikhtisar, lalu tambahkan halaman yang saling tertaut untuk tiap pesaing, produk dan harganya, serta sumber di balik setiap klaim."
+    ],
+    "KOeFXa": [
+      "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal kali ini. Pastikan folder tersebut dapat ditulisi. Claude akan meminta Anda menyetujui OpenKnowledge."
     ],
     "KPW5WC": ["templat dipindahkan"],
     "KQGZuq": ["Dipakai ulang jika sudah ada, dibuat jika belum."],
@@ -3712,6 +3734,9 @@
     "kCqCyf": ["Membuka panel diagnostik lint CodeMirror."],
     "kEiVv6": [
       "Keterampilan ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Memasang satu akan menambahkannya ke setiap alat AI di mesin ini."
+    ],
+    "kF2Yua": [
+      "Executable terminal.shell di .ok/local/config.yml tidak ditemukan. Shell Windows yang tersedia akan digunakan sebagai gantinya."
     ],
     "kFLlsI": ["Menyisipkan rujukan catatan kaki + kerangka definisi yang sesuai."],
     "kGp168": ["Tidak dapat menyiapkan proyek ini untuk diterbitkan."],

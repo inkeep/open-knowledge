@@ -106,6 +106,17 @@ describe('getLeafFieldMeta', () => {
     });
   });
 
+  test('resolves metadata for the project-local terminal.shell leaf', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['terminal', 'shell']);
+    expect(meta).toEqual({
+      scope: 'project-local',
+      agentSettable: false,
+      reload: 'live',
+      defaultScope: 'project-local',
+      description: expect.any(String),
+    });
+  });
+
   test('resolves metadata for the committed autoSync.default union leaf (.register before wrappers)', () => {
     const meta = getLeafFieldMeta(ConfigSchema, ['autoSync', 'default']);
     expect(meta).toEqual({

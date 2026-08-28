@@ -33,9 +33,8 @@
 //   // biome-ignore lint/plugin/require-windowshide-on-spawn: macOS-only (never spawned on Windows)
 //   const r = spawnSync('codesign', [...], { ... });
 //
-// Scoped via `overrides[].plugins` to `packages/{server,cli}/src/**` — the
-// packages that spawn processes at runtime on Windows. `packages/desktop` is
-// macOS-only (the Electron app never runs on Windows), so it is out of scope.
+// Scoped via `overrides[].plugins` to `packages/{server,cli,desktop}/src/**` —
+// the packages that spawn processes at runtime on Windows.
 //
 // The rule keys on the CALL-EXPRESSION CALLEE IDENTIFIER, so it can't tell a
 // real `node:child_process` import from a same-named wrapper. A few call sites

@@ -1012,6 +1012,67 @@ jobs:
             bash -c "$PKG_CMD"
           fi
 
+      - name: Attest signed Windows packages and preserved Microsoft signatures
+        shell: pwsh
+        working-directory: packages/desktop
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $packages = @(
+            [pscustomobject]@{ Arch = 'x64'; Path = 'dist-desktop/win-unpacked' },
+            [pscustomobject]@{ Arch = 'arm64'; Path = 'dist-desktop/win-arm64-unpacked' }
+          )
+          foreach ($package in $packages) {
+            if (-not (Test-Path -LiteralPath $package.Path -PathType Container)) {
+              throw "Signed release produced no $($package.Arch) outer package at $($package.Path)."
+            }
+
+            $appExecutable = Join-Path $package.Path 'OpenKnowledge.exe'
+            if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf)) {
+              throw "Signed $($package.Arch) release package has no OpenKnowledge.exe."
+            }
+            $signature = Get-AuthenticodeSignature $appExecutable
+            if ($signature.Status -ne 'Valid') {
+              throw "Our signing pass did not leave a valid signature on ${appExecutable}: $($signature.Status)"
+            }
+
+            $pairDirectories = @(Get-ChildItem $package.Path -Recurse -Directory -Filter 'conpty' |
+              Where-Object { $_.FullName -match 'node-pty[\\/]prebuilds[\\/]win32-(x64|arm64)[\\/]conpty$' })
+            if ($pairDirectories.Count -ne 2) {
+              throw "Expected both ConPTY architecture directories in the $($package.Arch) release package; found $($pairDirectories.Count)."
+            }
+            foreach ($directory in $pairDirectories) {
+              foreach ($name in @('conpty.dll', 'OpenConsole.exe')) {
+                $path = Join-Path $directory.FullName $name
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                  throw "Packaged Microsoft ConPTY pair is incomplete: $path"
+                }
+                $signature = Get-AuthenticodeSignature $path
+                if ($signature.Status -ne 'Valid') {
+                  throw "Microsoft signature is not valid on ${path}: $($signature.Status)"
+                }
+                if ($signature.SignerCertificate.Subject -notmatch 'Microsoft') {
+                  throw "Expected the original Microsoft signer on ${path}; got $($signature.SignerCertificate.Subject)"
+                }
+              }
+            }
+          }
+          "### Windows release signature rider: PASSED`n`nBoth outer architectures carry a signed app, and Microsoft signatures remain valid on every packaged ConPTY pair." |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Assert Windows x64 terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_WIN_PACKAGE_DIR: dist-desktop/win-unpacked
+          OK_WIN_PACKAGE_REQUIRED: "1"
+        run: pnpm exec vitest run tests/unit/windows-package-native-guards.test.ts
+
+      - name: Assert Windows arm64 terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_WIN_PACKAGE_DIR: dist-desktop/win-arm64-unpacked
+          OK_WIN_PACKAGE_REQUIRED: "1"
+        run: pnpm exec vitest run tests/unit/windows-package-native-guards.test.ts
+
       # Fail before staging an installer that cannot start. An asar packed
       # without `node_modules` produces a binary that dies on its first bare
       # import, before `app.ready` — no window, no dialog.

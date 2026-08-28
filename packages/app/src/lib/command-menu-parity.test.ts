@@ -192,6 +192,7 @@ function makeFullDeps(): MenuDeps {
     onNewTerminal: noop,
     onKillTerminal: noop,
     onNewTerminalWindow: noop,
+    terminalCapable: true,
     terminalLive: true,
     agentPanelVisible: true,
     onToggleAgentPanel: noop,

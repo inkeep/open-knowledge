@@ -16,7 +16,11 @@ import type {
   WorktreeCreateResult,
   WorktreeListResult,
 } from './git/worktree-selector-model.ts';
-import type { TerminalCli } from './handoff/terminal-launch.ts';
+import type {
+  TerminalCli,
+  TerminalLaunchCommand,
+  WindowsShellFamily,
+} from './handoff/terminal-launch.ts';
 import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
 import type { LanguagePreference } from './i18n/locales.ts';
 import type {
@@ -1280,7 +1284,13 @@ export interface OkPtyListEntry {
 
 /** Result of `terminal.adopt`. */
 export type OkPtyAdoptResult =
-  | { readonly ok: true; readonly replay: string }
+  | {
+      readonly ok: true;
+      readonly replay: string;
+      readonly shellFamily?: WindowsShellFamily;
+      /** Standing capability notice restored when a live session is adopted after reload. */
+      readonly shellNoticeReason?: Extract<TerminalShellNoticeReason, 'unsupported-family'>;
+    }
   | { readonly ok: false; readonly reason: 'unknown-session' };
 
 /** Push payload for `ok:pty:data`. */
@@ -1296,6 +1306,67 @@ export interface OkPtyExit {
   readonly signal: number | null;
   readonly error?: string;
 }
+
+/** Add recoverable shell-resolution reasons here and nowhere else. */
+const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
+  'config-unreadable',
+  'invalid-value',
+  'not-absolute',
+  'not-found',
+  'unsupported-family',
+] as const;
+
+/** Push payload for a recoverable PTY shell-resolution notice. */
+export type TerminalShellNoticeReason = (typeof TERMINAL_SHELL_NOTICE_REASON_VOCABULARY)[number];
+
+export const TERMINAL_SHELL_NOTICE_REASONS: ReadonlySet<TerminalShellNoticeReason> = new Set(
+  TERMINAL_SHELL_NOTICE_REASON_VOCABULARY,
+);
+
+/** Guard the reason after its JSON IPC round-trip. */
+export function isTerminalShellNoticeReason(value: unknown): value is TerminalShellNoticeReason {
+  return (
+    typeof value === 'string' &&
+    TERMINAL_SHELL_NOTICE_REASONS.has(value as TerminalShellNoticeReason)
+  );
+}
+
+const TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY = [
+  'containment-refused',
+  'write-failed',
+] as const;
+
+export type TerminalSupportFileNoticeReason =
+  (typeof TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY)[number];
+
+export const TERMINAL_SUPPORT_FILE_NOTICE_REASONS: ReadonlySet<TerminalSupportFileNoticeReason> =
+  new Set(TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY);
+
+export function isTerminalSupportFileNoticeReason(
+  value: unknown,
+): value is TerminalSupportFileNoticeReason {
+  return (
+    typeof value === 'string' &&
+    TERMINAL_SUPPORT_FILE_NOTICE_REASONS.has(value as TerminalSupportFileNoticeReason)
+  );
+}
+
+export type OkPtyNotice =
+  | {
+      readonly ptyId: string;
+      readonly notice: 'invalid-shell-override';
+      readonly reason: TerminalShellNoticeReason;
+    }
+  | {
+      readonly ptyId: string;
+      readonly notice: 'shell-resolved';
+      readonly shellFamily: WindowsShellFamily;
+    }
+  | {
+      readonly ptyId: string;
+      readonly notice: 'support-file-degraded';
+      readonly reason: TerminalSupportFileNoticeReason;
+    };
 
 /**
  * Claude Code readiness for the docked terminal.
@@ -2136,7 +2207,7 @@ export interface OkDesktopBridge {
     create(opts: {
       cols: number;
       rows: number;
-      launchCommand?: string;
+      launchCommand?: string | TerminalLaunchCommand;
     }): Promise<OkPtyCreateResult>;
     input(ptyId: string, data: string): void;
     resize(ptyId: string, cols: number, rows: number): void;
@@ -2163,6 +2234,7 @@ export interface OkDesktopBridge {
     setDockState(state: OkTerminalDockStateUpdate): Promise<OkTerminalDockStateWriteResult>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
+    onNotice(cb: (msg: OkPtyNotice) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
     /**

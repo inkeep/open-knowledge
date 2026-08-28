@@ -17,17 +17,26 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+  terminalSmokeShellCommands,
+} from './_helpers/terminal-smoke-shell';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 interface Seed {
   tmpHome: string;
@@ -43,8 +52,9 @@ function seed(prefix: string): Seed {
   writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Start\n\nSeed document.\n');
+  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
 
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   writeFileSync(
     join(userDataDir, 'state.json'),
@@ -71,8 +81,7 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: s.tmpHome,
-        PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
+        ...terminalSmokeEnvironment(s.tmpHome, { restrictPath: true }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -218,13 +227,13 @@ test.describe('Standalone terminal window — live Electron', () => {
       'running',
       { timeout: 25_000 },
     );
-    await expect(term.getByRole('tab', { name: 'Terminal 1' })).toBeVisible();
+    await expect(term.getByRole('tab')).toHaveCount(1);
 
     // The shell's cwd is the inherited project root (the registry resolution
     // reaching a real shell).
     await term.locator('section[aria-label="Terminal"] .xterm').first().click();
-    await term.keyboard.type('pwd\r');
-    const tail = s.projectDir.split('/').slice(-1)[0] ?? '';
+    await term.keyboard.type(`${SHELL_COMMANDS.cwd}\r`);
+    const tail = basename(s.projectDir);
     await expect
       .poll(
         () =>
@@ -239,7 +248,7 @@ test.describe('Standalone terminal window — live Electron', () => {
       .toContain(tail);
 
     // Closing the last tab closes the window (it does not collapse a panel).
-    await term.getByRole('button', { name: 'Close Terminal 1' }).click();
+    await term.getByRole('button', { name: /^Close / }).click();
     await expect.poll(() => terminalWindowCount(app), { timeout: 15_000 }).toBe(0);
   });
 

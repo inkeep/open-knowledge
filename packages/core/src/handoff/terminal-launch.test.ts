@@ -1,3 +1,7 @@
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
 import {
@@ -5,11 +9,20 @@ import {
   buildCliLaunchArgString,
   buildCliLaunchCommand,
   buildStartupInjectionBytes,
+  buildWindowsCliLaunch,
+  composeWindowsShellLaunchArgs,
+  encodePowerShellCommand,
+  isWindowsShellFamily,
+  launchWithoutSupportFile,
   OK_GATED_TOOL_NAMES,
+  psQuoteArg,
+  quoteWindowsShellPath,
+  resolveWindowsShellFamily,
   shellSingleQuote,
   startupInjectionFor,
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
+  WINDOWS_SHELL_FAMILIES,
 } from './terminal-launch.ts';
 
 // The `--settings` JSON Claude launches carry to pre-approve OK's project
@@ -90,6 +103,247 @@ describe('shellSingleQuote', () => {
   });
 });
 
+describe('Windows launch composition', () => {
+  it('quotes PowerShell arguments with doubled embedded single quotes', () => {
+    expect(psQuoteArg("a'b")).toBe("'a''b'");
+    expect(psQuoteArg('{"nested":"value"}')).toBe('\'{"nested":"value"}\'');
+  });
+
+  it('encodes PowerShell startup scripts as base64 UTF-16LE', () => {
+    const script = "& 'native.exe' '--settings' '{\"nested\":\"a''''b\"}'";
+    expect(Buffer.from(encodePowerShellCommand(script), 'base64').toString('utf16le')).toBe(script);
+  });
+
+  it('keeps Windows prompts out of argv and carries pre-approval through cmd-safe data', () => {
+    const prompt = `review "quoted" JSON; & calc`;
+    expect(
+      buildWindowsCliLaunch('claude', prompt, {
+        mcpPreApprove: true,
+        autoApproveOkTools: true,
+      }),
+    ).toEqual({
+      executable: 'claude',
+      args: ['--settings', '.ok/local/terminal/claude-settings-mcp-tools.json'],
+      supportFile: {
+        kind: 'claude-settings',
+        relativePath: '.ok/local/terminal/claude-settings-mcp-tools.json',
+        contents: `{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"],"permissions":{"allow":${OK_ALLOW},"ask":${OK_ASK}}}`,
+      },
+    });
+    expect(buildWindowsCliLaunch('codex', prompt, { autoApproveOkTools: true })).toEqual({
+      executable: 'codex',
+      args: ['-c', `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode=approve`],
+    });
+    expect(buildWindowsCliLaunch('openclaw', prompt)).toEqual({
+      executable: 'openclaw',
+      args: ['chat'],
+    });
+  });
+
+  it('degrades a support-file launch to the bare launch the same builder would emit', () => {
+    const prompt = 'review the failing gate';
+    for (const opts of [
+      { mcpPreApprove: true },
+      { autoApproveOkTools: true },
+      { mcpPreApprove: true, autoApproveOkTools: true },
+    ]) {
+      const withSupport = buildWindowsCliLaunch('claude', prompt, opts);
+      expect(withSupport.supportFile).toBeDefined();
+      expect(launchWithoutSupportFile(withSupport)).toEqual(
+        buildWindowsCliLaunch('claude', prompt, {}),
+      );
+    }
+  });
+
+  it('leaves a launch that carries no support file untouched', () => {
+    const bare = buildWindowsCliLaunch('codex', null, { autoApproveOkTools: true });
+    expect(launchWithoutSupportFile(bare)).toBe(bare);
+  });
+
+  it('cannot retain coupled arguments when degrading a support-file launch', () => {
+    expect(
+      launchWithoutSupportFile({
+        executable: 'claude',
+        args: ['--settings', 'unexpected.json', '--future-coupled-token'],
+        supportFile: {
+          kind: 'claude-settings',
+          relativePath: '.ok/local/terminal/claude-settings-mcp-tools.json',
+          contents: '{}',
+        },
+      }),
+    ).toEqual({ executable: 'claude', args: [] });
+  });
+
+  it('composes PowerShell as -NoExit -EncodedCommand with quoted structured args', () => {
+    const args = composeWindowsShellLaunchArgs('C:\\Program Files\\PowerShell\\7\\pwsh.exe', {
+      executable: 'native.exe',
+      args: ['--settings', '{"nested":"a\'b"}'],
+    });
+    expect(Array.isArray(args)).toBe(true);
+    expect(args.slice(0, 2)).toEqual(['-NoExit', '-EncodedCommand']);
+    expect(Buffer.from(args[2] ?? '', 'base64').toString('utf16le')).toBe(
+      "& 'native.exe' '--settings' '{\"nested\":\"a''b\"}'",
+    );
+  });
+
+  it('composes cmd as an owned /K command line and rejects BatBadBut-shaped batch args', () => {
+    expect(
+      composeWindowsShellLaunchArgs('C:\\Windows\\System32\\cmd.exe', {
+        executable: 'npm',
+        args: ['install', '-g', '@slidev/cli'],
+      }),
+    ).toBe('/K npm install -g @slidev/cli');
+    expect(() =>
+      composeWindowsShellLaunchArgs('C:\\Program Files\\PowerShell\\7\\pwsh.exe', {
+        executable: 'agent.cmd',
+        args: ['safe', '" & calc & "'],
+      }),
+    ).toThrow(/unsafe batch argument/);
+  });
+
+  it('base64-transports Git Bash argv across the MSYS parser without interpolation or byte loss', () => {
+    const shell = 'C:\\Program Files\\Git\\bin\\bash.exe';
+    expect(resolveWindowsShellFamily(shell)).toBe('bash');
+    const launchTokens = [
+      'claude',
+      '--settings',
+      '.ok/local/terminal/settings with spaces.json',
+      "'; calc #",
+      'trailing newline\n',
+    ];
+    const composed = composeWindowsShellLaunchArgs(shell, {
+      executable: launchTokens[0] ?? '',
+      args: launchTokens.slice(1),
+    });
+    expect(Array.isArray(composed)).toBe(true);
+    if (!Array.isArray(composed)) throw new Error('expected Git Bash argv');
+
+    expect(composed.slice(0, 3)).toEqual(['--login', '-i', '-c']);
+    expect(composed[3]).toContain('base64 -d');
+    const quotedArgvExpansion = '"$' + '{__ok_argv[@]}"';
+    expect(composed[3]).toContain(quotedArgvExpansion);
+    expect(composed[3]).not.toContain('claude');
+    expect(composed[4]).toBe('bash');
+    expect(
+      Buffer.from(composed[5] ?? '', 'base64')
+        .toString('utf8')
+        .split('\u0000'),
+    ).toEqual([...launchTokens, '']);
+  });
+
+  it('escapes dropped paths per shell and refuses cmd expansion surfaces', () => {
+    expect(quoteWindowsShellPath('powershell', "C:\\Users\\O'Brien\\shot.png")).toBe(
+      "'C:\\Users\\O''Brien\\shot.png'",
+    );
+    expect(quoteWindowsShellPath('cmd', 'C:\\Users\\A B\\shot.png')).toBe(
+      '"C:\\Users\\A B\\shot.png"',
+    );
+    expect(quoteWindowsShellPath('cmd', 'C:\\Users\\%USERNAME%\\shot.png')).toBeNull();
+    expect(quoteWindowsShellPath('cmd', 'C:\\Users\\!name!\\shot.png')).toBeNull();
+    expect(quoteWindowsShellPath('bash', "C:\\Users\\O'Brien\\shot.png")).toBe(
+      "'C:\\Users\\O'\\''Brien\\shot.png'",
+    );
+  });
+});
+
+/**
+ * The first Bash on this host new enough to run the generated launch script, or
+ * an empty string when there is none.
+ *
+ * `mapfile -d ''` — the NUL-delimited read the decoder is built on — arrived in
+ * Bash 4.4, so mere presence is the wrong gate: macOS still ships 3.2 at
+ * `/bin/bash`, where the same script parses cleanly and reads nothing at all.
+ * Probing the version keeps the skip honest rather than green and vacuous. Set
+ * `OK_TEST_BASH` to point the probe at a specific build.
+ */
+function findNulMapfileBash(): string {
+  const candidates = [
+    process.env.OK_TEST_BASH,
+    'bash',
+    '/opt/homebrew/bin/bash',
+    '/usr/local/bin/bash',
+    '/bin/bash',
+  ];
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate.length === 0) continue;
+    const probe = spawnSync(candidate, ['-c', 'echo $BASH_VERSION'], { encoding: 'utf8' });
+    if (probe.status !== 0) continue;
+    const version = /^(\d+)\.(\d+)/.exec(probe.stdout.trim());
+    if (version === null) continue;
+    const major = Number(version[1]);
+    const minor = Number(version[2]);
+    if (major > 4 || (major === 4 && minor >= 4)) return candidate;
+  }
+  return '';
+}
+
+const NUL_MAPFILE_BASH = findNulMapfileBash();
+
+describe('Git Bash structured launch, run by a real Bash', () => {
+  // The sibling composition test decodes the payload in JavaScript, which proves
+  // what OK encoded but not what Bash reconstructs from it. This one hands the
+  // generated `-c` script to a real Bash and reads back the argv the launched
+  // program actually received, so a decoder that loses a token — or silently
+  // drops the empty and newline-tailed ones, the two the NUL framing exists for
+  // — fails here instead of on a user's Windows box.
+  it.skipIf(NUL_MAPFILE_BASH === '')(
+    'reconstructs every launch token byte-for-byte, empty argument and trailing newline included',
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), 'ok-git-bash-launch-'));
+      try {
+        const capturedArgvPath = join(dir, 'argv');
+        const capturePath = join(dir, 'capture.cjs');
+        // Stands in for the agent CLI so the test stays deterministic and
+        // offline: it records the argv Bash handed it, NUL-delimited so tokens
+        // carrying spaces or newlines stay separable on the way back out.
+        writeFileSync(
+          capturePath,
+          "const { writeFileSync } = require('node:fs');\n" +
+            "writeFileSync(process.env.OK_CAPTURED_ARGV, [process.argv0, ...process.argv.slice(1)].join('\\0') + '\\0');\n",
+        );
+
+        const launchTokens = [
+          process.execPath,
+          capturePath,
+          '--settings',
+          '.ok/local/terminal/settings with spaces.json',
+          "'; calc #",
+          '',
+          'trailing newline\n',
+        ];
+        const composed = composeWindowsShellLaunchArgs('C:\\Program Files\\Git\\bin\\bash.exe', {
+          executable: launchTokens[0] ?? '',
+          args: launchTokens.slice(1),
+        });
+        if (!Array.isArray(composed)) throw new Error('expected Git Bash argv');
+
+        const run = spawnSync(NUL_MAPFILE_BASH, composed, {
+          // `HOME` points at the scratch dir so the login shell the script execs
+          // last cannot read the developer's dotfiles, and stdin is closed so
+          // that shell hits EOF and exits instead of waiting for input.
+          env: { ...process.env, HOME: dir, OK_CAPTURED_ARGV: capturedArgvPath },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          timeout: 20_000,
+          encoding: 'utf8',
+        });
+        expect(run.error).toBeUndefined();
+        // The exit code belongs to the interactive login shell the script execs
+        // last, not to the decode, so the captured argv is the only oracle.
+        expect(existsSync(capturedArgvPath), `bash stderr: ${run.stderr}`).toBe(true);
+
+        // The capture script terminates the payload with a trailing NUL, so the
+        // split has one trailing empty element past the last argument.
+        expect(readFileSync(capturedArgvPath, 'utf8').split('\u0000')).toEqual([
+          ...launchTokens,
+          '',
+        ]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
 describe('buildClaudeLaunchCommand', () => {
   it("defaults to a bare `claude '<prompt>'` — no MCP pre-approval unless opted in", () => {
     expect(buildClaudeLaunchCommand("Let's work on `foo.md` using OpenKnowledge.")).toBe(
@@ -149,7 +403,7 @@ describe('buildCliLaunchCommand', () => {
       // Injection CLIs (Hermes) deliver the prompt out-of-band, not on the argv —
       // their command is the promptless `<bin> <subcommand>`, so the "prompt is the
       // final escaped arg" invariant doesn't apply. Covered by the injection tests.
-      if (startupInjectionFor(cli) != null) continue;
+      if (startupInjectionFor(cli, 'darwin') != null) continue;
       const cmd = buildCliLaunchCommand(cli, "'; rm -rf / #", { mcpPreApprove: true });
       // Whatever fixed args precede it, the prompt is the final, escaped arg.
       expect(cmd.startsWith(`${TERMINAL_CLIS[cli].bin} `)).toBe(true);
@@ -261,31 +515,42 @@ describe('buildStartupInjectionBytes', () => {
 
   it('returns null for CLIs that carry the prompt on the argv (nothing to inject)', () => {
     for (const cli of TERMINAL_CLI_IDS) {
-      if (startupInjectionFor(cli) != null) continue;
-      expect(buildStartupInjectionBytes(cli, 'hi')).toBeNull();
+      if (startupInjectionFor(cli, 'darwin') != null) continue;
+      expect(buildStartupInjectionBytes(cli, 'hi', 'darwin')).toBeNull();
     }
   });
 
   it('frames a Hermes prompt in bracketed paste + the registry submit byte', () => {
     // Bracketed paste (DEC 2004) makes the TUI treat the bytes as literal pasted
     // text, then `\r` submits the now-complete input.
-    expect(buildStartupInjectionBytes('hermes', 'do the thing')).toBe(
+    expect(buildStartupInjectionBytes('hermes', 'do the thing', 'darwin')).toBe(
       `${START}do the thing${END}\r`,
     );
+  });
+
+  it('uses bracketed-paste delivery for every Windows CLI', () => {
+    for (const cli of TERMINAL_CLI_IDS) {
+      expect(startupInjectionFor(cli, 'win32')).toEqual(
+        expect.objectContaining({ readyMarker: '\x1b[?2004h' }),
+      );
+      expect(buildStartupInjectionBytes(cli, '" & calc & "', 'win32')).toBe(
+        `${START}" & calc & "${END}\r`,
+      );
+    }
   });
 
   it('keeps a multi-line prompt intact inside the paste frame (no early submit)', () => {
     // A bare newline in a TUI input box normally submits; inside bracketed paste it
     // is preserved, so the whole multi-line prompt lands as one input.
     const multi = 'line one\nline two\nline three';
-    expect(buildStartupInjectionBytes('hermes', multi)).toBe(`${START}${multi}${END}\r`);
+    expect(buildStartupInjectionBytes('hermes', multi, 'darwin')).toBe(`${START}${multi}${END}\r`);
   });
 
   it('strips ESC so the prompt cannot terminate the paste frame or inject a sequence', () => {
     // A literal END sentinel (or any ESC) in the prompt would break out of the
     // paste; every ESC byte is removed, neutralizing the break-out.
     const hostile = `abc${END}rm -rf /\x1b[2J`;
-    const bytes = buildStartupInjectionBytes('hermes', hostile);
+    const bytes = buildStartupInjectionBytes('hermes', hostile, 'darwin');
     // Exactly one START and one END remain — the frame we added, not the payload's.
     expect(bytes).toBe(`${START}abc[201~rm -rf /[2J${END}\r`);
     expect(bytes?.split(START).length).toBe(2);
@@ -294,12 +559,12 @@ describe('buildStartupInjectionBytes', () => {
 
   it('returns null for an empty/absent prompt (a promptless New-chat launch)', () => {
     for (const emptyPrompt of [null, undefined, ''] as const) {
-      expect(buildStartupInjectionBytes('hermes', emptyPrompt)).toBeNull();
+      expect(buildStartupInjectionBytes('hermes', emptyPrompt, 'darwin')).toBeNull();
     }
   });
 
   it('Hermes waits on the DEC-2004 bracketed-paste-enable marker, with a cap beyond the debounce', () => {
-    const cfg = startupInjectionFor('hermes');
+    const cfg = startupInjectionFor('hermes', 'darwin');
     // Keying on the terminal-protocol escape (not UI prose) is what makes the
     // ready detection language- and version-stable; it's also the exact
     // precondition for the paste to be honored.
@@ -400,5 +665,54 @@ describe('OK auto-approve (autoApproveOkTools)', () => {
     expect(buildCliLaunchArgString('codex', null, { autoApproveOkTools: true })).toBe(
       `codex -c 'mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode="approve"'`,
     );
+  });
+});
+
+// Spelled out here rather than read back from the module. The set and the union
+// cannot disagree - both derive from one `as const` vocabulary tuple in the
+// source - so there is no agreement left to test; what is worth pinning is the
+// vocabulary itself, which the launch composers and the renderer's notice
+// handling are written against.
+const WIRE_FAMILIES = ['powershell', 'cmd', 'bash'];
+
+describe('WINDOWS_SHELL_FAMILIES', () => {
+  it('exposes exactly the wire vocabulary', () => {
+    expect([...WINDOWS_SHELL_FAMILIES].sort()).toEqual([...WIRE_FAMILIES].sort());
+  });
+});
+
+describe('isWindowsShellFamily', () => {
+  it('accepts every family in the wire vocabulary', () => {
+    for (const family of WIRE_FAMILIES) {
+      expect(isWindowsShellFamily(family)).toBe(true);
+    }
+  });
+
+  it('agrees with the resolver about what counts as a supported family', () => {
+    for (const shell of [
+      'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+    ]) {
+      expect(isWindowsShellFamily(resolveWindowsShellFamily(shell))).toBe(true);
+    }
+    expect(resolveWindowsShellFamily('C:\\Windows\\System32\\wsl.exe')).toBeNull();
+  });
+
+  it('rejects unknown strings', () => {
+    expect(isWindowsShellFamily('pwsh')).toBe(false);
+    expect(isWindowsShellFamily('zsh')).toBe(false);
+    expect(isWindowsShellFamily('')).toBe(false);
+    expect(isWindowsShellFamily('PowerShell')).toBe(false);
+    expect(isWindowsShellFamily('__proto__')).toBe(false);
+  });
+
+  it('rejects non-string inputs (defends the IPC boundary against arbitrary payloads)', () => {
+    expect(isWindowsShellFamily(undefined)).toBe(false);
+    expect(isWindowsShellFamily(null)).toBe(false);
+    expect(isWindowsShellFamily(0)).toBe(false);
+    expect(isWindowsShellFamily(false)).toBe(false);
+    expect(isWindowsShellFamily({})).toBe(false);
+    expect(isWindowsShellFamily(['cmd'])).toBe(false);
   });
 });

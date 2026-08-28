@@ -5,14 +5,31 @@ import { join } from 'node:path';
 import type { ElectronApplication, ElementHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+  terminalSmokeShellCommands,
+} from './_helpers/terminal-smoke-shell';
+import {
+  expectTerminalTabOrder,
+  openBareTerminalTab,
+  renameTerminalTab,
+  terminalTabById,
+  terminalTabIds,
+  terminalTabs,
+} from './_helpers/terminal-tabs.test-helper';
 
 const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 type TerminalHome = 'bottom' | 'right';
 
@@ -29,10 +46,9 @@ function seed({ skipRestoreState = false }: { skipRestoreState?: boolean } = {})
   writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Start\n\nTerminal movement smoke.\n');
-  writeFileSync(join(tmpHome, '.zprofile'), 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n');
-  writeFileSync(join(tmpHome, '.zshrc'), 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n');
+  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
 
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   if (!skipRestoreState) {
     writeFileSync(
@@ -66,9 +82,10 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: s.tmpHome,
-        PATH: '/usr/bin:/bin:/usr/sbin:/sbin',
-        SHELL: '/bin/zsh',
+        ...terminalSmokeEnvironment(s.tmpHome, {
+          restrictPath: true,
+          pinPosixZsh: true,
+        }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -189,8 +206,6 @@ async function clickTerminalPlacementItemRapidly(
 }
 
 const visibleTerminal = (page: Page) => page.locator('section[aria-label="Terminal"]:visible');
-const terminalTabs = (page: Page) =>
-  page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
 
 /**
  * Widen the editor window and PROVE the width stuck.
@@ -264,20 +279,26 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   );
   // `running` means the PTY spawned, not that the shell has reached its read
   // loop. Typing before it does swallows the keystrokes.
-  await waitForShellReady(() => readActiveTerminal(page));
+  await waitForShellReady(
+    () => readActiveTerminal(page),
+    (command) => typeInActiveTerminal(page, `${command}\r`),
+    { resetTerminalInput: () => page.keyboard.press('Control+C') },
+  );
 }
 
 async function openBareTab(page: Page): Promise<void> {
-  await page.getByTestId('terminal-new-chat-menu').click();
-  await page.getByRole('menuitem', { name: 'Terminal' }).click();
-  await expect(visibleTerminal(page).locator('[data-terminal-status]')).toHaveAttribute(
-    'data-terminal-status',
-    'running',
-    { timeout: 25_000 },
-  );
-  // `running` means the PTY spawned, not that the shell has reached its read
-  // loop. Typing before it does swallows the keystrokes.
-  await waitForShellReady(() => readActiveTerminal(page));
+  await openBareTerminalTab(page, async () => {
+    await expect(visibleTerminal(page).locator('[data-terminal-status]')).toHaveAttribute(
+      'data-terminal-status',
+      'running',
+      { timeout: 25_000 },
+    );
+    await waitForShellReady(
+      () => readActiveTerminal(page),
+      (command) => typeInActiveTerminal(page, `${command}\r`),
+      { resetTerminalInput: () => page.keyboard.press('Control+C') },
+    );
+  });
 }
 
 async function typeInActiveTerminal(page: Page, text: string): Promise<void> {
@@ -336,11 +357,12 @@ async function readActiveTerminal(page: Page): Promise<string> {
  *
  * `Shift+PageUp` is animated too — `scrollPages` reaches the same viewport the
  * wheel does — so this does not escape the animation, it stops racing it. Each
- * press asks for one page rather than the wheel's several, the loop re-reads
- * between presses, and paging past the top is inert, so the presses converge on
- * the top instead of overshooting a target still being interpolated toward. The
- * ceiling is several times the pages either home needs to cross this fixture's
- * scrollback, so it bounds a stuck loop rather than the travel.
+ * press asks for one page rather than the wheel's several, then two animation
+ * frames let xterm advance before the loop samples and presses again. Paging
+ * past the top is inert, so the presses converge on the top instead of repeatedly
+ * retargeting from a position that has not painted yet. The ceiling is several
+ * times the pages either home needs to cross this fixture's scrollback, so it
+ * bounds a stuck loop rather than the travel.
  */
 async function expectScrollbackRetains(page: Page, ...markers: string[]): Promise<void> {
   // Focus the node xterm actually reads keys from. Clicking the row grid would
@@ -352,6 +374,12 @@ async function expectScrollbackRetains(page: Page, ...markers: string[]): Promis
   let text = await readTerminalRows(page);
   for (let step = 0; step < 40 && !markers.every((marker) => text.includes(marker)); step += 1) {
     await page.keyboard.press('Shift+PageUp');
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
     text = await readTerminalRows(page);
   }
   for (const marker of markers) {
@@ -502,7 +530,7 @@ async function expectTerminalMovedNotRebuilt(
  * Which reader any given site wants is set out on `readTerminalRows`.
  */
 async function readShellPid(page: Page, marker: string): Promise<number> {
-  await typeInActiveTerminal(page, `printf '${marker}=%s\\n' "$$"\r`);
+  await typeInActiveTerminal(page, `${SHELL_COMMANDS.processId(marker)}\r`);
   let processId = 0;
   await expect
     .poll(
@@ -584,12 +612,13 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
+    const [firstTabId] = await terminalTabIds(page);
+    if (firstTabId === undefined) throw new Error('first terminal tab was not created');
     await openBareTab(page);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    const [, secondTabId] = await terminalTabIds(page);
+    if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
 
     const token = randomUUID().replaceAll('-', '');
     const processMarker = `PROCESS_${token}`;
@@ -598,7 +627,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const processId = await readShellPid(page, processMarker);
     await typeInActiveTerminal(
       page,
-      `printf '${sentinel}\\n${scrollStart}\\n'; i=1; while [ "$i" -le 120 ]; do printf 'SCROLL_${token}_%03d\\n' "$i"; i=$((i+1)); done\r`,
+      `${SHELL_COMMANDS.scroll(sentinel, scrollStart, `SCROLL_${token}_`, 120)}\r`,
     );
     await expect
       .poll(() => readActiveTerminal(page), { timeout: 15_000 })
@@ -609,11 +638,8 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await moveTerminal(app, page, 'right');
     await expectTerminalMovedNotRebuilt(liveSurface, 'right');
     await expectStillScrolledBack(page, `SCROLL_${token}_120`);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     // Content retention across the GROW, not reach: the view enters this move
     // at the top of the buffer, and growing 15 rows to 52 leaves almost nothing
     // above it for a broken restore to swallow. The shrink leg below is where
@@ -621,7 +647,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rightOutput = `RIGHT_OUTPUT_${token}`;
-    await typeInActiveTerminal(page, `printf '${rightOutput}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(rightOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rightOutput);
 
     // The shrink is the leg that can lose reach: 52 rows down to 15 anchors the
@@ -631,15 +657,12 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await moveTerminal(app, page, 'bottom');
     await expectTerminalMovedNotRebuilt(liveSurface, 'bottom');
     await expectStillScrolledBack(page, `SCROLL_${token}_120`);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     await expectScrollbackRetains(page, sentinel, scrollStart);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const bottomOutput = `BOTTOM_OUTPUT_${token}`;
-    await typeInActiveTerminal(page, `printf '${bottomOutput}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(bottomOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(bottomOutput);
 
     const rapidSettlement = waitForTerminalHome(page, 'right');
@@ -652,14 +675,11 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expect(page.locator('#terminal-dock-panel section[aria-label="Terminal"]')).toHaveCount(
       0,
     );
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rapidOutput = `RAPID_OUTPUT_${token}`;
-    await typeInActiveTerminal(page, `printf '${rapidOutput}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(rapidOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rapidOutput);
     await expectScrollbackRetains(page, sentinel, scrollStart);
   });
@@ -678,12 +698,25 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await widenEditorWindow(app, page, 1900, 900);
 
     await openTerminal(app, page);
+    const [firstTabId] = await terminalTabIds(page);
+    if (firstTabId === undefined) throw new Error('first terminal tab was not created');
     await openBareTab(page);
+    const [, secondTabId] = await terminalTabIds(page);
+    if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+    await renameTerminalTab(page, terminalTabById(page, firstTabId), 'restart first');
+    // Preserve the default-ordinal reload assertion where shell titles are
+    // stable; ConPTY can replace it with an OSC title on Windows.
+    const secondLabel = process.platform === 'win32' ? 'restart second' : 'Terminal 2';
+    if (process.platform === 'win32') {
+      await renameTerminalTab(page, terminalTabById(page, secondTabId), secondLabel);
+    }
+    await terminalTabById(page, secondTabId).click();
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     const token = randomUUID().replaceAll('-', '');
     const processMarker = `RESTART_PROCESS_${token}`;
     const processId = await readShellPid(page, processMarker);
     const beforeRestart = `BEFORE_RESTART_${token}`;
-    await typeInActiveTerminal(page, `printf '${beforeRestart}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(beforeRestart)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(beforeRestart);
 
     // This test owns restart persistence; the dedicated terminal-tabs smoke
@@ -691,11 +724,8 @@ test.describe('Terminal placement continuity — live Electron', () => {
     // setup independent of right-column overlay geometry.
     await visibleTerminal(page).locator('.xterm').click();
     await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
+    await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     await moveTerminal(app, page, 'right');
     const restoredWidth = await growRightTerminal(page, 120);
 
@@ -716,8 +746,10 @@ test.describe('Terminal placement continuity — live Electron', () => {
 
     await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('#terminal-dock-panel')).toHaveCount(0);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1'], { timeout: 25_000 });
-    await expect(page.getByRole('tab', { name: 'Terminal 2' })).toHaveAttribute(
+    await expect(terminalTabs(page)).toHaveText([secondLabel, 'restart first'], {
+      timeout: 25_000,
+    });
+    await expect(page.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
     );
@@ -731,7 +763,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
       .toBeLessThan(20);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const afterRestart = `AFTER_RESTART_${token}`;
-    await typeInActiveTerminal(page, `printf '${afterRestart}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(afterRestart)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(afterRestart);
 
     await clickViewAgentsItem(app);
@@ -754,6 +786,13 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
     await expectCollapsedRailColumn(page, '#agents-column');
     await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
+    await editorWindow.evaluate((windowHandle: unknown) => {
+      const target = windowHandle as {
+        setSize: (width: number, height: number, animate: boolean) => void;
+      };
+      target.setSize(1900, 900, false);
+    });
+    await expect(visibleTerminal(page).locator('.xterm')).toBeVisible({ timeout: 10_000 });
     expect(await readShellPid(page, processMarker)).toBe(processId);
   });
 
@@ -794,7 +833,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     });
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const output = `AFTER_MALFORMED_RESTART_${token}`;
-    await typeInActiveTerminal(page, `printf '${output}\\n'\r`);
+    await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(output)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(output);
   });
 });

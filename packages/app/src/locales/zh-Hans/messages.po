@@ -4729,12 +4729,10 @@ msgstr "正在断开连接"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "忽略"
 
@@ -9422,6 +9420,18 @@ msgstr "OpenKnowledge 检查了冲突"
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 检查了项目"
 
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge 无法读取 .ok/local/config.yml 中的 terminal.shell，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge 无法在 .ok/local/terminal 下写入启动设置，因为该文件夹未安全地包含在此项目中。请确认它是项目内的真实文件夹，而不是链接。Claude 将要求你批准 OpenKnowledge。"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge 此次无法在 .ok/local/terminal 下写入启动设置。请确认该文件夹可写。Claude 将要求你批准 OpenKnowledge。"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
 msgstr "OpenKnowledge 创建了分享链接"
@@ -12342,6 +12352,10 @@ msgstr "Slidev 启动超时。请重试。"
 msgid "Small section heading."
 msgstr "小号章节标题。"
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "部分拖放的文件无法安全插入。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "部分文件未列出：工作区的更改过多。"
@@ -13003,6 +13017,18 @@ msgstr "终端设置尚未加载——请稍后再试。"
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "终端设置尚未加载——请稍后再试"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml 中的 terminal.shell 必须是字符串，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml 中的 terminal.shell 必须是 Windows 绝对路径，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr ".ok/local/config.yml 中的 terminal.shell 支持使用 PowerShell、cmd.exe 或 Git Bash 执行 OpenKnowledge 管理的启动以及插入拖放文件的路径。此 shell 仅打开普通终端；智能体和命令启动无法在其中运行。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "测试连接"
@@ -13203,6 +13229,10 @@ msgstr "预览会拦截不符合其安全规则的资源（例如纯 http:// 的
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "该项目的服务器所在分支与此窗口不一致，内容无法加载。"
 
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "提示词已粘贴，但未自动提交。请检查内容，然后按 Enter 发送。"
+
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
 msgstr "这个文档顶部的属性块有格式错误。请切换到源码模式修复。"
@@ -13314,6 +13344,10 @@ msgstr "终端会话已结束。"
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "终端意外停止了。"
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "未找到 .ok/local/config.yml 中指定的 terminal.shell 可执行文件，将改用可用的 Windows shell。"
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."

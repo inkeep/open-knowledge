@@ -1,4 +1,9 @@
-import { describe, expect, test } from 'vitest';
+import { WINDOWS_SHELL_FAMILIES } from '@inkeep/open-knowledge-core';
+import {
+  TERMINAL_SHELL_NOTICE_REASONS,
+  TERMINAL_SUPPORT_FILE_NOTICE_REASONS,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
+import { describe, expect, test, vi } from 'vitest';
 import {
   clampPtyDimension,
   createTerminalManager,
@@ -26,9 +31,15 @@ import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;
+  /**
+   * When set, `postMessage` throws this instead of recording. The utility is an
+   * injected dep, so this is the transport seam itself, not a stubbed internal.
+   */
+  throwOnPost: unknown = null;
   private msgCb: ((raw: unknown) => void) | null = null;
   private exitCb: ((code: number | null) => void) | null = null;
   postMessage(m: PtyHostIncomingMessage): void {
+    if (this.throwOnPost !== null) throw this.throwOnPost;
     this.posted.push(m);
   }
   on(event: 'message' | 'exit', cb: (arg: never) => void): void {
@@ -70,6 +81,7 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
   const sent: SentRecord[] = [];
   const forked: FakeUtility[] = [];
   const timers: Array<(() => void) | null> = [];
+  const timerDelays: number[] = [];
   const warns: Array<Record<string, unknown>> = [];
   let idn = 0;
   const mgr = createTerminalManager({
@@ -84,9 +96,16 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     sendExit: (_wc, payload) => {
       sent.push({ channel: 'ok:pty:exit', payload: payload as unknown as Record<string, unknown> });
     },
+    sendNotice: (_wc, payload) => {
+      sent.push({
+        channel: 'ok:pty:notice',
+        payload: payload as unknown as Record<string, unknown>,
+      });
+    },
     newPtyId: () => `pty-${++idn}`,
-    setTimer: (cb) => {
+    setTimer: (cb, ms) => {
       timers.push(cb);
+      timerDelays.push(ms);
       return timers.length - 1;
     },
     clearTimer: (t) => {
@@ -113,7 +132,17 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
   const exits = (): Array<Record<string, unknown>> =>
     sent.filter((s) => s.channel === 'ok:pty:exit').map((s) => s.payload);
   const liveTimerCount = (): number => timers.filter((t) => t !== null).length;
-  return { mgr, sent, forked, warns, runTimers, dataPayloads, exits, liveTimerCount };
+  return {
+    mgr,
+    sent,
+    forked,
+    warns,
+    runTimers,
+    dataPayloads,
+    exits,
+    liveTimerCount,
+    timerDelays,
+  };
 }
 
 const PROJECT = '/Users/me/project';
@@ -134,6 +163,215 @@ describe('createTerminalManager — create', () => {
     expect(h.forked[0]?.posted).toEqual([
       { type: 'create', ptyId: 'pty-1', cwd: PROJECT, cols: 80, rows: 24 },
     ]);
+  });
+
+  test('forwards configured and invalid shell override state to the host resolver', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    h.mgr.create({
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+      shell: 'C:\\Tools\\pwsh.exe',
+      shellInvalidReason: 'invalid-value',
+    });
+
+    expect(h.forked[0]?.posted[0]).toEqual({
+      type: 'create',
+      ptyId: 'pty-1',
+      cwd: PROJECT,
+      cols: 80,
+      rows: 24,
+      shell: 'C:\\Tools\\pwsh.exe',
+      shellInvalidReason: 'invalid-value',
+    });
+  });
+
+  test('forwards an invalid-override notice only to the addressed renderer session', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'invalid-shell-override',
+      reason: 'not-found',
+    });
+
+    expect(h.sent).toContainEqual({
+      channel: 'ok:pty:notice',
+      payload: { ptyId: 'pty-1', notice: 'invalid-shell-override', reason: 'not-found' },
+    });
+  });
+
+  test('forwards the resolved Windows shell family to the addressed renderer session', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'shell-resolved',
+      shellFamily: 'bash',
+    });
+
+    expect(h.sent).toContainEqual({
+      channel: 'ok:pty:notice',
+      payload: { ptyId: 'pty-1', notice: 'shell-resolved', shellFamily: 'bash' },
+    });
+  });
+
+  // Both notice payloads narrow through the shared guards, whose accepted sets
+  // are built from the same vocabulary tuples the unions derive from, so what
+  // this hop forwards is exactly the union. A reason or family added to a
+  // vocabulary reaches the renderer without a second edit here, instead of
+  // being silently dropped by a hand-mirrored literal chain.
+  test.each([
+    ...TERMINAL_SHELL_NOTICE_REASONS,
+  ])('forwards the shared invalid-override reason %s to the renderer', (reason) => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'invalid-shell-override',
+      reason,
+    });
+
+    expect(h.sent).toContainEqual({
+      channel: 'ok:pty:notice',
+      payload: { ptyId: 'pty-1', notice: 'invalid-shell-override', reason },
+    });
+  });
+
+  test.each([
+    ...WINDOWS_SHELL_FAMILIES,
+  ])('forwards the shared resolved shell family %s to the renderer', (shellFamily) => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'shell-resolved',
+      shellFamily,
+    });
+
+    expect(h.sent).toContainEqual({
+      channel: 'ok:pty:notice',
+      payload: { ptyId: 'pty-1', notice: 'shell-resolved', shellFamily },
+    });
+  });
+
+  test.each([
+    ...TERMINAL_SUPPORT_FILE_NOTICE_REASONS,
+  ])('forwards the support-file degradation reason %s to the renderer', (reason) => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'support-file-degraded',
+      reason,
+    });
+
+    expect(h.sent).toContainEqual({
+      channel: 'ok:pty:notice',
+      payload: { ptyId: 'pty-1', notice: 'support-file-degraded', reason },
+    });
+  });
+
+  test('drops a shell notice whose reason or family is outside the shared sets', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'invalid-shell-override',
+      reason: 'not-found-ish',
+    });
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'shell-resolved',
+      shellFamily: 'zsh',
+    });
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'support-file-degraded',
+      reason: 'escaped',
+    });
+
+    expect(h.sent.filter((s) => s.channel === 'ok:pty:notice')).toEqual([]);
+    expect(h.warns.length).toBeGreaterThan(0);
+  });
+
+  test('drops a shell notice when the addressed WebContents is already destroyed', () => {
+    const sendNotice = vi.fn((wc: SendableWebContents) => {
+      if (wc.isDestroyed?.()) throw new Error('send on destroyed WebContents');
+    });
+    const h = makeManager({ sendNotice });
+    const wc = makeWebContents();
+    h.mgr.create({
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    wc.destroyed = true;
+
+    expect(() =>
+      h.forked[0]?.emitMessage({
+        type: 'shell-notice',
+        ptyId: 'pty-1',
+        notice: 'invalid-shell-override',
+        reason: 'not-found',
+      }),
+    ).not.toThrow();
+    expect(sendNotice).not.toHaveBeenCalled();
   });
 
   test('a window with no project root gets no terminal and no fork', () => {
@@ -310,6 +548,25 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     });
     h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: 9 });
     expect(h.exits()[0]).toEqual({ ptyId: 'pty-1', exitCode: 0, signal: 9 });
+  });
+
+  test('normalizes the node-pty undefined exitCode race before renderer delivery', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({
+      type: 'exit',
+      ptyId: 'pty-1',
+      exitCode: undefined,
+      signal: null,
+    });
+
+    expect(h.exits()[0]).toEqual({ ptyId: 'pty-1', exitCode: -1, signal: null });
   });
 
   test('maps a host spawn-error to a crashed exit carrying the message', () => {
@@ -493,7 +750,7 @@ describe('createTerminalManager — destroyed-window guard', () => {
 });
 
 describe('createTerminalManager — lifecycle reap', () => {
-  test('killForWindow kills the host, deletes it, and silences its exit event', () => {
+  test('killForWindow requests shutdown, then force-kills at the deadline', () => {
     const h = makeManager();
     h.mgr.create({
       windowId: 1,
@@ -504,7 +761,12 @@ describe('createTerminalManager — lifecycle reap', () => {
     });
     const utility = h.forked[0];
     h.mgr.killForWindow(1);
+    expect(utility?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(utility?.killed).toBe(0);
+    expect(h.timerDelays.at(-1)).toBe(2000);
+    h.runTimers();
     expect(utility?.killed).toBe(1);
+    expect(h.warns).toContainEqual({ event: 'terminal-manager-shutdown-deadline' });
     // The kill triggers a utility exit — it must NOT push into the gone window.
     utility?.emitExit(0);
     expect(h.exits()).toEqual([]);
@@ -517,6 +779,24 @@ describe('createTerminalManager — lifecycle reap', () => {
       rows: 24,
     });
     expect(h.forked).toHaveLength(2);
+  });
+
+  test('a cooperative host exit cancels the force-kill deadline', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const utility = h.forked[0];
+    h.mgr.killForWindow(1);
+    utility?.emitExit(0);
+    h.runTimers();
+
+    expect(utility?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(utility?.killed).toBe(0);
   });
 
   test('killForWindow on an unknown window is a no-op', () => {
@@ -541,6 +821,11 @@ describe('createTerminalManager — lifecycle reap', () => {
       rows: 24,
     });
     h.mgr.killAll();
+    expect(h.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(h.forked[1]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(h.forked[0]?.killed).toBe(0);
+    expect(h.forked[1]?.killed).toBe(0);
+    h.runTimers();
     expect(h.forked[0]?.killed).toBe(1);
     expect(h.forked[1]?.killed).toBe(1);
     // The map is cleared — a later create forks anew.
@@ -554,10 +839,63 @@ describe('createTerminalManager — lifecycle reap', () => {
     expect(h.forked).toHaveLength(3);
   });
 
+  // `main` awaits killAll() before letting Electron quit or apply an update, so
+  // the promise's settlement is the contract — a reap that resolves early kills
+  // shells the user is still using, and one that never resolves wedges quit.
+  // These two pin both ends of it through the real manager/host seam.
+  test('the killAll promise stays pending until the host exit arrives', async () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    let settled = false;
+    const quit = h.mgr.killAll().then(() => {
+      settled = true;
+    });
+    // Drain the whole microtask queue: a killAll that did not wait on its host
+    // would already have set the flag by the time this resolves.
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    h.forked[0]?.emitExit(0);
+    await quit;
+    expect(settled).toBe(true);
+  });
+
+  test('the killAll promise settles at the deadline when the host never exits', async () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+
+    let settled = false;
+    const quit = h.mgr.killAll().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(settled).toBe(false);
+
+    // The host stays silent, so only the force-kill deadline can end the reap.
+    h.runTimers();
+    await quit;
+    expect(settled).toBe(true);
+    expect(h.forked[0]?.killed).toBe(1);
+  });
+
   test('killAll completes the reap even when one host throws on kill (no orphans)', () => {
     // A throwing kill on one host must not abort the loop — the remaining
     // windows' hosts would otherwise outlive the app (orphan shells).
     const forked: ThrowingUtility[] = [];
+    const timers: Array<() => void> = [];
     let idn = 0;
     const mgr = createTerminalManager({
       forkPtyHost: () => {
@@ -568,7 +906,10 @@ describe('createTerminalManager — lifecycle reap', () => {
       sendData: () => {},
       sendExit: () => {},
       newPtyId: () => `pty-${++idn}`,
-      setTimer: () => 0,
+      setTimer: (cb) => {
+        timers.push(cb);
+        return timers.length - 1;
+      },
       clearTimer: () => {},
     });
     for (const windowId of [1, 2, 3]) {
@@ -582,12 +923,40 @@ describe('createTerminalManager — lifecycle reap', () => {
     }
 
     expect(() => mgr.killAll()).not.toThrow();
+    for (const timer of timers) expect(() => timer()).not.toThrow();
     // Every host had kill() attempted despite the first one throwing.
     expect(forked.map((u) => u.killAttempts)).toEqual([1, 1, 1]);
   });
 
+  // `postMessage` and `kill()` are different boundaries. A kill-shaped code on
+  // a send must still reach the warn sink instead of inheriting kill's ESRCH
+  // suppression.
+  test('a shutdown-send failure is surfaced even when it carries a kill-shaped code', () => {
+    const h = makeManager();
+    h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const utility = h.forked[0];
+    if (utility) utility.throwOnPost = Object.assign(new Error('post failed'), { code: 'ESRCH' });
+
+    h.mgr.killForWindow(1);
+
+    expect(h.warns).toContainEqual({
+      event: 'terminal-manager-shutdown-send-failed',
+      code: 'ESRCH',
+    });
+    // The failure branch is unchanged: deadline dropped, host force-killed.
+    expect(utility?.killed).toBe(1);
+    expect(h.liveTimerCount()).toBe(0);
+  });
+
   test('killForWindow swallows a throwing kill instead of crashing the reap', () => {
     const forked: ThrowingUtility[] = [];
+    const timers: Array<() => void> = [];
     let idn = 0;
     const mgr = createTerminalManager({
       forkPtyHost: () => {
@@ -598,7 +967,10 @@ describe('createTerminalManager — lifecycle reap', () => {
       sendData: () => {},
       sendExit: () => {},
       newPtyId: () => `pty-${++idn}`,
-      setTimer: () => 0,
+      setTimer: (cb) => {
+        timers.push(cb);
+        return timers.length - 1;
+      },
       clearTimer: () => {},
     });
     mgr.create({
@@ -609,6 +981,7 @@ describe('createTerminalManager — lifecycle reap', () => {
       rows: 24,
     });
     expect(() => mgr.killForWindow(1)).not.toThrow();
+    expect(() => timers[0]?.()).not.toThrow();
     expect(forked[0]?.killAttempts).toBe(1);
   });
 });
@@ -978,6 +1351,8 @@ describe('createTerminalManager — concurrent sessions', () => {
     const { h } = twoSessions();
     h.mgr.killForWindow(1);
     expect(h.forked).toHaveLength(1);
+    expect(h.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    h.runTimers();
     expect(h.forked[0]?.killed).toBe(1);
   });
 });

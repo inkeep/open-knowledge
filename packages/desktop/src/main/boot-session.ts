@@ -20,6 +20,7 @@ export function readBootSessionUuid(platform: NodeJS.Platform = process.platform
       const out = execFileSync('/usr/sbin/sysctl', ['-n', 'kern.bootsessionuuid'], {
         encoding: 'utf8',
         timeout: 2_000,
+        windowsHide: true,
       });
       return normalize(out);
     }

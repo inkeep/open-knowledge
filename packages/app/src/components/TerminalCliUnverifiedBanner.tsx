@@ -13,8 +13,7 @@
  */
 import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
-import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 
 interface TerminalCliUnverifiedBannerProps {
   readonly cli: TerminalCli;
@@ -27,23 +26,8 @@ export function TerminalCliUnverifiedBanner({ cli, onDismiss }: TerminalCliUnver
   const { bin, displayName } = TERMINAL_CLIS[cli];
 
   return (
-    <div
-      role="status"
-      data-testid="terminal-cli-unverified-banner"
-      className="flex shrink-0 items-center gap-3 border-border border-b bg-muted px-3 py-2 text-foreground text-xs"
-    >
-      <p className="min-w-0 flex-1">
-        {t`Couldn't verify that ${displayName} (${bin}) is available, so this is a plain shell. You can still run ${bin} yourself.`}
-      </p>
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={t`Dismiss`}
-        className="size-6 shrink-0"
-        onClick={onDismiss}
-      >
-        <X aria-hidden="true" className="size-4" />
-      </Button>
-    </div>
+    <TerminalNoticeBanner testId="terminal-cli-unverified-banner" onDismiss={onDismiss}>
+      {t`Couldn't verify that ${displayName} (${bin}) is available, so this is a plain shell. You can still run ${bin} yourself.`}
+    </TerminalNoticeBanner>
   );
 }

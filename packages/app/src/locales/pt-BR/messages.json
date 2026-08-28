@@ -100,6 +100,9 @@
     "0NkNB5": ["há ", ["0"], " meses"],
     "0QVrvp": ["Já está no número máximo de agentes em execução"],
     "0TnCvC": ["Renomear ", ["0"]],
+    "0WsUA2": [
+      "O prompt foi colado, mas não foi enviado automaticamente. Revise-o e pressione Enter para enviá-lo."
+    ],
     "0YUS3Q": ["Subpasta dentro da pasta atual"],
     "0_J12R": [
       "Novo arquivo a partir do modelo \"",
@@ -133,6 +136,9 @@
     "0pZmTP": ["Não é possível compartilhar este caminho."],
     "0qyKG6": ["Sincronizado a partir do disco"],
     "0r6d6v": ["Alterações salvas automaticamente."],
+    "0rT21w": [
+      "terminal.shell em .ok/local/config.yml aceita PowerShell, cmd.exe ou Git Bash para inicializações gerenciadas pelo OpenKnowledge e caminhos de arquivos soltos. Este shell abre apenas um terminal comum; inicializações de agentes e comandos não são executadas nele."
+    ],
     "0rwwOn": ["Por tag"],
     "0s8-e8": [
       "Seleciona, entra ou sai de componentes de bloco e blocos de código alternativos a partir dos limites do teclado."
@@ -563,6 +569,9 @@
     "67f-3g": [
       "A duplicação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
     ],
+    "69E1Pq": [
+      "terminal.shell em .ok/local/config.yml deve ser uma string. Um shell do Windows disponível será usado."
+    ],
     "69KLIV": ["Esc"],
     "6ASTuj": [
       "Os comandos rodam com todo o acesso da sua conta de usuário nesta máquina. Desative isto para desabilitar o shell."
@@ -941,6 +950,9 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell em .ok/local/config.yml deve ser um caminho absoluto do Windows. Um shell do Windows disponível será usado."
+    ],
     "ANFxWn": ["Não foi possível excluir este tema. Atualize a página e tente novamente."],
     "APNlbk": ["saída ", ["0"]],
     "AQ-Lfg": ["Não foi possível carregar os modelos"],
@@ -985,6 +997,7 @@
     "AqnqMJ": ["Chave de API definida"],
     "AsqRE_": ["Local padrão para novos anexos"],
     "AtBdnD": ["Não deu para excluir a habilidade: ", ["error"]],
+    "AvqEDl": ["Alguns arquivos soltos não puderam ser inseridos com segurança."],
     "AwLCZA": [
       "O endpoint respondeu, mas não com uma resposta de embeddings compatível com a OpenAI. Verifique a URL base."
     ],
@@ -1160,6 +1173,9 @@
     "D12vtS": ["(desanexado)"],
     "D2emTw": ["Algo deu errado ao enviar seus comentários. Tente de novo."],
     "D4H2N6": ["Remover ", ["tag"]],
+    "D7gKrd": [
+      "O OpenKnowledge não conseguiu gravar as configurações de inicialização em .ok/local/terminal porque a pasta não está contida com segurança neste projeto. Verifique se ela é uma pasta real dentro do projeto, e não um link. O Claude pedirá que você aprove o OpenKnowledge."
+    ],
     "D7hnvB": ["Ponderando…"],
     "D8JJwQ": ["Não dá para enviar comentários agora. Tente mais tarde."],
     "D8OV7J": ["Somente colaboradores"],
@@ -1786,6 +1802,9 @@
     "K6jxcj": ["Adicionar uma chave"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " arquivos"],
     "K8-WWn": ["Mover entre as células da tabela"],
+    "K8EvAV": [
+      "O OpenKnowledge não conseguiu ler terminal.shell em .ok/local/config.yml. Um shell do Windows disponível será usado."
+    ],
     "K9J00P": ["Falha ao clonar — erro de conexão"],
     "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
@@ -1800,6 +1819,9 @@
     ],
     "KOZud0": [
       "Monte uma base de conhecimento sobre a concorrência. Comece com uma página geral e depois acrescente páginas interligadas para cada concorrente, seus produtos e preços, e as fontes por trás de cada afirmação."
+    ],
+    "KOeFXa": [
+      "O OpenKnowledge não conseguiu gravar as configurações de inicialização em .ok/local/terminal desta vez. Verifique se a pasta permite gravação. O Claude pedirá que você aprove o OpenKnowledge."
     ],
     "KPW5WC": ["modelo movido"],
     "KQGZuq": ["Reaproveitada se já existir; criada se não."],
@@ -4181,6 +4203,9 @@
     "kCqCyf": ["Abre o painel de diagnósticos de análise do CodeMirror."],
     "kEiVv6": [
       "Elas ensinam suas ferramentas de IA a trabalhar com o OpenKnowledge. Instalar uma a adiciona a todas as ferramentas de IA desta máquina."
+    ],
+    "kF2Yua": [
+      "O executável terminal.shell em .ok/local/config.yml não foi encontrado. Um shell do Windows disponível será usado."
     ],
     "kFLlsI": ["Insere uma referência de nota de rodapé e a definição correspondente."],
     "kGp168": ["Não foi possível preparar este projeto para publicação."],

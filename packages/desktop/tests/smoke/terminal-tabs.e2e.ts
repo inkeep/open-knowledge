@@ -27,18 +27,36 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, Page } from '@playwright/test';
+import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+  terminalSmokeShellCommands,
+} from './_helpers/terminal-smoke-shell';
+import {
+  expectTerminalTabOrder,
+  openBareTerminalTab,
+  renameTerminalTab,
+  terminalTabById,
+  terminalTabIds,
+  terminalTabRow,
+  terminalTabs,
+} from './_helpers/terminal-tabs.test-helper';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 interface Seed {
   tmpHome: string;
@@ -54,8 +72,9 @@ function seed(prefix: string): Seed {
   // Pre-grant terminal consent so the shell spawns without the enable gate.
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Start\n\nSeed document.\n');
+  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
 
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   writeFileSync(
     join(userDataDir, 'state.json'),
@@ -75,9 +94,6 @@ function seed(prefix: string): Seed {
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  // Restricted, system-only PATH: the New-chat carat opens a BARE shell (the
-  // "Terminal" pick) so no `claude` install is needed to spawn a live PTY.
-  const PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
   return electron.launch(
     desktopLaunchOptions({
       target: TARGET,
@@ -85,8 +101,9 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: s.tmpHome,
-        PATH,
+        // Restricted, system-only PATH: the New-chat carat opens a BARE shell
+        // so no host `claude` install participates in the fixture.
+        ...terminalSmokeEnvironment(s.tmpHome, { restrictPath: true }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -130,12 +147,6 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
 // unambiguous once a second tab exists (each session mounts its own section +
 // status via forceMount).
 const visibleSection = (page: Page) => page.locator('section[aria-label="Terminal"]:visible');
-// Scope to the terminal strip's own tablist — the editor sidebar also renders
-// role="tab" (Outline / Links / Graph / Timeline), so an unscoped query is
-// ambiguous.
-const terminalTabs = (page: Page) =>
-  page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
-
 /**
  * Open the dock and wait for the first session's shell to be running. The live
  * shell occasionally exits before reaching "running" on constrained hardware
@@ -156,7 +167,11 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
       { timeout: 8_000 },
     );
   }).toPass({ timeout: 40_000, intervals: [2_000] });
-  await waitForShellReady(() => readActiveText(page));
+  await waitForShellReady(
+    () => readActiveText(page),
+    (command) => typeInActive(page, `${command}\r`),
+    { resetTerminalInput: () => page.keyboard.press('Control+C') },
+  );
 }
 
 /**
@@ -173,20 +188,22 @@ async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> 
     'running',
     { timeout: timeoutMs },
   );
-  await waitForShellReady(() => readActiveText(page));
+  await waitForShellReady(
+    () => readActiveText(page),
+    (command) => typeInActive(page, `${command}\r`),
+    { resetTerminalInput: () => page.keyboard.press('Control+C') },
+  );
 }
 
 /** Open a second (or further) tab running a BARE shell via the New-chat carat →
  *  "Terminal" pick. The new tab activates; wait for its shell to be running. */
 async function openBareTab(page: Page): Promise<void> {
-  await page.getByTestId('terminal-new-chat-menu').click();
-  await page.getByRole('menuitem', { name: 'Terminal' }).click();
-  await waitActiveRunning(page);
+  await openBareTerminalTab(page, () => waitActiveRunning(page));
 }
 
-async function activateTab(page: Page, name: string): Promise<void> {
-  await page.getByRole('tab', { name }).click();
-  await expect(page.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+async function activateTab(tab: Locator): Promise<void> {
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
 /**
@@ -195,10 +212,10 @@ async function activateTab(page: Page, name: string): Promise<void> {
  * over the target in steps, then release. Used to exercise the pointer path
  * (the keyboard chord is covered separately).
  */
-async function dragTabOnto(page: Page, fromName: string, toName: string): Promise<void> {
-  const from = await page.getByRole('tab', { name: fromName }).boundingBox();
-  const to = await page.getByRole('tab', { name: toName }).boundingBox();
-  if (!from || !to) throw new Error(`tab bounding box missing (${fromName} → ${toName})`);
+async function dragTabOnto(page: Page, fromTab: Locator, toTab: Locator): Promise<void> {
+  const from = await fromTab.boundingBox();
+  const to = await toTab.boundingBox();
+  if (!from || !to) throw new Error('terminal tab bounding box missing');
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
   // Cross the 8px activation threshold before moving to the target so the drag
@@ -253,16 +270,16 @@ test.describe('Terminal tabs — live Electron', () => {
     await openTerminal(app, page);
 
     // Tab 1: write a marker into its shell.
-    await typeInActive(page, 'echo TAB1_ONLY_AAA\r');
+    await typeInActive(page, `${SHELL_COMMANDS.output('TAB1_ONLY_AAA')}\r`);
     await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB1_ONLY_AAA');
 
     // Open a second bare tab — it gets its own PTY and becomes active.
     await openBareTab(page);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
+    await expect(terminalTabs(page)).toHaveCount(2);
 
     // Tab 2 is a distinct shell: it has never seen tab 1's marker, and its own
     // marker is independent.
-    await typeInActive(page, 'echo TAB2_ONLY_BBB\r');
+    await typeInActive(page, `${SHELL_COMMANDS.output('TAB2_ONLY_BBB')}\r`);
     await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB2_ONLY_BBB');
     expect(await readActiveText(page)).not.toContain('TAB1_ONLY_AAA');
   });
@@ -277,12 +294,17 @@ test.describe('Terminal tabs — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await openBareTab(page); // Terminal 1 + Terminal 2
+    const [, survivingTabId] = await terminalTabIds(page);
+    if (survivingTabId === undefined) throw new Error('second terminal tab was not created');
 
     // Close Terminal 1; Terminal 2 remains and its shell is still live.
-    await page.getByRole('button', { name: 'Close Terminal 1' }).click();
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2']);
+    await terminalTabRow(page)
+      .getByRole('button', { name: /^Close / })
+      .first()
+      .click();
+    await expectTerminalTabOrder(page, [survivingTabId]);
     await waitActiveRunning(page);
-    await typeInActive(page, 'echo SURVIVOR_CCC\r');
+    await typeInActive(page, `${SHELL_COMMANDS.output('SURVIVOR_CCC')}\r`);
     await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('SURVIVOR_CCC');
   });
 
@@ -295,7 +317,7 @@ test.describe('Terminal tabs — live Electron', () => {
     await openTerminal(app, page);
 
     // Double-click the tab to rename it, commit with Enter.
-    await page.getByRole('tab', { name: 'Terminal 1' }).dblclick();
+    await terminalTabs(page).first().dblclick();
     const input = page.getByRole('textbox', { name: /^Rename/ });
     await input.fill('my build');
     await input.press('Enter');
@@ -309,7 +331,7 @@ test.describe('Terminal tabs — live Electron', () => {
     // a fixed sleep) is what keeps the pin assertion from passing vacuously — if
     // the OSC were slow, the challenge simply hasn't landed yet and we keep
     // polling rather than asserting into an empty window.
-    await typeInActive(page, "printf '\\033]0;PROGRAM_TITLE_ZZZ\\007'; echo OSC_FED_QQQ\r");
+    await typeInActive(page, `${SHELL_COMMANDS.oscTitle('PROGRAM_TITLE_ZZZ', 'OSC_FED_QQQ')}\r`);
     await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('OSC_FED_QQQ');
     await expect(terminalTabs(page)).toHaveText(['my build']);
     await expect(page.getByRole('tab', { name: 'PROGRAM_TITLE_ZZZ' })).toHaveCount(0);
@@ -328,16 +350,20 @@ test.describe('Terminal tabs — live Electron', () => {
     // Terminal 1: pin the live shell with an env marker (survives only in THIS
     // PTY process) and print a scrollback marker (survives only if the xterm is
     // not reset/cleared by the reorder).
-    await typeInActive(page, 'export OK_TABMARK=SURVIVED_888\r');
-    await typeInActive(page, 'echo BEFORE_REORDER_DDD\r');
+    await typeInActive(page, `${SHELL_COMMANDS.setEnvironment('OK_TABMARK', 'SURVIVED_888')}\r`);
+    await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_REORDER_DDD')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
       .toContain('BEFORE_REORDER_DDD');
 
     // Open a second tab, then re-activate Terminal 1 and focus its shell.
+    const [firstTabId] = await terminalTabIds(page);
+    if (firstTabId === undefined) throw new Error('first terminal tab was not created');
     await openBareTab(page);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await activateTab(page, 'Terminal 1');
+    const [, secondTabId] = await terminalTabIds(page);
+    if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await activateTab(terminalTabById(page, firstTabId));
     await visibleSection(page).locator('.xterm').click();
 
     // CmdOrCtrl+Shift+Right moves the active tab (Terminal 1) one slot right.
@@ -345,18 +371,21 @@ test.describe('Terminal tabs — live Electron', () => {
 
     // Order changed; the sticky numbers rode with their sessions (NOT renumbered
     // by position).
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
+    await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
+    // ConPTY can replace default labels with OSC shell titles on Windows.
+    if (process.platform !== 'win32') {
+      await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
+    }
 
     // Terminal 1 is still the active tab and STILL THE SAME LIVE SHELL: the env
     // marker (same PTY) and the pre-reorder scrollback both survive. On the
     // pre-fix code the panel's xterm moved in the DOM and the running program
     // reset — here it is untouched.
-    await expect(page.getByRole('tab', { name: 'Terminal 1' })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    expect(await readActiveText(page)).toContain('BEFORE_REORDER_DDD');
-    await typeInActive(page, 'echo "mk=[$OK_TABMARK]"\r');
+    await expect(terminalTabById(page, firstTabId)).toHaveAttribute('aria-selected', 'true');
+    await expect
+      .poll(() => readActiveText(page), { timeout: 15_000 })
+      .toContain('BEFORE_REORDER_DDD');
+    await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_TABMARK', 'mk')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
       .toContain('mk=[SURVIVED_888]');
@@ -373,30 +402,41 @@ test.describe('Terminal tabs — live Electron', () => {
     await openTerminal(app, page);
 
     // Terminal 1: pin its live shell with an env marker + a scrollback marker.
-    await typeInActive(page, 'export OK_DRAGMARK=DRAG_SURVIVED_444\r');
-    await typeInActive(page, 'echo BEFORE_DRAG_EEE\r');
+    await typeInActive(
+      page,
+      `${SHELL_COMMANDS.setEnvironment('OK_DRAGMARK', 'DRAG_SURVIVED_444')}\r`,
+    );
+    await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_DRAG_EEE')}\r`);
     await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('BEFORE_DRAG_EEE');
 
     // Open a second tab, then DRAG Terminal 1 onto Terminal 2 with the pointer.
+    const [firstTabId] = await terminalTabIds(page);
+    if (firstTabId === undefined) throw new Error('first terminal tab was not created');
     await openBareTab(page);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await dragTabOnto(page, 'Terminal 1', 'Terminal 2');
+    const [, secondTabId] = await terminalTabIds(page);
+    if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+    await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
+    await dragTabOnto(page, terminalTabById(page, firstTabId), terminalTabById(page, secondTabId));
 
     // Order changed via the real drag; sticky numbers rode with their sessions.
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
+    await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
+    // ConPTY can replace default labels with OSC shell titles on Windows.
+    if (process.platform !== 'win32') {
+      await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'Terminal 1']);
+    }
 
     // Terminal 1's shell is the SAME live session (env marker) with intact
     // scrollback (the pre-drag echo) — a pointer drag must not reset it either.
-    await activateTab(page, 'Terminal 1');
+    await activateTab(terminalTabById(page, firstTabId));
     await visibleSection(page).locator('.xterm').click();
     expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
-    await typeInActive(page, 'echo "dm=[$OK_DRAGMARK]"\r');
+    await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_DRAGMARK', 'dm')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
       .toContain('dm=[DRAG_SURVIVED_444]');
   });
 
-  test('a renderer reload preserves custom names and tab order', async ({ captureStderrFor }) => {
+  test('a renderer reload preserves tab labels and order', async ({ captureStderrFor }) => {
     const s = seed('reload-preserve');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -404,22 +444,27 @@ test.describe('Terminal tabs — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
-    // Two tabs: rename Terminal 1 -> "build", then reorder so Terminal 2 leads.
+    // Keep one default label on POSIX to cover ordinal rehydration. ConPTY can
+    // replace default labels with OSC titles, so Windows uses a durable custom
+    // label for the same order assertion.
     await openBareTab(page);
-    await expect(terminalTabs(page)).toHaveText(['Terminal 1', 'Terminal 2']);
-    await page.getByRole('tab', { name: 'Terminal 1' }).dblclick();
-    const input = page.getByRole('textbox', { name: /^Rename/ });
-    await input.fill('build');
-    await input.press('Enter');
-    await expect(terminalTabs(page)).toHaveText(['build', 'Terminal 2']);
-    await dragTabOnto(page, 'build', 'Terminal 2');
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'build']);
+    const [firstTabId, secondTabId] = await terminalTabIds(page);
+    if (firstTabId === undefined || secondTabId === undefined) {
+      throw new Error('two terminal tabs were not created');
+    }
+    await renameTerminalTab(page, terminalTabById(page, firstTabId), 'build');
+    const secondLabel = process.platform === 'win32' ? 'shell' : 'Terminal 2';
+    if (process.platform === 'win32') {
+      await renameTerminalTab(page, terminalTabById(page, secondTabId), secondLabel);
+    }
+    await dragTabOnto(page, terminalTabById(page, firstTabId), terminalTabById(page, secondTabId));
+    await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
 
     // Reload the renderer (⌘R). Main + the per-window PTY host — and the tab name
     // + order they now retain — survive the reload; the reloaded dock rehydrates
     // from main rather than resetting to positional creation order (the bug fixed).
     await page.reload();
     await expect(visibleSection(page)).toBeVisible({ timeout: 20_000 });
-    await expect(terminalTabs(page)).toHaveText(['Terminal 2', 'build'], { timeout: 25_000 });
+    await expect(terminalTabs(page)).toHaveText([secondLabel, 'build'], { timeout: 25_000 });
   });
 });

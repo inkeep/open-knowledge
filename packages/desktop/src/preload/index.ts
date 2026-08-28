@@ -60,6 +60,7 @@ import type {
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
+  OkPtyNotice,
   OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
@@ -84,7 +85,6 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
-import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
@@ -279,10 +279,10 @@ function readConfigFromArgv(): OkDesktopConfig {
   // when OTel is enabled in main; the renderer extracts it to parent its startup
   // span into the launch trace. Absent → renderer skips the startup span.
   const startupTraceparent = parseArg('startup-traceparent');
-  // Terminal-dock PTY capability. Platform is the whole signal: a supported
-  // install with a broken node-pty still surfaces the existing
-  // spawn-error UX, which is the correct diagnostic there.
-  const ptyAvailable = isTerminalPlatform(process.platform);
+  // Main owns the host capability decision and injects it per window. Keeping
+  // the Windows build-floor check out of this sandboxed preload also prevents
+  // an unavailable node:os import from taking down the entire bridge.
+  const ptyAvailable = parseArg('pty-available') === '1';
   return Object.freeze({
     collabUrl,
     apiOrigin,
@@ -1088,6 +1088,12 @@ const bridge: OkDesktopBridge = {
       // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:pty:exit', listener);
       return () => ipcRenderer.removeListener('ok:pty:exit', listener);
+    },
+    onNotice(cb) {
+      const listener = (_event: IpcRendererEvent, msg: OkPtyNotice) => cb(msg);
+      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      ipcRenderer.on('ok:pty:notice', listener);
+      return () => ipcRenderer.removeListener('ok:pty:notice', listener);
     },
     claudePreflight: () => invoke('ok:terminal:claude-assist', { action: 'preflight' }),
     cliPreflight: (cli) => invoke('ok:terminal:cli-preflight', { cli }),

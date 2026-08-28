@@ -787,6 +787,17 @@ export const ConfigSchema = z.looseObject({
         })
         .nullable()
         .default(null),
+      shell: z
+        .string()
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project-local',
+          description:
+            'Absolute Windows shell executable override for the in-app terminal. PowerShell, cmd.exe, and Git Bash support OpenKnowledge-managed launches (agent chat tabs and fixed commands such as Resolve in terminal or Install Slidev) and dropped-file path insertion. A different existing executable remains usable for plain terminal tabs and shows a capability notice; requested agent and command launches open only the plain shell without running the agent or command, and dropped-file paths are refused. Empty values use automatic shell discovery. Per-machine (project-local), human-managed, and never shared via git, clone, or sync.',
+        })
+        .optional(),
     })
     .default({ enabled: null }),
   // USER-scope: whether the Slides plugin is offered is a personal preference,
