@@ -3213,6 +3213,14 @@ msgstr "منسلک ہے"
 msgid "Connected to GitHub"
 msgstr "GitHub سے منسلک"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "منسلک ہو گیا، لیکن آپ کی ترامیم ابھی سرور تک نہیں پہنچ رہیں۔ اگر یہ جاری رہے تو اسے دوبارہ چلائیں۔"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13247,6 +13255,14 @@ msgstr "اسکیما فائل موجود نہیں یا لوڈ نہیں ہو سک
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "سرور نے جواب دیا مگر server.lock میں ابھی کوئی پورٹ نہیں"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "سرور رک گیا۔"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "سرور رک گیا۔ دوبارہ منسلک ہونے کے لیے اسے دوبارہ چلائیں۔"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

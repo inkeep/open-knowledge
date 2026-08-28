@@ -3213,6 +3213,14 @@ msgstr "متصل بـ"
 msgid "Connected to GitHub"
 msgstr "متصل بـ GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "متصل، لكن تعديلاتك لا تصل إلى الخادم بعد."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "متصل، لكن تعديلاتك لا تصل إلى الخادم بعد. أعد تشغيله إذا استمر ذلك."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13247,6 +13255,14 @@ msgstr "ملف المخطط غير موجود أو فشل تحميله — إض�
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "استجاب الخادم لكن server.lock لا يحتوي على منفذ بعد"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "توقّف الخادم."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "توقّف الخادم. أعد تشغيله لإعادة الاتصال."
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

@@ -663,6 +663,7 @@
     ],
     "8PifYj": ["Diagram Mermaid"],
     "8PmoQF": ["Membuka menu sisip pada posisi teks yang kosong atau aktif."],
+    "8QLpZe": ["Server berhenti. Mulai ulang untuk menyambung kembali."],
     "8RtNI0": ["Gagal memuat dokumen"],
     "8TvlHF": ["Crash dump"],
     "8Uv5e6": ["Agen"],
@@ -2554,6 +2555,9 @@
     "X3MMeA": ["Tidak satu pun masalah ini punya perbaikan otomatis."],
     "X59Fx2": ["Tidak dapat membuka dokumen ini di Slidev."],
     "X7ShnN": ["Buka panel agen"],
+    "X7fxS9": [
+      "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
+    ],
     "X7u0xR": [["0"], " templat tersedia"],
     "X8kjQX": ["Autentikasi ulang dengan GitHub"],
     "X9VpsP": ["Memuat isi folder"],
@@ -3914,6 +3918,7 @@
     "mYGY3B": ["Tanggal"],
     "mYzDD_": ["Folder worktree untuk cabang itu sudah ada."],
     "mZ1r4i": ["Buat dokumen dari ", ["label"]],
+    "m_mtGl": ["Server berhenti."],
     "maDWIB": ["Sumber cermin <0>api-spec</0>"],
     "makN88": [
       "Belum ada pola. Ketik nama folder atau berkas di bawah untuk mulai menyembunyikan berkas."
@@ -3985,6 +3990,7 @@
     "n4vt3Q": ["Unduh aplikasi"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
+    "n6N-xC": ["Terhubung, tetapi suntingan Anda belum sampai ke server."],
     "n6hXUm": [
       "Sinkronisasi otomatis secara berkala melakukan fetch, pull, dan push commit ke repositori git remote Anda agar suntingan Anda tetap selaras antarkomputer."
     ],

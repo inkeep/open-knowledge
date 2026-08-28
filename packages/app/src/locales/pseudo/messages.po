@@ -3209,6 +3209,14 @@ msgstr ""
 msgid "Connected to GitHub"
 msgstr ""
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr ""
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr ""
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13242,6 +13250,14 @@ msgstr ""
 
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
+msgstr ""
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr ""
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
 msgstr ""
 
 #. placeholder {0}: origin.trim()

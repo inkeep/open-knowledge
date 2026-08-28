@@ -3209,6 +3209,14 @@ msgstr "যার সঙ্গে যুক্ত"
 msgid "Connected to GitHub"
 msgstr "GitHub-এর সঙ্গে যুক্ত হয়েছে"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13243,6 +13251,14 @@ msgstr "স্কিমা ফাইলটি নেই বা লোড কর�
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "সার্ভার বন্ধ হয়ে গেছে।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "সার্ভার বন্ধ হয়ে গেছে। পুনরায় সংযোগের জন্য এটি পুনরায় চালু করুন।"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

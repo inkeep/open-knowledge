@@ -655,6 +655,7 @@
     "8OxKZy": ["Move succeeded but the sidebar may be out of date — refresh to resync"],
     "8PifYj": ["Mermaid diagram"],
     "8PmoQF": ["Open the insert menu in an empty or active text position."],
+    "8QLpZe": ["The server stopped. Restart it to reconnect."],
     "8RtNI0": ["Failed to load documents"],
     "8TvlHF": ["Crash dump"],
     "8Uv5e6": ["Agents"],
@@ -2536,6 +2537,9 @@
     "X3MMeA": ["None of these problems have an automatic fix."],
     "X59Fx2": ["Couldn't open this document in Slidev."],
     "X7ShnN": ["Open agents panel"],
+    "X7fxS9": [
+      "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+    ],
     "X7u0xR": [["0"], " templates available"],
     "X8kjQX": ["Re-authenticate with GitHub"],
     "X9VpsP": ["Loading folder contents"],
@@ -3885,6 +3889,7 @@
     "mYGY3B": ["Date"],
     "mYzDD_": ["A worktree folder for that branch already exists."],
     "mZ1r4i": ["Create a document from ", ["label"]],
+    "m_mtGl": ["The server stopped."],
     "maDWIB": ["Mirror source <0>api-spec</0>"],
     "makN88": ["No patterns yet. Type a folder or file name below to start hiding files."],
     "mdKFEy": ["You cancelled loading \"", ["docName"], "\"."],
@@ -3957,6 +3962,7 @@
     "n4vt3Q": ["Download app"],
     "n5Vy3l": ["Opened on branch ", ["branch"]],
     "n5n_vi": ["Private repository"],
+    "n6N-xC": ["Connected, but your edits aren't reaching the server yet."],
     "n6hXUm": [
       "Auto-sync periodically fetches, pulls, and pushes commits to your remote git repository so your edits stay in sync across machines."
     ],

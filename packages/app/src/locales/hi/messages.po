@@ -3209,6 +3209,14 @@ msgstr "इससे जुड़ा"
 msgid "Connected to GitHub"
 msgstr "GitHub से जुड़ गया"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "कनेक्ट हो गया, लेकिन आपके संपादन अभी सर्वर तक नहीं पहुँच रहे।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "कनेक्ट हो गया, लेकिन आपके संपादन अभी सर्वर तक नहीं पहुँच रहे। यदि यह जारी रहे तो इसे पुनः आरंभ करें।"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13243,6 +13251,14 @@ msgstr "स्कीमा फ़ाइल मौजूद नहीं है �
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "सर्वर ने जवाब दिया लेकिन server.lock में अभी कोई पोर्ट नहीं है"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "सर्वर बंद हो गया।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "सर्वर बंद हो गया। फिर से कनेक्ट करने के लिए इसे पुनः आरंभ करें।"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

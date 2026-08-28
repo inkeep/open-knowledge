@@ -3213,6 +3213,14 @@ msgstr "연결 대상"
 msgid "Connected to GitHub"
 msgstr "GitHub에 연결됨"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "연결되었지만 편집 내용이 아직 서버에 전달되지 않고 있습니다. 계속되면 서버를 재시작하세요."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13247,6 +13255,14 @@ msgstr "스키마 파일이 없거나 불러오지 못했습니다. 필드를 �
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "서버 응답 완료. server.lock에 포트 없음"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "서버가 중지되었습니다."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "서버가 중지되었습니다. 다시 연결하려면 재시작하세요."
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

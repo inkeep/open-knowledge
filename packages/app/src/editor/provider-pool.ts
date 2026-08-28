@@ -102,6 +102,25 @@ export type ServerRestartRecoveryState =
 const IDLE_SERVER_RESTART_RECOVERY: ServerRestartRecoveryState = Object.freeze({ kind: 'idle' });
 
 /**
+ * Ceiling on consecutive server-driven-close reauth attempts before the pool
+ * stops re-authing and emits a one-shot escalation breadcrumb (a structured
+ * `console.warn`, not a queryable state field).
+ *
+ * Division of labour, so this constant is not mistaken for the dead-server fix:
+ * a genuine server-driven close (application-level `CloseMessage`) carries a
+ * reason and normally means a rename/remove remap that a single `sendToken()`
+ * resolves. The DEAD-server reconnect loop is filtered upstream by the
+ * empty-reason guard in `onServerDrivenClose` (a dead server's raw WS drops carry
+ * no reason), so it never reaches — let alone touches — this counter. Concurrent
+ * closes are deduped by `serverDrivenCloseReauthInFlight`. This ceiling is the
+ * remaining backstop for a REASONED close that repeats with no intervening
+ * `synced` (e.g. a server bug resending 4205). The counter
+ * (`serverDrivenCloseReauthAttempts`) resets to 0 on any successful `synced`, so
+ * a genuine transient never trips it.
+ */
+const SERVER_DRIVEN_CLOSE_REAUTH_CEILING = 5;
+
+/**
  * Pool entries follow a two-state lifecycle modeled as a discriminated
  * union: `Active` (the normal case — provider live, persistence attached)
  * and `TearingDown` (transient, inside `destroyEntry` after the kind flip
@@ -236,6 +255,15 @@ interface ActivePoolEntry extends PoolEntryBase {
    * resets when `sendToken` settles (success or failure).
    */
   serverDrivenCloseReauthInFlight: boolean;
+  /**
+   * Count of consecutive reasoned server-driven-close reauth attempts since the
+   * last successful `synced`; reset to 0 in the `synced` handler. Held at most
+   * one PAST `SERVER_DRIVEN_CLOSE_REAUTH_CEILING` — the ceiling+1 value is the
+   * one-shot sentinel meaning "escalation breadcrumb already emitted". See that
+   * constant's docblock for what the bound protects against (and what it
+   * deliberately does not).
+   */
+  serverDrivenCloseReauthAttempts: number;
 }
 
 /**
@@ -251,6 +279,7 @@ interface TearingDownPoolEntry extends PoolEntryBase {
   observerFireCounterCleanup: null;
   pendingRecycleTimer: null;
   serverDrivenCloseReauthInFlight: false;
+  serverDrivenCloseReauthAttempts: 0;
 }
 
 type PoolEntry = ActivePoolEntry | TearingDownPoolEntry;
@@ -2018,6 +2047,7 @@ export class ProviderPool {
       pendingRecycleTimer: null,
       bridgeSetupFailed: false,
       serverDrivenCloseReauthInFlight: false,
+      serverDrivenCloseReauthAttempts: 0,
       persistenceAttachOwned: false,
       lineageEpochRecordAtOpen,
     };
@@ -2059,6 +2089,11 @@ export class ProviderPool {
         clearTimeout(entry.pendingRecycleTimer);
         entry.pendingRecycleTimer = null;
       }
+      // A successful sync means any prior server-driven-close reauth actually
+      // worked — clear the streak so a later REASONED close gets a fresh
+      // re-auth budget. Scope and non-scope of the bound:
+      // `SERVER_DRIVEN_CLOSE_REAUTH_CEILING`.
+      entry.serverDrivenCloseReauthAttempts = 0;
       this.markServerRestartRecoverySynced(docName);
       this.notify();
 
@@ -2342,7 +2377,44 @@ export class ProviderPool {
     // exists, cache miss) and the doc resumes — safe in both directions.
     const onServerDrivenClose = ({ event }: { event?: { code?: number; reason?: string } }) => {
       if (entry.kind !== 'active' || this.entries.get(docName) !== entry) return;
+      // Re-auth is only meaningful for a genuine server-driven doc-level close.
+      // This same `'close'` event also fires for a raw WS-transport drop (a dead
+      // server's reconnect loop, sleep/wake, a network blip), which arrives with
+      // an EMPTY reason — the server NEVER sends an empty CloseMessage reason (its
+      // default is "Server closed the connection"; `closeConnections` sends 4205
+      // "Reset Connection"), so an empty reason is definitionally a transport
+      // drop. Those are owned by the `'disconnect'` arm and the syncPromise
+      // rejection, not a doc-level auth decision: re-authing on them is pointless
+      // (the transport is gone, the token can't send) and, against a dead server,
+      // IS the close-after-close that would otherwise spin. Skip them at the root;
+      // what the ceiling below still backstops is documented on
+      // `SERVER_DRIVEN_CLOSE_REAUTH_CEILING`.
+      if (!event?.reason) return;
       if (entry.serverDrivenCloseReauthInFlight) return;
+      // Ceiling: stop re-authing once the streak of failed reauths (no
+      // intervening `synced`, which resets the counter) reaches the bound, and
+      // escalate ONCE with a structured `console.warn` breadcrumb — a log
+      // trail, not a queryable state field. What this protects against (and
+      // what the empty-reason guard above already owns instead) is documented
+      // once, on `SERVER_DRIVEN_CLOSE_REAUTH_CEILING`.
+      if (entry.serverDrivenCloseReauthAttempts >= SERVER_DRIVEN_CLOSE_REAUTH_CEILING) {
+        if (entry.serverDrivenCloseReauthAttempts === SERVER_DRIVEN_CLOSE_REAUTH_CEILING) {
+          // One-shot: bump past the ceiling so later closes short-circuit here
+          // without re-emitting the escalation.
+          entry.serverDrivenCloseReauthAttempts = SERVER_DRIVEN_CLOSE_REAUTH_CEILING + 1;
+          console.warn(
+            JSON.stringify({
+              event: 'ok-provider-server-driven-close-reauth-ceiling',
+              docName,
+              attempts: SERVER_DRIVEN_CLOSE_REAUTH_CEILING,
+              reason: event?.reason ?? '<unknown>',
+              code: event?.code ?? null,
+            }),
+          );
+        }
+        return;
+      }
+      entry.serverDrivenCloseReauthAttempts += 1;
       entry.serverDrivenCloseReauthInFlight = true;
       // Fire-and-forget. `sendToken` is async (the token resolver may be
       // a function), but failures that surface as a permission denial route
@@ -2372,18 +2444,15 @@ export class ProviderPool {
             entry.serverDrivenCloseReauthInFlight = false;
           }
         });
-      const reason = event?.reason ?? '<unknown>';
-      // `code` tells intentional closes apart from transport drops in a
-      // diagnostic bundle: the server NEVER sends an empty reason (its
-      // CloseMessage defaults to "Server closed the connection", and
-      // closeConnections sends 4205 "Reset Connection") — so reason '' means
-      // the raw WebSocket dropped (1006 abnormal, 1001 going-away) and the
-      // close was never a server decision at all.
+      // Reason is guaranteed non-empty here (empty-reason transport drops
+      // returned above), so this only records genuine server-driven closes.
+      // `code` still distinguishes the server's close variants (default vs 4205
+      // "Reset Connection") in a diagnostic bundle.
       console.info(
         JSON.stringify({
           event: 'ok-provider-server-driven-close-reauth',
           docName,
-          reason,
+          reason: event.reason,
           code: event?.code ?? null,
         }),
       );
@@ -3784,6 +3853,7 @@ export class ProviderPool {
     torn.observerFireCounterCleanup = null;
     torn.pendingRecycleTimer = null;
     torn.serverDrivenCloseReauthInFlight = false;
+    torn.serverDrivenCloseReauthAttempts = 0;
 
     if (pendingRecycleTimer) clearTimeout(pendingRecycleTimer);
 

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from '../../src/main/show-gate.ts';
 import {
   type BrowserWindowLike,
+  type EphemeralOpenIdentity,
   type ServerLockMetadataLike,
   WindowManager,
   type WindowManagerDeps,
@@ -202,6 +203,34 @@ function buildEphemeralEnv(): EphemeralEnv {
 const FILE = '/Users/me/notes/todo.md';
 const PARENT = '/Users/me/notes';
 
+/** Controllable `setInterval`/`clearInterval` stubs for the exit-watch. Each
+ *  interval is a record whose `cb` fires on `tick()` until cleared. Module-scoped
+ *  so both the createEphemeralWindow and keepalive describes share one impl. */
+interface FakeInterval {
+  cb: () => void;
+  cleared: boolean;
+}
+function wireIntervalTimers(deps: WindowManagerDeps): FakeInterval[] {
+  const intervals: FakeInterval[] = [];
+  deps.setInterval = (cb: () => void) => {
+    const rec: FakeInterval = { cb, cleared: false };
+    intervals.push(rec);
+    return rec;
+  };
+  deps.clearInterval = (handle: unknown) => {
+    (handle as FakeInterval).cleared = true;
+  };
+  return intervals;
+}
+/** Advance every live interval `rounds` times (a cleared interval is inert). */
+function tick(intervals: FakeInterval[], rounds: number): void {
+  for (let r = 0; r < rounds; r++) {
+    for (const rec of intervals) {
+      if (!rec.cleared) rec.cb();
+    }
+  }
+}
+
 describe('createEphemeralWindow', () => {
   let env: EphemeralEnv;
   beforeEach(() => {
@@ -347,8 +376,8 @@ describe('createEphemeralWindow', () => {
 
   // Same two-tier wait as the project-open path, second call site. Without
   // this, dropping the progress-deadline argument here would regress the
-  // ephemeral path to the original bug while the project-open coverage stayed
-  // green. The base env's `setTimeout` is a no-op that never invokes its
+  // ephemeral path's spawn-lock progress-deadline handling while the project-open
+  // coverage stayed green. The base env's `setTimeout` is a no-op that never invokes its
   // callback — fine for the `deadlineMs = 0` tests, which return before any
   // sleep is attempted — so this test supplies one that fires immediately.
   test('a live child that binds after the startup deadline is not SIGTERMd', async () => {
@@ -584,33 +613,8 @@ describe('createEphemeralWindow', () => {
   // shutdown) while its BrowserWindow stays open. The pre-fix dedup returned the
   // cached ProjectContext whenever the window was alive, handing the renderer a
   // dead `apiOrigin` — `ok open <file>` "succeeded" but started no session.
-
-  /** Controllable `setInterval`/`clearInterval` stubs for the exit-watch. Each
-   *  interval is a record whose `cb` fires on `tick()` until cleared. */
-  interface FakeInterval {
-    cb: () => void;
-    cleared: boolean;
-  }
-  function wireIntervalTimers(deps: WindowManagerDeps): FakeInterval[] {
-    const intervals: FakeInterval[] = [];
-    deps.setInterval = (cb: () => void) => {
-      const rec: FakeInterval = { cb, cleared: false };
-      intervals.push(rec);
-      return rec;
-    };
-    deps.clearInterval = (handle: unknown) => {
-      (handle as FakeInterval).cleared = true;
-    };
-    return intervals;
-  }
-  /** Advance every live interval `rounds` times (a cleared interval is inert). */
-  function tick(intervals: FakeInterval[], rounds: number): void {
-    for (let r = 0; r < rounds; r++) {
-      for (const rec of intervals) {
-        if (!rec.cleared) rec.cb();
-      }
-    }
-  }
+  // (`wireIntervalTimers` / `tick` are module-scoped, shared with the keepalive
+  // describe below.)
 
   test('re-open after the ephemeral server dies spawns a FRESH live session, not the dead one', async () => {
     const wm = new WindowManager(env.deps);
@@ -842,5 +846,517 @@ describe('createEphemeralWindow', () => {
     expect(env.removedDirs).not.toContain(second.ephemeral?.projectDir);
     // The live replacement's server was never SIGTERM'd by the stale close.
     expect(env.killCalls.filter((k) => k.pid === second.ephemeral?.pid)).toEqual([]);
+  });
+});
+
+// An ephemeral single-file server inherits the 30-min idle-shutdown default, and
+// the idle timer counts only /collab connections. These pin that an ephemeral
+// window opens a keepalive against its own (temp) lock and tears it down on close,
+// mirroring the project-window keepalive, so the server is held up for as long as
+// the editor window is open.
+describe('ephemeral keepalive lifecycle', () => {
+  let env: EphemeralEnv;
+  beforeEach(() => {
+    env = buildEphemeralEnv();
+  });
+
+  function makeKeepaliveMock() {
+    const calls: Array<{ lockDir: string }> = [];
+    const handles: Array<{ closed: boolean }> = [];
+    const create = vi.fn((opts: { lockDir: string }) => {
+      calls.push(opts);
+      const handle = { closed: false };
+      handles.push(handle);
+      return {
+        close: () => {
+          handle.closed = true;
+        },
+        isConnected: () => !handle.closed,
+      };
+    });
+    return { create, calls, handles };
+  }
+
+  test('opens a keepalive against the ephemeral lock when the window mounts', async () => {
+    const ka = makeKeepaliveMock();
+    env.deps.createKeepalive = ka.create as unknown as WindowManagerDeps['createKeepalive'];
+    const wm = new WindowManager(env.deps);
+    const ctx = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+
+    expect(ka.calls).toHaveLength(1);
+    // Keyed to the throwaway temp lock, NOT the file's parent dir.
+    expect(ka.calls[0]?.lockDir).toBe(getLocalDir('/tmp/ok-ephemeral-1'));
+    expect(ka.calls[0]?.lockDir).toBe(ctx.ephemeral?.lockDir);
+    expect(ka.handles[0]?.closed).toBe(false);
+  });
+
+  test('closes the keepalive when the window closes', async () => {
+    const ka = makeKeepaliveMock();
+    env.deps.createKeepalive = ka.create as unknown as WindowManagerDeps['createKeepalive'];
+    const wm = new WindowManager(env.deps);
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    expect(ka.handles[0]?.closed).toBe(false);
+
+    env.windows[0]?.fireClose();
+    await wait(20);
+    expect(ka.handles[0]?.closed).toBe(true);
+  });
+
+  test('re-open after the server died replaces the keepalive (old closed, fresh open)', async () => {
+    const ka = makeKeepaliveMock();
+    env.deps.createKeepalive = ka.create as unknown as WindowManagerDeps['createKeepalive'];
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    env.killServer(first.ephemeral?.pid as number);
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+
+    expect(ka.calls).toHaveLength(2); // fresh session opened its own keepalive
+    expect(ka.handles[0]?.closed).toBe(true); // the dead session's keepalive was retired
+    expect(ka.handles[1]?.closed).toBe(false);
+  });
+
+  test('no createKeepalive dep → no keepalive opened (back-compat)', async () => {
+    const wm = new WindowManager(env.deps);
+    await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    expect(env.windows).toHaveLength(1);
+  });
+
+  test('exit-watch closes the keepalive when the server dies out-of-band', async () => {
+    const ka = makeKeepaliveMock();
+    env.deps.createKeepalive = ka.create as unknown as WindowManagerDeps['createKeepalive'];
+    const intervals = wireIntervalTimers(env.deps);
+
+    const wm = new WindowManager(env.deps);
+    const ctx = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    expect(ka.handles[0]?.closed).toBe(false);
+
+    // The detached server dies while the window stays open; the next exit-watch
+    // poll reaps the session AND must close the keepalive — otherwise it
+    // reconnect-loops against the removed lockDir for the window's whole
+    // remaining lifetime.
+    env.killServer(ctx.ephemeral?.pid as number);
+    tick(intervals, 1);
+    await wait(20);
+
+    expect(ka.handles[0]?.closed).toBe(true);
+    // The map entry is deliberately KEPT for session-restore; a later real close
+    // is then a no-op on the already-closed keepalive.
+    expect(wm.getWindowFor(FILE)).toBe(ctx);
+  });
+
+  test('a re-open whose respawn fails still closes the dead session keepalive (no orphan loop)', async () => {
+    const ka = makeKeepaliveMock();
+    env.deps.createKeepalive = ka.create as unknown as WindowManagerDeps['createKeepalive'];
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    expect(ka.handles[0]?.closed).toBe(false);
+
+    env.killServer(first.ephemeral?.pid as number);
+    // The re-open's respawn throws AFTER the stale-entry branch has evicted the
+    // slot but BEFORE a fresh keepalive is installed: the stale-entry
+    // `closeKeepalive` must have already closed the dead session's keepalive,
+    // because the old window's `'closed'` teardown can no longer run (the slot is
+    // gone), so this is the only path that would clean it up.
+    env.deps.spawnDetachedServer = async () => {
+      throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
+    };
+    await expect(
+      wm.createEphemeralWindow({ canonicalFilePath: FILE, contentDir: PARENT, docName: 'todo' }),
+    ).rejects.toThrow('spawn boom');
+
+    // The dead session's keepalive was closed by the stale-entry teardown, not
+    // left pointing at the removed lock; the failed respawn opened no new one.
+    expect(ka.handles[0]?.closed).toBe(true);
+    expect(ka.calls).toHaveLength(1);
+  });
+});
+
+// --- restartEphemeralServer: the in-window "Restart server" affordance for a
+// single-file session. The project restart path is directory-keyed and cannot
+// reach a file-keyed ephemeral session; this replays the open through
+// `createEphemeralWindow` (dead → reap + respawn; live → dedup) and retires the
+// dead window once a live replacement exists (recreate-then-close). Same DI
+// harness as createEphemeralWindow above.
+describe('restartEphemeralServer', () => {
+  let env: EphemeralEnv;
+  beforeEach(() => {
+    env = buildEphemeralEnv();
+  });
+
+  // Resolve the restart identity the IPC router would hand this method — the
+  // durable window→identity lookup, NOT `windowsByPath` (which a re-open evicts).
+  const identityOf = (wm: WindowManager, win: BrowserWindowLike): EphemeralOpenIdentity => {
+    const id = wm.getEphemeralIdentityForWindow(win);
+    if (!id) throw new Error('expected an ephemeral identity for the window');
+    return id;
+  };
+
+  test('dead server (no re-open): restart respawns a fresh session and retires the dead window', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    const deadPid = first.ephemeral?.pid as number;
+    const deadOrigin = first.apiOrigin;
+    const deadTempDir = first.ephemeral?.projectDir as string;
+
+    // The detached server dies while its window stays open — the exact state the
+    // "server gone" affordance renders against.
+    env.killServer(deadPid);
+
+    const outcome = await wm.restartEphemeralServer(identityOf(wm, first.window), first.window);
+    await wait(20);
+
+    expect(outcome).toEqual({ ok: true });
+    // A fresh server was spawned; the map now resolves the file to the live one.
+    expect(env.spawnCalls).toHaveLength(2);
+    const live = wm.getWindowFor(FILE);
+    expect(live).toBeDefined();
+    expect(live).not.toBe(first);
+    expect(live?.apiOrigin).not.toBe(deadOrigin);
+    // The dead window was retired, and the dead session's throwaway temp dir was
+    // reaped — converged to one window, no zombie, no leak.
+    expect(env.windows[0]?.isDestroyed()).toBe(true);
+    expect(env.removedDirs).toContain(deadTempDir);
+    expect(live?.window.isDestroyed()).toBe(false);
+  });
+
+  test('live session (restart raced a healthy server): terminates it and respawns fresh — a restart must restart', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    const livePid = first.ephemeral?.pid as number;
+    const liveTempDir = first.ephemeral?.projectDir as string;
+    const liveOrigin = first.apiOrigin;
+
+    // The server is alive but the user explicitly asked to restart (e.g. sync is
+    // wedged and the reach-error affordance fired). An explicit restart must
+    // ACTUALLY restart: `createEphemeralWindow` would otherwise focus-dedup onto
+    // the live server and report success having done nothing (the renderer reads
+    // that as "torn down and recreated" and shows no feedback). So the live
+    // server is terminated and a fresh one spawned.
+    const outcome = await wm.restartEphemeralServer(identityOf(wm, first.window), first.window);
+    await wait(20);
+
+    expect(outcome).toEqual({ ok: true });
+    expect(env.spawnCalls).toHaveLength(2); // a real respawn, not a no-op dedup
+    // The previously-live server was terminated and its throwaway temp dir reaped.
+    expect(env.killCalls.some((k) => k.pid === livePid && k.signal === 'SIGTERM')).toBe(true);
+    expect(env.removedDirs).toContain(liveTempDir);
+    // Converged to one fresh live window; the originating one was retired.
+    expect(env.windows[0]?.isDestroyed()).toBe(true);
+    const live = wm.getWindowFor(FILE);
+    expect(live).not.toBe(first);
+    expect(live?.apiOrigin).not.toBe(liveOrigin);
+    expect(live?.window.isDestroyed()).toBe(false);
+  });
+
+  test("ownership gate: a genuine orphan's restart converges onto the live sibling without killing it", async () => {
+    const wm = new WindowManager(env.deps);
+    const orphan = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    // Neuter the orphan's close so the re-open's retire sweep can't actually
+    // destroy it — leaving a REAL orphan: still open, still in the identity map,
+    // but no longer the slot owner. Production reaches this state only inside
+    // the <=2s `closeAndAwait` grace; the harness's synchronous close would
+    // otherwise collapse it instantly, making the retire-the-orphan path the
+    // gate's docblock promises unreachable.
+    const orphanClose = vi.fn();
+    (env.windows[0] as FakeWindow).close = orphanClose as unknown as FakeWindow['close'];
+
+    env.killServer(orphan.ephemeral?.pid as number);
+    // Re-open spawns the live sibling and tries (via retire) to close the orphan.
+    const live = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+    const livePid = live.ephemeral?.pid as number;
+    expect(wm.getWindowFor(FILE)).toBe(live);
+    expect(orphanClose).toHaveBeenCalled(); // the re-open's retire swept the orphan
+    expect(wm.getEphemeralIdentityForWindow(orphan.window)).toBeDefined(); // still an orphan
+
+    // The orphan (not the slot owner) fires Restart. The gate must decline to
+    // terminate the LIVE sibling's server and instead dedup onto it, retiring the
+    // orphan again — converge, don't kill a healthy session.
+    orphanClose.mockClear();
+    const spawnsBefore = env.spawnCalls.length;
+    const outcome = await wm.restartEphemeralServer(identityOf(wm, orphan.window), orphan.window);
+    await wait(20);
+
+    expect(outcome).toEqual({ ok: true });
+    // The two assertions that discriminate the gate's arms: a wrongly-terminating
+    // branch would add a spawn AND a SIGTERM against the live pid.
+    expect(env.spawnCalls).toHaveLength(spawnsBefore); // dedup onto the sibling; no third spawn
+    expect(env.killCalls.some((k) => k.pid === livePid)).toBe(false); // sibling's server untouched
+    expect(wm.getWindowFor(FILE)).toBe(live);
+    // Sanity, not discrimination: the retire sweep targets the orphan under
+    // EITHER arm (a wrong terminate also ends in a fresh spawn whose sweep runs).
+    expect(orphanClose).toHaveBeenCalled();
+  });
+
+  test('the retire sweep closes EVERY stale window in one pass (stale.length > 1)', async () => {
+    // Two orphans for the same file (each with a neutered close so the sweep
+    // cannot collapse them) plus a fresh live spawn — the docblock's plural
+    // ("every OTHER open ephemeral window") exercised with a stale set larger
+    // than one, which a `break` after the first target would fail.
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    const firstClose = vi.fn();
+    (env.windows[0] as FakeWindow).close = firstClose as unknown as FakeWindow['close'];
+    env.killServer(first.ephemeral?.pid as number);
+
+    const second = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+    const secondClose = vi.fn();
+    (env.windows[1] as FakeWindow).close = secondClose as unknown as FakeWindow['close'];
+    env.killServer(second.ephemeral?.pid as number);
+    // Both prior windows are now stale identity-map entries; both survived their
+    // sweeps (neutered close), so the next spawn's sweep sees stale.length === 2.
+    firstClose.mockClear();
+    secondClose.mockClear();
+
+    const third = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+
+    expect(wm.getWindowFor(FILE)).toBe(third);
+    expect(firstClose).toHaveBeenCalled(); // both stale windows swept, not just
+    expect(secondClose).toHaveBeenCalled(); // the most recent one
+    expect(third.window.isDestroyed()).toBe(false);
+  });
+
+  // Re-opening `ok open <file>` after the server died must not leave the dead
+  // window dangling beside the fresh one: the re-open retires the dead window
+  // itself, with no manual "Restart server" click needed.
+  test('re-open after server death auto-retires the dead window (converges to one)', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    env.killServer(first.ephemeral?.pid as number);
+
+    const reopened = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+
+    expect(reopened).not.toBe(first);
+    expect(env.spawnCalls).toHaveLength(2);
+    // The dead window is retired by the re-open — not left dangling.
+    expect(env.windows[0]?.isDestroyed()).toBe(true);
+    expect(reopened.window.isDestroyed()).toBe(false);
+    expect(wm.getWindowFor(FILE)).toBe(reopened);
+    // Only the live window's identity survives.
+    expect(wm.getEphemeralIdentityForWindow(first.window)).toBeUndefined();
+    expect(wm.getEphemeralIdentityForWindow(reopened.window)).toBeDefined();
+  });
+
+  // Re-open, then EVERY server for the file dies at once (e.g. `pkill -f
+  // ok-ephemeral` hits them all). Restart from the surviving window must respawn
+  // ONE fresh session and retire every stale window — converge to one, never
+  // accumulate a third window.
+  test('re-open then all servers die: restart respawns once and retires every stale window', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    env.killServer(first.ephemeral?.pid as number);
+    const reopened = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    await wait(20);
+    // The re-open already retired the first window; the second is live.
+    expect(env.windows[0]?.isDestroyed()).toBe(true);
+
+    // Now the second server dies too.
+    env.killServer(reopened.ephemeral?.pid as number);
+
+    const outcome = await wm.restartEphemeralServer(
+      identityOf(wm, reopened.window),
+      reopened.window,
+    );
+    await wait(20);
+
+    expect(outcome).toEqual({ ok: true });
+    expect(env.spawnCalls).toHaveLength(3); // second was dead → one fresh spawn (no accumulation)
+    expect(env.windows[1]?.isDestroyed()).toBe(true); // the now-dead reopened window retired
+    const live = wm.getWindowFor(FILE);
+    expect(live?.window.isDestroyed()).toBe(false);
+    // Exactly one live identity remains for the file.
+    expect(wm.getEphemeralIdentityForWindow(reopened.window)).toBeUndefined();
+    expect(live && wm.getEphemeralIdentityForWindow(live.window)).toBeDefined();
+  });
+
+  test('respawn failure: returns {ok:false} and leaves the originating window open', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    const identity = identityOf(wm, first.window);
+    env.killServer(first.ephemeral?.pid as number);
+    // The respawn throws (spawn failure) — the affordance must surface a failure
+    // the renderer can act on, not tear down the window the user is still reading.
+    env.deps.spawnDetachedServer = async () => {
+      throw Object.assign(new Error('spawn boom'), { kind: 'spawn-error' });
+    };
+
+    const outcome = await wm.restartEphemeralServer(identity, first.window);
+
+    expect(outcome).toEqual({ ok: false, reason: 'other' });
+    expect(env.windows[0]?.isDestroyed()).toBe(false); // originating window kept
+  });
+
+  test('getEphemeralIdentityForWindow: present for an ephemeral window, absent for others, cleared on close', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+
+    // Present + carries the exact replay inputs.
+    expect(wm.getEphemeralIdentityForWindow(first.window)).toEqual({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    // A window this manager never created (a project window, in practice) has no
+    // ephemeral identity → the IPC routes it to the project restart path.
+    const strangerWindow = makeWindow();
+    expect(wm.getEphemeralIdentityForWindow(strangerWindow)).toBeUndefined();
+
+    // Cleared when the window actually closes.
+    first.window.fireClose();
+    await wait(20);
+    expect(wm.getEphemeralIdentityForWindow(first.window)).toBeUndefined();
+  });
+});
+
+// The `ok:project:restart-server` IPC picks the restart path from the REQUESTING
+// window, not the `projectPath` arg. Keeping that decision on the class that owns
+// the identity map (rather than as a ternary in the IPC handler, which no test
+// tier can reach — the bootstrap suite stubs `registerIpcHandlers` out) makes each
+// branch reachable here: ephemeral window, plain project window, null/destroyed
+// sender. Deleting or inverting the branch would restore the directory-keyed
+// misroute for ephemeral single-file sessions, and now fails a test.
+describe('restartServerForWindow (IPC routing seam)', () => {
+  let env: EphemeralEnv;
+  beforeEach(() => {
+    env = buildEphemeralEnv();
+  });
+
+  test('an ephemeral sender routes to the ephemeral respawn (observable), ignoring the projectPath arg', async () => {
+    const wm = new WindowManager(env.deps);
+    const first = await wm.createEphemeralWindow({
+      canonicalFilePath: FILE,
+      contentDir: PARENT,
+      docName: 'todo',
+    });
+    env.killServer(first.ephemeral?.pid as number);
+
+    // A deliberately-wrong projectPath: if routing fell through to the
+    // directory-keyed `restartAttachedServer` (the misroute this chain removes),
+    // it would drive that bogus dir and never touch the file.
+    const outcome = await wm.restartServerForWindow(first.window, '/some/unrelated/project', {});
+    await wait(20);
+
+    // Observable proof of the ephemeral path: a fresh single-file server spawned
+    // and the file converged to a live window. `restartAttachedServer` would have
+    // found no lock at the bogus dir and spawned nothing for this file.
+    expect(outcome).toEqual({ ok: true });
+    expect(env.spawnCalls).toHaveLength(2);
+    expect(wm.getWindowFor(FILE)?.window.isDestroyed()).toBe(false);
+  });
+
+  test('a plain project sender window routes to restartAttachedServer with the projectPath + args', async () => {
+    const wm = new WindowManager(env.deps);
+    // A window this manager never registered as ephemeral (a project window).
+    const projectWindow = makeWindow();
+    // `restartAttachedServer`'s real path can't run in this ephemeral harness
+    // (its `forkUtility` dep deliberately throws), so spy on it — with a
+    // distinctive outcome, so the pass-through assertion below discriminates
+    // this branch from anything the ephemeral path could produce.
+    const attached = vi
+      .spyOn(wm, 'restartAttachedServer')
+      .mockResolvedValue({ ok: false, reason: 'eperm' });
+
+    const outcome = await wm.restartServerForWindow(projectWindow, '/some/project', {
+      localOpCliArgs: ['--y'],
+    });
+
+    expect(attached).toHaveBeenCalledWith('/some/project', { localOpCliArgs: ['--y'] });
+    expect(outcome).toEqual({ ok: false, reason: 'eperm' }); // the attached outcome, verbatim
+  });
+
+  test('a null sender (destroyed webContents) routes to restartAttachedServer', async () => {
+    const wm = new WindowManager(env.deps);
+    const attached = vi
+      .spyOn(wm, 'restartAttachedServer')
+      .mockResolvedValue({ ok: false, reason: 'eperm' });
+
+    const outcome = await wm.restartServerForWindow(null, '/some/project', {});
+
+    expect(attached).toHaveBeenCalledWith('/some/project', {});
+    expect(outcome).toEqual({ ok: false, reason: 'eperm' }); // the attached outcome, verbatim
   });
 });

@@ -6748,13 +6748,13 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:restart-server', async (_event, projectPath) => {
-    // Renderer-initiated from the version-drift notification. Terminates the
-    // attached (not-owned) server and recreates the window against a fresh
-    // own-version spawn. The returned outcome only reaches the renderer on
-    // failure (a surviving window) — success recreates the originating window.
-    // The try/catch makes the contract uniform: every path resolves with an
-    // outcome rather than rejecting on a destroyed renderer.
+  handle('ok:project:restart-server', async (event, projectPath) => {
+    // Renderer-initiated from the version-drift notification or the "server
+    // gone" error affordance. Terminates the server and recreates/retires the
+    // originating window against a fresh spawn. The returned outcome only reaches
+    // the renderer on failure (a surviving window). The try/catch makes the
+    // contract uniform: every path resolves with an outcome rather than rejecting
+    // on a destroyed renderer.
     if (!wm) {
       logIpcError({
         event: 'ipc.error',
@@ -6765,7 +6765,14 @@ function registerIpcHandlers() {
       return { ok: false, reason: 'other' };
     }
     try {
-      const outcome = await wm.restartAttachedServer(projectPath, {
+      // Route by the REQUESTING window, not the `projectPath` arg — an ephemeral
+      // single-file window's server is file-keyed under a throwaway temp dir the
+      // directory-keyed `restartAttachedServer` can't reach. The decision lives in
+      // `restartServerForWindow` (on the class that owns the identity map) so it is
+      // unit-testable through the DI harness; this handler only adapts the sender
+      // webContents to a window and threads the CLI args.
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      const outcome = await wm.restartServerForWindow(senderWindow, projectPath, {
         localOpCliArgs: resolveLocalOpCliArgs(),
       });
       if (outcome.ok === false) {

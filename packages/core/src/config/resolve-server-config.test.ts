@@ -92,6 +92,45 @@ describe('resolveServerRuntimeConfig — defaults', () => {
     expect(eagerContainer.openBrowser).toBe(true);
     expect(eagerContainer.idleShutdown).toBe('2h');
   });
+
+  test('an exposed loopback deployment (allowExternal + externalUrl) does NOT idle-die', () => {
+    // The tunnel-to-loopback remote recipe: bound to 127.0.0.1 but declared
+    // reachable. The idle timer is blind to the `/mcp` agent keeping it busy, so
+    // exposure must derive `off` (like a 0.0.0.0 bind already does).
+    const resolved = resolveServerRuntimeConfig(
+      parse({ server: { externalUrl: 'https://kb.example.ts.net', allowExternal: true } }),
+    );
+    expect(resolved.loopbackOnly).toBe(true);
+    expect(resolved.idleShutdown).toBe('off');
+  });
+
+  test('an unexposed loopback deployment still idles out', () => {
+    // allowExternal without an externalUrl is not "exposed" — keep the default.
+    const resolved = resolveServerRuntimeConfig(parse({ server: { allowExternal: true } }));
+    expect(resolved.loopbackOnly).toBe(true);
+    expect(resolved.idleShutdown).toBe(DEFAULT_LOOPBACK_IDLE_SHUTDOWN);
+  });
+
+  test('externalUrl without allowExternal is not exposed — idle default kept', () => {
+    const resolved = resolveServerRuntimeConfig(
+      parse({ server: { externalUrl: 'https://kb.example.ts.net' } }),
+    );
+    expect(resolved.loopbackOnly).toBe(true);
+    expect(resolved.idleShutdown).toBe(DEFAULT_LOOPBACK_IDLE_SHUTDOWN);
+  });
+
+  test('an explicit idleShutdown wins even when exposed', () => {
+    const resolved = resolveServerRuntimeConfig(
+      parse({
+        server: {
+          externalUrl: 'https://kb.example.ts.net',
+          allowExternal: true,
+          idleShutdown: '45m',
+        },
+      }),
+    );
+    expect(resolved.idleShutdown).toBe('45m');
+  });
 });
 
 describe('resolveServerRuntimeConfig — externalUrl', () => {

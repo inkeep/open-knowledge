@@ -534,6 +534,17 @@ interface ProjectContext {
   };
 }
 
+/**
+ * The `createEphemeralWindow` inputs retained per-window so a later "Restart
+ * server" can replay the exact open — even for a dead window a re-open has
+ * already orphaned from `windowsByPath`. See `ephemeralWindowIdentity`.
+ */
+export interface EphemeralOpenIdentity {
+  canonicalFilePath: string;
+  contentDir: string;
+  docName: string;
+}
+
 interface CreateProjectWindowOpts {
   projectPath: string;
   /**
@@ -1159,6 +1170,18 @@ export class WindowManager {
    * `canonicalKey` field on `ProjectContext`.
    */
   private readonly windowsByPath = new Map<string, ProjectContext>();
+
+  /**
+   * BrowserWindow → the original `createEphemeralWindow` inputs, for every
+   * ephemeral single-file window, cleared only when that window actually closes.
+   * Distinct from `windowsByPath`: a re-open after the server died replaces the
+   * slot with the fresh window, orphaning the still-open dead window from that
+   * map — but a "Restart server" click can still come from the dead window, and
+   * it must route to the ephemeral respawn (not the directory-keyed project
+   * restart, which fails with a toast loop). Also the source for
+   * `retireStaleWindowsForFile` (find every window for a file to converge on one).
+   */
+  private readonly ephemeralWindowIdentity = new Map<BrowserWindowLike, EphemeralOpenIdentity>();
 
   /**
    * BrowserWindow → its ProjectContext for two of the spans in which no
@@ -2141,6 +2164,211 @@ export class WindowManager {
   }
 
   /**
+   * The restart identity for a window, if it is an ephemeral single-file window.
+   * Looks up the durable `ephemeralWindowIdentity` map (NOT `windowsByPath`), so
+   * it still resolves a dead window that a re-open has orphaned from the slot
+   * map — the case where routing a restart to the project path produced the
+   * error-toast loop. Returns `undefined` for project windows.
+   *
+   * Public for the DI test harness (which resolves the identity the IPC would
+   * hand `restartEphemeralServer`); production routes through the sibling
+   * `restartServerForWindow`, which calls this internally.
+   */
+  getEphemeralIdentityForWindow(win: BrowserWindowLike): EphemeralOpenIdentity | undefined {
+    return this.ephemeralWindowIdentity.get(win);
+  }
+
+  /**
+   * Restart the server for an ephemeral single-file window (the "server gone"
+   * affordance's action). `restartAttachedServer` is directory-keyed and cannot
+   * reach a file-keyed ephemeral session (its lock lives under a throwaway
+   * `$TMPDIR/ok-ephemeral-*` dir, keyed by the canonical FILE path) — routing a
+   * single-file restart there failed with a retry-toast loop. Instead respawn
+   * through `createEphemeralWindow`, which then retires every other window for the
+   * file, converging to a single live window. Routed here from the IPC by the
+   * durable `ephemeralWindowIdentity` lookup, so it works even for a dead window a
+   * re-open already orphaned from `windowsByPath`.
+   *
+   * A restart must *actually restart*: `createEphemeralWindow` normally DEDUPS
+   * onto a live server (correct for `ok open <file>`, wrong here — it would focus
+   * the window, spawn nothing, and resolve `{ ok: true }` having restarted
+   * nothing, which the renderer reads as "torn down and recreated" and shows no
+   * feedback). So when a live session for this file still exists — e.g. the
+   * DocumentErrorBoundary reach-error path fires while the process is alive but
+   * sync is wedged — terminate it and evict its slot FIRST, forcing the recreate
+   * to spawn a fresh server. A dead session needs no pre-teardown; the recreate's
+   * own stale-entry path reaps it. The fresh window IS the success signal (the
+   * old originating window is closed by the recreate's `retireStaleWindowsForFile`
+   * sweep, so the caller's invoke rejects and stops — the contract
+   * `restartCollabServer` already expects), so there is no separate
+   * `ok:server-restarted` toast to thread as `restartAttachedServer` does.
+   *
+   * No `onProjectServerRestarted` (the sibling's note-window recreate): an
+   * ephemeral single-file session structurally cannot pop out note windows
+   * (`open-in-new-window` is `singleFileHidden`), so there is nothing to recreate.
+   *
+   * `requestingWindow` gates the live-terminate to slot OWNERSHIP: the live server
+   * is torn down only when the window that asked is the one currently holding the
+   * file's slot (the wedged-but-alive case it is written for). A superseded window
+   * that a re-open orphaned from the slot (its live sibling now owns it) must NOT
+   * terminate that healthy sibling — it falls through to `createEphemeralWindow`,
+   * which dedups onto the live sibling and retires the orphan. Convergence
+   * normally closes such orphans first, so this is a guard on the narrow
+   * `closeAndAwait` grace window. Required rather than optional so a caller cannot
+   * omit it and silently fall into the dedup-only path — that returns
+   * `{ ok: true }` having spawned nothing, the outcome this method exists to
+   * prevent.
+   */
+  async restartEphemeralServer(
+    identity: EphemeralOpenIdentity,
+    requestingWindow: BrowserWindowLike,
+  ): Promise<OkServerRestartOutcome> {
+    this.deps.log?.info(
+      {
+        event: 'desktop-ephemeral-restart',
+        outcome: 'requested',
+        file: identity.canonicalFilePath,
+      },
+      '[window-manager] ephemeral server restart requested',
+    );
+    try {
+      const canonicalKey = this.canonicalizeKey(identity.canonicalFilePath);
+      const current = this.windowsByPath.get(canonicalKey);
+      if (
+        current &&
+        current.window === requestingWindow &&
+        current.window.isDestroyed?.() !== true &&
+        this.isEphemeralServerAlive(current)
+      ) {
+        // Live server + open window + the requester owns the slot: this is the
+        // "restart raced a healthy (but wedged) server" case. Evict the slot,
+        // close its keepalive, and terminate the server so the recreate below
+        // cannot dedup back onto it.
+        this.deps.log?.info(
+          {
+            event: 'desktop-ephemeral-restart',
+            outcome: 'terminated-live',
+            file: identity.canonicalFilePath,
+          },
+          '[window-manager] terminating the live ephemeral server before respawn',
+        );
+        this.windowsByPath.delete(canonicalKey);
+        this.closeKeepalive(canonicalKey);
+        if (current.ephemeral) await this.teardownEphemeralSession(current.ephemeral);
+      }
+      const recreated = await this.createEphemeralWindow({
+        canonicalFilePath: identity.canonicalFilePath,
+        contentDir: identity.contentDir,
+        docName: identity.docName,
+      });
+      this.deps.log?.info(
+        {
+          event: 'desktop-ephemeral-restart',
+          outcome: 'respawned',
+          file: identity.canonicalFilePath,
+          apiOrigin: recreated.apiOrigin,
+        },
+        '[window-manager] ephemeral server restart respawned',
+      );
+      return { ok: true };
+    } catch (err) {
+      this.deps.log?.warn(
+        {
+          event: 'desktop-ephemeral-restart',
+          outcome: 'recreate-failed',
+          err: err instanceof Error ? (err.stack ?? err.message) : String(err),
+          file: identity.canonicalFilePath,
+        },
+        '[window-manager] ephemeral server restart could not respawn',
+      );
+      // The dead originating window stays open so its renderer surfaces failure.
+      return { ok: false, reason: 'other' };
+    }
+  }
+
+  /**
+   * Route a renderer-initiated `ok:project:restart-server` to the correct restart
+   * by the REQUESTING window, not the `projectPath` arg. An ephemeral single-file
+   * window's server is file-keyed under a throwaway temp dir, so the
+   * directory-keyed `restartAttachedServer` can't reach it and drops the user into
+   * a retry-toast loop; the durable window→identity map resolves the ephemeral
+   * case (and still resolves a dead window a re-open has orphaned from
+   * `windowsByPath`). Kept here — a testable method on the class that owns the
+   * maps — rather than as an inline ternary in the IPC handler, which no test tier
+   * can reach.
+   */
+  async restartServerForWindow(
+    sender: BrowserWindowLike | null,
+    projectPath: string,
+    opts: { localOpCliArgs?: string[] },
+  ): Promise<OkServerRestartOutcome> {
+    if (sender !== null) {
+      const ephemeralIdentity = this.getEphemeralIdentityForWindow(sender);
+      if (ephemeralIdentity !== undefined) {
+        // `sender` is the window whose identity we just resolved; pass it so the
+        // live-terminate is gated on that window still owning the file's slot.
+        return this.restartEphemeralServer(ephemeralIdentity, sender);
+      }
+    }
+    return this.restartAttachedServer(projectPath, opts);
+  }
+
+  /**
+   * Retire (close) every OTHER open ephemeral window for `canonicalKey` besides
+   * `keepWindow`. Called once `createEphemeralWindow` has landed on the live
+   * window for a file, so a (re)open or restart converges to exactly one window
+   * and no dead window dangles. Safe because at most one live server exists per
+   * file — the one behind `keepWindow` — so every sibling window's server is
+   * already dead. Each retired window's own `'closed'` handler clears its identity;
+   * its teardown branch short-circuits (the ownership guard fails, since the live
+   * `keepWindow` now owns the slot), which is correct — a retired window's server
+   * was already reaped by the stale-entry path, the exit-watch, or the restart
+   * pre-terminate before it got here. Snapshots the targets first so the
+   * `'closed'`-driven map mutation cannot perturb the iteration.
+   *
+   * Routes through `closeAndAwait` (not a bare `close()`), so a window that never
+   * emits `'closed'` — a `beforeunload` veto, a native wedge — is force-destroyed
+   * rather than left open with its `ephemeralWindowIdentity` entry leaked, which
+   * would defeat the "converges to exactly one window" guarantee. Fire-and-forget
+   * at the call sites (they don't await convergence), so the sweep runs its
+   * closes concurrently.
+   */
+  private retireStaleWindowsForFile(canonicalKey: string, keepWindow: BrowserWindowLike): void {
+    const stale: BrowserWindowLike[] = [];
+    for (const [win, identity] of this.ephemeralWindowIdentity) {
+      if (win === keepWindow) continue;
+      if (this.canonicalizeKey(identity.canonicalFilePath) !== canonicalKey) continue;
+      stale.push(win);
+    }
+    if (stale.length === 0) return;
+    this.deps.log?.info(
+      { event: 'desktop-ephemeral-retire-stale', canonicalKey, retired: stale.length },
+      '[window-manager] retiring stale ephemeral window(s) for the file',
+    );
+    for (const win of stale) void this.closeAndAwait(win);
+  }
+
+  /**
+   * Close and drop the ephemeral keepalive for `canonicalKey`, if one is open.
+   * The keepalive re-reads `<lockDir>/server.lock` every attempt, so once a
+   * session's server is gone (its lockDir removed by `teardownEphemeralSession`)
+   * an un-closed keepalive reconnect-loops against a path that no longer exists
+   * for the window's remaining lifetime. Every PER-WINDOW teardown site — normal
+   * close, exit-watch reap, stale-entry re-spawn, the restart pre-terminate — must
+   * call this so the keepalive dies with the server it was holding up.
+   * `stopAllOwnedServers` (relaunch/quit) does not: it runs immediately before the
+   * process exits, so any surviving keepalive is bounded by that exit, not a
+   * window's lifetime.
+   */
+  private closeKeepalive(canonicalKey: string): void {
+    const keepalive = this.keepalives.get(canonicalKey);
+    if (keepalive) {
+      keepalive.close();
+      this.keepalives.delete(canonicalKey);
+    }
+  }
+
+  /**
    * Close a window and resolve once its `'closed'` event fires (the existing
    * attach `'closed'` handler runs alongside, clearing its own map/keepalive
    * slot). If the window never emits `'closed'` within the grace (beforeunload
@@ -2942,6 +3170,9 @@ export class WindowManager {
       // `apiOrigin`, so `ok open <file>` "succeeded" with no live session.
       if (windowAlive && this.isEphemeralServerAlive(existing)) {
         this.bringToFront(existing.window);
+        // Converge: retire any other (dead-server) window left open for this
+        // file; keep the live `existing` one.
+        this.retireStaleWindowsForFile(canonicalKey, existing.window);
         return existing;
       }
       this.deps.log?.warn(
@@ -2958,17 +3189,25 @@ export class WindowManager {
           : '[window-manager] stale destroyed ephemeral entry — clearing and re-creating',
       );
       this.windowsByPath.delete(canonicalKey);
+      // The stale session's keepalive (if any) is now pointing at a lockDir the
+      // teardown below removes — close it here so it does not reconnect-loop for
+      // the stale window's remaining lifetime (its guarded `'closed'` teardown
+      // won't run once this re-open takes the slot). No-op when none was opened.
+      this.closeKeepalive(canonicalKey);
       // Reap the dead session's temp dir + (already-dead) pid only when the
       // window is still open here. A destroyed window already ran its `'closed'`
       // teardown; teardown is idempotent, but skipping the redundant SIGTERM/rm
       // keeps the destroyed-window path single-pass, as before.
       //
-      // The stale window itself is left open, not closed — deliberately, unlike
-      // `restartAttachedServer` (which closes the old window once the replacement
-      // exists). That path has a synchronous in-place replacement; here the user
-      // explicitly re-opened, and gracefully retiring the dead-server window is
-      // the renderer "server gone" affordance's job, not main's. Closing it here
-      // would preempt that and yank a window the user may still be reading.
+      // This branch only reaps the dead SERVER + temp dir; the stale WINDOW is
+      // not closed here. Convergence to a single window happens later in this same
+      // flow: once the fresh server is live, `retireStaleWindowsForFile` (at the
+      // end of `spawnEphemeralWindow`) closes every other window for the file,
+      // including this one. Splitting it that way keeps the "close the old window"
+      // step behind a live replacement (recreate-then-close, no flash), matching
+      // `restartAttachedServer`'s ordering — closing here, before the replacement
+      // exists, would flash an empty gap and yank a window the user may still be
+      // reading with nothing yet to replace it.
       if (windowAlive && existing.ephemeral) {
         void this.teardownEphemeralSession(existing.ephemeral);
       }
@@ -3204,6 +3443,11 @@ export class WindowManager {
         // teardown path; a straggling poll must not fire a second teardown.
         stopExitWatch();
         disposeShowGate();
+        // Drop this window's restart identity UNCONDITIONALLY — ahead of the
+        // ownership guard. The identity is per-window, so it must clear whenever
+        // THIS window closes, including the orphaned dead-window case where the
+        // guard short-circuits (a re-open already took the slot).
+        this.ephemeralWindowIdentity.delete(window);
         // Ownership guard — only tear down if THIS window still owns the slot. A
         // focus-dedup re-open or `stopAllOwnedServers` could have replaced/cleared
         // the entry; without the guard we'd terminate a sibling's server or double
@@ -3211,6 +3455,9 @@ export class WindowManager {
         // keeps the common path single-pass.)
         if (this.windowsByPath.get(canonicalKey) !== context) return;
         this.windowsByPath.delete(canonicalKey);
+        // Close the ephemeral keepalive before the server teardown — mirrors the
+        // project-window close. No-op when none was opened (unwired harness).
+        this.closeKeepalive(canonicalKey);
         // Fire-and-forget: the `'closed'` event handler is synchronous. Terminate
         // the server THEN remove the temp dir (sequential — see
         // `teardownEphemeralSession`).
@@ -3220,6 +3467,30 @@ export class WindowManager {
       });
 
       this.windowsByPath.set(canonicalKey, context);
+      // Hold the ephemeral server against its own idle-shutdown for as long as
+      // this window is open. The single-file server inherits the 30-min idle
+      // default but, unlike a project window, had no keepalive — so with no
+      // editor WebSocket to reset the idle timer (the timer counts only /collab
+      // connections) it could idle-shut-down underneath the open editor. Mirrors
+      // the project-window keepalive: keyed by canonicalKey, the pre-set close
+      // guards a re-open replacing the slot, and the `'closed'` handler above
+      // tears it down.
+      if (this.deps.createKeepalive) {
+        const existingKeepalive = this.keepalives.get(canonicalKey);
+        if (existingKeepalive) existingKeepalive.close();
+        this.keepalives.set(canonicalKey, this.deps.createKeepalive({ lockDir }));
+      }
+      // Durable window→identity record for the restart affordance (survives a
+      // re-open replacing the slot; cleared on real window close).
+      this.ephemeralWindowIdentity.set(window, {
+        canonicalFilePath: opts.canonicalFilePath,
+        contentDir: opts.contentDir,
+        docName: opts.docName,
+      });
+      // Converge to one window per file: a fresh spawn happens because the
+      // file's prior server(s) died; retire any windows still open for those
+      // dead sessions now that a live replacement exists.
+      this.retireStaleWindowsForFile(canonicalKey, window);
     } finally {
       releaseLoadingContext();
     }
@@ -3271,6 +3542,15 @@ export class WindowManager {
           // ephemeral lockDir lives inside the throwaway temp projectDir that this
           // teardown removes — a persistent project lock is re-attached and read
           // by a later bug-report bundle, but a throwaway one never is.
+          //
+          // Close the keepalive too: the server it was holding up is gone, and it
+          // re-reads the lockDir this teardown removes on every attempt, so
+          // leaving it open reconnect-loops against a deleted path for the
+          // window's remaining lifetime — the same failure shape as an unbounded
+          // renderer reauth loop, just in the main process. windowsByPath keeps
+          // its entry (for session-restore), so the guarded `'closed'` teardown
+          // still runs on a real close; `closeKeepalive` is idempotent.
+          this.closeKeepalive(canonicalKey);
           void this.teardownEphemeralSession(eph);
         } catch (err) {
           this.deps.log?.warn(

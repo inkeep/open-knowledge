@@ -3213,6 +3213,14 @@ msgstr "已连接到"
 msgid "Connected to GitHub"
 msgstr "已连接到 GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "已连接，但你的编辑尚未送达服务器。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "已连接，但你的编辑尚未送达服务器。如果持续如此，请重启服务器。"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13247,6 +13255,14 @@ msgstr "架构文件不存在或加载失败——添加字段会自动创建它
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "服务器有响应，但 server.lock 中还没有端口"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "服务器已停止。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "服务器已停止。重启服务器以重新连接。"
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

@@ -3209,6 +3209,14 @@ msgstr "Terhubung ke"
 msgid "Connected to GitHub"
 msgstr "Terhubung ke GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13243,6 +13251,14 @@ msgstr "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidan
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "server merespons tetapi server.lock belum memiliki port"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "Server berhenti."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "Server berhenti. Mulai ulang untuk menyambung kembali."
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

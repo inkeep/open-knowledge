@@ -2,9 +2,12 @@
  * Resolve the effective `server.*` runtime settings from a merged `Config`.
  *
  * The one job no zod `.default()` can do: **derived defaults.** `openBrowser`
- * and `idleShutdown` default off the resolved bind: a loopback-only server pops
- * the UI and idles out after {@link DEFAULT_LOOPBACK_IDLE_SHUTDOWN}; an exposed
- * or containerized server is headless and stays up. The local/hosted split is
+ * derives off the resolved bind alone: a loopback-only server pops the UI, an
+ * exposed or containerized one is headless. `idleShutdown` derives three ways:
+ * loopback-and-unexposed idles out after {@link DEFAULT_LOOPBACK_IDLE_SHUTDOWN};
+ * a non-loopback bind stays up; and a loopback bind declared externally reachable
+ * (`allowExternal` + `externalUrl`) also stays up, since its remote agents keep
+ * it busy over `/mcp`, which the idle timer cannot see. The local/hosted split is
  * emergent from these values — there is deliberately no mode key to branch on.
  *
  * Enforcing the exposure interlock (refusing to boot when
@@ -16,7 +19,11 @@
 import type { Config } from './schema.ts';
 import { DEFAULT_SERVER_BIND, IDLE_SHUTDOWN_DURATION_RE } from './schema.ts';
 
-/** Derived `idleShutdown` for a loopback-only server; exposed binds derive `'off'`. */
+/**
+ * Derived `idleShutdown` for a loopback-only, UNEXPOSED server. A non-loopback
+ * bind, or a loopback bind declared externally reachable (`allowExternal` +
+ * `externalUrl`), derives `'off'` instead.
+ */
 export const DEFAULT_LOOPBACK_IDLE_SHUTDOWN = '30m';
 
 export interface ServerRuntimeConfig {
@@ -126,13 +133,22 @@ export function resolveServerRuntimeConfig(config: Config | undefined): ServerRu
   const port = server?.port;
   const externalUrl = server?.externalUrl;
 
+  // "Exposed" = the operator declared this deployment reachable from outside
+  // (allowExternal + an explicit externalUrl). The idle timer counts only
+  // `/collab` editor WebSockets and is blind to `/mcp`, so a tunnel-to-loopback
+  // server serving a remote agent would idle-shut-down mid-session. Keying the
+  // idle default off exposure, not the raw bind, keeps an exposed loopback
+  // server alive like a `0.0.0.0` bind already is.
+  const exposed = (server?.allowExternal ?? false) && externalUrl !== undefined;
+
   return {
     port,
     bind,
     externalUrl,
     allowExternal: server?.allowExternal ?? false,
     openBrowser: server?.openBrowser ?? loopbackOnly,
-    idleShutdown: server?.idleShutdown ?? (loopbackOnly ? DEFAULT_LOOPBACK_IDLE_SHUTDOWN : 'off'),
+    idleShutdown:
+      server?.idleShutdown ?? (loopbackOnly && !exposed ? DEFAULT_LOOPBACK_IDLE_SHUTDOWN : 'off'),
     loopbackOnly,
   };
 }

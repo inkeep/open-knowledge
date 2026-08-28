@@ -797,6 +797,7 @@
     ],
     "8PifYj": ["Diagramme Mermaid"],
     "8PmoQF": ["Ouvre le menu d'insertion à une position de texte vide ou active."],
+    "8QLpZe": ["Le serveur s'est arrêté. Redémarrez-le pour vous reconnecter."],
     "8RtNI0": ["Échec du chargement des documents"],
     "8TvlHF": ["Vidage de plantage"],
     "8Uv5e6": ["Agents"],
@@ -2993,6 +2994,9 @@
     "X3MMeA": ["Aucun de ces problèmes n'a de correction automatique."],
     "X59Fx2": ["Impossible d'ouvrir ce document dans Slidev."],
     "X7ShnN": ["Ouvrir le panneau des agents"],
+    "X7fxS9": [
+      "Connecté, mais vos modifications n'atteignent pas encore le serveur. Redémarrez-le si cela continue."
+    ],
     "X7u0xR": [["0"], " modèles disponibles"],
     "X8kjQX": ["Se réauthentifier auprès de GitHub"],
     "X9VpsP": ["Chargement du contenu du dossier"],
@@ -4536,6 +4540,7 @@
     "mYGY3B": ["Date"],
     "mYzDD_": ["Un dossier de worktree pour cette branche existe déjà."],
     "mZ1r4i": ["Créer un document à partir de ", ["label"]],
+    "m_mtGl": ["Le serveur s'est arrêté."],
     "maDWIB": ["Source du miroir <0>api-spec</0>"],
     "makN88": [
       "Pas encore de motifs. Saisissez un nom de dossier ou de fichier ci-dessous pour commencer à masquer des fichiers."
@@ -4623,6 +4628,7 @@
     "n4vt3Q": ["Télécharger l’application"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
+    "n6N-xC": ["Connecté, mais vos modifications n'atteignent pas encore le serveur."],
     "n6hXUm": [
       "La synchronisation automatique récupère, tire et pousse périodiquement les commits vers votre dépôt git distant, afin que vos modifications restent synchronisées entre vos machines."
     ],

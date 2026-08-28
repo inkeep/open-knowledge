@@ -3209,6 +3209,14 @@ msgstr "Conectado a"
 msgid "Connected to GitHub"
 msgstr "Conectado ao GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "Conectado, mas suas edições ainda não estão chegando ao servidor."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "Conectado, mas suas edições ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -13243,6 +13251,14 @@ msgstr "O arquivo de esquema não existe ou falhou ao carregar — adicionar um 
 #: src/components/ConnectingBanner.tsx
 msgid "the server responded but server.lock has no port yet"
 msgstr "o servidor respondeu, mas o server.lock ainda não tem porta"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "O servidor parou."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "O servidor parou. Reinicie-o para reconectar."
 
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx

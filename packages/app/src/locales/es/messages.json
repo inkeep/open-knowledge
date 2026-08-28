@@ -775,6 +775,7 @@
     ],
     "8PifYj": ["Diagrama de Mermaid"],
     "8PmoQF": ["Abre el menú de inserción en una posición de texto vacía o activa."],
+    "8QLpZe": ["El servidor se detuvo. Reinícialo para volver a conectarte."],
     "8RtNI0": ["No se pudieron cargar los documentos"],
     "8TvlHF": ["Volcado de fallo"],
     "8Uv5e6": ["Agentes"],
@@ -2961,6 +2962,9 @@
     "X3MMeA": ["Ninguno de estos problemas tiene arreglo automático."],
     "X59Fx2": ["No se pudo abrir este documento en Slidev."],
     "X7ShnN": ["Abrir el panel de agentes"],
+    "X7fxS9": [
+      "Conectado, pero tus ediciones aún no llegan al servidor. Reinícialo si esto continúa."
+    ],
     "X7u0xR": [["0"], " plantillas disponibles"],
     "X8kjQX": ["Volver a autenticarse con GitHub"],
     "X9VpsP": ["Cargando el contenido de la carpeta"],
@@ -4502,6 +4506,7 @@
     "mYGY3B": ["Fecha"],
     "mYzDD_": ["Ya existe una carpeta de worktree para esa rama."],
     "mZ1r4i": ["Crear un documento a partir de ", ["label"]],
+    "m_mtGl": ["El servidor se detuvo."],
     "maDWIB": ["Origen del espejo <0>api-spec</0>"],
     "makN88": [
       "Todavía no hay patrones. Escribe abajo el nombre de una carpeta o un archivo para empezar a ocultar archivos."
@@ -4589,6 +4594,7 @@
     "n4vt3Q": ["Descargar la aplicación"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
+    "n6N-xC": ["Conectado, pero tus ediciones aún no llegan al servidor."],
     "n6hXUm": [
       "La sincronización automática hace fetch, pull y push de commits a tu repositorio git remoto cada cierto tiempo para que tus ediciones sigan sincronizadas entre equipos."
     ],
