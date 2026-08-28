@@ -58,6 +58,8 @@ import {
   composeReply,
   evaluateFanIn,
   isOriginRepliableFrom,
+  markerSuffixFor,
+  originAlreadyNotified,
   partitionAttachments,
 } from './write-back-gate.mjs';
 
@@ -143,7 +145,7 @@ export function notificationMarkerUrl({ version, originUrl }) {
     .replace(/^v/, '');
   if (!v) throw new Error('notificationMarkerUrl needs a version');
   if (!String(originUrl ?? '').trim()) throw new Error('notificationMarkerUrl needs an origin url');
-  return `${RELEASES_TAG_BASE}/v${v}?notified=${encodeURIComponent(originUrl)}`;
+  return `${RELEASES_TAG_BASE}/v${v}${markerSuffixFor(originUrl)}`;
 }
 
 /**
@@ -615,10 +617,24 @@ export async function runWriteBack({
     }
 
     for (const origin of origins) {
+      const attachmentUrls = candidate.attachmentUrls ?? [];
       const marker = notificationMarkerUrl({ version: gate.version, originUrl: origin.url });
-      if ((candidate.attachmentUrls ?? []).includes(marker)) {
+      if (attachmentUrls.includes(marker)) {
         skip(candidate.identifier, 'already-notified');
         continue;
+      }
+      // A marker for this origin under any OTHER version ordinarily means an
+      // earlier reply already quoted the changeset here — a beta reply, most
+      // often. It is a marker existing, not a reply confirmed delivered (see
+      // the NeedsHumanError note below); this elides the quote on the
+      // assumption that a marker usually means the reporter already read it,
+      // rather than never eliding at all.
+      const quotedBefore = originAlreadyNotified(attachmentUrls, origin.url);
+      if (quotedBefore) {
+        log(
+          `::debug::write-back: ${origin.url} already carries a marker for an earlier version ` +
+            `(${candidate.identifier}); any reply for this origin will omit the changeset quote.`,
+        );
       }
 
       const changeset = await readChangesetProse(candidate, { fixReferences });
@@ -631,6 +647,7 @@ export async function runWriteBack({
               originChannel: origin.channel,
               coverage: gate.coverage,
               channel,
+              quote: !quotedBefore,
             });
 
       if (!text) {
@@ -645,13 +662,14 @@ export async function runWriteBack({
       if (!live) {
         log(
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
-            `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
+            `(v${gate.version}, covers ${gate.coverage.join(', ')}, quoted=${!quotedBefore}).`,
         );
         posted.push({
           identifier: candidate.identifier,
           origin: origin.url,
           version: gate.version,
           dryRun: true,
+          quoted: !quotedBefore,
         });
         continue;
       }
@@ -682,17 +700,20 @@ export async function runWriteBack({
         // and the only remaining fix is a reply posted by hand.
         throw new NeedsHumanError(
           `marker for ${origin.url} was written but the reply did NOT send (${err.message}). ` +
-            'No future run will retry it; post the reply by hand.',
+            'No future run will retry it; post the reply by hand — and since this marker now makes a ' +
+            'later automated reply on this same origin assume its quote already landed, include it.',
         );
       }
       log(
-        `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} (v${gate.version}).`,
+        `::notice::write-back: replied to ${origin.url} for ${candidate.identifier} ` +
+          `(v${gate.version}, quoted=${!quotedBefore}).`,
       );
       posted.push({
         identifier: candidate.identifier,
         origin: origin.url,
         version: gate.version,
         dryRun: false,
+        quoted: !quotedBefore,
       });
     }
   };
