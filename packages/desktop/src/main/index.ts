@@ -8396,8 +8396,9 @@ function bootPrimaryInstance(): void {
     },
     getInitialArgv: () => process.argv,
     log: {
-      warn: (obj, msg) => console.warn(msg, obj),
-      info: (obj, msg) => console.info(msg, obj),
+      warn: (obj, msg) => getLogger('url-scheme').warn(obj, msg),
+      info: (obj, msg) => getLogger('url-scheme').info(obj, msg),
+      error: (obj, msg) => getLogger('url-scheme').error(obj, msg),
     },
   });
 

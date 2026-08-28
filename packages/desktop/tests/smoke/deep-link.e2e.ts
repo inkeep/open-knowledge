@@ -13,10 +13,8 @@
  * real user click. That's what this test uses.
  *
  * True cold-start Apple-Event simulation (launching a not-yet-running app
- * via `open(1)` and asserting the queue-then-flush path delivers the URL)
- * is a deferred gap — it requires a signed/notarized DMG so macOS Launch
- * Services binds the scheme to this specific app bundle, rather than the
- * generic Electron shell.
+ * via `open(1)` and asserting the queue-then-flush path delivers the URL) is
+ * covered separately, in the packaged tier — see `cold-single-file-launch.e2e.ts`.
  *
  * Skip conditions:
  *   - Not on macOS (`process.platform !== 'darwin'`) — the `open` command

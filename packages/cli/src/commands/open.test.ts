@@ -1,13 +1,16 @@
 import { describe, expect, test } from 'vitest';
+import type { OpenTargetOptions } from '../utils/open-target.ts';
 import { createRealOpenDeps, type OpenDeps, runOpen } from './open.ts';
 
 function makeDeps(overrides: Partial<OpenDeps> = {}): {
   deps: OpenDeps;
   opened: string[];
+  openedOptions: Array<Pick<OpenTargetOptions, 'desktopBundlePath'> | undefined>;
   logs: string[];
   errors: string[];
 } {
   const opened: string[] = [];
+  const openedOptions: Array<Pick<OpenTargetOptions, 'desktopBundlePath'> | undefined> = [];
   const logs: string[] = [];
   const errors: string[] = [];
   const deps: OpenDeps = {
@@ -16,8 +19,9 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
     // Default: nothing is a folder on disk, so tests opt into folder routing via
     // an explicit override, `--folder`, or a trailing slash.
     classifyName: () => 'doc',
-    openTarget: async (t) => {
+    openTarget: async (t, options) => {
       opened.push(t);
+      openedOptions.push(options);
       return { ok: true };
     },
     findAncestorProject: () => null,
@@ -27,7 +31,7 @@ function makeDeps(overrides: Partial<OpenDeps> = {}): {
     error: (m) => errors.push(m),
     ...overrides,
   };
-  return { deps, opened, logs, errors };
+  return { deps, opened, openedOptions, logs, errors };
 }
 
 describe('runOpen', () => {
@@ -38,6 +42,18 @@ describe('runOpen', () => {
     const code = await runOpen('bim-brain/log', { project: '/abs/proj' }, deps);
     expect(code).toBe(0);
     expect(opened).toEqual(['openknowledge://open?project=%2Fabs%2Fproj&doc=bim-brain%2Flog']);
+  });
+
+  test('doc with a desktop bundle threads the verified bundle path to openTarget', async () => {
+    // The dispatcher (open-target.ts) names this exact bundle directly on
+    // darwin instead of resolving the openknowledge:// scheme through Launch
+    // Services — this is what makes that safe: it's the same path
+    // detectBundlePath() just confirmed exists, not a re-derived identity.
+    const { deps, openedOptions } = makeDeps({
+      detectBundlePath: () => '/Applications/OpenKnowledge.app',
+    });
+    await runOpen('bim-brain/log', { project: '/abs/proj' }, deps);
+    expect(openedOptions).toEqual([{ desktopBundlePath: '/Applications/OpenKnowledge.app' }]);
   });
 
   test('doc, no bundle but UI running → browser route, exit 0', async () => {
@@ -76,12 +92,13 @@ describe('runOpen', () => {
   });
 
   test('folder with a desktop bundle → folder= deep link, exit 0', async () => {
-    const { deps, opened } = makeDeps({
+    const { deps, opened, openedOptions } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
     });
     const code = await runOpen('specs/foo/', { project: '/p' }, deps);
     expect(code).toBe(0);
     expect(opened).toEqual(['openknowledge://open?project=%2Fp&folder=specs%2Ffoo']);
+    expect(openedOptions).toEqual([{ desktopBundlePath: '/Applications/OpenKnowledge.app' }]);
   });
 
   test('folder, no bundle but UI running → browser folder route, exit 0', async () => {
@@ -115,7 +132,7 @@ describe('runOpen', () => {
   });
 
   test('skill with a desktop bundle → rides doc=__skill__/<scope>/<name> deep link', async () => {
-    const { deps, opened } = makeDeps({
+    const { deps, opened, openedOptions } = makeDeps({
       detectBundlePath: () => '/Applications/OpenKnowledge.app',
     });
     const code = await runOpen('trip-log', { skill: true, project: '/p' }, deps);
@@ -123,6 +140,7 @@ describe('runOpen', () => {
     expect(opened).toEqual([
       'openknowledge://open?project=%2Fp&doc=__skill__%2Fproject%2Ftrip-log',
     ]);
+    expect(openedOptions).toEqual([{ desktopBundlePath: '/Applications/OpenKnowledge.app' }]);
   });
 
   test('skill --scope global, no bundle but UI running → browser skill route', async () => {

@@ -125,7 +125,10 @@ interface TestEnv {
   sendDeepLink: AnyMock;
   getAnyReadyWindow: AnyMock;
   timers: Array<{ cb: () => void; ms: number }>;
-  warnLog: Array<{ obj: object; msg: string }>;
+  log: NonNullable<Parameters<typeof registerProtocolHandler>[0]['log']>;
+  warnLog: Array<{ obj: Record<string, unknown>; msg: string }>;
+  infoLog: Array<{ obj: Record<string, unknown>; msg: string }>;
+  errorLog: Array<{ obj: Record<string, unknown>; msg: string }>;
   existingWindows: Map<string, FakeWindowHandle>;
   readyWindow: FakeWindowHandle | null;
 }
@@ -134,7 +137,14 @@ function makeEnv(opts?: { isPackaged?: boolean }): TestEnv {
   const existingWindows = new Map<string, FakeWindowHandle>();
   let readyWindow: FakeWindowHandle | null = null;
   const timers: Array<{ cb: () => void; ms: number }> = [];
-  const warnLog: Array<{ obj: object; msg: string }> = [];
+  const warnLog: Array<{ obj: Record<string, unknown>; msg: string }> = [];
+  const infoLog: Array<{ obj: Record<string, unknown>; msg: string }> = [];
+  const errorLog: Array<{ obj: Record<string, unknown>; msg: string }> = [];
+  const log: NonNullable<Parameters<typeof registerProtocolHandler>[0]['log']> = {
+    warn: (obj, msg) => warnLog.push({ obj, msg }),
+    info: (obj, msg) => infoLog.push({ obj, msg }),
+    error: (obj, msg) => errorLog.push({ obj, msg }),
+  };
   return {
     app: makeFakeApp(opts),
     focusWindowForProject: vi.fn((p: string) => existingWindows.get(p) ?? null),
@@ -153,7 +163,10 @@ function makeEnv(opts?: { isPackaged?: boolean }): TestEnv {
     sendDeepLink: vi.fn(() => {}),
     getAnyReadyWindow: vi.fn(() => readyWindow),
     timers,
+    log,
     warnLog,
+    infoLog,
+    errorLog,
     existingWindows,
     get readyWindow() {
       return readyWindow;
@@ -192,29 +205,16 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     expect(env.app.setAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge');
   });
 
-  test('does NOT call setAsDefaultProtocolClient in packaged darwin builds', () => {
-    // macOS packaged installs rely on the CFBundleURLTypes binding owned by
-    // LaunchServices — pin platform explicitly: the CI test host is Linux,
-    // where packaged builds DO self-heal (next test).
-    const env = makeEnv({ isPackaged: true });
-    registerProtocolHandler({
-      app: env.app,
-      focusWindowForProject: env.focusWindowForProject,
-      openProject: env.openProject,
-      sendDeepLink: env.sendDeepLink,
-      getAnyReadyWindow: env.getAnyReadyWindow,
-      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      platform: 'darwin',
-    });
-    expect(env.app.setAsDefaultProtocolClient).not.toHaveBeenCalled();
-  });
-
-  for (const platform of ['win32', 'linux'] as const) {
+  for (const platform of ['darwin', 'win32', 'linux'] as const) {
     test(`packaged ${platform} builds self-heal the scheme binding per boot`, () => {
-      // Windows resolves openknowledge:// from HKCU\Software\Classes and
-      // Linux from the .desktop database — both user-mutable and
-      // installer-dependent, so packaged builds re-assert at every boot
-      // (windows-linux-port deep-link posture). No before-quit removal.
+      // A packaged install's installer-time binding (CFBundleURLTypes on
+      // macOS, HKCU\Software\Classes on Windows, the .desktop database on
+      // Linux) is not permanently authoritative on any platform — all three
+      // are user-mutable, and on macOS specifically a dev-mode instance's
+      // runtime `setAsDefaultProtocolClient` call can leave a stale
+      // user-level override in place indefinitely if that dev process never
+      // hits `before-quit` (SIGKILL, a deleted worktree). Packaged builds
+      // re-assert at every boot on every platform. No before-quit removal.
       const env = makeEnv({ isPackaged: true });
       registerProtocolHandler({
         app: env.app,
@@ -236,7 +236,6 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     // at "dev deep-links not working" without a breadcrumb.
     const env = makeEnv({ isPackaged: false });
     env.app.setAsDefaultProtocolClient = vi.fn(() => false);
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     registerProtocolHandler({
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
@@ -244,10 +243,55 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
-    expect(warnLog).toHaveLength(1);
-    expect(warnLog[0]?.msg).toContain('returned false');
+    expect(env.warnLog).toHaveLength(1);
+    expect(env.warnLog[0]?.msg).toContain('returned false');
+  });
+
+  test('escalates a failed packaged self-heal to error, not warn', () => {
+    // Packaged is the only line of defense for real users — no dev-exit
+    // unregister to fall back on — so a failed self-heal here must not land
+    // at the same severity as the dev-mode case above.
+    const env = makeEnv({ isPackaged: true });
+    env.app.setAsDefaultProtocolClient = vi.fn(() => false);
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      log: env.log,
+      // Pin a platform so the assertion can't vary with the host OS. The
+      // packaged branch has no platform gate — the three-platform loop above
+      // covers that — and darwin's settle grace is armed inside
+      // `whenReady().then()`, which this synchronous test never resolves.
+      platform: 'darwin',
+    });
+    expect(env.warnLog).toHaveLength(0);
+    expect(env.errorLog).toHaveLength(1);
+    expect(env.errorLog[0]?.msg).toContain('packaged setAsDefaultProtocolClient returned false');
+  });
+
+  test('escalates a throwing packaged self-heal to error, not warn', () => {
+    const env = makeEnv({ isPackaged: true });
+    env.app.setAsDefaultProtocolClient = vi.fn(() => {
+      throw new Error('Launch Services unavailable');
+    });
+    registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      log: env.log,
+      platform: 'darwin',
+    });
+    expect(env.warnLog).toHaveLength(0);
+    expect(env.errorLog).toHaveLength(1);
+    expect(env.errorLog[0]?.msg).toContain('packaged setAsDefaultProtocolClient failed');
   });
 });
 
@@ -279,8 +323,10 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
     });
-    // Packaged builds don't touch Launch Services at runtime — the binding
-    // comes from the DMG's Info.plist (electron-builder). Nothing to remove.
+    // Packaged builds DO touch Launch Services at runtime (the self-heal
+    // re-assert on every boot — see the loop above), but they never remove
+    // the binding on quit: unlike a dev instance, a packaged install should
+    // keep claiming the scheme after it exits. Nothing to remove here.
     expect(() => env.app.fireBeforeQuit()).toThrow(/before-quit listener not registered/);
     expect(env.app.removeAsDefaultProtocolClient).not.toHaveBeenCalled();
   });
@@ -308,7 +354,6 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
     env.app.removeAsDefaultProtocolClient = vi.fn(() => {
       throw new Error('launch services refused');
     });
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     registerProtocolHandler({
       app: env.app,
       focusWindowForProject: env.focusWindowForProject,
@@ -316,11 +361,13 @@ describe('registerProtocolHandler — before-quit Launch Services cleanup', () =
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     // Must NOT bubble up past the listener — app quit would be aborted.
     expect(() => env.app.fireBeforeQuit()).not.toThrow();
-    expect(warnLog.some((e) => e.msg.includes('removeAsDefaultProtocolClient failed'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('removeAsDefaultProtocolClient failed'))).toBe(
+      true,
+    );
   });
 });
 
@@ -609,7 +656,6 @@ describe('registerProtocolHandler — queue-then-flush', () => {
   });
 
   test('silent-drops malformed URLs with a single warn log line', async () => {
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     env.readyWindow = { id: 'pre-existing' };
     registerProtocolHandler({
       app: env.app,
@@ -618,9 +664,7 @@ describe('registerProtocolHandler — queue-then-flush', () => {
       sendDeepLink: env.sendDeepLink,
       getAnyReadyWindow: env.getAnyReadyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: {
-        warn: (obj, msg) => warnLog.push({ obj, msg }),
-      },
+      log: env.log,
     });
     env.app.fireOpenUrl('openknowledge://open?doc=a.md'); // missing project
     env.app.resolveReady();
@@ -628,8 +672,8 @@ describe('registerProtocolHandler — queue-then-flush', () => {
 
     expect(env.openProject).not.toHaveBeenCalled();
     expect(env.sendDeepLink).not.toHaveBeenCalled();
-    expect(warnLog).toHaveLength(1);
-    expect(warnLog[0]?.msg).toContain('dropped malformed URL');
+    expect(env.warnLog).toHaveLength(1);
+    expect(env.warnLog[0]?.msg).toContain('dropped malformed URL');
   });
 
   test('focuses existing window when project is already open (warm same-project)', async () => {
@@ -1047,7 +1091,6 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
@@ -1059,7 +1102,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1068,7 +1111,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     await flushPromises();
 
     expect(sendShareDeepLink).toHaveBeenCalledWith(focusedWin, { kind: 'unsupported-version' });
-    expect(warnLog).toContainEqual({
+    expect(env.warnLog).toContainEqual({
       obj: {
         source: 'universal-link',
         result: 'unsupported-version',
@@ -1085,7 +1128,6 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
 
     registerProtocolHandler({
@@ -1097,7 +1139,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1106,7 +1148,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     await flushPromises();
 
     expect(sendShareDeepLink).toHaveBeenCalledWith(focusedWin, { kind: 'invalid' });
-    expect(warnLog).toContainEqual({
+    expect(env.warnLog).toContainEqual({
       obj: {
         source: 'universal-link',
         result: 'invalid',
@@ -1116,14 +1158,13 @@ describe('registerProtocolHandler — share-flow routing', () => {
       },
       msg: '[receive] action=url-parse',
     });
-    expect(JSON.stringify(warnLog)).not.toContain('!!!not-base64!!!');
+    expect(JSON.stringify([...env.warnLog, ...env.errorLog])).not.toContain('!!!not-base64!!!');
   });
 
   test('malformed share-shaped and lookalike authority inputs keep logs scrubbed', async () => {
     const env = makeEnv();
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
-    const warnLog: Array<{ obj: object; msg: string }> = [];
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
     const secret = 'SECRET-MALFORMED-SHARE';
 
@@ -1136,7 +1177,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1156,12 +1197,12 @@ describe('registerProtocolHandler — share-flow routing', () => {
     expect(sendShareDeepLink).toHaveBeenNthCalledWith(3, focusedWin, { kind: 'invalid' });
     expect(sendShareDeepLink).toHaveBeenNthCalledWith(4, focusedWin, { kind: 'invalid' });
     expect(sendShareDeepLink).toHaveBeenNthCalledWith(5, focusedWin, { kind: 'invalid' });
-    expect(JSON.stringify(warnLog)).not.toContain(secret);
-    expect(warnLog.filter(({ msg }) => msg === '[url-scheme] dropped malformed URL')).toEqual([
+    expect(JSON.stringify([...env.warnLog, ...env.errorLog])).not.toContain(secret);
+    expect(env.warnLog.filter(({ msg }) => msg === '[url-scheme] dropped malformed URL')).toEqual([
       { obj: {}, msg: '[url-scheme] dropped malformed URL' },
       { obj: {}, msg: '[url-scheme] dropped malformed URL' },
     ]);
-    expect(warnLog).toContainEqual({
+    expect(env.warnLog).toContainEqual({
       obj: {
         source: 'universal-link',
         result: 'invalid',
@@ -1171,7 +1212,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       },
       msg: '[receive] action=url-parse',
     });
-    expect(warnLog).toContainEqual({
+    expect(env.warnLog).toContainEqual({
       obj: {
         source: 'custom-scheme',
         result: 'invalid',
@@ -1186,8 +1227,6 @@ describe('registerProtocolHandler — share-flow routing', () => {
   test('logs a bounded v2 success classification without token, URL, or target path', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
-    const warnLog: Array<{ obj: object; msg: string }> = [];
-    const infoLog: Array<{ obj: object; msg: string }> = [];
     const fixtureEntry = shareFixture.validShares.find(
       (entry) => entry.id === 'v2-one-segment-document',
     );
@@ -1202,10 +1241,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       resolveShareTarget: async () => ({ kind: 'miss' }),
       routeShareToNavigator: () => {},
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: {
-        warn: (obj, msg) => warnLog.push({ obj, msg }),
-        info: (obj, msg) => infoLog.push({ obj, msg }),
-      },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1214,7 +1250,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
     await flushPromises();
 
     // A successful parse logs at info, off the warn channel operators alert on.
-    expect(infoLog).toContainEqual({
+    expect(env.infoLog).toContainEqual({
       obj: {
         source: 'universal-link',
         result: 'ok',
@@ -1224,7 +1260,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       },
       msg: '[receive] action=url-parse',
     });
-    const serialized = JSON.stringify([...warnLog, ...infoLog]);
+    const serialized = JSON.stringify([...env.warnLog, ...env.infoLog, ...env.errorLog]);
     expect(serialized).not.toContain(fixtureEntry.token);
     expect(serialized).not.toContain(fixtureEntry.sharedUrl);
     expect(serialized).not.toContain(fixtureEntry.target.docPath);
@@ -1237,7 +1273,6 @@ describe('registerProtocolHandler — share-flow routing', () => {
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -1249,7 +1284,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
       // resolveShareTarget intentionally omitted.
       getFocusedWindow: () => null,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1260,7 +1295,7 @@ describe('registerProtocolHandler — share-flow routing', () => {
 
     expect(sendShareDeepLink).not.toHaveBeenCalled();
     expect(env.openProject).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('resolveShareTarget dep missing'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('resolveShareTarget dep missing'))).toBe(true);
   });
 
   test('open-action URLs continue routing through the legacy path (regression check)', async () => {
@@ -1594,7 +1629,6 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         reason: 'main-checkout',
       }),
     );
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     // sendShareDeepLink intentionally omitted (dep unwired). Production always
     // wires it; this pins the defense-in-depth observability: the open window
@@ -1608,7 +1642,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       resolveShareTarget,
       getFocusedWindow: () => editorWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1617,7 +1651,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
     await flushPromises();
 
-    expect(warnLog.some((e) => e.msg.includes('sendShareDeepLink dep missing'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('sendShareDeepLink dep missing'))).toBe(true);
     // Falls through to openProject so the window is at least focused.
     expect(env.openProject).toHaveBeenCalledWith(
       '/Users/me/playbooks',
@@ -1947,7 +1981,6 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     });
     const sendShareDeepLink = vi.fn((_w: FakeWindowHandle, _p: ShareDeepLinkPayload) => {});
     const routeShareToNavigator = vi.fn((_p: ShareNavigatorPayload) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -1960,7 +1993,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       routeShareToNavigator,
       getFocusedWindow: () => env.readyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -1977,7 +2010,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       share: expectedSharePayload(),
     });
     expect(env.openProject).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('resolveShareTarget rejected'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('resolveShareTarget rejected'))).toBe(true);
   });
 
   test('branch-match-non-ok with no routeShareToNavigator dep surfaces warn + no dispatch', async () => {
@@ -1994,7 +2027,6 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
         anchorRecent: null,
       }),
     );
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2006,7 +2038,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
       // routeShareToNavigator intentionally omitted
       getFocusedWindow: () => env.readyWindow,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2016,7 +2048,7 @@ describe('registerProtocolHandler — resolved share routing (US-003)', () => {
     await flushPromises();
 
     expect(env.openProject).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('launcher-consent dropped'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('launcher-consent dropped'))).toBe(true);
   });
 
   test('share URL via second-instance argv reaches resolution', async () => {
@@ -2242,7 +2274,6 @@ describe('registerProtocolHandler — screen-flow routing', () => {
   test('missing openScreen dep surfaces a warn + no dispatch', async () => {
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2253,7 +2284,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
       getFocusedWindow: () => null,
       // openScreen intentionally omitted — handler must silent-drop with a warn.
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2261,7 +2292,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     env.app.fireOpenUrl('openknowledge://screen?name=settings');
     await flushPromises();
 
-    expect(warnLog.some((e) => e.msg.includes('openScreen dep missing'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('openScreen dep missing'))).toBe(true);
     expect(env.openProject).not.toHaveBeenCalled();
     expect(env.sendDeepLink).not.toHaveBeenCalled();
   });
@@ -2270,7 +2301,6 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     const env = makeEnv();
     env.readyWindow = { id: 'ready' };
     const openScreen = vi.fn((_win: FakeWindowHandle, _screen: ScreenTarget) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2282,7 +2312,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
       openScreen,
       getFocusedWindow: () => null,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2291,7 +2321,7 @@ describe('registerProtocolHandler — screen-flow routing', () => {
     await flushPromises();
 
     expect(openScreen).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('no target window'))).toBe(true);
+    expect(env.warnLog.some((e) => e.msg.includes('no target window'))).toBe(true);
   });
 });
 
@@ -2422,7 +2452,6 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2433,7 +2462,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2447,7 +2476,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
 
     expect(sendShareDeepLink).not.toHaveBeenCalled();
     expect(event.preventDefault).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('continue-activity-received'))).toBe(false);
+    expect(env.warnLog.some((e) => e.msg.includes('continue-activity-received'))).toBe(false);
   });
 
   test('ignores activities whose webpageURL is on a non-AASA host', async () => {
@@ -2458,7 +2487,6 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2469,7 +2497,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2481,7 +2509,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
 
     expect(sendShareDeepLink).not.toHaveBeenCalled();
     expect(event.preventDefault).not.toHaveBeenCalled();
-    expect(warnLog.some((e) => e.msg.includes('continue-activity-received'))).toBe(false);
+    expect(env.warnLog.some((e) => e.msg.includes('continue-activity-received'))).toBe(false);
   });
 
   test('ignores activities with no webpageURL on either details or userInfo', async () => {
@@ -2543,7 +2571,6 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     const focusedWin: FakeWindowHandle = { id: 'focused' };
     env.readyWindow = focusedWin;
     const sendShareDeepLink = vi.fn((_win: FakeWindowHandle, _payload: ShareDeepLinkPayload) => {});
-    const warnLog: Array<{ obj: object; msg: string }> = [];
 
     registerProtocolHandler({
       app: env.app,
@@ -2554,7 +2581,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
       sendShareDeepLink,
       getFocusedWindow: () => focusedWin,
       setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
-      log: { warn: (obj, msg) => warnLog.push({ obj, msg }) },
+      log: env.log,
     });
     env.app.resolveReady();
     await flushPromises();
@@ -2565,7 +2592,7 @@ describe('registerProtocolHandler — continue-activity Handoff path', () => {
     });
     await flushPromises();
 
-    const entry = warnLog.find((e) => e.msg.includes('continue-activity-received'));
+    const entry = env.warnLog.find((e) => e.msg.includes('continue-activity-received'));
     expect(entry).toBeDefined();
     expect(entry?.obj).toMatchObject({
       type: 'NSUserActivityTypeBrowsingWeb',
