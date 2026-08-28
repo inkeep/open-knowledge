@@ -154,6 +154,7 @@ export type DispatchKind =
   | 'linux-manual-fallback-no-auth'
   | 'linux-manual-fallback-after-error'
   | 'download-skipped-already-staged'
+  | 'download-skipped-install-armed'
   | 'relaunch-refresh-found-newer'
   | 'relaunch-refresh-up-to-date'
   | 'relaunch-refresh-timed-out'
@@ -239,15 +240,24 @@ interface StartAutoUpdaterOpts {
    * Synchronous teardown hook fired immediately before
    * `autoUpdater.quitAndInstall()` from the `ok:update:relaunch-now`
    * IPC handler. Production wires this to a hard SIGKILL of every
-   * project-window utility process. Squirrel.Mac's ShipIt runs a final
-   * not-still-running validation and aborts the swap with
-   * `SQRLInstallerErrorDomain Code=-9 "App Still Running Error"` if
-   * it still sees the app running when the swap window opens — the
-   * standard `app.quit()` path posts a graceful `{type:'shutdown'}`
-   * to each utility, but Hocuspocus / file-watcher cleanup can take
-   * longer than ShipIt's poll budget, leaving the swap silently
-   * cancelled. SIGKILLing the utilities first guarantees a clean
-   * process tree before ShipIt looks. Optional so unit tests don't
+   * project-window utility process.
+   *
+   * What this buys is server lifetime, not ShipIt's pre-swap validation. A
+   * detached server survives app-quit by design, and one that outlives the
+   * swap is re-attached by the relaunched app, which then reads an older
+   * version off `server.lock` and shows the version-drift toast. The graceful
+   * `{type:'shutdown'}` window-close IPC is not fast enough on its own —
+   * Hocuspocus drain plus file-watcher teardown can outlast the swap window.
+   *
+   * ShipIt's `SQRLInstallerErrorAppStillRunning` abort is NOT the reason, and
+   * restating it here would be wrong: `SQRLInstaller.m` enumerates
+   * `NSRunningApplication runningApplicationsWithBundleIdentifier:` and keeps
+   * only entries whose `bundleURL` standardizes to the target `.app`, so a
+   * `utilityProcess` fork (not an application at all) and the detached server
+   * (a distinct helper bundle under `Contents/Frameworks/`) are both filtered
+   * out. Only a second GUI instance of the installed bundle can trip it.
+   *
+   * Optional so unit tests don't
    * have to provide one — production passes
    * `async () => await windowManager.stopAllOwnedServers()`. May be
    * async — the hook is awaited before `quitAndInstall` so a two-phase
@@ -341,6 +351,16 @@ interface StartAutoUpdaterOpts {
  */
 type CheckNowResult =
   | { kind: 'available'; currentVersion: string; latestVersion: string }
+  /**
+   * A build is already staged and waiting, so the offer this check turned up
+   * was declined rather than fetched — whether it was the staged version
+   * re-offered or a newer one the single-flight guard turned down.
+   * `stagedVersion` is what a relaunch will actually install, which in the
+   * newer-offer case is NOT the version just offered: reporting the offer there
+   * would promise a build this session has decided not to fetch, and reporting
+   * either as "downloading" would describe a download that is not running.
+   */
+  | { kind: 'ready-to-install'; currentVersion: string; stagedVersion: string }
   | { kind: 'not-available'; currentVersion: string }
   | { kind: 'error'; message: string };
 
@@ -1196,6 +1216,32 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // that already has a failed install behind them.
   let stagedThisSession: string | null = null;
 
+  /**
+   * The build already staged this session, when THAT is why the offer in hand
+   * is being declined — otherwise null.
+   *
+   * Both listeners must answer this identically — `onUpdateAvailable` to decide
+   * whether to fetch, `onUpdateAvailableForMenuCheck` to decide what a manual
+   * check reports — or the report path advertises a download that is not
+   * running. Derived once so the two cannot diverge; call it once per listener
+   * rather than re-testing either arm inline. Returning the version rather than
+   * a boolean is what lets the reporting path name the build without
+   * re-narrowing `stagedThisSession`.
+   *
+   * Same version: declined on every platform. Re-downloading is not a no-op
+   * even from cache, and every re-stage is a window in which a "Relaunch" click
+   * hits a half-written staging directory.
+   *
+   * Version change: declined on macOS only, because only Squirrel.Mac holds a
+   * pending install in a separate armed process that a second download races
+   * rather than replaces. `onUpdateAvailable` carries the full mechanism.
+   */
+  const declinedForStagedVersion = (offeredVersion: string | undefined): string | null => {
+    if (stagedThisSession === null) return null;
+    if (stagedThisSession === offeredVersion) return stagedThisSession;
+    return platform === 'darwin' ? stagedThisSession : null;
+  };
+
   /** Accessor form, so a read after an `await` is not stale-narrowed. */
   const currentStaging = (): { version: string } | null => stagingInFlight;
 
@@ -1337,6 +1383,52 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     );
     if (restored) {
       broadcastToAllWindows('ok:update:downloaded', { version });
+    } else if (platform !== 'darwin') {
+      // The persist failed, so `versionPendingInstall` stays cleared and there
+      // is no banner to retry from. Only `stagedThisSession` gates the decline,
+      // so without releasing it here nothing else would: the guard would turn
+      // down the re-offer of this very version on every later poll, and the
+      // session would neither re-download nor re-arm the banner.
+      //
+      // Safe on both platforms that reach this, for different reasons. Linux
+      // arms nothing at all (`autoInstallOnAppQuit` is false there), so there
+      // is no pending request to double up. Windows arms only a cache entry
+      // behind ONE idempotent quit handler, so a re-download replaces the
+      // pending installer rather than racing it — the citation for that is at
+      // the decline guard in `onUpdateAvailable`. Either way the retry banner
+      // comes back for free.
+      logger.warn(
+        stagedThisSession === null
+          ? 'relaunch-failed restore did not persist — no single-flight arm was held'
+          : 'relaunch-failed restore did not persist — releasing the single-flight arm',
+        { version, kind, armedVersion: stagedThisSession },
+      );
+      stagedThisSession = null;
+    } else {
+      // macOS keeps the arm: the trigger cannot tell us whether Squirrel's
+      // request is still live. ShipIt is armed at
+      // download-completion time (`electron-updater@6.8.4`
+      // `out/MacUpdater.js#doDownloadUpdate`), not here, and each of
+      // `failRelaunch`'s three triggers leaves a different possibility open:
+      // the watchdog fires on an app that then quits anyway, a
+      // `quitAndInstall()` throw means the app is not quitting at all, and an
+      // `error` event may be Squirrel reporting a swap that already ran and
+      // failed — or an unrelated error arriving while ShipIt is still pending
+      // (see `onError`, which says both).
+      //
+      // Keeping the arm is the conservative read of all three: releasing it can
+      // arm a SECOND ShipIt beside a live one, which is the bundle-losing race
+      // this guard exists to prevent. The price is bounded but not zero. Usually
+      // it is just the retry button, since `autoInstallOnAppQuit` installs the
+      // staged build at quit regardless; but if the swap had already failed then
+      // nothing installs at quit either, and this session takes no update at all
+      // until the next launch.
+      logger.warn(
+        stagedThisSession === null
+          ? 'relaunch-failed restore did not persist — no single-flight arm was held'
+          : 'relaunch-failed restore did not persist — keeping the single-flight arm (darwin: ShipIt may still be waiting)',
+        { version, kind, armedVersion: stagedThisSession },
+      );
     }
     broadcastToAllWindows('ok:update:relaunch-failed', {
       version,
@@ -1349,13 +1441,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // reveal the stuck card underneath. Clear it instead.
       ...(restored ? {} : { dismissPending: true }),
     });
-    logger.warn('relaunch failed — restored pending install and re-armed windows', {
-      version,
-      kind,
-      message,
-      causeCode: cause?.code,
-      causeStack: cause?.stack,
-    });
+    logger.warn(
+      restored
+        ? 'relaunch failed — restored pending install and re-armed windows'
+        : 'relaunch failed — pending install NOT restored',
+      {
+        version,
+        kind,
+        message,
+        causeCode: cause?.code,
+        causeStack: cause?.stack,
+      },
+    );
     onDispatch?.(kind);
   };
 
@@ -1469,25 +1566,68 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // identical bytes. Every one of those re-stages is a window in which a
     // "Relaunch" click hits a half-written staging directory (see
     // `stagingInFlight`), so an hourly re-stage of a build we already hold is
-    // pure downside. A version CHANGE still re-downloads, and a download that
-    // failed left `versionPendingInstall` unset, so retries are unaffected.
+    // pure downside.
     //
-    // Both conditions are required. `stagedThisSession` is what makes the skip
+    // On macOS a version CHANGE is declined too, for a different and harder
+    // reason: Squirrel holds a pending install by LAUNCHING ShipIt, which then
+    // waits — with no timeout of its own — for this process to exit.
+    // Downloading again does not replace that request, it launches a SECOND
+    // ShipIt beside the first, and both wake in the same instant when the app
+    // finally quits. They then race the same swap: the loser moves aside the
+    // bundle the winner just installed, and if it cannot move it back the app
+    // is gone from /Applications with nothing left to launch. Nothing in
+    // Electron's autoUpdater API can withdraw an armed request, so declining
+    // the second download is the only lever available. The staged build still
+    // installs at quit and the newer one is picked up in the session after. The
+    // cost is not a one-version bound: on macOS nothing clears
+    // `stagedThisSession`, so every further offer this process sees is declined
+    // too, and a session long enough to span several releases installs the first
+    // build it staged and stays there until the next launch. (Off macOS
+    // `failRelaunch` releases it when it cannot restore the retry banner; see
+    // there for why that release stops at the macOS boundary.)
+    //
+    // Nowhere else has a request to collide with, so nowhere else pays that
+    // cost. On Windows a download only writes an installer to the cache and
+    // `BaseUpdater.addQuitHandler` is idempotent — it guards on
+    // `quitHandlerAdded`, and the handler it registers calls `install()`, which
+    // reads the most recent download — so the single quit handler runs
+    // whichever installer was downloaded LAST: a newer build replaces the
+    // pending one rather than racing it. On Linux `autoInstallOnAppQuit` is
+    // false (see its assignment), so `addQuitHandler` returns early and no quit
+    // handler is registered at all, leaving nothing pending between the
+    // download and an explicit relaunch click. Cited rather than asserted
+    // because this reading is what removes the guard on those platforms:
+    // `electron-updater@6.8.4` (exact-pinned in `packages/desktop/package.json`)
+    // `out/BaseUpdater.js#addQuitHandler` and `out/NsisUpdater.js#doDownloadUpdate`.
+    // The tests cannot catch a mistake here — they run against a stub of
+    // electron-updater, so they pin our gating, not its behaviour.
+    //
+    // `stagedThisSession` — not the persisted field — is what makes both skips
     // safe (see its declaration): the persisted field alone would also match on
     // the FIRST offer of a session that inherited a staged-but-uninstalled
     // build, and skipping there leaves electron-updater with no installer path
     // and no quit handler, so the update becomes uninstallable until a newer
-    // one ships.
-    if (
-      offeredVersion &&
-      stagedThisSession === offeredVersion &&
-      readState().versionPendingInstall === offeredVersion
-    ) {
-      logger.debug('update-available for the already-staged version — skipping re-download', {
-        version: offeredVersion,
-      });
+    // one ships. Keying on a COMPLETED stage likewise leaves a download that
+    // failed free to retry: nothing reached Squirrel, so there is no pending
+    // request to collide with.
+    const armedVersion = declinedForStagedVersion(offeredVersion);
+    if (armedVersion !== null) {
+      // `debug` for the hourly re-offer of bytes already held; `warn` for a
+      // suppressed newer build, because production's log floor is `info`, so a
+      // `debug` line never reaches `~/.ok/logs` and therefore never reaches a
+      // bug report. That decision suppresses a genuinely newer build for the
+      // rest of the process lifetime, which is exactly the question a "why am I
+      // not getting the update" report has to be able to answer.
+      const reOffer = armedVersion === offeredVersion;
+      const logFn = reOffer ? logger.debug : logger.warn;
+      logFn(
+        reOffer
+          ? 'update-available for the already-staged version — skipping re-download'
+          : 'update-available while an install is already armed — skipping re-download',
+        { version: offeredVersion, armedVersion },
+      );
       settleCheckWaiters('settled');
-      onDispatch?.('download-skipped-already-staged');
+      onDispatch?.(reOffer ? 'download-skipped-already-staged' : 'download-skipped-install-armed');
       return;
     }
     // Tag the artifact fetch with the version being installed. The Windows and
@@ -1547,6 +1687,23 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // remap in `onError`.
     if (classifyOffer(info.version) !== 'same-channel') {
       showCheckNowResult?.({ kind: 'not-available', currentVersion: getAppVersion() });
+      return;
+    }
+    // This listener fires for the same event as `onUpdateAvailable` and cannot
+    // see that it declined the offer, so it has to ask the same question that
+    // path asked, or it will advertise a download that is not happening. Report
+    // the build the session is actually holding: an offer declined by the
+    // single-flight guard is not what a relaunch installs, and saying otherwise
+    // sends the user round the same check forever waiting for a version that
+    // never arrives. The declined-because-already-staged case reaches here too
+    // — nothing is downloading there either.
+    const armedVersion = declinedForStagedVersion(info.version);
+    if (armedVersion !== null) {
+      showCheckNowResult?.({
+        kind: 'ready-to-install',
+        currentVersion: getAppVersion(),
+        stagedVersion: armedVersion,
+      });
       return;
     }
     showCheckNowResult?.({
@@ -1886,6 +2043,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
    * Never throws. Every failure and timeout falls through to installing
    * whatever is currently staged, because a stale install still beats a
    * refusal to relaunch.
+   *
+   * On macOS it can no longer resolve staleness once THIS session has staged a
+   * build: the single-flight guard in `onUpdateAvailable` declines the newer
+   * offer this check turns up, so the refresh confirms which version installs
+   * rather than changing it. That is the intended trade — a second armed ShipIt
+   * would be woken seconds later by this very click, which is the worst
+   * instance of the race the guard exists to prevent. The freshness resolution
+   * described above still applies on Windows and Linux, and on a macOS session
+   * that has not staged anything yet.
    */
   const refreshBeforeInstall = async (): Promise<void> => {
     // A stage already running is the dangerous case, and it is also the case
@@ -1938,8 +2104,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // not model.
     const staging = currentStaging();
     if (result !== 'available' || !staging) {
-      // Either nothing newer exists, or the offer was vetoed or already
-      // staged. Both mean the staged build is the one to install.
+      // Either nothing newer exists, or the offer was vetoed, already staged,
+      // or declined by the single-flight guard. All of them mean the staged
+      // build is the one to install, which is what this kind reports — it says
+      // the refresh did not change the outcome, not that nothing newer exists.
+      // The cases stay separable downstream because each declining path emits
+      // its own kind in the same click: `download-skipped-install-armed` for
+      // the macOS single-flight, `download-skipped-already-staged` for a
+      // re-offer of the staged build, `cross-channel-blocked` for a veto. A
+      // lone `relaunch-refresh-up-to-date` is the genuinely-up-to-date case.
       onDispatch?.('relaunch-refresh-up-to-date');
       return;
     }
@@ -2142,10 +2315,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     broadcastToAllWindows('ok:update:relaunching', { version: pending });
     onDispatch?.('relaunching-broadcast');
     // Fire the pre-relaunch teardown hook BEFORE `quitAndInstall()`. Wrap
-    // in try/catch so a hook bug never blocks the user's relaunch — the
-    // worst case if the hook throws is the original failure mode (ShipIt's
-    // not-still-running validation aborts with code -9), which the user can recover from by
-    // quitting the app manually. We log the throw so the diagnostic is
+    // in try/catch so a hook bug never blocks the user's relaunch. The worst
+    // case if the hook throws is that the teardown it owns does not run:
+    // servers are not stopped and the async log buffer is not drained, so
+    // helper processes can outlive the swap and the tail of the log is lost.
+    // Not a blocked install — ShipIt's "App Still Running" abort keys on
+    // another process claiming THIS bundle URL, and a spawned server claims its
+    // own helper bundle, so it cannot trigger that (see `window-manager.ts`,
+    // which states the same constraint). We log the throw so the diagnostic is
     // visible in main process stderr.
     if (opts.prepareForRelaunch) {
       try {

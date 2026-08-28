@@ -9122,11 +9122,12 @@ function bootPrimaryInstance(): void {
           : {}),
         // Pre-relaunch teardown — synchronously hard-kill every project-window
         // utility (Hocuspocus host) right before
-        // `autoUpdater.quitAndInstall()` so Squirrel.Mac's pre-swap
-        // not-still-running validation doesn't see a stale process and abort with code -9
-        // ("App Still Running Error"). The graceful `{type:'shutdown'}`
-        // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
-        // teardown can outlast ShipIt's poll budget.
+        // `autoUpdater.quitAndInstall()`, so no server outlives the bundle swap
+        // and gets re-attached by the relaunched app at an older version. The
+        // graceful `{type:'shutdown'}` window-close IPC isn't fast enough —
+        // Hocuspocus drain + file-watcher teardown can outlast the swap window.
+        // Not about ShipIt's "App Still Running" abort, which cannot see these
+        // processes; `prepareForRelaunch` in `auto-updater.ts` says why.
         prepareForRelaunch: async () => {
           // Freeze focus tracking BEFORE any teardown: the window-close
           // cascade below re-focuses each surviving window, and tracking
@@ -9175,6 +9176,24 @@ function bootPrimaryInstance(): void {
               title: 'Up to Date',
               message: "You're on the latest version of OpenKnowledge.",
               detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
+            });
+          } else if (result.kind === 'ready-to-install') {
+            // Stated, not instructed. Every dialog in this chain is OK-only,
+            // and the wired "Relaunch" affordance lives on Toast A, which is
+            // dismissible — so a user can reach this dialog with no relaunch
+            // button anywhere on screen. Copy that said "Relaunch to install
+            // it" pointed at a control that may not exist. It also cannot say
+            // "quit and reopen": that installs on macOS and Windows, but Linux
+            // has `autoInstallOnAppQuit` off, so a plain quit installs nothing
+            // there. What holds on all three is that relaunching is when it
+            // lands.
+            void dialog.showMessageBox(target, {
+              type: 'info',
+              buttons: ['OK'],
+              defaultId: 0,
+              title: 'Update Ready',
+              message: `OpenKnowledge ${result.stagedVersion} is downloaded and ready.`,
+              detail: `It installs the next time you relaunch. Any newer build is offered after that.`,
             });
           } else if (result.kind === 'available') {
             void dialog.showMessageBox(target, {

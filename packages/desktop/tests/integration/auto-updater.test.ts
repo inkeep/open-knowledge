@@ -20,7 +20,10 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import type { OutgoingHttpHeaders } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import {
   bootAutoUpdater,
@@ -218,8 +221,9 @@ function makeRig(
      * Pre-relaunch teardown hook — fires synchronously from the
      * `relaunch-now` IPC handler immediately before
      * `autoUpdater.quitAndInstall()`. Production wires this to a hard
-     * SIGKILL of project-window utilities so Squirrel.Mac's pre-swap
-     * pgrep doesn't see stale processes.
+     * SIGKILL of project-window utilities so no server outlives the bundle
+     * swap. Not about Squirrel.Mac's "App Still Running" abort, which keys on
+     * another process claiming the app's bundle URL and so cannot see these.
      */
     prepareForRelaunch?: () => void;
     /**
@@ -4797,14 +4801,14 @@ function fireTimerFor(clock: FakeClock, ms: number): void {
   (call[0] as () => void)();
 }
 
-describe('same-version download guard', () => {
-  /** Take a rig through a real in-session stage of `version`. */
-  function stageInSession(rig: TestRig, version: string): void {
-    rig.updater.emit('update-available', { version });
-    rig.updater.emit('update-downloaded', { version });
-    rig.updater.downloadUpdate.mockClear();
-  }
+/** Take a rig through a real in-session stage of `version`. */
+function stageInSession(rig: TestRig, version: string): void {
+  rig.updater.emit('update-available', { version });
+  rig.updater.emit('update-downloaded', { version });
+  rig.updater.downloadUpdate.mockClear();
+}
 
+describe('same-version download guard', () => {
   test('a re-offer of the build this session staged does not re-download', () => {
     const { rig } = makeRig({ versionPendingInstall: null });
     stageInSession(rig, '0.3.2');
@@ -4876,6 +4880,377 @@ describe('same-version download guard', () => {
     rig.updater.downloadUpdate.mockClear();
 
     rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cited upstream behaviour stays tied to the pinned dependency', () => {
+  test('the electron-updater version in the guard comment matches package.json', () => {
+    // The comment citing `BaseUpdater#addQuitHandler` is what authorizes NOT
+    // guarding Windows and Linux, and the suite cannot check it: these tests
+    // run against a stub, so they pin our gating rather than electron-updater's
+    // behaviour. A version bump is the one event that should force a re-read of
+    // that citation, and without this it would pass silently.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(here, '../../package.json'), 'utf8')) as {
+      dependencies?: Record<string, string>;
+      devDependencies?: Record<string, string>;
+    };
+    const pinned =
+      pkg.dependencies?.['electron-updater'] ?? pkg.devDependencies?.['electron-updater'];
+    const source = readFileSync(join(here, '../../src/main/auto-updater.ts'), 'utf8');
+    // Every occurrence, not the first: the file carries more than one citation
+    // and a guard that checks one of them would pass while another rots.
+    const cited = [...source.matchAll(/`electron-updater@([^`]+)`/g)].map((m) => m[1]);
+
+    expect(cited.length).toBeGreaterThan(0);
+    expect([...new Set(cited)]).toEqual([pinned]);
+  });
+});
+
+/**
+ * A second macOS download arms a second ShipIt beside the pending one, and both
+ * race the same bundle swap at quit. The mechanism, and why declining is the
+ * only available lever, is stated once at the guard itself — see the comment
+ * above the `declinedForStagedVersion` call in `onUpdateAvailable`.
+ */
+describe('single-flight install handoff', () => {
+  test('a newer offer does not arm a second request beside the pending one', () => {
+    // The periodic-cadence shape. The staged build still installs at quit; the
+    // newer one is picked up in the session after that. The cost is that every
+    // further offer this macOS process sees is declined too — nothing clears
+    // `stagedThisSession` here — which is the whole price of not racing the
+    // swap.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  test('the declined offer still counts as a successful check', () => {
+    // Same reasoning as the same-version skip: the manifest was fetched and
+    // parsed, so marching the stuck-hint toward firing would be wrong.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    rig.dispatches.length = 0;
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+    expect(rig.dispatches).toContain('check-success' as DispatchKind);
+  });
+
+  test('the click-time freshness check installs the armed build rather than a second one', async () => {
+    // The worst instance of the race, because both ShipIts are woken seconds
+    // later by this very click. The refresh is documented to fall through to
+    // "install whatever is currently staged" on every failure; an already-armed
+    // request is one more reason to take that path, not a new failure mode.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    rig.updater.checkForUpdates.mockImplementation(() => {
+      rig.updater.emit('update-available', { version: '0.3.3' });
+      return Promise.resolve(undefined);
+    });
+
+    await rig.ipc.invoke('ok:update:relaunch-now');
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.updater.quitAndInstall).toHaveBeenCalledTimes(1);
+    expect(rig.state.attemptedInstall).toBe('0.3.2');
+    // The pair `refreshBeforeInstall` documents as what keeps a decline
+    // separable from a genuinely up-to-date check: the outcome kind says the
+    // refresh did not change what installs, and the decline kind beside it says
+    // why. Telemetry that only saw the former would read this as "nothing
+    // newer existed".
+    expect(rig.dispatches).toContain('relaunch-refresh-up-to-date' as DispatchKind);
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  // Per-platform cases rather than a loop inside one test: a loop reports the
+  // first failure as the whole test and never runs the platform after it.
+  test.each(['win32', 'linux'] as const)('on %s a newer offer still downloads', (platform) => {
+    // Only Squirrel.Mac holds the pending install in a separate armed process.
+    // On Windows a download writes an installer to the cache and the single
+    // idempotent quit handler runs whichever was downloaded LAST, so a newer
+    // build replaces the pending one instead of racing it; on Linux
+    // `autoInstallOnAppQuit` is false, so nothing is pending at all. Declining
+    // there would pin a long session to the first build it happened to stage
+    // and buy nothing for it.
+    const { rig } = makeRig({ versionPendingInstall: null, platform });
+    stageInSession(rig, '0.3.2');
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(rig.dispatches).not.toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  test.each([
+    'win32',
+    'linux',
+  ] as const)('on %s a manual check for a newer offer reports it as downloading', (platform) => {
+    // The reporting gate must ask the same darwin-scoped predicate as the
+    // fetch gate, or Windows and Linux report a stale staged version while a
+    // newer download is in flight. Pins the direction the fetch test cannot
+    // see: there, the correct outcome is that the download happens.
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.3.1',
+      versionPendingInstall: null,
+      platform,
+      showCheckNowResult,
+    });
+    stageInSession(rig, '0.3.2');
+    showCheckNowResult.mockClear();
+
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'available',
+      currentVersion: '0.3.1',
+      latestVersion: '0.3.3',
+    });
+  });
+
+  test.each([
+    'win32',
+    'linux',
+  ] as const)('on %s the same-version skip still applies', (platform) => {
+    // Its rationale — not reopening a re-stage window over bytes already
+    // held — has nothing to do with Squirrel, so the platform scoping must
+    // not leak into it.
+    const { rig } = makeRig({ versionPendingInstall: null, platform });
+    stageInSession(rig, '0.3.2');
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
+  });
+
+  test('a manual check names the build that will install, not the declined offer', () => {
+    // `onUpdateAvailableForMenuCheck` fires for the same event and cannot see
+    // that the offer was declined. Left alone it says "0.3.3 is available, it's
+    // downloading in the background" — both halves false — and the user
+    // relaunches onto 0.3.2 and repeats the check forever.
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.3.1',
+      versionPendingInstall: null,
+      showCheckNowResult,
+    });
+    stageInSession(rig, '0.3.2');
+    showCheckNowResult.mockClear();
+
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(showCheckNowResult).toHaveBeenCalledTimes(1);
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'ready-to-install',
+      currentVersion: '0.3.1',
+      stagedVersion: '0.3.2',
+    });
+  });
+
+  test('a manual check that turns up the armed build reads as ready, not downloading', () => {
+    // The same-version re-offer, which is the COMMON shape: electron-updater
+    // re-offers a staged build on every poll for as long as it is newer than
+    // the running one, so this fires hourly while the version-change shape
+    // needs a release to land mid-session. It is declined too — no
+    // `downloadUpdate()` runs — so reporting "downloading in the background"
+    // described a download that was not happening on every platform.
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.3.1',
+      versionPendingInstall: null,
+      showCheckNowResult,
+    });
+    stageInSession(rig, '0.3.2');
+    showCheckNowResult.mockClear();
+
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'ready-to-install',
+      currentVersion: '0.3.1',
+      stagedVersion: '0.3.2',
+    });
+  });
+
+  test.each([
+    'win32',
+    'linux',
+  ] as const)('on %s a manual check for the armed build still reads as ready', (platform) => {
+    // Off macOS the version-change term is false, so this is the only place
+    // the same-version half of the predicate is load-bearing — on darwin that
+    // term reports `ready-to-install` on its own and would mask its removal.
+    // It is also the shape that fires hourly.
+    const showCheckNowResult = vi.fn(() => {});
+    const { rig } = makeRig({
+      appVersion: '0.3.1',
+      versionPendingInstall: null,
+      platform,
+      showCheckNowResult,
+    });
+    stageInSession(rig, '0.3.2');
+    showCheckNowResult.mockClear();
+
+    rig.ipc.invoke('ok:update:check-now');
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(showCheckNowResult).toHaveBeenCalledWith({
+      kind: 'ready-to-install',
+      currentVersion: '0.3.1',
+      stagedVersion: '0.3.2',
+    });
+  });
+
+  test.each([
+    'win32',
+    'linux',
+  ] as const)('on %s a relaunch that cannot restore its state releases the arm', async (platform) => {
+    // Losing both the persist and the arm leaves the session with no banner
+    // to retry from and a guard that declines the re-offer of this very
+    // version forever. Only `stagedThisSession` gates that decline, so
+    // nothing else would release it. Safe here because neither platform has
+    // an armed installer a re-download could duplicate.
+    const { rig } = makeRig({ versionPendingInstall: null, platform });
+    stageInSession(rig, '0.3.2');
+    rig.updater.quitAndInstall = vi.fn(() => {
+      // Flip only now: an earlier failure would abort the handler before it
+      // reaches the restore path this test is about.
+      rig.failNextPersist = true;
+      throw new Error('installer refused the handoff');
+    });
+
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
+      'installer refused the handoff',
+    );
+    expect(rig.state.versionPendingInstall).toBeNull();
+    rig.failNextPersist = false;
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * macOS keeps the arm on every `failRelaunch` trigger, because none of them
+   * establishes that Squirrel's request is spent — the watchdog fires on an app
+   * that may still quit, a throw means it is not quitting at all, and an error
+   * event may arrive while ShipIt is still pending. One case per trigger, so a
+   * refactor of any single dispatch site cannot break the invariant silently.
+   */
+  test('on macOS a watchdog fire that cannot restore KEEPS the arm', async () => {
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.failNextPersist = true;
+    fireTimerFor(rig.clock, RELAUNCH_WATCHDOG_MS);
+    rig.failNextPersist = false;
+    expect(rig.dispatches).toContain('relaunch-watchdog-fired' as DispatchKind);
+    expect(rig.state.versionPendingInstall).toBeNull();
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  test('on macOS a quitAndInstall throw that cannot restore KEEPS the arm', async () => {
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    rig.updater.quitAndInstall = vi.fn(() => {
+      rig.failNextPersist = true;
+      throw new Error('squirrel refused the handoff');
+    });
+
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
+      'squirrel refused the handoff',
+    );
+    rig.failNextPersist = false;
+    expect(rig.state.versionPendingInstall).toBeNull();
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  test('on macOS an in-flight error that cannot restore KEEPS the arm', async () => {
+    // The trigger where the arm may genuinely be spent — this is Squirrel's
+    // swap-failure channel, reported after a clean `quitAndInstall()` return.
+    // The arm is kept anyway because `onError` cannot tell that case from an
+    // unrelated error arriving while ShipIt is still pending, and only one of
+    // those two readings is safe to act on.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    await rig.ipc.invoke('ok:update:relaunch-now');
+    rig.failNextPersist = true;
+    rig.updater.emit('error', new Error('install failed'));
+    rig.failNextPersist = false;
+    expect(rig.dispatches).toContain('relaunch-error-event' as DispatchKind);
+    expect(rig.state.versionPendingInstall).toBeNull();
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-install-armed' as DispatchKind);
+  });
+
+  test('a relaunch that fails but DOES restore its state keeps the arm', async () => {
+    // The ordinary failure path, and the direction a "simplification" that
+    // hoists the release above the if/else would silently break: the banner is
+    // back, so the retry affordance exists and the arm must survive to keep the
+    // single-flight guarantee.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    stageInSession(rig, '0.3.2');
+    rig.updater.quitAndInstall = vi.fn(() => {
+      throw new Error('squirrel refused the handoff');
+    });
+
+    await expect(Promise.resolve(rig.ipc.invoke('ok:update:relaunch-now'))).rejects.toThrow(
+      'squirrel refused the handoff',
+    );
+    expect(rig.state.versionPendingInstall).toBe('0.3.2');
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.2' });
+
+    expect(rig.updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(rig.dispatches).toContain('download-skipped-already-staged' as DispatchKind);
+  });
+
+  test('a download that never staged leaves the next offer free to arm', () => {
+    // Nothing was handed to Squirrel, so there is no pending request to
+    // collide with — the guard must key on a completed stage, not on having
+    // attempted one, or a single failed download would end updates for the
+    // rest of the session.
+    //
+    // The same setup as `a retry after a failed download…` above, re-offering a
+    // DIFFERENT version rather than the same one, so it lands on the
+    // newer-offer branch (`declinedForStagedVersion` returning non-null via the
+    // darwin term). Both fail if the not-armed short circuit stops
+    // short-circuiting; only this one covers the newer-offer path through it.
+    const { rig } = makeRig({ versionPendingInstall: null });
+    rig.updater.emit('update-available', { version: '0.3.2' });
+    rig.updater.emit('error', new Error('network died'));
+    rig.updater.downloadUpdate.mockClear();
+
+    rig.updater.emit('update-available', { version: '0.3.3' });
 
     expect(rig.updater.downloadUpdate).toHaveBeenCalledTimes(1);
   });

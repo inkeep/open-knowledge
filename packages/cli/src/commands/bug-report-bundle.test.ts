@@ -514,6 +514,63 @@ describe('collectShipItLogFiles — Squirrel.Mac install logs', () => {
     expect(collectShipItLogFiles(join(makeTmpDir(), 'absent'))).toEqual([]);
   });
 
+  // Squirrel opens both logs with `ensureWritable`: when the existing file is
+  // not writable it appends `.1`, `.2`, … (up to `.100`) and writes THERE
+  // instead. Its own source names the cause — the log can end up owned by root,
+  // which previously stopped ShipIt launching at all — so the suffixed file is
+  // exactly what a machine whose installs run privileged writes to. Collecting
+  // only the two base names silently harvests the stale, un-writable original
+  // and misses every line of the run being reported.
+  test('collects the numeric-suffixed logs Squirrel falls back to', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'stale root-owned\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.1`, 'the live run\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stdout.log.2`, 'stdout fallback\n');
+
+    const names = collectShipItLogFiles(cachesDir)
+      .map((f) => basename(f))
+      .sort();
+
+    expect(names).toEqual(['ShipIt_stderr.log', 'ShipIt_stderr.log.1', 'ShipIt_stdout.log.2']);
+  });
+
+  // The suffix is the only thing separating a fallback log from an unrelated
+  // neighbour, so the match is anchored rather than a prefix test. `.plist` is
+  // the binary state file the collector deliberately omits, and `.bak` stands
+  // for anything a user or another tool parked in the directory.
+  test('ignores neighbours that merely start with a ShipIt log name', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.1`, 'ours\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.bak`, 'theirs\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipItState.plist`, 'theirs\n');
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.logging`, 'theirs\n');
+
+    const bodies = collectShipItLogFiles(cachesDir).map((f) => readFileSync(f, 'utf8'));
+
+    expect(bodies).toEqual(['ours\n']);
+  });
+
+  // Squirrel will walk to `.100`, and each file can be megabytes. A bundle must
+  // not scale with how long a machine has been failing to install, so the
+  // fallbacks are capped — lowest suffix first, because Squirrel takes the
+  // FIRST writable candidate, making the low numbers the live ones.
+  test('bounds how many fallback logs one stream contributes', () => {
+    const cachesDir = makeTmpDir();
+    writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log`, 'base\n');
+    for (let i = 1; i <= 12; i++) {
+      writeAt(cachesDir, `${DESKTOP_BUNDLE_ID}.ShipIt/ShipIt_stderr.log.${i}`, `n${i}\n`);
+    }
+
+    const names = collectShipItLogFiles(cachesDir).map((f) => basename(f));
+
+    expect(names).toEqual([
+      'ShipIt_stderr.log',
+      'ShipIt_stderr.log.1',
+      'ShipIt_stderr.log.2',
+      'ShipIt_stderr.log.3',
+    ]);
+  });
+
   // The collector existing is not the deliverable — reaching the zip is. This
   // is the assertion a triager's experience actually depends on.
   test('stages the ShipIt log into the bundle under logs/', async () => {

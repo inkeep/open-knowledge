@@ -1534,11 +1534,10 @@ export class WindowManager {
    * `quitAndInstall`.
    */
   async stopAllOwnedServers(): Promise<void> {
-    // Utility-fork pids (dev path) — hard-kill immediately. These are
-    // children of Electron's process tree and would die anyway on
-    // `quitAndInstall`, but ShipIt's pre-swap not-still-running validation
-    // (the `SQRLInstallerErrorDomain Code=-9 "App Still Running"` failure)
-    // wants the tree clean BEFORE it looks.
+    // Utility-fork pids (dev path) — hard-kill immediately. These are children
+    // of Electron's process tree and would die on `quitAndInstall` anyway;
+    // killing them first makes the teardown ordered rather than a race with
+    // the swap, and keeps this path's shape identical to the detached one.
     signalStopOwnedUtilityForks(this.windowsByPath.values(), this.deps.log);
 
     // Detached-spawn pids — two-phase SIGTERM → poll → SIGKILL.
@@ -1646,8 +1645,10 @@ export class WindowManager {
    * design (it runs detached off `process.execPath`, the bundle's Electron
    * binary). If it outlives the swap, the relaunched app attaches to it, reads
    * an older version off `server.lock`, and shows the version-drift toast — the
-   * "every update" complaint. A still-alive bundle-process can also trip
-   * ShipIt's pre-swap "App Still Running" check. Killing it here removes both.
+   * "every update" complaint. Killing it here removes that. It is the whole
+   * reason: the server runs as its own helper bundle, so ShipIt's
+   * "App Still Running" abort never counts it (see `prepareForRelaunch` in
+   * `auto-updater.ts`).
    *
    * Best-effort by necessity: `before-quit-for-update` cannot hold the quit open
    * for the grace-poll ladder, so this only sends the signal — but the server's

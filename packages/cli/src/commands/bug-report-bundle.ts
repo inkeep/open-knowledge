@@ -259,12 +259,38 @@ export function collectUserLogFiles(projectSlug: string | null, logsDir: string)
 export { DESKTOP_BUNDLE_ID };
 
 /**
- * The two text logs Squirrel.Mac's ShipIt writes into its per-bundle cache
- * dir. `ShipItState.plist` sits beside them but is a binary plist — staging it
- * through the text scrub would garble it, and the swap narrative lives in
- * stderr regardless.
+ * The two text log STREAMS Squirrel.Mac's ShipIt writes into its per-bundle
+ * cache dir. `ShipItState.plist` sits beside them but is a binary plist —
+ * staging it through the text scrub would garble it, and the swap narrative
+ * lives in stderr regardless.
+ *
+ * These are stream names rather than filenames because ShipIt opens each one
+ * with `ensureWritable`: when the existing file cannot be opened for writing it
+ * appends `.1`, `.2`, … (walking as far as `.100`) and writes to that instead.
+ * Squirrel's own source attributes the un-writable case to the log ending up
+ * owned by root, which is exactly the state a machine whose installs escalate
+ * gets into — so on the machines most worth collecting from, the base name
+ * holds a stale log and the live run is in a suffixed sibling.
  */
-const SHIPIT_LOG_FILES = ['ShipIt_stderr.log', 'ShipIt_stdout.log'] as const;
+const SHIPIT_LOG_STREAMS = ['ShipIt_stderr.log', 'ShipIt_stdout.log'] as const;
+
+/**
+ * How many files one stream may contribute, in suffix order.
+ *
+ * Spent on siblings when the base file is absent, which is what you want: once
+ * the log is root-owned the base holds a stale run and every live one sits in a
+ * sibling, so a missing base should not shrink what gets collected.
+ *
+ * Squirrel walks to `.100` and each file can reach megabytes, so an uncapped
+ * collector would scale the bundle with how long a machine has been failing to
+ * install. Lowest suffix first: Squirrel takes the FIRST candidate it can open,
+ * so the low numbers are the ones still being written.
+ *
+ * Capped on file COUNT, not bytes — the bundle's overall size guard is what
+ * bounds total volume, and splitting that budget per-source here would make one
+ * noisy stream silently evict another.
+ */
+const SHIPIT_LOG_FILES_PER_STREAM = 4;
 
 /**
  * Squirrel.Mac's own install logs (`~/Library/Caches/<bundleId>.ShipIt/`).
@@ -291,7 +317,36 @@ export function collectShipItLogFiles(
 ): string[] {
   const shipItDir = join(cachesDir, `${bundleId}.ShipIt`);
   if (!existsSync(shipItDir)) return [];
-  return SHIPIT_LOG_FILES.map((name) => join(shipItDir, name)).filter((p) => existsSync(p));
+
+  let entries: string[];
+  try {
+    entries = readdirSync(shipItDir);
+  } catch {
+    // Same empty result as the missing-directory case above, and deliberately
+    // indistinguishable from it downstream: the realistic reason a ShipIt dir
+    // exists but cannot be read is the root ownership this whole collector is
+    // built around, and there is nothing a bug reporter could do about it. The
+    // absence shows up where it is actionable — the bundle simply carries no
+    // ShipIt logs, which the reader can see.
+    return [];
+  }
+
+  return SHIPIT_LOG_STREAMS.flatMap((stream) =>
+    entries
+      .map((entry) => {
+        // Sorted as a number, so the base file leads and `.2` precedes `.10`.
+        if (entry === stream) return { entry, suffix: -1 };
+        if (!entry.startsWith(`${stream}.`)) return null;
+        // Anchored on digits alone: the suffix is the only thing distinguishing
+        // a fallback from a neighbour that merely shares the prefix.
+        const suffix = entry.slice(stream.length + 1);
+        return /^\d+$/.test(suffix) ? { entry, suffix: Number(suffix) } : null;
+      })
+      .filter((match) => match !== null)
+      .sort((a, b) => a.suffix - b.suffix)
+      .slice(0, SHIPIT_LOG_FILES_PER_STREAM)
+      .map((match) => join(shipItDir, match.entry)),
+  );
 }
 
 /**
