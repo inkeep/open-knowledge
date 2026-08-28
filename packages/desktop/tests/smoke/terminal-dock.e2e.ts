@@ -654,6 +654,114 @@ test.describe('Docked terminal — live Electron', () => {
     ).toBeLessThanOrEqual(revealAgentsBox.x);
   });
 
+  /**
+   * `react-resizable-panels` listens for `pointerleave` on the document
+   * and, unlike every other caller of its delta path, forwards no
+   * pointer-down origin — so its fallback applied a whole-group ±100% delta
+   * from nothing but the sign of `clientX`. On a `collapsible` panel that is
+   * past the collapse halfway point in one event, which is how a right-docked
+   * Terminal column measured 0 after a drag that should have GROWN it.
+   *
+   * The event is synthesized rather than provoked because what Chromium emits
+   * at that moment is a platform detail — Electron 43 (Chromium 150) on Linux
+   * produced it, macOS and Windows did not. The invariant is not platform
+   * specific: a boundary event reaching the document mid-drag must resize by
+   * the distance the pointer actually travelled, never by the whole group.
+   *
+   * Scope note: this runs the real browser against the library's ESM image,
+   * which Vite resolves. The patch carries the same hunk in the CJS image, and
+   * Vitest resolves that one, so the CJS copy is pinned separately by
+   * `packages/app/src/components/resizable-panel-pointerleave-delta.dom.test.tsx`.
+   * Neither test sees the other's image; keep both or a re-derivation can drop
+   * one hunk and still go green.
+   */
+  test('a pointerleave mid-drag resizes the right column by the real delta, never collapsing it', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('divider-pointerleave', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s);
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+
+    await widenEditorWindow(app, page, 1900, 900);
+    await openTerminal(app, page);
+    await page.getByRole('button', { name: 'Move Terminal to right' }).click();
+    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const column = page.locator('#terminal-column');
+    const before = await column.evaluate((element) => element.getBoundingClientRect().width);
+    expect(before).toBeGreaterThan(0);
+
+    const handle = await column.evaluate((element) => {
+      const rect = element.previousElementSibling?.getBoundingClientRect();
+      return rect == null ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+    if (!handle) throw new Error('right Terminal resize handle is unavailable');
+
+    const travel = 40;
+    const originX = handle.x + handle.width / 2;
+    const originY = handle.y + handle.height / 2;
+    await page.mouse.move(originX, originY);
+    await page.mouse.down();
+    // One real move first so the gesture is an ordinary drag rather than a bare
+    // down-then-leave. The library sets `state: "active"` and records the
+    // pointer-down origin synchronously in its pointerdown handler; only the
+    // pointer-capture acquisition waits for the first pointermove. It is that
+    // already-active state the leave handler mis-reads.
+    await page.mouse.move(originX - travel, originY, { steps: 4 });
+
+    await page.evaluate(
+      ({ x, y }) => {
+        document.dispatchEvent(
+          new PointerEvent('pointerleave', {
+            bubbles: false,
+            buttons: 1,
+            clientX: x,
+            clientY: y,
+            pointerId: 1,
+            pointerType: 'mouse',
+          }),
+        );
+      },
+      { x: originX - travel, y: originY },
+    );
+    await page.mouse.up();
+
+    // Bounded on BOTH sides on purpose. A lower bound alone would pass under a
+    // -100% delta (the column pinned to its maximum); an upper bound alone
+    // would pass under the +100% collapse this test exists to catch. The band is
+    // +/-25% of the travelled distance rather than something looser because the
+    // contract is that the column resizes BY that distance; percentages are
+    // quantized to three decimals, so at this group width the slack is ample.
+    //
+    // Settle first, then assert once, deliberately NOT a poll on band
+    // membership. The correct-growth width (before + travel) is applied by the
+    // real pointermove and only replaced by the bogus whole-group delta on the
+    // synthetic leave, so a poll returning on its first in-band sample could go
+    // green on a column that ends up collapsed. A settled width cannot. Same
+    // shape as waitForTerminalWidthStable.
+    let after = Number.NaN;
+    let stable = 0;
+    await expect(async () => {
+      const width = await column.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      );
+      stable = width === after ? stable + 1 : 0;
+      after = width;
+      // Width in the message: a non-settle reports this assertion rather than
+      // the band below, and a bare counter cannot tell collapsed from slow.
+      expect(
+        stable,
+        `column width has not settled (last read ${width}px, before ${before}px)`,
+      ).toBeGreaterThanOrEqual(3);
+    }).toPass({ timeout: 10_000, intervals: [100] });
+    expect(after).toBeGreaterThan(before + travel * 0.75);
+    expect(after).toBeLessThan(before + travel * 1.25);
+  });
+
   test('right Terminal and Agents exclude each other only when the window is infeasible', async ({
     captureStderrFor,
   }) => {
