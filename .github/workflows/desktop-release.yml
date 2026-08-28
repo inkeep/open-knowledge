@@ -1012,7 +1012,33 @@ jobs:
             bash -c "$PKG_CMD"
           fi
 
-      - name: Attest signed Windows packages and preserved Microsoft signatures
+      # This workflow always executes main's YAML (repository_dispatch), while
+      # the checkout above follows `client_payload[ref]` — typically a tag
+      # whose tree predates whatever main's assertions were written against. A
+      # soaked beta or a bug-lane synthetic commit cut before the Windows
+      # terminal shipped legitimately excludes node-pty from its Windows
+      # package, and holding it to the ConPTY assertions below permanently
+      # blocks its release (re-firing the dispatch repairs nothing — the tag
+      # cannot move, per the soak model). Gate on the checked-out tree's own
+      # packaging intent, read from its electron-builder config — NOT from the
+      # packaged output, which would let a genuinely broken packaging run skip
+      # its own guard. The pre-terminal shape is a closed set: every such tree
+      # carries the literal win-files exclusion probed here. Anything else —
+      # including future refactors of the config — keeps the assertions armed,
+      # so this fails closed.
+      - name: Detect whether this ref packages the Windows terminal
+        id: winterm
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -qF -- '- "!**/node_modules/node-pty/**"' packages/desktop/electron-builder.yml; then
+            echo "ships=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::This ref excludes node-pty from its Windows package (pre-terminal tree) — the ConPTY signature + terminal native-package assertions are skipped; the app-signature attestation still runs."
+          else
+            echo "ships=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attest signed Windows packages
         shell: pwsh
         working-directory: packages/desktop
         run: |
@@ -1034,11 +1060,21 @@ jobs:
             if ($signature.Status -ne 'Valid') {
               throw "Our signing pass did not leave a valid signature on ${appExecutable}: $($signature.Status)"
             }
+          }
+          "### Windows signing attestation: PASSED`n`nBoth outer architectures carry a validly signed app." |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
-            $pairDirectories = @(Get-ChildItem $package.Path -Recurse -Directory -Filter 'conpty' |
+      - name: Attest preserved Microsoft signatures on the packaged ConPTY pairs
+        if: success() && steps.winterm.outputs.ships == 'true'
+        shell: pwsh
+        working-directory: packages/desktop
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($packagePath in @('dist-desktop/win-unpacked', 'dist-desktop/win-arm64-unpacked')) {
+            $pairDirectories = @(Get-ChildItem $packagePath -Recurse -Directory -Filter 'conpty' |
               Where-Object { $_.FullName -match 'node-pty[\\/]prebuilds[\\/]win32-(x64|arm64)[\\/]conpty$' })
             if ($pairDirectories.Count -ne 2) {
-              throw "Expected both ConPTY architecture directories in the $($package.Arch) release package; found $($pairDirectories.Count)."
+              throw "Expected both ConPTY architecture directories in the release package at ${packagePath}; found $($pairDirectories.Count)."
             }
             foreach ($directory in $pairDirectories) {
               foreach ($name in @('conpty.dll', 'OpenConsole.exe')) {
@@ -1056,10 +1092,11 @@ jobs:
               }
             }
           }
-          "### Windows release signature rider: PASSED`n`nBoth outer architectures carry a signed app, and Microsoft signatures remain valid on every packaged ConPTY pair." |
+          "### Windows release signature rider: PASSED`n`nMicrosoft signatures remain valid on every packaged ConPTY pair." |
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
       - name: Assert Windows x64 terminal native package compatibility
+        if: success() && steps.winterm.outputs.ships == 'true'
         working-directory: packages/desktop
         env:
           OK_WIN_PACKAGE_DIR: dist-desktop/win-unpacked
@@ -1067,6 +1104,7 @@ jobs:
         run: pnpm exec vitest run tests/unit/windows-package-native-guards.test.ts
 
       - name: Assert Windows arm64 terminal native package compatibility
+        if: success() && steps.winterm.outputs.ships == 'true'
         working-directory: packages/desktop
         env:
           OK_WIN_PACKAGE_DIR: dist-desktop/win-arm64-unpacked
