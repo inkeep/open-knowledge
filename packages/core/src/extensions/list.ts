@@ -135,6 +135,122 @@ function toggleListKind(
   return result;
 }
 
+/**
+ * The checkbox marker a task-item rule captured: `' '` or `''` for unchecked,
+ * `x`/`X` for checked. Empty is what the bare `[]` shorthand yields.
+ */
+function isCheckedMarker(marker: string | undefined): boolean {
+  return marker === 'x' || marker === 'X';
+}
+
+/** `'X'` only for the non-canonical uppercase spelling, which round-trips. */
+function uppercaseMarker(marker: string | undefined): 'X' | null {
+  return marker === 'X' ? 'X' : null;
+}
+
+/**
+ * Shared body of the task-item input rules: turn a just-typed checkbox marker
+ * into a real checkbox on the item that owns the caret.
+ *
+ * Two contexts reach this, because the same keystrokes arrive in two shapes.
+ * In a plain paragraph there is no item yet, so the block wraps into a fresh
+ * `list`. Inside a `listItem` there already is one — the bullet rule fires on
+ * `- ` long before the `[` is typed, so the marker rule's own prefix is gone by
+ * then and every hyphenated spelling lands here instead. Wrapping in that
+ * branch would nest a second list inside the item rather than tick it, so it
+ * only retypes the item's attrs.
+ *
+ * Every gate runs before the first mutation, so a refusal cannot leave the
+ * marker deleted with no checkbox to show for it. The wrapping branch wraps
+ * BEFORE it deletes for that reason — deleting first would need a second
+ * `blockRange` lookup, and its bail would sit after a mutation.
+ *
+ * Returns whether it applied, so the handlers can answer `null` when it did
+ * not. That is the sibling convention (`math-input-rule.ts`,
+ * `inline-link-input-rule.ts`) and a real backstop: the runner discards the
+ * whole transaction on a `null` handler, steps included.
+ */
+function applyTaskItemRule(
+  state: EditorState,
+  range: { from: number; to: number },
+  checked: boolean,
+  checkboxChar: 'X' | null,
+): boolean {
+  const listType = state.schema.nodes.list;
+  if (!listType) return false;
+
+  const $from = state.doc.resolve(range.from);
+  const itemDepth = $from.depth - 1;
+
+  // Caret in the FIRST block of an existing item: tick that item in place.
+  // Deeper or later blocks (a blockquote in the item, a continuation
+  // paragraph) are not the item's marker position, so they fall through to
+  // the wrapping branch and nest, which is what the markdown would say.
+  if (
+    itemDepth > 0 &&
+    $from.node(itemDepth).type.name === 'listItem' &&
+    $from.index(itemDepth) === 0
+  ) {
+    const item = $from.node(itemDepth);
+    state.tr.delete(range.from, range.to).setNodeMarkup($from.before(itemDepth), undefined, {
+      ...item.attrs,
+      checked,
+      sourceCheckboxChar: checkboxChar,
+    });
+    return true;
+  }
+
+  const blockRange = $from.blockRange();
+  if (!blockRange) return false;
+  // Gate on the pre-delete doc: `findWrapping` returns node-type descriptors
+  // rather than positions, so the result stays valid across the deletion, and
+  // deciding here is what keeps a refusal from leaving a bare deletion behind.
+  const wrapping = findWrapping(blockRange, listType, { ordered: false });
+  if (!wrapping) return false;
+
+  // Past the last gate, so both steps land or neither does. Wrap first and
+  // delete through the mapping: the wrap shifts every position after the
+  // block's start, and asking the mapping is cheaper than re-deriving the
+  // range and safer than assuming the delete left one behind.
+  const tr = state.tr;
+  tr.wrap(blockRange, wrapping);
+  tr.delete(tr.mapping.map(range.from), tr.mapping.map(range.to));
+
+  const $item = tr.doc.resolve(tr.mapping.map(range.from));
+  for (let d = $item.depth; d > 0; d--) {
+    const parentNode = $item.node(d);
+    if (parentNode.type.name === 'listItem') {
+      tr.setNodeMarkup($item.before(d), undefined, {
+        ...parentNode.attrs,
+        checked,
+        sourceCheckboxChar: checkboxChar,
+      });
+      break;
+    }
+  }
+  return true;
+}
+
+/**
+ * The four input-rule patterns, named so the suite can assert against the
+ * shipped values instead of a transcription. They were literals inside
+ * `addInputRules` behind a keep-in-sync-manually comment, and drifted: the
+ * mirrored bullet pattern kept a lookahead the real one no longer needed, so
+ * the tests proving it excluded `- [ ] ` passed with it deleted.
+ *
+ * Each is anchored to the start of a textblock and ends at the caret; the
+ * trailing `\s$` is load-bearing on all four, and on the bullet rule it is the
+ * whole reason a checkbox spelling never reaches it.
+ */
+/** `- `, `* `, `+ ` — a plain bullet. */
+export const BULLET_INPUT_RE = /^\s*([-+*])\s$/;
+/** `1. `, `42) ` — an ordered marker, ordinal and delimiter captured. */
+export const ORDERED_INPUT_RE = /^\s*(\d+)([.)])\s$/;
+/** `- [ ] `, `* [x] ` — a checkbox WITH its list marker still attached. */
+export const TASK_MARKER_INPUT_RE = /^\s*[-*+]\s\[([ xX]?)\]\s$/;
+/** `[] `, `[ ] `, `[x] `, `[X] ` — a bare checkbox. */
+export const TASK_BARE_INPUT_RE = /^\s*\[([ xX]?)\]\s$/;
+
 // ────────────────────────── List Node ──────────────────────────
 
 export const ListNode = Node.create({
@@ -235,14 +351,21 @@ export const ListNode = Node.create({
 
   addInputRules() {
     return [
-      // Bullet list: - , * , + (negative lookahead excludes task list pattern `- [ ] `)
+      // Bullet list: - , * , + . The trailing `\s$` is what keeps the checkbox
+      // spellings out, not a lookahead: the rule only matches while the marker
+      // is followed by one space and nothing else, so `- [` has already stopped
+      // matching before the bracket is closed. A `(?!\s*\[[ xX]?\])` guard
+      // used to sit here claiming that job; it could never fire (the lookahead
+      // body needs two characters and only the one space is ever left to read)
+      // and every input agreed with it removed.
+      //
       // joinPredicate: bullet and ordered lists share the single `list` node
       // type (distinguished by the `ordered` attr), so the default same-type
       // join would merge a freshly-typed list into ANY adjacent list. Only
       // join when the preceding list is the same kind — otherwise typing
       // `1. ` below a bullet list silently became an empty bullet item.
       wrappingInputRule({
-        find: /^\s*([-+*])(?!\s*\[[ xX]\])\s$/,
+        find: BULLET_INPUT_RE,
         type: this.type,
         getAttributes: (match) => ({
           ordered: false,
@@ -252,7 +375,7 @@ export const ListNode = Node.create({
       }),
       // Ordered list: 1. or 1)
       wrappingInputRule({
-        find: /^\s*(\d+)([.)])\s$/,
+        find: ORDERED_INPUT_RE,
         type: this.type,
         getAttributes: (match) => ({
           ordered: true,
@@ -261,38 +384,48 @@ export const ListNode = Node.create({
         }),
         joinPredicate: (_match, node) => node.attrs.ordered === true,
       }),
-      // Task list: - [ ] or - [x]
+      // Task list, hyphenated: `- [ ] `, `* [x] `, `+ [] `. Typing never reaches
+      // this rule. The bullet rule above claims `- ` at the space, and the
+      // runner matches against the CURRENT TEXTBLOCK's text, so by the time the
+      // `[` is typed the marker is gone from the candidate string — the bare
+      // rule below is what a keystroke sequence actually hits.
+      //
+      // Its one live route is a multi-character `handleTextInput` delivery: an
+      // IME commit, dictation, autocorrect, or a text-expansion tool handing
+      // over the finished marker in a single call, which still carries the
+      // `- `. NOT paste — the input-rules plugin registers only
+      // handleTextInput / handleKeyDown / compositionend, so pasted text never
+      // reaches any input rule, and a pasted `- [ ] ` gets its checkbox from
+      // `MarkdownManager.parse` on the clipboard path instead. Nor
+      // `insertContent` / `setContent`, which dispatch transactions directly.
       new InputRule({
-        find: /^\s*[-*+]\s\[([ xX])\]\s$/,
-        handler: ({ state, range, match }) => {
-          const listType = state.schema.nodes.list;
-          if (!listType) return null;
-
-          const checked = match[1] !== ' ';
-          const tr = state.tr.delete(range.from, range.to);
-
-          const $start = tr.doc.resolve(range.from);
-          const blockRange = $start.blockRange();
-          if (!blockRange) return null;
-
-          const wrapping = findWrapping(blockRange, listType, { ordered: false });
-          if (!wrapping) return null;
-
-          tr.wrap(blockRange, wrapping);
-
-          // Find the newly created listItem and set checked
-          const $newPos = tr.doc.resolve(tr.mapping.map(range.from));
-          for (let d = $newPos.depth; d > 0; d--) {
-            const parentNode = $newPos.node(d);
-            if (parentNode.type.name === 'listItem') {
-              tr.setNodeMarkup($newPos.before(d), undefined, {
-                ...parentNode.attrs,
-                checked,
-              });
-              break;
-            }
-          }
-        },
+        find: TASK_MARKER_INPUT_RE,
+        handler: ({ state, range, match }) =>
+          applyTaskItemRule(state, range, isCheckedMarker(match[1]), uppercaseMarker(match[1]))
+            ? undefined
+            : null,
+      }),
+      // Task list, bare: `[] `, `[ ] `, `[x] `, `[X] `. This is TipTap's own
+      // TaskItem rule (`inputRegex` in `@tiptap/extension-list`), which we
+      // cannot use directly — it wraps into a `taskItem` node, and this schema
+      // unified TaskList/TaskItem into `list`/`listItem` to stay
+      // mdast-canonical. Two deliberate departures from its pattern:
+      //
+      //  - `[ xX]` where upstream has `[( |x]`. That class admits `(` and `|`
+      //    literally, which reads as a slipped alternation `( |x)`; matching
+      //    `[(] ` as a checkbox is not a behavior to copy.
+      //  - `X` accepted, which upstream drops. `sourceCheckboxChar` exists so
+      //    an authored `- [X] ` round-trips, so the rule has to be able to
+      //    produce that state in the first place.
+      //
+      // Empty brackets are not GFM, but they are a trigger, not a
+      // serialization: every spelling writes back as the canonical `- [ ] `.
+      new InputRule({
+        find: TASK_BARE_INPUT_RE,
+        handler: ({ state, range, match }) =>
+          applyTaskItemRule(state, range, isCheckedMarker(match[1]), uppercaseMarker(match[1]))
+            ? undefined
+            : null,
       }),
     ];
   },

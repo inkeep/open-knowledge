@@ -1,4 +1,3 @@
-
 import type { LintPluginFailureReporter } from './plugin-failure.ts';
 import { isLintPluginSelected, LINT_PLUGINS, type LinterConfig } from './plugins.ts';
 import type { LintDiagnostic } from './types.ts';
@@ -80,8 +79,7 @@ function renderErrorMessage(error: unknown, depth = 0): string {
     try {
       const json = JSON.stringify(error);
       if (json !== undefined) return json;
-    } catch {
-    }
+    } catch {}
   }
   return String(error);
 }
