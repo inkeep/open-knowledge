@@ -1,3 +1,4 @@
+
 import { SUPPORTED_DOC_EXTENSIONS } from '../../../constants/doc-extensions.ts';
 import { isOkfRuleEnabled, type OkfRuleId, type OkfRuleToggles } from '../okf-rule-meta.ts';
 
