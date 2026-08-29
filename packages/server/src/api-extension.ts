@@ -52,8 +52,6 @@ import {
   BranchInfoResponseSchema,
   CheckoutRequestSchema,
   CheckoutResponseSchema,
-  ClientLogsRequestSchema,
-  ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   type ConfigDiagnosticsReport,
   CreateFolderRequestSchema,
@@ -81,9 +79,6 @@ import {
   encodeShareUrl,
   estimateSkillCost,
   externalSkillLiveDocName,
-  FolderConfigGetSuccessSchema,
-  FolderConfigPutRequestSchema,
-  FolderConfigPutSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
@@ -135,7 +130,6 @@ import {
   type ProblemType,
   parseCanonicalGitHubShareUrl,
   parseFrontmatterRecord,
-  parseTemplateFile,
   prependFrontmatter,
   projectSkillContentDocName,
   RENAMED_PACK_SKILLS,
@@ -146,12 +140,6 @@ import {
   readFmMap,
   SaveVersionRequestSchema,
   SaveVersionSuccessSchema,
-  SeedApplyRequestSchema,
-  SeedApplySuccessSchema,
-  SeedInstallPackSkillRequestSchema,
-  SeedInstallPackSkillSuccessSchema,
-  SeedListPacksSuccessSchema,
-  SeedPlanSuccessSchema,
   ShareConstructUrlRequestSchema,
   ShareConstructUrlResponseSchema,
   SharePublishNameCheckResponseSchema,
@@ -216,26 +204,15 @@ import {
   skillLiveDocName,
   stripFrontmatter,
   summarizeLintPluginFailures,
-  TEMPLATE_NAME_REGEX,
-  TemplateDeleteSuccessSchema,
-  TemplateGetSuccessSchema,
-  TemplateImportRequestSchema,
-  TemplateImportSuccessSchema,
-  TemplateMoveRequestSchema,
-  TemplateMoveSuccessSchema,
-  TemplatePutRequestSchema,
-  TemplatePutSuccessSchema,
   TestFlushGitSuccessSchema,
   TestRescanBacklinksSuccessSchema,
   TestRescanFilesSuccessSchema,
   TestResetSuccessSchema,
   TrashCleanupRequestSchema,
   TrashCleanupSuccessSchema,
-  templateContentDocName,
   UploadAssetSuccessSchema,
   UploadRequestSchema,
   USER_SKILL_EDITOR_IDS,
-  unwrapFrontmatterFences,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -268,7 +245,6 @@ import {
   upsertLockEntry,
   type WellKnownIndex,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import {
   type AcpHarnessAvailability,
@@ -301,8 +277,6 @@ import { CommentThreadStore } from './comments/thread-store.ts';
 import { getLocalDir } from './config/paths.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
 import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
-import { enrichDirectory } from './content/enrichment.ts';
-import { applyFolderFrontmatterPatch } from './content/folder-frontmatter-write.ts';
 import {
   applySkillBundleFileDelete,
   applySkillBundleFileRename,
@@ -317,13 +291,6 @@ import {
 } from './content/skills-write.ts';
 import { applySubstitution, todayIsoUtc } from './content/substitution.ts';
 import { resolveTemplatesAvailable } from './content/templates-resolver.ts';
-import {
-  applyTemplateDelete,
-  applyTemplateMove,
-  applyTemplateWrite,
-  composeTemplateContent,
-  type TemplateFrontmatter,
-} from './content/templates-write.ts';
 import {
   evaluateContentDivergence,
   toContentDivergenceWarning,
@@ -348,7 +315,6 @@ import {
   createOsProbe,
   type InstalledAgentScheme,
 } from './handoff-api.ts';
-import { handleHandoffDispatch } from './handoff-dispatch-api.ts';
 import { findHubCandidates } from './hub-candidates.ts';
 import {
   readInstalledSkills,
@@ -440,7 +406,6 @@ import {
   validateSkillForInstall,
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
-import { handleSpawnCursor } from './spawn-cursor-api.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
 
@@ -531,7 +496,6 @@ import {
   tracedMkdirSync,
   tracedRenameSync,
   tracedRmSync,
-  tracedUnlinkSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
 import {
@@ -553,6 +517,7 @@ import {
   errorResponse,
   type HttpErrorStatus,
 } from './http/error-response.ts';
+import { createFolderTemplateRoutes } from './http/folder-template-routes.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
@@ -563,9 +528,11 @@ import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
 import { validateBody, withValidation } from './http/request-validation.ts';
+import { createSeedRoutes } from './http/seed-routes.ts';
 import { createSkillsReadRoutes } from './http/skills-read-routes.ts';
 import { createSkillsShRoutes } from './http/skills-sh-routes.ts';
 import { successResponse } from './http/success-response.ts';
+import { createSystemActionsRoutes } from './http/system-actions-routes.ts';
 import {
   createWorkspaceToolsRoutes,
   type GeneratedIndexSettingsStatus,
@@ -634,16 +601,6 @@ import {
   type RenameLogEntry,
   resolveDocPathAtCommit,
 } from './rename-log.ts';
-import {
-  applySeed,
-  coercePackId,
-  installPackSkillOnDemand,
-  listStarterPacks,
-  planSeed,
-  type ScaffoldPlan,
-  SeedPrerequisiteError,
-  SeedRootDirError,
-} from './seed/index.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService } from './services/file-ops.ts';
@@ -5102,8 +5059,9 @@ export function createApiExtension(
 
   /**
    * Contributor `docs` key for a non-doc `.ok/` artifact, so a folder-scoped
-   * timeline query resolves it. Mirrors `checkTemplateConflictGate`'s
-   * `<folder>/.ok/templates/<name>` shape; folder frontmatter keys to
+   * timeline query resolves it. Mirrors `checkTemplateConflictGate`'s (now in
+   * `http/folder-template-routes.ts`) `<folder>/.ok/templates/<name>` shape;
+   * folder frontmatter keys to
    * `<folder>/.ok/frontmatter`; a folder itself keys to its own path.
    */
   function okArtifactKey(
@@ -11480,211 +11438,6 @@ export function createApiExtension(
     }
   }
 
-  // ─── `ok seed` scaffolder endpoints ──────────────────────────────────────
-  // GET /api/seed/plan  → 200 {plan} (RFC 9457 problem+json on error)
-  // POST /api/seed/apply with { plan } → 200 {result} (RFC 9457 problem+json on error)
-  //
-  // Same `planSeed` / `applySeed` logic the CLI subcommand and Electron IPC
-  // handler use. The IPC bridge (`ok:seed:plan` / `ok:seed:apply`) keeps its
-  // in-process discriminated-union shape (`{ok: true, plan}` / `{ok: false,
-  // error: {kind, message}}`); the HTTP fallback in `seedClient()` translates
-  // RFC 9457 problem+json back to that shape at the renderer boundary so
-  // `SeedDialog` / `EmptyEditorState` are transport-agnostic.
-  // Gated on `checkLocalOpSecurity` because the operation mutates the local
-  // filesystem; same contract as /api/local-op/* and /api/installed-agents.
-
-  /**
-   * GET `/api/seed/plan?rootDir=brain&packId=software-lifecycle` — preview the
-   * scaffold for a given subfolder + pack. `rootDir` defaults to `.` (project
-   * root). `packId` defaults to the registry default (`'knowledge-base'`) for
-   * back-compat with single-scaffold callers; unknown ids coerce to undefined
-   * and `resolvePack()` falls back to the default.
-   *
-   * Prerequisite-missing (no git init) → 422 with
-   * `urn:ok:error:seed-prerequisite-missing`; invalid-root (escape segments,
-   * absolute path) → 400 with `urn:ok:error:seed-invalid-root`. Both surface
-   * a `detail` carrying the underlying message so renderers can echo it.
-   */
-  async function handleSeedPlan(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'seed-plan' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'seed-plan',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    const rootDir = url.searchParams.get('rootDir') ?? undefined;
-    const rawPackId = url.searchParams.get('packId');
-    const packId = coercePackId(rawPackId);
-    // Trust-boundary symmetry with the CLI: if the caller passed a `packId`
-    // but it doesn't name a registered pack, reject explicitly rather than
-    // silently fall back to the default pack (CLI returns "Unknown pack"
-    // failure on the same input).
-    if (rawPackId !== null && rawPackId !== '' && packId === undefined) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-        handler: 'seed-plan',
-        detail: `Pack id "${rawPackId}" is not registered.`,
-      });
-      return;
-    }
-    try {
-      const plan = await planSeed({ projectDir: contentDir, rootDir, packId });
-      successResponse(res, 200, SeedPlanSuccessSchema, { plan }, { handler: 'seed-plan' });
-    } catch (err) {
-      if (err instanceof SeedPrerequisiteError) {
-        errorResponse(
-          res,
-          422,
-          'urn:ok:error:seed-prerequisite-missing',
-          'Seed prerequisite missing.',
-          { handler: 'seed-plan', cause: err },
-        );
-        return;
-      }
-      if (err instanceof SeedRootDirError) {
-        // Fixed-vocabulary safe `detail` per RFC 9457 §3.1.5 — gives the
-        // client an actionable message without leaking the rejected path
-        // (raw err message goes through `cause` → Pino, never on wire).
-        errorResponse(res, 400, 'urn:ok:error:seed-invalid-root', 'Invalid seed root directory.', {
-          handler: 'seed-plan',
-          detail: 'The provided root directory is not within the workspace content directory.',
-          cause: err,
-        });
-        return;
-      }
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'seed-plan',
-        cause: err,
-      });
-    }
-  }
-
-  /**
-   * `POST /api/seed/apply` — apply a pre-computed ScaffoldPlan to disk.
-   * Body accepts `{plan, packId?}` (extras pass through
-   * `SeedApplyRequestSchema.loose()`); `packId` defaults to the registry
-   * default.
-   */
-  const handleSeedApply = withValidation(
-    SeedApplyRequestSchema,
-    async (_req, res, body) => {
-      // SeedApplyRequestSchema accepts `plan: unknown` (forward-compat); reject
-      // non-object payloads here so applySeed sees a structured value.
-      const planValue = body.plan;
-      if (!planValue || typeof planValue !== 'object') {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid plan payload.', {
-          handler: 'seed-apply',
-        });
-        return;
-      }
-      const plan = planValue as ScaffoldPlan;
-      // SeedApplyRequestSchema is `.loose()` so extras flow through as `unknown`
-      // on the parsed body; coerce defensively at the trust boundary. If the
-      // caller passed a non-empty `packId` that doesn't name a registered
-      // pack, reject explicitly (trust-boundary symmetry with the CLI, which
-      // returns an "Unknown pack" failure on the same input).
-      const looseBody = body as { packId?: unknown };
-      const rawPackId = looseBody.packId;
-      const packId = coercePackId(rawPackId);
-      if (typeof rawPackId === 'string' && rawPackId.length > 0 && packId === undefined) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-          handler: 'seed-apply',
-          detail: `Pack id "${rawPackId}" is not registered.`,
-        });
-        return;
-      }
-      try {
-        // The plan already has rootDir baked into its entries — apply only
-        // needs projectDir + packId (so it knows which template registry to
-        // resolve content from).
-        const result = await applySeed(plan, { projectDir: contentDir, packId });
-        successResponse(res, 200, SeedApplySuccessSchema, { result }, { handler: 'seed-apply' });
-      } catch (err) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to apply seed plan.',
-          {
-            handler: 'seed-apply',
-            cause: err,
-          },
-        );
-      }
-    },
-    {
-      handler: 'seed-apply',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'seed-apply' }),
-    },
-  );
-
-  /**
-   * `POST /api/seed/install-pack-skill` — install only a pack's companion
-   * skills. It deliberately skips scaffold files and required-plugin changes:
-   * the settings card is a separate user-owned install action, not a replay of
-   * `ok seed` and not a side effect of the plugin toggle.
-   */
-  const handleSeedInstallPackSkill = withValidation(
-    SeedInstallPackSkillRequestSchema,
-    async (_req, res, body) => {
-      const packId = coercePackId(body.packId);
-      if (packId === undefined) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-          handler: 'seed-install-pack-skill',
-          detail: `Pack id "${body.packId}" is not registered.`,
-        });
-        return;
-      }
-      try {
-        const result = await installPackSkillOnDemand(contentDir, packId);
-        successResponse(res, 200, SeedInstallPackSkillSuccessSchema, result, {
-          handler: 'seed-install-pack-skill',
-        });
-      } catch (err) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to install pack skill.',
-          { handler: 'seed-install-pack-skill', cause: err },
-        );
-      }
-    },
-    {
-      handler: 'seed-install-pack-skill',
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: 'seed-install-pack-skill' }),
-    },
-  );
-
-  /**
-   * `GET /api/seed/packs` — enumerate available starter packs. Static data;
-   * no project context required. The picker UI fetches once on dialog mount.
-   * Delegates to the shared `listStarterPacks()` so HTTP + IPC return the
-   * same wire-format shape from one source.
-   */
-  async function handleSeedPacks(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'seed-packs' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'seed-packs',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    successResponse(
-      res,
-      200,
-      SeedListPacksSuccessSchema,
-      { packs: listStarterPacks() },
-      { handler: 'seed-packs' },
-    );
-  }
-
   /**
    * `POST /api/install-skill` — build `openknowledge.skill` and open it via
    * the OS file association so Claude Desktop's native install dialog takes
@@ -11776,243 +11529,6 @@ export function createApiExtension(
     return { folderRel, resolvedContentDir };
   }
 
-  function validateTemplateName(name: string, res: ServerResponse, handler = 'template'): boolean {
-    if (!name || !TEMPLATE_NAME_REGEX.test(name)) {
-      errorResponse(
-        res,
-        400,
-        'urn:ok:error:invalid-request',
-        'Invalid name: must be letters / digits / `_` / `-` only (no `.md` extension).',
-        { handler },
-      );
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Resolve a template by walking leaf → root from `folderRel`, closest-wins.
-   * Returns the matched file's abs path, the owning folder, and whether it's
-   * `local` (owned by `folderRel` itself) or `inherited` (from an ancestor).
-   * Single source of the resolution walk — shared by `handleTemplateGet` and
-   * the move handler's inherited-vs-absent disambiguation.
-   */
-  function findTemplateLeafToRoot(
-    resolvedContentDir: string,
-    folderRel: string,
-    name: string,
-  ): { abs: string; folder: string; scope: 'local' | 'inherited' } | null {
-    const segments = folderRel === '' ? [] : folderRel.split('/');
-    for (let depth = segments.length; depth >= 0; depth--) {
-      const ancestorFolder = depth === 0 ? '' : segments.slice(0, depth).join('/');
-      const ancestorAbs =
-        ancestorFolder === '' ? resolvedContentDir : resolve(resolvedContentDir, ancestorFolder);
-      if (
-        ancestorAbs !== resolvedContentDir &&
-        !ancestorAbs.startsWith(`${resolvedContentDir}${sep}`)
-      ) {
-        continue;
-      }
-      const candidate = resolve(ancestorAbs, '.ok', 'templates', `${name}.md`);
-      if (existsSync(candidate)) {
-        return {
-          abs: candidate,
-          folder: ancestorFolder,
-          scope: depth === segments.length ? 'local' : 'inherited',
-        };
-      }
-    }
-    return null;
-  }
-
-  function pickFrontmatterFields(raw: unknown): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (value === undefined) continue;
-      out[key] = value;
-    }
-    return out;
-  }
-
-  const handleFolderConfigGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const validated = validateFolderRel(
-          url.searchParams.get('path') ?? '',
-          res,
-          'path',
-          'folder-config-get',
-        );
-        if (!validated) return;
-        const meta = await enrichDirectory(validated.folderRel, {
-          projectDir: validated.resolvedContentDir,
-        });
-        const folderOkDir = resolve(validated.resolvedContentDir, validated.folderRel, '.ok');
-        const localFmPath = resolve(folderOkDir, 'frontmatter.yml');
-        let frontmatterLocal: Record<string, unknown> | null = null;
-        if (existsSync(localFmPath)) {
-          try {
-            const raw = await readFile(localFmPath, 'utf-8');
-            const parsed = parseYaml(raw);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              frontmatterLocal = parsed as Record<string, unknown>;
-            } else {
-              frontmatterLocal = {};
-            }
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err);
-            log.warn(
-              { path: localFmPath, reason },
-              `[folder-config:get] malformed YAML in ${localFmPath}: ${reason}`,
-            );
-            frontmatterLocal = null;
-          }
-        }
-
-        // Folder frontmatter is SELF-ONLY (no ancestor cascade) and there
-        // are no schema declarations — `frontmatter_local` is the folder's
-        // own open-shape frontmatter, the whole contract.
-        successResponse(
-          res,
-          200,
-          FolderConfigGetSuccessSchema,
-          {
-            folder: meta,
-            frontmatter_local: frontmatterLocal,
-          },
-          { handler: 'folder-config-get' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read folder config.',
-          { handler: 'folder-config-get', cause: e },
-        );
-      }
-    },
-    { handler: 'folder-config-get', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleFolderConfigPut = withValidation(
-    FolderConfigPutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        // No-project single-file mode writes nothing into the user's directory
-        // beyond the one edited doc. Folder config would land a
-        // `<folder>/.ok/frontmatter.yml` sidecar in the user's tree — refuse.
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Folder configuration is not available in single-file mode.',
-            { handler: 'folder-config-put' },
-          );
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'folder-config-put',
-          });
-          return;
-        }
-        const validated = validateFolderRel(body.path, res, 'path', 'folder-config-put');
-        if (!validated) return;
-
-        // Write the folder's own frontmatter (open-shape, like a doc's) via the
-        // single-folder merge-patch helper — addressed by the folder's own
-        // path, no glob and no whitelist.
-        const allApplied: Array<{ path: string; action: 'written' | 'deleted' | 'noop' }> = [];
-        if (body.frontmatter !== undefined) {
-          const result = applyFolderFrontmatterPatch({
-            anchorDir: validated.resolvedContentDir,
-            folderRel: validated.folderRel,
-            patch: body.frontmatter,
-          });
-          if (!result.ok) {
-            const status = result.error.code === 'WRITE_ERROR' ? 500 : 400;
-            const urn =
-              status === 500
-                ? 'urn:ok:error:internal-server-error'
-                : 'urn:ok:error:invalid-request';
-            const title = status === 500 ? 'Failed to write folder config.' : result.error.message;
-            errorResponse(res, status, urn, title, {
-              handler: 'folder-config-put',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            });
-            return;
-          }
-          allApplied.push({ path: result.path, action: result.action });
-          // Attribute the frontmatter change (skip a no-op patch).
-          if (result.action !== 'noop') {
-            attributeOkArtifactWrite(
-              actor,
-              okArtifactKey('folder-frontmatter', validated.folderRel),
-              `folder-frontmatter-${result.action === 'deleted' ? 'delete' : 'edit'}: ${result.path}`,
-            );
-            scheduleOkArtifactFlush('folder-config-put');
-          }
-        }
-
-        successResponse(
-          res,
-          200,
-          FolderConfigPutSuccessSchema,
-          { applied: allApplied },
-          { handler: 'folder-config-put' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to write folder config.',
-          { handler: 'folder-config-put', cause: e },
-        );
-      }
-    },
-    { handler: 'folder-config-put', method: 'PUT' },
-  );
-
-  const handleFolderConfig = methodRouter(
-    { GET: handleFolderConfigGet, PUT: handleFolderConfigPut },
-    { handler: 'folder-config' },
-  );
-
-  /**
-   * Conflict-aware refusal helper for the template handlers. A template is a
-   * content doc now (`<folder>/.ok/templates/<name>`), so its live Y.Doc carries
-   * a `lifecycle.status` Y.Map — a mutation against one mid-conflict must refuse
-   * exactly like the sibling content-write handlers, whose paired-write path
-   * (`composeAndWriteRawBody`) would otherwise clobber a doc the user is
-   * mid-resolving. Takes the pre-resolved content doc name — same shape as the
-   * sibling `checkSkillDocConflictGate`, so the two gates read as one pattern.
-   * Returns `true` when the gate fired (caller short-circuits); `false` when
-   * the mutation may proceed.
-   */
-  function checkTemplateConflictGate(
-    templateDocName: string,
-    handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
-    res: ServerResponse,
-  ): boolean {
-    const doc = hocuspocus.documents.get(templateDocName);
-    if (doc && isDocInConflict(doc)) {
-      respondDocInConflict(res, new DocInConflictError({ file: `${templateDocName}.md` }), handler);
-      return true;
-    }
-    return false;
-  }
-
   /**
    * Conflict-aware refusal for the skill CONTENT-doc writers. A PROJECT skill's
    * `SKILL.md` and its `.md` references are real CRDT content docs (skills-as-
@@ -12050,794 +11566,6 @@ export function createApiExtension(
     // record — callers still get the FM-stripped body.
     return { frontmatter: parseFrontmatterRecord(raw) ?? {}, body };
   };
-
-  const handleTemplateGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateTemplateName(name, res, 'template-get')) return;
-
-        // Walk leaf → root for closest match.
-        const validated = validateFolderRel(
-          url.searchParams.get('folder') ?? '',
-          res,
-          'folder',
-          'template-get',
-        );
-        if (!validated) return;
-        const { folderRel, resolvedContentDir } = validated;
-
-        const found = findTemplateLeafToRoot(resolvedContentDir, folderRel, name);
-        if (!found) {
-          errorResponse(res, 404, 'urn:ok:error:template-not-found', 'Template not found.', {
-            handler: 'template-get',
-            detail: `Template "${name}" not found for folder "${folderRel || '.'}". Walked leaf → root.`,
-          });
-          return;
-        }
-        const { abs: foundAbs, folder: foundFolder, scope: foundScope } = found;
-
-        const raw = await readFile(foundAbs, 'utf-8');
-        // Normalize single-block (and legacy two-block) templates: wire
-        // `frontmatter` = the template's identity (title/description), wire
-        // `body` = the starter content (doc-frontmatter block + markdown) a
-        // new doc receives. Tokens (`{{date}}`) are preserved verbatim.
-        const model = parseTemplateFile(raw);
-        const frontmatter = model.identity as Record<string, unknown>;
-        const body = model.starterContent;
-
-        const relPath = relative(resolvedContentDir, foundAbs)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-
-        successResponse(
-          res,
-          200,
-          TemplateGetSuccessSchema,
-          {
-            template: {
-              name,
-              folder: foundFolder,
-              scope: foundScope,
-              path: relPath,
-              frontmatter,
-              body,
-            },
-          },
-          { handler: 'template-get' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read template.', {
-          handler: 'template-get',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-get', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleTemplatePut = withValidation(
-    TemplatePutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        // Templates write `<folder>/.ok/templates/*.md` into the content tree —
-        // a user-dir artifact single-file mode must never create.
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Templates are not available in single-file mode.',
-            { handler: 'template-put' },
-          );
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-put',
-          });
-          return;
-        }
-        const name = body.name;
-        if (!validateTemplateName(name, res, 'template-put')) return;
-        const validated = validateFolderRel(body.folder, res, 'folder', 'template-put');
-        if (!validated) return;
-
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-put',
-            res,
-          )
-        )
-          return;
-
-        // Compose + validate the `.md` bytes server-side, then route the body
-        // through the template's CRDT doc (precedent #24 / #38) — same shape as
-        // skill-put. Templates are content docs, so the ordinary content
-        // persistence path (not the managed-artifact branch) writes the file.
-        const composed = composeTemplateContent({
-          name,
-          body: typeof body.body === 'string' ? body.body : '',
-          frontmatter: pickFrontmatterFields(body.frontmatter) satisfies TemplateFrontmatter,
-        });
-        if (!composed.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid template request.', {
-            handler: 'template-put',
-            detail: composed.error.code,
-            cause: new Error(composed.error.message),
-          });
-          return;
-        }
-
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
-        const templateCreated = !existsSync(templateFilePath);
-        const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-        const templateDocName = templateDocNameFor(validated.folderRel, name);
-
-        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-          body as unknown as Record<string, unknown>,
-        );
-        const templateSession = await sessionManager.getSession(templateDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-        templateSession.dc.document.transact(() => {
-          composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
-        }, templateSession.origin);
-
-        const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
-          respondPersistenceFailure(res, templateFlush.failure, 'template-put');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-put');
-          return;
-        }
-
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created this folder's `.ok/templates/` dir — exactly
-        // the brand-new-subdir race where the watcher's create event can be
-        // lost. Same net as the sibling agent-write handlers.
-        registerWrittenDocInFileIndex(templateDocName, composed.content);
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', validated.folderRel, name),
-          `${templateCreated ? 'template-create' : 'template-edit'}: ${templateRelPath}`,
-        );
-        scheduleOkArtifactFlush('template-put');
-        successResponse(
-          res,
-          200,
-          TemplatePutSuccessSchema,
-          {
-            path: templateRelPath,
-            created: templateCreated,
-            warnings: composed.warnings,
-          },
-          { handler: 'template-put' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to write template.', {
-          handler: 'template-put',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-put', method: 'PUT' },
-  );
-
-  const handleTemplateDelete = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateTemplateName(name, res, 'template-delete')) return;
-        const validated = validateFolderRel(
-          url.searchParams.get('folder') ?? '',
-          res,
-          'folder',
-          'template-delete',
-        );
-        if (!validated) return;
-
-        // DELETE has no body (query-param transport); read identity + summary
-        // from the query string into a synthetic body for extractActorIdentity.
-        const actor = extractActorIdentityFromQuery(url, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-delete',
-          });
-          return;
-        }
-
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-delete',
-            res,
-          )
-        )
-          return;
-
-        // Tear down the live template content doc (if open) BEFORE removing the
-        // file, so its debounced content store can't re-store (resurrect) it on
-        // a later unload. Same spine doc-delete + skill-delete use; no-op when
-        // the doc was never opened.
-        await captureAndCloseDocuments(
-          [templateDocNameFor(validated.folderRel, name)],
-          'deleted-upstream',
-        );
-
-        const deleteInput: Parameters<typeof applyTemplateDelete>[0] = {
-          projectDir: validated.resolvedContentDir,
-          folder: validated.folderRel,
-          name,
-        };
-        const result = applyTemplateDelete(deleteInput);
-        if (!result.ok) {
-          const status =
-            result.error.code === 'WRITE_ERROR' ||
-            result.error.code === 'UNLINK_FAILED' ||
-            result.error.code === 'BAD_PROJECT_DIR'
-              ? 500
-              : 400;
-          const urn =
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request';
-          const title = status === 500 ? 'Failed to delete template.' : 'Invalid template request.';
-          errorResponse(res, status, urn, title, {
-            handler: 'template-delete',
-            detail: result.error.code,
-            cause: new Error(result.error.message),
-          });
-          return;
-        }
-        // Only attribute when a file was actually removed (no-op delete of an
-        // absent template records nothing).
-        if (result.existed) {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('template', validated.folderRel, name),
-            `template-delete: ${result.path}`,
-          );
-          scheduleOkArtifactFlush('template-delete');
-          // Mark the content doc removed so a stale tab redirects instead of
-          // offering to resurrect it (parity with ordinary doc deletion).
-          recentlyRemovedDocs?.setDeleted(templateDocNameFor(validated.folderRel, name));
-        }
-        successResponse(
-          res,
-          200,
-          TemplateDeleteSuccessSchema,
-          { existed: result.existed, path: result.path },
-          { handler: 'template-delete' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to delete template.',
-          { handler: 'template-delete', cause: e },
-        );
-      }
-    },
-    { handler: 'template-delete', method: 'DELETE', skipBodyParse: true },
-  );
-
-  const handleTemplateMove = withValidation(
-    TemplateMoveRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-move',
-          });
-          return;
-        }
-        if (!validateTemplateName(body.fromName, res, 'template-move')) return;
-        if (!validateTemplateName(body.toName, res, 'template-move')) return;
-        const fromValidated = validateFolderRel(body.fromFolder, res, 'folder', 'template-move');
-        if (!fromValidated) return;
-        const toValidated = validateFolderRel(body.toFolder, res, 'folder', 'template-move');
-        if (!toValidated) return;
-
-        // Refuse moving a source whose target doc is in an unresolved conflict.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(fromValidated.folderRel, body.fromName),
-            'template-move',
-            res,
-          )
-        ) {
-          return;
-        }
-
-        // Tear down the live source template content doc (if open) BEFORE the
-        // git-mv relocates the file — otherwise its debounced content store
-        // would re-store at the now-stale from-path, resurrecting the moved
-        // template.
-        await captureAndCloseDocuments(
-          [templateDocNameFor(fromValidated.folderRel, body.fromName)],
-          'renamed',
-        );
-
-        const result = await applyTemplateMove({
-          projectDir: fromValidated.resolvedContentDir,
-          fromFolder: fromValidated.folderRel,
-          fromName: body.fromName,
-          toFolder: toValidated.folderRel,
-          toName: body.toName,
-          // git mv (history-preserving) when the path is tracked; plain disk
-          // rename otherwise. `withParentLock` inside renameTrackedPathInGit
-          // serializes against concurrent doc renames (git-index safety).
-          relocate: async (fromAbs, toAbs) => {
-            const movedWithGit = await renameTrackedPathInGit(projectDir, fromAbs, toAbs);
-            if (!movedWithGit) renamePathOnDisk(fromAbs, toAbs);
-            return movedWithGit;
-          },
-        });
-
-        if (!result.ok) {
-          if (result.error.code === 'TEMPLATE_NOT_FOUND') {
-            // Distinguish "inherited" (resolvable from an ancestor) — teach
-            // localize-then-move — from "truly absent" — 404.
-            const found = findTemplateLeafToRoot(
-              fromValidated.resolvedContentDir,
-              fromValidated.folderRel,
-              body.fromName,
-            );
-            if (found?.scope === 'inherited') {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                `Template "${body.fromName}" is inherited from "${found.folder || '(root)'}", not local to "${fromValidated.folderRel || '(root)'}". Move it from the folder that owns it, or create a local copy here first (then move that).`,
-                { handler: 'template-move', detail: 'TEMPLATE_INHERITED' },
-              );
-              return;
-            }
-            errorResponse(res, 404, 'urn:ok:error:template-not-found', 'Template not found.', {
-              handler: 'template-move',
-              detail: result.error.message,
-            });
-            return;
-          }
-          if (result.error.code === 'TEMPLATE_EXISTS') {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', result.error.message, {
-              handler: 'template-move',
-              detail: result.error.code,
-            });
-            return;
-          }
-          const status =
-            result.error.code === 'WRITE_ERROR' || result.error.code === 'MOVE_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            status === 500 ? 'Failed to move template.' : 'Invalid template move request.',
-            {
-              handler: 'template-move',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            },
-          );
-          return;
-        }
-
-        // Mark the source content doc removed (the move relocated its file) so a
-        // stale tab on the old name redirects instead of offering to resurrect
-        // it (parity with ordinary doc deletion).
-        recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
-
-        // Optional atomic move+edit: rewrite the relocated template's content.
-        // The move already succeeded and persisted the original content, so any
-        // failure here is captured and reported AFTER the move is attributed —
-        // the rename must not be lost because the edit step failed.
-        let contentEditError: { code: string; message: string } | null = null;
-        if (body.body !== undefined || body.frontmatter !== undefined) {
-          // Preserve the existing (just-moved) body when only `frontmatter` is
-          // supplied. If that body can't be read, SKIP the rewrite rather than
-          // risk wiping it — defaulting to '' would re-introduce the body-loss
-          // bug on a read error; the moved file keeps its original content.
-          let writeBody: string | null;
-          if (typeof body.body === 'string') {
-            writeBody = body.body;
-          } else {
-            try {
-              writeBody = instantiateDoc(
-                readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
-              );
-            } catch {
-              writeBody = null;
-            }
-          }
-          if (writeBody === null) {
-            contentEditError = {
-              code: 'READ_FAILED',
-              message:
-                'could not read the moved template to apply the metadata change; the move succeeded with the original content intact — retry the edit',
-            };
-          } else {
-            const writeResult = applyTemplateWrite({
-              projectDir: toValidated.resolvedContentDir,
-              folder: toValidated.folderRel,
-              name: body.toName,
-              body: writeBody,
-              frontmatter: pickFrontmatterFields(body.frontmatter) satisfies TemplateFrontmatter,
-            });
-            if (!writeResult.ok) contentEditError = writeResult.error;
-          }
-        }
-
-        // Close the dropped-FSEvent gap for the DESTINATION (parity with
-        // put/import): the relocate may have just created `toFolder`'s
-        // `.ok/templates/` dir — the brand-new-subdir race where the watcher's
-        // create event can be lost. Read the final on-disk bytes (post the
-        // optional edit above) so the index entry matches what landed.
-        // Best-effort like the helper itself: on a read failure the CRDT/disk
-        // copy exists regardless and a rescan re-seeds the index.
-        try {
-          registerWrittenDocInFileIndex(
-            templateDocNameFor(toValidated.folderRel, body.toName),
-            readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
-          );
-        } catch {
-          // Unreadable destination — leave index membership to the watcher.
-        }
-
-        // The move succeeded — attribute + commit + signal regardless of the
-        // optional content edit's outcome, so the rename is never lost when the
-        // edit step fails.
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', toValidated.folderRel, body.toName),
-          `template-rename: ${result.fromPath} -> ${result.toPath}`,
-          [{ from: result.fromPath, to: result.toPath }],
-        );
-        scheduleOkArtifactFlush('template-move');
-        signalChannel?.('files');
-
-        if (contentEditError) {
-          const isServerError =
-            contentEditError.code === 'WRITE_ERROR' || contentEditError.code === 'READ_FAILED';
-          errorResponse(
-            res,
-            isServerError ? 500 : 400,
-            isServerError ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            // Include the destination so the agent can retry the content edit
-            // against the moved template without re-deriving where it landed.
-            `Template moved to "${result.toPath}", but updating its content failed.`,
-            {
-              handler: 'template-move',
-              detail: contentEditError.code,
-              cause: new Error(contentEditError.message),
-            },
-          );
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          TemplateMoveSuccessSchema,
-          { from: result.fromPath, to: result.toPath, committed: result.committed },
-          { handler: 'template-move' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to move template.', {
-          handler: 'template-move',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-move', method: 'POST' },
-  );
-
-  const handleTemplate = methodRouter(
-    {
-      GET: handleTemplateGet,
-      PUT: handleTemplatePut,
-      POST: handleTemplateMove,
-      DELETE: handleTemplateDelete,
-    },
-    { handler: 'template' },
-  );
-
-  const handleTemplateImport = withValidation(
-    TemplateImportRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Templates are not available in single-file mode.',
-            { handler: 'template-import' },
-          );
-          return;
-        }
-
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-import',
-          });
-          return;
-        }
-
-        const sourcePath = body.sourcePath;
-        if (!isSafeDocName(sourcePath)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid sourcePath.', {
-            handler: 'template-import',
-          });
-          return;
-        }
-
-        const sourceDocName = resolveAlias(sourcePath);
-        if (isSystemDoc(sourceDocName) || isConfigDoc(sourceDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${sourceDocName}' is a reserved document name.`,
-            { handler: 'template-import' },
-          );
-          return;
-        }
-
-        const sourceFilePath = resolveContentEntryPath(contentDir, 'file', sourceDocName);
-        if (!existsSync(sourceFilePath)) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:doc-not-found',
-            `Source document not found: ${sourceDocName}.`,
-            {
-              handler: 'template-import',
-            },
-          );
-          return;
-        }
-
-        const existing = hocuspocus.documents.get(sourceDocName);
-        if (body.deleteSource) {
-          const deleteEngine = getSyncEngine?.();
-          const deleteTrackedFiles = new Set(
-            deleteEngine ? deleteEngine.getConflicts().map((c) => c.file) : [],
-          );
-          const conflictedByLifecycle = existing !== undefined && isDocInConflict(existing);
-          const conflictedByStore = deleteTrackedFiles.has(sourcePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(
-              res,
-              new DocInConflictError({ file: sourcePath }),
-              'template-import',
-            );
-            return;
-          }
-        }
-
-        // Read source content
-        let sourceContent = '';
-        if (existing) {
-          sourceContent = existing.getText('source').toString();
-        } else {
-          const dc = await hocuspocus.openDirectConnection(sourceDocName);
-          try {
-            const document = dc.document;
-            if (!document) {
-              errorResponse(
-                res,
-                500,
-                'urn:ok:error:doc-not-available',
-                'Source document is not available.',
-                {
-                  handler: 'template-import',
-                },
-              );
-              return;
-            }
-            sourceContent = document.getText('source').toString();
-          } finally {
-            await dc.disconnect();
-          }
-        }
-
-        // Determine target template name
-        let name = body.name;
-        if (!name) {
-          const { basename } = splitContentPath(sourcePath);
-          const nameWithoutExt = basename.replace(/\.(md|mdx)$/i, '');
-          name = nameWithoutExt.replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
-          name = name.replace(/^[-_]+|[-_]+$/g, '');
-          name ||= 'imported-template';
-        }
-
-        if (!validateTemplateName(name, res, 'template-import')) return;
-
-        const validated = validateFolderRel(body.targetFolder, res, 'folder', 'template-import');
-        if (!validated) return;
-
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-import',
-            res,
-          )
-        )
-          return;
-
-        // Parse existing frontmatter of the source file to extract the title/description/tags
-        const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
-        const cleanFmText = unwrapFrontmatterFences(sourceFmText);
-        let sourceFmObj: Record<string, unknown> = {};
-        try {
-          if (cleanFmText.trim()) {
-            sourceFmObj = parseYaml(cleanFmText) as Record<string, unknown>;
-          }
-        } catch {
-          // Malformed frontmatter — treat the source as having none.
-        }
-
-        const templateTitle =
-          body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
-        const templateDescription = (sourceFmObj?.description as string) || '';
-        const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
-
-        // For the starter content, we can use the original document frontmatter but remove `template:`
-        // if it somehow got there. Keep other fields. We also drop `title` so it doesn't get baked into every instance.
-        const starterFmObj = { ...sourceFmObj };
-        delete starterFmObj.template;
-        delete starterFmObj.title;
-
-        let starterContent = '';
-        if (Object.keys(starterFmObj).length > 0) {
-          const fmYaml = stringifyYaml(starterFmObj);
-          starterContent = `${fmYaml.trim()}\n`;
-        }
-        starterContent = starterContent ? `---\n${starterContent}---\n${sourceBody}` : sourceBody;
-
-        const composed = composeTemplateContent({
-          name,
-          body: starterContent,
-          frontmatter: {
-            title: templateTitle,
-            description: templateDescription,
-            tags: templateTags,
-          },
-        });
-
-        if (!composed.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid template request.', {
-            handler: 'template-import',
-            detail: composed.error.code,
-            cause: new Error(composed.error.message),
-          });
-          return;
-        }
-
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
-        const templateCreated = !existsSync(templateFilePath);
-        const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-        const templateDocName = templateDocNameFor(validated.folderRel, name);
-
-        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-          body as unknown as Record<string, unknown>,
-        );
-        const templateSession = await sessionManager.getSession(templateDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-        templateSession.dc.document.transact(() => {
-          composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
-        }, templateSession.origin);
-
-        const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
-          respondPersistenceFailure(res, templateFlush.failure, 'template-import');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-import');
-          return;
-        }
-
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created the target folder's `.ok/templates/` dir —
-        // exactly the brand-new-subdir race where the watcher's create event
-        // can be lost. Same net as the sibling agent-write handlers.
-        registerWrittenDocInFileIndex(templateDocName, composed.content);
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', validated.folderRel, name),
-          `template-import: ${templateRelPath}`,
-        );
-
-        if (body.deleteSource) {
-          const deletedDocNames = [sourceDocName];
-          await captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
-          if (recentlyRemovedDocs) {
-            recentlyRemovedDocs.setDeleted(sourceDocName);
-          }
-          tracedUnlinkSync(sourceFilePath);
-          mutateFileIndex?.({
-            kind: 'delete',
-            path: sourceFilePath,
-            docName: sourceDocName,
-          });
-        }
-
-        scheduleOkArtifactFlush('template-import');
-        signalChannel?.('files');
-
-        successResponse(
-          res,
-          200,
-          TemplateImportSuccessSchema,
-          {
-            path: templateRelPath,
-            created: templateCreated,
-            warnings: composed.warnings,
-          },
-          { handler: 'template-import' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to import template.',
-          {
-            handler: 'template-import',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'template-import', method: 'POST' },
-  );
 
   // ─── Skills (`/api/skill`, `/api/skills`) ──────────────────────
   //
@@ -13529,16 +12257,6 @@ export function createApiExtension(
       { handler },
     );
     return true;
-  }
-
-  /**
-   * The CRDT doc name a template opens/persists under — its content-relative path
-   * (`<folderRel>/.ok/templates/<name>`, ext-less, RAW). Delegates to the core
-   * builder so server handlers, the client open path, and the properties panel
-   * share one identity. `''` folder → `.ok/templates/<name>` (project root).
-   */
-  function templateDocNameFor(folderRel: string, name: string): string {
-    return templateContentDocName(folderRel, name);
   }
 
   /**
@@ -19135,66 +17853,6 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
-  async function handleHandoffDispatchRoute(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Loopback-only gate — spawns binaries on the user's machine. Same model
-    // as `/api/spawn-cursor` and `/api/installed-agents`. The handler also
-    // enforces app-name allowlist + URL scheme matching + cursor path
-    // containment as defense-in-depth.
-    if (!checkLocalOpSecurity(req, res, { handler: 'handoff' })) return;
-    try {
-      await handleHandoffDispatch(req, res, {
-        contentDir,
-        platform: process.platform,
-        // Share the same cached scheme probe `/api/installed-agents` uses so
-        // the Windows/Linux dispatch availability gate agrees with the
-        // dropdown's render gate (and reuses its 60s TTL — the row the user
-        // just saw enabled decides the click). Unused on macOS.
-        isSchemeRegistered: installedAgentsCache.probeWithCache,
-      });
-    } catch (e) {
-      if (!res.headersSent) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[handoff] route wrapper failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'handoff',
-          cause: e,
-        });
-      }
-    }
-  }
-
-  async function handleSpawnCursorRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Same loopback + DNS-rebinding gate as `/api/installed-agents` — this
-    // endpoint spawns a binary on the user's machine, so confining callers
-    // to same-origin loopback is load-bearing. Path containment + hardcoded
-    // `cursor` binary + `shell:false` argv-array enforce the rest of the
-    // security model inside `handleSpawnCursor`. See the file-level comment
-    // in `./spawn-cursor-api.ts` for the full threat model.
-    // `checkLocalOpSecurity` itself emits RFC 9457 problem+json on rejection.
-    if (!checkLocalOpSecurity(req, res, { handler: 'spawn-cursor' })) return;
-    try {
-      await handleSpawnCursor(req, res, {
-        contentDir,
-        platform: process.platform,
-      });
-    } catch (e) {
-      // Defensive: `handleSpawnCursor` emits RFC 9457 problem+json for every
-      // expected failure mode internally. This catches truly unexpected
-      // throws (e.g., a `resolveCursorBinary` injection that throws
-      // synchronously) so the client still receives a typed contract
-      // response instead of a hung connection. Mirrors `handleInstalledAgentsRoute`.
-      if (!res.headersSent) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[spawn-cursor] route wrapper failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'spawn-cursor',
-          cause: e,
-        });
-      }
-    }
-  }
-
   /**
    * `POST /api/share/construct-url` — read the project's local git state and
    * emit a marketing-safe share URL (`https://openknowledge.ai/d/<base64url>`)
@@ -19931,74 +18589,6 @@ export function createApiExtension(
       method: 'POST',
       preBodyGate: (req, res) =>
         checkLocalOpSecurity(req, res, { handler: SHARE_PUBLISH_HANDLER_TAG }),
-    },
-  );
-
-  // Web/browser client-log ingest: the renderer forwarder POSTs batches of
-  // captured `console` output here, written to the `renderer` pino subsystem
-  // (→ the local-sink server log). Electron captures renderer console in its
-  // main process instead. Writes no Y.Docs — exempt from attribution; gated by
-  // `checkLocalOpSecurity` (loopback + Host + Origin) like the local-op routes.
-  const handleClientLogs = withValidation(
-    ClientLogsRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const logger = getLogger('renderer');
-        if (body.droppedSinceLastFlush !== undefined && body.droppedSinceLastFlush > 0) {
-          // Gap marker: the forwarder lost entries (buffer overflow / failed
-          // POSTs) between the previous delivered batch and this one. Persist
-          // it as its own line so a log reader knows the silence was loss,
-          // not inactivity.
-          logger.warn(
-            {
-              source: 'renderer-console',
-              transport: 'web',
-              event: 'client-log-entries-dropped',
-              droppedSinceLastFlush: body.droppedSinceLastFlush,
-            },
-            'client-log-entries-dropped',
-          );
-        }
-        for (const entry of body.entries) {
-          // Per-entry guard: one entry that trips a pino serialization fault
-          // must not drop the rest of the batch (the response still reports the
-          // full accepted count — best-effort diagnostics ingest).
-          try {
-            // Spread client `fields` FIRST so the provenance markers below
-            // always win (a client field must not clobber source/transport).
-            logger[entry.level](
-              {
-                ...entry.fields,
-                source: 'renderer-console',
-                transport: 'web',
-                ...(entry.sourceId ? { sourceId: entry.sourceId } : {}),
-                ...(entry.lineNumber !== undefined ? { lineNumber: entry.lineNumber } : {}),
-                ...(entry.ts !== undefined ? { clientTs: entry.ts } : {}),
-              },
-              entry.event ?? entry.message,
-            );
-          } catch {
-            // Skip the malformed entry; continue the batch.
-          }
-        }
-        successResponse(
-          res,
-          200,
-          ClientLogsSuccessSchema,
-          { accepted: body.entries.length },
-          { handler: 'client-logs' },
-        );
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'client-logs',
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: 'client-logs',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'client-logs' }),
     },
   );
 
@@ -20772,9 +19362,6 @@ export function createApiExtension(
     '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
     '/api/asset-text': handleAssetText,
-    '/api/folder-config': handleFolderConfig,
-    '/api/template': handleTemplate,
-    '/api/template/import': handleTemplateImport,
     '/api/skill': handleSkill,
     '/api/skill-file': handleSkillFile,
     '/api/skill-file/rename': handleSkillFileRename,
@@ -20839,14 +19426,7 @@ export function createApiExtension(
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
     '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
-    '/api/spawn-cursor': handleSpawnCursorRoute,
-    '/api/handoff': handleHandoffDispatchRoute,
     '/api/install-skill': handleInstallSkill,
-    '/api/seed/plan': handleSeedPlan,
-    '/api/seed/apply': handleSeedApply,
-    '/api/seed/install-pack-skill': handleSeedInstallPackSkill,
-    '/api/seed/packs': handleSeedPacks,
-    '/api/client-logs': handleClientLogs,
   };
 
   if (enableTestRoutes) {
@@ -20892,9 +19472,6 @@ export function createApiExtension(
     '/api/test-rescan-backlinks',
     '/api/test-rescan-files',
     '/api/install-skill',
-    '/api/folder-config',
-    '/api/template',
-    '/api/template/import',
     '/api/skill',
     '/api/skill-file',
     '/api/skill-file/rename',
@@ -20911,9 +19488,6 @@ export function createApiExtension(
     '/api/skills/reimport-bulk',
     '/api/skill/revert',
     '/api/skill/track-in-git',
-    '/api/seed/apply',
-    '/api/seed/install-pack-skill',
-    '/api/client-logs',
   ]);
   // Every `/api/local-op/*` endpoint mutates local filesystem state or
   // issues network requests on behalf of the user — clone/open/auth
@@ -21052,6 +19626,46 @@ export function createApiExtension(
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   });
+  const seedRoutes = createSeedRoutes({
+    contentDir,
+    checkLocalOpSecurity,
+  });
+  const systemActionsRoutes = createSystemActionsRoutes({
+    contentDir,
+    log,
+    checkLocalOpSecurity,
+    installedAgentsCache,
+  });
+  const folderTemplateRoutes = createFolderTemplateRoutes({
+    contentDir,
+    projectDir,
+    ephemeral,
+    log,
+    hocuspocus,
+    sessionManager,
+    getPrincipal,
+    signalChannel,
+    getSyncEngine,
+    recentlyRemovedDocs,
+    isSafeDocName,
+    resolveAlias,
+    resolveContentEntryPath,
+    validateFolderRel,
+    extractAgentIdentity,
+    extractActorIdentityFromQuery,
+    okArtifactKey,
+    attributeOkArtifactWrite,
+    scheduleOkArtifactFlush,
+    flushDiskAndDetectOutcome,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    registerWrittenDocInFileIndex,
+    captureAndCloseDocuments,
+    renameTrackedPathInGit,
+    renamePathOnDisk,
+    splitContentPath,
+    mutateFileIndex,
+  });
   const nativeGroups = [
     linkGraphRoutes,
     metricsRoutes,
@@ -21062,6 +19676,9 @@ export function createApiExtension(
     skillsReadRoutes,
     skillsShRoutes,
     workspaceToolsRoutes,
+    seedRoutes,
+    systemActionsRoutes,
+    folderTemplateRoutes,
   ];
   // "A route lives in exactly one router" — enforced at construction, not
   // just documented; covers every group aggregated into the native paths.

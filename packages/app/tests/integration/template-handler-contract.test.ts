@@ -2,8 +2,13 @@
  * Template-handler asymmetry contract — static analysis gate.
  *
  * Mirror of `conflict-gate-coverage.test.ts` / `attribution-sweep-coverage.test.ts`:
- * statically scans the four mutating template handlers in `api-extension.ts` and
- * pins three deliberate asymmetries the templates-as-content cutover preserves.
+ * statically scans the four mutating template handlers and pins three deliberate
+ * asymmetries the templates-as-content cutover preserves. The handlers live in
+ * whichever source currently owns them — `api-extension.ts`'s legacy dispatch or
+ * a native `http/*-routes.ts` group factory — so the scan builds its source set
+ * from the union of both (via `listNativeRouteFiles`), exactly as the sibling
+ * meta-tests do, and a future lift between those files cannot silently vacate
+ * this gate.
  * These are properties of the HANDLER source, not of the end-to-end runtime — the
  * `files` derived-view channel also fires from raw disk events, and the CRDT
  * write path's writeTracker suppresses its own self-writes, so the honest thing
@@ -15,21 +20,33 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import {
+  HANDLER_RUN_END_NEEDLES,
+  listNativeRouteFiles,
+} from '../native-route-files.test-helper.ts';
 
-const API_EXT_PATH = join(import.meta.dirname, '../../../server/src/api-extension.ts');
-const source = readFileSync(API_EXT_PATH, 'utf8');
+const SERVER_SRC = join(import.meta.dirname, '../../../server/src');
+const SOURCES = ['api-extension.ts', ...listNativeRouteFiles(SERVER_SRC)].map((rel) =>
+  readFileSync(join(SERVER_SRC, rel), 'utf8'),
+);
 
 /**
- * Slice one `const handle... = withValidation(` template handler body out of the
- * source, bounded at the next top-level handler / route table — the same
- * extractor shape the sibling meta-tests use.
+ * Slice one `const handle... = withValidation(` template handler body out of
+ * whichever source owns it, bounded at the next top-level handler or the group's
+ * route-record declaration — the same extractor shape the sibling meta-tests use.
  */
 function extractHandlerBody(handlerName: string): string {
+  const source = SOURCES.find((s) => s.includes(`const ${handlerName} = withValidation(`));
+  if (!source) throw new Error(`${handlerName}: withValidation handler not found in source`);
   const start = source.indexOf(`const ${handlerName} = withValidation(`);
-  if (start === -1) throw new Error(`${handlerName}: withValidation handler not found in source`);
-  const nextConst = source.indexOf('\n  const handle', start + 1);
-  const nextRoutes = source.indexOf('\n  const routes:', start + 1);
-  const candidates = [nextConst, nextRoutes].filter((i) => i !== -1);
+  const candidates = [
+    '\n  async function handle',
+    '\n  const handle',
+    ...HANDLER_RUN_END_NEEDLES,
+    '\n  return {',
+  ]
+    .map((needle) => source.indexOf(needle, start + 1))
+    .filter((i) => i !== -1);
   const next = candidates.length === 0 ? -1 : Math.min(...candidates);
   return source.slice(start, next === -1 ? source.length : next);
 }
