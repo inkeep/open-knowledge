@@ -160,6 +160,7 @@ interface CrashAckStore {
  */
 interface SentinelState {
   bootId: string;
+  /** When this session booted. Recorded for readers of the file, not read back here. */
   startedAt: string;
   /** Refreshed by the heartbeat; how close to death the session was known alive. */
   lastAliveAt: string;
@@ -236,19 +237,36 @@ export interface CrashDetectionDeps {
   currentBootSessionUuid(): string | null;
   /**
    * The updater's verdict that an install it committed to may still have been
-   * running when the previous session ended — the fourth thing that can end a
-   * session without the app having crashed.
+   * running at some point during the previous session's death — the fourth
+   * thing that can end a session without the app having crashed.
    *
-   * Asked of the updater rather than decided here: the grace window and the
-   * boot bound that make "may still be running" a bounded claim are the
-   * updater's calibration, and a second copy of that judgment would drift from
-   * the one that decides whether to tell the user an install failed.
+   * Asked of the updater rather than decided here: the bounds that make "may
+   * still be running" a bounded claim, and which of them applies to which span
+   * shape, are the updater's calibration. A second copy of that judgment would
+   * drift from the one that decides whether to tell the user an install failed.
+   * `installWasInFlightDuring` is where the pairing is set out.
    *
-   * Optional, and null when nothing is in flight. An absent reader skips the
-   * classification entirely — fail-open toward prompting, the same posture
-   * `currentBootSessionUuid` takes when the probe is unavailable.
+   * A span rather than an instant, and both ends are required parameters,
+   * because the only clock reachable from here is the detecting boot's and the
+   * question is about a moment that has already passed. `installWasInFlightDuring`
+   * holds the derivation of why an instant cannot answer it. Passing both ends
+   * forces each caller to say which span it means, the same reason `stagedAt`
+   * is a parameter of the predicate underneath rather than a field read.
+   *
+   * `deathFromMs` is a lower bound on the death, and the error in it is
+   * one-directional. Below the handoff it costs nothing: the updater clamps it
+   * forward and the window is measured from the handoff itself. Above the
+   * handoff it IS what the window is measured to, so a bound that under-shoots
+   * the death shortens the measured age and can revive a record the grace
+   * should have retired. Loosen it only with that in view: every millisecond
+   * earlier admits another handoff into the class, and the class suppresses.
+   *
+   * Optional as a dep, and null when nothing was in flight during the span. An
+   * absent reader skips the classification entirely — fail-open toward
+   * prompting, the same posture `currentBootSessionUuid` takes when the probe
+   * is unavailable.
    */
-  installInFlight?(): InstallInFlight | null;
+  installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
   logger: CrashLogger;
 }
 
@@ -372,6 +390,30 @@ function isFileMissingError(err: unknown): boolean {
   return (
     typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT'
   );
+}
+
+/**
+ * ISO-8601 to epoch ms, or null when the field is absent or unparseable.
+ *
+ * Guarded rather than trusted because the death-span floor is read off a
+ * sentinel written across app-version boundaries, so it is only as well-formed
+ * as whichever build wrote it. An unguarded `Date.parse` yields `NaN`, and
+ * formatting that for the breadcrumb below throws a `RangeError` out of a
+ * boot-time scan, which is the consequence this helper is the sole guard
+ * against.
+ *
+ * `installWasInFlightDuring` guards its own bounds too, which is why removing
+ * either one alone still leaves the verdict correct. That seam carries why it
+ * does not lean on this one.
+ *
+ * The shutdown-marker TTL shares this helper for uniformity rather than for a
+ * live hazard, since that value is minted in-process moments before it is read
+ * back.
+ */
+function epochMsOrNull(iso: string | null): number | null {
+  if (iso === null) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 function parseAckStore(raw: string): CrashAckStore | null {
@@ -657,6 +699,19 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         // A non-ENOENT read failure still means the file exists — the
         // previous session did not clean-quit.
         sentinelPresent = !isFileMissingError(err);
+        if (sentinelPresent) {
+          // Said out loud for the same reason the parse failure below is. A
+          // file this boot could not open reaches every downstream read as the
+          // same set of nulls a build predating those fields would produce, and
+          // the two point opposite ways: one is nothing to do, the other is a
+          // lock or a permission this app observed and could name. Without the
+          // errno there is no signal at all that the death span collapsed
+          // because of it.
+          deps.logger.warn(
+            { event: 'crash-detection.sentinel-read-failed', err },
+            'dirty-shutdown sentinel exists but could not be read, so the previous session is dated by this boot alone',
+          );
+        }
       }
       let prevBootId: string | null = null;
       let prevBootSessionUuid: string | null = null;
@@ -666,38 +721,53 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       let prevSuspendedAt: string | null = null;
       let prevAppVersion: string | null = null;
       if (sentinelRaw !== null) {
+        // Only the parse is inside the catch, because its warn asserts that
+        // nothing downstream got a date. Reads left inside would make that true
+        // by accident of ordering, and a throw partway through them would null
+        // a machine-level-death disjunct while the log named another cause.
+        let parsed: Record<string, unknown> | null = null;
         try {
-          const parsed = JSON.parse(sentinelRaw) as Record<string, unknown> | null;
-          const field = (key: string): string | null => {
-            const value = parsed?.[key];
-            return typeof value === 'string' && value !== '' ? value : null;
-          };
-          prevBootId = field('bootId');
-          prevBootSessionUuid = field('bootSessionUuid');
-          prevLastAliveAt = field('lastAliveAt');
-          prevPendingOsShutdownAt = field('pendingOsShutdownAt');
-          // Element-wise filtered rather than trusted wholesale: this file is
-          // read across app-version boundaries, so the array is only as
-          // well-formed as whichever build wrote it. A non-array, or one with
-          // nothing usable in it, reads as "no cause named" — same as absent.
-          const rawReasons = parsed?.osShutdownReasons;
-          if (Array.isArray(rawReasons)) {
-            const usable = rawReasons.filter(
-              (value): value is string => typeof value === 'string' && value !== '',
-            );
-            prevOsShutdownReasons = usable.length > 0 ? usable : null;
-          }
-          prevSuspendedAt = field('suspendedAt');
-          // Must be read here, before this boot overwrites the file below:
-          // afterwards the value on disk is the RUNNING version, which is the
-          // wrong answer in exactly the update-between-sessions case that
-          // makes the question worth asking. Gated like the minidump's
-          // annotation because it reaches the same line of the same report,
-          // and this file is no more trustworthy than that one.
-          prevAppVersion = asReportableAppVersion(field('appVersion'));
-        } catch {
-          // Torn write from the crashed session — presence alone is the signal.
+          parsed = JSON.parse(sentinelRaw) as Record<string, unknown> | null;
+        } catch (err) {
+          // Torn write from the crashed session — presence alone is the signal,
+          // so this is not fatal. Said out loud anyway: a file that parsed and
+          // simply carried no dates reaches every downstream read as the same
+          // set of nulls, and the two lead to different conclusions about why
+          // the death span collapsed onto the detecting clock. The cause rides
+          // along for the same reason the sibling write failure carries one, a
+          // truncated write and binary garbage being different findings.
+          deps.logger.warn(
+            { event: 'crash-detection.sentinel-parse-failed', err },
+            'dirty-shutdown sentinel did not parse, so the previous session is dated by this boot alone',
+          );
         }
+        const field = (key: string): string | null => {
+          const value = parsed?.[key];
+          return typeof value === 'string' && value !== '' ? value : null;
+        };
+        prevBootId = field('bootId');
+        prevBootSessionUuid = field('bootSessionUuid');
+        prevLastAliveAt = field('lastAliveAt');
+        prevPendingOsShutdownAt = field('pendingOsShutdownAt');
+        // Element-wise filtered rather than trusted wholesale: this file is
+        // read across app-version boundaries, so the array is only as
+        // well-formed as whichever build wrote it. A non-array, or one with
+        // nothing usable in it, reads as "no cause named" — same as absent.
+        const rawReasons = parsed?.osShutdownReasons;
+        if (Array.isArray(rawReasons)) {
+          const usable = rawReasons.filter(
+            (value): value is string => typeof value === 'string' && value !== '',
+          );
+          prevOsShutdownReasons = usable.length > 0 ? usable : null;
+        }
+        prevSuspendedAt = field('suspendedAt');
+        // Must be read here, before this boot overwrites the file below:
+        // afterwards the value on disk is the RUNNING version, which is the
+        // wrong answer in exactly the update-between-sessions case that
+        // makes the question worth asking. Gated like the minidump's
+        // annotation because it reaches the same line of the same report,
+        // and this file is no more trustworthy than that one.
+        prevAppVersion = asReportableAppVersion(field('appVersion'));
       }
 
       // Every fresh dump is classified before it can influence anything: the
@@ -785,10 +855,30 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
       // The fourth way a session ends without the app having crashed, and the
       // only one the machine did not cause: this app committed to an update,
-      // and the installer terminated the running process to replace its files.
-      // That kill bypasses the quit sequence on both platforms — SIGKILL from
-      // ShipIt, an outright process termination from NSIS — so `will-quit`
-      // never runs, `markCleanQuit()` never clears the sentinel, and without
+      // and the session ended without its quit sequence completing.
+      //
+      // Neither installer is a plain pre-emption of a healthy app. The Windows
+      // one waits over a second for the app to go before it intervenes at all,
+      // so an app that quits promptly is never touched and this class never
+      // sees it, while one still tearing down loses that race. The macOS helper
+      // (Squirrel's ShipIt) does not terminate the app at all: it waits for the
+      // process to exit and then swaps the bundle, per the sequence documented
+      // in Squirrel.Mac and electron/electron#36130. Either way the reachable
+      // population is a session that was still quitting, which is why this
+      // class is about the quit sequence not completing rather than about a
+      // kill signal.
+      //
+      // What decides the frame this question gets asked in is not the platform
+      // but whether anything stamped the handoff. Both commit points stamp it
+      // while a live process still exists to observe them: the "Relaunch now"
+      // click on every platform, and `before-quit` wherever install-on-quit is
+      // armed, which is everywhere except Linux. A session that ended without
+      // reaching either arrives carrying only the moment the artifact was
+      // staged. That fallback keeps answering at the detecting instant rather
+      // than across the span, so where nothing was stamped this class still
+      // decays with how long the user left the app closed, and
+      // `installWasInFlightDuring` carries why a finished download cannot widen
+      // it. Either way `markCleanQuit()` never clears the sentinel, and without
       // this class the next boot reports a death the app arranged on purpose.
       //
       // Deliberately asked of the updater rather than inferred here. A version
@@ -796,7 +886,30 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       // test and it is unsound: when the install FAILS, the relaunched app is
       // the same version as the one that was killed, so the delta is zero on
       // exactly the subset this class was first reported from.
-      const installInFlight = deps.installInFlight?.() ?? null;
+      //
+      // The death is a span, not an instant: the previous session was alive at
+      // `deathFromMs` and gone by `detectedAtMs`. The two tiers are not
+      // interchangeable, which is why the one that fired is logged rather than
+      // left to be re-derived. The heartbeat dates the death to within one
+      // interval, and the sentinel gets one at birth rather than at its first
+      // tick, so every sentinel a current build writes carries one. Without it
+      // the span collapses onto the detecting clock, which is no bound at all
+      // and is the frame this class must never be asked in when a date IS
+      // available.
+      //
+      // The start of the session is deliberately not the middle tier, though it
+      // is present and is a sound lower bound. It dates the boot rather than the
+      // death, so a session that ran for hours before genuinely crashing and one
+      // the installer killed seconds in reduce to the same span, and preferring
+      // it resolves that ambiguity toward silence. Collapsing resolves it toward
+      // asking, which is this subsystem's posture everywhere else for a probe it
+      // cannot reason from.
+      const detectedAtMs = detectedAt.getTime();
+      const lastAliveMs = epochMsOrNull(prevLastAliveAt);
+      const deathFromMs = lastAliveMs ?? detectedAtMs;
+      const deathFromSource = lastAliveMs !== null ? 'last-alive' : 'detected-at';
+      const installInFlight =
+        deps.installInFlight?.({ deathFromMs, deathToMs: detectedAtMs }) ?? null;
       const updateInstallDeath = sentinelPresent && installInFlight !== null;
 
       let armed: OkBugReportCrashDetectedEvent | null = null;
@@ -817,11 +930,46 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           // a reader can tell "no install was in flight" from "this build
           // predates the class".
           attemptedInstall: installInFlight?.attemptedVersion ?? null,
-          // False when the moment above is the staging fallback rather than a
+          // False when the moment below is the staging fallback rather than a
           // handoff a live process recorded — the same distinction the
-          // updater's own boot logs draw, and the one that says how tight the
-          // window bounding this suppression actually was.
+          // updater's own boot logs draw. It says which commit the window was
+          // measured from, not how tight it was: a handoff a live process
+          // stamped dates the commit to the quit that preceded the death,
+          // while the staging fallback dates it to the download, which can
+          // precede the death by a whole session of ordinary use.
           recordedHandoff: installInFlight?.recordedHandoff ?? null,
+          // The moment the window opened, and the span it had to overlap. A
+          // suppression here is invisible to the user by construction, so
+          // these are the only way a field report can tell a handoff that
+          // genuinely sat inside the death from one that got in because the
+          // span widened. `deathFromSource` names which tier bounded it, since
+          // the two differ by far more than the grace on a long session.
+          //
+          // Named for its encoding rather than sharing the updater's
+          // `handoffAt` key, which that module emits as raw epoch ms. Both
+          // describe the same instant and land in the same stream, so one key
+          // carrying two datatypes would break any reader keyed on the field
+          // name alone.
+          //
+          // The collision is resolved on this side because this key is new,
+          // while the updater's has shipped. Suffixing the numeric one instead
+          // would read better per line, since every other moment here is a bare
+          // `…At` holding ISO and `…Ms` is already that module's answer to the
+          // same question. It would also rename a key across released builds
+          // and cost triage another era to reconcile, on log statements this
+          // change has no other reason to touch.
+          handoffAtIso:
+            installInFlight !== null ? new Date(installInFlight.handoffAt).toISOString() : null,
+          deathFrom: new Date(deathFromMs).toISOString(),
+          deathFromSource,
+          // Clamped deliberately, unlike the updater's elapsed-time helpers,
+          // which return null on a negative. This reports the width the
+          // question was actually asked over, and a floor that postdates this
+          // boot (a clock correction across the quit) collapses the span rather
+          // than inverting it, so zero is the true answer there. The inversion
+          // itself stays visible: `deathFrom` and `detectedAt` are both on this
+          // line unclamped.
+          deathSpanMs: Math.max(0, detectedAtMs - deathFromMs),
           detectedAt: detectedAt.toISOString(),
           prevBootId,
           prevBootSessionUuid,
@@ -931,17 +1079,29 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                 // and "hung until the relaunch" equally consistent with the
                 // report while pointing at different bugs.
                 //
-                // The suspend and OS-shutdown markers are the other two
-                // witnesses the suppression predicate is built from, and a
-                // fresh dump routes their sessions here instead, where that
-                // breadcrumb is never emitted. Carrying only some of them
-                // would let their absence read as "no machine-level death"
-                // when it only means "not the one we happened to log". All
-                // three are logged even when null, for the same reason the
-                // version below is.
+                // The suspend marker, the OS-shutdown marker and the updater's
+                // in-flight verdict are the other three witnesses the
+                // suppression predicate is built from, and a fresh dump routes
+                // their sessions here instead, where that breadcrumb is never
+                // emitted. Carrying only some of them would let their absence
+                // read as "no machine-level death" when it only means "not the
+                // one we happened to log". All four are logged even when null,
+                // for the same reason the version below is.
+                //
+                // Read the install one's PRESENCE, never its value. Reaching
+                // this line with a verdict on file requires a fresh dump, which
+                // is also what makes the event dump-driven, so a
+                // `dirtyShutdown: true` line logs null whether or not an
+                // install was on record. It is evidence on the dump-driven
+                // population and an era marker everywhere else, not a
+                // suppressed-versus-prompted ratio: that reads as this line
+                // thinning while `crash-detection.machine-level-death` thickens,
+                // and the attempt a declined verdict leaves unnamed here is on
+                // the updater's own reconciliation lines from the same boot.
                 lastAliveAt: prevLastAliveAt,
                 suspendedAt: prevSuspendedAt,
                 pendingOsShutdownAt: prevPendingOsShutdownAt,
+                attemptedInstall: installInFlight?.attemptedVersion ?? null,
                 // Logged even when null: this line is what an incident gets
                 // reconstructed from, and "we could not tell" is itself the
                 // finding when the two sources both come up empty.
@@ -989,6 +1149,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         storeNeedsInit = false;
       }
 
+      // `lastAliveAt` is seeded now, at arm time, rather than left for the first
+      // heartbeat, so a session that dies inside that first interval still gets
+      // a floor rather than none. What that buys the install-kill suppression is
+      // `INSTALL_DEFER_MAX_BOOTS`'s to state, since it takes a stamped handoff
+      // as well as a floor and only that site carries both.
       sentinel = {
         bootId: String(detectedAt.getTime()),
         startedAt: detectedAt.toISOString(),
@@ -1020,11 +1185,8 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       if (sentinel === null || cleanQuitMarked) return;
       const nowAt = deps.now();
       if (sentinel.pendingOsShutdownAt !== undefined) {
-        const announcedMs = Date.parse(sentinel.pendingOsShutdownAt);
-        if (
-          Number.isFinite(announcedMs) &&
-          nowAt.getTime() - announcedMs > OS_SHUTDOWN_MARKER_TTL_MS
-        ) {
+        const announcedMs = epochMsOrNull(sentinel.pendingOsShutdownAt);
+        if (announcedMs !== null && nowAt.getTime() - announcedMs > OS_SHUTDOWN_MARKER_TTL_MS) {
           delete sentinel.pendingOsShutdownAt;
           // Cleared with the marker they describe: a cancelled shutdown we
           // outlived must not leave the next boot a cause for an event that

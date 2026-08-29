@@ -26,6 +26,13 @@ const PLANTED: Record<string, { input: string; secret: string; marker: string }>
     secret: '/home/alice/',
     marker: '~/',
   },
+  'windows-home-path': {
+    // JSON-escaped, which is the form the NDJSON log sinks actually write and
+    // the one a single-backslash rule would miss.
+    input: String.raw`{"path":"C:\\Users\\alice\\AppData\\Roaming\\OpenKnowledge\\state.json"}`,
+    secret: String.raw`C:\\Users\\alice`,
+    marker: '~',
+  },
   'github-pat': {
     input: 'token was ghp_0123456789abcdefghijklmnopqrstuvwxyz sent',
     secret: 'ghp_0123456789abcdefghijklmnopqrstuvwxyz',

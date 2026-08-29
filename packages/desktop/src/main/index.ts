@@ -184,7 +184,7 @@ import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
-  installMayStillBeRunning,
+  installWasInFlightDuring,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
@@ -8009,8 +8009,10 @@ function bootPrimaryInstance(): void {
     now: () => new Date(),
     currentBootSessionUuid: readBootSessionUuid,
     // Was an install this app committed to still possibly running when the
-    // previous session ended? If so the installer killed it to replace its
-    // files, and the dirty sentinel it left behind is not a crash.
+    // previous session ended? If so the session ended without its quit sequence
+    // completing so the installer could replace the app's files, and the dirty
+    // sentinel it left behind is not a crash. Which of the two platforms ends
+    // it, and how, is `crash-detection.ts`'s account to keep.
     //
     // Answered from `bootStateSnapshot`, taken at the top of this function
     // before anything here can mutate the state file, so the verdict does not
@@ -8018,13 +8020,18 @@ function bootPrimaryInstance(): void {
     // The staging stamp is passed as-is: the snapshot predates the stale-pending
     // clear, so the field still holds the moment the artifact was staged.
     //
-    // Asked of the updater's own predicate rather than re-derived, so the bound
-    // cannot drift from the one deciding whether to tell the user an install
-    // failed.
-    installInFlight: () =>
-      installMayStillBeRunning(
+    // The span comes from detection and is forwarded whole. Only `deathFromMs`
+    // carries anything this boot does not already have, and substituting a
+    // wall-clock read for it reverts the suppression to decaying with how long
+    // the user left the app closed. TypeScript does not reject that
+    // substitution, so `install-in-flight-wiring.test.ts` pins this wiring and
+    // carries the derivation. Asked of the updater's own predicate rather than
+    // re-derived, so neither the bound nor the handoff resolution can drift
+    // from the one deciding whether to tell the user an install failed.
+    installInFlight: (span) =>
+      installWasInFlightDuring(
         bootStateSnapshot,
-        Date.now(),
+        span,
         bootStateSnapshot.versionPendingInstallStagedAt,
       ),
     logger: getLogger('crash-detection'),
@@ -9197,9 +9204,9 @@ function bootPrimaryInstance(): void {
           // genuinely clean before ShipIt's pre-swap validation runs.
           await wm?.stopAllOwnedServers();
           // Drain the async log buffer before `quitAndInstall()` hands off to
-          // Squirrel, which SIGKILLs this process for the bundle swap. Without
-          // this, the relaunch-trigger + update lines emitted moments earlier
-          // never reach disk (the destination is `sync: false`).
+          // Squirrel, which waits for this process to exit and then swaps the
+          // bundle. Without this, the relaunch-trigger + update lines emitted
+          // moments earlier never reach disk (the destination is `sync: false`).
           flushDesktopLogger();
         },
         sweepUpdateSurvivors: sweepConsoleHostsBeforeUpdate,

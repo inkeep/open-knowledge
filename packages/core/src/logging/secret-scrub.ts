@@ -133,24 +133,104 @@ const SECRET_PATTERNS: readonly SecretPattern[] = [
     regex: /("[Aa]uthorization"\s*:\s*"[Bb]earer\s+)(?:\\"[^"\\]+\\"|[^"\\]+)/g,
     replacement: '$1[REDACTED]',
   },
-  // Cosmetic, and LAST on purpose. These collapse a home directory to `~/`,
+  // Cosmetic, and LAST on purpose. These collapse a home directory to `~`,
   // which is lossy in a way a credential pattern is not: the match consumes the
   // segment it replaces. Run ahead of the credential patterns, they could eat
-  // text one of those still needs to recognise its own match — a `/Users/<name>/`
-  // run reaching across a `://` leaves no `://` for the URL-credential pattern to
-  // anchor on, and the credential then ships verbatim.
+  // text one of those still needs to recognise its own match. A `/Users/<name>/`
+  // run reaching across a `://` leaves no `://` for the URL-credential pattern
+  // to anchor on, and the credential then ships verbatim.
   //
-  // The bodies exclude the quote and NOTHING else. A space or a backslash is a
-  // legal part of an account name — `/Users/Jane Doe/` is the macOS shape this
-  // repo's own fixtures use — and excluding either silently stopped those from
-  // being masked at all, which on the file's only two privacy patterns is the
-  // wrong direction to be wrong in.
+  // All three match the root plus the account name, and none of them consume
+  // what ends the name. Whatever that is, a path separator, a closing quote, a
+  // carriage return or the end of the line, stays in the text, so a quote still
+  // closes its JSON string, a CRLF line keeps its ending, and `/Users/x/y` still
+  // reads `~/y` after.
+  // Requiring a trailing separator instead would miss the most common form of
+  // the value, since `os.homedir()` and `USERPROFILE` both end at the account
+  // name, and that bare root is also what a reporter pastes into a bug note.
   //
-  // A home path at the very end of a JSON string value is left alone, having no
-  // trailing slash inside its own value to match: reaching it would mean running
-  // through the closing quote, which is what deleted the following field.
-  { name: 'macos-home-path', regex: /\/Users\/[^/"]+\//g, replacement: '~/' },
-  { name: 'linux-home-path', regex: /\/home\/[^/"]+\//g, replacement: '~/' },
+  // Consuming a terminator is what makes this family dangerous, which is why
+  // none of them do it. A rule that ate its separator also ate the `\` of a `\"`
+  // escape, promoting a content quote into a structural one and leaving the line
+  // unparseable, and it ate the leading `/` of a second home path on the same
+  // line, so that second account name shipped. `renderer-log.ts` states the
+  // first of those as a hard precondition on this file.
+  //
+  // The carriage return still has to be excluded from the run. `redactSecrets`
+  // splits on `\n` alone, so a CRLF line reaches these rules still holding its
+  // `\r`, and a run allowed to cross it would mask well past the account name.
+  //
+  // Past the quote and that carriage return, the bodies exclude only each rule's
+  // own separator. A space is a legal part of an account name, and
+  // `/Users/Jane Doe/` is the macOS shape this repo's own fixtures use, so
+  // excluding it silently stopped those from being masked at all, which on the
+  // file's only privacy patterns is the wrong direction to be wrong in.
+  //
+  // Admitting the space costs reach: on a line ending at the account name, the
+  // prose after it is redacted too, up to the next separator or the end of the
+  // line, which can re-root an unrelated absolute path at `~`. It errs toward
+  // redaction, which is the direction this list favours. Capping the run instead
+  // would trade that for a leak, since a profile component longer than the cap
+  // would stop matching at all.
+  //
+  // Each run stays linear. A body cannot cross a terminator, so there is one
+  // viable start position per root, and each give-back fails in O(1): the first
+  // against the terminator, the rest against a backslash the terminal class
+  // excludes even though the run admits it, one per trailing backslash.
+  //
+  // Greedy is load-bearing, unlike the shape this replaced. Nothing follows the
+  // quantifier to force a run out to a terminator, so a lazy one would stop one
+  // character past the root and ship the rest of the name while still reporting
+  // the pattern as fired, which is this list's worst outcome.
+  {
+    // Both POSIX rules are case-sensitive, unlike the Windows rule below, and
+    // deliberately so: `/users/` is an extremely common REST path segment, and
+    // matching it would re-root live API routes at `~`. The capital is the only
+    // thing separating the two, since neither has a drive letter in front of it.
+    //
+    // `/home/` gets no such separation and never has: a URL path under `/home/`
+    // is redacted by the rule below it, and admitting a terminal account name
+    // widens that from `/home/x/y` to a bare `/home/x` as well. Same trade as
+    // everywhere else in this list, and in the same direction.
+    //
+    // The body admits a backslash but may not end on one, which is what the
+    // `[^…]*[^…\\]` shape buys. A backslash is legal in a POSIX account name, so
+    // excluding it outright would mask `/Users/al\ice` only as far as `al`,
+    // while letting a run stop on one is what ate the escape of a `\"`.
+    // Requiring one more non-backslash avoids both, at one give-back per
+    // trailing backslash on top of the terminator give-back every run pays.
+    name: 'macos-home-path',
+    regex: /\/Users\/[^/"\r]*[^/"\r\\]/g,
+    replacement: '~',
+  },
+  { name: 'linux-home-path', regex: /\/home\/[^/"\r]*[^/"\r\\]/g, replacement: '~' },
+  {
+    // `\\{1,2}` because the biggest consumer is NDJSON: the desktop and server
+    // log sinks write through `JSON.stringify`, which doubles every separator,
+    // so a rule written against single backslashes silently matches nothing on
+    // the files that carry the most of these. The two rules above need no
+    // equivalent, since forward slashes survive that encoding unchanged. A
+    // separator doubled twice by a second round of stringification is out of
+    // scope, as is a UNC or redirected root (`\\\\server\\share\\Users\\...`), since
+    // the drive letter is unanchored but still required.
+    //
+    // No trailing-backslash guard here, unlike the two above, because a
+    // backslash cannot occur in a Windows account name at all: the body excludes
+    // it outright and a run can never end on one.
+    //
+    // The lookahead stops the run before a second drive-rooted profile path
+    // rather than eating it. Both separators here are backslashes, so nothing
+    // else would end the first run before the `C:` of the next path, and that
+    // second account name would ship. The two rules above get this for free,
+    // their separator being the same `/` the next path opens with.
+    //
+    // Matched case-insensitively, which the two rules above cannot afford. The
+    // required drive-letter prefix means `c:\users\` cannot collide with a URL
+    // path, so the redaction-favouring reading is free here.
+    name: 'windows-home-path',
+    regex: /[A-Za-z]:\\{1,2}Users\\{1,2}(?:(?![A-Za-z]:\\)[^\\"\r])+/gi,
+    replacement: '~',
+  },
 ];
 
 /** Names of the redaction patterns, for a bundle's privacy summary. */

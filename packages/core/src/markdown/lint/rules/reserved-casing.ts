@@ -1,3 +1,4 @@
+
 import { SUPPORTED_DOC_EXTENSIONS } from '../../../constants/doc-extensions.ts';
 import { defineOkfRule } from '../okf-runner.ts';
 

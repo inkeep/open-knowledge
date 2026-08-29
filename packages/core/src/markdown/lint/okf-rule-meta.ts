@@ -1,3 +1,4 @@
+
 export const OKF_RULE_IDS = [
   'no-wiki-links',
   'log-shape',

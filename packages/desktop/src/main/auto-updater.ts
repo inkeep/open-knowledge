@@ -525,12 +525,20 @@ export const INSTALL_FAILURE_MAX_SURFACES = 3;
  * evidence needed to move it.
  *
  * The window is measured from the handoff both install paths record — the
- * "Relaunch now" click, or the quit install-on-quit commits on. The boot
- * reconciliation reaches this window only with a stamp on record: an attempt
- * with none never began, so it is re-offered rather than timed. The staging
- * fallback in `installMayStillBeRunning` therefore matters only to that
- * function's other caller, crash detection, which asks before the
- * reconciliation has run.
+ * "Relaunch now" click, or the quit install-on-quit commits on. Neither caller
+ * requires that stamp to reach the window. The boot reconciliation asks the
+ * in-flight question ahead of its own never-committed check, so a stampless
+ * attempt whose artifact was staged recently defers here on the staging
+ * fallback rather than being re-offered, and `installWasInFlightDuring` reaches
+ * the window the same way on crash detection's behalf. Removing or gating that
+ * fallback would therefore move the failed-install notice too, not just the
+ * crash prompt.
+ *
+ * This is the bound both questions apply at every handoff, stamped or not.
+ * Widening or narrowing it moves the reconciliation's verdict every time, and
+ * moves crash detection's for a handoff that predates the previous session's
+ * death. What bounds a handoff sitting inside that span is set out in
+ * `installWasInFlightDuring`, which is where that frame is reasoned about.
  */
 const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
 
@@ -549,6 +557,26 @@ const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
  * the tolerance, and the notice would never arrive. The count is the part of the
  * hold that survives that re-arm, which is what makes it the termination
  * guarantee; three mirrors the surfacing budget's shape.
+ *
+ * Crash detection is the second consumer, and only where the span it asks over
+ * collapsed onto the detecting instant, which is the frame this count was
+ * calibrated in. There the number decides how many boots may go on suppressing
+ * the prompt for a death nothing can date, before that death reads as a crash
+ * and the user is invited to report it. Raising it delays the failed-install
+ * notice by a boot and widens that suppression by one, and lowering it does the
+ * reverse.
+ *
+ * What that gates is a residual, not the ordinary install kill. The ordinary
+ * one is stamped, since install-on-quit is armed everywhere except Linux and
+ * `before-quit` runs the stamp, and its sentinel seeds a last-alive moment at
+ * arm time rather than at its first heartbeat (the arm-time seed in
+ * `detectBootCrash` carries why), so its span widens rather than collapsing
+ * and this count never sees it. A retried failing install is that same shape
+ * and is likewise out of reach. What arrives here instead is a span the
+ * reduction collapsed onto this boot's own clock. `installWasInFlightDuring`
+ * enumerates the routes to one and is the authority on them, and
+ * `bundle-forensics.md` names the same population from the triage side. Do not
+ * calibrate this against the common case.
  */
 const INSTALL_DEFER_MAX_BOOTS = 3;
 
@@ -814,11 +842,16 @@ export function installReached(running: string, attempted: string): boolean {
  *     record crosses a process quit, so an NTP correction or a VM resume can
  *     leave the recorded handoff in the future. Same coercion the write side
  *     makes on the staging age.
+ *   - non-finite elapsed: an unusable moment has to read as "no claim" rather
+ *     than slip past the staleness bound by failing every comparison against
+ *     it. Rejected at this one point every verdict path funnels through, not at
+ *     each caller. The state loader coerces these fields today, so it is the
+ *     contract holding rather than a live path.
  */
 function installHandoffAgeMs(handoffAt: number | null, nowMs: number): number | null {
   if (handoffAt === null) return null;
   const elapsed = nowMs - handoffAt;
-  return elapsed < 0 ? null : elapsed;
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
 }
 
 /**
@@ -836,29 +869,84 @@ function resolveInstallHandoffMoment(state: AppState, stagedAt: number | null): 
 }
 
 /**
- * Whether an install this app committed to may still have been running at
- * `nowMs` — and, when it may, which version and from what moment.
+ * What an in-flight verdict carries: which version an installer was launched
+ * for, the moment it was handed off, and whether that moment is a stamp a live
+ * process wrote or the staging fallback.
  *
- * Two callers ask the same question for different reasons, which is why it is
- * a function rather than an inline condition. The boot reconciliation below
- * asks it to decide whether to condemn an install as failed. Crash detection
- * asks it to decide whether a session that ended without a clean quit was
- * killed by the installer rather than by a fault — the installer terminates the
- * running process to replace its files, which bypasses the quit sequence and
- * leaves the dirty-shutdown sentinel behind. Both need the claim
- * bounded the same way; two copies of the bound would drift, and the pair that
+ * Named rather than inferred from either function's body, because both return
+ * it and a field added to one literal would otherwise widen the other's
+ * declared type silently. Crash detection re-declares the same shape as its own
+ * dep contract instead of importing this one: that module is deliberately
+ * updater-agnostic, and the structural match at the injection seam is what
+ * keeps it so.
+ */
+interface InstallInFlightVerdict {
+  attemptedVersion: string;
+  handoffAt: number;
+  recordedHandoff: boolean;
+}
+
+/**
+ * Whether a live process stamped the handoff, as opposed to the moment being
+ * the staging fallback.
+ */
+function hasRecordedHandoff(state: AppState): boolean {
+  return state.attemptedInstallHandoffAt !== null;
+}
+
+/**
+ * Whether an install this app committed to may still have been running at
+ * `nowMs`.
+ *
+ * Two frames ask this, one present tense and one about a death already past,
+ * and they answer the boot-count question differently — which is why that gate
+ * is a parameter here rather than part of the arithmetic. What must not diverge
+ * is the grace window itself: two copies of it would drift, and the pair that
  * drifted would tell the user an install failed while telling them nothing
  * about the crash it caused, or the reverse.
  *
- * The bound is the interesting part, and neither half of it is optional. The
- * grace window keeps a stale record from claiming an install is in flight
- * forever; the boot count is what survives electron-updater re-arming
- * `update-downloaded` from its on-disk cache and clearing the handoff stamp,
- * which would otherwise make an install that never lands look perpetually
- * fresh. See both constants' own docs for the calibration.
+ * `enforceDeferBudget` is what separates them. See `installMayStillBeRunning`
+ * and `installWasInFlightDuring` for each frame's reasoning about it.
  *
  * Returned as a value rather than a boolean so a caller can name the version in
  * a log line without re-reading state that the next moment may have cleared.
+ */
+function installInFlightAt(
+  state: AppState,
+  nowMs: number,
+  stagedAt: number | null,
+  enforceDeferBudget: boolean,
+): InstallInFlightVerdict | null {
+  const attempted = state.attemptedInstall;
+  // Nothing was committed to, so nothing can be in flight.
+  if (attempted === null) return null;
+  const handoffAt = resolveInstallHandoffMoment(state, stagedAt);
+  const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
+  if (
+    handoffAt === null ||
+    handoffAgeMs === null ||
+    handoffAgeMs > INSTALL_IN_FLIGHT_GRACE_MS ||
+    (enforceDeferBudget && state.attemptedInstallDeferredBoots >= INSTALL_DEFER_MAX_BOOTS)
+  ) {
+    return null;
+  }
+  return {
+    attemptedVersion: attempted,
+    handoffAt,
+    recordedHandoff: hasRecordedHandoff(state),
+  };
+}
+
+/**
+ * Whether an install this app committed to may still be running right now — and,
+ * when it may, which version and from what moment.
+ *
+ * The boot reconciliation's question, asked at `now()` to decide whether to
+ * condemn an install as failed. Both halves of its bound are load-bearing, and
+ * neither is derivable from the other: the grace window keeps a stale record
+ * from claiming an install is in flight forever, and the boot count is what
+ * survives a re-arm refreshing the moment the grace measures from. Both
+ * constants' own docs carry the calibration and the re-arm derivation.
  *
  * `stagedAt` is a required parameter rather than a read of
  * `state.versionPendingInstallStagedAt`, and the difference is load-bearing.
@@ -876,25 +964,126 @@ export function installMayStillBeRunning(
   state: AppState,
   nowMs: number,
   stagedAt: number | null,
-): { attemptedVersion: string; handoffAt: number; recordedHandoff: boolean } | null {
-  const attempted = state.attemptedInstall;
-  // Nothing was committed to, so nothing can be in flight.
-  if (attempted === null) return null;
+): InstallInFlightVerdict | null {
+  return installInFlightAt(state, nowMs, stagedAt, true);
+}
+
+/**
+ * Whether an install this app committed to may still have been running at any
+ * point during a span of time, rather than at one instant.
+ *
+ * Crash detection knows when the previous session was last alive and when this
+ * boot noticed it was gone, and the truth it needs is whether the install
+ * window overlaps that span at all. Asking the instant-shaped predicate at the
+ * ends of the span answers a different and weaker question: the window is
+ * bounded by the grace, the span is not, so a window that opens after the last
+ * heartbeat and closes before the reopen sits strictly inside the span and
+ * touches neither end.
+ *
+ * Only a handoff a live process stamped reaches that geometry. It lands just
+ * after the dying session's final heartbeat, which is the ordinary
+ * quit-then-install path, and it is a record that some process committed to
+ * running an installer. The staging fallback records something weaker: a
+ * download finished. Widening the span for it would date the window to a
+ * moment no installer is known to have run from, so an ordinary crash within
+ * the grace of a completed download would be read as an install killing the
+ * session, whatever the user did next. The span therefore collapses to its
+ * later end when nothing was stamped.
+ *
+ * Reduced to one instant rather than reimplemented, so the grace window and the
+ * handoff resolution stay single-sourced. Clamping the handoff into the span
+ * lands inside the window if and only if the two overlap. Below the span the
+ * clamp yields its start, so the grace still bounds a handoff that predates the
+ * span. Inside it yields the handoff itself, so the measured age is zero and
+ * the grace can never bite, an install having been in flight at that instant by
+ * definition. Above it yields the span's end, which the predicate's own
+ * negative-elapsed guard then rejects.
+ *
+ * The deferred-boot cap is what `enforceDeferBudget` exists to express, and
+ * what it turns on is whether the span widened, not whether a stamp exists. The
+ * count measures how many boots the reconciliation has held its own notice
+ * back, which is a fact about a notice this app has not yet shown, not about
+ * whether an installer was running while the previous session died. Applying it
+ * to a verdict anchored in the past makes that death's classification depend on
+ * how many times the app has been opened since, and it bites on shapes that
+ * have nothing to do with a late reopen: an install that keeps failing reaches
+ * the cap after three boots, and the next "Retry" click re-stamps a fresh
+ * handoff without clearing the count on Windows or macOS, so the very next kill
+ * would be read as a crash.
+ *
+ * Where the span collapses the anchor is this boot's own clock, which is the
+ * frame the count was calibrated in, so it applies again. It has to: the grace
+ * alone cannot terminate a hold there, for the re-arm reason set out at
+ * `INSTALL_DEFER_MAX_BOOTS`. Every route to a collapsed span reaches that frame
+ * and so every one of them gets the bound: nothing stamped, a floor that is not
+ * a number, and a floor at or after the span's end. The last is the one the
+ * caller emits whenever the sentinel carried no usable heartbeat, and it is why
+ * the gate is read off the resolved bound rather than off the stamp.
+ *
+ * The Retry failure named above returns on those collapsed shapes, which is the
+ * price of putting the bound back. A spent count with a fresh stamp is reachable
+ * off Linux, and either collapse route can then meet it. It is corroborated from
+ * the preceding boots' suppression lines rather than the prompting one, which
+ * carries no span fields at all. The bug-triage bundle-forensics reference has
+ * that read, and owns the log-shape rules for this class.
+ *
+ * Dropping the cap where the span widened widens what gets suppressed, and the
+ * widening is worth naming rather than leaving to be discovered. A handoff
+ * stamped by an earlier boot, never retired, sitting within the grace of the
+ * span, suppresses the prompt for a death in that span even if the install it
+ * recorded finished long before. That is the same evidence the instant caller
+ * acts on, read in the frame the death actually happened in, and the grace
+ * keeps it to half an hour either way. The alternative trades it for the
+ * failure above, which arms a prompt for a death an installer demonstrably
+ * caused.
+ *
+ * How tightly the span brackets the death is the caller's problem, and it is
+ * what keeps that half hour from being a half hour of anything. Today's only
+ * caller bounds the span below by the previous session's last heartbeat, and
+ * where it has none it collapses onto its own clock, which is the residual
+ * limit of this whole reduction rather than a corner of it. The floor dates the
+ * death to a heartbeat interval only while the heartbeat was landing: what it
+ * records is the last SUCCESSFUL sentinel write, so an unwritable userData path
+ * or a synchronously blocked main thread freezes it early while the session
+ * runs on, and early is the direction that widens the span and suppresses. A
+ * hang during update teardown is where that bites, the hang being what stops
+ * the heartbeat. What the grace bounds there is the handoff-to-floor gap and
+ * not the distance from that floor to the real death, so a floor frozen inside
+ * the grace of the handoff suppresses however long the session went on running
+ * afterwards. The one-directional cost of a loose floor is set out on the dep
+ * contract crash detection declares, where a caller reads it.
+ *
+ * `deathToMs` is the later end by construction at every caller. A `deathFromMs`
+ * that arrives later anyway, which a clock correction across a process quit can
+ * produce, collapses the span to its end rather than inverting it. A bound that
+ * is not a number at all collapses the same way, or takes the whole question out
+ * of play when it is `deathToMs` that is unusable. Both are finite at today's
+ * only caller, which parses its sentinel dates through a guarded helper, so the
+ * guard here is against a failure that is one-directional at an exported seam:
+ * every comparison against `NaN` is false, so an unguarded bound would pass the
+ * staleness bound by failing it and suppress unconditionally.
+ */
+export function installWasInFlightDuring(
+  state: AppState,
+  span: { deathFromMs: number; deathToMs: number },
+  stagedAt: number | null,
+): InstallInFlightVerdict | null {
+  const { deathFromMs, deathToMs } = span;
+  if (!Number.isFinite(deathToMs)) return null;
+  const spanStartMs =
+    hasRecordedHandoff(state) && Number.isFinite(deathFromMs)
+      ? Math.min(deathFromMs, deathToMs)
+      : deathToMs;
+  // Whether the span reduced to the detecting instant, by any of the routes it
+  // can. The stamp is one of them and the caller's own floor is the others, so
+  // this is read off the resolved bound rather than off the stamp: gating on
+  // the stamp would drop the cap for a stamped handoff whose floor collapsed,
+  // which is the detecting instant asked without the bound that frame carries.
+  const spanCollapsed = spanStartMs === deathToMs;
   const handoffAt = resolveInstallHandoffMoment(state, stagedAt);
-  const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
-  if (
-    handoffAt === null ||
-    handoffAgeMs === null ||
-    handoffAgeMs > INSTALL_IN_FLIGHT_GRACE_MS ||
-    state.attemptedInstallDeferredBoots >= INSTALL_DEFER_MAX_BOOTS
-  ) {
-    return null;
-  }
-  return {
-    attemptedVersion: attempted,
-    handoffAt,
-    recordedHandoff: state.attemptedInstallHandoffAt !== null,
-  };
+  const anchorMs =
+    handoffAt === null ? deathToMs : Math.min(Math.max(handoffAt, spanStartMs), deathToMs);
+  return installInFlightAt(state, anchorMs, stagedAt, spanCollapsed);
 }
 
 // ————————————————————————————————————————————————————————
@@ -2726,9 +2915,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         // an installer and the only open question is its age.
         //
         // The predicate itself lives in `installMayStillBeRunning` so crash
-        // detection can ask the same question with the same bound; the locals
-        // above stay for the log lines, which report the inputs the verdict was
-        // reached from rather than the verdict alone.
+        // detection can ask its own span-shaped question against the same
+        // bound. The locals above stay for the log lines, which report the
+        // inputs the verdict was reached from rather than the verdict alone.
       } else if (state.attemptedInstallSurfacedCount >= INSTALL_FAILURE_MAX_SURFACES) {
         // Budget spent — drop `attemptedInstall` so a persistently-failing
         // ShipIt or an unreachable attempted version (a yanked release, a
