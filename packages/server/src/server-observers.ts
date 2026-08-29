@@ -66,6 +66,10 @@ import {
   emitObserverAPathBFired,
 } from './bridge-watchdog.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import {
+  registerFragmentDeriveResumer,
+  setFragmentDeriveSuspended,
+} from './fragment-derive-demand.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -614,6 +618,30 @@ export interface SetupServerObserversOpts {
    * production.
    */
   onReDeriveBackstop?: (rounds: number) => void;
+  /**
+   * Demand predicate for the derived WYSIWYG fragment: true while some consumer
+   * still needs it fresh. Consulted once per Observer B fire, BEFORE the
+   * re-parse. When it returns false the derive is skipped, the doc is marked
+   * derive-suspended (`fragment-derive-demand.ts`), and a catch-up derive is
+   * owed; the next fire that sees demand — or an explicit
+   * `resumeFragmentDerive(doc)` on the demand transition — pays it.
+   *
+   * OMIT to keep the unconditional always-derive behaviour. Every existing
+   * caller and every unit rig does, so this is inert unless wired.
+   *
+   * The predicate must be CHEAP (it runs per drain) and must answer for every
+   * fragment consumer, not just the WYSIWYG surface — an active agent session
+   * reads the fragment's top-level children for `changedBlockRange`, so a
+   * predicate that only asked "is anyone in WYSIWYG" would mis-target the
+   * agent-activity flash. See `buildFragmentDemand` in `server-factory.ts`.
+   */
+  fragmentDemand?: () => boolean;
+  /**
+   * Test-only seam: invoked each time a fire is skipped for lack of demand,
+   * and each time a catch-up derive pays one back, so a suite can assert the
+   * suspend/resume ledger without reaching into closure state.
+   */
+  onDeriveDemandChange?: (event: 'suspended' | 'resumed') => void;
   /**
    * Test-only seam: invoked inside the Observer-A apply transact after the arm
    * writes, so a suite can mutate the just-applied Y.Text to model an apply-arm
@@ -1428,6 +1456,14 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   const recentSettledDigests: string[] = [];
   let oscillationRun = 0;
   let bDirectionFrozen = false;
+  /**
+   * A fragment rebuild was skipped for lack of demand and has not yet been paid
+   * back. Mirrors the module-level suspension flag in
+   * `fragment-derive-demand.ts` — this closure copy is the write-side ledger
+   * (so the observer knows whether it owes work), the module flag is the
+   * read-side signal for the watchdog. Kept in step at both transitions.
+   */
+  let deriveOwedWhileSuspended = false;
   // Per-drain backstop signals, set by Observer A/B during the drain and read by
   // the settlement dispatcher for a REAL (non-self-origin) drain only. The
   // nested `afterAllTransactions` a self-origin observer write triggers reports
@@ -2642,6 +2678,42 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
         return;
       }
 
+      // Demand gate. Nothing downstream of here is free: the defer guard pays a
+      // fragment serialize and the rebuild pays a full markdown re-parse. When
+      // no consumer needs the fragment, skip both and record that a derive is
+      // owed.
+      //
+      // Placed AFTER the early-exit so a doc that is already in sync still
+      // reaches its fixed-point bookkeeping (a suspended doc must not look like
+      // an oscillating one to the backstop), and after the backstop freeze so
+      // the two skips compose in the documented order.
+      //
+      // Witnesses are deliberately NOT moved — same discipline as the
+      // derive-timing defer. The witnesses record the last SETTLEMENT; moving
+      // them here would tell the next fire that this divergence had converged,
+      // and the catch-up derive would never run.
+      if (opts.fragmentDemand !== undefined && !opts.fragmentDemand()) {
+        if (!deriveOwedWhileSuspended) {
+          deriveOwedWhileSuspended = true;
+          setFragmentDeriveSuspended(doc, true);
+          opts.onDeriveDemandChange?.('suspended');
+        }
+        setActiveSpanAttributes({ 'observer.b.path': 'derive-suspended' });
+        return;
+      }
+
+      // Demand is present (or the gate is not wired). Any owed derive is being
+      // paid by the rebuild below, so the doc stops being knowingly stale and
+      // the watchdog goes back to full strength for it. Cleared BEFORE the
+      // rebuild, deliberately: the rebuild re-asserts the invariant itself, and
+      // clearing after would suppress the very assertion that proves the
+      // catch-up worked.
+      if (deriveOwedWhileSuspended) {
+        deriveOwedWhileSuspended = false;
+        setFragmentDeriveSuspended(doc, false);
+        opts.onDeriveDemandChange?.('resumed');
+      }
+
       // Derive-timing defer guard. Before rebuilding the fragment from
       // Y.Text, check whether the fragment holds un-propagated WYSIWYG content
       // this re-derive would silently discard. Gated on a fragment mutation
@@ -3131,12 +3203,37 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   preDrainControllers.set(doc, preDrainController);
   convergedFragmentWitnesses.set(doc, () => lastConvergedFragmentMd);
 
+  /**
+   * Catch-up derive for the demand gate. Demand can return with no Y.Text edit
+   * to ride in on — a reader opens the WYSIWYG on a document that has been
+   * quiet for minutes — so the drain that would repair the fragment may never
+   * arrive on its own. This is the path the demand-transition site calls.
+   *
+   * Runs the ordinary Observer B fire rather than a bespoke rebuild, so the
+   * catch-up goes through every gate a normal derive does (defer guard,
+   * backstop, watchdog assertion). A bespoke path here would be a second
+   * derive implementation to keep in step with the first, and the one that
+   * runs while the watchdog is suppressed is the last one that should differ.
+   *
+   * No-op unless a derive is actually owed: a spurious call costs a boolean.
+   */
+  const disposeResumer = registerFragmentDeriveResumer(doc, () => {
+    if (!deriveOwedWhileSuspended) return;
+    runObserverBSync();
+  });
+
   // ─── Cleanup ───────────────────────────────────────────────
   return () => {
     unregisterDirtyProbe();
     detachQuiescence();
     preDrainControllers.delete(doc);
     convergedFragmentWitnesses.delete(doc);
+    disposeResumer();
+    // A detaching doc has no observer to pay back an owed derive, so leaving it
+    // flagged would suppress the watchdog for a doc nobody is deriving. Clear
+    // the suspension: with no observers attached the fragment is nobody's
+    // responsibility, and the next attach re-seeds from disk.
+    setFragmentDeriveSuspended(doc, false);
     doc.off('afterAllTransactions', afterAll);
     xmlFragment.unobserveDeep(observerA);
     ytext.unobserve(observerB);

@@ -73,6 +73,7 @@ import type { DerivedDocumentIndexPersistencePort } from './derived-document-ind
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
+import { isFragmentDeriveSuspended } from './fragment-derive-demand.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
@@ -1872,6 +1873,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             site: 'persistence',
             docName: documentName,
             suppressDevThrow: true,
+            // A doc whose fragment derive is suspended for lack of a consumer
+            // is EXPECTED to diverge here — nothing has asked the fragment to
+            // track Y.Text. Reported on its own counter instead of the
+            // violation series. The disk write is unaffected either way: it
+            // writes Y.Text bytes, and the `false` this returns still queues
+            // the fragment reconciliation below, which is the right repair.
+            deriveSuspended: isFragmentDeriveSuspended(document),
             // Parse-equivalence fallback: a doc resting on a serializer
             // canonicalization (CommonMark lazy continuations et al.) is
             // NOT a divergence — without this, every persist of such a doc
