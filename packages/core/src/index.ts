@@ -477,6 +477,7 @@ export {
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
   isExcalidrawDocFile,
+  isMarkdownDocFile,
   isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
@@ -860,6 +861,7 @@ export {
   createRegistry,
   wildcardMeta,
 } from './registry/index.ts';
+export { JSX_SRC_REF_TAGS, type JsxSrcRefTagSpec } from './registry/jsx-src-ref-tags.ts';
 export {
   type ComponentEntryFull,
   type ComponentEntryLite,

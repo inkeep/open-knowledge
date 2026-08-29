@@ -75,6 +75,7 @@ import {
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
 import { DescriptorPlaceholder } from '../components/DescriptorPlaceholder.tsx';
+import { boardDocNameFromSrc } from '../components/ExcalidrawEmbed.tsx';
 import { JsxComponentHostProvider } from '../components/jsx-host-context.tsx';
 import { MermaidLightbox } from '../components/Mermaid';
 import { PropPanel } from '../components/PropPanel.tsx';
@@ -445,6 +446,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         : null;
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [diagramLightboxOpen, setDiagramLightboxOpen] = useState(false);
+  const [boardLightboxOpen, setBoardLightboxOpen] = useState(false);
 
   // Source-bearing self-closing leaves (today only MermaidFence) hide their
   // single required prop from the PropPanel and author it in the fullscreen
@@ -520,6 +522,19 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   useEffect(() => {
     if (!diagramExpandable) setDiagramLightboxOpen(false);
   }, [diagramExpandable]);
+  // Excalidraw twin of the mermaid predicate: the chrome expand drives the
+  // embed's own lightbox through controlled props. Gate on the SAME src
+  // resolver the embed uses, not just "non-blank string" — a src the
+  // resolver rejects (foreign origin, traversal, non-.excalidraw name) can
+  // never become expandable, so rendering the button for it would be a
+  // guaranteed dead click.
+  const boardExpandable =
+    descriptor.name === 'Excalidraw' &&
+    typeof renderProps.src === 'string' &&
+    boardDocNameFromSrc(renderProps.src) !== null;
+  useEffect(() => {
+    if (!boardExpandable) setBoardLightboxOpen(false);
+  }, [boardExpandable]);
   // Stable reset key for the ErrorBoundary. `JSON.stringify` on an arbitrary
   // props object produced a string whose content was key-order-sensitive
   // across engines — combined with the post-edit re-serialization that
@@ -1289,6 +1304,21 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             </button>
           ) : null}
 
+          {/* Expand — Excalidraw. Same view affordance as the mermaid one;
+              the dialog itself lives inside the embed (it owns the exported
+              snapshot), driven by the controlled props below. */}
+          {boardExpandable ? (
+            <button
+              type="button"
+              className="jsx-chrome-btn"
+              aria-label={t`Expand board`}
+              data-testid="jsx-component-expand-board-btn"
+              onClick={() => setBoardLightboxOpen(true)}
+            >
+              <Maximize2 size={12} aria-hidden="true" />
+            </button>
+          ) : null}
+
           {/* Ask AI — the same composer the text bubble menu's Ask AI opens,
               reached the way a code block reaches it: from the block's own
               chrome. A component that keeps its content in attributes rather
@@ -1539,6 +1569,9 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                 {...renderProps}
                 {...(expandableChart !== null
                   ? { onExpand: () => setDiagramLightboxOpen(true) }
+                  : {})}
+                {...(boardExpandable
+                  ? { expandOpen: boardLightboxOpen, onExpandOpenChange: setBoardLightboxOpen }
                   : {})}
               >
                 <NodeViewContent

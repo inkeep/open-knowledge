@@ -1094,6 +1094,10 @@ msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambah
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Spasi</0> untuk melompat · <1>↓</1> untuk menunduk"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>Terlalu banyak referensi langsung di halaman ini.</0> Cermin <1>{src}</1> ini tidak dimuat."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2195,6 +2199,10 @@ msgstr "Pos blog"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "Kendali papan"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5143,6 +5151,10 @@ msgid "Emailed"
 msgstr "Dikirim lewat surel"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "Sematkan cuplikan langsung papan .excalidraw dari ruang kerja ini."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "Menyematkan video dengan kendali pemutar bawaan."
 
@@ -5184,6 +5196,10 @@ msgstr "kosong"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "Kosong"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "Papan kosong"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5401,6 +5417,14 @@ msgstr "semua yang ada di folder {0}/ di dalam {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "semua yang ada di folder {0}/ mana pun"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Papan Excalidraw"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Papan Excalidraw gagal dimuat."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Kanvas Excalidraw"
@@ -5442,6 +5466,10 @@ msgstr "Bentangkan semua grup berkas"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "Bentangkan semua berkas"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "Bentangkan papan"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8495,6 +8523,10 @@ msgstr "Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampila
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "Belum ada papan yang dipilih. Masukkan path dokumen .excalidraw di properti blok ini."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "Tidak ada perubahan isi utama pada versi ini."
@@ -9110,6 +9142,10 @@ msgstr "Membuka folder proyek yang sudah ada dari disk."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "Membuka dan memfokuskan penyusun prompt Tanya AI di bawah."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "Buka papan"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13131,6 +13167,22 @@ msgstr "Kontrak perhitungan yang dibuktikan. Hanya berlaku untuk dokumen yang di
 msgid "The audit could not be completed. Try again."
 msgstr "Audit tidak dapat diselesaikan. Coba lagi."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "Papan tidak dapat dijangkau. Papan mungkin tidak ada, atau server sedang offline."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "Cuplikan papan tidak dapat dirender."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "Penampil papan gagal dimuat. Periksa koneksi Anda dan coba lagi."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "Konten papan bukan scene Excalidraw yang valid."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Aplikasi Claude Desktop tidak membuka berkasnya. Apakah ia terpasang? ({msg})"
@@ -13975,6 +14027,10 @@ msgstr "Mengaktifkan atau menonaktifkan pola {0}/**"
 msgid "tokens"
 msgstr "token"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "Terlalu banyak referensi langsung di halaman ini. Papan ini tidak dimuat."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Terlalu lambat"
@@ -14023,6 +14079,7 @@ msgstr "Coba sebuah prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Coba lagi"
 
@@ -14599,6 +14656,7 @@ msgstr "Lihat di markdown sumber"
 msgid "View in Source Markdown"
 msgstr "Lihat di sumber Markdown"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "Hanya lihat"

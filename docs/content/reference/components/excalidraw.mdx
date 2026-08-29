@@ -1,0 +1,34 @@
+---
+title: "Excalidraw"
+description: "Embedded snapshot of an `.excalidraw` board, linking to its canvas editor"
+keywords: "excalidraw, board, whiteboard, sketch, drawing, canvas"
+---
+
+## Example
+
+```mdx
+<Excalidraw src="diagrams/board.excalidraw" title="Title" />
+```
+
+## Props
+
+<TypeTable
+  type={{
+  "src": {
+    description: "Path to the \\`.excalidraw\\` board this embed renders",
+    type: "string",
+    required: true,
+  },
+  "title": {
+    description: "Accessible label for the embedded board",
+    type: "string",
+    required: false,
+  },
+}}
+/>
+
+_Also matches:_ `excalidraw`, `board`, `whiteboard`, `sketch`, `drawing`, `canvas`
+
+## Author it
+
+Type `/excalidraw` in the editor to insert it from the slash menu, or write the tag directly in source mode. The Properties panel on the right of the editor exposes every prop above as a form field once the block is selected.

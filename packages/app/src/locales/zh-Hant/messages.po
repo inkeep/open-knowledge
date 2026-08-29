@@ -1098,6 +1098,10 @@ msgstr "<0>ok</0> 在你稍後從「檔案」選單新增之前，無法在外�
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>空白鍵</0>跳躍 · <1>↓</1>蹲下"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>此頁面的即時引用過多。</0><1>{src}</1> 的此鏡像未載入。"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2199,6 +2203,10 @@ msgstr "部落格文章"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "畫板控制項"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5147,6 +5155,10 @@ msgid "Emailed"
 msgstr "已用電子郵件寄出"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "嵌入此工作區中 .excalidraw 畫板的即時快照。"
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "嵌入一段影片，附原生播放器控制項。"
 
@@ -5188,6 +5200,10 @@ msgstr "空的"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "空的"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "空白板"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5405,6 +5421,14 @@ msgstr "{1}/ 裡各個 {0}/ 資料夾底下的所有內容"
 msgid "everything under any {0}/ folder"
 msgstr "任何 {0}/ 資料夾底下的所有內容"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Excalidraw 畫板"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Excalidraw 畫板載入失敗。"
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 畫布"
@@ -5446,6 +5470,10 @@ msgstr "展開所有檔案群組"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "展開全部檔案"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "展開畫板"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8499,6 +8527,10 @@ msgstr "未偵測到 AI 工具。請先安裝一個再使用此技能。"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "這個端點還沒有設定 API 金鑰。請在上面加一個。"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "尚未選擇畫板。在此區塊的屬性中輸入 .excalidraw 文件的路徑。"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "這個版本沒有內文變更。"
@@ -9114,6 +9146,10 @@ msgstr "從磁碟開啟一個既有的專案資料夾。"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "開啟並聚焦底部的「問 AI」提示輸入框。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "開啟畫板"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13135,6 +13171,22 @@ msgstr "經證明的計算合約。僅適用於類型為 Attested Computation �
 msgid "The audit could not be completed. Try again."
 msgstr "稽核未能完成。請再試一次。"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "無法連線至畫板。它可能不存在，或伺服器已離線。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "無法渲染畫板快照。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "畫板檢視器載入失敗。請檢查網路連線後再試一次。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "畫板內容不是有效的 Excalidraw 場景。"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App 沒有開啟這個檔案。它有安裝嗎？（{msg}）"
@@ -13979,6 +14031,10 @@ msgstr "切換模式 {0}/**"
 msgid "tokens"
 msgstr "token"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "此頁面的即時引用過多。此畫板未載入。"
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "太慢了"
@@ -14027,6 +14083,7 @@ msgstr "試試一段提示"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "再試一次"
 
@@ -14603,6 +14660,7 @@ msgstr "在 markdown 原始碼中檢視"
 msgid "View in Source Markdown"
 msgstr "在 Markdown 原始碼中檢視"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "僅供檢視"

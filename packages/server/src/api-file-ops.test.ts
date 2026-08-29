@@ -3070,3 +3070,118 @@ describe('file operation API routes', () => {
     },
   );
 });
+
+// The decisive discovery case for JSX by-reference embeds: a document whose
+// ONLY reference to the target is a `<Excalidraw src>` / `<Mirror src>`
+// attribute — no wiki-link, no markdown link — driven through the real
+// `/api/rename-path` handler with a real BacklinkIndex. Discovery depends
+// entirely on the graph extracting JSX src refs as backlinks; before it did,
+// these documents were never entered into the rewrite scan set and every
+// embed silently broke on rename.
+describe('managed rename discovers JSX-src-only referencing documents', () => {
+  const BOARD_JSON = '{"type":"excalidraw","version":2,"elements":[]}\n';
+
+  test('root-relative Excalidraw src in a JSX-only doc is rewritten on board rename', async () => {
+    const dir = setupTmpDir();
+    mkdirSync(join(dir, 'diagrams'), { recursive: true });
+    writeFileSync(join(dir, 'diagrams/board.excalidraw'), BOARD_JSON, 'utf-8');
+    writeFileSync(
+      join(dir, 'embeds-only.md'),
+      '# Embeds\n\n<Excalidraw src="/diagrams/board.excalidraw" />\n',
+      'utf-8',
+    );
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'file',
+        fromPath: 'diagrams/board.excalidraw',
+        toPath: 'diagrams/renamed-board.excalidraw',
+      },
+      { backlinkIndex: buildBacklinkIndex(dir) },
+    );
+
+    expect(result.status).toBe(200);
+    expect(existsSync(join(dir, 'diagrams/board.excalidraw'))).toBe(false);
+    expect(readFileSync(join(dir, 'diagrams/renamed-board.excalidraw'), 'utf-8')).toBe(BOARD_JSON);
+    expect(readFileSync(join(dir, 'embeds-only.md'), 'utf-8')).toBe(
+      '# Embeds\n\n<Excalidraw src="/diagrams/renamed-board.excalidraw" />\n',
+    );
+    const body = JSON.parse(result.body) as {
+      renamed: Array<{ fromDocName: string; toDocName: string }>;
+      rewrittenDocs: Array<{ docName: string; rewrites: number }>;
+    };
+    expect(body.renamed).toEqual([
+      {
+        fromDocName: 'diagrams/board.excalidraw',
+        toDocName: 'diagrams/renamed-board.excalidraw',
+      },
+    ]);
+    expect(body.rewrittenDocs).toEqual([{ docName: 'embeds-only', rewrites: 1 }]);
+  });
+
+  test('doc-relative Excalidraw src in a JSX-only doc is rewritten on board rename', async () => {
+    const dir = setupTmpDir();
+    mkdirSync(join(dir, 'diagrams'), { recursive: true });
+    writeFileSync(join(dir, 'diagrams/board.excalidraw'), BOARD_JSON, 'utf-8');
+    writeFileSync(
+      join(dir, 'diagrams/notes.md'),
+      '# Notes\n\n<Excalidraw src="board.excalidraw" />\n',
+      'utf-8',
+    );
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'file',
+        fromPath: 'diagrams/board.excalidraw',
+        toPath: 'diagrams/renamed-board.excalidraw',
+      },
+      { backlinkIndex: buildBacklinkIndex(dir) },
+    );
+
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(dir, 'diagrams/notes.md'), 'utf-8')).toBe(
+      '# Notes\n\n<Excalidraw src="renamed-board.excalidraw" />\n',
+    );
+    const body = JSON.parse(result.body) as {
+      rewrittenDocs: Array<{ docName: string; rewrites: number }>;
+    };
+    expect(body.rewrittenDocs).toEqual([{ docName: 'diagrams/notes', rewrites: 1 }]);
+  });
+
+  test('a Mirror-only doc is rewritten when the mirrored source doc is renamed', async () => {
+    const dir = setupTmpDir();
+    writeFileSync(join(dir, 'api-spec.md'), '# API Spec\n', 'utf-8');
+    writeFileSync(
+      join(dir, 'mirror-only.md'),
+      '# Mirrors\n\n<Mirror src="api-spec" anchor="deprecation" />\n',
+      'utf-8',
+    );
+
+    const result = await callApi(
+      dir,
+      '/api/rename-path',
+      'POST',
+      {
+        kind: 'file',
+        fromPath: 'api-spec',
+        toPath: 'api-reference',
+      },
+      { backlinkIndex: buildBacklinkIndex(dir) },
+    );
+
+    expect(result.status).toBe(200);
+    expect(readFileSync(join(dir, 'mirror-only.md'), 'utf-8')).toBe(
+      '# Mirrors\n\n<Mirror src="api-reference" anchor="deprecation" />\n',
+    );
+    const body = JSON.parse(result.body) as {
+      rewrittenDocs: Array<{ docName: string; rewrites: number }>;
+    };
+    expect(body.rewrittenDocs).toEqual([{ docName: 'mirror-only', rewrites: 1 }]);
+  });
+});

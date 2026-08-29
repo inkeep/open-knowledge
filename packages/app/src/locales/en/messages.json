@@ -364,6 +364,7 @@
     "4PYsOz": ["Hide Files (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Source undo or redo"],
     "4TzU0n": ["Initialize"],
+    "4Vgtaz": ["The board could not be reached. It may not exist, or the server may be offline."],
     "4buZWd": ["Inherited from ", ["path"]],
     "4c_a6S": ["Nothing set yet."],
     "4d0VYJ": ["We’ll create a safe theme ID from this name."],
@@ -501,6 +502,7 @@
     "6KXnz5": ["You can restore this file from the Trash."],
     "6LJJ1v": ["File ", ["identity"], ". Go to reference."],
     "6LbUG7": ["The repository is private and your GitHub account doesn't have access to it."],
+    "6M2L3X": ["Open board"],
     "6MnZEC": ["Terminal failed to load"],
     "6Nea1q": ["Use ", ["0"], " for the active dark mode"],
     "6O626z": ["No headings match \"", ["trimmedAnchorQuery"], "\""],
@@ -836,6 +838,7 @@
     "AVW-K9": ["Failed to load orphan pages"],
     "AWOSPo": ["Zoom in"],
     "AYoYhU": ["Update failed: ", ["0"]],
+    "AaC-CE": ["Empty board"],
     "AcK_r0": ["Claude CLI"],
     "AczYxH": ["Custom open-knowledge entry — not managed by OpenKnowledge"],
     "AdcGcG": ["Applying your change"],
@@ -1665,6 +1668,7 @@
     ],
     "LKOLNn": ["No AI agents installed"],
     "LPAv9E": [["days"], "d ago"],
+    "LPLWpO": ["The board's content is not a valid Excalidraw scene."],
     "LQdLio": ["New schema"],
     "LQsCPn": ["Local commits are keeping this copy from updating"],
     "LRLKnQ": ["Hide resolved"],
@@ -2233,6 +2237,11 @@
     "STTOnz": [["keyName"], " type: complex value (nested; read-only)"],
     "SUOoXn": ["Failed to open project."],
     "SVLPt5": [["formatted"], " GitHub stars"],
+    "SWTmnY": [
+      "<0>Too many live references on this page.</0> This mirror of <1>",
+      ["src"],
+      "</1> was not loaded."
+    ],
     "SWX1O7": [
       "Fixed ",
       ["total", "plural", { "one": ["#", " file"], "other": ["#", " files"] }],
@@ -2325,6 +2334,7 @@
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Full guide"],
     "U3RIJu": ["Local files"],
+    "U4ZE26": ["The board snapshot could not be rendered."],
     "U5Spo9": ["Content directory must be inside the project"],
     "U6Mdhd": ["Let's get set up."],
     "U6wmNc": ["Sync paused"],
@@ -2502,6 +2512,9 @@
     "WFEbV1": ["Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."],
     "WG3MZ4": [["0"], " skills selected"],
     "WGMoTY": ["Bugs, crashes, or it felt unreliable"],
+    "WH3roC": [
+      "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+    ],
     "WHPvOb": ["All files are hidden by view filters."],
     "WJjviG": ["What to include"],
     "WL6puM": ["Path resolves outside project"],
@@ -3109,6 +3122,7 @@
     "cyoNqf": ["Unmerged"],
     "czQDKY": ["Each push is one commit to your remote."],
     "d-GtJt": ["View in Source Markdown"],
+    "d-RYHO": ["Excalidraw board"],
     "d1JjXo": [
       "Your local copy of branch <0>",
       ["branch"],
@@ -3137,6 +3151,7 @@
     "dOxPd4": ["Footnote"],
     "dQHSCs": ["Convert (delete original)"],
     "dSORvE": ["Stops the current run and sends this instead"],
+    "dT-HIQ": ["Too many live references on this page. This board was not loaded."],
     "dTaauv": ["Reason: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" is a reserved property name"],
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
@@ -3229,6 +3244,7 @@
     "ee15Vl": [
       "Skills teach your AI tools repeatable tasks. Write your own in the editor's Skills sidebar; this page is where they get switched on and shared."
     ],
+    "eh3QBq": ["Excalidraw board failed to load."],
     "eiUA4k": [["count", "plural", { "one": ["#", " comment"], "other": ["#", " comments"] }]],
     "ekSPiP": [["0"], " was already deleted."],
     "el2KyL": ["Slidev found in this project. Decks will use the project's version."],
@@ -3506,6 +3522,7 @@
     ],
     "i9toLO": ["Agent configuration file"],
     "iBVgIQ": ["Server returned a malformed response."],
+    "iBei3o": ["Board controls"],
     "iDZtvM": ["Failed to load templates: ", ["message"]],
     "iE-yoU": [
       "This is a preview of ",
@@ -3832,6 +3849,7 @@
     "lPzyrU": ["All hunks resolved"],
     "lS83Sg": ["Couldn’t reach the clipboard."],
     "lScd1O": ["Slidev decks open in the OpenKnowledge desktop app only."],
+    "lT6wjt": ["Expand board"],
     "lUtr1r": [["0"], " of ", ["1"], " selected"],
     "lVWEIL": ["Indexed ", ["embedded"], " of ", ["total"], " pages."],
     "lWNpNB": ["Add cursors or select matching occurrences through CodeMirror."],
@@ -4144,6 +4162,7 @@
     "pFPzHA": ["Emoji picker"],
     "pFRz_E": ["Leave these comments out of this message"],
     "pFagOn": ["Source editing"],
+    "pGYklE": ["The board viewer failed to load. Check your connection and try again."],
     "pHYP6v": ["Open <0>Customize</0> in the sidebar <1/> <2>Skills</2>."],
     "pI_bKs": ["<0>Space</0> to jump · <1>↓</1> to duck"],
     "pJ7XCo": ["This page references no local files or images."],
@@ -4268,6 +4287,7 @@
     "qbfj1f": ["Receiving objects"],
     "qd7L1J": [["source"], ": ", ["updated"], " updated, ", ["upToDate"], " already up to date"],
     "qdBUHP": ["Couldn't load ", ["fileName"]],
+    "qi17kj": ["Embed a live snapshot of an .excalidraw board from this workspace."],
     "qi1F96": ["Reveal in File Explorer"],
     "qiRoLb": ["Summarize everything I changed this week"],
     "qioCwA": ["Jump to page ", ["pageNumber"]],

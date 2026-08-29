@@ -39,6 +39,7 @@ const PAGE_ORDER = [
   'Pdf',
   'File',
   'Embed',
+  'Excalidraw',
   'Mirror',
 ] as const;
 
@@ -226,7 +227,7 @@ function renderExample(meta: (typeof builtInComponents)[number]): string {
       const defaultStr =
         'defaultValue' in p && p.defaultValue !== undefined
           ? String(p.defaultValue)
-          : placeholderFor(p.name);
+          : placeholderFor(p.name, meta.name);
       return `${p.name}="${defaultStr}"`;
     })
     .filter(Boolean)
@@ -240,18 +241,32 @@ function renderExample(meta: (typeof builtInComponents)[number]): string {
   return `<${name}${attrPart} />`;
 }
 
-function placeholderFor(propName: string): string {
-  const map: Record<string, string> = {
-    src: 'https://example.com/asset.png',
-    href: 'https://example.com',
-    alt: 'A short description',
-    title: 'Title',
-    formula: 'E = mc^2',
-    chart: 'graph LR; A --> B',
-    id: 'demo-1',
-    name: 'group-a',
-  };
-  return map[propName] ?? '…';
+/**
+ * Component-specific placeholder values, keyed `ComponentName.propName` —
+ * same per-component override shape as `PREVIEWS` below. Consulted before
+ * the generic per-prop-name map, for props whose sensible sample value
+ * depends on which component they sit on (e.g. Excalidraw's `src` is a
+ * board path, not an asset URL).
+ */
+const PLACEHOLDER_OVERRIDES: Partial<Record<string, string>> = {
+  'Excalidraw.src': 'diagrams/board.excalidraw',
+};
+
+const GENERIC_PLACEHOLDERS: Record<string, string> = {
+  src: 'https://example.com/asset.png',
+  href: 'https://example.com',
+  alt: 'A short description',
+  title: 'Title',
+  formula: 'E = mc^2',
+  chart: 'graph LR; A --> B',
+  id: 'demo-1',
+  name: 'group-a',
+};
+
+function placeholderFor(propName: string, componentName: string): string {
+  return (
+    PLACEHOLDER_OVERRIDES[`${componentName}.${propName}`] ?? GENERIC_PLACEHOLDERS[propName] ?? '…'
+  );
 }
 
 /**

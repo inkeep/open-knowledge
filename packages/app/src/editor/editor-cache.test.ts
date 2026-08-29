@@ -2747,6 +2747,47 @@ describe('captureRenameSnapshots', () => {
     expect(__consumeRenameSnapshot(h.docName)).toBeNull();
   });
 
+  test('skips a doc-class-changing rename — the markdown HTML has no consumer there', () => {
+    // `.md` -> `.excalidraw` / `.mmd` / text mounts a different editor whose
+    // fallback must be the skeleton: a warm markdown snapshot would paint the
+    // pre-rename text over the incoming canvas, and nothing on those branches
+    // ever clears the store entry.
+    for (const toDocName of ['board.excalidraw', 'diagram.mmd', 'notes.txt']) {
+      const h = makeTiptapHarness(`from-${toDocName}`);
+      mountTiptapEditor({
+        docName: h.docName,
+        container: h.container as unknown as HTMLElement,
+        factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+      });
+      seedSource(h);
+      (h.editor as unknown as { getHTML(): string }).getHTML = () => '<p>warm content</p>';
+
+      captureRenameSnapshots([{ fromDocName: h.docName, toDocName }]);
+
+      expect(__consumeRenameSnapshot(toDocName)).toBeNull();
+    }
+  });
+
+  test('captures for an extension without a doc-class discriminator — the dispatch mounts the dual editor there', () => {
+    // `isMarkdownDocFile` is the negation of the per-class discriminators,
+    // matching the editor's children dispatch: a name like `future.canvas`
+    // has no discriminator, so the dual editor mounts and consumes the
+    // snapshot. A class gets excluded here only by adding its discriminator
+    // — the same edit point the dispatch itself requires.
+    const h = makeTiptapHarness('from-future.canvas');
+    mountTiptapEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    seedSource(h);
+    (h.editor as unknown as { getHTML(): string }).getHTML = () => '<p>warm content</p>';
+
+    captureRenameSnapshots([{ fromDocName: h.docName, toDocName: 'future.canvas' }]);
+
+    expect(__consumeRenameSnapshot('future.canvas')?.html).toBe('<p>warm content</p>');
+  });
+
   test('skips and does not store when editor.isDestroyed is true', () => {
     const h = makeTiptapHarness('from-doc');
     mountTiptapEditor({

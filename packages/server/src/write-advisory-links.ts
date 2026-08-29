@@ -88,13 +88,19 @@ export function computeWriteAdvisoryLinks(
   // image destination as a link and does not model every non-rendering block;
   // retain markdown entries only when the lossless extractor observed a real
   // inline link. Wiki entries keep their graph-owned `[[...]]` representation.
+  // JSX src-ref entries pass through unconditionally: the lossless extractor
+  // reads markdown link forms only, so a JSX attribute href can never appear
+  // in `inlineLinkHrefs` and the reconciliation filter would drop it.
   const links: WriteAdvisoryLink[] = computeBrokenOutboundLinks(
     markdown,
     sourceDocName,
     admitted,
     fileExists,
     hasFolder,
-  ).filter((link) => link.href.startsWith('[[') || inlineLinkHrefs.has(link.href));
+  ).filter(
+    (link) =>
+      link.sourceForm === 'jsx' || link.href.startsWith('[[') || inlineLinkHrefs.has(link.href),
+  );
   const graphHrefs = new Set(links.map((link) => link.href));
   const seenRepairSites = new Set<string>();
 

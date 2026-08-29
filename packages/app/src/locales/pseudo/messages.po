@@ -1094,6 +1094,10 @@ msgstr ""
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr ""
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr ""
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr ""
@@ -2194,6 +2198,10 @@ msgstr ""
 
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -5143,6 +5151,10 @@ msgid "Emailed"
 msgstr ""
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr ""
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr ""
 
@@ -5183,6 +5195,10 @@ msgstr ""
 #: src/components/PropertyWidgets.tsx
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
 msgstr ""
 
 #: src/editor/components/Mermaid.tsx
@@ -5401,6 +5417,14 @@ msgstr ""
 msgid "everything under any {0}/ folder"
 msgstr ""
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr ""
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr ""
@@ -5441,6 +5465,10 @@ msgstr ""
 
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
+msgstr ""
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
 msgstr ""
 
 #: src/editor/components/Mermaid.tsx
@@ -8495,6 +8523,10 @@ msgstr ""
 msgid "No API key is set for this endpoint. Add one above."
 msgstr ""
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr ""
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr ""
@@ -9109,6 +9141,10 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
 msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
@@ -13131,6 +13167,22 @@ msgstr ""
 msgid "The audit could not be completed. Try again."
 msgstr ""
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr ""
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr ""
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr ""
@@ -13975,6 +14027,10 @@ msgstr ""
 msgid "tokens"
 msgstr ""
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr ""
@@ -14023,6 +14079,7 @@ msgstr ""
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr ""
 
@@ -14599,6 +14656,7 @@ msgstr ""
 msgid "View in Source Markdown"
 msgstr ""
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr ""

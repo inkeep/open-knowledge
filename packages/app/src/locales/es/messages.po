@@ -1098,6 +1098,10 @@ msgstr "<0>ok</0> no funcionará en terminales externas hasta que lo añadas má
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Espacio</0> para saltar · <1>↓</1> para agacharse"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>Demasiadas referencias en vivo en esta página.</0> Este espejo de <1>{src}</1> no se cargó."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2199,6 +2203,10 @@ msgstr "Entrada de blog"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "Controles de la pizarra"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5147,6 +5155,10 @@ msgid "Emailed"
 msgstr "Enviado por correo"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "Inserta una instantánea en vivo de una pizarra .excalidraw de este espacio de trabajo."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "Incrusta un vídeo con los controles nativos del reproductor."
 
@@ -5188,6 +5200,10 @@ msgstr "vacío"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "Vacío"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "Pizarra vacía"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5405,6 +5421,14 @@ msgstr "todo lo que hay en las carpetas {0}/ dentro de {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "todo lo que hay en cualquier carpeta {0}/"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Pizarra de Excalidraw"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "No se pudo cargar la pizarra de Excalidraw."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Lienzo de Excalidraw"
@@ -5446,6 +5470,10 @@ msgstr "Expandir todos los grupos de archivos"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "Expandir todos los archivos"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "Expandir la pizarra"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8499,6 +8527,10 @@ msgstr "No se detectaron herramientas de IA. Instala una para usar esta habilida
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "No hay ninguna clave de API definida para este endpoint. Añade una arriba."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "No hay ninguna pizarra seleccionada. Introduce la ruta de un documento .excalidraw en las propiedades de este bloque."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "No hay cambios en el cuerpo en esta versión."
@@ -9114,6 +9146,10 @@ msgstr "Abre desde el disco una carpeta de proyecto existente."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "Abre y enfoca el compositor de prompts de Preguntar a la IA de abajo."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "Abrir la pizarra"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13135,6 +13171,22 @@ msgstr "El contrato de cálculo certificado. Solo se aplica a documentos de tipo
 msgid "The audit could not be completed. Try again."
 msgstr "No se pudo completar la auditoría. Inténtalo de nuevo."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "No se pudo acceder a la pizarra. Puede que no exista o que el servidor esté sin conexión."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "No se pudo renderizar la instantánea de la pizarra."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "No se pudo cargar el visor de la pizarra. Comprueba tu conexión e inténtalo de nuevo."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "El contenido de la pizarra no es una escena de Excalidraw válida."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "La aplicación Claude Desktop no abrió el archivo. ¿Está instalada? ({msg})"
@@ -13979,6 +14031,10 @@ msgstr "Alterna el patrón {0}/**"
 msgid "tokens"
 msgstr "tokens"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "Demasiadas referencias en vivo en esta página. Esta pizarra no se cargó."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Demasiado lento"
@@ -14027,6 +14083,7 @@ msgstr "Prueba un prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Inténtalo de nuevo"
 
@@ -14603,6 +14660,7 @@ msgstr "Ver en el markdown de origen"
 msgid "View in Source Markdown"
 msgstr "Ver en el Markdown de origen"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "Solo lectura"

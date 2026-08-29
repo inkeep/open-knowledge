@@ -38,6 +38,7 @@ import {
   isEditableTextDocFile,
   isExcalidrawDocFile,
   isManagedArtifactDocName,
+  isMarkdownDocFile,
   isMermaidDocFile,
   parseTemplateContentDocName,
   randomUUID,
@@ -243,8 +244,9 @@ export function computeEffectiveSourceMode(
  * Whether an Activity entry should render the create-mode "new doc" affordance
  * (empty draft that starts a page on first keystroke). A doc counts as new only
  * when it is genuinely absent from every surface a real doc registers under:
- * the page index, managed artifacts, template content docs, and Mermaid /
- * editable-text docs.
+ * the page index, managed artifacts, and template content docs — and only
+ * for the markdown doc class (`isMarkdownDocFile` rejects Mermaid /
+ * Excalidraw / editable-text names).
  *
  * Templates and project skills only enter the page list after the async `files`
  * refetch, so a purely `pages`-membership check would flash the create-mode
@@ -263,9 +265,7 @@ export function computeIsNewDoc(args: {
     !pages.has(docName) &&
     !isManagedArtifactDocName(docName) &&
     parseTemplateContentDocName(docName) === null &&
-    !isMermaidDocFile(docName) &&
-    !isExcalidrawDocFile(docName) &&
-    !isEditableTextDocFile(docName)
+    isMarkdownDocFile(docName)
   );
 }
 
@@ -1301,6 +1301,11 @@ function ActivityEntry({
   // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
   // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
   const isTextDoc = !isMermaid && !isExcalidraw && isEditableTextDocFile(entry.docName);
+  // The doc-class half of this gate is the exact predicate the warm-snapshot
+  // producer uses (`captureRenameSnapshots` in editor-cache.ts), so producer
+  // and consumer classify docs identically. `isConflict` is this consumer's
+  // own added concern — a runtime CRDT signal the producer cannot see.
+  const isDualEditor = !isConflict && isMarkdownDocFile(entry.docName);
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
   // initializer ensures the same `HTMLDivElement` reference survives across
@@ -1559,7 +1564,16 @@ function ActivityEntry({
             skeleton meets it trivially.
           */}
               <Suspense
-                fallback={warmHtml ? <WarmContentFallback html={warmHtml} /> : <EditorSkeleton />}
+                // The warm HTML snapshot is markdown-editor output; on a
+                // doc-class branch it would render the pre-rename text over
+                // a surface that is about to become a canvas or CodeMirror.
+                fallback={
+                  warmHtml && isDualEditor ? (
+                    <WarmContentFallback html={warmHtml} />
+                  ) : (
+                    <EditorSkeleton />
+                  )
+                }
               >
                 <DocumentBoundary docName={entry.docName} provider={entry.provider}>
                   {isConflict ? (

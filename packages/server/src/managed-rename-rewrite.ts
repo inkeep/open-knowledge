@@ -2,9 +2,16 @@ import { posix } from 'node:path';
 import {
   encodeHrefPath,
   encodeHrefPathSegment,
+  isExternalHref,
+  type JsxSrcRefTagSpec,
   resolveAssetProjectPath,
   resolveInternalHref,
 } from '@inkeep/open-knowledge-core';
+import {
+  createJsxSrcAttrRe,
+  readJsxSrcRefTagAt,
+  resolveJsxSrcRefTarget,
+} from './jsx-src-ref-tags.ts';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 
 interface FenceState {
@@ -229,7 +236,7 @@ function recomputeRelativeImageHref(
 
   // Absolute / external — leave unchanged.
   if (pathPart.startsWith('/') || pathPart.startsWith('//')) return null;
-  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(pathPart)) return null;
+  if (isExternalHref(pathPart)) return null;
 
   const oldDir = posix.dirname(oldSourceDocName);
   const newDir = posix.dirname(newSourceDocName);
@@ -620,25 +627,105 @@ function rewriteAssetReferencesInLine(
   return { markdown: rewritten, rewrites };
 }
 
-// Single-line `<Mirror>` JSX scanner. Matches a self-closing tag and
-// rewrites the `src=` attribute when its value equals `oldDocName`. The
-// `<Mirror>` canonical is jsx-void / self-closing per its descriptor, so
-// we don't need to handle paired open/close. Multi-line tag content
-// (`<Mirror\n  src="…"\n  anchor="…"\n/>`) is intentionally NOT rewritten
-// here — a rare authoring shape; if it becomes common, lift this scanner
-// to an mdast-walking variant. The line-scoped scanner keeps the rewrite
-// path predictable + idempotent for the common single-line case.
-const MIRROR_TAG_RE = /<Mirror\b([^>]*)\/>/g;
-const MIRROR_SRC_ATTR_RE = /(\bsrc=)(["'])([^"']*)\2/g;
+/**
+ * Doc-relative spelling of `targetDocName` as seen from `anchorDocName`'s
+ * directory, preserving an authored `./` prefix when the result stays
+ * descendant-shaped. Mirrors `buildAssetHrefFromSource`'s relative branch,
+ * minus URI encoding — JSX attribute values are literal doc paths, not hrefs.
+ */
+function relativeJsxSrcRef(
+  anchorDocName: string,
+  targetDocName: string,
+  originalValue: string,
+): string {
+  const anchorDir = posix.dirname(anchorDocName);
+  let ref = posix.relative(anchorDir === '.' ? '' : anchorDir, targetDocName);
+  ref ||= posix.basename(targetDocName);
+  if (originalValue.startsWith('./') && !ref.startsWith('./') && !ref.startsWith('../')) {
+    ref = `./${ref}`;
+  }
+  return ref;
+}
 
-function rewriteMirrorSrcInLine(
+/**
+ * Next value for one src-ref attribute, or null when it must stay untouched.
+ *
+ * Matching compares the docName the value RESOLVES to (per the registry
+ * entry's resolution rule — the renderer's own) against `oldDocName`, so all
+ * three documented spellings match: root-relative `/notes/board.excalidraw`,
+ * doc-relative `board.excalidraw`, and (for bare-doc-name tags) the verbatim
+ * docName. Write-back preserves the author's spelling class; a doc-relative
+ * result is verified to round-trip through the renderer's normalizer back to
+ * the target docName, else falls back to root-relative.
+ *
+ * When the CONTAINING doc itself moves (`sourceDocName === oldDocName`),
+ * doc-relative values pointing at NON-renamed targets are recomputed so they
+ * still address the same document from the new location — the JSX analog of
+ * `rewriteMarkdownLinksInLine`'s containing-doc-move image-ref branch.
+ */
+function rewriteJsxSrcAttrValue(
+  spec: JsxSrcRefTagSpec,
+  value: string,
+  sourceDocName: string,
+  oldDocName: string,
+  newDocName: string,
+): string | null {
+  const next = computeNextJsxSrcAttrValue(spec, value, sourceDocName, oldDocName, newDocName);
+  // Refuse-not-corrupt: the caller splices the result back between the
+  // original quote pair with no escaping, so a quote or angle bracket in it
+  // would inject markup into the CONTAINING document — and a `>` breaks the
+  // tag matcher, making the corruption unrepairable by any later rename.
+  // Leaving the attribute untouched surfaces later as a broken-link advisory
+  // on the stale src — on the problems plane / write advisory, NOT in the
+  // rename response itself: a refusal leaves `rewrites` unincremented, so a
+  // doc whose only pending change was refused never enters `rewrittenDocs`.
+  if (next !== null && /["'<>]/.test(next)) return null;
+  return next;
+}
+
+function computeNextJsxSrcAttrValue(
+  spec: JsxSrcRefTagSpec,
+  value: string,
+  sourceDocName: string,
+  oldDocName: string,
+  newDocName: string,
+): string | null {
+  if (spec.resolution === 'bare-doc-name') {
+    // Location-independent spelling — nothing to recompute on a containing-doc
+    // move; only a rename of the referenced doc itself rewrites it.
+    return value === oldDocName ? newDocName : null;
+  }
+  const resolved = resolveJsxSrcRefTarget(spec, value, sourceDocName);
+  if (resolved === null) return null;
+  const isContainingDocMove = sourceDocName === oldDocName && oldDocName !== newDocName;
+  if (resolved !== oldDocName && !isContainingDocMove) return null;
+  const target = resolved === oldDocName ? newDocName : resolved;
+  if (value.startsWith('/')) {
+    // Root-relative spelling resolves identically from any location — a
+    // containing-doc move alone leaves it untouched.
+    return resolved === oldDocName ? `/${target}` : null;
+  }
+  const anchorDocName = isContainingDocMove ? newDocName : sourceDocName;
+  const candidate = relativeJsxSrcRef(anchorDocName, target, value);
+  const next =
+    resolveJsxSrcRefTarget(spec, candidate, anchorDocName) === target ? candidate : `/${target}`;
+  return next === value ? null : next;
+}
+
+// Multi-line tag content (`<Mirror\n  src="…"\n  anchor="…"\n/>`) is
+// intentionally NOT rewritten here — a rare authoring shape; if it becomes
+// common, lift this scanner to an mdast-walking variant. The line-scoped
+// scanner keeps the rewrite path predictable + idempotent for the common
+// single-line case.
+function rewriteJsxSrcRefsInLine(
   line: string,
+  sourceDocName: string,
   oldDocName: string,
   newDocName: string,
 ): RenameRewriteResult {
   // Walk the line so inline-code spans are skipped verbatim — mirrors
   // `rewriteWikiLinksInLine` and the markdown-link rewriter. Without this,
-  // an `<Mirror src="…" />` inside backticks (e.g. documentation showing
+  // a `<Mirror src="…" />` inside backticks (e.g. documentation showing
   // Mirror syntax) gets rewritten on doc rename and corrupts the example.
   let rewritten = '';
   let rewrites = 0;
@@ -661,22 +748,23 @@ function rewriteMirrorSrcInLine(
     }
 
     if (line[idx] === '<') {
-      // Per-tag regex instance — concurrent rename passes share no state.
-      const tagRe = new RegExp(MIRROR_TAG_RE.source);
-      const sliceFromHere = line.slice(idx);
-      const match = tagRe.exec(sliceFromHere);
-      if (match && match.index === 0) {
-        const [full, attrs] = match;
-        const attrRe = new RegExp(MIRROR_SRC_ATTR_RE.source, MIRROR_SRC_ATTR_RE.flags);
-        const newAttrs = attrs.replace(attrRe, (whole, prefix, quote, value) => {
-          if (value === oldDocName) {
-            rewrites++;
-            return `${prefix}${quote}${newDocName}${quote}`;
-          }
-          return whole;
+      const tag = readJsxSrcRefTagAt(line, idx);
+      if (tag) {
+        const attrRe = createJsxSrcAttrRe(tag.spec.attrName);
+        const newAttrs = tag.attrs.replace(attrRe, (whole, prefix, quote, value) => {
+          const nextValue = rewriteJsxSrcAttrValue(
+            tag.spec,
+            value,
+            sourceDocName,
+            oldDocName,
+            newDocName,
+          );
+          if (nextValue === null) return whole;
+          rewrites++;
+          return `${prefix}${quote}${nextValue}${quote}`;
         });
-        rewritten += `<Mirror${newAttrs}/>`;
-        idx += full.length;
+        rewritten += `<${tag.spec.tagName}${newAttrs}/>`;
+        idx += tag.matchLength;
         continue;
       }
     }
@@ -688,8 +776,9 @@ function rewriteMirrorSrcInLine(
   return { markdown: rewritten, rewrites };
 }
 
-export function rewriteMirrorSrcForDocumentRename(
+export function rewriteJsxSrcRefsForDocumentRename(
   markdown: string,
+  sourceDocName: string,
   oldDocName: string,
   newDocName: string,
 ): RenameRewriteResult {
@@ -711,7 +800,7 @@ export function rewriteMirrorSrcForDocumentRename(
         return `${line}${ending}`;
       }
 
-      const rewrittenLine = rewriteMirrorSrcInLine(line, oldDocName, newDocName);
+      const rewrittenLine = rewriteJsxSrcRefsInLine(line, sourceDocName, oldDocName, newDocName);
       rewrites += rewrittenLine.rewrites;
       return `${rewrittenLine.markdown}${ending}`;
     })

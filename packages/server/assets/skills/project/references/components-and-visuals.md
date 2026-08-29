@@ -16,7 +16,11 @@ OK auto-promotes markdown-native syntax into themed canonical components at pars
 
 **These delimiters are live in ordinary prose.** `==`, `$`, `$$`, `%%`, `<!--` … `-->` and `~~` format — or hide — whatever sits between them, wherever they appear, not only where you meant them as syntax. To show a literal pair, wrap it in an inline code span (`` `==x==` ``, `` `$5` ``), which always works and reads as code; or backslash-escape a delimiter to keep it as running prose. Escaping either side is enough for `==`, `$`, `%%` and `<!--`: `\==x\==`, `\$5`, `\%\%note\%\%`, `\<!-- note -->`. For `~~`, escape both tildes (`\~\~x\~\~`) — a one-sided `\~~x~~` renders right but gets rewritten to the two-sided form on save. Watch `%%` and `<!-- -->` in particular: an accidental pair doesn't restyle the text, it hides it.
 
-`Tabs` is the lone canonical with **no** markdown-native form — write the JSX directly (`<Tabs><Tab label="…">…</Tab></Tabs>`). For any canonical's full JSX prop schema, call `palette({ components: [ids] })`. If no canonical fits, any `<TagName>…</TagName>` falls through as raw MDX — but prefer a canonical when one matches.
+`Tabs` and `Excalidraw` are the only canonicals with **no** markdown-native form — write the JSX directly (`<Tabs><Tab label="…">…</Tab></Tabs>`; `Excalidraw` below).
+
+`<Excalidraw src="path/board.excalidraw" />` embeds a live snapshot of an Excalidraw board — the `src` is doc-relative or root-relative and MUST keep the `.excalidraw` extension, and the referenced board must already exist: MCP `write` cannot create `.excalidraw` docs (it authors `.md`/`.mdx` only), so only reference boards a human has created. The embed re-renders as the board changes and links to the board's own canvas editor.
+
+For any canonical's full JSX prop schema, call `palette({ components: [ids] })`. If no canonical fits, any `<TagName>…</TagName>` falls through as raw MDX — but prefer a canonical when one matches.
 
 **Discover the palette in one call.** `palette` returns every markdown-native form (copy-ready `example` + `guidance`), the themed `html preview` embed starters, and the injected theme-token list — the source of truth for component-forward, themed authoring. Canonical names/counts beyond the markdown-native set are project-specific; the inventory in the `write` / `edit` descriptions and `palette({ components })` are authoritative for those.
 

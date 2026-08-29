@@ -1098,6 +1098,10 @@ msgstr "<0>ok</0> لن يعمل في الوحدات الطرفية الخارج�
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>مسافة</0> للقفز · <1>↓</1> للانحناء"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>مراجع مباشرة كثيرة جدًا في هذه الصفحة.</0> لم يتم تحميل مرآة <1>{src}</1> هذه."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2199,6 +2203,10 @@ msgstr "تدوينة"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "عناصر تحكم اللوحة"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5147,6 +5155,10 @@ msgid "Emailed"
 msgstr "أُرسل بالبريد"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "تضمين لقطة مباشرة للوحة ‎.excalidraw من مساحة العمل هذه."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "ضمّن مقطع فيديو بعناصر تحكم مشغّل أصلية."
 
@@ -5188,6 +5200,10 @@ msgstr "فارغ"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "فارغ"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "لوحة فارغة"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5405,6 +5421,14 @@ msgstr "كل ما تحت مجلدات {0}/ داخل {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "كل ما تحت أي مجلد {0}/"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "لوحة Excalidraw"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "تعذر تحميل لوحة Excalidraw."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "لوحة Excalidraw"
@@ -5446,6 +5470,10 @@ msgstr "توسيع كل مجموعات الملفات"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "توسيع كل الملفات"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "توسيع اللوحة"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8499,6 +8527,10 @@ msgstr "لم يتم العثور على أدوات الذكاء الاصطناع
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "لم يُضبط مفتاح API لنقطة النهاية هذه. أضف واحدًا أعلاه."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "لم يتم اختيار لوحة. أدخل مسار مستند ‎.excalidraw في خصائص هذه الكتلة."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "لا تغييرات في المتن في هذه النسخة."
@@ -9114,6 +9146,10 @@ msgstr "افتح مجلد مشروع موجودًا من القرص."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "افتح مؤلف موجّه «اسأل الذكاء الاصطناعي» السفلي وركّز عليه."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "فتح اللوحة"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13135,6 +13171,22 @@ msgstr "عقد الحساب المصدق. ينطبق فقط على المستن�
 msgid "The audit could not be completed. Try again."
 msgstr "تعذّر إتمام المراجعة. أعد المحاولة."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "تعذّر الوصول إلى اللوحة. قد تكون غير موجودة، أو قد يكون الخادم غير متصل."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "تعذّر عرض لقطة اللوحة."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "تعذّر تحميل عارض اللوحة. تحقق من اتصالك وحاول مرة أخرى."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "محتوى اللوحة ليس مشهد Excalidraw صالحًا."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "لم يفتح تطبيق Claude Desktop الملف. هل هو مثبَّت؟ ({msg})"
@@ -13979,6 +14031,10 @@ msgstr "يبدّل النمط {0}/**"
 msgid "tokens"
 msgstr "توكنات"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "مراجع مباشرة كثيرة جدًا في هذه الصفحة. لم يتم تحميل هذه اللوحة."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "بطيء جدًا"
@@ -14027,6 +14083,7 @@ msgstr "جرّب موجّهًا"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "أعد المحاولة"
 
@@ -14603,6 +14660,7 @@ msgstr "العرض في مصدر Markdown"
 msgid "View in Source Markdown"
 msgstr "عرض في مصدر Markdown"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "للعرض فقط"

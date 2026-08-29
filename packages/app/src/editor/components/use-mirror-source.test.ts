@@ -1,9 +1,10 @@
 /**
  * Unit tests for the pure functions that drive Mirror resolution. The
  * `useMirrorSource` hook itself is React + Y.js + Hocuspocus and not
- * exercised here — the hook's behavior is covered by the integration tests
- * in `tests/integration` and by the live showcase doc. These tests pin
- * the tree-walking + subtree-render shape so anchor-matching and HTML
+ * exercised here — the pool machinery it subscribes through is covered by
+ * `tests/integration/live-doc-pool.test.ts` (real server) and
+ * `live-doc-pool.dom.test.tsx` (hook-level, faked transport). These tests
+ * pin the tree-walking + subtree-render shape so anchor-matching and HTML
  * synthesis can't silently regress.
  */
 

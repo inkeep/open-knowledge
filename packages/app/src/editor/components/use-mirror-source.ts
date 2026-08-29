@@ -2,8 +2,8 @@
  * `useMirrorSource(src, anchor)` — resolves a `<Mirror>` reference to the
  * HTML of the matching `<MirrorSource id="…">` subtree in the source doc.
  *
- * Strategy: acquires a (collabUrl, src)-keyed `HocuspocusProvider` from a
- * module-local cache, observes the source's `Y.Text('source')` for live
+ * Strategy: acquires a (collabUrl, src)-keyed `HocuspocusProvider` from the
+ * shared `live-doc-pool`, observes the source's `Y.Text('source')` for live
  * re-renders, and renders the matching MirrorSource subtree through the
  * shared `mdastToHtml` pipeline so a Mirror appears bit-equivalent to what
  * the docs site / preview produces for the same content.
@@ -29,7 +29,7 @@
  * anchor without touching the WebSocket. Changing only the anchor (a very
  * common property-panel edit) no longer tears down + reopens the connection.
  *
- * Y.Text observer is debounced (`OBSERVE_DEBOUNCE_MS`, 150ms trailing-edge)
+ * Y.Text observer is debounced (`LIVE_DOC_OBSERVE_DEBOUNCE_MS`, 150ms trailing-edge)
  * because every keystroke in the source doc fires the observer; a full
  * parse + mdast walk + hast render per keystroke is wasted work across N
  * Mirrors. CC1 broadcasts use the same 100ms-class debounce for the same
@@ -43,12 +43,16 @@
  * observer on `Activity` flipping to hidden is deferred.
  */
 
-import { HocuspocusProvider } from '@hocuspocus/provider';
 import { mdastToHtml } from '@inkeep/open-knowledge-core';
 import { useEffect, useRef, useState } from 'react';
-import * as Y from 'yjs';
 import { useCollabUrl } from '@/lib/use-collab-url';
 import { getSharedMarkdownManager } from '../utils/md-singleton.ts';
+import {
+  acquireLiveDocProvider,
+  LIVE_DOC_OBSERVE_DEBOUNCE_MS,
+  LIVE_DOC_SYNC_WATCHDOG_MS,
+  releaseLiveDocProvider,
+} from './live-doc-pool.ts';
 
 // Note: this hook intentionally does NOT import `useDocumentContext` from
 // `../DocumentContext.tsx`. DocumentContext transitively pulls in
@@ -87,7 +91,10 @@ type MirrorSourceStatus =
   | { kind: 'ready'; html: string }
   | { kind: 'source-removed' }
   | { kind: 'anchor-not-found' }
-  | { kind: 'empty-props' };
+  | { kind: 'empty-props' }
+  /** The shared live-doc pool declined another connection — the source doc
+   *  itself is fine. Rendered with capacity copy, never "removed". */
+  | { kind: 'at-capacity' };
 
 /**
  * Find the first `<MirrorSource>` node in the mdast tree whose `id`
@@ -146,110 +153,6 @@ export function renderMirrorSubtree(node: MdxJsxFlowElementLike): string {
   return mdastToHtml(synthRoot as any);
 }
 
-/**
- * Refcounted entry per (collabUrl, src). The provider opens once on first
- * acquire and is destroyed when the last Mirror referencing it unmounts.
- *
- * Each subscriber registers two callbacks: `onUpdate` (fired on every
- * `Y.Text` mutation — high-frequency keystrokes; the hook wraps it with a
- * trailing-edge debounce) and `onSynced` (fired every time the provider
- * confirms state-sync — initial handshake AND every subsequent reconnect;
- * the hook calls `recomputeNow` directly so post-handshake paints don't
- * eat the 150ms debounce delay).
- */
-interface MirrorSubscriber {
-  onUpdate: () => void;
-  onSynced: () => void;
-}
-interface MirrorPoolEntry {
-  provider: HocuspocusProvider;
-  ySource: Y.Text;
-  refcount: number;
-  synced: boolean;
-  subscribers: Set<MirrorSubscriber>;
-}
-const mirrorPool = new Map<string, MirrorPoolEntry>();
-
-// Soft warning threshold for pool growth. Refcounted cleanup keeps the
-// upper bound proportional to live Mirror references, but a doc with many
-// distinct sources could surface a perf bug here — warn so it surfaces
-// during dev rather than browsers silently throttling the WS pool.
-const MIRROR_POOL_WARN_AT = 30;
-// Trailing-edge debounce on Y.Text observer. Source-doc keystrokes shouldn't
-// trigger a full mdast parse + hast render per character.
-const OBSERVE_DEBOUNCE_MS = 150;
-// Watchdog timeout for never-synced providers (server down, bad src).
-// Without this, a Mirror pointing at an unreachable doc stays in `loading`
-// indefinitely while HocuspocusProvider retries with exponential backoff.
-const SYNC_WATCHDOG_MS = 10_000;
-
-function acquireMirrorProvider(collabUrl: string, src: string): MirrorPoolEntry {
-  const key = `${collabUrl}|${src}`;
-  const existing = mirrorPool.get(key);
-  if (existing) {
-    existing.refcount += 1;
-    return existing;
-  }
-  const yDoc = new Y.Doc();
-  // Reconnect cap lives on the underlying `HocuspocusProviderWebsocket`
-  // config rather than the provider top-level config; we accept default
-  // reconnect behavior here and rely on `SYNC_WATCHDOG_MS` to surface a
-  // bad src (unreachable doc) by transitioning out of `loading` after
-  // 10s. Read-only consumers don't have ergonomic value in fewer retries.
-  const provider = new HocuspocusProvider({
-    url: collabUrl,
-    name: src,
-    document: yDoc,
-  });
-  const subscribers = new Set<MirrorSubscriber>();
-  const entry: MirrorPoolEntry = {
-    provider,
-    ySource: yDoc.getText('source'),
-    refcount: 1,
-    synced: false,
-    subscribers,
-  };
-  provider.on('synced', () => {
-    entry.synced = true;
-    // Fan out to every subscriber's onSynced callback so pre-sync mounts
-    // parked on `loading` move to `ready` / `source-removed` immediately.
-    // Routing through onSynced (not onUpdate) bypasses the debounce — the
-    // first content paint after WS handshake shouldn't eat 150ms of delay
-    // just because synced and a Y.Text update happened to coincide.
-    for (const sub of subscribers) sub.onSynced();
-  });
-  // Single shared Y.Text observer per provider. Mirrors join via the
-  // `subscribers` set rather than each calling `ySource.observe` themselves —
-  // keeps observer count tied to the source doc, not to mount count.
-  entry.ySource.observe(() => {
-    for (const sub of subscribers) sub.onUpdate();
-  });
-  mirrorPool.set(key, entry);
-  if (mirrorPool.size > MIRROR_POOL_WARN_AT) {
-    console.warn(
-      `[Mirror] provider pool exceeded ${MIRROR_POOL_WARN_AT} entries (current=${mirrorPool.size}). Many Mirrors pointing at distinct source docs — investigate if this is a runaway pattern.`,
-    );
-  }
-  return entry;
-}
-
-function releaseMirrorProvider(collabUrl: string, src: string): void {
-  const key = `${collabUrl}|${src}`;
-  const entry = mirrorPool.get(key);
-  if (!entry) return;
-  entry.refcount -= 1;
-  if (entry.refcount <= 0) {
-    try {
-      entry.provider.destroy();
-    } catch (err) {
-      // Best-effort teardown — don't let a destroy failure leak the entry
-      // and turn a future acquire into a zombie hand-off.
-      console.warn('[Mirror] provider.destroy() failed during release', { src, err });
-    }
-    mirrorPool.delete(key);
-  }
-}
-
 export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus {
   const { collabUrl } = useCollabUrl();
   const [status, setStatus] = useState<MirrorSourceStatus>({ kind: 'loading' });
@@ -274,7 +177,22 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
       return;
     }
 
-    const entry = acquireMirrorProvider(collabUrl, src);
+    const acquired = acquireLiveDocProvider(collabUrl, src);
+    if (!acquired.ok) {
+      // Honest terminal per cause: an inadmissible name (system/config
+      // plane) is content-shaped and renders as "source removed"; a
+      // capacity refusal is a client-side condition and must NOT claim the
+      // doc is gone. Warn either way so the refusal is grep-able.
+      console.warn('[Mirror] live-doc pool refused subscription', {
+        src,
+        reason: acquired.reason,
+      });
+      setStatus(
+        acquired.reason === 'at-capacity' ? { kind: 'at-capacity' } : { kind: 'source-removed' },
+      );
+      return;
+    }
+    const { entry } = acquired;
 
     const recomputeNow = () => {
       const currentAnchor = anchorRef.current;
@@ -320,7 +238,12 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
         setStatus({ kind: 'anchor-not-found' });
         return;
       }
-      setStatus({ kind: 'ready', html });
+      // Keep state identity when the rendered HTML is unchanged, so a
+      // reconnect's onSynced replay doesn't re-render every Mirror for a
+      // pixel-identical result.
+      setStatus((prev) =>
+        prev.kind === 'ready' && prev.html === html ? prev : { kind: 'ready', html },
+      );
     };
 
     // Trailing-edge debounce. Y.Text observers fire on every keystroke in
@@ -331,7 +254,7 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
       debounceTimer = setTimeout(() => {
         debounceTimer = null;
         recomputeNow();
-      }, OBSERVE_DEBOUNCE_MS);
+      }, LIVE_DOC_OBSERVE_DEBOUNCE_MS);
     };
 
     // Subscribe to the pool's shared observer + synced fan-out. `onUpdate`
@@ -339,7 +262,7 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
     // `recomputeNow` directly so the first paint after WS handshake is
     // immediate. Anchor changes use `recomputeNow` via the ref (low-
     // frequency, want immediate feedback).
-    const subscriber: MirrorSubscriber = {
+    const unsubscribe = entry.subscribe({
       onUpdate: recomputeDebounced,
       onSynced: () => {
         // Cancel any in-flight debounce; we're about to render synchronously.
@@ -349,26 +272,29 @@ export function useMirrorSource(src: string, anchor: string): MirrorSourceStatus
         }
         recomputeNow();
       },
-    };
-    entry.subscribers.add(subscriber);
+    });
     recomputeRef.current = recomputeNow;
 
     // Watchdog: if sync never completes (server unreachable / auth fail),
     // transition out of `loading` so the user sees an actionable state.
+    // Deliberately RETAINS the entry (unlike `useLiveDocText`, which
+    // releases): a Mirror has no retry affordance, so keeping the provider
+    // lets a late sync recover it — at the cost of the retained entry
+    // counting against the pool cap for the session.
     const watchdog = setTimeout(() => {
       if (!entry.synced) {
         setStatus({ kind: 'source-removed' });
       }
-    }, SYNC_WATCHDOG_MS);
+    }, LIVE_DOC_SYNC_WATCHDOG_MS);
 
     recomputeNow();
 
     return () => {
       clearTimeout(watchdog);
       if (debounceTimer) clearTimeout(debounceTimer);
-      entry.subscribers.delete(subscriber);
+      unsubscribe();
       recomputeRef.current = null;
-      releaseMirrorProvider(collabUrl, src);
+      releaseLiveDocProvider(collabUrl, src);
     };
   }, [collabUrl, src]);
 

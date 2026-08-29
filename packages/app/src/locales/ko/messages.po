@@ -1098,6 +1098,10 @@ msgstr "<0>ok</0>는 나중에 파일 메뉴에서 추가할 때까지 외부 �
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>스페이스</0>로 점프 · <1>↓</1>로 숙이기"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>이 페이지에 라이브 참조가 너무 많습니다.</0> <1>{src}</1>의 이 미러는 불러오지 않았습니다."
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2199,6 +2203,10 @@ msgstr "블로그 게시물"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "보드 컨트롤"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5147,6 +5155,10 @@ msgid "Emailed"
 msgstr "이메일로 보냄"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "이 워크스페이스의 .excalidraw 보드 라이브 스냅샷을 삽입합니다."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "기본 플레이어 컨트롤이 있는 동영상을 삽입합니다."
 
@@ -5188,6 +5200,10 @@ msgstr "비어 있음"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "비어 있음"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "빈 보드"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5405,6 +5421,14 @@ msgstr "{0}/ 폴더가 {1}/ 안에 있는 모든 항목"
 msgid "everything under any {0}/ folder"
 msgstr "모든 {0}/ 폴더 아래의 항목"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Excalidraw 보드"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Excalidraw 보드를 불러오지 못했습니다."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 캔버스"
@@ -5446,6 +5470,10 @@ msgstr "모든 파일 그룹 펼치기"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "모든 파일 펼치기"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "보드 펼치기"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8499,6 +8527,10 @@ msgstr "AI 도구가 감지되지 않았습니다. 이 스킬을 사용하려면
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "이 엔드포인트에 API 키가 설정되지 않았습니다. 위에서 추가합니다."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "선택된 보드가 없습니다. 이 블록의 속성에 .excalidraw 문서 경로를 입력하세요."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "이 버전에서 본문 변경 없음."
@@ -9114,6 +9146,10 @@ msgstr "디스크에서 기존 프로젝트 폴더를 엽니다."
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "하단의 AI에게 묻기 프롬프트 작성기를 열고 포커스를 둡니다."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "보드 열기"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13135,6 +13171,22 @@ msgstr "attested-computation 계약입니다. Attested Computation 유형 문서
 msgid "The audit could not be completed. Try again."
 msgstr "감사를 완료하지 못했습니다. 다시 시도하세요."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "보드에 연결할 수 없습니다. 보드가 없거나 서버가 오프라인일 수 있습니다."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "보드 스냅숏을 렌더링하지 못했습니다."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "보드 뷰어를 불러오지 못했습니다. 연결을 확인하고 다시 시도하세요."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "보드의 내용이 유효한 Excalidraw 장면이 아닙니다."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App 파일 열기 실패. 설치 상태 확인: ({msg})"
@@ -13979,6 +14031,10 @@ msgstr "패턴 {0}/** 사용 설정 전환"
 msgid "tokens"
 msgstr "토큰"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "이 페이지에 라이브 참조가 너무 많습니다. 이 보드는 불러오지 않았습니다."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "너무 느림"
@@ -14027,6 +14083,7 @@ msgstr "프롬프트 사용"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "다시 시도"
 
@@ -14603,6 +14660,7 @@ msgstr "소스 Markdown에서 보기"
 msgid "View in Source Markdown"
 msgstr "소스 Markdown에서 보기"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "보기 전용"

@@ -417,6 +417,9 @@
     "4PYsOz": ["Ocultar Archivos (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Deshacer o rehacer en el código"],
     "4TzU0n": ["Inicializar"],
+    "4Vgtaz": [
+      "No se pudo acceder a la pizarra. Puede que no exista o que el servidor esté sin conexión."
+    ],
     "4buZWd": ["Heredado de ", ["path"]],
     "4c_a6S": ["Todavía no hay nada definido."],
     "4d0VYJ": ["Crearemos un ID de tema seguro a partir de este nombre."],
@@ -590,6 +593,7 @@
     "6KXnz5": ["Puedes restaurar este archivo desde la Papelera."],
     "6LJJ1v": ["Archivo ", ["identity"], ". Ir a la referencia."],
     "6LbUG7": ["El repositorio es privado y tu cuenta de GitHub no tiene acceso."],
+    "6M2L3X": ["Abrir la pizarra"],
     "6MnZEC": ["No se pudo cargar la terminal"],
     "6Nea1q": ["Usar ", ["0"], " para el modo oscuro activo"],
     "6O626z": ["Ningún encabezado coincide con \"", ["trimmedAnchorQuery"], "\""],
@@ -981,6 +985,7 @@
     "AVW-K9": ["No se pudieron cargar las páginas huérfanas"],
     "AWOSPo": ["Acercar"],
     "AYoYhU": ["Falló la actualización: ", ["0"]],
+    "AaC-CE": ["Pizarra vacía"],
     "AcK_r0": ["Claude CLI"],
     "AczYxH": ["Entrada open-knowledge personalizada, no gestionada por OpenKnowledge"],
     "AdcGcG": ["Aplicando tu cambio"],
@@ -1939,6 +1944,7 @@
     ],
     "LKOLNn": ["No hay agentes de IA instalados"],
     "LPAv9E": ["hace ", ["days"], " d"],
+    "LPLWpO": ["El contenido de la pizarra no es una escena de Excalidraw válida."],
     "LQdLio": ["Esquema nuevo"],
     "LQsCPn": ["Hay commits locales que impiden actualizar esta copia"],
     "LRLKnQ": ["Ocultar los resueltos"],
@@ -2557,6 +2563,11 @@
     "STTOnz": ["Tipo de ", ["keyName"], ": valor complejo (anidado; solo lectura)"],
     "SUOoXn": ["No se pudo abrir el proyecto."],
     "SVLPt5": [["formatted"], " estrellas en GitHub"],
+    "SWTmnY": [
+      "<0>Demasiadas referencias en vivo en esta página.</0> Este espejo de <1>",
+      ["src"],
+      "</1> no se cargó."
+    ],
     "SWX1O7": [
       [
         "total",
@@ -2688,6 +2699,7 @@
     "U2pMtf": ["nombre-de-etiqueta"],
     "U3IvM5": ["Guía completa"],
     "U3RIJu": ["Archivos locales"],
+    "U4ZE26": ["No se pudo renderizar la instantánea de la pizarra."],
     "U5Spo9": ["El directorio de contenido debe estar dentro del proyecto"],
     "U6Mdhd": ["Vamos a configurarlo."],
     "U6wmNc": ["Sincronización en pausa"],
@@ -2927,6 +2939,9 @@
     ],
     "WG3MZ4": [["0"], " habilidades seleccionadas"],
     "WGMoTY": ["Errores, fallos o sensación de poca fiabilidad"],
+    "WH3roC": [
+      "No hay ninguna pizarra seleccionada. Introduce la ruta de un documento .excalidraw en las propiedades de este bloque."
+    ],
     "WHPvOb": ["Los filtros de vista ocultan todos los archivos."],
     "WJjviG": ["Qué incluir"],
     "WL6puM": ["La ruta apunta fuera del proyecto"],
@@ -3618,6 +3633,7 @@
     "cyoNqf": ["Sin fusionar"],
     "czQDKY": ["Cada push es un commit en tu remoto."],
     "d-GtJt": ["Ver en el Markdown de origen"],
+    "d-RYHO": ["Pizarra de Excalidraw"],
     "d1JjXo": [
       "Tu copia local de la rama <0>",
       ["branch"],
@@ -3650,6 +3666,7 @@
     "dOxPd4": ["Nota al pie"],
     "dQHSCs": ["Convertir (eliminar el original)"],
     "dSORvE": ["Detiene la ejecución actual y envía esto en su lugar"],
+    "dT-HIQ": ["Demasiadas referencias en vivo en esta página. Esta pizarra no se cargó."],
     "dTaauv": ["Motivo: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" es un nombre de propiedad reservado"],
     "dVaXnv": ["Las reglas de contenido aún no se han cargado; inténtalo de nuevo en un momento"],
@@ -3763,6 +3780,7 @@
     "ee15Vl": [
       "Las habilidades enseñan tareas repetibles a tus herramientas de IA. Escribe las tuyas en la barra lateral Habilidades del editor; esta página es donde se activan y se comparten."
     ],
+    "eh3QBq": ["No se pudo cargar la pizarra de Excalidraw."],
     "eiUA4k": [
       [
         "count",
@@ -4087,6 +4105,7 @@
     ],
     "i9toLO": ["Archivo de configuración del agente"],
     "iBVgIQ": ["El servidor devolvió una respuesta con formato incorrecto."],
+    "iBei3o": ["Controles de la pizarra"],
     "iDZtvM": ["No se pudieron cargar las plantillas: ", ["message"]],
     "iE-yoU": [
       "Esto es una vista previa de ",
@@ -4434,6 +4453,7 @@
     "lScd1O": [
       "Las presentaciones de Slidev solo se abren en la aplicación de escritorio de OpenKnowledge."
     ],
+    "lT6wjt": ["Expandir la pizarra"],
     "lUtr1r": [["0"], " de ", ["1"], " seleccionados"],
     "lVWEIL": ["Se indexaron ", ["embedded"], " de ", ["total"], " páginas."],
     "lWNpNB": ["Añade cursores o selecciona coincidencias con CodeMirror."],
@@ -4783,6 +4803,9 @@
     "pFPzHA": ["Selector de emojis"],
     "pFRz_E": ["Dejar estos comentarios fuera de este mensaje"],
     "pFagOn": ["Edición de código"],
+    "pGYklE": [
+      "No se pudo cargar el visor de la pizarra. Comprueba tu conexión e inténtalo de nuevo."
+    ],
     "pHYP6v": ["Abre <0>Personalizar</0> en la barra lateral <1/> <2>Habilidades</2>."],
     "pI_bKs": ["<0>Espacio</0> para saltar · <1>↓</1> para agacharse"],
     "pJ7XCo": ["Esta página no hace referencia a ningún archivo o imagen local."],
@@ -4930,6 +4953,9 @@
     "qbfj1f": ["Recibiendo objetos"],
     "qd7L1J": [["source"], ": ", ["updated"], " actualizados, ", ["upToDate"], " ya actualizados"],
     "qdBUHP": ["No se pudo cargar ", ["fileName"]],
+    "qi17kj": [
+      "Inserta una instantánea en vivo de una pizarra .excalidraw de este espacio de trabajo."
+    ],
     "qi1F96": ["Mostrar en el Explorador de archivos"],
     "qiRoLb": ["Resume todo lo que cambié esta semana"],
     "qioCwA": ["Ir a la página ", ["pageNumber"]],

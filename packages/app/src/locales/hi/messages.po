@@ -1094,6 +1094,10 @@ msgstr "<0>ok</0> तब तक बाहरी टर्मिनल में 
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "कूदने के लिए <0>स्पेस</0> · झुकने के लिए <1>↓</1>"
 
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>इस पेज पर बहुत अधिक लाइव संदर्भ हैं।</0> <1>{src}</1> का यह मिरर लोड नहीं किया गया।"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
 msgstr "~/.myteam/skills"
@@ -2195,6 +2199,10 @@ msgstr "ब्लॉग पोस्ट"
 #: src/components/TemplateForm.tsx
 msgid "blog-post"
 msgstr "blog-post"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "बोर्ड नियंत्रण"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
@@ -5143,6 +5151,10 @@ msgid "Emailed"
 msgstr "ईमेल भेजा गया"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "इस वर्कस्पेस के किसी .excalidraw बोर्ड का लाइव स्नैपशॉट एम्बेड करें।"
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "मूल प्लेयर नियंत्रणों के साथ एक वीडियो एम्बेड करें।"
 
@@ -5184,6 +5196,10 @@ msgstr "खाली"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "खाली"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "खाली बोर्ड"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5401,6 +5417,14 @@ msgstr "{1}/ के भीतर मौजूद {0}/ फ़ोल्डरो�
 msgid "everything under any {0}/ folder"
 msgstr "किसी भी {0}/ फ़ोल्डर के अंतर्गत सब कुछ"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Excalidraw बोर्ड"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Excalidraw बोर्ड लोड नहीं हो सका।"
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Excalidraw कैनवास"
@@ -5442,6 +5466,10 @@ msgstr "सभी फ़ाइल समूह फैलाएँ"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "सभी फ़ाइलें फैलाएँ"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "बोर्ड फैलाएँ"
 
 #: src/editor/components/Mermaid.tsx
 #: src/editor/extensions/JsxComponentView.tsx
@@ -8495,6 +8523,10 @@ msgstr "कोई AI टूल नहीं मिला। इस स्कि�
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "इस एंडपॉइंट के लिए कोई API कुंजी सेट नहीं है। ऊपर एक जोड़ें।"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "कोई बोर्ड चुना नहीं गया है। इस ब्लॉक की प्रॉपर्टी में किसी .excalidraw दस्तावेज़ का पथ दर्ज करें।"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "इस संस्करण में मुख्य भाग का कोई बदलाव नहीं।"
@@ -9110,6 +9142,10 @@ msgstr "डिस्क से कोई मौजूदा प्रोजे�
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "नीचे वाली Ask AI प्रॉम्प्ट लेखन-पट्टी खोलें और उस पर फ़ोकस करें।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "बोर्ड खोलें"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
@@ -13131,6 +13167,22 @@ msgstr "प्रमाणित-गणना अनुबंध। केवल
 msgid "The audit could not be completed. Try again."
 msgstr "ऑडिट पूरा नहीं हो सका। फिर कोशिश करें।"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "बोर्ड तक नहीं पहुँचा जा सका। हो सकता है वह मौजूद न हो, या सर्वर ऑफ़लाइन हो।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "बोर्ड का स्नैपशॉट रेंडर नहीं हो सका।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "बोर्ड व्यूअर लोड नहीं हो सका। अपना कनेक्शन जाँचें और फिर से प्रयास करें।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "बोर्ड की सामग्री एक मान्य Excalidraw दृश्य नहीं है।"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App ने फ़ाइल नहीं खोली। क्या वह इंस्टॉल है? ({msg})"
@@ -13975,6 +14027,10 @@ msgstr "पैटर्न {0}/** टॉगल करें"
 msgid "tokens"
 msgstr "टोकन"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "इस पेज पर बहुत अधिक लाइव संदर्भ हैं। यह बोर्ड लोड नहीं किया गया।"
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "बहुत धीमा"
@@ -14023,6 +14079,7 @@ msgstr "कोई प्रॉम्प्ट आज़माएँ"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "फिर कोशिश करें"
 
@@ -14599,6 +14656,7 @@ msgstr "स्रोत markdown में देखें"
 msgid "View in Source Markdown"
 msgstr "स्रोत Markdown में देखें"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
 #: src/editor/components/Mermaid.tsx
 msgid "View only"
 msgstr "केवल देखने के लिए"

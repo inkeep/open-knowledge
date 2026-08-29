@@ -168,6 +168,12 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     rationale: 'Radix Sheet.Overlay backdrop — no interactive content',
   },
   {
+    file: 'editor/components/ExcalidrawEmbed.tsx',
+    pattern: 'P2-near-fullscreen-vw',
+    rationale:
+      'ExcalidrawLightbox mirrors MermaidLightbox: w-[calc(100dvw-5rem)] with a centered fixed margin puts the top edge at a constant 40px, below the traffic-light y-band (18-30px) at every viewport size. Its top row is the dialog close button at top-right and a view-only label inset to top-left, neither in the traffic-light region.',
+  },
+  {
     file: 'editor/components/Mermaid.tsx',
     pattern: 'P2-near-fullscreen-vw',
     rationale:

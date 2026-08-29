@@ -48,6 +48,7 @@ import type { Compartment } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { RenamedDocMapping } from '@inkeep/open-knowledge-core';
+import { isMarkdownDocFile } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
@@ -553,6 +554,24 @@ export function captureRenameSnapshots(renamed: readonly RenamedDocMapping[]): v
         if (cachedEntry.ytext.length === 0) {
           mark('ok/cache/snapshot-skipped-empty', {
             fromDocName: renamedDoc.fromDocName,
+          });
+          continue;
+        }
+        // A rename that changes the doc class (`.md` → `.excalidraw` /
+        // `.mmd` / text) mounts a different editor entirely. The captured
+        // markdown HTML can only ever be re-rendered by the dual-editor
+        // branch, so storing it here would paint the OLD text over the new
+        // surface until its lazy bundle lands, and the entry would also
+        // squat a MAX_CACHE FIFO slot no consumer will ever clear (TipTap's
+        // 'create' is the consumer). `isMarkdownDocFile` is the negation of
+        // the per-class discriminators, so this gate tracks the editor's
+        // children dispatch by construction: a FUTURE doc class starts
+        // excluded here the moment its discriminator lands — the same edit
+        // point the dispatch needs — with no denylist entry to forget.
+        if (!isMarkdownDocFile(renamedDoc.toDocName)) {
+          mark('ok/cache/snapshot-skipped-class-change', {
+            fromDocName: renamedDoc.fromDocName,
+            toDocName: renamedDoc.toDocName,
           });
           continue;
         }

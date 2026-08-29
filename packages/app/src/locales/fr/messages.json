@@ -431,6 +431,9 @@
     "4PYsOz": ["Masquer les fichiers (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Annuler ou rétablir dans la source"],
     "4TzU0n": ["Initialiser"],
+    "4Vgtaz": [
+      "Le tableau est injoignable. Il n'existe peut-être pas, ou le serveur est peut-être hors ligne."
+    ],
     "4buZWd": ["Hérité de ", ["path"]],
     "4c_a6S": ["Rien de défini pour l'instant."],
     "4d0VYJ": ["Nous créerons un ID de thème sûr à partir de ce nom."],
@@ -608,6 +611,7 @@
     "6KXnz5": ["Vous pouvez restaurer ce fichier depuis la corbeille."],
     "6LJJ1v": ["Fichier ", ["identity"], ". Accéder à la référence."],
     "6LbUG7": ["Le dépôt est privé et votre compte GitHub n'y a pas accès."],
+    "6M2L3X": ["Ouvrir le tableau"],
     "6MnZEC": ["Échec du chargement du terminal"],
     "6Nea1q": ["Utiliser ", ["0"], " pour le mode sombre actif"],
     "6O626z": ["Aucun titre ne correspond à « ", ["trimmedAnchorQuery"], " »"],
@@ -1003,6 +1007,7 @@
     "AVW-K9": ["Échec du chargement des pages orphelines"],
     "AWOSPo": ["Zoom avant"],
     "AYoYhU": ["Échec de la mise à jour : ", ["0"]],
+    "AaC-CE": ["Tableau vide"],
     "AcK_r0": ["CLI Claude"],
     "AczYxH": ["Entrée open-knowledge personnalisée — non gérée par OpenKnowledge"],
     "AdcGcG": ["Application de votre modification"],
@@ -1968,6 +1973,7 @@
     ],
     "LKOLNn": ["Aucun agent IA installé"],
     "LPAv9E": ["il y a ", ["days"], " j"],
+    "LPLWpO": ["Le contenu du tableau n'est pas une scène Excalidraw valide."],
     "LQdLio": ["Nouveau schéma"],
     "LQsCPn": ["Des commits locaux empêchent cette copie de se mettre à jour"],
     "LRLKnQ": ["Masquer les éléments résolus"],
@@ -2584,6 +2590,11 @@
     "STTOnz": ["Type de ", ["keyName"], " : valeur complexe (imbriquée ; lecture seule)"],
     "SUOoXn": ["Échec de l'ouverture du projet."],
     "SVLPt5": [["formatted"], " étoiles GitHub"],
+    "SWTmnY": [
+      "<0>Trop de références en direct sur cette page.</0> Ce miroir de <1>",
+      ["src"],
+      "</1> n'a pas été chargé."
+    ],
     "SWX1O7": [
       [
         "total",
@@ -2718,6 +2729,7 @@
     "U2pMtf": ["tag-name"],
     "U3IvM5": ["Guide complet"],
     "U3RIJu": ["Fichiers locaux"],
+    "U4ZE26": ["L'instantané du tableau n'a pas pu être rendu."],
     "U5Spo9": ["Le répertoire de contenu doit se trouver dans le projet"],
     "U6Mdhd": ["Commençons la configuration."],
     "U6wmNc": ["Synchronisation en pause"],
@@ -2959,6 +2971,9 @@
     ],
     "WG3MZ4": [["0"], " compétences sélectionnées"],
     "WGMoTY": ["Bugs, plantages, ou manque de fiabilité"],
+    "WH3roC": [
+      "Aucun tableau sélectionné. Saisissez le chemin d'un document .excalidraw dans les propriétés de ce bloc."
+    ],
     "WHPvOb": ["Tous les fichiers sont masqués par les filtres d'affichage."],
     "WJjviG": ["Ce qu'il faut inclure"],
     "WL6puM": ["Le chemin pointe en dehors du projet"],
@@ -3652,6 +3667,7 @@
     "cyoNqf": ["Non fusionné"],
     "czQDKY": ["Chaque push est un commit sur votre dépôt distant."],
     "d-GtJt": ["Afficher dans la source Markdown"],
+    "d-RYHO": ["Tableau Excalidraw"],
     "d1JjXo": [
       "Votre copie locale de la branche <0>",
       ["branch"],
@@ -3682,6 +3698,7 @@
     "dOxPd4": ["Note de bas de page"],
     "dQHSCs": ["Convertir (supprimer l'original)"],
     "dSORvE": ["Arrête l’exécution en cours et envoie ceci à la place"],
+    "dT-HIQ": ["Trop de références en direct sur cette page. Ce tableau n'a pas été chargé."],
     "dTaauv": ["Raison : ", ["reason"]],
     "dURmlQ": ["« frontmatter » est un nom de propriété réservé"],
     "dVaXnv": ["Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"],
@@ -3795,6 +3812,7 @@
     "ee15Vl": [
       "Les compétences apprennent des tâches répétables à vos outils IA. Écrivez les vôtres dans la barre latérale Compétences de l'éditeur ; cette page sert à les activer et à les partager."
     ],
+    "eh3QBq": ["Le chargement du tableau Excalidraw a échoué."],
     "eiUA4k": [
       [
         "count",
@@ -4115,6 +4133,7 @@
     ],
     "i9toLO": ["Fichier de configuration de l'agent"],
     "iBVgIQ": ["Le serveur a renvoyé une réponse mal formée."],
+    "iBei3o": ["Contrôles du tableau"],
     "iDZtvM": ["Échec du chargement des modèles : ", ["message"]],
     "iE-yoU": [
       "Ceci est un aperçu de ",
@@ -4466,6 +4485,7 @@
     "lScd1O": [
       "Les diaporamas Slidev s'ouvrent uniquement dans l'application de bureau OpenKnowledge."
     ],
+    "lT6wjt": ["Développer le tableau"],
     "lUtr1r": [["0"], " sélectionné(s) sur ", ["1"]],
     "lVWEIL": [["embedded"], " pages indexées sur ", ["total"], "."],
     "lWNpNB": [
@@ -4817,6 +4837,9 @@
     "pFPzHA": ["Sélecteur d'émojis"],
     "pFRz_E": ["Ne pas inclure ces commentaires dans ce message"],
     "pFagOn": ["Édition de la source"],
+    "pGYklE": [
+      "Le lecteur de tableau n'a pas pu se charger. Vérifiez votre connexion et réessayez."
+    ],
     "pHYP6v": ["Ouvrez <0>Personnaliser</0> dans la barre latérale <1/> <2>Compétences</2>."],
     "pI_bKs": ["<0>Espace</0> pour sauter · <1>↓</1> pour s’accroupir"],
     "pJ7XCo": ["Cette page ne référence aucun fichier ou image local."],
@@ -4978,6 +5001,9 @@
     "qbfj1f": ["Réception des objets"],
     "qd7L1J": [["source"], " : ", ["updated"], " mis à jour, ", ["upToDate"], " déjà à jour"],
     "qdBUHP": ["Impossible de charger ", ["fileName"]],
+    "qi17kj": [
+      "Intégrer un instantané en direct d’un tableau .excalidraw de cet espace de travail."
+    ],
     "qi1F96": ["Afficher dans l'Explorateur de fichiers"],
     "qiRoLb": ["Résume tout ce que j'ai changé cette semaine"],
     "qioCwA": ["Aller à la page ", ["pageNumber"]],

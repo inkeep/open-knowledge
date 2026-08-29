@@ -12,6 +12,7 @@
  * call site automatically lights up the other.
  */
 import {
+  AlignCenter,
   AppWindow,
   Box,
   ChevronRight,
@@ -25,6 +26,7 @@ import {
   MessageSquareWarning,
   PanelTop,
   Paperclip,
+  PenTool,
   Sigma,
   SquarePlay,
   Volume2,
@@ -33,6 +35,7 @@ import {
 } from 'lucide-react';
 
 const ICON_COMPONENTS: Record<string, LucideIcon> = {
+  AlignCenter,
   AppWindow,
   ChevronRight,
   CopyPlus,
@@ -44,12 +47,23 @@ const ICON_COMPONENTS: Record<string, LucideIcon> = {
   MessageSquareWarning,
   PanelTop,
   Paperclip,
+  PenTool,
   Sigma,
   SquarePlay,
   Volume2,
   Workflow,
   ZoomIn,
 };
+
+/**
+ * Whether a descriptor icon name has an explicit `ICON_COMPONENTS` entry.
+ * Distinct from `resolveIcon` returning the fallback — the fallback
+ * component could legitimately be mapped by name, so identity comparison
+ * against it can't detect a missing mapping.
+ */
+export function hasIconMapping(iconName: string): boolean {
+  return Object.hasOwn(ICON_COMPONENTS, iconName);
+}
 
 /**
  * Resolve a descriptor icon name (e.g., `'MessageSquareWarning'`) to its
