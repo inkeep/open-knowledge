@@ -2767,7 +2767,15 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             `[persistence] onLoadDocument ${documentName}: fragment.length=${xmlFragment.length} before update`,
           );
 
-          if (xmlFragment.length === 0) {
+          // Both surfaces must be empty before seeding. Y.Text is the source of
+          // truth (precedent #38); a fragment-only emptiness test asks the derived
+          // replica whether the document has content, so a doc holding source
+          // bytes whose fragment has not been derived would be re-seeded from disk
+          // over live content. Requiring both empty is strictly more conservative
+          // than either check alone and is a no-op for the ordinary cold load,
+          // where the seed is a paired write that populates the two together.
+          const ytextAtLoad = document.getText('source');
+          if (xmlFragment.length === 0 && ytextAtLoad.length === 0) {
             // Load XmlFragment + Y.Text atomically under FILE_WATCHER_ORIGIN
             // (paired-write). Y.Text receives the FULL file content verbatim
             // (FM + body) so the YAML region of Y.Text — the FM source of

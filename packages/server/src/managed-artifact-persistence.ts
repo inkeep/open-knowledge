@@ -455,8 +455,16 @@ export function loadManagedArtifactDoc(
   const extParsed = parseExternalSkillDocName(documentName);
   if (extParsed && externalSkillAbsPath(extParsed.name, extParsed.rel) === null) return;
 
+  // Seed only a document that is empty on BOTH surfaces. Y.Text is the source
+  // of truth (precedent #38), so an emptiness test that reads only the fragment
+  // asks the derived replica a question the truth surface owns: a document
+  // holding source bytes whose fragment has not been derived would read as
+  // "empty" and get seeded from disk ON TOP of live content. Checking both is
+  // strictly more conservative than either alone — it refuses to seed whenever
+  // any surface holds content, in either direction of divergence.
   const xmlFragment = document.getXmlFragment('default');
-  if (xmlFragment.length > 0) return;
+  const ytext = document.getText('source');
+  if (xmlFragment.length > 0 || ytext.length > 0) return;
 
   const filePath = managedArtifactAbsPath(documentName, ctx);
   if (!existsSync(filePath)) return;
