@@ -6,7 +6,8 @@ This is the public OpenKnowledge repository. Keep changes compatible with the pu
 
 - Read [README.md](./README.md) for the project overview.
 - Read [CONTRIBUTING.md](./CONTRIBUTING.md) before changing public PR flow, dependencies, or exported docs.
-- Use Node.js 24 or newer and pnpm 10 or newer.
+- Use the Node.js version in `.node-version` (CI and releases build on exactly that) and pnpm 10 or newer. A newer Node than the pin will install and test without complaint — it is not what ships.
+- `pnpm run check` also needs a Rust toolchain and `pkg-config` on PATH: `packages/native-config` is a Rust addon the workspace depends on, so a missing `cargo` fails the check before any TypeScript runs.
 
 ## Commands
 
