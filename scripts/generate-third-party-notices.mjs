@@ -20,7 +20,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { argv, exit } from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(SCRIPT_DIR);
@@ -90,14 +90,20 @@ function byteCompare(a, b) {
 function loadLicenseText(name) {
   return readFileSync(join(SCRIPT_DIR, 'license-texts', `${name}.txt`), 'utf8').trim();
 }
-const LICENSE_TEXTS = {
-  mit: loadLicenseText('mit'),
-  isc: loadLicenseText('isc'),
-  apache: loadLicenseText('apache-2.0'),
-  bsd2: loadLicenseText('bsd-2-clause'),
-  bsd3: loadLicenseText('bsd-3-clause'),
-  lgpl3: loadLicenseText('lgpl-3.0'),
-};
+// Read inside `build()` rather than here, so module scope touches no disk. That
+// keeps a bare `import` of this file inert, which the argv guard at the bottom
+// alone does not achieve, and it keeps a missing `license-texts/*.txt` failing
+// in the generator instead of in whatever else happens to import it.
+function loadLicenseTexts() {
+  return {
+    mit: loadLicenseText('mit'),
+    isc: loadLicenseText('isc'),
+    apache: loadLicenseText('apache-2.0'),
+    bsd2: loadLicenseText('bsd-2-clause'),
+    bsd3: loadLicenseText('bsd-3-clause'),
+    lgpl3: loadLicenseText('lgpl-3.0'),
+  };
+}
 
 // ─── closure resolution ──────────────────────────────────────────────────────
 
@@ -719,6 +725,7 @@ function bundledRustCratesSection() {
 }
 
 function build() {
+  const LICENSE_TEXTS = loadLicenseTexts();
   const collected = collectClosure();
 
   // Dedupe by name@version — pnpm's nested resolution can surface the same
@@ -1010,73 +1017,87 @@ function build() {
 
 // ─── main ────────────────────────────────────────────────────────────────────
 
-const generated = build();
+function main() {
+  const generated = build();
 
-// Compute a structured diff between the existing committed file and what we
-// would write now. Used by `--check` to surface what changed so contributors
-// can debug drift without having to regenerate locally to see the delta.
-function computeHeaderDiff(existing, fresh) {
-  const headerOf = (s) => new Set(s.split('\n').filter((l) => /^### `[^@]+@[^`]+`$/.test(l)));
-  const a = headerOf(existing);
-  const b = headerOf(fresh);
-  const added = [...b].filter((h) => !a.has(h)).sort();
-  const removed = [...a].filter((h) => !b.has(h)).sort();
-  return { added, removed };
-}
-
-if (CHECK_MODE) {
-  if (!existsSync(OUT_PATH)) {
-    console.error(`THIRD_PARTY_NOTICES.md not found at ${OUT_PATH}`);
-    console.error('Run `pnpm run notices` to regenerate.');
-    exit(1);
+  // Compute a structured diff between the existing committed file and what we
+  // would write now. Used by `--check` to surface what changed so contributors
+  // can debug drift without having to regenerate locally to see the delta.
+  function computeHeaderDiff(existing, fresh) {
+    const headerOf = (s) => new Set(s.split('\n').filter((l) => /^### `[^@]+@[^`]+`$/.test(l)));
+    const a = headerOf(existing);
+    const b = headerOf(fresh);
+    const added = [...b].filter((h) => !a.has(h)).sort();
+    const removed = [...a].filter((h) => !b.has(h)).sort();
+    return { added, removed };
   }
-  const existing = readFileSync(OUT_PATH, 'utf8');
-  if (existing !== generated) {
-    const { added, removed } = computeHeaderDiff(existing, generated);
-    console.error(
-      `${relative(REPO_ROOT, OUT_PATH)} is out of date with the resolved dependency tree.`,
-    );
-    console.error('');
-    if (added.length > 0) {
-      console.error(`Added (${added.length}):`);
-      for (const h of added.slice(0, 25)) console.error(`  + ${h.replace(/^### /, '')}`);
-      if (added.length > 25) console.error(`  + ... and ${added.length - 25} more`);
-      console.error('');
+
+  if (CHECK_MODE) {
+    if (!existsSync(OUT_PATH)) {
+      console.error(`THIRD_PARTY_NOTICES.md not found at ${OUT_PATH}`);
+      console.error('Run `pnpm run notices` to regenerate.');
+      exit(1);
     }
-    if (removed.length > 0) {
-      console.error(`Removed (${removed.length}):`);
-      for (const h of removed.slice(0, 25)) console.error(`  - ${h.replace(/^### /, '')}`);
-      if (removed.length > 25) console.error(`  - ... and ${removed.length - 25} more`);
-      console.error('');
-    }
-    if (added.length === 0 && removed.length === 0) {
+    const existing = readFileSync(OUT_PATH, 'utf8');
+    if (existing !== generated) {
+      const { added, removed } = computeHeaderDiff(existing, generated);
       console.error(
-        'No package list changes — license text, copyright extraction, or section structure differs.',
+        `${relative(REPO_ROOT, OUT_PATH)} is out of date with the resolved dependency tree.`,
       );
       console.error('');
+      if (added.length > 0) {
+        console.error(`Added (${added.length}):`);
+        for (const h of added.slice(0, 25)) console.error(`  + ${h.replace(/^### /, '')}`);
+        if (added.length > 25) console.error(`  + ... and ${added.length - 25} more`);
+        console.error('');
+      }
+      if (removed.length > 0) {
+        console.error(`Removed (${removed.length}):`);
+        for (const h of removed.slice(0, 25)) console.error(`  - ${h.replace(/^### /, '')}`);
+        if (removed.length > 25) console.error(`  - ... and ${removed.length - 25} more`);
+        console.error('');
+      }
+      if (added.length === 0 && removed.length === 0) {
+        console.error(
+          'No package list changes — license text, copyright extraction, or section structure differs.',
+        );
+        console.error('');
+      }
+      console.error('Run `pnpm run notices` to regenerate, then commit the result.');
+      exit(1);
     }
-    console.error('Run `pnpm run notices` to regenerate, then commit the result.');
+    console.log(`${relative(REPO_ROOT, OUT_PATH)} is up to date.`);
+  } else {
+    writeFileSync(OUT_PATH, generated);
+    console.log(
+      `Wrote ${relative(REPO_ROOT, OUT_PATH)} (${Buffer.byteLength(generated, 'utf8')} bytes).`,
+    );
+  }
+
+  // Fail-closed if the audit bucket is non-empty. A new transitive with an
+  // unhandled SPDX expression should block the gate, not slip into the output
+  // unnoticed. Bypassed by `OK_NOTICES_ALLOW_AUDIT_BUCKET=1` for cases where
+  // the human auditor has reviewed and explicitly accepted.
+  if (build.lastAuditCount > 0 && process.env.OK_NOTICES_ALLOW_AUDIT_BUCKET !== '1') {
+    console.error('');
+    console.error(
+      `Audit-needed bucket is non-empty (${build.lastAuditCount} package(s) with unrecognized SPDX).`,
+    );
+    console.error(
+      'Review and either (a) add explicit handling in `categorize()` and re-run, or (b) re-run with `OK_NOTICES_ALLOW_AUDIT_BUCKET=1` after auditing.',
+    );
     exit(1);
   }
-  console.log(`${relative(REPO_ROOT, OUT_PATH)} is up to date.`);
-} else {
-  writeFileSync(OUT_PATH, generated);
-  console.log(
-    `Wrote ${relative(REPO_ROOT, OUT_PATH)} (${Buffer.byteLength(generated, 'utf8')} bytes).`,
-  );
 }
 
-// Fail-closed if the audit bucket is non-empty. A new transitive with an
-// unhandled SPDX expression should block the gate, not slip into the output
-// unnoticed. Bypassed by `OK_NOTICES_ALLOW_AUDIT_BUCKET=1` for cases where
-// the human auditor has reviewed and explicitly accepted.
-if (build.lastAuditCount > 0 && process.env.OK_NOTICES_ALLOW_AUDIT_BUCKET !== '1') {
-  console.error('');
-  console.error(
-    `Audit-needed bucket is non-empty (${build.lastAuditCount} package(s) with unrecognized SPDX).`,
-  );
-  console.error(
-    'Review and either (a) add explicit handling in `categorize()` and re-run, or (b) re-run with `OK_NOTICES_ALLOW_AUDIT_BUCKET=1` after auditing.',
-  );
-  exit(1);
+// Nothing above this line touches disk, spawns, or prints on a bare `import`;
+// module scope is limited to definitions and pure computation over `argv`. Keep
+// it that way when adding code here. Both real callers invoke this file as
+// `node scripts/generate-third-party-notices.mjs` (the `notices` package script
+// and `check-notices-clean.sh`), so the guard is transparent to them — but
+// without it, merely importing this module rewrites the tracked
+// THIRD_PARTY_NOTICES.md, which would leave the drift check that runs after it
+// comparing the generator against its own fresh output.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
 }

@@ -52,7 +52,7 @@ import { pathToFileURL } from 'node:url';
 import {
   realContains,
   realFindMirroredCommits,
-  realStableTags,
+  realReleaseTags,
   resolveShippedVersion,
 } from './resolve-shipped-version.mjs';
 
@@ -277,7 +277,7 @@ async function fetchPipeline() {
  * contributes NO evidence — only a `not-in-any-stable` verdict, which required
  * finding the commit and walking every tag, can justify withdrawing a stamp.
  */
-function resolveTicket(ticket, stableTags, rank) {
+function resolveTicket(ticket, releaseTags, rank) {
   let best = null;
   let provenNotShipped = false;
   for (const url of ticket.prs) {
@@ -289,7 +289,10 @@ function resolveTicket(ticket, stableTags, rank) {
     if (!sha) continue;
     const r = resolveShippedVersion({
       privateSha: sha,
-      stableTags,
+      // Written out rather than shorthand: the resolver's parameter is named for
+      // the stable channel it defaults to, but it documents the raw
+      // `git tag --list v*` output as what it wants, betas included.
+      stableTags: releaseTags,
       findMirroredCommits: realFindMirroredCommits,
       contains: realContains,
     });
@@ -311,8 +314,8 @@ async function main() {
     return;
   }
 
-  const stableTags = realStableTags();
-  const sorted = stableTags.filter((t) => /^v\d+\.\d+\.\d+$/.test(t.trim())).map((t) => t.trim());
+  const releaseTags = realReleaseTags();
+  const sorted = releaseTags.filter((t) => /^v\d+\.\d+\.\d+$/.test(t.trim())).map((t) => t.trim());
   const rank = new Map(sorted.map((t, i) => [t, i]));
 
   const { releaseByVersion, tickets } = await fetchPipeline();
@@ -320,7 +323,7 @@ async function main() {
 
   const plans = [];
   for (const ticket of tickets) {
-    const { evidence, shippedTag } = resolveTicket(ticket, stableTags, rank);
+    const { evidence, shippedTag } = resolveTicket(ticket, releaseTags, rank);
     const plan = planTicketReconciliation({
       attachedReleases: ticket.attachedReleases,
       shippedTag,

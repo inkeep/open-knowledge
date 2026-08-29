@@ -99,12 +99,17 @@ describe('candidate enumeration', () => {
     // prerelease ever reached the channel-aware resolver and the beta channel
     // resolved nothing in production. Every beta test injects its own tag list,
     // so the unit suite could not see it; this is what stands in for that.
+    //
+    // Two classes, two mechanisms. THIS pin covers the bypass: the shared reader
+    // must actually be imported, which no link check can assert (a file that
+    // imports nothing links perfectly). `module-graph.test.mjs` covers the rename:
+    // that the imported symbol still EXISTS, which this pin cannot see, since it
+    // reads the subject module's text and a rename of the export leaves that untouched.
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/s);
+    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/);
     expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
     // The list reaches the resolver exactly as git gave it. Narrowing it here,
     // at the definition or at the call site, is the whole failure.
-    expect(source).toMatch(/const stableTags = realReleaseTags\(\);/);
     expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
 
