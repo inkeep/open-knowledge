@@ -1,0 +1,325 @@
+{
+  "provenance": {
+    "producerSourceRead": "@agentclientprotocol/codex-acp@1.6.2",
+    "producerWireObserved": "@agentclientprotocol/codex-acp@1.4.0",
+    "recheckedOn": "2026-08-26",
+    "emission": [
+      "createWarningEvent      -> createAgentTextMessageChunk(`Warning: ${event.message}\\n\\n`)",
+      "createConfigWarningEvent-> const text = details ? `${summary}\\n\\n${details}` : summary; createAgentTextMessageChunk(`Config warning: ${text}\\n\\n`)",
+      "createTextEvent         -> createAgentTextMessageChunk(event.delta, event.itemId, meta)"
+    ],
+    "note": "createAgentMessageChunk omits the messageId key entirely when the argument is falsy, which is why both warning families arrive without one while ordinary answers carry event.itemId. The legacy branches are reached whenever the client has not negotiated the JetBrains-private typed-failure capability, which Open Knowledge never advertises. Only candidates[0] is recorded traffic, from a thread whose meta names the wire-observed version; every Config warning entry is reconstructed from the emission templates above, which were read out of the source-read version. The two agree byte for byte on all three literals."
+  },
+  "agents": {
+    "codexRegistry": {
+      "source": "registry",
+      "id": "codex-acp",
+      "name": "Codex"
+    },
+    "codexCustom": {
+      "source": "custom",
+      "id": "codex-acp",
+      "name": "Codex (local build)"
+    },
+    "claudeRegistry": {
+      "source": "registry",
+      "id": "claude-acp",
+      "name": "Claude Agent"
+    }
+  },
+  "candidates": [
+    {
+      "name": "warning-skills-budget",
+      "why": "The payload observed on the wire and persisted to a real thread log.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter. Disable unused skills or plugins to leave more room for the rest.\n\n"
+        }
+      }
+    },
+    {
+      "name": "config-warning-with-details",
+      "why": "The details branch puts a blank line INSIDE one event, which is why a blank line can never be a split point.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Config warning: Ignored 2 invalid entries in config.toml.\n\n- `model_reasoning_effort`: expected one of low, medium, high\n- `sandbox_mode`: unknown value `full-access`\n\n"
+        }
+      }
+    },
+    {
+      "name": "config-warning-summary-only",
+      "why": "The no-details branch, whose whole body is a single line.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Config warning: Ignored 1 invalid entry in config.toml.\n\n"
+        }
+      }
+    },
+    {
+      "name": "warning-whose-message-opens-with-a-space",
+      "why": "The adapter interpolates the message straight after the literal, so a message with its own leading space yields two spaces after the colon. The literal is still intact and this is still a warning; only the prefix itself is fixed, never what follows it.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning:  something happened\n\n"
+        }
+      }
+    }
+  ],
+  "atomicity": {
+    "multiParagraphWarning": {
+      "why": "A single event whose body reads as chrome followed by prose. The adapter cannot produce this — warnings interpolate only the warning message, and answers are separate events carrying an item id — but if one ever arrived it is classified whole, as one notice, and is NEVER split at the blank line. Carving a leading paragraph out of a larger body would mean reinterpreting arbitrary agent prose, which is the failure mode the complete-envelope rule exists to prevent. The residual is a documented, accepted risk.",
+      "expectCandidate": true,
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened.\n\nYes, the refactor is safe. The call sites all pass the new argument.\n\n"
+        }
+      }
+    }
+  },
+  "neighbors": {
+    "contextCompacted": {
+      "why": "Real adjacent no-ID Codex chrome. Terminates in \\n\\n like a candidate but carries neither prefix, so generic coalescing would happily merge it with one.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "*Context compacted to fit the model's context window.*\n\n"
+        }
+      }
+    },
+    "turnError": {
+      "why": "Real adjacent no-ID Codex chrome from the turn-error path.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "stream disconnected before completion\n\n"
+        }
+      }
+    }
+  },
+  "ordinaryAnswer": {
+    "why": "An ordinary assistant answer. Carries event.itemId as messageId, which is the gate that keeps real prose out of the classifier.",
+    "update": {
+      "sessionUpdate": "agent_message_chunk",
+      "messageId": "msg_01H8XK2Q4V7N3PZ",
+      "content": {
+        "type": "text",
+        "text": "The skills are all still loaded. Only their one-line descriptions were shortened.\n\n"
+      }
+    }
+  },
+  "negatives": [
+    {
+      "name": "other-registry-agent",
+      "why": "Byte-identical warning text from a different registry agent. No producer contract exists outside codex-acp.",
+      "agent": "claudeRegistry",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened to fit the skills context budget.\n\n"
+        }
+      }
+    },
+    {
+      "name": "custom-agent-same-id",
+      "why": "A user-configured entry can reuse the id while spawning an entirely different executable.",
+      "agent": "codexCustom",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened to fit the skills context budget.\n\n"
+        }
+      }
+    },
+    {
+      "name": "explicit-message-id",
+      "why": "An answer that happens to open with the prefix still carries an item id, so it is ordinary prose.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "messageId": "msg_01H8XK2Q4V7N3PZ",
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened to fit the skills context budget.\n\n"
+        }
+      }
+    },
+    {
+      "name": "null-message-id",
+      "why": "The characterized producer omits the key outright, so an explicit null is a shape it cannot emit. The ACP schema admits null here, which makes this a value some other producer chose to send rather than an absence.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "messageId": null,
+        "content": {
+          "type": "text",
+          "text": "Warning: Skill descriptions were shortened to fit the skills context budget.\n\n"
+        }
+      }
+    },
+    {
+      "name": "lowercase-prefix",
+      "why": "Casing is part of the producer's literal, not a normalizable detail.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "warning: something happened\n\n"
+        }
+      }
+    },
+    {
+      "name": "no-space-after-colon",
+      "why": "The producer's literal includes the trailing space.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning:something happened\n\n"
+        }
+      }
+    },
+    {
+      "name": "leading-whitespace",
+      "why": "The prefix must be at byte zero; lstrip-style tolerance is what makes a prose heuristic unsafe.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": " Warning: something happened\n\n"
+        }
+      }
+    },
+    {
+      "name": "config-warning-casing",
+      "why": "Same casing rule for the sibling family.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Config Warning: Ignored 1 invalid entry.\n\n"
+        }
+      }
+    },
+    {
+      "name": "missing-terminator",
+      "why": "Real review-mode chrome is emitted trimmed, so a trimmed warning-looking body is a shape the producer genuinely makes and must stay prose.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: this function swallows the error without logging it."
+        }
+      }
+    },
+    {
+      "name": "single-trailing-newline",
+      "why": "One newline is not the producer's two-byte terminator.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: something happened\n"
+        }
+      }
+    },
+    {
+      "name": "trailing-space-after-terminator",
+      "why": "The terminator must be the final bytes.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: something happened\n\n "
+        }
+      }
+    },
+    {
+      "name": "thought-chunk",
+      "why": "Reasoning is a different stream and renders as its own item.",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: something happened\n\n"
+        }
+      }
+    },
+    {
+      "name": "user-message-chunk",
+      "why": "A user echo is never agent chrome.",
+      "update": {
+        "sessionUpdate": "user_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: something happened\n\n"
+        }
+      }
+    },
+    {
+      "name": "non-text-content",
+      "why": "An image block has no text to classify.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "image",
+          "mimeType": "image/png",
+          "data": "iVBORw0KGgo="
+        }
+      }
+    },
+    {
+      "name": "unrelated-update-kind",
+      "why": "Non-chunk updates carry no message text at all.",
+      "update": {
+        "sessionUpdate": "usage_update",
+        "used": 1200,
+        "size": 200000
+      }
+    },
+    {
+      "name": "prefix-only-no-terminator",
+      "why": "The bare prefix with nothing after it still fails the terminator gate.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "Warning: "
+        }
+      }
+    },
+    {
+      "name": "empty-text",
+      "why": "An empty body satisfies no gate.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": ""
+        }
+      }
+    },
+    {
+      "name": "terminator-only",
+      "why": "The terminator alone carries no prefix.",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": {
+          "type": "text",
+          "text": "\n\n"
+        }
+      }
+    }
+  ]
+}

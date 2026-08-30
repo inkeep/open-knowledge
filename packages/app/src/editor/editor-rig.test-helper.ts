@@ -16,6 +16,7 @@ import Collaboration from '@tiptap/extension-collaboration';
 import StarterKit from '@tiptap/starter-kit';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
 import type * as Y from 'yjs';
+import { sharedExtensions } from './extensions/shared';
 
 export function mountLightEditor(options: { content?: string; extensions: Extensions }): Editor {
   const host = document.createElement('div');
@@ -29,6 +30,31 @@ export function mountLightEditor(options: { content?: string; extensions: Extens
       ...options.extensions,
     ],
   });
+}
+
+/**
+ * An editor over the REAL app roster — `sharedExtensions` exactly as shipped,
+ * nothing added, nothing swapped. That fidelity is the point for anything
+ * asserting which extension wins a keystroke.
+ *
+ * NOT interchangeable with `mountLightEditor`, which assembles a minimal
+ * link-testing schema from StarterKit. Handing `sharedExtensions` to that one
+ * yields a doc with FOUR list nodes (`bulletList`, `orderedList`, `listItem`,
+ * `list`) and raises nothing, because StarterKit's list family is disabled
+ * only inside `sharedExtensions` itself — so the suite would quietly run
+ * against a document model the app never builds.
+ *
+ * Focus is applied here rather than left to the caller (the departure from the
+ * rigs above) because a full-roster editor has plugins gated on
+ * `view.hasFocus()`. `editor.view.focus()`, not `commands.focus()`, which
+ * defers the real DOM focus into a frame landing after a synchronous body.
+ */
+export function mountAppEditor(): Editor {
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  const editor = new Editor({ element: host, extensions: sharedExtensions, editable: true });
+  editor.view.focus();
+  return editor;
 }
 
 /**

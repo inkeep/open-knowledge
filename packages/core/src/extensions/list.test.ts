@@ -4,7 +4,14 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { describe, expect, test } from 'vitest';
 import { MarkdownManager } from '../markdown/index.ts';
-import { ListItemNode, ListNode } from './list.ts';
+import {
+  BULLET_INPUT_RE,
+  ListItemNode,
+  ListNode,
+  ORDERED_INPUT_RE,
+  TASK_BARE_INPUT_RE,
+  TASK_MARKER_INPUT_RE,
+} from './list.ts';
 
 const extensions = [Document, Paragraph, Text, ListNode, ListItemNode];
 const schema = getSchema(extensions);
@@ -207,6 +214,35 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
     expect(listNode?.attrs.bulletMarker).toBe('+');
   });
 
+  // What the task-item input rules construct, on the way back out. The rules
+  // accept spellings GFM does not (`[]` with nothing between the brackets), so
+  // the write-back is where that widening has to disappear: every unchecked
+  // spelling has to land as the canonical `- [ ] `, and only the uppercase box
+  // survives as itself.
+  test.each([
+    { attrs: { checked: false, sourceCheckboxChar: null }, marker: '- [ ]' },
+    { attrs: { checked: true, sourceCheckboxChar: null }, marker: '- [x]' },
+    { attrs: { checked: true, sourceCheckboxChar: 'X' }, marker: '- [X]' },
+  ])('a task item with $attrs serializes as $marker', ({ attrs, marker }) => {
+    const md = mdManager.serialize({
+      type: 'doc',
+      content: [
+        {
+          type: 'list',
+          attrs: { ordered: false, bulletMarker: '-' },
+          content: [
+            {
+              type: 'listItem',
+              attrs,
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'do it' }] }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(md).toBe(`${marker} do it\n`);
+  });
+
   test('ordered list delimiter preserved', () => {
     const md = '1) first\n';
     const json = mdManager.parse(md);
@@ -216,78 +252,155 @@ describe('list pipeline round-trip (via new MarkdownManager)', () => {
   });
 });
 
-// Regression tests for the input rule priority bug.
-// Before the fix, typing `- [ ] ` created a bullet list because the bullet
-// rule regex /^\s*([-+*])\s$/ matched `- ` first and the task rule never
-// had a chance to fire. The fix adds a negative lookahead to the bullet
-// regex so it rejects patterns immediately followed by a checkbox.
-describe('list input rule priority (regression for QA-013)', () => {
-  // Mirror of the regexes in list.ts — kept in sync manually.
-  // If these change in list.ts, update here AND verify the fix still holds.
-  const BULLET_RULE_RE = /^\s*([-+*])(?!\s*\[[ xX]\])\s$/;
-  const ORDERED_RULE_RE = /^\s*(\d+)([.)])\s$/;
-  const TASK_RULE_RE = /^\s*[-*+]\s\[([ xX])\]\s$/;
-
+// The bullet rule must not claim a checkbox spelling. What enforces that is the
+// trailing `\s$`: the rule matches only while the marker is followed by one
+// space and nothing else, so `- [` has stopped matching before the bracket is
+// closed. A negative lookahead used to sit in this regex claiming the job and
+// was removed — it could never fire, and an exhaustive comparison over every
+// string of length <= 5 from `-+* \t[]xXa` found no input where it changed the
+// verdict. These assertions are pointed at the anchor so they can fail if it
+// ever loosens.
+describe('bullet rule vs the checkbox spellings', () => {
   test('bullet rule does NOT match task list patterns', () => {
-    expect(BULLET_RULE_RE.test('- [ ] ')).toBe(false);
-    expect(BULLET_RULE_RE.test('- [x] ')).toBe(false);
-    expect(BULLET_RULE_RE.test('- [X] ')).toBe(false);
-    expect(BULLET_RULE_RE.test('* [ ] ')).toBe(false);
-    expect(BULLET_RULE_RE.test('+ [x] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('- [ ] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('- [x] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('- [X] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('* [ ] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('+ [x] ')).toBe(false);
+  });
+
+  test('the trailing anchor is what rejects them', () => {
+    // Nothing may follow the single space. That is the whole mechanism, so
+    // these are the cases that would break first if the anchor loosened.
+    expect(BULLET_INPUT_RE.test('- ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('- [')).toBe(false);
+    expect(BULLET_INPUT_RE.test('-  ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('- a')).toBe(false);
   });
 
   test('bullet rule matches plain bullet patterns', () => {
-    expect(BULLET_RULE_RE.test('- ')).toBe(true);
-    expect(BULLET_RULE_RE.test('* ')).toBe(true);
-    expect(BULLET_RULE_RE.test('+ ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('- ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('* ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('+ ')).toBe(true);
   });
 
   test('bullet rule matches with leading whitespace (nested)', () => {
-    expect(BULLET_RULE_RE.test('  - ')).toBe(true);
-    expect(BULLET_RULE_RE.test('    * ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('  - ')).toBe(true);
+    expect(BULLET_INPUT_RE.test('    * ')).toBe(true);
     // And rejects task patterns even when nested
-    expect(BULLET_RULE_RE.test('  - [ ] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('  - [ ] ')).toBe(false);
   });
 
   test('bullet rule captures the marker character', () => {
-    expect('- '.match(BULLET_RULE_RE)?.[1]).toBe('-');
-    expect('* '.match(BULLET_RULE_RE)?.[1]).toBe('*');
-    expect('+ '.match(BULLET_RULE_RE)?.[1]).toBe('+');
+    expect('- '.match(BULLET_INPUT_RE)?.[1]).toBe('-');
+    expect('* '.match(BULLET_INPUT_RE)?.[1]).toBe('*');
+    expect('+ '.match(BULLET_INPUT_RE)?.[1]).toBe('+');
   });
 
   test('task rule matches task list patterns with unchecked state', () => {
-    const m = '- [ ] '.match(TASK_RULE_RE);
+    const m = '- [ ] '.match(TASK_MARKER_INPUT_RE);
     expect(m).not.toBeNull();
     expect(m?.[1]).toBe(' ');
   });
 
   test('task rule matches task list patterns with checked state', () => {
-    const checkedLower = '- [x] '.match(TASK_RULE_RE);
+    const checkedLower = '- [x] '.match(TASK_MARKER_INPUT_RE);
     expect(checkedLower?.[1]).toBe('x');
-    const checkedUpper = '- [X] '.match(TASK_RULE_RE);
+    const checkedUpper = '- [X] '.match(TASK_MARKER_INPUT_RE);
     expect(checkedUpper?.[1]).toBe('X');
   });
 
   test('task rule matches with alternative bullet markers', () => {
-    expect(TASK_RULE_RE.test('* [ ] ')).toBe(true);
-    expect(TASK_RULE_RE.test('+ [x] ')).toBe(true);
+    expect(TASK_MARKER_INPUT_RE.test('* [ ] ')).toBe(true);
+    expect(TASK_MARKER_INPUT_RE.test('+ [x] ')).toBe(true);
   });
 
   test('ordered rule does not conflict with bullet or task rules', () => {
     // All three rules are mutually exclusive for their shapes
-    expect(BULLET_RULE_RE.test('1. ')).toBe(false);
-    expect(TASK_RULE_RE.test('1. ')).toBe(false);
-    expect(ORDERED_RULE_RE.test('1. ')).toBe(true);
-    expect(ORDERED_RULE_RE.test('- ')).toBe(false);
-    expect(ORDERED_RULE_RE.test('- [ ] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('1. ')).toBe(false);
+    expect(TASK_MARKER_INPUT_RE.test('1. ')).toBe(false);
+    expect(ORDERED_INPUT_RE.test('1. ')).toBe(true);
+    expect(ORDERED_INPUT_RE.test('- ')).toBe(false);
+    expect(ORDERED_INPUT_RE.test('- [ ] ')).toBe(false);
   });
 
   test('ordered rule captures number and delimiter', () => {
-    const dot = '1. '.match(ORDERED_RULE_RE);
+    const dot = '1. '.match(ORDERED_INPUT_RE);
     expect(dot?.[1]).toBe('1');
     expect(dot?.[2]).toBe('.');
-    const paren = '42) '.match(ORDERED_RULE_RE);
+    const paren = '42) '.match(ORDERED_INPUT_RE);
     expect(paren?.[1]).toBe('42');
     expect(paren?.[2]).toBe(')');
+  });
+
+  test('bullet rule does NOT match empty-bracket task patterns', () => {
+    expect(BULLET_INPUT_RE.test('- [] ')).toBe(false);
+    expect(BULLET_INPUT_RE.test('* [] ')).toBe(false);
+  });
+
+  test('task rule matches the empty-bracket shorthand', () => {
+    const m = '- [] '.match(TASK_MARKER_INPUT_RE);
+    expect(m).not.toBeNull();
+    expect(m?.[1]).toBe('');
+  });
+});
+
+// The bare checkbox shorthand: `[] `, `[ ] `, `[x] `, `[X] ` with no list
+// marker. This is the spelling a typing user actually produces — the bullet
+// rule claims `- ` at the space, so by the time the `[` is typed the marker is
+// already a listItem and TASK_MARKER_INPUT_RE has no prefix left to match. Before this
+// rule existed there was NO keystroke sequence that produced a checkbox.
+describe('bare task list input rule', () => {
+  test('matches every accepted checkbox spelling', () => {
+    expect('[] '.match(TASK_BARE_INPUT_RE)?.[1]).toBe('');
+    expect('[ ] '.match(TASK_BARE_INPUT_RE)?.[1]).toBe(' ');
+    expect('[x] '.match(TASK_BARE_INPUT_RE)?.[1]).toBe('x');
+    expect('[X] '.match(TASK_BARE_INPUT_RE)?.[1]).toBe('X');
+  });
+
+  test('matches with leading whitespace (nested)', () => {
+    expect(TASK_BARE_INPUT_RE.test('  [] ')).toBe(true);
+    expect(TASK_BARE_INPUT_RE.test('    [x] ')).toBe(true);
+  });
+
+  test('does not match a wikilink opener or a bracketed word', () => {
+    expect(TASK_BARE_INPUT_RE.test('[[')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('[[] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('[a] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('[xy] ')).toBe(false);
+  });
+
+  test('does not match a hyphenated marker (TASK_MARKER_INPUT_RE owns that shape)', () => {
+    expect(TASK_BARE_INPUT_RE.test('- [] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('* [x] ')).toBe(false);
+  });
+
+  // Pinned against TipTap's own TaskItem `inputRegex`, which this rule is
+  // adapted from. Both departures are deliberate; if someone later "aligns
+  // with upstream" they should have to delete an assertion that says why.
+  test('departs from upstream TipTap only where intended', () => {
+    const TIPTAP_TASK_ITEM_RE = /^\s*(\[([( |x])?\])\s$/;
+
+    // Agreement on every spelling that matters.
+    for (const shared of ['[] ', '[ ] ', '[x] ']) {
+      expect(TASK_BARE_INPUT_RE.test(shared)).toBe(true);
+      expect(TIPTAP_TASK_ITEM_RE.test(shared)).toBe(true);
+    }
+
+    // Departure 1: upstream's `[( |x]` class admits `(` and `|` literally.
+    expect(TIPTAP_TASK_ITEM_RE.test('[(] ')).toBe(true);
+    expect(TIPTAP_TASK_ITEM_RE.test('[|] ')).toBe(true);
+    expect(TASK_BARE_INPUT_RE.test('[(] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('[|] ')).toBe(false);
+
+    // Departure 2: upstream cannot produce the uppercase box that
+    // `sourceCheckboxChar` round-trips.
+    expect(TIPTAP_TASK_ITEM_RE.test('[X] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('[X] ')).toBe(true);
+  });
+
+  test('is anchored to the start of the textblock', () => {
+    expect(TASK_BARE_INPUT_RE.test('a[] ')).toBe(false);
+    expect(TASK_BARE_INPUT_RE.test('see [x] ')).toBe(false);
   });
 });

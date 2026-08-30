@@ -29,6 +29,7 @@ function makeDeps(overrides: Partial<MenuDeps> = {}): MenuDeps {
   return {
     appName: 'OpenKnowledge',
     showDevToolsMenu: true,
+    terminalCapable: true,
     dialog: {} as MenuDeps['dialog'],
     openNavigator: vi.fn(() => {}),
     openProject: vi.fn(() => Promise.resolve()),
@@ -1498,10 +1499,31 @@ describe('buildMenuTemplate — top-level Terminal menu', () => {
     expect(findByLabel(linux, 'Kill Terminal')?.enabled).toBe(true);
   });
 
-  test('PTY-backed commands stay disabled on unsupported platforms', () => {
+  test('PTY-backed commands are enabled on supported Windows builds', () => {
     const windows = buildMenuTemplateForPlatform(
       'win32',
       makeDeps({
+        onToggleTerminal: vi.fn(() => {}),
+        onMoveTerminal: vi.fn(() => {}),
+        onNewTerminal: vi.fn(() => {}),
+        onNewTerminalWindow: vi.fn(() => {}),
+        onKillTerminal: vi.fn(() => {}),
+        terminalLive: true,
+      }),
+    );
+
+    expect(findByLabel(windows, 'Show Terminal')?.enabled).toBe(true);
+    expect(findByLabel(windows, 'Move Terminal to right')?.enabled).toBe(true);
+    expect(findByLabel(windows, 'New Terminal')?.enabled).toBe(true);
+    expect(findByLabel(windows, 'New Terminal Window')?.enabled).toBe(true);
+    expect(findByLabel(windows, 'Kill Terminal')?.enabled).toBe(true);
+  });
+
+  test('pre-floor Windows disables every PTY-backed menu affordance', () => {
+    const windows = buildMenuTemplateForPlatform(
+      'win32',
+      makeDeps({
+        terminalCapable: false,
         onToggleTerminal: vi.fn(() => {}),
         onMoveTerminal: vi.fn(() => {}),
         onNewTerminal: vi.fn(() => {}),

@@ -152,17 +152,183 @@ describe('hashFromFolderPath', () => {
   });
 });
 
+/**
+ * What `window.location.hash` actually holds once the app assigns a built hash:
+ * the WHATWG fragment percent-encode set, applied by a real URL parser rather
+ * than by a literal written here.
+ *
+ * Deliberately NOT a hand-written encoded literal. A literal would bake this
+ * file's own belief about which characters the browser escapes into the
+ * assertion, so the test would still pass if that belief were wrong — and the
+ * encode set is precisely what these round-trips turn on (a space is escaped, a
+ * `#`, `?` or `%` is not, so those three reach the parser intact and are re-read
+ * as routing syntax). Pushing the built hash through a real `URL` keeps the
+ * encode set an input to the test rather than a constant inside it.
+ */
+function browserNormalizedHash(builtHash: string): string {
+  const url = new URL('file:///app/index.html');
+  url.hash = builtHash;
+  return url.hash;
+}
+
+/**
+ * The builders are one half of a round trip: the app assigns `hashFromDocName`
+ * / `hashFromFolderPath` to `window.location.hash`, the browser normalizes it,
+ * and `docNameFromHash` reads the name back out. A name carrying a route
+ * metacharacter has to survive that trip unchanged, exactly as a name carrying
+ * a space already does.
+ *
+ * `hashFromAssetPath` is the in-repo reference implementation of this
+ * contract: it percent-encodes per segment, so `/` stays a route separator.
+ * (`encodeShareTargetForHash` also encodes, but whole-path by design, so a
+ * deep link's `/` becomes `%2F` — a different contract, not a model for this
+ * one.) These pin the per-segment contract for the two builders every in-app
+ * navigation goes through.
+ */
+describe('doc and folder hashes round-trip through the browser', () => {
+  function roundTripDoc(docName: string): string | null {
+    return docNameFromHash(browserNormalizedHash(hashFromDocName(docName)));
+  }
+
+  function roundTripFolder(folderPath: string): string | null {
+    // A folder hash reads back with its trailing slash — that slash is the
+    // folder signal `tabIdFromHash` strips to recover the folder path.
+    return docNameFromHash(browserNormalizedHash(hashFromFolderPath(folderPath)));
+  }
+
+  test('a spaced name round-trips (control — the already-working common path)', () => {
+    expect(roundTripDoc('My Notes/Ideas')).toBe('My Notes/Ideas');
+    expect(roundTripFolder('My Notes')).toBe('My Notes/');
+  });
+
+  test('a doc named with a leading `# ` round-trips', () => {
+    // The reported document. A markdown heading pasted in as a title is an
+    // ordinary name to the user; `#` only means "anchor" to the router.
+    expect(roundTripDoc('# 2 - Tokens')).toBe('# 2 - Tokens');
+  });
+
+  test('a doc named with a leading `#` and no space round-trips', () => {
+    expect(roundTripDoc('#Heading')).toBe('#Heading');
+  });
+
+  test('a doc with a mid-name `#` round-trips', () => {
+    expect(roundTripDoc('A # B')).toBe('A # B');
+  });
+
+  test('a `#` doc inside a folder resolves to the doc, not to its folder', () => {
+    // The dangerous shape: truncating at the `#` yields a still-valid folder
+    // hash, so the navigation silently succeeds at the wrong target instead of
+    // failing loudly.
+    expect(roundTripDoc('My Notes/# 2 - Tokens')).toBe('My Notes/# 2 - Tokens');
+  });
+
+  test('the separator survives as a separator, not as an escape', () => {
+    // No round trip above can see this. `docNameFromHash` decodes per segment
+    // too, so a whole-string `encodeURIComponent` in the builders round-trips
+    // every name here perfectly while emitting `#/My%20Notes%2FIdeas` — a hash
+    // with no route structure left in it, which the folder arm of
+    // `tabIdFromHash` and every href in the app read as one flat name. The
+    // built string is the only place the difference shows, so assert on it.
+    expect(hashFromDocName('My Notes/Ideas')).toBe('#/My%20Notes/Ideas');
+    expect(hashFromFolderPath('My Notes/Ideas')).toBe('#/My%20Notes/Ideas/');
+  });
+
+  test('a doc with a `?` round-trips', () => {
+    // `?` is the other route delimiter `firstRouteDelimiterIndex` looks for,
+    // and the browser leaves it unescaped in a fragment just like `#`.
+    expect(roundTripDoc('What now?')).toBe('What now?');
+  });
+
+  test('a doc with a `%` round-trips', () => {
+    // A raw `%` is not a percent-escape but is read as the start of one. It
+    // must reach the parser already escaped (`%25`), so the decode returns the
+    // literal `%` rather than throwing and falling back to the raw string.
+    expect(roundTripDoc('100% done')).toBe('100% done');
+  });
+
+  test('an anchor stays separable from a `#` in the doc name', () => {
+    // Both halves have to survive: the name must not swallow the anchor, and
+    // the anchor delimiter must remain the FIRST unescaped `#`, which is what
+    // both parsers look for. Encoding the name's own `#` is what makes the
+    // first unescaped one the anchor's.
+    const hash = browserNormalizedHash(hashFromDocName('# 2 - Tokens', 'intro'));
+    expect(docNameFromHash(hash)).toBe('# 2 - Tokens');
+    expect(anchorFromHash(hash)).toBe('intro');
+  });
+
+  test('folder paths carrying route metacharacters round-trip', () => {
+    expect(roundTripFolder('# Notes')).toBe('# Notes/');
+    expect(roundTripFolder('A # B')).toBe('A # B/');
+    expect(roundTripFolder('What now?')).toBe('What now?/');
+    expect(roundTripFolder('100% done')).toBe('100% done/');
+  });
+
+  test('a name carrying a lone surrogate does not throw', () => {
+    // encodeURIComponent throws URIError on an unpaired surrogate, which a
+    // docName can carry because it comes from a filename. Raw interpolation
+    // never threw, and these builders run inside render paths, so a throw
+    // would take out the surrounding tree instead of breaking one link.
+    const lone = 'note-\ud800-x';
+    expect(() => hashFromDocName(lone)).not.toThrow();
+    expect(() => hashFromFolderPath(lone)).not.toThrow();
+    expect(() => hashFromDocName(`folder/${lone}`)).not.toThrow();
+    // The encodable siblings of an unencodable segment are still encoded.
+    expect(hashFromDocName(`My Notes/${lone}`)).toContain('My%20Notes/');
+  });
+
+  test('the anchor is sanitized on the same terms as the name', () => {
+    // A heading slug is derived from user text, so it reaches the encoder from
+    // the same kind of source the name does. Every value this module escapes
+    // goes through one helper for that reason; without it the anchor argument
+    // was the one bare `encodeURIComponent` left on the headline builders.
+    expect(() => hashFromDocName('doc', 'head-\ud800')).not.toThrow();
+    expect(() => hashFromFolderPath('folder', 'head-\ud800')).not.toThrow();
+    expect(hashFromDocName('doc', 'a b\ud800')).toBe('#/doc#a%20b%EF%BF%BD');
+  });
+
+  test('a route metacharacter beside a lone surrogate is still escaped', () => {
+    // encodeURIComponent has no partial result: it throws for the whole call.
+    // Catching that and passing the segment through would hand the `#` to the
+    // router raw, which is the misparse this whole contract exists to stop, so
+    // the unpairable code unit is substituted before encoding instead.
+    const hash = browserNormalizedHash(hashFromDocName('#Heading\ud800'));
+    expect(hash).not.toContain('/#');
+    expect(docNameFromHash(hash)).not.toBeNull();
+    // Round-trips to the sanitized name, not to the original bad code unit.
+    expect(docNameFromHash(hash)).toBe('#Heading\uFFFD');
+  });
+
+  test('the same names round-trip through the share-target encoder', () => {
+    // `encodeShareTargetForHash` encodes whole-path, not per segment; the names
+    // here are slash-free, which is why the two agree. What it pins is that
+    // escaping, not the parser, is what carries a route metacharacter across
+    // the trip, so a change to the parser has to keep this passing too.
+    for (const docName of ['# 2 - Tokens', '#Heading', 'A # B', 'What now?', '100% done']) {
+      const hash = browserNormalizedHash(encodeShareTargetForHash('doc', docName));
+      expect(docNameFromHash(hash)).toBe(docName);
+    }
+  });
+});
+
 describe('isSameHash', () => {
-  test('matches a browser-encoded hash against a builder hash for a name with a space', () => {
+  // Note on this group: now that the builders percent-encode, a builder hash
+  // and the browser's own form of the same target are byte-identical, so these
+  // pairs settle on the `===` fast path and no longer exercise the decode. The
+  // decode is covered by the legacy-raw-hash case below, which is the only
+  // input shape that still needs it. These are kept as the equality cases they
+  // have become: they still pin that the builder's output IS the browser form.
+
+  test('matches the browser form of a spaced name, which the builder now emits verbatim', () => {
     // `window.location.hash` for a folder named `consolidated ux`, versus what
-    // `hashFromFolderPath` emits. A raw `===` here is what left such a folder
-    // permanently expanded in the sidebar: the file tree read "not the current
-    // page", swallowed the click, and never let the tree toggle the row.
+    // `hashFromFolderPath` emits. A raw `===` between these was once false,
+    // which left such a folder permanently expanded in the sidebar: the file
+    // tree read "not the current page", swallowed the click, and never toggled
+    // the row. It is true now because the builder encodes.
     expect(isSameHash('#/consolidated%20ux/', hashFromFolderPath('consolidated ux'))).toBe(true);
     expect(isSameHash('#/My%20Notes/Ideas', hashFromDocName('My Notes/Ideas'))).toBe(true);
   });
 
-  test('matches non-ASCII names the browser also percent-encodes', () => {
+  test('matches non-ASCII names, which the builder encodes the same way', () => {
     expect(isSameHash('#/notes/caf%C3%A9', hashFromDocName('notes/café'))).toBe(true);
   });
 
@@ -175,8 +341,32 @@ describe('isSameHash', () => {
     expect(isSameHash('#/alpha/', hashFromFolderPath('beta'))).toBe(false);
   });
 
-  test('commutes — either side may be the browser-encoded one', () => {
+  test('commutes: either side may be the browser-encoded one', () => {
     expect(isSameHash(hashFromFolderPath('consolidated ux'), '#/consolidated%20ux/')).toBe(true);
+  });
+
+  test('matches a raw hash persisted by an older build against the encoded form', () => {
+    // The builders encode now, so every other positive case here settles on the
+    // `===` fast path and the decode branch would go untested. This is the case
+    // that still needs it: a history entry or bookmark written when the
+    // builders emitted the path raw, compared against what they emit today.
+    // Without the tolerance, restoring such an entry reads as a different
+    // target and re-navigates.
+    expect(isSameHash('#/My Notes/Ideas', hashFromDocName('My Notes/Ideas'))).toBe(true);
+    expect(isSameHash('#/consolidated ux/', hashFromFolderPath('consolidated ux'))).toBe(true);
+  });
+
+  test('still conflates a "#" in a name with the anchor delimiter (known limit)', () => {
+    // Pinning a limitation, not an intent. The builders now emit these two
+    // targets as DIFFERENT strings, where before they emitted the same one, so
+    // this is narrower than it was. It survives because the decode is
+    // whole-string: `%23` collapses back to a structural `#`. Separating them
+    // means decoding path and anchor independently, which changes the guard
+    // for every caller. Change this expectation only alongside that.
+    const anchorOnDocA = hashFromDocName('a', 'b');
+    const docNamedAHashB = hashFromDocName('a#b');
+    expect(anchorOnDocA).not.toBe(docNamedAHashB);
+    expect(isSameHash(anchorOnDocA, docNamedAHashB)).toBe(true);
   });
 
   test('falls back to raw comparison on malformed escapes', () => {

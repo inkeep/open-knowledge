@@ -58,10 +58,14 @@ interface ClassPattern {
  *   - P1 `fixed inset-0` — full-viewport overlays. Includes Radix
  *     Dialog.Overlay / Sheet.Overlay (backdrops, allowlisted by file:line
  *     below).
- *   - P2 `w-[Nvw]` with N≥90 — near-fullscreen centered dialogs whose
- *     bare top-left corner extends into the traffic-light region (top
- *     edge at y≈viewport_height × (100-N)/2/100 — at 96vh that's y≈16,
- *     INSIDE the traffic-light y-band 18..30).
+ *   - P2 `w-[Nvw]` with N≥90, or `w-[calc(100vw-…)]` / `w-[calc(100dvw-…)]`
+ *     — near-fullscreen centered dialogs whose bare top-left corner can
+ *     extend into the traffic-light region (top edge at
+ *     y≈viewport_height × (100-N)/2/100 — at 96vh that's y≈16, INSIDE the
+ *     traffic-light y-band 18..30). The calc() alternates catch the
+ *     fixed-margin spelling of the same shape; a fixed margin CAN be safe
+ *     (constant top edge), but that is a per-site review call, not a
+ *     structural guarantee — hence flagged, not ignored.
  *   - P3 `fixed top-0 inset-x-0` — full-width banners pinned to the top
  *     edge whose background spans the traffic-light x-band 22..~100.
  */
@@ -73,8 +77,8 @@ const CLASS_PATTERNS: readonly ClassPattern[] = [
   },
   {
     id: 'P2-near-fullscreen-vw',
-    regex: /\bw-\[\s*9[0-9]\s*vw\]/,
-    description: 'near-fullscreen centered dialog (w-[Nvw], N≥90)',
+    regex: /\bw-\[\s*9[0-9]\s*vw\]|(?<!max-)\bw-\[calc\(100d?vw-[^\]]*\)\]/,
+    description: 'near-fullscreen centered dialog (w-[Nvw] N≥90, or w-[calc(100(d)vw-…)])',
   },
   {
     id: 'P3-top-banner',
@@ -162,6 +166,18 @@ const ALLOWLIST: readonly AllowlistEntry[] = [
     file: 'components/ui/sheet.tsx',
     pattern: 'P1-fixed-inset-0',
     rationale: 'Radix Sheet.Overlay backdrop — no interactive content',
+  },
+  {
+    file: 'editor/components/ExcalidrawEmbed.tsx',
+    pattern: 'P2-near-fullscreen-vw',
+    rationale:
+      'ExcalidrawLightbox mirrors MermaidLightbox: w-[calc(100dvw-5rem)] with a centered fixed margin puts the top edge at a constant 40px, below the traffic-light y-band (18-30px) at every viewport size. Its top row is the dialog close button at top-right and a view-only label inset to top-left, neither in the traffic-light region.',
+  },
+  {
+    file: 'editor/components/Mermaid.tsx',
+    pattern: 'P2-near-fullscreen-vw',
+    rationale:
+      'MermaidLightbox is w-[calc(100dvw-5rem)] with a centered fixed margin, so its top edge sits at a constant 40px — below the traffic-light y-band (18-30px) at every viewport size, unlike percentage widths whose clearance shrinks as the viewport grows. Its own top row is the dialog close button at top-right and a view-only label inset to top-left, neither in the traffic-light region.',
   },
   // Removed entries for InternalLinkPropPanel.tsx + WikiLinkPropPanel.tsx —
   // both PropPanels migrated their inline EditMarkdownLinkDialog /

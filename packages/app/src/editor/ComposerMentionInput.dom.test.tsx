@@ -12,7 +12,7 @@
  *     document editor (which selection-as-passage reads from).
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { Content, JSONContent } from '@tiptap/core';
 import { Editor } from '@tiptap/core';
 import { createRef } from 'react';
@@ -658,5 +658,41 @@ describe('ComposerMentionInput — Enter during IME composition', () => {
 
     fireEvent.keyDown(box, { key: 'Enter' });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * `setText` is how every host seeds this field with prose the user already
+ * wrote — a comment being revised, a starter brief, a sent message being
+ * edited. It has to hand back what it was given.
+ */
+describe('ComposerMentionInput — setText round-trips the text it was given', () => {
+  test('newlines survive, and angle brackets are not parsed as markup', () => {
+    // `setContent` treats a bare string as HTML: seeding this way used to
+    // collapse every line break and swallow anything that looked like a tag,
+    // so a host reading the draft straight back got different words out.
+    const ref = createRef<ComposerMentionInputHandle>();
+    render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={() => {}} />);
+
+    const seeded = 'first line\nsecond <b>line</b>\n\nfourth line';
+    act(() => ref.current?.setText(seeded));
+
+    expect(ref.current?.getContent().instruction).toBe(seeded);
+  });
+
+  test('seeding announces emptiness, the way appending does', () => {
+    // The two halves of the same handle disagreed: a host that gated its Send
+    // button on `onEmptyChange` stayed disabled on a field it had just filled.
+    const onEmptyChange = vi.fn((_isEmpty: boolean) => {});
+    const ref = createRef<ComposerMentionInputHandle>();
+    render(<ComposerMentionInput ref={ref} ariaLabel="Ask AI" onEmptyChange={onEmptyChange} />);
+
+    onEmptyChange.mockClear();
+    act(() => ref.current?.setText('some words'));
+    expect(onEmptyChange).toHaveBeenCalledWith(false);
+
+    onEmptyChange.mockClear();
+    act(() => ref.current?.setText(''));
+    expect(onEmptyChange).toHaveBeenCalledWith(true);
   });
 });

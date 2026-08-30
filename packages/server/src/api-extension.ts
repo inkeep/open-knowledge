@@ -10,7 +10,6 @@ import { type SpawnOptions, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   createReadStream,
-  createWriteStream,
   type Dirent,
   existsSync,
   lstatSync,
@@ -21,7 +20,6 @@ import {
   realpathSync,
   rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
@@ -52,14 +50,8 @@ import {
   BranchInfoResponseSchema,
   CheckoutRequestSchema,
   CheckoutResponseSchema,
-  ClientLogsRequestSchema,
-  ClientLogsSuccessSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   type ConfigDiagnosticsReport,
-  CreateFolderRequestSchema,
-  CreateFolderSuccessSchema,
-  CreatePageRequestSchema,
-  CreatePageSuccessSchema,
   changedBlockRange,
   colorFromSeed,
   composeWithDerivedFrontmatter,
@@ -68,12 +60,8 @@ import {
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
-  DeletePathRequestSchema,
-  DeletePathSuccessSchema,
   type DiskEditReconciledWarning,
   type DocumentListEntry,
-  DuplicatePathRequestSchema,
-  DuplicatePathSuccessSchema,
   detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
@@ -81,9 +69,6 @@ import {
   encodeShareUrl,
   estimateSkillCost,
   externalSkillLiveDocName,
-  FolderConfigGetSuccessSchema,
-  FolderConfigPutRequestSchema,
-  FolderConfigPutSuccessSchema,
   FrontmatterPatchRequestSchema,
   FrontmatterPatchSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
@@ -94,12 +79,10 @@ import {
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
   InvalidShareUrlError,
-  instantiateDoc,
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
   LEGACY_SKILL_STORE_ROOT,
-  LINKABLE_ASSET_EXTENSIONS,
   type LinksValidationSetting,
   LintConfigResponseSchema,
   type LinterConfig,
@@ -135,23 +118,14 @@ import {
   type ProblemType,
   parseCanonicalGitHubShareUrl,
   parseFrontmatterRecord,
-  parseTemplateFile,
   prependFrontmatter,
   projectSkillContentDocName,
   RENAMED_PACK_SKILLS,
-  RenamePathRequestSchema,
-  RenamePathSuccessSchema,
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
   SaveVersionRequestSchema,
   SaveVersionSuccessSchema,
-  SeedApplyRequestSchema,
-  SeedApplySuccessSchema,
-  SeedInstallPackSkillRequestSchema,
-  SeedInstallPackSkillSuccessSchema,
-  SeedListPacksSuccessSchema,
-  SeedPlanSuccessSchema,
   ShareConstructUrlRequestSchema,
   ShareConstructUrlResponseSchema,
   SharePublishNameCheckResponseSchema,
@@ -216,26 +190,11 @@ import {
   skillLiveDocName,
   stripFrontmatter,
   summarizeLintPluginFailures,
-  TEMPLATE_NAME_REGEX,
-  TemplateDeleteSuccessSchema,
-  TemplateGetSuccessSchema,
-  TemplateImportRequestSchema,
-  TemplateImportSuccessSchema,
-  TemplateMoveRequestSchema,
-  TemplateMoveSuccessSchema,
-  TemplatePutRequestSchema,
-  TemplatePutSuccessSchema,
   TestFlushGitSuccessSchema,
   TestRescanBacklinksSuccessSchema,
   TestRescanFilesSuccessSchema,
   TestResetSuccessSchema,
-  TrashCleanupRequestSchema,
-  TrashCleanupSuccessSchema,
-  templateContentDocName,
-  UploadAssetSuccessSchema,
-  UploadRequestSchema,
   USER_SKILL_EDITOR_IDS,
-  unwrapFrontmatterFences,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -268,7 +227,6 @@ import {
   upsertLockEntry,
   type WellKnownIndex,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import {
   type AcpHarnessAvailability,
@@ -292,7 +250,11 @@ import {
   prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
-import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
+import {
+  type NormalizedSummary,
+  normalizeSummary,
+  type SummaryResponse,
+} from './agent-write-summary.ts';
 import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
@@ -301,8 +263,6 @@ import { CommentThreadStore } from './comments/thread-store.ts';
 import { getLocalDir } from './config/paths.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
 import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
-import { enrichDirectory } from './content/enrichment.ts';
-import { applyFolderFrontmatterPatch } from './content/folder-frontmatter-write.ts';
 import {
   applySkillBundleFileDelete,
   applySkillBundleFileRename,
@@ -315,15 +275,6 @@ import {
   composeSkillContent,
   countBundleFiles,
 } from './content/skills-write.ts';
-import { applySubstitution, todayIsoUtc } from './content/substitution.ts';
-import { resolveTemplatesAvailable } from './content/templates-resolver.ts';
-import {
-  applyTemplateDelete,
-  applyTemplateMove,
-  applyTemplateWrite,
-  composeTemplateContent,
-  type TemplateFrontmatter,
-} from './content/templates-write.ts';
 import {
   evaluateContentDivergence,
   toContentDivergenceWarning,
@@ -342,13 +293,16 @@ import {
   logFrontmatterRefusal,
   respondFrontmatterMalformed,
 } from './frontmatter-malformed-error.ts';
-import { assertNoSymlinkEscape } from './fs-safety.ts';
+import {
+  assertNoSymlinkEscape,
+  isContainmentRejection,
+  PathContainmentError,
+} from './fs-safety.ts';
 import {
   createInstalledAgentsProbe,
   createOsProbe,
   type InstalledAgentScheme,
 } from './handoff-api.ts';
-import { handleHandoffDispatch } from './handoff-dispatch-api.ts';
 import { findHubCandidates } from './hub-candidates.ts';
 import {
   readInstalledSkills,
@@ -440,9 +394,7 @@ import {
   validateSkillForInstall,
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
-import { handleSpawnCursor } from './spawn-cursor-api.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
-import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
 
 /** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
 function bundleSelfIdentifiesAsPack(dir: string): boolean {
@@ -466,7 +418,6 @@ import {
   applyRenameMap,
   BacklinkIndexRequiredError,
   buildRenameMap,
-  ManagedRenameCollisionError,
   ManagedRenameDestinationExistsError,
   ManagedRenameInvalidRequestError,
   ManagedRenameMissingDocumentError,
@@ -474,7 +425,6 @@ import {
   ManagedRenameSnapshotMissingError,
   ManagedRenameSourceNotFoundError,
   ManagedRenameSourceTypeMismatchError,
-  SymlinkEscapeError,
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
@@ -499,7 +449,6 @@ import {
   extensionlessDocTreePath,
   forgetDocExtension,
   getDocExtension,
-  isSupportedAssetFile,
   isSupportedDocFile,
   registerDocExtension,
   SUPPORTED_DOC_EXTENSIONS,
@@ -525,13 +474,10 @@ import {
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { isProjectRoot } from './fs/find-project-root.ts';
 import {
-  classifyFsPath,
-  normalizeFsPath,
   tracedCpSync,
   tracedMkdirSync,
   tracedRenameSync,
   tracedRmSync,
-  tracedUnlinkSync,
   tracedWriteFileSync,
 } from './fs-traced.ts';
 import {
@@ -553,7 +499,13 @@ import {
   errorResponse,
   type HttpErrorStatus,
 } from './http/error-response.ts';
-import { errnoCode } from './http/handler-utils.ts';
+import {
+  createFileOpsRoutes,
+  type ManagedRenameRewrittenDoc,
+  type RenamedAssetMapping,
+  type RenamedDocMapping,
+} from './http/file-ops-routes.ts';
+import { createFolderTemplateRoutes } from './http/folder-template-routes.ts';
 import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
@@ -562,16 +514,19 @@ import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-
 import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
-import { validateBody, withValidation } from './http/request-validation.ts';
+import { withValidation } from './http/request-validation.ts';
+import { createSeedRoutes } from './http/seed-routes.ts';
 import { createSkillsReadRoutes } from './http/skills-read-routes.ts';
 import { createSkillsShRoutes } from './http/skills-sh-routes.ts';
 import { successResponse } from './http/success-response.ts';
+import { createSystemActionsRoutes } from './http/system-actions-routes.ts';
 import {
   createWorkspaceToolsRoutes,
   type GeneratedIndexSettingsStatus,
 } from './http/workspace-tools-routes.ts';
 import {
   aliasedSourceRoots,
+  isActivatedSkillRoot,
   removableSkillOccurrenceDirs,
   resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
@@ -633,19 +588,9 @@ import {
   type RenameLogEntry,
   resolveDocPathAtCommit,
 } from './rename-log.ts';
-import {
-  applySeed,
-  coercePackId,
-  installPackSkillOnDemand,
-  listStarterPacks,
-  planSeed,
-  type ScaffoldPlan,
-  SeedPrerequisiteError,
-  SeedRootDirError,
-} from './seed/index.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
-import { createFileOpsService } from './services/file-ops.ts';
+import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
 import { createSkillImportService, type SkillImportOutcome } from './services/skill-import.ts';
 import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
@@ -923,203 +868,14 @@ export { sanitizeFilename } from './filename-sanitize.ts';
 export { resolveUploadDestDir } from './services/assets.ts';
 
 /**
- * Discriminator for write failures so the upload handler can surface a
- * specific error code (`collision-exhaustion` / `storage-full` /
- * `storage-readonly` / `storage-error`) instead of collapsing every
- * filesystem failure into a generic 500 "Failed to save file" response.
- * The code field is a stable part of the error envelope; the numeric
- * HTTP status differentiates transient-yet-retry (500) from full-disk
- * (507) per RFC 4918.
+ * Shared errno table for disk-write failures (`storage-full` /
+ * `storage-readonly` / `storage-error`) — the agent-write persistence-failure
+ * surfaces below reuse the same mapping as the upload pipeline in
+ * `http/file-ops-routes.ts` so the two disk-failure classifications cannot
+ * drift. The numeric HTTP status differentiates transient-yet-retry (500)
+ * from full-disk (507) per RFC 4918.
  */
-import {
-  classifyUploadErrno,
-  UploadWriteError,
-  type UploadWriteReason,
-  uploadStatusFor,
-  uploadTitleFor,
-} from './upload-errors.ts';
-
-interface UploadResult {
-  filename: string;
-  mimeType: string;
-  parentDocName: string;
-  placement: string;
-  tempPath: string;
-  sha: string;
-  byteLength: number;
-}
-
-/**
- * Stream multipart upload body to a tempfile while hashing on-the-fly.
- *
- * Replaces the buffer-to-memory pattern (chunks.push(chunk) +
- * Buffer.concat) with busboy's streaming 'file' event piped through a
- * HashingPassThrough Transform into createWriteStream(tempPath). Memory
- * becomes O(1); disk is the only bound.
- *
- * Error contract (typed via UploadWriteError.reason — URN-form ProblemType):
- *   - urn:ok:error:malformed-upload: busboy 'error' (unparseable multipart, etc.)
- *   - urn:ok:error:storage-full: ENOSPC / EDQUOT during the write stream
- *   - urn:ok:error:storage-readonly: EROFS / EACCES / EPERM during the write stream
- *   - urn:ok:error:storage-error: any other write-stream error
- *
- * On any error, the tempfile is best-effort unlinked before propagating.
- */
-function readUploadBody(req: IncomingMessage, projectDir: string): Promise<UploadResult> {
-  return new Promise((resolveP, reject) => {
-    let bb: MultipartParser;
-    try {
-      // `files: 1` caps the file part; `fields` + `fieldSize` cap non-file
-      // surface so a flooded multipart can't buffer thousands of fields or a
-      // multi-MB string field in memory before the upload body resolves. The
-      // legitimate schema (agentId / docName / position / summary) is bounded
-      // — short identifiers, never approaching 2 KB or 10 entries. The
-      // ENAMETOOLONG-via-crafted-filename DoS path is closed by the 255-byte
-      // ceiling in `sanitizeFilename` (the filesystem-portability layer);
-      // busboy does not expose a header-section-size limit (only headerPairs
-      // count), so the parsed-value cap is the right place.
-      bb = createMultipartParser(req, { files: 1, fields: 10, fieldSize: 2 * 1024 });
-    } catch (err) {
-      reject(new UploadWriteError('urn:ok:error:malformed-upload', err));
-      return;
-    }
-
-    let settled = false;
-    let filename = 'upload';
-    let mimeType = '';
-    let parentDocName = '';
-    let placement = '';
-    let tempPath: string | undefined;
-    let pipelineError: unknown;
-    // Track whether the 'file' event ever fired. busboy emits 'close' as
-    // soon as it finishes parsing the request body — but the file
-    // pipeline (createWriteStream + HashingPassThrough) is async and may
-    // still be running when 'close' fires. We must NOT resolve to an
-    // empty UploadResult on 'close' when a file IS being processed; the
-    // pipeline `.then()` is the legitimate resolver in that case. Only
-    // the no-file path needs the 'close' fallback.
-    let fileEventFired = false;
-
-    // Mint the tempfile path lazily on the first 'file' event — busboy
-    // can fire 'error' before any file arrives (e.g. missing boundary)
-    // and we'd otherwise create a zero-byte tempfile for no reason.
-
-    const fail = (reason: UploadWriteReason, cause: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (tempPath) {
-        try {
-          unlinkSync(tempPath);
-        } catch {
-          // best-effort; orphan sweep catches stragglers
-        }
-      }
-      reject(cause instanceof UploadWriteError ? cause : new UploadWriteError(reason, cause));
-    };
-
-    const classifyWriteError = classifyUploadErrno;
-
-    bb.on('field', (name, val) => {
-      if (name === 'parentDocName') parentDocName = val;
-      if (name === 'placement') placement = val;
-    });
-
-    bb.on('file', (_fieldname, file, info) => {
-      fileEventFired = true;
-      filename = info.filename || 'upload';
-      mimeType = info.mimeType || '';
-
-      // `mintTempUploadPath` does `tracedMkdirSync(.., { recursive: true })`
-      // which can throw ENOSPC / EDQUOT / EROFS / EACCES / EPERM / EIO. An
-      // uncaught throw here bubbles back through busboy's `_write` and
-      // re-emits as `'error'`, which the listener below classifies as
-      // `'urn:ok:error:malformed-upload'` (HTTP 400). That misleads operators triaging
-      // a full disk into chasing a phantom client bug. Catch the sync
-      // throw, classify via the same table the pipeline rejection uses,
-      // and drain the file part so busboy can finish parsing the rest.
-      let path: string;
-      try {
-        path = mintTempUploadPath(projectDir);
-      } catch (err) {
-        const nodeErr = err as NodeJS.ErrnoException;
-        fail(classifyWriteError(nodeErr), err as Error);
-        file.resume();
-        return;
-      }
-      tempPath = path;
-      const hasher = new HashingPassThrough();
-      const writeStream = createWriteStream(path);
-
-      pipeline(file, hasher, writeStream)
-        .then(() => {
-          if (settled) return;
-          settled = true;
-          resolveP({
-            filename,
-            mimeType,
-            parentDocName,
-            placement,
-            tempPath: path,
-            sha: hasher.digest(),
-            byteLength: hasher.byteLength(),
-          });
-        })
-        .catch((err) => {
-          pipelineError = err;
-          // Classify from the deepest write error if available; otherwise
-          // treat as a generic storage-error. The unlink happens inside fail().
-          const nodeErr = err as NodeJS.ErrnoException;
-          fail(classifyWriteError(nodeErr), err);
-        });
-    });
-
-    bb.on('error', (err) => {
-      fail('urn:ok:error:malformed-upload', err);
-    });
-
-    // busboy's `close` (Writable, emitClose:true via @types/busboy@1.6.0)
-    // fires once busboy finishes parsing the request body. If by then
-    // no `file` event ever fired, the request was a well-formed
-    // multipart with fields-only (no file part) — resolve with a
-    // synthetic empty UploadResult so the route handler's
-    // `byteLength === 0` guard returns the standard 400 "No file
-    // received." Without this hook the Promise never settles on fields-
-    // only uploads and the connection hangs until Node's request
-    // timeout fires (DoS).
-    //
-    // CRUCIAL: gate on `!fileEventFired`. If a file part IS present,
-    // busboy emits 'close' as soon as it finishes parsing — but the
-    // async write/hash pipeline below may still be running. Resolving
-    // here would race the pipeline's legitimate resolveP and produce a
-    // spurious empty result. Pipeline resolves win in that case.
-    bb.on('close', () => {
-      if (settled || pipelineError) return;
-      if (fileEventFired) return;
-      settled = true;
-      resolveP({
-        filename: '',
-        mimeType: '',
-        parentDocName,
-        placement,
-        tempPath: '',
-        sha: '',
-        byteLength: 0,
-      });
-    });
-
-    // Guard the "client disconnected mid-stream" path. busboy never
-    // reaches `_final` if the request aborts before the closing boundary,
-    // so its `close` would not fire and the Promise would otherwise hang.
-    req.on('close', () => {
-      if (settled || pipelineError) return;
-      if (!req.complete) {
-        fail('urn:ok:error:malformed-upload', new Error('client disconnected'));
-      }
-    });
-
-    req.pipe(bb);
-  });
-}
+import { classifyUploadErrno, uploadStatusFor } from './upload-errors.ts';
 
 /**
  * Resolve a subdirectory path within a base directory, rejecting traversal attempts.
@@ -1841,23 +1597,8 @@ export async function walkContentDirForShowAll(
 
 type ContentEntryKind = 'file' | 'folder';
 
-interface RenamedDocMapping {
-  fromDocName: string;
-  toDocName: string;
-}
-
-interface RenamedAssetMapping {
-  fromPath: string;
-  toPath: string;
-}
-
 interface ManagedRenameRewriteSummary {
   markdown: string;
-  rewrites: number;
-}
-
-interface ManagedRenameRewrittenDoc {
-  docName: string;
   rewrites: number;
 }
 
@@ -1867,28 +1608,6 @@ function isValidRelativeContentPath(path: string): boolean {
   }
 
   return path.split('/').every((segment) => segment && segment !== '.' && segment !== '..');
-}
-
-/**
- * True when any `/`-separated segment of `path` is `.ok` or `.git`, at any
- * depth — nested `<folder>/.ok/` is a first-class OK shape (folder metadata +
- * templates), so a top-level-only check is not a boundary. Segments compare
- * case-insensitively: on the default case-insensitive macOS filesystem an
- * externally-addressed `.OK/x` IS `.ok/x`. Same segment walk as
- * `pathHasAlwaysSkipSegment` in content-filter.ts.
- */
-
-function isReservedSyntheticFolderPath(path: string): boolean {
-  return (
-    path === '__system__' ||
-    path === '__config__' ||
-    path === '__user__' ||
-    path === '__local__' ||
-    path.startsWith('__system__/') ||
-    path.startsWith('__config__/') ||
-    path.startsWith('__user__/') ||
-    path.startsWith('__local__/')
-  );
 }
 
 function listAffectedDocNames(
@@ -1940,7 +1659,7 @@ function requireNonEmptyDocName(
 
 function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, path: string): string {
   if (!isValidRelativeContentPath(path)) {
-    throw new Error('path must be a relative content path');
+    throw new PathContainmentError('path must be a relative content path');
   }
 
   const resolvedContentDir = resolve(contentDir);
@@ -1953,7 +1672,7 @@ function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, pat
   const fullPath = resolve(resolvedContentDir, relativePath);
 
   if (fullPath !== resolvedContentDir && !fullPath.startsWith(`${resolvedContentDir}${sep}`)) {
-    throw new Error('path must not escape content directory');
+    throw new PathContainmentError('path must not escape content directory');
   }
 
   assertNoSymlinkEscape(fullPath, resolvedContentDir);
@@ -1976,40 +1695,6 @@ function joinContentPath(parent: string, basename: string): string {
 
 function duplicateBasename(basename: string, attempt: number): string {
   return attempt === 1 ? `${basename} copy` : `${basename} copy ${attempt}`;
-}
-
-class DuplicateNameExhaustedError extends Error {
-  constructor(readonly sourcePath: string) {
-    super(`Could not find an available duplicate name for ${sourcePath}`);
-    this.name = 'DuplicateNameExhaustedError';
-  }
-}
-
-type DuplicatePathFilesystemProblem = {
-  status: 500 | 507;
-  type: Extract<ProblemType, 'urn:ok:error:storage-full' | 'urn:ok:error:storage-readonly'>;
-  title: string;
-};
-
-function classifyDuplicatePathFilesystemProblem(
-  err: unknown,
-): DuplicatePathFilesystemProblem | null {
-  const code = errnoCode(err);
-  if (code === 'ENOSPC' || code === 'EDQUOT') {
-    return {
-      status: 507,
-      type: 'urn:ok:error:storage-full',
-      title: 'Could not duplicate path because storage is full.',
-    };
-  }
-  if (code === 'EPERM' || code === 'EACCES' || code === 'EROFS') {
-    return {
-      status: 500,
-      type: 'urn:ok:error:storage-readonly',
-      title: 'Could not duplicate path because storage is not writable.',
-    };
-  }
-  return null;
 }
 
 function docNameExistsWithAnySupportedExtension(contentDir: string, docName: string): boolean {
@@ -2049,12 +1734,12 @@ function docNameForFileOperationPath(contentDir: string, relPath: string): strin
 
 function resolveDuplicateDocPath(contentDir: string, docName: string, extension: string): string {
   if (!isValidRelativeContentPath(docName)) {
-    throw new Error('path must be a relative content path');
+    throw new PathContainmentError('path must be a relative content path');
   }
   const resolvedContentDir = resolve(contentDir);
   const fullPath = resolve(resolvedContentDir, `${docName}${extension}`);
   if (fullPath !== resolvedContentDir && !fullPath.startsWith(`${resolvedContentDir}${sep}`)) {
-    throw new Error('path must not escape content directory');
+    throw new PathContainmentError('path must not escape content directory');
   }
   assertNoSymlinkEscape(fullPath, resolvedContentDir);
   return fullPath;
@@ -2133,56 +1818,6 @@ function collectFolderPaths(contentDir: string, folderPath: string): string[] {
   walk(folderAbs, folderPath);
   folders.sort((a, b) => a.localeCompare(b));
   return folders;
-}
-
-/**
- * Probe disk for the actual on-disk extension of a file's docName, registering
- * it in the doc-extensions map if found. Closes a boot/watcher race where the
- * rename handler runs before the file watcher has observed the source — without
- * this, `getDocExtension()` returns the `.md` default, which silently defeats
- * `.mdx`-specific exclusion patterns and routes existence checks to the wrong
- * path. Iterating in `SUPPORTED_DOC_EXTENSIONS` precedence order ensures the
- * `.mdx` precedence rule is preserved when both files exist on disk.
- * Idempotent — `registerDocExtension` is a no-op when the higher-precedence
- * extension is already registered.
- */
-function probeAndRegisterSourceFileExtension(contentDir: string, fromPath: string): void {
-  if (!isValidRelativeContentPath(fromPath)) return;
-  const resolvedContentDir = resolve(contentDir);
-  if (isSupportedDocFile(fromPath)) {
-    const extensionless = stripDocExtension(fromPath);
-    for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-      const candidate = resolve(resolvedContentDir, `${extensionless}${ext}`);
-      if (
-        candidate !== resolvedContentDir &&
-        !candidate.startsWith(`${resolvedContentDir}${sep}`)
-      ) {
-        continue;
-      }
-      if (existsSync(candidate)) {
-        registerDocExtension(extensionless, ext);
-      }
-    }
-    const explicitCandidate = resolve(resolvedContentDir, fromPath);
-    if (
-      explicitCandidate !== resolvedContentDir &&
-      explicitCandidate.startsWith(`${resolvedContentDir}${sep}`) &&
-      existsSync(explicitCandidate)
-    ) {
-      registerDocExtension(extensionless, extname(fromPath));
-    }
-    return;
-  }
-  for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-    const candidate = resolve(resolvedContentDir, `${fromPath}${ext}`);
-    if (candidate !== resolvedContentDir && !candidate.startsWith(`${resolvedContentDir}${sep}`)) {
-      continue;
-    }
-    if (existsSync(candidate)) {
-      registerDocExtension(fromPath, ext);
-      return;
-    }
-  }
 }
 
 function toGitRelativePath(projectDir: string, absolutePath: string): string | null {
@@ -3724,7 +3359,7 @@ export function createApiExtension(
     if (error instanceof ManagedRenameSnapshotMissingError) {
       return { status: 404, type: 'urn:ok:error:doc-not-found', error: withPeriod(error.message) };
     }
-    if (error instanceof SymlinkEscapeError) {
+    if (isContainmentRejection(error)) {
       return { status: 400, type: 'urn:ok:error:path-escape', error: withPeriod(error.message) };
     }
     if (error instanceof BacklinkIndexRequiredError) {
@@ -4001,39 +3636,6 @@ export function createApiExtension(
       rewrittenDocs.push({ docName: pending.docName, rewrites: rewritten.rewrites });
     }
     return { rewrittenDocs, derivedMutations };
-  }
-
-  function resolveExtensionlessAssetPath(assetPath: string): {
-    path: string;
-    ambiguous: boolean;
-  } {
-    // Filesystem-backed authority for extensionless asset targets; the client
-    // canonicalizer is only a UX aid for dialogs and shell-trash paths.
-    if (extname(assetPath)) return { path: assetPath, ambiguous: false };
-
-    const slash = assetPath.lastIndexOf('/');
-    const parent = slash === -1 ? '' : assetPath.slice(0, slash);
-    const stem = slash === -1 ? assetPath : assetPath.slice(slash + 1);
-    const parentPath = parent ? resolveContentEntryPath(contentDir, 'folder', parent) : contentDir;
-
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(parentPath, { withFileTypes: true });
-    } catch (err) {
-      const code = errnoCode(err);
-      if (code === 'ENOENT' || code === 'ENOTDIR') {
-        return { path: assetPath, ambiguous: false };
-      }
-      throw err;
-    }
-
-    const candidates = entries
-      .filter((entry) => entry.isFile() && entry.name.startsWith(`${stem}.`))
-      .map((entry) => (parent ? `${parent}/${entry.name}` : entry.name))
-      .filter((candidate) => isSupportedAssetFile(candidate, LINKABLE_ASSET_EXTENSIONS));
-
-    if (candidates.length === 1) return { path: candidates[0], ambiguous: false };
-    return { path: assetPath, ambiguous: candidates.length > 1 };
   }
 
   /**
@@ -4960,9 +4562,10 @@ export function createApiExtension(
    * `hint` is nested inside `summary` (not a sibling top-level key) so the
    * truncation message always travels with the field it explains — this
    * prevents naming collisions at the response root and tightens the coupling
-   * between `truncatedFrom` and the human-readable explanation.
+   * between `truncatedFrom` and the human-readable explanation. The alias
+   * itself is owned by `agent-write-summary.ts` (imported at module top) so
+   * the native route handlers that echo it cannot drift structurally.
    */
-  type SummaryResponse = { value: string; truncatedFrom?: number; hint?: string };
 
   /**
    * Pure response-shape derivation from a normalized summary — NO side effects.
@@ -5101,8 +4704,9 @@ export function createApiExtension(
 
   /**
    * Contributor `docs` key for a non-doc `.ok/` artifact, so a folder-scoped
-   * timeline query resolves it. Mirrors `checkTemplateConflictGate`'s
-   * `<folder>/.ok/templates/<name>` shape; folder frontmatter keys to
+   * timeline query resolves it. Mirrors `checkTemplateConflictGate`'s (now in
+   * `http/folder-template-routes.ts`) `<folder>/.ok/templates/<name>` shape;
+   * folder frontmatter keys to
    * `<folder>/.ok/frontmatter`; a folder itself keys to its own path.
    */
   function okArtifactKey(
@@ -8100,230 +7704,6 @@ export function createApiExtension(
     { handler: 'asset-text', method: 'GET', skipBodyParse: true },
   );
 
-  const handleCreatePage = withValidation(
-    CreatePageRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        // Identity boundary: only attribute when the caller explicitly supplies
-        // agentId. UI-driven creates fall through to the loaded principal (if
-        // any) or anonymous — never to a synthetic 'Claude' default. Mirrors
-        // handleRollback / handleRenamePath.
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'create-page',
-          });
-          return;
-        }
-
-        const filePath = body.path;
-        if (!isSupportedDocFile(filePath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must end with .md or .mdx.',
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        if (
-          filePath.includes('..') ||
-          filePath.startsWith('/') ||
-          filePath.includes('\x00') ||
-          filePath.includes('\\')
-        ) {
-          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Invalid path.', {
-            handler: 'create-page',
-            detail: 'path must not contain .. or start with /',
-          });
-          return;
-        }
-        const resolvedContentDir = resolve(contentDir);
-        const fullPath = resolve(resolvedContentDir, filePath);
-        if (!isWithinDir(fullPath, resolvedContentDir)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:path-escape',
-            'path must not escape content directory.',
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        const candidateDocName = stripDocExtension(filePath);
-        if (isSystemDoc(candidateDocName) || isConfigDoc(candidateDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${candidateDocName}' is a reserved document name.`,
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        // Reject managed-artifact + reserved-directory targets. Now that
-        // `.ok/skills/**` is indexed/served content, a raw create-page into
-        // `.ok/skills/<name>/SKILL.md` would write directly with ZERO skill-schema
-        // validation (no name/description checks, no XML-tag ban) and surface as a
-        // malformed phantom skill. Skills/templates must go through their own
-        // validating write/install spines; every other `.ok/` child is excluded
-        // from the content scope anyway. The reserved-path test catches raw
-        // filesystem paths with a `.ok`/`.git` segment at any depth;
-        // `isManagedArtifactDocName` catches the synthetic `__skill__/` /
-        // `__template__/` doc-name forms.
-        if (isReservedProjectStatePath(filePath) || isManagedArtifactDocName(candidateDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${candidateDocName}' is a reserved document name.`,
-            {
-              handler: 'create-page',
-              detail:
-                'Cannot create a page inside .ok or .git — skills and templates are authored through their own validating flows.',
-            },
-          );
-          return;
-        }
-        // Optional template parameter: when set, instantiate the new
-        // doc from the resolved template's body (with {{date}} / {{user}}
-        // substitution applied) instead of an empty file. Resolution walks
-        // the parent folder's templates_available[] — local + inherited,
-        // closest-wins.
-        const templateName =
-          typeof (body as Record<string, unknown>).template === 'string'
-            ? ((body as Record<string, unknown>).template as string).trim()
-            : '';
-        let initialContent = '';
-        let templateScopeForLog: 'local' | 'inherited' | undefined;
-        if (templateName.length > 0) {
-          if (!/^[A-Za-z0-9_-]+$/.test(templateName)) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Template name must match [A-Za-z0-9_-]+.',
-              { handler: 'create-page' },
-            );
-            return;
-          }
-          const parentFolder = filePath.includes('/')
-            ? filePath.slice(0, filePath.lastIndexOf('/'))
-            : '';
-          const available = resolveTemplatesAvailable(resolvedContentDir, parentFolder);
-          const matched = available.find((t) => t.name === templateName);
-          if (!matched) {
-            const availableLabel =
-              available.length === 0
-                ? '(none)'
-                : available.map((t) => `"${t.name}" (${t.scope})`).join(', ');
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Template "${templateName}" does not resolve for folder "${parentFolder || '(root)'}". Available: ${availableLabel}`,
-              { handler: 'create-page' },
-            );
-            return;
-          }
-          const templateAbs = resolve(resolvedContentDir, matched.path);
-          let templateRaw: string;
-          try {
-            templateRaw = readFileSync(templateAbs, 'utf-8');
-          } catch (err) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              `Failed to read template at ${matched.path}.`,
-              { handler: 'create-page', cause: err },
-            );
-            return;
-          }
-          // The new doc IS the template's starter content (doc-frontmatter +
-          // markdown) with the `template:` identity stripped. `instantiateDoc`
-          // normalizes single-block and legacy two-block templates the same way
-          // and preserves `{{date}}`/`{{user}}` tokens verbatim for substitution.
-          const templateStarter = instantiateDoc(templateRaw);
-          // {{user}} substitutes the calling principal's display name; falls
-          // back to empty string when no principal is loaded.
-          const userDisplayName =
-            actor.kind === 'agent' || actor.kind === 'principal' ? (actor.displayName ?? '') : '';
-          initialContent = applySubstitution(templateStarter, {
-            date: todayIsoUtc(),
-            user: userDisplayName,
-          });
-          templateScopeForLog = matched.scope;
-        }
-
-        const docName = stripDocExtension(filePath);
-        // Synchronous through recordContributor below: an async yield between
-        // the write and the contributor recording lets a pending shadow-commit
-        // timer drain the accumulator without this file's attribution.
-        const createOutcome = fileOpsService.createPage({
-          fullPath,
-          docName,
-          initialContent,
-        });
-        if (!createOutcome.ok) {
-          errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'File already exists.', {
-            handler: 'create-page',
-            cause: createOutcome.cause,
-          });
-          return;
-        }
-        switch (actor.kind) {
-          case 'agent':
-          case 'principal':
-            recordContributor(
-              docName,
-              actor.writerId,
-              actor.displayName,
-              actor.colorSeed,
-              undefined,
-              actor.actor,
-            );
-            break;
-          case 'anonymous':
-            // UI-driven create with no loaded principal — no contributor recorded.
-            break;
-          default: {
-            const _exhaustive: never = actor;
-            throw new Error(
-              `Unhandled actor kind in handleCreatePage: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-            );
-          }
-        }
-        // Best-effort for real (see the skill-put site): never hold a create
-        // response on the derived-index command queue.
-        void recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
-        signalChannel?.('files');
-        if (templateScopeForLog !== undefined) {
-          // Cardinality-bounded structured event — `templateScope` is one of
-          // two values; `templateName` is bounded by the user's actual
-          // templates. Mirrors the structured-event style in activity-log.ts.
-          console.warn(
-            JSON.stringify({
-              event: 'template-instantiate',
-              templateName,
-              templateScope: templateScopeForLog,
-              docName,
-            }),
-          );
-        }
-        successResponse(res, 200, CreatePageSuccessSchema, { docName }, { handler: 'create-page' });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to create page.', {
-          handler: 'create-page',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'create-page', method: 'POST' },
-  );
-
   const fileOpsService = createFileOpsService({
     contentDir,
     resolveContentEntryPath,
@@ -8374,1002 +7754,6 @@ export function createApiExtension(
     recordDerivedDocumentBestEffort,
     recordDerivedMutationsBestEffort,
   });
-
-  const handleCreateFolder = withValidation(
-    CreateFolderRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'create-folder',
-          });
-          return;
-        }
-        const folderPath = body.path;
-        if (!isValidRelativeContentPath(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-        if (isReservedProjectStatePath(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-        if (contentFilter?.isDirExcluded(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Destination folder is excluded by the workspace content config.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-
-        const outcome = fileOpsService.createFolder(folderPath);
-        if (!outcome.ok) {
-          errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'Folder already exists.', {
-            handler: 'create-folder',
-          });
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          CreateFolderSuccessSchema,
-          { path: folderPath },
-          { handler: 'create-folder' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to create folder.', {
-          handler: 'create-folder',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'create-folder', method: 'POST' },
-  );
-
-  const handleDuplicatePath = withValidation(
-    DuplicatePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'duplicate-path',
-          });
-          return;
-        }
-
-        const { kind } = body;
-        const requestedPath = body.path;
-        const requestedDocName = kind === 'file' ? stripDocExtension(requestedPath) : requestedPath;
-        if (!isValidRelativeContentPath(requestedPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'duplicate-path' },
-          );
-          return;
-        }
-        if (
-          isReservedProjectStatePath(requestedPath) ||
-          (kind === 'file' && (isSystemDoc(requestedDocName) || isConfigDoc(requestedDocName))) ||
-          (kind === 'folder' && isReservedSyntheticFolderPath(requestedPath))
-        ) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            'Reserved paths cannot be duplicated.',
-            { handler: 'duplicate-path' },
-          );
-          return;
-        }
-
-        if (kind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, requestedPath);
-        }
-
-        const outcome = await fileOpsService.duplicatePath(kind, requestedPath, requestedDocName);
-        if (!outcome.ok) {
-          switch (outcome.kind) {
-            case 'not-found':
-              errorResponse(res, 404, 'urn:ok:error:doc-not-found', `${kind} does not exist.`, {
-                handler: 'duplicate-path',
-              });
-              return;
-            case 'type-mismatch':
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                `Target path is not a ${kind}.`,
-                { handler: 'duplicate-path' },
-              );
-              return;
-            case 'conflict':
-              respondDocInConflict(
-                res,
-                new DocInConflictError({ file: outcome.file }),
-                'duplicate-path',
-              );
-              return;
-            case 'destination-excluded':
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                kind === 'file'
-                  ? 'Duplicated document destination is excluded by the project content config.'
-                  : 'Duplicated folder destination is excluded by the project content config.',
-                { handler: 'duplicate-path' },
-              );
-              return;
-            case 'already-exists':
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                `A ${kind} at the duplicate destination already exists.`,
-                { handler: 'duplicate-path', cause: outcome.cause },
-              );
-              return;
-            default: {
-              const _exhaustive: never = outcome;
-              throw new Error(
-                `Unhandled duplicate outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-              );
-            }
-          }
-        }
-        const { duplicatedPath, duplicatedDocNames } = outcome;
-
-        switch (actor.kind) {
-          case 'agent':
-          case 'principal':
-            for (const docName of duplicatedDocNames) {
-              recordContributor(
-                docName,
-                actor.writerId,
-                actor.displayName,
-                actor.colorSeed,
-                undefined,
-                actor.actor,
-              );
-            }
-            break;
-          case 'anonymous':
-            break;
-          default: {
-            const _exhaustive: never = actor;
-            throw new Error(
-              `Unhandled actor kind in handleDuplicatePath: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-            );
-          }
-        }
-
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          DuplicatePathSuccessSchema,
-          { kind, path: duplicatedPath, duplicatedDocNames },
-          { handler: 'duplicate-path' },
-        );
-      } catch (e) {
-        if (e instanceof DuplicateNameExhaustedError) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            'All available duplicate name slots are occupied for this path.',
-            { handler: 'duplicate-path', cause: e },
-          );
-          return;
-        }
-        const filesystemProblem = classifyDuplicatePathFilesystemProblem(e);
-        if (filesystemProblem) {
-          errorResponse(
-            res,
-            filesystemProblem.status,
-            filesystemProblem.type,
-            filesystemProblem.title,
-            { handler: 'duplicate-path', cause: e },
-          );
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to duplicate path.', {
-          handler: 'duplicate-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'duplicate-path', method: 'POST' },
-  );
-
-  const handleRenamePath = withValidation(
-    RenamePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'rename-path',
-          });
-          return;
-        }
-        const { kind, fromPath, toPath } = body;
-        if (!isValidRelativeContentPath(fromPath) || !isValidRelativeContentPath(toPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Paths must be relative content paths.',
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        if (
-          kind === 'file' &&
-          (isSystemDoc(fromPath) ||
-            isSystemDoc(toPath) ||
-            isConfigDoc(fromPath) ||
-            isConfigDoc(toPath))
-        ) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            'Reserved document names cannot be renamed.',
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        // Reject paths with a `.ok` or `.git` segment at any depth — root
-        // `.ok/` holds OK config (`config.yml`, `frontmatter.yml`,
-        // `templates/`) plus the per-machine `local/` runtime subtree
-        // (server.lock, principal.json, cache, etc.), and nested
-        // `<folder>/.ok/` holds folder metadata + templates. Symmetric with
-        // the `__system__` carve-out. The `AGENTS.md` file inside `.ok/` is a
-        // tracked content file by design, but a rename TO or FROM these
-        // directories would clobber OK bookkeeping.
-        if (isReservedProjectStatePath(fromPath) || isReservedProjectStatePath(toPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            {
-              handler: 'rename-path',
-            },
-          );
-          return;
-        }
-        if (fromPath === toPath) {
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            { renamed: [], renamedAssets: [], rewrittenDocs: [] },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        const operationKind =
-          kind === 'asset' && isSupportedDocFile(fromPath) && isSupportedDocFile(toPath)
-            ? 'file'
-            : kind;
-        if (operationKind === 'asset') {
-          let result: {
-            renamedAssets: RenamedAssetMapping[];
-            rewrittenDocs: ManagedRenameRewrittenDoc[];
-          };
-          try {
-            result =
-              isSupportedDocFile(fromPath) && !isSupportedDocFile(toPath)
-                ? await _performDocumentToFileRename(fromPath, toPath)
-                : await _performAssetRename(fromPath, toPath);
-          } catch (err) {
-            if (err instanceof DocInConflictError) {
-              respondDocInConflict(res, err, 'rename-path');
-              return;
-            }
-            const { status, type, error } = toManagedRenamePublicError(err);
-            errorResponse(res, status, type, error, {
-              handler: 'rename-path',
-              cause: err,
-            });
-            return;
-          }
-
-          if (result.renamedAssets.length > 0) {
-            invalidateReferencedAssetsCache();
-          }
-
-          let summaryResponse: SummaryResponse | undefined;
-          if (result.renamedAssets.length > 0 && result.rewrittenDocs.length > 0) {
-            const subject = `Renamed asset ${fromPath} → ${toPath}`;
-            summaryResponse = attributeRenameWriteToActor(
-              actor,
-              subject,
-              result.rewrittenDocs.map(({ docName }) => ({ docName, subject })),
-              {
-                context: 'handleRenamePath asset branch',
-                onAnonymous: () => {
-                  log.debug(
-                    {
-                      kind: 'asset',
-                      fromPath,
-                      toPath,
-                      affectedDocs: result.rewrittenDocs.length,
-                      affectedAssets: result.renamedAssets.length,
-                    },
-                    '[rename-path] anonymous actor; no contributor recorded (no agentId in body and getPrincipal() returned null)',
-                  );
-                },
-              },
-            );
-          }
-          renameAttributionCounter().add(1, {
-            kind: 'rename-asset',
-            attribution_kind: actor.kind,
-          });
-
-          if (flushContributors) {
-            try {
-              await flushContributors();
-            } catch (flushErr) {
-              log.warn(
-                { err: flushErr },
-                '[rename-path] flushContributors failed after asset rename (commitSha backfill may be deferred)',
-              );
-            }
-          }
-
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            {
-              renamed: [],
-              renamedAssets: result.renamedAssets,
-              rewrittenDocs: result.rewrittenDocs,
-              ...(summaryResponse ? { summary: summaryResponse } : {}),
-            },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        // Register the source's actual on-disk extension before downstream
-        // checks so admission, conflict checks, and existsSync probes all see
-        // the right value when the file watcher hasn't yet observed the source
-        // (boot race).
-        if (operationKind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, fromPath);
-        }
-        // Conflict-aware refusal. Renaming a conflicted source doc would
-        // shift the file path while the merge stages still live at the
-        // old path — the disk-watcher → reconcile loop would then see two
-        // paths racing the same content. For a folder rename we ALSO
-        // refuse if any affected child carries 'conflict': the per-doc
-        // rewrite spine (`applyManagedRenameMapToLoadedDocument` →
-        // `composeAndWriteRawBody`) is a sibling primitive to
-        // `applyAgentMarkdownWrite` and does NOT inherit its gate.
-        // Mirrors handleDeletePath's affected-docs scan.
-        //
-        // Dual-source check: hocuspocus.documents.get() returns undefined
-        // for docs evicted from memory (e.g., after boot-time
-        // restoreLifecycleFromConflictsJson disconnects them). Falling back
-        // to ConflictStore via SyncEngine catches that eviction race —
-        // mirrors the dual-source pattern used in handleSyncConflictContent's
-        // 404 gate.
-        // Enumerate from disk (not the lagging file index) so the conflict
-        // pre-check sees every on-disk child of the folder — same root cause
-        // as the spine's `affectedDocNames`.
-        const renameAffectedDocNames =
-          operationKind === 'file'
-            ? [docNameForFileOperationPath(contentDir, fromPath)]
-            : listManagedDocNamesUnderFolderFromDisk(
-                resolveContentEntryPath(contentDir, 'folder', fromPath),
-              );
-        const renameEngine = getSyncEngine?.();
-        const renameTrackedFiles = new Set(
-          renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-        );
-        for (const affected of renameAffectedDocNames) {
-          const affectedDocName = affected;
-          const doc = hocuspocus.documents.get(affectedDocName);
-          const filePath = docNameToRelativePath(affectedDocName);
-          const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-          const conflictedByStore = renameTrackedFiles.has(filePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: filePath }), 'rename-path');
-            return;
-          }
-        }
-
-        if (contentFilter) {
-          // Mirror `resolveContentEntryPath`'s explicit-extension detection so
-          // a destination like `bar.mdx` is checked verbatim instead of as
-          // `bar.mdx.md` (which would miss `*.mdx` exclusion patterns).
-          const sourceExt = isSupportedDocFile(fromPath)
-            ? extname(fromPath)
-            : getDocExtension(fromPath);
-          const excluded =
-            operationKind === 'file'
-              ? contentFilter.isExcluded(
-                  isSupportedDocFile(toPath) ? toPath : `${toPath}${sourceExt}`,
-                )
-              : contentFilter.isDirExcluded(toPath);
-          if (excluded) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Destination ${operationKind === 'file' ? 'document' : 'folder'} is excluded by the project content config.`,
-              { handler: 'rename-path' },
-            );
-            return;
-          }
-        }
-
-        // Thread the actor identity through to the rewrite spine so the
-        // rename log entry carries the right writerId. Anonymous → service
-        // writer fallback is handled inside the spine.
-        const renameActor =
-          actor.kind === 'agent' || actor.kind === 'principal'
-            ? {
-                writerId: actor.writerId,
-                displayName: actor.displayName,
-                colorSeed: actor.colorSeed,
-                actorMetadata: actor.actor,
-              }
-            : undefined;
-
-        let result: {
-          renamed: RenamedDocMapping[];
-          renamedAssets: RenamedAssetMapping[];
-          rewrittenDocs: ManagedRenameRewrittenDoc[];
-        };
-        try {
-          result = await _performManagedRenameForDocs(
-            fromPath,
-            toPath,
-            operationKind,
-            renameActor ? { actor: renameActor } : {},
-          );
-        } catch (err) {
-          if (err instanceof ManagedRenameCollisionError) {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', withPeriod(err.message), {
-              handler: 'rename-path',
-              extensions: { colliding: err.colliding },
-              cause: err,
-            });
-            return;
-          }
-          throw err;
-        }
-
-        if (result.renamed.length === 0 && result.renamedAssets.length === 0) {
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            { renamed: [], renamedAssets: [], rewrittenDocs: [] },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-
-        if (result.renamedAssets.length > 0) {
-          invalidateReferencedAssetsCache();
-        }
-
-        let summaryResponse: SummaryResponse | undefined;
-        const logicalRenames = result.renamed.filter(
-          ({ fromDocName, toDocName }) => fromDocName !== toDocName,
-        );
-        if (logicalRenames.length > 0) {
-          summaryResponse = attributeRenameWriteToActor(
-            actor,
-            `Renamed ${fromPath} → ${toPath}`,
-            logicalRenames.map(({ fromDocName, toDocName }) => ({
-              docName: toDocName,
-              subject: formatRenameSubject(fromDocName, toDocName),
-            })),
-            {
-              context: 'handleRenamePath',
-              onAnonymous: () => {
-                log.debug(
-                  { kind, fromPath, toPath, affectedDocs: result.renamed.length },
-                  '[rename-path] anonymous actor — no contributor recorded (no agentId in body and getPrincipal() returned null)',
-                );
-              },
-            },
-          );
-        }
-        renameAttributionCounter().add(1, {
-          kind: `rename-${operationKind}`,
-          attribution_kind: actor.kind,
-        });
-
-        // Flush pending contributors so the rename-log entry's commitSha is
-        // backfilled by `commitToWipRefInner` BEFORE the API responds.
-        // Without this, a "pure rename without subsequent edit" leaves
-        // commitSha as '' until the next persistence drain (which may never
-        // happen) — the timeline rename-history mitigation depends on
-        // commitSha being a real 40-char SHA at read time. Mirrors the
-        // pattern at handleRollback (post-rollback flushContributors call).
-        if (flushContributors) {
-          try {
-            await flushContributors();
-          } catch (flushErr) {
-            log.warn(
-              { err: flushErr },
-              '[rename-path] flushContributors failed (commitSha backfill may be deferred)',
-            );
-          }
-        }
-
-        successResponse(
-          res,
-          200,
-          RenamePathSuccessSchema,
-          {
-            renamed: result.renamed,
-            renamedAssets: result.renamedAssets,
-            rewrittenDocs: result.rewrittenDocs,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-          },
-          { handler: 'rename-path' },
-        );
-      } catch (e) {
-        const { status, type, error } = toManagedRenamePublicError(e);
-        errorResponse(res, status, type, error, {
-          handler: 'rename-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'rename-path', method: 'POST' },
-  );
-
-  const handleDeletePath = withValidation(
-    DeletePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        extractAgentIdentity(body as unknown as Record<string, unknown>); // attribution threading
-        const { kind, path } = body;
-        if (!isValidRelativeContentPath(path)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-        const assetResolution =
-          kind === 'asset' ? resolveExtensionlessAssetPath(path) : { path, ambiguous: false };
-        if (assetResolution.ambiguous) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Asset path without an extension matches multiple files.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-        const operationPath = assetResolution.path;
-        const operationKind = kind === 'asset' && isSupportedDocFile(operationPath) ? 'file' : kind;
-        if (operationKind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, operationPath);
-        }
-        if (isReservedProjectStatePath(operationPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-
-        const outcome = await fileOpsService.deletePath(operationKind, operationPath);
-        if (!outcome.ok) {
-          if (outcome.kind === 'not-found') {
-            errorResponse(
-              res,
-              404,
-              'urn:ok:error:doc-not-found',
-              `${operationKind} does not exist.`,
-              { handler: 'delete-path' },
-            );
-          } else if (outcome.kind === 'type-mismatch') {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Target path is not a ${operationKind}.`,
-              { handler: 'delete-path' },
-            );
-          } else {
-            respondDocInConflict(
-              res,
-              new DocInConflictError({ file: outcome.file }),
-              'delete-path',
-            );
-          }
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          DeletePathSuccessSchema,
-          { deletedDocNames: outcome.deletedDocNames },
-          { handler: 'delete-path' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to delete path.', {
-          handler: 'delete-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'delete-path', method: 'POST' },
-  );
-
-  // Two-step Trash flow: the renderer calls
-  // `bridge.shell.trashItem` (Step 1) which moves the file to ~/.Trash via
-  // `shell.trashItem`. On success, the renderer POSTs here (Step 2) to
-  // synchronously cleanup server-side state — close Hocuspocus docs, mark
-  // `recentlyRemovedDocs`, purge the file index, broadcast CC1 files.
-  // Does NOT touch disk (the file is already gone from contentDir).
-  //
-  // Idempotent: if the file-watcher already processed the OS-level deletion
-  // between Step 1 and Step 2, `listAffectedDocNames` returns an empty array
-  // and the handler returns 200 with `deletedDocNames: []` rather than 404 —
-  // the desired end state (gone) is still true.
-  const handleTrashCleanup = withValidation(
-    TrashCleanupRequestSchema,
-    async (_req, res, body) => {
-      return withSpan(
-        'ok.fs.trash_cleanup',
-        {
-          attributes: {
-            'ok.cleanup.kind': body.kind,
-            'ok.cleanup.path': normalizeFsPath(body.path),
-            'ok.cleanup.path.role': classifyFsPath(body.path),
-          },
-        },
-        async () => {
-          try {
-            const bodyObj = body as unknown as Record<string, unknown>;
-            const actor = extractActorIdentity(bodyObj, getPrincipal);
-            if (actor.kind === 'invalid-summary') {
-              errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-                handler: 'trash-cleanup',
-              });
-              return;
-            }
-            const { kind, path } = body;
-            if (!isValidRelativeContentPath(path)) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                'path must be a relative content path.',
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-            const operationKind = kind === 'asset' && isSupportedDocFile(path) ? 'file' : kind;
-            const operationDocName = stripDocExtension(path);
-            if (operationKind === 'file') {
-              probeAndRegisterSourceFileExtension(contentDir, path);
-            }
-            // Defense in depth — synthetic docs never reach disk so cleanup
-            // against them is meaningless; mirrors the gate handleDeletePath
-            // implicitly enforces via `resolveContentEntryPath` + existsSync.
-            // Folder kind is checked separately: a `kind: 'folder', path:
-            // '__config__'` payload would otherwise reach listAffectedDocNames
-            // + captureAndCloseDocuments on the synthetic config docs inside
-            // that namespace before the per-doc guard at the recently-removed
-            // loop fires.
-            const isReservedFolder =
-              operationKind === 'folder' && isReservedSyntheticFolderPath(path);
-            if (
-              (operationKind === 'file' &&
-                (isSystemDoc(operationDocName) || isConfigDoc(operationDocName))) ||
-              isReservedFolder ||
-              isReservedProjectStatePath(path)
-            ) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:reserved-doc-name',
-                `'${path}' is a reserved document name.`,
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-            const { deletedDocNames } = await fileOpsService.trashCleanup(
-              operationKind,
-              path,
-              operationDocName,
-              'handleTrashCleanup',
-            );
-            successResponse(
-              res,
-              200,
-              TrashCleanupSuccessSchema,
-              { deletedDocNames },
-              { handler: 'trash-cleanup' },
-            );
-          } catch (e) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              'Failed to clean up after trash.',
-              {
-                handler: 'trash-cleanup',
-                cause: e,
-              },
-            );
-          }
-        },
-      );
-    },
-    { handler: 'trash-cleanup', method: 'POST' },
-  );
-
-  async function handleUploadAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method !== 'POST') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'upload-asset',
-        extraHeaders: { Allow: 'POST' },
-      });
-      return;
-    }
-
-    let uploadResult: UploadResult | undefined;
-    try {
-      uploadResult = await readUploadBody(req, projectDir ?? contentDir);
-    } catch (e) {
-      // All body-parse failures land as UploadWriteError with a URN-form
-      // reason. Tempfile cleanup is handled inside readUploadBody's error
-      // path. Anonymous emit (no extractAgentIdentity yet) is semantically
-      // OK — no Y.Doc mutation has been attempted.
-      if (e instanceof UploadWriteError) {
-        errorResponse(res, uploadStatusFor(e.reason), e.reason, uploadTitleFor(e.reason), {
-          handler: 'upload-asset',
-          cause: e,
-        });
-        return;
-      }
-      errorResponse(res, 400, 'urn:ok:error:malformed-upload', 'Failed to parse upload.', {
-        handler: 'upload-asset',
-        cause: e,
-      });
-      return;
-    }
-
-    const {
-      filename,
-      tempPath,
-      sha,
-      byteLength,
-      parentDocName: rawParentDocName,
-      placement: rawPlacement,
-    } = uploadResult;
-
-    // Belt-and-braces cleanup: if anything below this point errors or
-    // early-returns, the tempfile must go away. Every early-return path
-    // below that does NOT consume tempPath via linkTempToFinal* runs this.
-    const cleanupTempfile = () => {
-      if (existsSync(tempPath)) {
-        try {
-          unlinkSync(tempPath);
-        } catch {
-          // best-effort; orphan sweep reaps stragglers
-        }
-      }
-    };
-
-    // Validate metadata fields (parentDocName etc.) via the shared
-    // `validateBody` middleware. Body-shape failure emits 400
-    // `urn:ok:error:invalid-request` BEFORE `extractAgentIdentity` runs —
-    // an anonymous response is semantically correct here because no Y.Doc
-    // mutation is attempted. Mirrors `withValidation`'s policy for JSON
-    // handlers.
-    const validated = validateBody(
-      UploadRequestSchema,
-      { parentDocName: rawParentDocName, placement: rawPlacement || undefined },
-      res,
-      {
-        handler: 'upload-asset',
-      },
-    );
-    if (!validated.ok) {
-      cleanupTempfile();
-      return;
-    }
-    const { parentDocName, placement } = validated.value;
-
-    // Identity extracted from query params (multipart body precludes JSON).
-    // Capture agentId / agentName so structured upload logs carry
-    // attribution — mirrors precedent #24/#25 and lets operators trace
-    // unexpected file-creation events back to the originating agent
-    // during incident investigation. Both fields follow bounded shapes
-    // (agentId matches AGENT_ID_RE; agentName is sanitized) so they
-    // remain cardinality-safe for log indexing.
-    //
-    // CRUCIAL: identity extraction must precede every SEMANTIC error
-    // emission below (path-escape, no-file-received, storage-error). Body-
-    // shape errors above (urn:ok:error:invalid-request, urn:ok:error:malformed-upload)
-    // are anonymous because no Y.Doc mutation is attempted. The
-    // attribution-sweep-coverage ordering check enforces this distinction
-    // (precedent #24).
-    const { agentId, agentName } = extractAgentIdentity(
-      Object.fromEntries(new URL(req.url ?? '', 'http://localhost').searchParams.entries()),
-    );
-
-    if (byteLength === 0) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:no-file-received', 'No file received.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-
-    // Reject path-escape attempts.
-    if (
-      parentDocName.includes('\x00') ||
-      parentDocName.includes('..') ||
-      parentDocName.startsWith('/')
-    ) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-
-    const outcome = await assetService.storeUpload({
-      tempPath,
-      sha,
-      byteLength,
-      filename,
-      parentDocName,
-      placement,
-    });
-    if (outcome.ok) {
-      log.info(
-        {
-          event: 'upload',
-          endpoint: req.url ?? '/api/upload',
-          agentId,
-          agentName,
-          dedup: outcome.deduped,
-          mime: outcome.mime,
-          size: byteLength,
-          // `destPath` is the contentDir-relative asset path. High-
-          // cardinality by nature — fine as a log field consumed by text-
-          // search / by-incident filtering; NEVER promote it to a metric
-          // label (per-asset label explosion).
-          destPath: outcome.path,
-          httpStatus: 200,
-        },
-        outcome.deduped ? '[upload] dedup hit' : '[upload] write ok',
-      );
-      // RFC 9457 §3 success path: drop the `ok: true` wrapper. Wire shape
-      // is `{ src, path, deduped }`; clients discriminate on HTTP status.
-      successResponse(
-        res,
-        200,
-        UploadAssetSuccessSchema,
-        { src: outcome.src, path: outcome.path, deduped: outcome.deduped },
-        { handler: 'upload-asset' },
-      );
-      return;
-    }
-    switch (outcome.kind) {
-      case 'config-error':
-        log.error(
-          { err: outcome.cause },
-          '[upload] project config has invalid content.attachmentFolderPath',
-        );
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Server configuration error: invalid attachment folder path.',
-          { handler: 'upload-asset', cause: outcome.cause },
-        );
-        return;
-      case 'invalid-attachment-folder':
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid attachment folder path.', {
-          handler: 'upload-asset',
-        });
-        return;
-      case 'path-escape':
-        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-          handler: 'upload-asset',
-          ...(outcome.cause === undefined ? {} : { cause: outcome.cause }),
-        });
-        return;
-      case 'dest-validation-error':
-        log.error(
-          { err: outcome.cause, destDir: outcome.destDir },
-          '[upload] failed to validate destination directory',
-        );
-        errorResponse(res, 500, 'urn:ok:error:storage-error', 'Storage error.', {
-          handler: 'upload-asset',
-          cause: outcome.cause,
-        });
-        return;
-      case 'mkdir-failed':
-        errorResponse(
-          res,
-          uploadStatusFor(outcome.reason),
-          outcome.reason,
-          uploadTitleFor(outcome.reason),
-          {
-            handler: 'upload-asset',
-            cause: outcome.cause,
-            detail: 'failed to create attachment directory',
-          },
-        );
-        return;
-      case 'write-failed':
-        log.error(
-          {
-            event: 'upload',
-            endpoint: req.url ?? '/api/upload',
-            requestId: getRequestId(req),
-            agentId,
-            agentName,
-            filename: outcome.filename,
-            size: byteLength,
-            reason: outcome.reason,
-            httpStatus: uploadStatusFor(outcome.reason),
-            err: outcome.cause,
-          },
-          '[upload] write failed',
-        );
-        errorResponse(
-          res,
-          uploadStatusFor(outcome.reason),
-          outcome.reason,
-          uploadTitleFor(outcome.reason),
-          { handler: 'upload-asset', cause: outcome.cause },
-        );
-        return;
-    }
-  }
 
   // ─── Local-op relay endpoints (/api/local-op/*) ─────────────────────────────
   // loopback + origin + path safety + URL allowlist + concurrency=1 + 10-min timeout
@@ -11479,211 +9863,6 @@ export function createApiExtension(
     }
   }
 
-  // ─── `ok seed` scaffolder endpoints ──────────────────────────────────────
-  // GET /api/seed/plan  → 200 {plan} (RFC 9457 problem+json on error)
-  // POST /api/seed/apply with { plan } → 200 {result} (RFC 9457 problem+json on error)
-  //
-  // Same `planSeed` / `applySeed` logic the CLI subcommand and Electron IPC
-  // handler use. The IPC bridge (`ok:seed:plan` / `ok:seed:apply`) keeps its
-  // in-process discriminated-union shape (`{ok: true, plan}` / `{ok: false,
-  // error: {kind, message}}`); the HTTP fallback in `seedClient()` translates
-  // RFC 9457 problem+json back to that shape at the renderer boundary so
-  // `SeedDialog` / `EmptyEditorState` are transport-agnostic.
-  // Gated on `checkLocalOpSecurity` because the operation mutates the local
-  // filesystem; same contract as /api/local-op/* and /api/installed-agents.
-
-  /**
-   * GET `/api/seed/plan?rootDir=brain&packId=software-lifecycle` — preview the
-   * scaffold for a given subfolder + pack. `rootDir` defaults to `.` (project
-   * root). `packId` defaults to the registry default (`'knowledge-base'`) for
-   * back-compat with single-scaffold callers; unknown ids coerce to undefined
-   * and `resolvePack()` falls back to the default.
-   *
-   * Prerequisite-missing (no git init) → 422 with
-   * `urn:ok:error:seed-prerequisite-missing`; invalid-root (escape segments,
-   * absolute path) → 400 with `urn:ok:error:seed-invalid-root`. Both surface
-   * a `detail` carrying the underlying message so renderers can echo it.
-   */
-  async function handleSeedPlan(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'seed-plan' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'seed-plan',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    const url = new URL(req.url ?? '/', 'http://localhost');
-    const rootDir = url.searchParams.get('rootDir') ?? undefined;
-    const rawPackId = url.searchParams.get('packId');
-    const packId = coercePackId(rawPackId);
-    // Trust-boundary symmetry with the CLI: if the caller passed a `packId`
-    // but it doesn't name a registered pack, reject explicitly rather than
-    // silently fall back to the default pack (CLI returns "Unknown pack"
-    // failure on the same input).
-    if (rawPackId !== null && rawPackId !== '' && packId === undefined) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-        handler: 'seed-plan',
-        detail: `Pack id "${rawPackId}" is not registered.`,
-      });
-      return;
-    }
-    try {
-      const plan = await planSeed({ projectDir: contentDir, rootDir, packId });
-      successResponse(res, 200, SeedPlanSuccessSchema, { plan }, { handler: 'seed-plan' });
-    } catch (err) {
-      if (err instanceof SeedPrerequisiteError) {
-        errorResponse(
-          res,
-          422,
-          'urn:ok:error:seed-prerequisite-missing',
-          'Seed prerequisite missing.',
-          { handler: 'seed-plan', cause: err },
-        );
-        return;
-      }
-      if (err instanceof SeedRootDirError) {
-        // Fixed-vocabulary safe `detail` per RFC 9457 §3.1.5 — gives the
-        // client an actionable message without leaking the rejected path
-        // (raw err message goes through `cause` → Pino, never on wire).
-        errorResponse(res, 400, 'urn:ok:error:seed-invalid-root', 'Invalid seed root directory.', {
-          handler: 'seed-plan',
-          detail: 'The provided root directory is not within the workspace content directory.',
-          cause: err,
-        });
-        return;
-      }
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-        handler: 'seed-plan',
-        cause: err,
-      });
-    }
-  }
-
-  /**
-   * `POST /api/seed/apply` — apply a pre-computed ScaffoldPlan to disk.
-   * Body accepts `{plan, packId?}` (extras pass through
-   * `SeedApplyRequestSchema.loose()`); `packId` defaults to the registry
-   * default.
-   */
-  const handleSeedApply = withValidation(
-    SeedApplyRequestSchema,
-    async (_req, res, body) => {
-      // SeedApplyRequestSchema accepts `plan: unknown` (forward-compat); reject
-      // non-object payloads here so applySeed sees a structured value.
-      const planValue = body.plan;
-      if (!planValue || typeof planValue !== 'object') {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid plan payload.', {
-          handler: 'seed-apply',
-        });
-        return;
-      }
-      const plan = planValue as ScaffoldPlan;
-      // SeedApplyRequestSchema is `.loose()` so extras flow through as `unknown`
-      // on the parsed body; coerce defensively at the trust boundary. If the
-      // caller passed a non-empty `packId` that doesn't name a registered
-      // pack, reject explicitly (trust-boundary symmetry with the CLI, which
-      // returns an "Unknown pack" failure on the same input).
-      const looseBody = body as { packId?: unknown };
-      const rawPackId = looseBody.packId;
-      const packId = coercePackId(rawPackId);
-      if (typeof rawPackId === 'string' && rawPackId.length > 0 && packId === undefined) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-          handler: 'seed-apply',
-          detail: `Pack id "${rawPackId}" is not registered.`,
-        });
-        return;
-      }
-      try {
-        // The plan already has rootDir baked into its entries — apply only
-        // needs projectDir + packId (so it knows which template registry to
-        // resolve content from).
-        const result = await applySeed(plan, { projectDir: contentDir, packId });
-        successResponse(res, 200, SeedApplySuccessSchema, { result }, { handler: 'seed-apply' });
-      } catch (err) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to apply seed plan.',
-          {
-            handler: 'seed-apply',
-            cause: err,
-          },
-        );
-      }
-    },
-    {
-      handler: 'seed-apply',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'seed-apply' }),
-    },
-  );
-
-  /**
-   * `POST /api/seed/install-pack-skill` — install only a pack's companion
-   * skills. It deliberately skips scaffold files and required-plugin changes:
-   * the settings card is a separate user-owned install action, not a replay of
-   * `ok seed` and not a side effect of the plugin toggle.
-   */
-  const handleSeedInstallPackSkill = withValidation(
-    SeedInstallPackSkillRequestSchema,
-    async (_req, res, body) => {
-      const packId = coercePackId(body.packId);
-      if (packId === undefined) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown packId.', {
-          handler: 'seed-install-pack-skill',
-          detail: `Pack id "${body.packId}" is not registered.`,
-        });
-        return;
-      }
-      try {
-        const result = await installPackSkillOnDemand(contentDir, packId);
-        successResponse(res, 200, SeedInstallPackSkillSuccessSchema, result, {
-          handler: 'seed-install-pack-skill',
-        });
-      } catch (err) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to install pack skill.',
-          { handler: 'seed-install-pack-skill', cause: err },
-        );
-      }
-    },
-    {
-      handler: 'seed-install-pack-skill',
-      method: 'POST',
-      preBodyGate: (req, res) =>
-        checkLocalOpSecurity(req, res, { handler: 'seed-install-pack-skill' }),
-    },
-  );
-
-  /**
-   * `GET /api/seed/packs` — enumerate available starter packs. Static data;
-   * no project context required. The picker UI fetches once on dialog mount.
-   * Delegates to the shared `listStarterPacks()` so HTTP + IPC return the
-   * same wire-format shape from one source.
-   */
-  async function handleSeedPacks(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!checkLocalOpSecurity(req, res, { handler: 'seed-packs' })) return;
-    if (req.method !== 'GET') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'seed-packs',
-        extraHeaders: { Allow: 'GET' },
-      });
-      return;
-    }
-    successResponse(
-      res,
-      200,
-      SeedListPacksSuccessSchema,
-      { packs: listStarterPacks() },
-      { handler: 'seed-packs' },
-    );
-  }
-
   /**
    * `POST /api/install-skill` — build `openknowledge.skill` and open it via
    * the OS file association so Claude Desktop's native install dialog takes
@@ -11767,249 +9946,50 @@ export function createApiExtension(
       candidateAbs !== resolvedContentDir &&
       !candidateAbs.startsWith(`${resolvedContentDir}${sep}`)
     ) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Path escapes content directory.', {
+      errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {
         handler,
       });
       return null;
     }
-    return { folderRel, resolvedContentDir };
-  }
-
-  function validateTemplateName(name: string, res: ServerResponse, handler = 'template'): boolean {
-    if (!name || !TEMPLATE_NAME_REGEX.test(name)) {
-      errorResponse(
-        res,
-        400,
-        'urn:ok:error:invalid-request',
-        'Invalid name: must be letters / digits / `_` / `-` only (no `.md` extension).',
-        { handler },
-      );
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Resolve a template by walking leaf → root from `folderRel`, closest-wins.
-   * Returns the matched file's abs path, the owning folder, and whether it's
-   * `local` (owned by `folderRel` itself) or `inherited` (from an ancestor).
-   * Single source of the resolution walk — shared by `handleTemplateGet` and
-   * the move handler's inherited-vs-absent disambiguation.
-   */
-  function findTemplateLeafToRoot(
-    resolvedContentDir: string,
-    folderRel: string,
-    name: string,
-  ): { abs: string; folder: string; scope: 'local' | 'inherited' } | null {
-    const segments = folderRel === '' ? [] : folderRel.split('/');
-    for (let depth = segments.length; depth >= 0; depth--) {
-      const ancestorFolder = depth === 0 ? '' : segments.slice(0, depth).join('/');
-      const ancestorAbs =
-        ancestorFolder === '' ? resolvedContentDir : resolve(resolvedContentDir, ancestorFolder);
-      if (
-        ancestorAbs !== resolvedContentDir &&
-        !ancestorAbs.startsWith(`${resolvedContentDir}${sep}`)
-      ) {
-        continue;
-      }
-      const candidate = resolve(ancestorAbs, '.ok', 'templates', `${name}.md`);
-      if (existsSync(candidate)) {
-        return {
-          abs: candidate,
-          folder: ancestorFolder,
-          scope: depth === segments.length ? 'local' : 'inherited',
-        };
-      }
-    }
-    return null;
-  }
-
-  function pickFrontmatterFields(raw: unknown): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-      if (value === undefined) continue;
-      out[key] = value;
-    }
-    return out;
-  }
-
-  const handleFolderConfigGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const validated = validateFolderRel(
-          url.searchParams.get('path') ?? '',
-          res,
-          'path',
-          'folder-config-get',
-        );
-        if (!validated) return;
-        const meta = await enrichDirectory(validated.folderRel, {
-          projectDir: validated.resolvedContentDir,
+    // Canonical containment on top of the lexical prefix check above, which a
+    // symlinked directory defeats (`notes -> /outside` keeps every lexical
+    // check green while the write lands outside the root). One gate here
+    // covers both consumer families — the folder-template routes AND the
+    // folder-mode history arm — because the writers behind it
+    // (`applyFolderFrontmatterPatch`, the template write/delete/move helpers)
+    // mkdir and write under the validated folder without re-checking.
+    // The asserts anchor on the components the writers actually TOUCH:
+    // `<folder>/.ok` and `<folder>/.ok/templates`, not just the folder —
+    // `assertNoSymlinkEscape` returns as soon as its argument realpaths
+    // in-root and never inspects components below it, so asserting the folder
+    // alone admits a planted `<folder>/.ok -> /outside` link. Anchoring on
+    // `.ok` subsumes the folder (the ENOENT walk passes through it), and both
+    // deeper asserts are free when the dirs don't exist yet.
+    // Reserved-prefix folders (`.ok`, `.git`, `.ok/skills/<name>`) are
+    // deliberately admitted here, unlike the file-ops family: the writers
+    // append the `.ok/{frontmatter.yml,templates/<pinned-name>.md}` leaf
+    // themselves, so nothing load-bearing is reachable through them.
+    try {
+      const okDir = resolve(candidateAbs, '.ok');
+      assertNoSymlinkEscape(okDir, resolvedContentDir);
+      assertNoSymlinkEscape(resolve(okDir, 'templates'), resolvedContentDir);
+    } catch (err) {
+      if (isContainmentRejection(err)) {
+        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {
+          handler,
+          cause: err,
         });
-        const folderOkDir = resolve(validated.resolvedContentDir, validated.folderRel, '.ok');
-        const localFmPath = resolve(folderOkDir, 'frontmatter.yml');
-        let frontmatterLocal: Record<string, unknown> | null = null;
-        if (existsSync(localFmPath)) {
-          try {
-            const raw = await readFile(localFmPath, 'utf-8');
-            const parsed = parseYaml(raw);
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              frontmatterLocal = parsed as Record<string, unknown>;
-            } else {
-              frontmatterLocal = {};
-            }
-          } catch (err) {
-            const reason = err instanceof Error ? err.message : String(err);
-            log.warn(
-              { path: localFmPath, reason },
-              `[folder-config:get] malformed YAML in ${localFmPath}: ${reason}`,
-            );
-            frontmatterLocal = null;
-          }
-        }
-
-        // Folder frontmatter is SELF-ONLY (no ancestor cascade) and there
-        // are no schema declarations — `frontmatter_local` is the folder's
-        // own open-shape frontmatter, the whole contract.
-        successResponse(
-          res,
-          200,
-          FolderConfigGetSuccessSchema,
-          {
-            folder: meta,
-            frontmatter_local: frontmatterLocal,
-          },
-          { handler: 'folder-config-get' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read folder config.',
-          { handler: 'folder-config-get', cause: e },
-        );
+        return null;
       }
-    },
-    { handler: 'folder-config-get', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleFolderConfigPut = withValidation(
-    FolderConfigPutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        // No-project single-file mode writes nothing into the user's directory
-        // beyond the one edited doc. Folder config would land a
-        // `<folder>/.ok/frontmatter.yml` sidecar in the user's tree — refuse.
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Folder configuration is not available in single-file mode.',
-            { handler: 'folder-config-put' },
-          );
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'folder-config-put',
-          });
-          return;
-        }
-        const validated = validateFolderRel(body.path, res, 'path', 'folder-config-put');
-        if (!validated) return;
-
-        // Write the folder's own frontmatter (open-shape, like a doc's) via the
-        // single-folder merge-patch helper — addressed by the folder's own
-        // path, no glob and no whitelist.
-        const allApplied: Array<{ path: string; action: 'written' | 'deleted' | 'noop' }> = [];
-        if (body.frontmatter !== undefined) {
-          const result = applyFolderFrontmatterPatch({
-            anchorDir: validated.resolvedContentDir,
-            folderRel: validated.folderRel,
-            patch: body.frontmatter,
-          });
-          if (!result.ok) {
-            const status = result.error.code === 'WRITE_ERROR' ? 500 : 400;
-            const urn =
-              status === 500
-                ? 'urn:ok:error:internal-server-error'
-                : 'urn:ok:error:invalid-request';
-            const title = status === 500 ? 'Failed to write folder config.' : result.error.message;
-            errorResponse(res, status, urn, title, {
-              handler: 'folder-config-put',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            });
-            return;
-          }
-          allApplied.push({ path: result.path, action: result.action });
-          // Attribute the frontmatter change (skip a no-op patch).
-          if (result.action !== 'noop') {
-            attributeOkArtifactWrite(
-              actor,
-              okArtifactKey('folder-frontmatter', validated.folderRel),
-              `folder-frontmatter-${result.action === 'deleted' ? 'delete' : 'edit'}: ${result.path}`,
-            );
-            scheduleOkArtifactFlush('folder-config-put');
-          }
-        }
-
-        successResponse(
-          res,
-          200,
-          FolderConfigPutSuccessSchema,
-          { applied: allApplied },
-          { handler: 'folder-config-put' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to write folder config.',
-          { handler: 'folder-config-put', cause: e },
-        );
-      }
-    },
-    { handler: 'folder-config-put', method: 'PUT' },
-  );
-
-  const handleFolderConfig = methodRouter(
-    { GET: handleFolderConfigGet, PUT: handleFolderConfigPut },
-    { handler: 'folder-config' },
-  );
-
-  /**
-   * Conflict-aware refusal helper for the template handlers. A template is a
-   * content doc now (`<folder>/.ok/templates/<name>`), so its live Y.Doc carries
-   * a `lifecycle.status` Y.Map — a mutation against one mid-conflict must refuse
-   * exactly like the sibling content-write handlers, whose paired-write path
-   * (`composeAndWriteRawBody`) would otherwise clobber a doc the user is
-   * mid-resolving. Takes the pre-resolved content doc name — same shape as the
-   * sibling `checkSkillDocConflictGate`, so the two gates read as one pattern.
-   * Returns `true` when the gate fired (caller short-circuits); `false` when
-   * the mutation may proceed.
-   */
-  function checkTemplateConflictGate(
-    templateDocName: string,
-    handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
-    res: ServerResponse,
-  ): boolean {
-    const doc = hocuspocus.documents.get(templateDocName);
-    if (doc && isDocInConflict(doc)) {
-      respondDocInConflict(res, new DocInConflictError({ file: `${templateDocName}.md` }), handler);
-      return true;
+      // Raw realpath errno or a missing content root: a server fault, not the
+      // caller's path — same split as every other containment consumer.
+      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to validate path.', {
+        handler,
+        cause: err,
+      });
+      return null;
     }
-    return false;
+    return { folderRel, resolvedContentDir };
   }
 
   /**
@@ -12049,794 +10029,6 @@ export function createApiExtension(
     // record — callers still get the FM-stripped body.
     return { frontmatter: parseFrontmatterRecord(raw) ?? {}, body };
   };
-
-  const handleTemplateGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateTemplateName(name, res, 'template-get')) return;
-
-        // Walk leaf → root for closest match.
-        const validated = validateFolderRel(
-          url.searchParams.get('folder') ?? '',
-          res,
-          'folder',
-          'template-get',
-        );
-        if (!validated) return;
-        const { folderRel, resolvedContentDir } = validated;
-
-        const found = findTemplateLeafToRoot(resolvedContentDir, folderRel, name);
-        if (!found) {
-          errorResponse(res, 404, 'urn:ok:error:template-not-found', 'Template not found.', {
-            handler: 'template-get',
-            detail: `Template "${name}" not found for folder "${folderRel || '.'}". Walked leaf → root.`,
-          });
-          return;
-        }
-        const { abs: foundAbs, folder: foundFolder, scope: foundScope } = found;
-
-        const raw = await readFile(foundAbs, 'utf-8');
-        // Normalize single-block (and legacy two-block) templates: wire
-        // `frontmatter` = the template's identity (title/description), wire
-        // `body` = the starter content (doc-frontmatter block + markdown) a
-        // new doc receives. Tokens (`{{date}}`) are preserved verbatim.
-        const model = parseTemplateFile(raw);
-        const frontmatter = model.identity as Record<string, unknown>;
-        const body = model.starterContent;
-
-        const relPath = relative(resolvedContentDir, foundAbs)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-
-        successResponse(
-          res,
-          200,
-          TemplateGetSuccessSchema,
-          {
-            template: {
-              name,
-              folder: foundFolder,
-              scope: foundScope,
-              path: relPath,
-              frontmatter,
-              body,
-            },
-          },
-          { handler: 'template-get' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read template.', {
-          handler: 'template-get',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-get', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleTemplatePut = withValidation(
-    TemplatePutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        // Templates write `<folder>/.ok/templates/*.md` into the content tree —
-        // a user-dir artifact single-file mode must never create.
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Templates are not available in single-file mode.',
-            { handler: 'template-put' },
-          );
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-put',
-          });
-          return;
-        }
-        const name = body.name;
-        if (!validateTemplateName(name, res, 'template-put')) return;
-        const validated = validateFolderRel(body.folder, res, 'folder', 'template-put');
-        if (!validated) return;
-
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-put',
-            res,
-          )
-        )
-          return;
-
-        // Compose + validate the `.md` bytes server-side, then route the body
-        // through the template's CRDT doc (precedent #24 / #38) — same shape as
-        // skill-put. Templates are content docs, so the ordinary content
-        // persistence path (not the managed-artifact branch) writes the file.
-        const composed = composeTemplateContent({
-          name,
-          body: typeof body.body === 'string' ? body.body : '',
-          frontmatter: pickFrontmatterFields(body.frontmatter) satisfies TemplateFrontmatter,
-        });
-        if (!composed.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid template request.', {
-            handler: 'template-put',
-            detail: composed.error.code,
-            cause: new Error(composed.error.message),
-          });
-          return;
-        }
-
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
-        const templateCreated = !existsSync(templateFilePath);
-        const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-        const templateDocName = templateDocNameFor(validated.folderRel, name);
-
-        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-          body as unknown as Record<string, unknown>,
-        );
-        const templateSession = await sessionManager.getSession(templateDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-        templateSession.dc.document.transact(() => {
-          composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
-        }, templateSession.origin);
-
-        const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
-          respondPersistenceFailure(res, templateFlush.failure, 'template-put');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-put');
-          return;
-        }
-
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created this folder's `.ok/templates/` dir — exactly
-        // the brand-new-subdir race where the watcher's create event can be
-        // lost. Same net as the sibling agent-write handlers.
-        registerWrittenDocInFileIndex(templateDocName, composed.content);
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', validated.folderRel, name),
-          `${templateCreated ? 'template-create' : 'template-edit'}: ${templateRelPath}`,
-        );
-        scheduleOkArtifactFlush('template-put');
-        successResponse(
-          res,
-          200,
-          TemplatePutSuccessSchema,
-          {
-            path: templateRelPath,
-            created: templateCreated,
-            warnings: composed.warnings,
-          },
-          { handler: 'template-put' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to write template.', {
-          handler: 'template-put',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-put', method: 'PUT' },
-  );
-
-  const handleTemplateDelete = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateTemplateName(name, res, 'template-delete')) return;
-        const validated = validateFolderRel(
-          url.searchParams.get('folder') ?? '',
-          res,
-          'folder',
-          'template-delete',
-        );
-        if (!validated) return;
-
-        // DELETE has no body (query-param transport); read identity + summary
-        // from the query string into a synthetic body for extractActorIdentity.
-        const actor = extractActorIdentityFromQuery(url, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-delete',
-          });
-          return;
-        }
-
-        // Conflict-aware refusal. See `checkTemplateConflictGate`.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-delete',
-            res,
-          )
-        )
-          return;
-
-        // Tear down the live template content doc (if open) BEFORE removing the
-        // file, so its debounced content store can't re-store (resurrect) it on
-        // a later unload. Same spine doc-delete + skill-delete use; no-op when
-        // the doc was never opened.
-        await captureAndCloseDocuments(
-          [templateDocNameFor(validated.folderRel, name)],
-          'deleted-upstream',
-        );
-
-        const deleteInput: Parameters<typeof applyTemplateDelete>[0] = {
-          projectDir: validated.resolvedContentDir,
-          folder: validated.folderRel,
-          name,
-        };
-        const result = applyTemplateDelete(deleteInput);
-        if (!result.ok) {
-          const status =
-            result.error.code === 'WRITE_ERROR' ||
-            result.error.code === 'UNLINK_FAILED' ||
-            result.error.code === 'BAD_PROJECT_DIR'
-              ? 500
-              : 400;
-          const urn =
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request';
-          const title = status === 500 ? 'Failed to delete template.' : 'Invalid template request.';
-          errorResponse(res, status, urn, title, {
-            handler: 'template-delete',
-            detail: result.error.code,
-            cause: new Error(result.error.message),
-          });
-          return;
-        }
-        // Only attribute when a file was actually removed (no-op delete of an
-        // absent template records nothing).
-        if (result.existed) {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('template', validated.folderRel, name),
-            `template-delete: ${result.path}`,
-          );
-          scheduleOkArtifactFlush('template-delete');
-          // Mark the content doc removed so a stale tab redirects instead of
-          // offering to resurrect it (parity with ordinary doc deletion).
-          recentlyRemovedDocs?.setDeleted(templateDocNameFor(validated.folderRel, name));
-        }
-        successResponse(
-          res,
-          200,
-          TemplateDeleteSuccessSchema,
-          { existed: result.existed, path: result.path },
-          { handler: 'template-delete' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to delete template.',
-          { handler: 'template-delete', cause: e },
-        );
-      }
-    },
-    { handler: 'template-delete', method: 'DELETE', skipBodyParse: true },
-  );
-
-  const handleTemplateMove = withValidation(
-    TemplateMoveRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-move',
-          });
-          return;
-        }
-        if (!validateTemplateName(body.fromName, res, 'template-move')) return;
-        if (!validateTemplateName(body.toName, res, 'template-move')) return;
-        const fromValidated = validateFolderRel(body.fromFolder, res, 'folder', 'template-move');
-        if (!fromValidated) return;
-        const toValidated = validateFolderRel(body.toFolder, res, 'folder', 'template-move');
-        if (!toValidated) return;
-
-        // Refuse moving a source whose target doc is in an unresolved conflict.
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(fromValidated.folderRel, body.fromName),
-            'template-move',
-            res,
-          )
-        ) {
-          return;
-        }
-
-        // Tear down the live source template content doc (if open) BEFORE the
-        // git-mv relocates the file — otherwise its debounced content store
-        // would re-store at the now-stale from-path, resurrecting the moved
-        // template.
-        await captureAndCloseDocuments(
-          [templateDocNameFor(fromValidated.folderRel, body.fromName)],
-          'renamed',
-        );
-
-        const result = await applyTemplateMove({
-          projectDir: fromValidated.resolvedContentDir,
-          fromFolder: fromValidated.folderRel,
-          fromName: body.fromName,
-          toFolder: toValidated.folderRel,
-          toName: body.toName,
-          // git mv (history-preserving) when the path is tracked; plain disk
-          // rename otherwise. `withParentLock` inside renameTrackedPathInGit
-          // serializes against concurrent doc renames (git-index safety).
-          relocate: async (fromAbs, toAbs) => {
-            const movedWithGit = await renameTrackedPathInGit(projectDir, fromAbs, toAbs);
-            if (!movedWithGit) renamePathOnDisk(fromAbs, toAbs);
-            return movedWithGit;
-          },
-        });
-
-        if (!result.ok) {
-          if (result.error.code === 'TEMPLATE_NOT_FOUND') {
-            // Distinguish "inherited" (resolvable from an ancestor) — teach
-            // localize-then-move — from "truly absent" — 404.
-            const found = findTemplateLeafToRoot(
-              fromValidated.resolvedContentDir,
-              fromValidated.folderRel,
-              body.fromName,
-            );
-            if (found?.scope === 'inherited') {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                `Template "${body.fromName}" is inherited from "${found.folder || '(root)'}", not local to "${fromValidated.folderRel || '(root)'}". Move it from the folder that owns it, or create a local copy here first (then move that).`,
-                { handler: 'template-move', detail: 'TEMPLATE_INHERITED' },
-              );
-              return;
-            }
-            errorResponse(res, 404, 'urn:ok:error:template-not-found', 'Template not found.', {
-              handler: 'template-move',
-              detail: result.error.message,
-            });
-            return;
-          }
-          if (result.error.code === 'TEMPLATE_EXISTS') {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', result.error.message, {
-              handler: 'template-move',
-              detail: result.error.code,
-            });
-            return;
-          }
-          const status =
-            result.error.code === 'WRITE_ERROR' || result.error.code === 'MOVE_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            status === 500 ? 'Failed to move template.' : 'Invalid template move request.',
-            {
-              handler: 'template-move',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            },
-          );
-          return;
-        }
-
-        // Mark the source content doc removed (the move relocated its file) so a
-        // stale tab on the old name redirects instead of offering to resurrect
-        // it (parity with ordinary doc deletion).
-        recentlyRemovedDocs?.setDeleted(templateDocNameFor(fromValidated.folderRel, body.fromName));
-
-        // Optional atomic move+edit: rewrite the relocated template's content.
-        // The move already succeeded and persisted the original content, so any
-        // failure here is captured and reported AFTER the move is attributed —
-        // the rename must not be lost because the edit step failed.
-        let contentEditError: { code: string; message: string } | null = null;
-        if (body.body !== undefined || body.frontmatter !== undefined) {
-          // Preserve the existing (just-moved) body when only `frontmatter` is
-          // supplied. If that body can't be read, SKIP the rewrite rather than
-          // risk wiping it — defaulting to '' would re-introduce the body-loss
-          // bug on a read error; the moved file keeps its original content.
-          let writeBody: string | null;
-          if (typeof body.body === 'string') {
-            writeBody = body.body;
-          } else {
-            try {
-              writeBody = instantiateDoc(
-                readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
-              );
-            } catch {
-              writeBody = null;
-            }
-          }
-          if (writeBody === null) {
-            contentEditError = {
-              code: 'READ_FAILED',
-              message:
-                'could not read the moved template to apply the metadata change; the move succeeded with the original content intact — retry the edit',
-            };
-          } else {
-            const writeResult = applyTemplateWrite({
-              projectDir: toValidated.resolvedContentDir,
-              folder: toValidated.folderRel,
-              name: body.toName,
-              body: writeBody,
-              frontmatter: pickFrontmatterFields(body.frontmatter) satisfies TemplateFrontmatter,
-            });
-            if (!writeResult.ok) contentEditError = writeResult.error;
-          }
-        }
-
-        // Close the dropped-FSEvent gap for the DESTINATION (parity with
-        // put/import): the relocate may have just created `toFolder`'s
-        // `.ok/templates/` dir — the brand-new-subdir race where the watcher's
-        // create event can be lost. Read the final on-disk bytes (post the
-        // optional edit above) so the index entry matches what landed.
-        // Best-effort like the helper itself: on a read failure the CRDT/disk
-        // copy exists regardless and a rescan re-seeds the index.
-        try {
-          registerWrittenDocInFileIndex(
-            templateDocNameFor(toValidated.folderRel, body.toName),
-            readFileSync(resolve(toValidated.resolvedContentDir, result.toPath), 'utf-8'),
-          );
-        } catch {
-          // Unreadable destination — leave index membership to the watcher.
-        }
-
-        // The move succeeded — attribute + commit + signal regardless of the
-        // optional content edit's outcome, so the rename is never lost when the
-        // edit step fails.
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', toValidated.folderRel, body.toName),
-          `template-rename: ${result.fromPath} -> ${result.toPath}`,
-          [{ from: result.fromPath, to: result.toPath }],
-        );
-        scheduleOkArtifactFlush('template-move');
-        signalChannel?.('files');
-
-        if (contentEditError) {
-          const isServerError =
-            contentEditError.code === 'WRITE_ERROR' || contentEditError.code === 'READ_FAILED';
-          errorResponse(
-            res,
-            isServerError ? 500 : 400,
-            isServerError ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            // Include the destination so the agent can retry the content edit
-            // against the moved template without re-deriving where it landed.
-            `Template moved to "${result.toPath}", but updating its content failed.`,
-            {
-              handler: 'template-move',
-              detail: contentEditError.code,
-              cause: new Error(contentEditError.message),
-            },
-          );
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          TemplateMoveSuccessSchema,
-          { from: result.fromPath, to: result.toPath, committed: result.committed },
-          { handler: 'template-move' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to move template.', {
-          handler: 'template-move',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'template-move', method: 'POST' },
-  );
-
-  const handleTemplate = methodRouter(
-    {
-      GET: handleTemplateGet,
-      PUT: handleTemplatePut,
-      POST: handleTemplateMove,
-      DELETE: handleTemplateDelete,
-    },
-    { handler: 'template' },
-  );
-
-  const handleTemplateImport = withValidation(
-    TemplateImportRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (ephemeral) {
-          errorResponse(
-            res,
-            403,
-            'urn:ok:error:single-file-mode',
-            'Templates are not available in single-file mode.',
-            { handler: 'template-import' },
-          );
-          return;
-        }
-
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'template-import',
-          });
-          return;
-        }
-
-        const sourcePath = body.sourcePath;
-        if (!isSafeDocName(sourcePath)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid sourcePath.', {
-            handler: 'template-import',
-          });
-          return;
-        }
-
-        const sourceDocName = resolveAlias(sourcePath);
-        if (isSystemDoc(sourceDocName) || isConfigDoc(sourceDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${sourceDocName}' is a reserved document name.`,
-            { handler: 'template-import' },
-          );
-          return;
-        }
-
-        const sourceFilePath = resolveContentEntryPath(contentDir, 'file', sourceDocName);
-        if (!existsSync(sourceFilePath)) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:doc-not-found',
-            `Source document not found: ${sourceDocName}.`,
-            {
-              handler: 'template-import',
-            },
-          );
-          return;
-        }
-
-        const existing = hocuspocus.documents.get(sourceDocName);
-        if (body.deleteSource) {
-          const deleteEngine = getSyncEngine?.();
-          const deleteTrackedFiles = new Set(
-            deleteEngine ? deleteEngine.getConflicts().map((c) => c.file) : [],
-          );
-          const conflictedByLifecycle = existing !== undefined && isDocInConflict(existing);
-          const conflictedByStore = deleteTrackedFiles.has(sourcePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(
-              res,
-              new DocInConflictError({ file: sourcePath }),
-              'template-import',
-            );
-            return;
-          }
-        }
-
-        // Read source content
-        let sourceContent = '';
-        if (existing) {
-          sourceContent = existing.getText('source').toString();
-        } else {
-          const dc = await hocuspocus.openDirectConnection(sourceDocName);
-          try {
-            const document = dc.document;
-            if (!document) {
-              errorResponse(
-                res,
-                500,
-                'urn:ok:error:doc-not-available',
-                'Source document is not available.',
-                {
-                  handler: 'template-import',
-                },
-              );
-              return;
-            }
-            sourceContent = document.getText('source').toString();
-          } finally {
-            await dc.disconnect();
-          }
-        }
-
-        // Determine target template name
-        let name = body.name;
-        if (!name) {
-          const { basename } = splitContentPath(sourcePath);
-          const nameWithoutExt = basename.replace(/\.(md|mdx)$/i, '');
-          name = nameWithoutExt.replace(/[^A-Za-z0-9_-]/g, '-').toLowerCase();
-          name = name.replace(/^[-_]+|[-_]+$/g, '');
-          name ||= 'imported-template';
-        }
-
-        if (!validateTemplateName(name, res, 'template-import')) return;
-
-        const validated = validateFolderRel(body.targetFolder, res, 'folder', 'template-import');
-        if (!validated) return;
-
-        if (
-          checkTemplateConflictGate(
-            templateDocNameFor(validated.folderRel, name),
-            'template-import',
-            res,
-          )
-        )
-          return;
-
-        // Parse existing frontmatter of the source file to extract the title/description/tags
-        const { frontmatter: sourceFmText, body: sourceBody } = stripFrontmatter(sourceContent);
-        const cleanFmText = unwrapFrontmatterFences(sourceFmText);
-        let sourceFmObj: Record<string, unknown> = {};
-        try {
-          if (cleanFmText.trim()) {
-            sourceFmObj = parseYaml(cleanFmText) as Record<string, unknown>;
-          }
-        } catch {
-          // Malformed frontmatter — treat the source as having none.
-        }
-
-        const templateTitle =
-          body.title || (sourceFmObj?.title as string) || extractPageTitle(sourceContent, name);
-        const templateDescription = (sourceFmObj?.description as string) || '';
-        const templateTags = Array.isArray(sourceFmObj?.tags) ? (sourceFmObj.tags as string[]) : [];
-
-        // For the starter content, we can use the original document frontmatter but remove `template:`
-        // if it somehow got there. Keep other fields. We also drop `title` so it doesn't get baked into every instance.
-        const starterFmObj = { ...sourceFmObj };
-        delete starterFmObj.template;
-        delete starterFmObj.title;
-
-        let starterContent = '';
-        if (Object.keys(starterFmObj).length > 0) {
-          const fmYaml = stringifyYaml(starterFmObj);
-          starterContent = `${fmYaml.trim()}\n`;
-        }
-        starterContent = starterContent ? `---\n${starterContent}---\n${sourceBody}` : sourceBody;
-
-        const composed = composeTemplateContent({
-          name,
-          body: starterContent,
-          frontmatter: {
-            title: templateTitle,
-            description: templateDescription,
-            tags: templateTags,
-          },
-        });
-
-        if (!composed.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid template request.', {
-            handler: 'template-import',
-            detail: composed.error.code,
-            cause: new Error(composed.error.message),
-          });
-          return;
-        }
-
-        const templateFilePath = resolve(
-          validated.resolvedContentDir,
-          validated.folderRel,
-          '.ok',
-          'templates',
-          `${name}.md`,
-        );
-        const templateCreated = !existsSync(templateFilePath);
-        const templateRelPath = relative(validated.resolvedContentDir, templateFilePath)
-          .split(/[\\/]/)
-          .filter(Boolean)
-          .join('/');
-        const templateDocName = templateDocNameFor(validated.folderRel, name);
-
-        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-          body as unknown as Record<string, unknown>,
-        );
-        const templateSession = await sessionManager.getSession(templateDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-        templateSession.dc.document.transact(() => {
-          composeAndWriteRawBody(templateSession.dc.document, composed.content, 'agent');
-        }, templateSession.origin);
-
-        const templateFlush = await flushDiskAndDetectOutcome(templateDocName);
-        if (templateFlush?.kind === 'failure') {
-          respondPersistenceFailure(res, templateFlush.failure, 'template-import');
-          return;
-        }
-        if (templateFlush?.kind === 'divergence') {
-          respondDiskDivergence(res, 'template-import');
-          return;
-        }
-
-        // Close the dropped-FSEvent gap at the source (see helper): the flush
-        // may have just created the target folder's `.ok/templates/` dir —
-        // exactly the brand-new-subdir race where the watcher's create event
-        // can be lost. Same net as the sibling agent-write handlers.
-        registerWrittenDocInFileIndex(templateDocName, composed.content);
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('template', validated.folderRel, name),
-          `template-import: ${templateRelPath}`,
-        );
-
-        if (body.deleteSource) {
-          const deletedDocNames = [sourceDocName];
-          await captureAndCloseDocuments(deletedDocNames, 'deleted-upstream');
-          if (recentlyRemovedDocs) {
-            recentlyRemovedDocs.setDeleted(sourceDocName);
-          }
-          tracedUnlinkSync(sourceFilePath);
-          mutateFileIndex?.({
-            kind: 'delete',
-            path: sourceFilePath,
-            docName: sourceDocName,
-          });
-        }
-
-        scheduleOkArtifactFlush('template-import');
-        signalChannel?.('files');
-
-        successResponse(
-          res,
-          200,
-          TemplateImportSuccessSchema,
-          {
-            path: templateRelPath,
-            created: templateCreated,
-            warnings: composed.warnings,
-          },
-          { handler: 'template-import' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to import template.',
-          {
-            handler: 'template-import',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'template-import', method: 'POST' },
-  );
 
   // ─── Skills (`/api/skill`, `/api/skills`) ──────────────────────
   //
@@ -13531,16 +10723,6 @@ export function createApiExtension(
   }
 
   /**
-   * The CRDT doc name a template opens/persists under — its content-relative path
-   * (`<folderRel>/.ok/templates/<name>`, ext-less, RAW). Delegates to the core
-   * builder so server handlers, the client open path, and the properties panel
-   * share one identity. `''` folder → `.ok/templates/<name>` (project root).
-   */
-  function templateDocNameFor(folderRel: string, name: string): string {
-    return templateContentDocName(folderRel, name);
-  }
-
-  /**
    * POSIX store-relative path for a skill file. Project skills are reported
    * relative to `contentDir` (→ `.ok/skills/<name>/SKILL.md`); global skills
    * relative to `<home>` (same `.ok/skills/...` suffix) so the path reads the
@@ -13937,6 +11119,39 @@ export function createApiExtension(
         const globalInstallableEditors: string[] = detectUserSkillHosts(skillsHome).map(
           (h) => h.editorId,
         );
+        // Probed against `projectDir`, not `contentDir`, for the same reason the
+        // sibling gate above states: that is what `skillInstallBase('project')`
+        // resolves to, so this must ask about the base the install it gates will
+        // actually write into. They differ when `content.dir` names a subdir.
+        //
+        // ONE predicate, TWO bases — each consumer probes the base it writes
+        // into. The install menu consumes this flag and installs to
+        // `skillInstallBase('project')` = `projectDir`; the Folders surface and
+        // the folder verbs write under `contentDir` and probe that. The two
+        // coincide unless `content.dir` names a subdirectory of the project.
+        //
+        // Where they diverge, only the `HUB_READER_EDITORS` branch is
+        // base-independent, so the split is narrow: `<contentDir>/.agents`
+        // present with no reader installed and no `<projectDir>/.agents` gives
+        // Folders an `absent` hub row while the menu gets `hubOffered: false`.
+        // ACCEPTED rather than papered over — probing one base for both would
+        // make one of the two gates answer about a directory its own writes
+        // never touch, which is the failure the sibling comment above documents.
+        //
+        // What is NOT accepted is the old split: the menu keying off a skill
+        // ALREADY living under `.agents/`, so a reader-activated hub showed in
+        // Settings and was absent from the menu the docs pointed at — with the
+        // hub not a link target until it exists, that left no non-circular way
+        // to make the first placement.
+        const projectHubOffered: boolean = projectDir
+          ? isActivatedSkillRoot(projectDir, 'project', AGENTS_SKILLS_ROOT, skillsHome)
+          : false;
+        const globalHubOffered: boolean = isActivatedSkillRoot(
+          skillsHome,
+          'global',
+          AGENTS_SKILLS_ROOT,
+          skillsHome,
+        );
         const projectInstalled = projectDir ? readInstalledSkills(projectDir).skills : {};
         const globalInstalled = readInstalledSkills(skillsHome).skills;
         // Import provenance (project skills only — the global store is unversioned
@@ -14140,6 +11355,7 @@ export function createApiExtension(
                 hosts: [...s.hosts],
                 size: s.size,
                 installableEditors: projectInstallableEditors,
+                hubOffered: projectHubOffered,
                 ...(s.pack !== undefined ? { pack: s.pack } : {}),
                 ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
                 ...(Object.keys(projectAliases).length > 0 ? { hostAliases: projectAliases } : {}),
@@ -14216,6 +11432,7 @@ export function createApiExtension(
             ...(hostQualifier !== undefined ? { hostQualifier } : {}),
             size: s.size,
             installableEditors: globalInstallableEditors,
+            hubOffered: globalHubOffered,
             ...(s.pack !== undefined ? { pack: s.pack } : {}),
             ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
             ...(Object.keys(globalAliases).length > 0 ? { hostAliases: globalAliases } : {}),
@@ -19099,66 +16316,6 @@ export function createApiExtension(
   });
   searchService.prewarm();
 
-  async function handleHandoffDispatchRoute(
-    req: IncomingMessage,
-    res: ServerResponse,
-  ): Promise<void> {
-    // Loopback-only gate — spawns binaries on the user's machine. Same model
-    // as `/api/spawn-cursor` and `/api/installed-agents`. The handler also
-    // enforces app-name allowlist + URL scheme matching + cursor path
-    // containment as defense-in-depth.
-    if (!checkLocalOpSecurity(req, res, { handler: 'handoff' })) return;
-    try {
-      await handleHandoffDispatch(req, res, {
-        contentDir,
-        platform: process.platform,
-        // Share the same cached scheme probe `/api/installed-agents` uses so
-        // the Windows/Linux dispatch availability gate agrees with the
-        // dropdown's render gate (and reuses its 60s TTL — the row the user
-        // just saw enabled decides the click). Unused on macOS.
-        isSchemeRegistered: installedAgentsCache.probeWithCache,
-      });
-    } catch (e) {
-      if (!res.headersSent) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[handoff] route wrapper failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'handoff',
-          cause: e,
-        });
-      }
-    }
-  }
-
-  async function handleSpawnCursorRoute(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    // Same loopback + DNS-rebinding gate as `/api/installed-agents` — this
-    // endpoint spawns a binary on the user's machine, so confining callers
-    // to same-origin loopback is load-bearing. Path containment + hardcoded
-    // `cursor` binary + `shell:false` argv-array enforce the rest of the
-    // security model inside `handleSpawnCursor`. See the file-level comment
-    // in `./spawn-cursor-api.ts` for the full threat model.
-    // `checkLocalOpSecurity` itself emits RFC 9457 problem+json on rejection.
-    if (!checkLocalOpSecurity(req, res, { handler: 'spawn-cursor' })) return;
-    try {
-      await handleSpawnCursor(req, res, {
-        contentDir,
-        platform: process.platform,
-      });
-    } catch (e) {
-      // Defensive: `handleSpawnCursor` emits RFC 9457 problem+json for every
-      // expected failure mode internally. This catches truly unexpected
-      // throws (e.g., a `resolveCursorBinary` injection that throws
-      // synchronously) so the client still receives a typed contract
-      // response instead of a hung connection. Mirrors `handleInstalledAgentsRoute`.
-      if (!res.headersSent) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[spawn-cursor] route wrapper failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'spawn-cursor',
-          cause: e,
-        });
-      }
-    }
-  }
-
   /**
    * `POST /api/share/construct-url` — read the project's local git state and
    * emit a marketing-safe share URL (`https://openknowledge.ai/d/<base64url>`)
@@ -19898,74 +17055,6 @@ export function createApiExtension(
     },
   );
 
-  // Web/browser client-log ingest: the renderer forwarder POSTs batches of
-  // captured `console` output here, written to the `renderer` pino subsystem
-  // (→ the local-sink server log). Electron captures renderer console in its
-  // main process instead. Writes no Y.Docs — exempt from attribution; gated by
-  // `checkLocalOpSecurity` (loopback + Host + Origin) like the local-op routes.
-  const handleClientLogs = withValidation(
-    ClientLogsRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const logger = getLogger('renderer');
-        if (body.droppedSinceLastFlush !== undefined && body.droppedSinceLastFlush > 0) {
-          // Gap marker: the forwarder lost entries (buffer overflow / failed
-          // POSTs) between the previous delivered batch and this one. Persist
-          // it as its own line so a log reader knows the silence was loss,
-          // not inactivity.
-          logger.warn(
-            {
-              source: 'renderer-console',
-              transport: 'web',
-              event: 'client-log-entries-dropped',
-              droppedSinceLastFlush: body.droppedSinceLastFlush,
-            },
-            'client-log-entries-dropped',
-          );
-        }
-        for (const entry of body.entries) {
-          // Per-entry guard: one entry that trips a pino serialization fault
-          // must not drop the rest of the batch (the response still reports the
-          // full accepted count — best-effort diagnostics ingest).
-          try {
-            // Spread client `fields` FIRST so the provenance markers below
-            // always win (a client field must not clobber source/transport).
-            logger[entry.level](
-              {
-                ...entry.fields,
-                source: 'renderer-console',
-                transport: 'web',
-                ...(entry.sourceId ? { sourceId: entry.sourceId } : {}),
-                ...(entry.lineNumber !== undefined ? { lineNumber: entry.lineNumber } : {}),
-                ...(entry.ts !== undefined ? { clientTs: entry.ts } : {}),
-              },
-              entry.event ?? entry.message,
-            );
-          } catch {
-            // Skip the malformed entry; continue the batch.
-          }
-        }
-        successResponse(
-          res,
-          200,
-          ClientLogsSuccessSchema,
-          { accepted: body.entries.length },
-          { handler: 'client-logs' },
-        );
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'client-logs',
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: 'client-logs',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'client-logs' }),
-    },
-  );
-
   // ───────────────────── Embeddings API key — Account control ─────────────────
   // Loopback + Origin gated (checkLocalOpSecurity) set/clear for the
   // machine-global embeddings key. The key travels renderer → loopback POST body
@@ -20678,7 +17767,7 @@ export function createApiExtension(
           { handler: 'lint-fix' },
         );
       } catch (e) {
-        if (e instanceof SymlinkEscapeError) {
+        if (isContainmentRejection(e)) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
             handler: 'lint-fix',
           });
@@ -20736,9 +17825,6 @@ export function createApiExtension(
     '/api/comment': handleCommentRoute,
     '/api/asset': handleAsset,
     '/api/asset-text': handleAssetText,
-    '/api/folder-config': handleFolderConfig,
-    '/api/template': handleTemplate,
-    '/api/template/import': handleTemplateImport,
     '/api/skill': handleSkill,
     '/api/skill-file': handleSkillFile,
     '/api/skill-file/rename': handleSkillFileRename,
@@ -20759,13 +17845,6 @@ export function createApiExtension(
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
     '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
     '/api/lint/fix': handleLintFix,
-    '/api/create-page': handleCreatePage,
-    '/api/create-folder': handleCreateFolder,
-    '/api/duplicate-path': handleDuplicatePath,
-    '/api/rename-path': handleRenamePath,
-    '/api/delete-path': handleDeletePath,
-    '/api/trash/cleanup': handleTrashCleanup,
-    '/api/upload': handleUploadAsset,
     '/api/agent-write': handleAgentWrite,
     '/api/agent-write-md': handleAgentWriteMd,
     '/api/agent-write-batch': handleAgentWriteBatch,
@@ -20803,14 +17882,7 @@ export function createApiExtension(
     '/api/local-op/embeddings/set-key': handleLocalOpEmbeddingsSetKey,
     '/api/local-op/embeddings/clear-key': handleLocalOpEmbeddingsClearKey,
     '/api/local-op/embeddings/test': handleLocalOpEmbeddingsTest,
-    '/api/spawn-cursor': handleSpawnCursorRoute,
-    '/api/handoff': handleHandoffDispatchRoute,
     '/api/install-skill': handleInstallSkill,
-    '/api/seed/plan': handleSeedPlan,
-    '/api/seed/apply': handleSeedApply,
-    '/api/seed/install-pack-skill': handleSeedInstallPackSkill,
-    '/api/seed/packs': handleSeedPacks,
-    '/api/client-logs': handleClientLogs,
   };
 
   if (enableTestRoutes) {
@@ -20829,16 +17901,9 @@ export function createApiExtension(
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/comments',
     '/api/comment',
-    '/api/upload',
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
     '/api/lint/fix',
-    '/api/create-page',
-    '/api/create-folder',
-    '/api/duplicate-path',
-    '/api/rename-path',
-    '/api/delete-path',
-    '/api/trash/cleanup',
     '/api/agent-write',
     '/api/agent-write-md',
     '/api/agent-write-batch',
@@ -20856,9 +17921,6 @@ export function createApiExtension(
     '/api/test-rescan-backlinks',
     '/api/test-rescan-files',
     '/api/install-skill',
-    '/api/folder-config',
-    '/api/template',
-    '/api/template/import',
     '/api/skill',
     '/api/skill-file',
     '/api/skill-file/rename',
@@ -20875,9 +17937,6 @@ export function createApiExtension(
     '/api/skills/reimport-bulk',
     '/api/skill/revert',
     '/api/skill/track-in-git',
-    '/api/seed/apply',
-    '/api/seed/install-pack-skill',
-    '/api/client-logs',
   ]);
   // Every `/api/local-op/*` endpoint mutates local filesystem state or
   // issues network requests on behalf of the user — clone/open/auth
@@ -21016,6 +18075,73 @@ export function createApiExtension(
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   });
+  const fileOpsRoutes = createFileOpsRoutes({
+    contentDir,
+    projectDir,
+    log,
+    getPrincipal,
+    contentFilter,
+    signalChannel,
+    hocuspocus,
+    getSyncEngine,
+    flushContributors,
+    fileOpsService,
+    assetService,
+    extractAgentIdentity,
+    recordDerivedDocumentBestEffort,
+    invalidateReferencedAssetsCache,
+    listManagedDocNamesUnderFolderFromDisk,
+    resolveContentEntryPath,
+    docNameForFileOperationPath,
+    withPeriod,
+    toManagedRenamePublicError,
+    attributeRenameWriteToActor,
+    renameAttributionCounter,
+    _performAssetRename,
+    _performDocumentToFileRename,
+    _performManagedRenameForDocs,
+    isValidRelativeContentPath,
+  });
+  const seedRoutes = createSeedRoutes({
+    contentDir,
+    checkLocalOpSecurity,
+  });
+  const systemActionsRoutes = createSystemActionsRoutes({
+    contentDir,
+    log,
+    checkLocalOpSecurity,
+    installedAgentsCache,
+  });
+  const folderTemplateRoutes = createFolderTemplateRoutes({
+    contentDir,
+    projectDir,
+    ephemeral,
+    log,
+    hocuspocus,
+    sessionManager,
+    getPrincipal,
+    signalChannel,
+    getSyncEngine,
+    recentlyRemovedDocs,
+    isSafeDocName,
+    resolveAlias,
+    resolveContentEntryPath,
+    validateFolderRel,
+    extractAgentIdentity,
+    extractActorIdentityFromQuery,
+    okArtifactKey,
+    attributeOkArtifactWrite,
+    scheduleOkArtifactFlush,
+    flushDiskAndDetectOutcome,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    registerWrittenDocInFileIndex,
+    captureAndCloseDocuments,
+    renameTrackedPathInGit,
+    renamePathOnDisk,
+    splitContentPath,
+    mutateFileIndex,
+  });
   const nativeGroups = [
     linkGraphRoutes,
     metricsRoutes,
@@ -21026,6 +18152,10 @@ export function createApiExtension(
     skillsReadRoutes,
     skillsShRoutes,
     workspaceToolsRoutes,
+    fileOpsRoutes,
+    seedRoutes,
+    systemActionsRoutes,
+    folderTemplateRoutes,
   ];
   // "A route lives in exactly one router" — enforced at construction, not
   // just documented; covers every group aggregated into the native paths.

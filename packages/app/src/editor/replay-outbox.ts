@@ -50,8 +50,8 @@
  *    null namespace reproduces the old name exactly. The stranded set is
  *    every LIVE pre-scoping record, not just one caught mid-recycle. Every
  *    consume path runs INSIDE a live session: a reopen's replay, or an
- *    intentional discard through `discardBufferedUpdate` (explicit close, LRU
- *    eviction, cross-branch invalidation). The RAM buffer's `durable` flag
+ *    intentional discard through `discardBufferedUpdate` (see its docblock for
+ *    the full trigger set). The RAM buffer's `durable` flag
  *    gates every one of those EXCEPT the reopen that finds no RAM buffer at
  *    all — the tab-died case this outbox exists for, which reads the record
  *    directly and claims it unconditionally. Ordinary app termination — quit,
@@ -337,12 +337,20 @@ export async function readReplayOutboxEntry(
  *
  * That boolean is the cross-tab exactly-once claim. Tabs resolving the SAME
  * namespace share one `(namespace, branch, docName)` record, so a `false`
- * return means another such tab already consumed it and owns the replay —
+ * return USUALLY means another such tab consumed it and owns the replay —
  * re-applying on top would not be idempotent (see `replayBufferedContent`'s
- * surface attribution). The count and the delete run in ONE `readwrite`
- * transaction and IndexedDB serializes overlapping readwrite transactions
- * across connections, so the pair is an atomic compare-and-claim, not a
- * check-then-act.
+ * surface attribution). Not always: this claims the KEY, not the record, so a
+ * stale detached consume from an earlier discard can also take it, in which
+ * case no tab owns the edit. `discardBufferedUpdate`'s docblock has that race
+ * and why it is accepted. Standing down is right either way — this caller
+ * cannot tell the cases apart, and applying against a real winner does not
+ * duplicate the edit, it REVERTS it: once the winner's content is on the
+ * server the surface attribution inverts, so the splice puts this tab's stale
+ * pre-recycle bytes back over the recovery.
+ *
+ * The count and the delete run in ONE `readwrite` transaction and IndexedDB
+ * serializes overlapping readwrite transactions across connections, so the
+ * pair is an atomic compare-and-claim, not a check-then-act.
  *
  * A window of a DIFFERENT project must never lose this claim: its buffered
  * edit belongs to a different document that merely shares a path and a branch

@@ -156,6 +156,8 @@ const NON_CONTENT_ORIGINS: Record<string, string> = {
     'A ProseMirror selection transaction-meta key, not a Y.Doc transaction origin.',
   DEFAULT_INTAKE_ORIGIN:
     'The uninstall-feedback submission source label, not a CRDT transaction origin.',
+  LAUNCHER_FREE_ORIGIN:
+    'The default provenance stamp on a menu-action dispatch, describing whether the surface that dispatched dismisses itself. It rides the menu-action bus, never a Y.Doc transaction.',
 };
 
 const HERE = import.meta.dirname;

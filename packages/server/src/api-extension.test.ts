@@ -327,6 +327,20 @@ describe('handleUploadAsset', () => {
     expect(existsSync(join(contentDir, 'docs', 'config-error.png'))).toBe(false);
   });
 
+  test('a configured attachmentFolderPath naming .ok is refused at the resolved destination', async () => {
+    // `isValidAttachmentFolderPath` only rejects NUL/backslash/absolute/`..`,
+    // so `.ok/skills` is a legal config value (a planted `.ok/config.yml` in a
+    // cloned tree chooses it), and the request-field gate never sees it — the
+    // parentDocName here is innocuous. Pins the destination-side
+    // `reserved-destination` outcome in `storeUpload`.
+    attachmentFolderPath = '.ok/skills';
+    const res = await uploadImage(createPngBuffer(), 'planted.png', 'docs/guide.md');
+    const body = (await res.json()) as { type: string; status: number };
+    expect(res.status).toBe(400);
+    expect(body.type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(join(contentDir, '.ok', 'skills', 'planted.png'))).toBe(false);
+  });
+
   test('parent-dir placement keeps explicit sidebar folder drops in the target folder', async () => {
     attachmentFolderPath = 'attachments';
     const res = await uploadImage(createPngBuffer(), 'clip.png', 'docs/guide.md', 'parent-dir');

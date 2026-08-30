@@ -196,6 +196,14 @@ asarUnpack:
   # The prebuilt spawn-helper ships mode 0644 (node-pty#850) — scripts/afterPack.mjs
   # chmods it 0755 before signing; the unpack rule and that chmod move in lockstep.
   - "**/node-pty/prebuilds/**"
+  # On Windows node-pty reads ConPTY output on a worker thread
+  # (lib/worker/conoutSocketWorker.js). worker_threads cannot load JS from
+  # inside an asar, and the worker's CJS require() resolution needs node-pty's
+  # package.json on the real filesystem beside lib/ — VS Code unpacks the same
+  # set. Darwin/Linux never reach this path (the conout worker is win32-only
+  # code), so unpacking these everywhere is layout-only, not behavioral.
+  - "**/node-pty/lib/**"
+  - "**/node-pty/package.json"
 
 mac:
   category: public.app-category.productivity
@@ -397,17 +405,37 @@ win:
   # belong hardcoded here while unknown. Unsigned Windows artifacts are
   # never published (internal QA only).
   #
-  # The terminal dock is dark on Windows: node-pty and its
-  # prebuilds must not ship in the Windows package. `files` merges with the
-  # top-level list.
+  # node-pty ships in the Windows package: the terminal runs on ConPTY via the
+  # win32 prebuilds. `files` merges with the top-level list. The prune mirrors
+  # the Linux block (no foreign-platform prebuilds, no ~10 MB/arch .pdb debug
+  # symbols), and BOTH win32 arch prebuilds stay in BOTH per-arch installers —
+  # the addon picks prebuilds/win32-<process.arch> at runtime, which keeps
+  # x64-under-emulation working on arm64 hosts.
+  #
+  # Unlike Linux (whose overlay skips the rebuild pass entirely), mac/win keep
+  # @electron/rebuild enabled, and node-pty's node-gyp output under build/
+  # shadows the prebuilds at require() time — a cross-arch build would then
+  # ship builder-host binaries. Pruning build/** makes the per-arch prebuild
+  # the only loadable addon. third_party/ is ConPTY C++ source weight with no
+  # runtime role.
   #
   # native-config's cargo `target/` tree is darwin build intermediates that
   # the blanket asarUnpack rule would otherwise drag in. Beyond dead weight,
   # its `.fingerprint` paths nest past MAX_PATH under the install dir and
   # the x86 NSIS uninstaller cannot delete them (VM-verified residue).
   files:
-    - "!**/node_modules/node-pty/**"
+    - "!**/node_modules/node-pty/prebuilds/**/*.pdb"
+    - "!**/node_modules/node-pty/prebuilds/darwin-*/**"
+    - "!**/node_modules/node-pty/prebuilds/linux-*/**"
+    - "!**/node_modules/node-pty/build/**"
+    - "!**/node_modules/node-pty/third_party/**"
     - "!**/node_modules/@inkeep/open-knowledge-native-config/target/**"
+  # conpty.dll + OpenConsole.exe (under prebuilds/win32-*/conpty/) ship with
+  # Microsoft's Authenticode signatures and must keep them — re-signing would
+  # replace Microsoft's signature with ours and split the pair's provenance.
+  # The signing pass covers .exe files only, so this negative pattern excludes
+  # the one Microsoft .exe; conpty.dll is never in the default signing set.
+  signExts: ["!OpenConsole.exe"]
   extraResources:
     - from: "resources/cli/bin/ok.cmd"
       to: "cli/bin/ok.cmd"

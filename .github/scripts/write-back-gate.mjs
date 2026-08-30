@@ -47,8 +47,10 @@ const RELEASE_VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/;
 
 const RELEASES_URL = 'https://github.com/inkeep/open-knowledge/releases';
 // Discord caps a message at 2000 characters. Bounding the quoted prose leaves
-// room for the surrounding lines on either channel and keeps a pathological
-// changeset from turning the reply into a wall.
+// room for the surrounding lines on either channel. This is not a rare guard:
+// plenty of this project's release notes run past it — see the longer entries
+// in packages/cli/CHANGELOG.md — so those replies end in a mid-sentence
+// ellipsis and the rest of the note lives only on the releases page.
 const MAX_PROSE_CHARS = 1200;
 
 /**
@@ -184,6 +186,52 @@ export function isOriginRepliableFrom(origin, selfRepo) {
     .toLowerCase();
   if (!self) return false;
   return self === `${origin.owner}/${origin.repo}`.toLowerCase();
+}
+
+/**
+ * The query-string suffix that names a notification marker's origin.
+ * Composed here so the sibling `notificationMarkerUrl` (in `write-back.mjs`,
+ * which prefixes a release tag to build the full marker URL) and
+ * `originAlreadyNotified` below share one encoding rather than two hand-rolled
+ * copies drifting apart. `encodeURIComponent` escapes both `?` and `&`, so an
+ * origin URL carrying its own query string cannot forge a false match against
+ * this suffix.
+ */
+export function markerSuffixFor(originUrl) {
+  return `?notified=${encodeURIComponent(String(originUrl ?? ''))}`;
+}
+
+/**
+ * Whether this origin carries a notification marker for some earlier
+ * version — checked against the origin alone, regardless of which version the
+ * marker names, unlike the exact-match idempotency check `notificationMarkerUrl`
+ * keys on (origin, version).
+ *
+ * This is a marker existing, not a reply confirmed delivered, and the two can
+ * diverge: a marker is written before its reply posts, and a `postReply`
+ * failure in between leaves the marker standing with nothing actually sent
+ * (see the `NeedsHumanError` note where the marker is written, in
+ * `write-back.mjs`). The caller uses this to decide whether to elide the
+ * changeset quote on the assumption that a marker ordinarily means the
+ * reporter already read it; in the rare case that assumption is wrong, the
+ * operator following up on that `NeedsHumanError` is the one place with
+ * standing to catch it, which is why that message says so.
+ *
+ * A deliberate trade this makes. Before `quote` existed, every reply carried
+ * the full note regardless of what an earlier one on the same origin had
+ * done, so a beta-leg `postReply` failure cost nothing beyond a delay: the
+ * stable leg keyed a different marker and re-sent everything. That accidental
+ * repair is what eliding gives up — a reporter whose only delivered reply
+ * follows a failed one still learns the version and the tickets it covers,
+ * but never what changed. The repair was largely a beta-leg effect: a
+ * stable-leg failure ordinarily recomputes the same version and hits the
+ * exact-marker skip, so nothing re-sends.
+ * Accepted because that failure is visible on its own terms (a red run, an
+ * `ACTION REQUIRED` message), not because it is rare.
+ */
+export function originAlreadyNotified(attachmentUrls, originUrl) {
+  const suffix = markerSuffixFor(originUrl);
+  return (attachmentUrls ?? []).some((u) => String(u ?? '').endsWith(suffix));
 }
 
 /** Numeric semver ordering. String comparison puts v0.9.0 above v0.36.0. */
@@ -334,10 +382,25 @@ export function evaluateFanIn({ ticket, descendants = [], resolveVersion, log = 
  * see lives on the Linear ticket: its internal title, its assignee, the
  * customer it was raised for, notes about work that has not shipped. None of
  * that is a parameter here, so no amount of downstream carelessness can leak
- * it. What can reach the reply is the changeset prose, which is written for the
- * public release notes and is already published, plus the derived version and
- * the ticket identifiers the reporter's own report fanned into. Widening these
- * parameters is the one change to this file that needs a second look.
+ * it. What can reach the reply is the changeset prose, which is written for
+ * the public release notes and is already published, plus the derived
+ * version, the ticket identifiers the reporter's own report fanned into, and
+ * whether to quote the prose at all. Widening these parameters is the one
+ * change to this file that needs a second look.
+ *
+ * Why `quote` exists. A fix that ships beta-then-stable gets two replies on
+ * the same origin, and the second one has nothing new to say: whatever of the
+ * note the first reply could fit — the full text, or as much of it as cleared
+ * MAX_PROSE_CHARS — already reached this thread. `quote: false` drops the
+ * prose block and leaves the rest — the opening line already says the fix is
+ * out, the coverage line still lists every ticket it fanned into, and the
+ * update instruction still says how to get it. That is a real answer on its
+ * own, so the second reply is short rather than empty, and repeats nothing
+ * rather than repeating a second, independently-trimmed copy of the first
+ * reply's prose. The caller decides `quote` by checking whether an earlier
+ * marker exists for this origin, not by channel: a fix that lands straight on
+ * a stable (the point-release fast lane skips beta) gets exactly one reply
+ * either way, and that one should always quote.
  *
  * The coverage line is not decoration. A report that fanned into three tickets
  * gets one reply, and without the list the reporter has no way to tell whether
@@ -345,7 +408,9 @@ export function evaluateFanIn({ ticket, descendants = [], resolveVersion, log = 
  *
  * Returns the reply text, or null when there is nothing truthful to say. An
  * empty changeset is the one case: a blank or version-only reply reads as a
- * claim with no content behind it, so the caller warns and posts nothing.
+ * claim with no content behind it, so the caller warns and posts nothing —
+ * checked regardless of `quote`, since a changeset that does not exist is not
+ * a fact this reply can stand on even when it isn't quoted.
  */
 export function composeReply({
   changeset = {},
@@ -353,6 +418,7 @@ export function composeReply({
   originChannel,
   coverage = [],
   channel = 'stable',
+  quote = true,
 }) {
   const normalizedVersion = String(version ?? '')
     .trim()
@@ -369,10 +435,13 @@ export function composeReply({
   const prose = body || title;
   if (!prose) return null;
 
-  const trimmedProse =
-    prose.length > MAX_PROSE_CHARS ? `${prose.slice(0, MAX_PROSE_CHARS).trimEnd()}...` : prose;
+  const lines = [openingLine(channel, normalizedVersion)];
 
-  const lines = [openingLine(channel, normalizedVersion), '', trimmedProse];
+  if (quote) {
+    const trimmedProse =
+      prose.length > MAX_PROSE_CHARS ? `${prose.slice(0, MAX_PROSE_CHARS).trimEnd()}...` : prose;
+    lines.push('', trimmedProse);
+  }
 
   if (coverage.length > 0) {
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);

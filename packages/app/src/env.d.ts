@@ -39,6 +39,7 @@ declare namespace globalThis {
   import type { Editor } from '@tiptap/core';
   import type { GraphNodeVisualState } from '@/components/graph-view-utils';
   import type { ProviderPool } from '@/editor/provider-pool';
+  import type { AcpThreadHarness } from '@/lib/acp/dev-thread-harness';
 
   var __graphHarness:
     | {
@@ -62,6 +63,13 @@ declare namespace globalThis {
         isSimulationSettled: () => boolean;
       }
     | undefined;
+  /**
+   * DEV-only: injects synthetic ACP thread frames at the socket boundary so a
+   * browser test can drive the real client, fold, and transcript renderer
+   * without an agent process. Tree-shaken from production bundles by the
+   * `import.meta.env.DEV` guard in `AgentThreadClientBinder.tsx`.
+   */
+  var __acpThreadHarness: AcpThreadHarness | undefined;
   var __providerPool: ProviderPool | undefined;
   var __activeProvider: HocuspocusProvider | null;
   /**

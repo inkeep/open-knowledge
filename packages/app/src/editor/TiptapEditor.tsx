@@ -19,7 +19,12 @@ import { initProseMirrorDoc, yCursorPlugin, ySyncPluginKey } from '@tiptap/y-tip
 import { type FC, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SelectionAnnouncer } from '@/components/editor/SelectionAnnouncer';
-import { clearRenameSnapshot, parkTiptapEditor, peekRenameSnapshot } from './editor-cache';
+import {
+  clearRenameSnapshot,
+  editorScrollContainerOf,
+  parkTiptapEditor,
+  peekRenameSnapshot,
+} from './editor-cache';
 import { InteractionLayerView } from './interaction-layer';
 import { getInteractionLayer } from './interaction-layer-host';
 
@@ -36,7 +41,13 @@ import { CommentMarginRail } from '@/comments/CommentMarginRail';
 import { CommentSelectionAffordance } from '@/comments/CommentSelectionAffordance';
 import { CommentsBoundary } from '@/comments/CommentsBoundary';
 import { loadFollowFilePref } from '@/components/acp/follow-file';
-import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import {
+  OUTLINE_NAV_BREADCRUMB,
+  OUTLINE_NAV_EVENT,
+  OUTLINE_NAV_SETTLED_BREADCRUMB,
+  type OutlineNavDetail,
+} from '@/components/OutlinePanel';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { anchorFromHash } from '@/lib/doc-hash';
 import { claimNoteWindowInitialFocus } from '@/lib/note-window-focus';
 import { mark } from '@/lib/perf';
@@ -166,6 +177,14 @@ const ANCHOR_SCROLL_MAX_ATTEMPTS = 100;
 const ANCHOR_SCROLL_RETRY_MS = 100;
 const ANCHOR_SCROLL_FOLLOW_UP_ATTEMPTS = 3;
 const ANCHOR_SCROLL_FOLLOW_UP_MS = 250;
+
+/**
+ * How long to let a smooth `scrollIntoView` run before reading where it landed.
+ * Long enough to outlast the animation on a slow frame, short enough that a
+ * second click supersedes the first (each click clears the pending timer, so
+ * rapid outline clicking reports only the landing that survived).
+ */
+const OUTLINE_NAV_SETTLE_MS = 600;
 
 interface TiptapEditorProps {
   provider: HocuspocusProvider;
@@ -1409,9 +1428,14 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       const scrollToChange = (): void => {
         const sv = liveView();
         if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
-        // Following an agent's write is not the user navigating, so it defers to
-        // a mode-switch landing rather than pre-empting one; the later follow-up
-        // attempts run once the landing has settled and released.
+        // Following an agent's write is not the user navigating, so it yields to
+        // whoever holds the scroller rather than pre-empting them. Whether a
+        // later rung of the follow-up ladder gets through is the holder's to
+        // decide: a landing may settle and release inside the ladder, but a
+        // navigation's hold outlasts every rung, so a follow that coincides with
+        // one is dropped outright rather than deferred. That is the intended
+        // order — the place the user just asked for outranks the place the agent
+        // wrote.
         if (isScrollRestoreSuppressed(docName)) return;
         try {
           const docSize = sv.state.doc.content.size;
@@ -1544,7 +1568,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       // A deep link is an explicit navigation and supersedes a position-
       // preserving landing. Reporting a stand-down as "not scrolled" feeds the
       // retry ladder below, which re-tries once the other navigation released.
-      return runScrollNavigation(docName, () => {
+      return runScrollNavigation(docName, 'deep-link', () => {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     }
@@ -1643,26 +1667,151 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
   // Outline panel click → scroll the Nth heading in the WYSIWYG DOM into view.
   // Using index (not slug) keeps this robust to duplicate heading texts without
   // re-implementing HeadingAnchors' dedup logic on the outline side.
+  //
+  // That ordinal join is also the path's one failure mode, and the reason every
+  // branch below reports itself. The outline's rows come from the server, which
+  // scans the markdown for ATX headings only; this list is every heading node
+  // ProseMirror painted. The two enumerations agree on ordinary documents and
+  // diverge on anything the scanner skips but the editor renders, and a single
+  // divergence shifts every row after it. `slugFoundAt` measures that drift
+  // directly: it is where the clicked row's slug actually sits in the DOM, so
+  // `slugFoundAt - index` is the shift, and a report of "the outline jumps to
+  // the wrong section" stops needing a reproduction to classify.
+  //
+  // The slug itself is deliberately NOT logged. It is heading text the user
+  // wrote, and no bundle carries document prose today; the ordinals answer the
+  // question without opening that door.
   useEffect(() => {
+    // Stood down at the effect body, as the two sibling effects in this file
+    // do, rather than inside the handler — where it could never be the branch
+    // that returns, because the same `isSourceMode` that gates this stamps the
+    // event's own `mode`, and the check below would reject it first. An
+    // unreachable guard is one cleanup away from deletion, and deleting it
+    // would take the dependency with it and silently restore the bug this
+    // arrangement exists to prevent.
+    if (isSourceMode) return;
+    let settleTimer: ReturnType<typeof setTimeout> | undefined;
+
     function onNav(e: Event) {
       const detail = (e as CustomEvent<OutlineNavDetail>).detail;
       if (!detail || detail.docName !== docName || detail.mode !== 'wysiwyg' || editor.isDestroyed)
         return;
+      const trace = { docName, mode: 'wysiwyg', index: detail.index };
       // `getEditorView` is the non-throwing accessor for the underlying
       // ProseMirror EditorView (see utils/get-editor-view.ts). Returns
       // undefined pre-mount, never throws on the recycle/remount race.
       const realView = getEditorView(editor);
-      if (!realView) return;
+      if (!realView) {
+        emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, { ...trace, outcome: 'no-view' });
+        return;
+      }
+      // Resolved from this editor's own DOM, not from whichever container is
+      // painted: with two panes open both are, so the painted-container
+      // accessor can hand back the other document's scroller and every
+      // position below would describe a document nobody clicked in.
+      const scroller = editorScrollContainerOf(realView.dom);
       const headings = realView.dom.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6');
+      const resolved = {
+        ...trace,
+        scrollTopBefore: scroller?.scrollTop,
+        domHeadingCount: headings.length,
+        // Where the clicked row's slug actually sits in this list. Compare it
+        // to `index` for the shift — but read a -1 as inconclusive, not as a
+        // large drift: the outline's slug is derived from the raw markdown
+        // line and this id from the heading's rendered text, so a heading
+        // containing a link or image slugs differently on the two sides and
+        // can never match. `outlineCount` on the dispatch line versus
+        // `domHeadingCount` here is the drift signal that does not depend on
+        // slugs agreeing.
+        slugFoundAt: Array.from(headings).findIndex((h) => h.id === detail.slug),
+      };
       const target = headings[detail.index];
-      if (!target) return;
-      runScrollNavigation(docName, () => {
+      if (!target) {
+        emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, { ...resolved, outcome: 'no-target' });
+        return;
+      }
+      // Undefined unless BOTH elements are still in the document. A detached
+      // node answers `getBoundingClientRect` with a zero rect rather than
+      // refusing, so re-measuring a heading ProseMirror replaced mid-animation
+      // would yield `-scrollerTop` — a number that looks like a position.
+      const targetTop = () =>
+        scroller === null || !scroller.isConnected || !target.isConnected
+          ? undefined
+          : Math.round(target.getBoundingClientRect().top - scroller.getBoundingClientRect().top);
+      // Both "before" numbers are read before the scroll is even claimed. The
+      // scroll is smooth, so a read taken after it usually still returns the
+      // pre-scroll value — usually is not what a field called `before` should
+      // rest on, least of all `scrollHeight`, whose growth is the whole point
+      // of bracketing it against the settle reading.
+      const targetTopBefore = targetTop();
+      const scrollHeightBefore = scroller?.scrollHeight;
+      const claimed = runScrollNavigation(docName, 'outline', () => {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
+      emitDiagnosticBreadcrumb(OUTLINE_NAV_BREADCRUMB, {
+        ...resolved,
+        // A declined claim means a landing owns the scroller and this click did
+        // nothing. The user sees a dead row; before this line, so did triage.
+        outcome: claimed ? 'scrolled' : 'declined',
+        resolvedLevel: Number(target.tagName.slice(1)),
+        // Measured from the scroller's top EDGE, which `scroll-padding-top`
+        // does not move — so a settled `block: 'start'` scroll rests AT that
+        // padding, not at zero: the toolbar inset in a main window, zero only
+        // in a note window. That inset is what the settled reading is judged
+        // against; this one is taken before the scroll is claimed, so it is
+        // the heading's arbitrary starting offset and the two differing says
+        // nothing. An absolute offset would need the scroller's own frame to
+        // interpret; this reads as "how far off the top it is".
+        targetTopBefore,
+        scrollHeightBefore,
+      });
+      if (!claimed) return;
+      // `scrollIntoView` is smooth, so the numbers that matter do not exist
+      // yet, and one of them is not the scroller's. Content above the target
+      // carries `content-visibility: auto` with an estimated intrinsic height;
+      // it materializes at its real height as the scroll passes through, which
+      // moves the target out from under the landing. Re-measuring only where
+      // the scroller stopped would report that as a clean arrival — the target
+      // is the observable that says otherwise, and the growth in `scrollHeight`
+      // is what names the cause.
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        emitDiagnosticBreadcrumb(OUTLINE_NAV_SETTLED_BREADCRUMB, {
+          docName,
+          // Carried even though only this consumer schedules a settle: reading
+          // the line's absence for source mode would otherwise take knowledge
+          // that lives in this file, not in the bundle.
+          mode: 'wysiwyg',
+          index: detail.index,
+          // The same element measured at click time, never a fresh lookup: a
+          // tab switch inside the settle window would otherwise file another
+          // document's position under this `docName`, and a confidently wrong
+          // number is worse to triage against than a missing one.
+          scrollTopAfter: scroller?.isConnected === true ? scroller.scrollTop : undefined,
+          scrollHeightAfter: scroller?.isConnected === true ? scroller.scrollHeight : undefined,
+          // `targetTop` carries its own connectedness guard, covering the
+          // heading as well as the scroller: a remote edit can replace the
+          // node inside the settle window while the scroller lives on.
+          targetTopAfter: targetTop(),
+          scrollerDetached: scroller !== null && !scroller.isConnected,
+          targetDetached: !target.isConnected,
+        });
+      }, OUTLINE_NAV_SETTLE_MS);
     }
     window.addEventListener(OUTLINE_NAV_EVENT, onNav);
-    return () => window.removeEventListener(OUTLINE_NAV_EVENT, onNav);
-  }, [editor, docName]);
+    return () => {
+      window.removeEventListener(OUTLINE_NAV_EVENT, onNav);
+      clearTimeout(settleTimer);
+    };
+    // `isSourceMode` earns its place in this list twice over: the handler reads
+    // it, and re-registering on a flip is what cancels a settle still pending
+    // across one. A flip is a CSS swap — this editor stays mounted — so both
+    // connectedness guards keep passing, while the hidden pane's
+    // `content-visibility` makes the heading answer with a zero rect and the
+    // shared scroller now describes the source view. The settle would land as a
+    // confident, wrong, clean-looking arrival. Losing the line is the better
+    // trade.
+  }, [editor, docName, isSourceMode]);
 
   // Publish (or clear) this tab's awareness for the doc this editor binds to.
   //

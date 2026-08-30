@@ -310,3 +310,62 @@ describe('global-scope vocabulary', () => {
     expect(rows).not.toContain('antigravity');
   });
 });
+
+describe('the .agents hub gate', () => {
+  it('is offered when the server says a reader is installed, with nothing under .agents yet', () => {
+    // The case the whole feature exists for, and the one adoption-only could not
+    // reach: a fresh project, LM Studio installed, no skill under `.agents/`.
+    // Before `hubOffered` this returned no hub row, so the documented "choose
+    // .agents" was not an available action and there was no non-circular way to
+    // make the first placement.
+    const rows = derive({
+      ...base,
+      hosts: ['claude'],
+      path: '.claude/skills/x/SKILL.md',
+      hubOffered: true,
+    }).rows;
+    expect(rows).toContain('agents');
+  });
+
+  it('is NOT offered when the server says nothing reads it and the project has not adopted it', () => {
+    const rows = derive({
+      ...base,
+      hosts: ['claude'],
+      path: '.claude/skills/x/SKILL.md',
+      hubOffered: false,
+    }).rows;
+    expect(rows).not.toContain('agents');
+  });
+
+  it('stays offered on adoption alone, even when no reader is installed', () => {
+    // The pre-existing rule is preserved, not replaced: a project already using
+    // the hub keeps its row regardless of what is installed on this machine.
+    const rows = derive({
+      ...base,
+      hosts: ['agents'],
+      path: '.agents/skills/x/SKILL.md',
+      hubOffered: false,
+    }).rows;
+    expect(rows).toContain('agents');
+  });
+
+  it('a GLOBAL skill under .agents does not activate the hub on a PROJECT menu', () => {
+    // Scope leak: `allSkills` spans every scope, so without the scope filter one
+    // global skill under ~/.agents/skills lit the hub on a project menu the
+    // server had just answered `hubOffered: false` for.
+    const rows = derive(
+      { ...base, hosts: ['claude'], path: '.claude/skills/x/SKILL.md', hubOffered: false },
+      {
+        allSkills: [
+          {
+            scope: 'global',
+            name: 'g',
+            hosts: ['agents'],
+            path: '.agents/skills/g/SKILL.md',
+          } as unknown as SkillsListEntry,
+        ],
+      },
+    ).rows;
+    expect(rows).not.toContain('agents');
+  });
+});

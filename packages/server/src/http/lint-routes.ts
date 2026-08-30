@@ -37,9 +37,9 @@ import {
   ValidationAuditCountsResponseSchema,
   ValidationAuditResponseSchema,
 } from '@inkeep/open-knowledge-core';
-import { SymlinkEscapeError } from '../apply-managed-rename.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
+import { isContainmentRejection } from '../fs-safety.ts';
 import { AuditSupersededError, auditProject, lintDoc } from '../lint/audit.ts';
 import { AuditCache } from '../lint/audit-cache.ts';
 import { listProjectSchemaFiles, SCHEMA_LIST_CAP } from '../lint/frontmatter-schemas.ts';
@@ -337,7 +337,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           { handler: 'lint' },
         );
       } catch (e) {
-        if (e instanceof SymlinkEscapeError) {
+        if (isContainmentRejection(e)) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
             handler: 'lint',
           });

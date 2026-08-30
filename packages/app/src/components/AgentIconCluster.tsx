@@ -12,6 +12,7 @@ import { EDITOR_LABELS } from '@inkeep/open-knowledge-core';
 import { Folder, Sparkles } from 'lucide-react';
 import type { SVGProps } from 'react';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
+import { LmStudioIcon } from '@/components/icons/lmstudio';
 import { OkBlob } from '@/components/OkBlob';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -58,6 +59,11 @@ export function AgentBrandIcon({
   // brand — a neutral mark, not an invisible one (dropping it made a hub-hosted
   // skill read as belonging to whichever editor copy happened to exist).
   if (host === 'agents') return <Sparkles {...props} />;
+  // LM Studio is a skill host but NOT a handoff target — it registers no
+  // deeplink route OK can dispatch to — so its mark cannot live in
+  // `TARGET_ICON_KEY`, which is keyed by `HandoffTarget`. Handled here, where
+  // `host` is the wider skill-host vocabulary.
+  if (host === 'lm-studio') return <LmStudioIcon {...props} />;
   // Custom-root host ids ARE paths (they contain '/'): the `.ok` home renders
   // the OK blob, any other custom root the neutral folder — matching the
   // install menu's row icons so the pill cluster can carry every location.

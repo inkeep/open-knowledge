@@ -359,6 +359,7 @@ export async function defaultSpawn(
       const child = nodeSpawn(command, args, {
         env: opts.env as NodeJS.ProcessEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
       });
       // A stuck shell (slow .zshrc, network-mounted home) must never hold
       // the main process open at quit, accumulate output past the timeout,
@@ -409,6 +410,7 @@ async function discoverRealInteractivePath(
   const spawn = opts.spawn ?? defaultSpawn;
   const logger = opts.logger ?? DEFAULT_LOGGER;
   try {
+    // biome-ignore lint/plugin/require-windowshide-on-spawn: injected command-runner seam; defaultSpawn owns child_process options
     const result = await spawn(shell, ['-ilc', 'printf %s "$PATH"'], { timeoutMs: 2000, env });
     if (result.code !== 0 || result.timedOut || !result.stdout) {
       logger.event({

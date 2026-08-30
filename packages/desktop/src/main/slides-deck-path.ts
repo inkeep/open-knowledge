@@ -17,10 +17,10 @@
  * realpath-canonical via discoverProject). A window with no project has nothing
  * to contain against, so it is refused.
  *
- * `realpath` is injected so a test can drive the throwing paths (ENOENT on a
- * broken symlink, ELOOP on a cycle) deterministically; the real filesystem is
- * the higher-fidelity default and is what the suite exercises for the escape
- * case, using a genuine symlink rather than a stubbed resolver.
+ * `realpath` is injected so tests can drive filesystem failures and returned
+ * canonical-path edge cases deterministically; the real filesystem is the
+ * higher-fidelity default and is what the suite exercises for the escape case,
+ * using a genuine symlink rather than a stubbed resolver.
  */
 
 import { isPathWithinProject, validateSpawnPath } from './path-containment.ts';
@@ -48,8 +48,8 @@ export interface ResolveDeckPathDeps {
    *  when the window has no project — nothing to contain against. */
   readonly projectRoot: string | undefined;
   readonly platform: NodeJS.Platform;
-  /** Injected so the throwing paths are drivable; production passes the real
-   *  `node:fs` `realpathSync`. */
+  /** Injected so filesystem boundary cases are drivable; production passes
+   *  the real `node:fs` `realpathSync`. */
   realpath(path: string): string;
 }
 
@@ -72,7 +72,11 @@ export function resolveDeckPath(deps: ResolveDeckPathDeps): DeckPathResolution {
     };
   }
 
-  if (!isPathWithinProject(resolvedDocPath, projectRoot, platform)) {
+  if (
+    !validateSpawnPath(resolvedDocPath, platform) ||
+    !validateSpawnPath(projectRoot, platform) ||
+    !isPathWithinProject(resolvedDocPath, projectRoot, platform)
+  ) {
     return { ok: false, reason: 'invalid-path' };
   }
   return { ok: true, resolvedDocPath, projectRoot };

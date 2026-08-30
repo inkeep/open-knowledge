@@ -95,7 +95,10 @@ describe('AppMenubar Help menu', () => {
     const dispatch = installBridge('win32');
     await openHelpMenu();
 
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Report a bug…' }));
+    // Anchored rather than exact: the item renders a MenubarShortcut, whose
+    // text joins the accessible name. Matching the label only keeps this test
+    // about dispatch and stops the chord from breaking it when it changes.
+    await userEvent.click(screen.getByRole('menuitem', { name: /^Report a bug…/ }));
 
     expect(dispatch).toHaveBeenCalledWith({ kind: 'menu-action', action: 'report-bug' });
   });
@@ -106,7 +109,7 @@ describe('AppMenubar Help menu', () => {
 
     // Sentence case + the ellipsis on the two entries that open a form rather
     // than acting on click. Drift here means the two Help surfaces disagree.
-    expect(screen.getByRole('menuitem', { name: 'Report a bug…' })).not.toBeNull();
+    expect(screen.getByRole('menuitem', { name: /^Report a bug…/ })).not.toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Send feedback…' })).not.toBeNull();
     expect(screen.getByRole('menuitem', { name: 'OpenKnowledge on GitHub' })).not.toBeNull();
   });
@@ -241,6 +244,16 @@ describe('AppMenubar View terminal toggle', () => {
 
     expect(screen.queryByRole('menuitem', { name: /Show Terminal/ })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /Hide Terminal/ })).toBeNull();
+  });
+
+  test('Windows exposes the terminal toggle when the build supports PTYs', async () => {
+    installBridge('win32', 'editor', {
+      ptyAvailable: true,
+      queryResult: snapshot(false),
+    });
+    await openMenu('View');
+
+    expect(await screen.findByRole('menuitem', { name: /Show Terminal/ })).not.toBeNull();
   });
 });
 

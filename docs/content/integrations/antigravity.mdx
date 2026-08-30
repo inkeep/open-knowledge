@@ -37,7 +37,7 @@ cd /path/to/your/knowledge-base
 agy "Summarize the open questions across this project's specs."
 ```
 
-The session stays open for follow-ups. From the **OpenKnowledge desktop app on macOS or Linux**, the "Open in Antigravity" action launches `agy` in the docked terminal, pre-filled with a prompt scoped to the doc, folder, or project you're on. The row appears only when `agy` is detected on your `PATH` (the installer drops it at `~/.local/bin/agy`).
+The session stays open for follow-ups. From the **OpenKnowledge desktop app**, the "Open in Antigravity" action launches `agy` in the docked terminal, pre-filled with a prompt scoped to the doc, folder, or project you're on. The row appears only when `agy` is detected on your `PATH`; its installation directory varies by platform.
 
 ## Initialize a knowledge base
 
@@ -71,7 +71,7 @@ For the complete tool surface, see the [MCP reference](/docs/reference/mcp).
 | `ok init` showed Antigravity as `config root missing; skipped` | `~/.gemini/` doesn't exist yet, so Antigravity wasn't detected | Launch Antigravity or run `agy` once (it creates the directory), then re-run `ok init` |
 | `ok init` reported the config was `left unchanged` | OpenKnowledge declined to edit `~/.gemini/config/mcp_config.json` for the reason shown in parentheses | Fix what the reason names (invalid JSON, a duplicated server block), then re-run `ok init` |
 | Antigravity doesn't see the `open-knowledge` tools | MCP servers not reloaded, or the agent's process predates the entry | Reload MCP servers (or restart `agy`), and confirm the server is enabled |
-| "Open in Antigravity" row is missing in the desktop app | `agy` isn't on `PATH` | Install the Antigravity CLI (`~/.local/bin/agy`) and ensure that directory is on your `PATH` |
+| "Open in Antigravity" row is missing in the desktop app | `agy` isn't on `PATH` | Install the Antigravity CLI and ensure its platform-specific install directory is on your `PATH` |
 | `write` / `edit` -> "Hocuspocus server is not running" | OK server not started | Run `ok start` (or leave the desktop app running) and retry |
 | Preview "doesn't open" | used the route-only `/#/…` path in a browser | Call `preview_url` for the full URL |
 

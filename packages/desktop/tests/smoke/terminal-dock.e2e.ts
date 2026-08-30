@@ -14,7 +14,6 @@
  */
 
 import {
-  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,19 +23,29 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+  terminalSmokeShellCommands,
+  writeFakeClaudeShim,
+} from './_helpers/terminal-smoke-shell';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 interface SeedOpts {
   /** Pre-grant consent by seeding .ok/local/config.yml terminal.enabled: true. */
@@ -99,34 +108,28 @@ function seed(prefix: string, opts: SeedOpts = {}): Seed {
   if (opts.fakeClaudeOnPath || opts.fakeClaudeTui) {
     const binDir = join(tmpHome, 'fakebin');
     mkdirSync(binDir, { recursive: true });
-    const claudeBin = join(binDir, 'claude');
-    // The TUI variant still answers `--version` and exits (keeps any probe that
-    // executes the binary from hanging on `cat`).
-    writeFileSync(
-      claudeBin,
-      opts.fakeClaudeTui
-        ? '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "claude 0.0.0-fake"; exit 0; fi\necho FAKE_CLAUDE_TUI_READY\nexec cat\n'
-        : '#!/bin/sh\necho "claude 0.0.0-fake"\n',
-    );
-    chmodSync(claudeBin, 0o755);
+    // The TUI variant still answers `--version` and exits so an executing
+    // readiness probe cannot hang on its stdin relay.
+    writeFakeClaudeShim(binDir, opts.fakeClaudeTui ? 'interactive' : 'version');
     pathPrefix = binDir;
     // The PTY runs `$SHELL -l -i`, whose /etc/zprofile `path_helper` REORDERS
     // PATH: /etc/paths + /etc/paths.d dirs (incl. /opt/homebrew/bin, where a
     // real `claude` cask may live) jump AHEAD of the env's fakebin prefix.
     // Re-prepend fakebin from the test HOME's own rc files — they source after
     // path_helper, so the fake wins deterministically in probe and PTY alike.
-    const prepend = `export PATH="${binDir}:$PATH"\n`;
-    writeFileSync(join(tmpHome, '.zprofile'), prepend);
-    writeFileSync(join(tmpHome, '.zshrc'), prepend);
-  } else if (opts.pinRestrictedPath) {
+  }
+  if (pathPrefix || opts.pinRestrictedPath) {
     // No fakebin: pin the bare system PATH after path_helper so a host-machine
     // claude (e.g. the /opt/homebrew/bin cask) cannot leak into the probe.
-    const pin = 'export PATH="/usr/bin:/bin:/usr/sbin:/sbin"\n';
-    writeFileSync(join(tmpHome, '.zprofile'), pin);
-    writeFileSync(join(tmpHome, '.zshrc'), pin);
+    // On Windows the probe reads the process PATH directly, so no POSIX startup
+    // files are written into the temporary profile.
+    seedTerminalShellProfiles(tmpHome, {
+      ...(pathPrefix ? { pathPrefix } : {}),
+      restrictPath: opts.pinRestrictedPath,
+    });
   }
 
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   if (!opts.skipRestoreState) {
     writeFileSync(
@@ -154,11 +157,6 @@ interface LaunchOpts {
 
 async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  // A clean, system-only PATH so the readiness probe's `command -v claude`
-  // verdict is determined solely by the test's fakebin (not the dev's
-  // ~/.local/bin). The fake-claude prefix, when present, is prepended.
-  const basePath = opts.restrictPath ? '/usr/bin:/bin:/usr/sbin:/sbin' : (process.env.PATH ?? '');
-  const PATH = s.pathPrefix ? `${s.pathPrefix}:${basePath}` : basePath;
   return electron.launch(
     desktopLaunchOptions({
       target: TARGET,
@@ -170,8 +168,10 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: s.tmpHome,
-        PATH,
+        ...terminalSmokeEnvironment(s.tmpHome, {
+          ...(s.pathPrefix ? { pathPrefix: s.pathPrefix } : {}),
+          restrictPath: opts.restrictPath,
+        }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -462,13 +462,24 @@ async function waitForTerminalWidthStable(page: Page): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-async function waitForStatus(page: Page, status: string, timeoutMs = 20_000): Promise<void> {
+async function waitForStatus(
+  page: Page,
+  status: string,
+  timeoutMs = 20_000,
+  { foreground = 'shell' }: { foreground?: 'shell' | 'program' } = {},
+): Promise<void> {
   await expect(terminalStatus(page)).toHaveAttribute('data-terminal-status', status, {
     timeout: timeoutMs,
   });
   // `running` means the PTY spawned, not that the shell has reached its read
   // loop. Typing before it does swallows the keystrokes.
-  if (status === 'running') await waitForShellReady(() => readTerminalText(page));
+  if (status === 'running' && foreground === 'shell') {
+    await waitForShellReady(
+      () => readTerminalText(page),
+      (command) => typeInTerminal(page, `${command}\r`),
+      { resetTerminalInput: () => page.keyboard.press('Control+C') },
+    );
+  }
 }
 
 /** Wait for the bottom terminal panel. The terminal owns the bottom edge outright
@@ -654,6 +665,114 @@ test.describe('Docked terminal — live Electron', () => {
     ).toBeLessThanOrEqual(revealAgentsBox.x);
   });
 
+  /**
+   * `react-resizable-panels` listens for `pointerleave` on the document
+   * and, unlike every other caller of its delta path, forwards no
+   * pointer-down origin — so its fallback applied a whole-group ±100% delta
+   * from nothing but the sign of `clientX`. On a `collapsible` panel that is
+   * past the collapse halfway point in one event, which is how a right-docked
+   * Terminal column measured 0 after a drag that should have GROWN it.
+   *
+   * The event is synthesized rather than provoked because what Chromium emits
+   * at that moment is a platform detail — Electron 43 (Chromium 150) on Linux
+   * produced it, macOS and Windows did not. The invariant is not platform
+   * specific: a boundary event reaching the document mid-drag must resize by
+   * the distance the pointer actually travelled, never by the whole group.
+   *
+   * Scope note: this runs the real browser against the library's ESM image,
+   * which Vite resolves. The patch carries the same hunk in the CJS image, and
+   * Vitest resolves that one, so the CJS copy is pinned separately by
+   * `packages/app/src/components/resizable-panel-pointerleave-delta.dom.test.tsx`.
+   * Neither test sees the other's image; keep both or a re-derivation can drop
+   * one hunk and still go green.
+   */
+  test('a pointerleave mid-drag resizes the right column by the real delta, never collapsing it', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('divider-pointerleave', { consent: true });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s);
+    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+
+    await widenEditorWindow(app, page, 1900, 900);
+    await openTerminal(app, page);
+    await page.getByRole('button', { name: 'Move Terminal to right' }).click();
+    await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    const column = page.locator('#terminal-column');
+    const before = await column.evaluate((element) => element.getBoundingClientRect().width);
+    expect(before).toBeGreaterThan(0);
+
+    const handle = await column.evaluate((element) => {
+      const rect = element.previousElementSibling?.getBoundingClientRect();
+      return rect == null ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    });
+    if (!handle) throw new Error('right Terminal resize handle is unavailable');
+
+    const travel = 40;
+    const originX = handle.x + handle.width / 2;
+    const originY = handle.y + handle.height / 2;
+    await page.mouse.move(originX, originY);
+    await page.mouse.down();
+    // One real move first so the gesture is an ordinary drag rather than a bare
+    // down-then-leave. The library sets `state: "active"` and records the
+    // pointer-down origin synchronously in its pointerdown handler; only the
+    // pointer-capture acquisition waits for the first pointermove. It is that
+    // already-active state the leave handler mis-reads.
+    await page.mouse.move(originX - travel, originY, { steps: 4 });
+
+    await page.evaluate(
+      ({ x, y }) => {
+        document.dispatchEvent(
+          new PointerEvent('pointerleave', {
+            bubbles: false,
+            buttons: 1,
+            clientX: x,
+            clientY: y,
+            pointerId: 1,
+            pointerType: 'mouse',
+          }),
+        );
+      },
+      { x: originX - travel, y: originY },
+    );
+    await page.mouse.up();
+
+    // Bounded on BOTH sides on purpose. A lower bound alone would pass under a
+    // -100% delta (the column pinned to its maximum); an upper bound alone
+    // would pass under the +100% collapse this test exists to catch. The band is
+    // +/-25% of the travelled distance rather than something looser because the
+    // contract is that the column resizes BY that distance; percentages are
+    // quantized to three decimals, so at this group width the slack is ample.
+    //
+    // Settle first, then assert once, deliberately NOT a poll on band
+    // membership. The correct-growth width (before + travel) is applied by the
+    // real pointermove and only replaced by the bogus whole-group delta on the
+    // synthetic leave, so a poll returning on its first in-band sample could go
+    // green on a column that ends up collapsed. A settled width cannot. Same
+    // shape as waitForTerminalWidthStable.
+    let after = Number.NaN;
+    let stable = 0;
+    await expect(async () => {
+      const width = await column.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().width),
+      );
+      stable = width === after ? stable + 1 : 0;
+      after = width;
+      // Width in the message: a non-settle reports this assertion rather than
+      // the band below, and a bare counter cannot tell collapsed from slow.
+      expect(
+        stable,
+        `column width has not settled (last read ${width}px, before ${before}px)`,
+      ).toBeGreaterThanOrEqual(3);
+    }).toPass({ timeout: 10_000, intervals: [100] });
+    expect(after).toBeGreaterThan(before + travel * 0.75);
+    expect(after).toBeLessThan(before + travel * 1.25);
+  });
+
   test('right Terminal and Agents exclude each other only when the window is infeasible', async ({
     captureStderrFor,
   }) => {
@@ -679,7 +798,7 @@ test.describe('Docked terminal — live Electron', () => {
       )
       .toBeGreaterThan(739);
     await waitForStatus(page, 'running', 25_000);
-    await typeInTerminal(page, 'echo RAIL_COLS=$(tput cols)\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.columns('RAIL_COLS')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/RAIL_COLS=\d+/);
     const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];
     expect(Number(columns)).toBeGreaterThanOrEqual(92);
@@ -705,9 +824,12 @@ test.describe('Docked terminal — live Electron', () => {
     await expectCollapsedRailColumn(page, '#terminal-column');
   });
 
-  // The menu-to-mount path stays responsive; the 150ms visual transition is
-  // cosmetic and is not part of this assertion.
-  test('QA-022 toggle mounts within 2 seconds', async ({ captureStderrFor }) => {
+  // Keep separate bounds on the immediate dock response and the gated live
+  // panel. The latter includes project-config sync, capability admission, and
+  // the lazy xterm chunk; its 15s ceiling matches the suite's reveal helper.
+  test('QA-022 toggle reveals the dock within 2 seconds and mounts within 15 seconds', async ({
+    captureStderrFor,
+  }) => {
     const s = seed('perf', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -725,16 +847,25 @@ test.describe('Docked terminal — live Electron', () => {
     // `page` is handed over so the non-darwin dispatch path does not re-discover
     // the editor window on the clock. That rediscovery is harness cost, and it
     // is why this budget read ~400ms higher on Linux than on macOS.
-    await clickViewTerminalItem(app, page);
-    // The section becomes present synchronously on the state flip.
-    await page.waitForSelector('section[aria-label="Terminal"]', {
-      state: 'attached',
+    expect(await clickViewTerminalItem(app, page)).toBe('Show Terminal');
+    await page.waitForSelector('#terminal-dock-panel', {
+      state: 'visible',
       timeout: 5_000,
     });
-    const elapsed = await page.evaluate((start) => performance.now() - start, t0);
-    // Generous ceiling: IPC round-trip (menu→main→renderer) + synchronous flip.
-    // The visual transition (150ms) is cosmetic; we measure mount, not animation.
-    expect(elapsed).toBeLessThan(2000);
+    const dockElapsed = await page.evaluate((start) => performance.now() - start, t0);
+    // IPC round-trip (menu→main→renderer), state flip, and the first non-zero
+    // frame of the dock expansion stay inside the interaction budget.
+    expect(dockElapsed).toBeLessThan(2000);
+
+    const mountBudgetMs = 15_000;
+    await page.waitForSelector('section[aria-label="Terminal"]', {
+      state: 'attached',
+      // Liveness is deliberately looser than the performance budget so an
+      // over-budget mount reaches the assertion with its actual elapsed time.
+      timeout: mountBudgetMs * 2,
+    });
+    const mountElapsed = await page.evaluate((start) => performance.now() - start, t0);
+    expect(mountElapsed).toBeLessThan(mountBudgetMs);
   });
 
   // Terminal opens at the project root and runs an arbitrary command.
@@ -747,11 +878,11 @@ test.describe('Docked terminal — live Electron', () => {
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
-    await typeInTerminal(page, 'pwd\r');
-    const tail = s.realProjectDir.split('/').slice(-1)[0];
+    await typeInTerminal(page, `${SHELL_COMMANDS.cwd}\r`);
+    const tail = basename(s.realProjectDir);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toContain(tail);
 
-    await typeInTerminal(page, 'echo OK_E2E_MARKER_123\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.output('OK_E2E_MARKER_123')}\r`);
     await expect
       .poll(() => readTerminalText(page), { timeout: 15_000 })
       .toContain('OK_E2E_MARKER_123');
@@ -776,7 +907,7 @@ test.describe('Docked terminal — live Electron', () => {
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
-    await typeInTerminal(page, 'echo BEFORE_COLS=$(tput cols)\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.columns('BEFORE_COLS')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/BEFORE_COLS=\d+/);
     const before = (await readTerminalText(page)).match(/BEFORE_COLS=(\d+)/)?.[1];
 
@@ -808,7 +939,7 @@ test.describe('Docked terminal — live Electron', () => {
     // winsize settled back to the pre-storm width — the trailing throttled
     // resize landed. Polled: the trailing PTY resize lands within ~100ms of
     // the last step, but the storm's queued SIGWINCH redraws drain async.
-    await typeInTerminal(page, 'echo AFTER_COLS=$(tput cols)\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.columns('AFTER_COLS')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/AFTER_COLS=\d+/);
     const beforeColumns = Number(before);
     expect(beforeColumns).toBeGreaterThan(0);
@@ -1064,7 +1195,7 @@ test.describe('Docked terminal — live Electron', () => {
     // Restart spawns a fresh PTY at the same cwd.
     await restart.click();
     await waitForStatus(page, 'running', 25_000);
-    await typeInTerminal(page, 'echo RESTARTED_OK\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.output('RESTARTED_OK')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 10_000 }).toContain('RESTARTED_OK');
   });
 
@@ -1174,7 +1305,14 @@ test.describe('Docked terminal — live Electron', () => {
     // Mark the live shell's process state so we can prove the SAME shell survives:
     // an env var set here lives only in this exact PTY process, so a fresh spawn
     // after the reload would not carry it.
-    await typeInTerminal(page, 'export OK_RELOAD_MARKER=OKRELOAD_SURVIVED_351\r');
+    await typeInTerminal(
+      page,
+      `${SHELL_COMMANDS.setEnvironment('OK_RELOAD_MARKER', 'OKRELOAD_SURVIVED_351')}\r`,
+    );
+    await typeInTerminal(page, `${SHELL_COMMANDS.readEnvironment('OK_RELOAD_MARKER', 'before')}\r`);
+    await expect
+      .poll(() => readTerminalText(page), { timeout: 15_000 })
+      .toContain('before=[OKRELOAD_SURVIVED_351]');
 
     // The bug trigger: reload the renderer page. Main and the per-window PTY host
     // are untouched (a reload emits neither 'closed' nor 'will-quit'); only the
@@ -1192,7 +1330,7 @@ test.describe('Docked terminal — live Electron', () => {
     // unexpanded `$OK_RELOAD_MARKER`, so the literal value can appear in the
     // rendered output only when the live shell expanded it — a fresh shell prints
     // an empty value.
-    await typeInTerminal(page, 'echo "marker=[$OK_RELOAD_MARKER]"\r');
+    await typeInTerminal(page, `${SHELL_COMMANDS.readEnvironment('OK_RELOAD_MARKER', 'marker')}\r`);
     await expect
       .poll(() => readTerminalText(page), { timeout: 15_000 })
       .toContain('marker=[OKRELOAD_SURVIVED_351]');
@@ -1238,7 +1376,9 @@ test.describe('Docked terminal — live Electron', () => {
     // The editor mounts before the CRDT doc body arrives — select-all on the
     // empty doc publishes an empty snapshot, so wait for the seeded text first.
     await expect(editor).toContainText('Seed document', { timeout: 30_000 });
-    await editor.click();
+    // This case owns keyboard selection rather than pointer hit testing; the
+    // assertion below independently proves focus and Select All reached the doc.
+    await editor.focus();
     await page.keyboard.press(`${PRIMARY_MODIFIER}+a`);
     await expect
       .poll(() => page.evaluate(() => String(window.getSelection() ?? '')))
@@ -1250,7 +1390,7 @@ test.describe('Docked terminal — live Electron', () => {
     // input once the PTY is live.
     await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+j`);
     await expect(terminalSection(page)).toBeVisible({ timeout: 15_000 });
-    await waitForStatus(page, 'running', 25_000);
+    await waitForStatus(page, 'running', 25_000, { foreground: 'program' });
     // The staged bytes reached the CLI's PTY: the composed prompt names the doc
     // and carries the selected passage verbatim (short selections inline).
     await expect.poll(() => readTerminalText(page), { timeout: 20_000 }).toContain('start.md');
@@ -1262,7 +1402,8 @@ test.describe('Docked terminal — live Electron', () => {
     // CmdOrCtrl+J route via its View-menu accelerator item (the real menu→IPC→renderer
     // chain; raw OS key capture is not synthesizable from Playwright). A live
     // selection must not change the toggle contract or leak into the PTY.
-    await editor.click();
+    // Refocus directly because the selection bubble can cover the editor's hit target.
+    await editor.focus();
     await page.keyboard.press(`${PRIMARY_MODIFIER}+a`);
     await page.keyboard.type('Reuse marker OKSTAGE_REUSE_742 body');
     await waitForMenuSelectionState(page, false);
@@ -1278,7 +1419,7 @@ test.describe('Docked terminal — live Electron', () => {
 
     expect(await clickViewTerminalItem(app)).toBe('Show Terminal');
     await expect(terminalSection(page)).toBeVisible();
-    await waitForStatus(page, 'running', 25_000);
+    await waitForStatus(page, 'running', 25_000, { foreground: 'program' });
     expect(await terminalTabs().count()).toBe(tabsAfterLaunch);
     expect(await readTerminalText(page)).toContain('Seed document');
     expect(await readTerminalText(page)).not.toContain('OKSTAGE_REUSE_742');

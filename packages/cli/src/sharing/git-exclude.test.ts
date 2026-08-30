@@ -7,13 +7,31 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   addOkPathsToGitExclude,
   formatTrackedRemediation,
+  getExcludedOkPaths,
+  getInstalledSkillProjectionPaths,
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
-  readSkillsShared,
   removeOkPathsFromGitExclude,
-  setSkillsShared,
 } from './git-exclude.ts';
+
+/** Seed the installed-skills marker: `{ 'trip-log': ['claude'] }` -> one project skill on Claude. */
+function writeMarker(dir: string, skills: Record<string, string[]>): void {
+  mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
+  writeFileSync(
+    join(dir, OK_DIR, 'local', 'installed-skills.json'),
+    JSON.stringify({
+      schema: 1,
+      skills: Object.fromEntries(
+        Object.entries(skills).map(([name, hosts]) => [
+          name,
+          { hosts, scope: 'project', scripts: false, installedAt: '2026-06-05T00:00:00.000Z' },
+        ]),
+      ),
+    }),
+    'utf-8',
+  );
+}
 
 function uniqueDir(prefix: string): string {
   return resolve(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -99,60 +117,32 @@ describe('getOkArtifactPaths', () => {
     expect(paths).toHaveLength(8);
   });
 
-  it('excludes each AUTHORED skill projection per the marker, but never the built-in bundle', () => {
-    // Authored + pack skills still follow the shared/local-only toggle. With an
-    // installed-skills marker present, every authored projection
-    // `.{host}/skills/<name>/` is excluded per the hosts it was installed to.
-    // The reserved built-in `open-knowledge` bundle is NEVER added here — it is
-    // always git-ignored via the committed `.gitignore` block instead.
-    mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
-    writeFileSync(
-      join(dir, OK_DIR, 'local', 'installed-skills.json'),
-      JSON.stringify({
-        schema: 1,
-        skills: {
-          'trip-log': {
-            hosts: ['claude', 'cursor', 'copilot'],
-            contentHash: 'abc',
-            scope: 'project',
-            scripts: false,
-            installedAt: '2026-06-05T00:00:00.000Z',
-          },
-          'fishing-pack': {
-            hosts: ['codex'],
-            contentHash: 'def',
-            scope: 'project',
-            scripts: true,
-            installedAt: '2026-06-05T00:00:00.000Z',
-          },
-          // A stray marker entry using the reserved name must be skipped, never
-          // re-added to the toggle set.
-          'open-knowledge': {
-            hosts: ['claude', 'cursor'],
-            contentHash: 'ghi',
-            scope: 'project',
-            scripts: false,
-            installedAt: '2026-06-05T00:00:00.000Z',
-          },
-        },
-      }),
-      'utf-8',
-    );
+  it('never excludes an AUTHORED skill projection, marker or not', () => {
+    // Authored skills are the user's own content — OK projected them, but
+    // whether they are committed is the project's decision, not a side effect
+    // of the sharing toggle. The merged editor configs stay in the set (see the
+    // `getOkArtifactPaths` doc comment); only the skill bundles left it.
+    writeMarker(dir, { 'trip-log': ['claude', 'cursor', 'copilot'], 'open-knowledge': ['claude'] });
     const paths = getOkArtifactPaths(dir);
-    expect(paths).toContain('.claude/skills/trip-log/');
-    expect(paths).toContain('.cursor/skills/trip-log/');
-    expect(paths).toContain('.github/skills/trip-log/');
-    expect(paths).toContain('.codex/skills/fishing-pack/'); // codex → .codex
-    // The reserved built-in bundle is carved out in BOTH loops.
-    expect(paths).not.toContain('.claude/skills/open-knowledge/');
-    expect(paths).not.toContain('.cursor/skills/open-knowledge/');
+    expect(paths).not.toContain('.claude/skills/trip-log/');
+    expect(paths).not.toContain('.cursor/skills/trip-log/');
+    expect(paths).not.toContain('.github/skills/trip-log/');
+    // A marker present must not inflate the set beyond the eight artifacts.
+    expect(paths).toHaveLength(8);
+
+    // The projections ARE still enumerable for `ok deinit` + the legacy drain.
+    const projections = getInstalledSkillProjectionPaths(dir);
+    expect(projections).toContain('.claude/skills/trip-log/');
+    expect(projections).toContain('.cursor/skills/trip-log/');
+    expect(projections).toContain('.github/skills/trip-log/');
+    expect(projections).not.toContain('.claude/skills/open-knowledge/');
   });
 
-  it('falls back to the bundle-carved-out base set when the marker is absent or corrupt', () => {
+  it('reads the marker fail-soft — a corrupt marker yields no projections', () => {
     mkdirSync(join(dir, OK_DIR, 'local'), { recursive: true });
     writeFileSync(join(dir, OK_DIR, 'local', 'installed-skills.json'), '{ corrupt', 'utf-8');
-    const paths = getOkArtifactPaths(dir);
-    expect(paths).toHaveLength(8); // corrupt marker → fail-soft, no per-skill paths
+    expect(getOkArtifactPaths(dir)).toHaveLength(8);
+    expect(getInstalledSkillProjectionPaths(dir)).toEqual([]);
   });
 });
 
@@ -661,7 +651,178 @@ describe('shared -> local-only transition with tracked shareable .ok artifacts',
   });
 });
 
-describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
+describe('legacy skill-projection drain (lines older builds wrote)', () => {
+  it('drains stale skill lines on the way IN, so a project that stays local-only self-heals', () => {
+    // Local-only is the default for a fresh project. If the drain only fired on
+    // the transition to shared, a user who upgrades and never flips would keep
+    // their skills hidden indefinitely — the exact state this change ends.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    writeExclude(dir, ['.ok/', '.okignore', '.claude/skills/trip-log/', '*.tmp', ''].join('\n'));
+    const result = addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
+    expect(result.kind).toBe('updated');
+    const content = readExclude(dir);
+    expect(content).not.toContain('.claude/skills/trip-log/');
+    // Still local-only, and the user's own line is untouched.
+    expect(content).toContain('.ok/');
+    expect(content).toContain('*.tmp');
+    expect(readSharingMode(dir)).toBe('local-only');
+  });
+
+  it('outbound drain also leaves hand-written spellings alone (mirrors the inbound rule)', () => {
+    // The asymmetry this pins used to run the other way: `share` matched all
+    // four spellings because skills were OK's to manage. This change disclaims
+    // that ownership, so both directions now touch only the form OK writes.
+    // Without this test either width passes the suite silently.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    writeExclude(
+      dir,
+      [
+        '.ok/',
+        '.claude/skills/trip-log/',
+        '.claude/skills/trip-log',
+        '/.claude/skills/trip-log/',
+        '',
+      ].join('\n'),
+    );
+
+    const result = removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+
+    expect(result.kind).toBe('updated');
+    const content = readExclude(dir);
+    // OK's own spelling goes.
+    expect(content).not.toMatch(/^\.claude\/skills\/trip-log\/$/m);
+    // The two hand-typed spellings stay — they are the user's lines.
+    expect(content).toMatch(/^\.claude\/skills\/trip-log$/m);
+    expect(content).toMatch(/^\/\.claude\/skills\/trip-log\/$/m);
+  });
+
+  it('getExcludedOkPaths surfaces an orphaned skill line whose marker entry is gone', () => {
+    // The uninstalled-skill case: no marker entry, so neither candidate pass
+    // names the line, but git is still hiding the directory. The release note
+    // tells users to look for it with `ok config-sharing status`, so it has to
+    // appear here.
+    writeExclude(dir, ['.ok/', '.claude/skills/ghost-skill/', ''].join('\n'));
+    const excluded = getExcludedOkPaths(dir);
+    expect(excluded).toContain('.claude/skills/ghost-skill/');
+  });
+
+  it('does not claim a hand-placed non-OK path as an OK exclude', () => {
+    // Shape-matched against the known host skill roots, so an unrelated
+    // `skills/` path is left out of the report rather than blamed on OK.
+    writeExclude(dir, ['.ok/', 'vendor/skills/thing/', 'notes/', ''].join('\n'));
+    const excluded = getExcludedOkPaths(dir);
+    expect(excluded).not.toContain('vendor/skills/thing/');
+    expect(excluded).not.toContain('notes/');
+  });
+
+  it('leaves a hand-written skill exclude alone (drains only the spelling OK writes)', () => {
+    // OK writes exactly `.claude/skills/<name>/`. The other three spellings
+    // `buildVariants` recognizes can only have been typed by a user who wants
+    // that bundle hidden — and this is the transition toward MORE hiding, so a
+    // line we did not write must survive it.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    const artifacts = getOkArtifactPaths(dir);
+    // No trailing slash: a human spelling, not ours.
+    writeExclude(dir, `${artifacts.join('\n')}\n.claude/skills/trip-log\n`);
+
+    const result = addOkPathsToGitExclude(dir, artifacts);
+
+    expect(result.kind).toBe('updated');
+    if (result.kind !== 'updated') throw new Error('unreachable');
+    expect(result.removed).toEqual([]);
+    expect(readExclude(dir)).toContain('.claude/skills/trip-log');
+  });
+
+  it('self-heals an already fully local-only project (drain with zero appends)', () => {
+    // The migration's headline population: every artifact line already present,
+    // one stale skill line. That is `appended.length === 0 && drained.length > 0`
+    // — the branch the guard and the empty-additions write exist for. Byte-exact
+    // so a separator or trailing-newline regression on the drain-only write has
+    // somewhere to surface.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    const artifacts = getOkArtifactPaths(dir);
+    writeExclude(dir, `${artifacts.join('\n')}\n.claude/skills/trip-log/\n`);
+
+    const result = addOkPathsToGitExclude(dir, artifacts);
+
+    expect(result.kind).toBe('updated');
+    if (result.kind !== 'updated') throw new Error('unreachable');
+    expect(result.appended).toEqual([]);
+    expect(result.removed).toEqual(['.claude/skills/trip-log/']);
+    expect(readExclude(dir)).toBe(`${artifacts.join('\n')}\n`);
+    expect(readSharingMode(dir)).toBe('local-only');
+  });
+
+  it("reports the drained lines in `removed`, not just the caller's candidates", () => {
+    // `removed` feeds `ok config-sharing share --json` and deinit's verdict.
+    // The legacy lines are stripped by this function and never named by the
+    // caller, so a caller-derived set under-reports every one of them.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    writeExclude(dir, ['.ok/', '.claude/skills/trip-log/', ''].join('\n'));
+    const result = removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+    expect(result.kind).toBe('updated');
+    if (result.kind !== 'updated') throw new Error('expected updated');
+    expect(result.removed).toContain('.claude/skills/trip-log/');
+    expect(result.removed).toContain('.ok/');
+  });
+
+  it('getExcludedOkPaths surfaces legacy skill lines the current set no longer names', () => {
+    // `ok config-sharing status` and the desktop Settings list both render this.
+    // Omitting the legacy lines shows a tidy list missing exactly the entries a
+    // user is trying to explain.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    writeExclude(dir, ['.ok/', '.claude/skills/trip-log/', ''].join('\n'));
+    const excluded = getExcludedOkPaths(dir);
+    expect(excluded).toContain('.ok/');
+    expect(excluded).toContain('.claude/skills/trip-log/');
+  });
+
+  let dir: string;
+  beforeEach(() => {
+    dir = uniqueDir('legacy-drain-test');
+    initGitRepo(dir);
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('strips skill-projection lines on the switch to shared', () => {
+    // Skill projections left the artifact set, so callers no longer pass them
+    // to `removeOkPathsFromGitExclude`. Without the internal legacy drain a
+    // project that went local-only on an older build would keep its skill dirs
+    // hidden forever, with nothing left to remove those lines.
+    writeMarker(dir, { 'trip-log': ['claude'] });
+    writeExclude(dir, ['.ok/', '.okignore', '.claude/skills/trip-log/', '*.tmp', ''].join('\n'));
+    removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+    const content = readExclude(dir);
+    expect(content).not.toContain('.claude/skills/trip-log/');
+    expect(content).not.toContain('.ok/');
+    // A line the user owns is untouched.
+    expect(content).toContain('*.tmp');
+    expect(readSharingMode(dir)).toBe('shared');
+  });
+
+  it('is a no-op when the marker is gone (nothing left to name the old lines)', () => {
+    writeExclude(dir, '.ok/\n.claude/skills/trip-log/\n');
+    removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
+    const content = readExclude(dir);
+    expect(content).not.toContain('.ok/');
+    // Limitation, stated without a safety net: the drain is marker-driven, so
+    // with no `installed-skills.json` the projection line cannot be named and
+    // survives — and it is NOT inert. A trailing-slash entry is an ordinary
+    // directory-scoped gitignore pattern, so git goes on hiding that skill dir.
+    // `ok deinit` does not rescue it either: its sweep is marker-driven too.
+    // `getExcludedOkPaths` does surface it (see the orphan-reporting test), so
+    // the user can at least find it; removing it means editing
+    // `.git/info/exclude` by hand.
+    expect(content).toContain('.claude/skills/trip-log/');
+  });
+});
+
+describe('legacy skills carve-out spelling (recognition only)', () => {
+  // Nothing writes the carve any more (the `.ok/skills` store is retired), but
+  // a project an older build left in the carve state must not be misread as
+  // shared, and must clean up fully when toggled shared.
   let dir: string;
   beforeEach(() => {
     dir = uniqueDir('skills-carve-test');
@@ -671,67 +832,9 @@ describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  /** Untracked-file set as git sees it (respects .git/info/exclude). */
-  function untracked(): string[] {
-    return execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
-      cwd: dir,
-      encoding: 'utf-8',
-    })
-      .split('\n')
-      .filter((l) => l.startsWith('??'))
-      .map((l) => l.slice(3).trim());
-  }
-
-  it('rewrites blanket .ok/ into the carve spelling and reports skills-shared', () => {
-    writeExclude(dir, '.ok/\n.okignore\n');
-    const result = setSkillsShared(dir, true);
-    expect(result.kind).toBe('updated');
-    const content = readExclude(dir);
-    expect(content).not.toMatch(/^\.ok\/$/m); // blanket line gone
-    expect(content).toContain('**/.ok/*');
-    expect(content).toContain('!**/.ok/skills/');
-    expect(content).toContain('.okignore'); // unrelated artifact preserved
-    expect(readSkillsShared(dir)).toBe(true);
-    // Still local-only for the rest of .ok/.
-    expect(readSharingMode(dir)).toBe('local-only');
-  });
-
-  it('actually makes .ok/skills/ visible to git while the rest of .ok/ stays hidden', () => {
-    // The crux: git refuses to re-include under an excluded parent dir, so the
-    // carve MUST use the children-exclude spelling to work at all.
-    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
-    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
-    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
-    writeFileSync(join(dir, '.ok', 'local', 'state.json'), '{}\n');
-    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
-
-    writeExclude(dir, '.ok/\n');
-    // Blanket: everything under .ok/ hidden.
-    expect(untracked().some((f) => f.startsWith('.ok/'))).toBe(false);
-
-    setSkillsShared(dir, true);
-    const files = untracked();
-    expect(files).toContain('.ok/skills/my-skill/SKILL.md');
-    expect(files).not.toContain('.ok/local/state.json');
-    expect(files).not.toContain('.ok/config.yml');
-  });
-
-  it('reverts the carve back to blanket .ok/ when skills sharing is turned off', () => {
-    writeExclude(dir, '.okignore\n**/.ok/*\n!**/.ok/skills/\n');
-    expect(readSkillsShared(dir)).toBe(true);
-    setSkillsShared(dir, false);
-    const content = readExclude(dir);
-    expect(content).toMatch(/^\.ok\/$/m);
-    expect(content).not.toContain('**/.ok/*');
-    expect(content).not.toContain('!**/.ok/skills/');
-    expect(readSkillsShared(dir)).toBe(false);
-    expect(readSharingMode(dir)).toBe('local-only');
-  });
-
   it('readSharingMode reports local-only from the carve lines alone', () => {
     writeExclude(dir, '**/.ok/*\n!**/.ok/skills/\n');
     expect(readSharingMode(dir)).toBe('local-only');
-    expect(readSkillsShared(dir)).toBe(true);
   });
 
   it('removeOkPaths (share) strips the carve lines so nothing is left excluding .ok/', () => {
@@ -741,90 +844,5 @@ describe('setSkillsShared / readSkillsShared (skills carve-out)', () => {
     expect(content).not.toContain('**/.ok/*');
     expect(content).not.toContain('!**/.ok/skills/');
     expect(readSharingMode(dir)).toBe('shared');
-    expect(readSkillsShared(dir)).toBe(false);
-  });
-
-  it('round-trips: local-only -> skills-shared -> off -> shared leaves no OK .ok lines', () => {
-    writeExclude(dir, '');
-    addOkPathsToGitExclude(dir, getOkArtifactPaths(dir));
-    expect(readSharingMode(dir)).toBe('local-only');
-    setSkillsShared(dir, true);
-    expect(readSkillsShared(dir)).toBe(true);
-    setSkillsShared(dir, false);
-    expect(readSkillsShared(dir)).toBe(false);
-    removeOkPathsFromGitExclude(dir, getOkArtifactPaths(dir));
-    expect(readSharingMode(dir)).toBe('shared');
-    const content = readExclude(dir);
-    expect(content).not.toContain('.ok/');
-  });
-
-  it('hides every shareable .ok artifact class while re-including only skills', () => {
-    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
-    mkdirSync(join(dir, '.ok', 'schemas'), { recursive: true });
-    mkdirSync(join(dir, '.ok', 'templates'), { recursive: true });
-    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
-    mkdirSync(join(dir, 'docs', '.ok', 'templates'), { recursive: true });
-    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
-    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
-    writeFileSync(join(dir, '.ok', '.gitignore'), 'local/\nworktrees/\n');
-    writeFileSync(join(dir, '.ok', 'schemas', 'lint.json'), '{}\n');
-    writeFileSync(join(dir, '.ok', 'templates', 'note.md'), '# t\n');
-    writeFileSync(join(dir, '.ok', 'local', 'state.json'), '{}\n');
-    writeFileSync(join(dir, 'docs', '.ok', 'frontmatter.yml'), 'icon: x\n');
-    writeFileSync(join(dir, 'docs', '.ok', 'templates', 'note.md'), '# ft\n');
-    writeFileSync(join(dir, 'docs', 'readme.md'), '# d\n');
-
-    writeExclude(dir, '.ok/\n');
-    setSkillsShared(dir, true);
-
-    const files = untracked();
-    // Positive controls: the re-included skills tree and plain content stay
-    // visible, so the hidden-set assertions below cannot pass vacuously.
-    expect(files).toContain('.ok/skills/my-skill/SKILL.md');
-    expect(files).toContain('docs/readme.md');
-    // The carve carries no re-include for the team-shareable artifact classes:
-    // under local-only(+skills-shared) they stay hidden, same as the blanket.
-    for (const hidden of [
-      '.ok/config.yml',
-      '.ok/.gitignore',
-      '.ok/schemas/lint.json',
-      '.ok/templates/note.md',
-      'docs/.ok/frontmatter.yml',
-      'docs/.ok/templates/note.md',
-      '.ok/local/state.json',
-    ]) {
-      expect(files).not.toContain(hidden);
-    }
-  });
-
-  it('keeps toggling when shareable .ok artifacts are tracked upstream (cloned-project state)', () => {
-    // Cloned projects arrive in exactly this state: the clone guardrail writes
-    // the blanket exclude while the cloned history already tracks shareable
-    // `.ok/` artifacts, so tracked-artifact + local-only is a normal
-    // combination the toggle must tolerate.
-    mkdirSync(join(dir, '.ok', 'skills', 'my-skill'), { recursive: true });
-    writeFileSync(join(dir, '.ok', 'config.yml'), 'x: 1\n');
-    writeFileSync(join(dir, '.ok', 'skills', 'my-skill', 'SKILL.md'), '# s\n');
-    execFileSync('git', ['add', '.ok/config.yml'], { cwd: dir });
-    execFileSync('git', ['commit', '-m', 'upstream tracks ok config'], {
-      cwd: dir,
-      stdio: ['ignore', 'ignore', 'ignore'],
-    });
-    writeExclude(dir, '.ok/\n');
-
-    const on = setSkillsShared(dir, true);
-    expect(on.kind).toBe('updated');
-    expect(readSkillsShared(dir)).toBe(true);
-    expect(readSharingMode(dir)).toBe('local-only');
-    expect(untracked()).toContain('.ok/skills/my-skill/SKILL.md');
-
-    const off = setSkillsShared(dir, false);
-    expect(off.kind).toBe('updated');
-    expect(readSkillsShared(dir)).toBe(false);
-    expect(readSharingMode(dir)).toBe('local-only');
-    // Exclude spellings are inert against tracked files: the committed
-    // artifact stays tracked through both toggles.
-    const lsFiles = execFileSync('git', ['ls-files'], { cwd: dir, encoding: 'utf-8' });
-    expect(lsFiles).toContain('.ok/config.yml');
   });
 });

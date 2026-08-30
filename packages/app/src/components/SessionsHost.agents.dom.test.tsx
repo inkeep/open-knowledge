@@ -178,9 +178,17 @@ vi.doMock('@/lib/acp/registered-agents', () => ({
 // settles. Tests drive the settle — a success lands a thread (setOpenThreads), a
 // failure just clears the set — by flipping this back to false.
 let mockInflightLaunch = false;
+/** Settles the way the real module does, so a caller that reads the outcome
+ *  (the thread-launch effect does, to report a swallowed one) gets a promise. */
+let mockLaunchOutcome: 'started' | 'deduped' | 'failed' = 'started';
 const launchAgentThread = vi.fn(() => {
   mockInflightLaunch = true;
+  return Promise.resolve(mockLaunchOutcome);
 });
+const toastError = vi.fn((_message: string) => {});
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, info: vi.fn(), success: vi.fn(), warning: vi.fn(), message: vi.fn() },
+}));
 vi.doMock('@/lib/acp/launch-agent-thread', () => ({
   launchAgentThread,
   hasInflightThreadLaunch: () => mockInflightLaunch,
@@ -300,6 +308,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     openArchivedThread.mockClear();
     deleteThread.mockClear();
     launchAgentThread.mockClear();
+    mockLaunchOutcome = 'started';
+    toastError.mockClear();
     mockInflightLaunch = false;
     registerAgent.mockClear();
     catalogData = undefined;
@@ -917,6 +927,51 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         'notes',
         'Notes',
       ]);
+    });
+  });
+
+  // A launch intent spends its nonce on dispatch, so the prompt the user just
+  // typed gets exactly one attempt. A swallowed one has to say so.
+  describe('a swallowed launch intent', () => {
+    test('reports a collision rather than eating the typed prompt', async () => {
+      window.location.hash = '';
+      mockLaunchOutcome = 'deduped';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      render(
+        <Harness
+          threadLaunch={{
+            agentSource: 'registry',
+            agentId: 'claude-acp',
+            prompt: 'the words I just typed',
+            docName: null,
+            titleHint: null,
+            nonce: 1,
+          }}
+        />,
+      );
+
+      await vi.waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    });
+
+    test('a launch that starts says nothing', async () => {
+      window.location.hash = '';
+      mockLaunchOutcome = 'started';
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      render(
+        <Harness
+          threadLaunch={{
+            agentSource: 'registry',
+            agentId: 'claude-acp',
+            prompt: 'the words I just typed',
+            docName: null,
+            titleHint: null,
+            nonce: 1,
+          }}
+        />,
+      );
+
+      await vi.waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+      expect(toastError).not.toHaveBeenCalled();
     });
   });
 

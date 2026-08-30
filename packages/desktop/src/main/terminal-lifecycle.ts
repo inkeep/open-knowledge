@@ -13,7 +13,7 @@
 /** The reap surface the manager exposes; `TerminalManager` satisfies it structurally. */
 export interface TerminalReaper {
   killForWindow(windowId: number): void;
-  killAll(): void;
+  killAll(): Promise<void>;
 }
 
 /** Minimal BrowserWindow shape the reap wiring reads — id + a close subscription. */

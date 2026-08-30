@@ -99,12 +99,17 @@ describe('candidate enumeration', () => {
     // prerelease ever reached the channel-aware resolver and the beta channel
     // resolved nothing in production. Every beta test injects its own tag list,
     // so the unit suite could not see it; this is what stands in for that.
+    //
+    // Two classes, two mechanisms. THIS pin covers the bypass: the shared reader
+    // must actually be imported, which no link check can assert (a file that
+    // imports nothing links perfectly). `module-graph.test.mjs` covers the rename:
+    // that the imported symbol still EXISTS, which this pin cannot see, since it
+    // reads the subject module's text and a rename of the export leaves that untouched.
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/s);
+    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/);
     expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
     // The list reaches the resolver exactly as git gave it. Narrowing it here,
     // at the definition or at the call site, is the whole failure.
-    expect(source).toMatch(/const stableTags = realReleaseTags\(\);/);
     expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
 
@@ -491,6 +496,7 @@ describe('write-back run', () => {
     const mark = h.writes.find((w) => w.kind === 'mark');
     expect(post.origin).toBe(GH_ISSUE);
     expect(post.text).toContain('v0.36.0');
+    expect(post.text).toContain(CHANGESET.body);
     expect(mark.url).toBe(notificationMarkerUrl({ version: '0.36.0', originUrl: GH_ISSUE }));
   });
 
@@ -1549,6 +1555,10 @@ describe('the beta leg', () => {
     expect(post.text).toContain('going out now on the Open Knowledge beta channel');
     expect(post.text).toContain('follow up here');
     expect(post.text).not.toContain('This shipped in');
+    // The beta leg is first contact for most reporters, so it is the leg that
+    // must always carry the changeset — a regression here would strip the
+    // note from every reply, beta and stable, from then on.
+    expect(post.text).toContain(CHANGESET.body);
   });
 
   test('the beta marker is not the stable one, so each channel is told at most once', async () => {
@@ -1596,5 +1606,55 @@ describe('the beta leg', () => {
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.text).toContain('This shipped in Open Knowledge v0.36.0');
     expect(post.text).not.toContain('beta');
+  });
+
+  test('the stable leg omits the changeset prose when a beta reply already quoted it on this origin', async () => {
+    // The beta marker names v0.37.0-beta.0, a version the stable run is not
+    // about to post about, so the exact-marker check does not fire — but the
+    // presence of ANY marker for this origin means a beta reply ordinarily
+    // already said everything the prose would say a second time.
+    const betaMarker = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, betaMarker] })],
+    });
+    const result = await h.run();
+    const post = h.writes.find((w) => w.kind === 'post');
+    expect(post.text).toContain('This shipped in Open Knowledge v0.36.0');
+    expect(post.text).not.toContain(CHANGESET.body);
+    expect(result.posted.map((p) => p.identifier)).toEqual(['PRD-7539']);
+    // Pins the live push site's `quoted` flag to what the reply actually did.
+    // The dry-run push site and notice line get their own coverage below.
+    expect(result.posted[0].quoted).toBe(false);
+  });
+
+  test('a dry run reports the same quote decision the live run would make', async () => {
+    const betaMarker = notificationMarkerUrl({ version: '0.37.0-beta.0', originUrl: GH_ISSUE });
+    const h = harness({
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, betaMarker] })],
+    });
+    const result = await h.run();
+    expect(result.posted[0].quoted).toBe(false);
+    expect(h.logs.some((m) => m.includes('[dry run]') && m.includes('quoted=false'))).toBe(true);
+  });
+
+  test('the quote decision is made per origin, not once for the whole candidate', async () => {
+    // One origin already carries a marker from an earlier version; the other
+    // has never been notified. Hoisting `quotedBefore` out of the per-origin
+    // loop would suppress the quote on the wrong origin without failing any
+    // single-origin test.
+    const betaMarker = notificationMarkerUrl({ version: '0.35.0', originUrl: GH_ISSUE });
+    const h = harness({
+      live: true,
+      listCandidates: async () => [
+        candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, DISCORD_THREAD, betaMarker] }),
+      ],
+    });
+    await h.run();
+    const posts = h.writes.filter((w) => w.kind === 'post');
+    const forIssue = posts.find((p) => p.origin === GH_ISSUE);
+    const forDiscord = posts.find((p) => p.origin === DISCORD_THREAD);
+    expect(forIssue.text).not.toContain(CHANGESET.body);
+    expect(forDiscord.text).toContain(CHANGESET.body);
   });
 });

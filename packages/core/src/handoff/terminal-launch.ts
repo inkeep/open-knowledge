@@ -10,12 +10,11 @@
  * deep link, quoted-argv-byte budget for the PTY — see `PromptTransport` in
  * `prompt-composer.ts`), and threaded into either transport.
  *
- * This module owns the shell-injection-safe wrapping. The terminal write is a
- * FIXED `<bin> [<fixed-args>…] '<prompt>'` shape — never an arbitrary command.
- * Both `<bin>` and any `<fixed-args>` come only from the {@link TERMINAL_CLIS}
- * registry, never from user input. The prompt — the only user-influenced
- * portion — is single-quote-wrapped so it can never break out of its argument
- * or inject shell, regardless of what bytes the composed prompt carries.
+ * This module owns the shell-injection-safe wrapping. POSIX uses a fixed
+ * `<bin> [<fixed-args>…] '<prompt>'` command with single-quote containment.
+ * Windows keeps `<bin>` and argv structured until the resolved shell composes
+ * them, then delivers the prompt by bracketed paste so user text never crosses
+ * a PowerShell, cmd, or Git Bash parse surface.
  */
 
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
@@ -37,6 +36,159 @@ import type { HandoffTarget } from './types.ts';
  */
 export function shellSingleQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/** A CLI launch kept as data until the resolved Windows shell is known. */
+export interface TerminalLaunchCommand {
+  readonly executable: string;
+  readonly args: readonly string[];
+  /** Registry-authored support file materialized beneath the terminal cwd before
+   * launch. This keeps JSON policy out of cmd/npm-shim argument parsing while
+   * preserving per-launch settings rather than mutating the user's config. */
+  readonly supportFile?: {
+    readonly kind: 'claude-settings';
+    readonly relativePath: string;
+    readonly contents: string;
+  };
+}
+
+/** Sole author of the support-file/argv coupling. */
+function claudeSettingsFileArgs(relativePath: string): readonly string[] {
+  return ['--settings', relativePath];
+}
+
+/**
+ * The launch to run when its support file could not be materialized. The file
+ * and every argument are one coupled, registry-authored unit, so no argument is
+ * safe to retain without the file. Degrade to the bare executable and let the
+ * CLI run its own trust flow instead of cancelling the terminal.
+ */
+export function launchWithoutSupportFile(launch: TerminalLaunchCommand): TerminalLaunchCommand {
+  if (launch.supportFile === undefined) return launch;
+  return { executable: launch.executable, args: [] };
+}
+
+/** Add Windows shell families here and nowhere else. */
+const WINDOWS_SHELL_FAMILY_VOCABULARY = ['powershell', 'cmd', 'bash'] as const;
+
+export type WindowsShellFamily = (typeof WINDOWS_SHELL_FAMILY_VOCABULARY)[number];
+
+export const WINDOWS_SHELL_FAMILIES: ReadonlySet<WindowsShellFamily> = new Set(
+  WINDOWS_SHELL_FAMILY_VOCABULARY,
+);
+
+/** Guard the resolved family after its JSON IPC round-trip. */
+export function isWindowsShellFamily(value: unknown): value is WindowsShellFamily {
+  return typeof value === 'string' && WINDOWS_SHELL_FAMILIES.has(value as WindowsShellFamily);
+}
+
+/** PowerShell's verbatim single-quoted string form. */
+export function psQuoteArg(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function encodeUtf8Base64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+const BASH_STRUCTURED_LAUNCH_SCRIPT =
+  `mapfile -d '' -t __ok_argv < <(printf '%s' "$1" | base64 -d); ` +
+  `((\${#__ok_argv[@]})) || exit 1; "\${__ok_argv[@]}"; exec "$BASH" --login -i`;
+
+/** Encode a PowerShell startup script for `-EncodedCommand` without Node-only APIs. */
+export function encodePowerShellCommand(script: string): string {
+  let binary = '';
+  for (let i = 0; i < script.length; i += 1) {
+    const codeUnit = script.charCodeAt(i);
+    binary += String.fromCharCode(codeUnit & 0xff, codeUnit >>> 8);
+  }
+  return btoa(binary);
+}
+
+/** Classify only the Windows shells whose launch semantics OK supports. */
+export function resolveWindowsShellFamily(shell: string): WindowsShellFamily | null {
+  const base = shell.split(/[\\/]/).at(-1)?.toLowerCase();
+  if (
+    base === 'pwsh' ||
+    base === 'pwsh.exe' ||
+    base === 'powershell' ||
+    base === 'powershell.exe'
+  ) {
+    return 'powershell';
+  }
+  if (base === 'cmd' || base === 'cmd.exe') return 'cmd';
+  if (base === 'bash' || base === 'bash.exe') return 'bash';
+  return null;
+}
+
+function isCmdSafeToken(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !Array.from(value).some((ch) => ch.charCodeAt(0) < 0x20) &&
+    !/[\s"%!&|<>^()]/u.test(value)
+  );
+}
+
+/**
+ * Compose the exact node-pty argv shape for a resolved Windows shell.
+ * PowerShell receives CRT-safe array args; cmd receives an owned string because
+ * its parser does not implement CommandLineToArgvW escaping.
+ */
+export function composeWindowsShellLaunchArgs(
+  shell: string,
+  launch: TerminalLaunchCommand,
+): string[] | string {
+  const family = resolveWindowsShellFamily(shell);
+  if (family === null) throw new Error('unsupported Windows terminal shell');
+  if (
+    launch.executable.length === 0 ||
+    launch.executable.includes('\u0000') ||
+    launch.args.some((arg) => arg.includes('\u0000'))
+  ) {
+    throw new Error('invalid Windows terminal launch');
+  }
+  if (family === 'bash') {
+    // Git for Windows applies an MSYS parsing pass before `bash -c`; raw
+    // apostrophes can be stripped even when node-pty received an argv array.
+    // Base64 keeps every launch token parser-inert. The fixed script decodes
+    // one NUL-delimited payload into a quoted Bash array; the delimiters also
+    // preserve empty arguments and trailing newlines without one process per
+    // token.
+    return [
+      '--login',
+      '-i',
+      '-c',
+      BASH_STRUCTURED_LAUNCH_SCRIPT,
+      'bash',
+      encodeUtf8Base64(`${[launch.executable, ...launch.args].join('\u0000')}\u0000`),
+    ];
+  }
+  const batchTarget = /\.(?:cmd|bat)$/iu.test(launch.executable);
+  if (family === 'cmd' || batchTarget) {
+    const tokens = [launch.executable, ...launch.args];
+    if (tokens.some((token) => !isCmdSafeToken(token))) {
+      throw new Error('unsafe batch argument');
+    }
+    if (family === 'cmd') return `/K ${tokens.join(' ')}`;
+  }
+  const script = `& ${psQuoteArg(launch.executable)}${launch.args
+    .map((arg) => ` ${psQuoteArg(arg)}`)
+    .join('')}`;
+  return ['-NoExit', '-EncodedCommand', encodePowerShellCommand(script)];
+}
+
+/** Quote a dropped Windows path for the resolved interactive shell. */
+export function quoteWindowsShellPath(family: WindowsShellFamily, path: string): string | null {
+  if (path.length === 0 || Array.from(path).some((ch) => ch.charCodeAt(0) < 0x20)) return null;
+  if (family === 'powershell') return psQuoteArg(path);
+  if (family === 'bash') return shellSingleQuote(path);
+  // cmd expands `%VAR%` and delayed `!VAR!` even inside double quotes. Refuse
+  // those paths instead of claiming an escape that cmd does not provide.
+  if (/["%!]/u.test(path)) return null;
+  return `"${path}"`;
 }
 
 /**
@@ -192,7 +344,7 @@ const CODEX_OK_AUTO_APPROVE_ARG = `-c ${shellSingleQuote(
  * so nothing is written to disk. Returns '' when neither opt-in is set. Content is
  * registry-fixed and single-quoted — never user input.
  */
-function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
+function buildClaudeSettingsJson(opts: BuildCliLaunchOptions): string | null {
   const settings: {
     enabledMcpjsonServers?: string[];
     permissions?: { allow: string[]; ask: string[] };
@@ -207,9 +359,14 @@ function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
     };
   }
   if (settings.enabledMcpjsonServers === undefined && settings.permissions === undefined) {
-    return '';
+    return null;
   }
-  return `--settings ${shellSingleQuote(JSON.stringify(settings))}`;
+  return JSON.stringify(settings);
+}
+
+function buildClaudeSettingsArg(opts: BuildCliLaunchOptions): string {
+  const settingsJson = buildClaudeSettingsJson(opts);
+  return settingsJson === null ? '' : `--settings ${shellSingleQuote(settingsJson)}`;
 }
 
 /**
@@ -234,9 +391,17 @@ const BRACKETED_PASTE_END = `${ESC}[201~`;
  * the hard fallback: inject anyway if the marker never appears (e.g. a future
  * Hermes that changed its ready signal), so the prompt is never silently dropped.
  */
-const HERMES_READY_MARKER = '\x1b[?2004h';
+const BRACKETED_PASTE_ENABLE_MARKER = '\x1b[?2004h';
 const HERMES_INJECT_DEBOUNCE_MS = 300;
 const HERMES_INJECT_CAP_MS = 4000;
+const WINDOWS_INJECT_SETTLE_MS = 800;
+const WINDOWS_INJECT_CAP_MS = 4000;
+const WINDOWS_STARTUP_INJECTION: NonNullable<TerminalCliInfo['startupInjection']> = {
+  submit: '\r',
+  readyMarker: BRACKETED_PASTE_ENABLE_MARKER,
+  settleMs: WINDOWS_INJECT_SETTLE_MS,
+  capMs: WINDOWS_INJECT_CAP_MS,
+};
 
 /**
  * Static registry for each launchable CLI. Cursor's agent CLI binary is
@@ -336,7 +501,7 @@ export const TERMINAL_CLIS = {
     handoffTarget: 'hermes',
     startupInjection: {
       submit: '\r',
-      readyMarker: HERMES_READY_MARKER,
+      readyMarker: BRACKETED_PASTE_ENABLE_MARKER,
       settleMs: HERMES_INJECT_DEBOUNCE_MS,
       capMs: HERMES_INJECT_CAP_MS,
     },
@@ -381,6 +546,56 @@ export interface BuildCliLaunchOptions {
    * to false.
    */
   readonly autoApproveOkTools?: boolean;
+}
+
+/**
+ * Build the Windows half of an agent launch as structured data. The prompt is
+ * deliberately absent: Windows delivers it after the TUI starts via bracketed
+ * paste, so user text never crosses PowerShell, cmd, or Git Bash parsing. JSON-bearing
+ * Claude's JSON policy is carried in a registry-authored project-local support
+ * file because a PATH binary may resolve to an npm `.cmd` shim whose second-hop
+ * argument parser cannot safely preserve inline JSON. Codex uses an unquoted
+ * literal config value, which remains two cmd-safe argv tokens.
+ */
+export function buildWindowsCliLaunch(
+  cli: TerminalCli,
+  _prompt: string | null | undefined,
+  opts: BuildCliLaunchOptions = {},
+): TerminalLaunchCommand {
+  const info: TerminalCliInfo = TERMINAL_CLIS[cli];
+  if (cli === 'claude') {
+    const settingsJson = buildClaudeSettingsJson(opts);
+    if (settingsJson !== null) {
+      const variant = [
+        opts.mcpPreApprove === true ? 'mcp' : null,
+        opts.autoApproveOkTools === true ? 'tools' : null,
+      ]
+        .filter((part): part is string => part !== null)
+        .join('-');
+      const relativePath = `.ok/local/terminal/claude-settings-${variant}.json`;
+      return {
+        executable: info.bin,
+        args: [...claudeSettingsFileArgs(relativePath)],
+        supportFile: {
+          kind: 'claude-settings',
+          relativePath,
+          contents: settingsJson,
+        },
+      };
+    }
+  }
+  if (cli === 'codex' && opts.autoApproveOkTools === true) {
+    // Codex treats a non-TOML override value as a literal string. Keeping the
+    // value unquoted makes the two argv tokens safe through cmd and npm shims.
+    return {
+      executable: info.bin,
+      args: ['-c', `mcp_servers.${MCP_SERVER_NAME}.default_tools_approval_mode=approve`],
+    };
+  }
+  return {
+    executable: info.bin,
+    args: info.subcommand ? [info.subcommand] : [],
+  };
 }
 
 /**
@@ -482,21 +697,25 @@ export function buildClaudeLaunchCommand(prompt: string, opts: BuildCliLaunchOpt
  * This is the only user-influenced portion; everything around it is registry-fixed.
  */
 /**
- * The startup-injection descriptor for a CLI, or `undefined` when it delivers its
- * prompt on the argv. A typed accessor so consumers don't cast around the
- * `as const satisfies` registry's per-entry literal types (which drop optional
- * fields from members that don't set them).
+ * The startup-injection descriptor for a CLI. Windows supplies a safe default
+ * for every CLI because prompts never ride argv there; POSIX returns a registry
+ * descriptor only for CLIs that cannot accept an argv prompt. A typed accessor
+ * keeps consumers from casting around the registry's per-entry literal types.
  */
-export function startupInjectionFor(cli: TerminalCli): TerminalCliInfo['startupInjection'] {
+export function startupInjectionFor(
+  cli: TerminalCli,
+  platform: NodeJS.Platform,
+): TerminalCliInfo['startupInjection'] {
   const info: TerminalCliInfo = TERMINAL_CLIS[cli];
-  return info.startupInjection;
+  return info.startupInjection ?? (platform === 'win32' ? WINDOWS_STARTUP_INJECTION : undefined);
 }
 
 export function buildStartupInjectionBytes(
   cli: TerminalCli,
   prompt: string | null | undefined,
+  platform: NodeJS.Platform,
 ): string | null {
-  const injection = startupInjectionFor(cli);
+  const injection = startupInjectionFor(cli, platform);
   if (injection == null || prompt == null || prompt.length === 0) return null;
   // Strip ESC (0x1b) — the byte that would let the prompt terminate the paste
   // frame early or smuggle in a control sequence. A plain-string `replaceAll`

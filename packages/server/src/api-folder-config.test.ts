@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -154,6 +154,58 @@ describe('GET/PUT /api/folder-config', () => {
       'GET',
     );
     expect(absolute.status).toBe(400);
+  });
+
+  test('PUT refuses a folder that symlinks out of the content root', async () => {
+    // The lexical prefix gate cannot see this shape: `escape/x` resolves under
+    // the content dir as a string while the directory link routes the write to
+    // `/outside/x/.ok/frontmatter.yml`. The canonical containment arm in
+    // `validateFolderRel` is what refuses it.
+    const outside = join(tmpDir, 'outside');
+    mkdirSync(outside);
+    symlinkSync(outside, join(contentDir, 'escape'), 'dir');
+    const ext = buildExt();
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'escape/x',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(400);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(join(outside, 'x', '.ok', 'frontmatter.yml'))).toBe(false);
+  });
+
+  test('PUT refuses a REAL folder whose .ok is a symlink out of the content root', async () => {
+    // The spelling the folder-anchored gate missed: the folder itself realpaths
+    // in-root, and the planted link sits one component deeper, exactly where
+    // the writer targets. The gate must anchor on `<folder>/.ok`, not the
+    // folder — `assertNoSymlinkEscape` never inspects components below its
+    // argument.
+    const outside = join(tmpDir, 'outside-okdir');
+    mkdirSync(outside);
+    mkdirSync(join(contentDir, 'notes-real'));
+    symlinkSync(outside, join(contentDir, 'notes-real', '.ok'), 'dir');
+    const ext = buildExt();
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'notes-real',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(400);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(join(outside, 'frontmatter.yml'))).toBe(false);
+  });
+
+  test('PUT surfaces a missing content root as a 500, not a 400', async () => {
+    // The 400 arm refuses the caller's path; a vanished content root is the
+    // SERVER's fault and must not land in the path-escape bucket — the split
+    // is the substance of the containment taxonomy, so it gets its own pin.
+    const ext = buildExt();
+    rmSync(contentDir, { recursive: true, force: true });
+    const captured = await dispatch(ext, '/api/folder-config', 'PUT', {
+      path: 'plain',
+      frontmatter: { status: 'draft' },
+    });
+    expect(captured.status).toBe(500);
+    expect(JSON.parse(captured.body).type).toBe('urn:ok:error:internal-server-error');
   });
 
   test('PUT writes the sidecar and reports written, then noop on an identical patch', async () => {

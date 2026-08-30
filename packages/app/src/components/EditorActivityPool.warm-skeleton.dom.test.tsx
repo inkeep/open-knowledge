@@ -19,6 +19,7 @@
  * Runs under `bun run test:dom` (jsdom substrate).
  */
 
+import { isMarkdownDocFile } from '@inkeep/open-knowledge-core';
 import { cleanup, render, screen } from '@testing-library/react';
 import { Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -58,7 +59,12 @@ function WarmFallbackHost({ docName }: { docName: string }) {
   // Peek (no delete) — StrictMode dev double-invokes the lazy initializer; both
   // must return the same value to avoid flashing the warm fallback empty.
   const [warmSnapshot] = useState(() => peekRenameSnapshot(docName));
-  const warmHtml = warmSnapshot?.html ?? null;
+  // Mirrors the warm-snapshot producer's `isMarkdownDocFile` gate
+  // (`captureRenameSnapshots` in editor-cache.ts): warm markdown HTML only
+  // renders over the markdown dual editor, never over a doc-class surface.
+  // The consumer (ActivityEntry) additionally gates on conflict state, which
+  // this replica does not model.
+  const warmHtml = isMarkdownDocFile(docName) ? (warmSnapshot?.html ?? null) : null;
 
   // Mirrors ActivityEntry's useLayoutEffect — applies scrollTop to the active
   // editor scroll container. The DOM contract: gated to scrollTop > 0, finds
@@ -87,6 +93,15 @@ function WarmFallbackHost({ docName }: { docName: string }) {
 }
 
 const baseSnap = (html: string): RenameSnapshot => ({ html, scrollTop: 0, selection: null });
+
+describe('doc-class gating (mirrors ActivityEntry isDualEditor)', () => {
+  test('a snapshot stored under a non-markdown docName renders the cold skeleton', () => {
+    storeRenameSnapshot('board.excalidraw', baseSnap('<p>stale markdown</p>'));
+    render(<WarmFallbackHost docName="board.excalidraw" />);
+    expect(screen.getByTestId('cold-skeleton')).not.toBeNull();
+    expect(screen.queryByText('stale markdown')).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Tests

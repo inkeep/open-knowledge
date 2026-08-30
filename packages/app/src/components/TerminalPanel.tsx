@@ -3,9 +3,13 @@ import '@xterm/xterm/css/xterm.css';
 import {
   buildCliLaunchArgString,
   buildStartupInjectionBytes,
+  buildWindowsCliLaunch,
+  quoteWindowsShellPath,
   shellSingleQuote,
   startupInjectionFor,
   type TerminalCli,
+  type TerminalLaunchCommand,
+  type WindowsShellFamily,
 } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { FitAddon } from '@xterm/addon-fit';
@@ -16,17 +20,22 @@ import { Terminal } from '@xterm/xterm';
 import { useTheme } from 'next-themes';
 import { use, useEffect, useRef, useState } from 'react';
 import { ConfigContext } from '@/lib/config-context';
-import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import type { ClaudeReadiness, OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
 import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
 import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
-import { type TerminalCommandId, terminalCommandFor } from './handoff/terminal-command-events';
+import {
+  type TerminalCommandId,
+  terminalCommandFor,
+  windowsTerminalCommandFor,
+} from './handoff/terminal-command-events';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { TerminalCliUnverifiedBanner } from './TerminalCliUnverifiedBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
+import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
 import { TerminalStartingNotice } from './TerminalStartingNotice';
 import { createTerminalFileLinkProvider } from './terminal-link-provider';
@@ -204,6 +213,7 @@ function TerminalSession({
   adoptPtyId = null,
   onPtyId,
 }: TerminalSessionProps) {
+  const { t } = useLingui();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const onExitRef = useRef(onExit);
   const onTitleChangeRef = useRef(onTitleChange);
@@ -218,16 +228,34 @@ function TerminalSession({
   // theme changes flow through the dedicated effect below.
   const initialXtermThemeRef = useRef(xtermTheme);
   const [status, setStatus] = useState<SessionStatus>('starting');
-  // Whether any shell byte has landed yet. `status` cannot answer this: it flips
-  // to 'running' the instant a ptyId comes back, which is BEFORE the utility
-  // process forks a PTY host and the login shell sources its rc chain — the
-  // seconds a user actually waits. Without this the pane looks identical whether
-  // a shell is coming or nothing happened at all.
+  // Whether any shell byte has landed yet. `status` cannot answer this: on a
+  // fresh create it flips to 'running' the instant a ptyId comes back, which is
+  // BEFORE the utility process forks a PTY host and the login shell sources its
+  // rc chain — the seconds a user actually waits. Without this the pane looks
+  // identical whether a shell is coming or nothing happened at all.
   const [hasOutput, setHasOutput] = useState(false);
   const [readiness, setReadiness] = useState<ClaudeReadiness | null>(null);
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
+  const [shellNotice, setShellNotice] = useState<Extract<
+    OkPtyNotice,
+    { notice: 'invalid-shell-override' }
+  > | null>(null);
+  const [supportFileNotice, setSupportFileNotice] = useState<Extract<
+    OkPtyNotice,
+    { notice: 'support-file-degraded' }
+  > | null>(null);
+  const [pathDropNotice, setPathDropNotice] = useState(false);
+  // Windows startup injection always stages the prompt WITHOUT its submit key,
+  // so the user can review it before deciding to run it. Scoped to one launch
+  // and dismissible.
+  const [manualSubmitNotice, setManualSubmitNotice] = useState(false);
   // Live PTY id, mirrored out of the mount effect for the keyboard handlers.
   const ptyIdRef = useRef<string | null>(null);
+  // These refs are shared with the external-drop effect below. Keeping the gate
+  // and its single input chokepoint outside the session effect prevents that
+  // listener from capturing stale session state across a replay or restart.
+  const terminalInputEnabledRef = useRef(false);
+  const terminalInputRef = useRef<(data: string) => void>(() => undefined);
   // Set when a launch suppressed its bake off a non-`present` verdict — drives
   // the per-CLI banner strip. `not-found` is the VERIFIED absence (the probe
   // ran and the binary is genuinely off the PATH); `unverified` covers a
@@ -249,6 +277,7 @@ function TerminalSession({
   // effect (which would respawn the PTY) — the launch reads it once.
   const configCtx = use(ConfigContext);
   const autoApproveOkToolsRef = useRef(configCtx?.userConfig?.agents?.autoApproveOkTools ?? true);
+  const shellFamilyRef = useRef<WindowsShellFamily | null>(null);
 
   // Keep the callbacks fresh without re-running the mount effect — a new
   // callback identity must NOT tear down and respawn the PTY.
@@ -263,10 +292,23 @@ function TerminalSession({
     const container = containerRef.current;
     if (!container) return;
 
+    // This effect run IS the session: a new launch re-runs it, so per-launch
+    // notice state resets here rather than surviving into a session it does not
+    // describe.
+    setManualSubmitNotice(false);
+    setSupportFileNotice(null);
+    setShellNotice(null);
+    setPathDropNotice(false);
+    terminalInputEnabledRef.current = false;
+
     let cancelled = false;
+    let sessionEnded = false;
     let ptyId: string | null = null;
     let unsubData: (() => void) | undefined;
     let unsubExit: (() => void) | undefined;
+    let unsubNotice: (() => void) | undefined;
+    let pendingShellNotices: OkPtyNotice[] = [];
+    let launchCapabilityLimited = false;
     // Startup-injection readiness: for a `startupInjection` CLI (Hermes), this
     // scans the PTY output for the CLI's ready marker so the prompt is pasted the
     // instant the input widget is live. Fed from attachSession's onData; armed by
@@ -279,6 +321,45 @@ function TerminalSession({
     let observer: ResizeObserver | undefined;
     let canvasPixelObserver: ResizeObserver | undefined;
     let ptyResizeThrottle: ReturnType<typeof createResizeThrottle> | undefined;
+    let documentUnloading = false;
+    const markDocumentUnloading = (event: PageTransitionEvent): void => {
+      // A bfcache hide preserves this renderer and must not suppress a later
+      // explicit tab-close reap. A real navigation/reload tears the document
+      // down after this event, while main keeps the window-scoped PTY available
+      // for the next renderer to list and adopt.
+      documentUnloading = !event.persisted;
+    };
+    const markDocumentVisible = (): void => {
+      // Re-arms the ordinary tab-close reap for the case `pagehide` cannot
+      // settle: a non-persisted hide on a document that then survives. A real
+      // bfcache hide reports `persisted: true` above and never sets the flag.
+      if (document.visibilityState === 'visible') documentUnloading = false;
+    };
+    window.addEventListener('pagehide', markDocumentUnloading);
+    document.addEventListener('visibilitychange', markDocumentVisible);
+
+    const applyShellNotice = (notice: OkPtyNotice): void => {
+      if (notice.notice === 'shell-resolved') {
+        shellFamilyRef.current = notice.shellFamily;
+      } else if (notice.notice === 'invalid-shell-override') {
+        if (notice.reason === 'unsupported-family') launchCapabilityLimited = true;
+        setShellNotice(notice);
+      } else {
+        setSupportFileNotice(notice);
+      }
+    };
+
+    // Subscribe before create() so a fast utility response cannot outrun the
+    // renderer's listener. Until this panel knows its ptyId, retain every notice
+    // and address-check each one when attachSession wires the created shell.
+    unsubNotice = bridge.terminal.onNotice((msg) => {
+      if (ptyId === null) {
+        pendingShellNotices.push(msg);
+        return;
+      }
+      if (msg.ptyId !== ptyId) return;
+      applyShellNotice(msg);
+    });
 
     // xterm's screen-reader mode mirrors the viewport into a live a11y DOM on
     // every write and scroll — "a significant performance drop" per xterm's own
@@ -510,11 +591,29 @@ function TerminalSession({
       if (!cancelled) onTitleChangeRef.current?.(title);
     });
 
+    // Every renderer-to-PTY input path shares this gate. An adopted session is
+    // wired before its replay is parsed so live output queues behind the replay,
+    // but neither parser replies nor user gestures may reach the surviving shell
+    // until that parse finishes. Exit closes the gate permanently for this run.
+    const sendInput = (data: string): void => {
+      const livePtyId = ptyIdRef.current;
+      if (cancelled || !terminalInputEnabledRef.current || livePtyId === null) return;
+      bridge.terminal.input(livePtyId, data);
+    };
+    terminalInputRef.current = sendInput;
+    const markInteractive = (): void => {
+      if (cancelled || sessionEnded || terminalInputEnabledRef.current) return;
+      terminalInputEnabledRef.current = true;
+      setStatus('running');
+      term.focus();
+    };
+
     // Every key (including Escape) goes to the PTY so terminal apps (vim, the
     // `claude` TUI) work — the keyboard exit is ⌘J. Linux owns the conventional
-    // Ctrl+Shift+C/V clipboard chords; plain Ctrl+C/V still run through xterm
-    // after cancelling Electron's hidden Edit-menu accelerator. The remaining
-    // two Shift-chord patches are shared across platforms:
+    // Ctrl+Shift+C/V clipboard chords; Windows additionally makes Ctrl+C copy
+    // only when xterm has a selection and treats both Ctrl+V chords as paste.
+    // A selection-free Ctrl+C still runs through xterm as an interrupt. The
+    // remaining two Shift-chord patches are shared across platforms:
     //
     //  - Shift+Tab: xterm emits the reverse-tab sequence (ESC [ Z) but, unlike
     //    plain Tab, does NOT call preventDefault, so the browser's
@@ -529,28 +628,32 @@ function TerminalSession({
       if (event.type !== 'keydown') return true;
 
       const key = event.key.toLowerCase();
-      const linuxClipboardKey =
-        bridge.platform === 'linux' &&
+      const platformClipboardKey =
+        (bridge.platform === 'linux' || bridge.platform === 'win32') &&
         event.ctrlKey &&
         !event.altKey &&
         !event.metaKey &&
         (key === 'c' || key === 'v');
-      if (linuxClipboardKey) {
+      if (platformClipboardKey) {
         // Prevent Electron's hidden native Edit menu from consuming Ctrl+C/V.
-        // Returning true for the plain chords still tells xterm to encode them
-        // for the PTY (SIGINT / literal-next); shifted chords are handled here.
+        // Returning true still tells xterm to encode the key for the PTY.
         event.preventDefault();
-        if (!event.shiftKey) return true;
 
         if (key === 'c') {
-          if (term.hasSelection() && navigator.clipboard?.writeText) {
+          const hasSelection = term.hasSelection();
+          const copiesSelection = event.shiftKey || (bridge.platform === 'win32' && hasSelection);
+          if (!copiesSelection) return true;
+          if (hasSelection && navigator.clipboard?.writeText) {
             void navigator.clipboard
               .writeText(term.getSelection())
               .catch((err) => console.warn('[terminal] clipboard copy failed', err));
           }
+          if (bridge.platform === 'win32') term.clearSelection();
           return false;
         }
 
+        if (!event.shiftKey && bridge.platform !== 'win32') return true;
+        if (!terminalInputEnabledRef.current) return false;
         if (navigator.clipboard?.readText) {
           void navigator.clipboard
             .readText()
@@ -570,11 +673,12 @@ function TerminalSession({
       }
       if (event.key === 'Enter') {
         const ptyId = ptyIdRef.current;
-        // Before the PTY is live there is nothing to write to; let xterm
-        // handle the key with its default behavior.
+        // Before a PTY exists, let xterm handle the key normally. Once a PTY id
+        // exists, suppress xterm's CR and route the LF through the interaction
+        // gate so replay cannot leak it into a surviving shell.
         if (ptyId === null) return true;
         event.preventDefault();
-        bridge.terminal.input(ptyId, '\n');
+        sendInput('\n');
         return false;
       }
       return true;
@@ -616,8 +720,7 @@ function TerminalSession({
         wheelRowAccumulator = 0; // reset between gestures/apps; defer to xterm
         return true;
       }
-      const ptyId = ptyIdRef.current;
-      if (ptyId === null || event.deltaY === 0) return true;
+      if (!terminalInputEnabledRef.current || event.deltaY === 0) return true;
       const measuredCellHeight = core?._renderService?.dimensions?.css?.cell?.height;
       if (measuredCellHeight === undefined && !warnedMissingCellHeight) {
         warnedMissingCellHeight = true;
@@ -655,18 +758,16 @@ function TerminalSession({
             pixels: encoding === 'SGR_PIXELS',
           },
         );
-        bridge.terminal.input(ptyId, sgrWheelReport(button, position).repeat(count));
+        sendInput(sgrWheelReport(button, position).repeat(count));
       }
       return false;
     });
 
     // First byte from the shell: drop the pending notice. Idempotent — the data
     // subscription fires per chunk, and an adopted session replays its retained
-    // screen through here too. The guard is a plain effect-scoped `let` because
-    // nothing outside this effect reads it; a ref would work identically (every
-    // new session is a fresh TerminalSession instance, so a ref could not carry
-    // state across sessions either), it just puts an instance-lifetime cell
-    // where an effect-lifetime one is what the code means.
+    // screen through here too. Unlike the cross-effect input gate above,
+    // nothing outside this effect reads this state, so its lifetime is the
+    // session effect rather than the component instance.
     let sawFirstOutput = false;
     const markFirstOutput = () => {
       if (sawFirstOutput) return;
@@ -675,21 +776,26 @@ function TerminalSession({
     };
 
     // Wire a now-live ptyId (freshly created OR adopted from a survivor) into
-    // this session: route xterm I/O, exit, and resize through it, and focus it.
+    // this session: route xterm I/O, exit, and resize through it. The acquisition
+    // branch marks it interactive only when input can safely reach the shell.
     // The wiring is identical for both acquisition paths — only how the id is
     // obtained differs — so both branches below call this.
     // A const arrow (not a hoisted `function`) so it observes the non-null
     // `container` narrowed by the early return above.
-    const attachSession = (livePtyId: string) => {
+    const attachSession = (livePtyId: string): void => {
       ptyId = livePtyId;
       ptyIdRef.current = livePtyId;
       // Report the live id up so the host can reuse this session for a later
       // "Ask AI" launch (write into this PTY) instead of opening a new tab.
       onPtyIdRef.current?.(livePtyId);
-      setStatus('running');
+      for (const notice of pendingShellNotices) {
+        if (notice.ptyId !== livePtyId) continue;
+        applyShellNotice(notice);
+      }
+      pendingShellNotices = [];
 
       term.onData((data) => {
-        if (ptyId) bridge.terminal.input(ptyId, data);
+        sendInput(data);
       });
 
       unsubData = bridge.terminal.onData((msg) => {
@@ -704,6 +810,8 @@ function TerminalSession({
 
       unsubExit = bridge.terminal.onExit((msg) => {
         if (msg.ptyId !== ptyId) return;
+        sessionEnded = true;
+        terminalInputEnabledRef.current = false;
         setExitInfo({ exitCode: msg.exitCode, signal: msg.signal, error: msg.error });
         setStatus('exited');
         onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
@@ -749,20 +857,17 @@ function TerminalSession({
       });
       observer.observe(container);
 
-      term.focus();
-
       // No readiness probe here: attachSession runs for every session, including
       // plain and adopted tabs. Readiness feedback is scoped to a fresh,
       // product-initiated Claude launch, so only `resolveLaunchCommand` produces
       // the verdict while resolving that launch.
     };
 
-    // "Open in <Agent>" launch: resolve the command we BAKE into the shell spawn
-    // BEFORE create, so the agent rides on `$SHELL -l -i -c '<cmd>; exec …'` rather
-    // than being typed into the live shell. A `-c` command never reaches the line
-    // editor, so it is never written to the user's persistent history (the launch
-    // clutter + doc-content-on-disk leak this fixes); the spawn's `exec` tail hands
-    // the tab back to a fresh interactive shell after the agent exits.
+    // "Open in <Agent>" launch: resolve the payload BEFORE create so the host
+    // bakes it into shell startup rather than typing it through the live line
+    // editor. POSIX carries its existing composed string; Windows carries
+    // structured argv and injects user prompt text only after the TUI starts.
+    // Both paths bypass persistent shell history and remain interactive on exit.
     //
     // The bake is gated on a CLI confirmed present on PATH — exactly today's
     // guarantee that the terminal never shows a raw `command not found`. Any
@@ -778,7 +883,11 @@ function TerminalSession({
     // gets, since it runs immediately before the spawn.
     const resolveLaunchCommand = async (
       intent: TerminalLaunchIntent,
-    ): Promise<string | undefined> => {
+    ): Promise<string | TerminalLaunchCommand | undefined> => {
+      const buildLaunch = (opts: Parameters<typeof buildCliLaunchArgString>[2]) =>
+        bridge.platform === 'win32'
+          ? buildWindowsCliLaunch(intent.cli, intent.prompt, opts)
+          : buildCliLaunchArgString(intent.cli, intent.prompt, opts);
       if (intent.cli === 'claude') {
         try {
           const fresh = await bridge.terminal.claudePreflight();
@@ -787,7 +896,7 @@ function TerminalSession({
             // rewire banner when OK tools need rewiring, and stays silent when
             // fully wired.
             if (!cancelled) setReadiness(fresh);
-            return buildCliLaunchArgString('claude', intent.prompt, {
+            return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
               // Auto-approve OK's tools only when the project's `.mcp.json` entry is
               // verified OK's own (same gate as server-trust): auto-approving an
@@ -831,7 +940,7 @@ function TerminalSession({
           // PATH (this branch), AND OK's server already configured in codex —
           // else the `-c` override would break codex's config load. Other CLIs
           // (cursor/opencode/pi) never receive it.
-          return buildCliLaunchArgString(intent.cli, intent.prompt, {
+          return buildLaunch({
             autoApproveOkTools:
               intent.cli === 'codex' &&
               res.okServerConfigured === true &&
@@ -876,18 +985,40 @@ function TerminalSession({
         // kill it the way a cancelled create reaps the orphan it just made.
         if (cancelled) return;
         if (adopted.ok) {
-          // Repaint the pre-reload screen + scrollback the main process retained
-          // for this PTY BEFORE wiring live delivery — without it the adopted tab
-          // comes back blank (the shell reconnects but its
-          // screen is gone). Written synchronously here, ahead of attachSession's
-          // onData subscription, so no live byte can interleave before the replay.
-          if (adopted.replay) {
-            markFirstOutput();
-            term.write(adopted.replay);
+          shellFamilyRef.current = adopted.shellFamily ?? null;
+          if (adopted.shellNoticeReason !== undefined) {
+            applyShellNotice({
+              ptyId: adoptPtyId,
+              notice: 'invalid-shell-override',
+              reason: adopted.shellNoticeReason,
+            });
           }
+          // Subscribe to live output before replay so bytes emitted during the
+          // restore queue behind it in xterm. Input forwarding stays gated until
+          // xterm finishes parsing the replay: retained terminal queries can make
+          // xterm emit replies that belong to screen reconstruction, and sending
+          // those replies into the live shell corrupts its line editor. This also
+          // suppresses replies to queries first emitted while the renderer was
+          // absent, which nothing else will answer. Separating those replies
+          // would require preserving the undelivered outbound-suffix boundary
+          // that adoptSession (main's terminal-manager) currently drops when
+          // returning one replay string.
+          const replay = adopted.replay;
+          const hasReplay = replay !== '';
+          // Keep the panel in its non-interactive starting state while replay
+          // owns xterm's parser. The input gate cannot distinguish a protocol
+          // reply from a real keystroke, so advertising `running` here would let
+          // user input race the gate and be dropped mid-command.
           attachSession(adoptPtyId);
+          if (hasReplay) {
+            markFirstOutput();
+            term.write(replay, markInteractive);
+          } else {
+            markInteractive();
+          }
           // Nudge the surviving shell to repaint at the current viewport so a
-          // full-screen TUI (claude, vim) redraws its screen after the reload.
+          // full-screen TUI redraws its screen after the reload. Output from the
+          // resize queues behind replay in xterm's FIFO write buffer.
           bridge.terminal.resize(adoptPtyId, term.cols, term.rows);
           return;
         }
@@ -898,7 +1029,7 @@ function TerminalSession({
       // Only for a freshly-spawned launch tab: a failed adopt (adoptPtyId set but
       // the survivor is gone) must NOT re-issue the original launch — matching the
       // prior behavior where a re-mounted launch session never replayed its intent.
-      let launchCommand: string | undefined;
+      let launchCommand: string | TerminalLaunchCommand | undefined;
       if (launch !== null && adoptPtyId === null) {
         launchCommand = await resolveLaunchCommand(launch);
         if (cancelled) return;
@@ -908,7 +1039,10 @@ function TerminalSession({
         // the login shell the spawn already uses is what makes a global npm
         // install resolvable from a GUI-launched app. Same adopt guard as
         // above, so a failed adopt never silently re-runs the command.
-        launchCommand = terminalCommandFor(commandId);
+        launchCommand =
+          bridge.platform === 'win32'
+            ? windowsTerminalCommandFor(commandId)
+            : terminalCommandFor(commandId);
       }
 
       let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
@@ -952,48 +1086,45 @@ function TerminalSession({
       }
 
       attachSession(result.ptyId);
+      markInteractive();
 
       // Stage the ⌘J/⇧⌘J selection into the freshly-launched CLI's input — once,
-      // and NOT submitted. Gated on the bake actually happening: when the
-      // preflight suppressed `launchCommand`, this PTY is a BARE shell where
-      // every staged `\n` would EXECUTE as a command — the exact mangling the
-      // staging design exists to avoid — so the passage is dropped and the
-      // missing-CLI / readiness banner explains why nothing arrived. The short
-      // beat lets the TUI's stdin reader attach (a write at raw PTY-live can
-      // race it); unmount cancels the timer.
+      // and NOT submitted. A suppressed launch or capability-limited Windows
+      // shell is a BARE shell where every staged `\n` would EXECUTE as a command,
+      // so the passage is dropped. The short beat lets the TUI's stdin reader
+      // attach (a write at raw PTY-live can race it); unmount cancels the timer.
       const staged = launch?.stagePaste;
-      // Hermes-class CLIs take no starting-prompt argument, so their `chat` TUI is
-      // launched promptless (`launchCommand` = `hermes chat`) and the composed
-      // prompt is delivered HERE as a bracketed-paste PTY write once the TUI's
-      // stdin reader has attached — the same `bridge.terminal.input` channel as
-      // stagePaste, but framed (multi-line-safe) and submitted. Non-null only for
-      // a `startupInjection` CLI with a non-empty prompt AND a confirmed bake
-      // (preflight put the CLI on PATH); a suppressed launchCommand means a bare
-      // shell, where injecting would mangle, so it stays null. `settleMs` is the
-      // known-fragile knob — if it proves unreliable the fallback is clipboard +
-      // a paste hint, not a longer guess.
+      // Hermes on POSIX and every Windows CLI launch promptless, then receive the
+      // composed prompt HERE as a bracketed-paste PTY write once the TUI's stdin
+      // reader has attached. inject() owns the capability gate because the host's
+      // notice can arrive after create resolves but before the settle timer fires.
       const injectionBytes =
         launch != null && launchCommand !== undefined && launch.prompt != null
-          ? buildStartupInjectionBytes(launch.cli, launch.prompt)
+          ? buildStartupInjectionBytes(launch.cli, launch.prompt, bridge.platform)
           : null;
       if (injectionBytes != null && launch != null) {
-        const cfg = startupInjectionFor(launch.cli);
+        const cfg = startupInjectionFor(launch.cli, bridge.platform);
         const settleMs = cfg?.settleMs ?? STAGE_PASTE_SETTLE_MS;
         const marker = cfg?.readyMarker;
         const bytes = injectionBytes;
+        const stagedBytes =
+          bridge.platform === 'win32' && cfg != null && bytes.endsWith(cfg.submit)
+            ? bytes.slice(0, -cfg.submit.length)
+            : bytes;
         let fired = false;
-        const inject = () => {
+        const inject = (): void => {
           if (fired) return;
           fired = true;
           readinessScan = undefined;
           if (stagePasteTimer !== undefined) clearTimeout(stagePasteTimer);
           if (injectCapTimer !== undefined) clearTimeout(injectCapTimer);
-          if (cancelled || ptyIdRef.current === null) return;
-          bridge.terminal.input(ptyIdRef.current, bytes);
+          if (cancelled || !terminalInputEnabledRef.current || launchCapabilityLimited) return;
+          const isWindowsStagedPaste = bridge.platform === 'win32';
+          const payload = isWindowsStagedPaste ? stagedBytes : bytes;
+          sendInput(payload);
           term.focus();
+          if (isWindowsStagedPaste) setManualSubmitNotice(true);
         };
-        // Cap fallback: inject even if the marker never appears, so a future TUI
-        // that changed its ready signal never silently drops the prompt.
         injectCapTimer = setTimeout(inject, cfg?.capMs ?? settleMs);
         if (marker != null) {
           // Inject once the input widget signals ready (Hermes: bracketed-paste
@@ -1029,8 +1160,8 @@ function TerminalSession({
         );
       } else if (launchCommand !== undefined && staged != null && staged !== '') {
         stagePasteTimer = setTimeout(() => {
-          if (cancelled || ptyIdRef.current === null) return;
-          bridge.terminal.input(ptyIdRef.current, staged);
+          if (cancelled || !terminalInputEnabledRef.current || launchCapabilityLimited) return;
+          sendInput(staged);
           term.focus();
         }, STAGE_PASTE_SETTLE_MS);
       }
@@ -1038,6 +1169,10 @@ function TerminalSession({
 
     return () => {
       cancelled = true;
+      terminalInputEnabledRef.current = false;
+      terminalInputRef.current = () => undefined;
+      window.removeEventListener('pagehide', markDocumentUnloading);
+      document.removeEventListener('visibilitychange', markDocumentVisible);
       if (stagePasteTimer !== undefined) clearTimeout(stagePasteTimer);
       if (injectCapTimer !== undefined) clearTimeout(injectCapTimer);
       readinessScan = undefined;
@@ -1051,10 +1186,14 @@ function TerminalSession({
       ptyResizeThrottle?.cancel();
       unsubData?.();
       unsubExit?.();
+      unsubNotice?.();
       titleDisposable?.dispose();
       linkProviderDisposable?.dispose();
       term.dispose();
-      if (ptyId)
+      // BrowserWindow close and app quit reap in main. A renderer reload keeps
+      // the window alive, so leave that PTY for the replacement renderer to
+      // adopt instead of turning reload into a fresh shell.
+      if (ptyId && !documentUnloading)
         void bridge.terminal
           .kill(ptyId)
           .catch((err) => console.warn('[terminal] kill on unmount failed:', err));
@@ -1109,9 +1248,9 @@ function TerminalSession({
     function onDrop(event: DragEvent) {
       if (!isExternalFileDrag(event)) return;
       event.preventDefault();
-      const livePtyId = ptyIdRef.current;
-      if (livePtyId === null) return;
-      const paths = filesFromExternalDrop(event)
+      if (!terminalInputEnabledRef.current) return;
+      const droppedFiles = filesFromExternalDrop(event);
+      const paths = droppedFiles
         .map((file) => bridge.getPathForFile(file))
         // Drop any path carrying an ASCII control char (newline/CR/tab, etc).
         // The tty line discipline acts on those bytes before the shell sees the
@@ -1124,10 +1263,26 @@ function TerminalSession({
           (path): path is string =>
             path !== null && path !== '' && !Array.from(path).some((ch) => ch.charCodeAt(0) < 0x20),
         );
-      if (paths.length === 0) return;
+      let rejectedCount = droppedFiles.length - paths.length;
+      const escapedPaths = paths.flatMap((path) => {
+        if (bridge.platform !== 'win32') return [shellSingleQuote(path)];
+        const family = shellFamilyRef.current;
+        if (family === null) {
+          rejectedCount += 1;
+          return [];
+        }
+        const quoted = quoteWindowsShellPath(family, path);
+        if (quoted === null) {
+          rejectedCount += 1;
+          return [];
+        }
+        return [quoted];
+      });
+      if (rejectedCount > 0) setPathDropNotice(true);
+      if (escapedPaths.length === 0) return;
       // Trailing space so a following drop or keystroke doesn't glue onto the
       // path; no newline — the user reviews the composed prompt before submitting.
-      bridge.terminal.input(livePtyId, `${paths.map(shellSingleQuote).join(' ')} `);
+      terminalInputRef.current(`${escapedPaths.join(' ')} `);
     }
     // Capture phase (mirrors FileTree's external-drop listeners) so the drop is
     // seen before xterm's canvas child can stopPropagation/preventDefault it.
@@ -1161,6 +1316,47 @@ function TerminalSession({
         ) : (
           <TerminalCliUnverifiedBanner cli={cliNotice.cli} onDismiss={() => setCliNotice(null)} />
         )
+      ) : null}
+      {status === 'running' ? (
+        pathDropNotice ? (
+          <TerminalNoticeBanner
+            testId="terminal-path-drop-notice-banner"
+            onDismiss={() => setPathDropNotice(false)}
+          >
+            {t`Some dropped files could not be inserted safely.`}
+          </TerminalNoticeBanner>
+        ) : supportFileNotice ? (
+          <TerminalNoticeBanner
+            testId="terminal-support-file-notice-banner"
+            onDismiss={() => setSupportFileNotice(null)}
+          >
+            {supportFileNotice.reason === 'containment-refused'
+              ? t`OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge.`
+              : t`OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge.`}
+          </TerminalNoticeBanner>
+        ) : shellNotice ? (
+          <TerminalNoticeBanner
+            testId="terminal-shell-notice-banner"
+            onDismiss={() => setShellNotice(null)}
+          >
+            {shellNotice.reason === 'config-unreadable'
+              ? t`OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead.`
+              : shellNotice.reason === 'invalid-value'
+                ? t`terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead.`
+                : shellNotice.reason === 'not-absolute'
+                  ? t`terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead.`
+                  : shellNotice.reason === 'unsupported-family'
+                    ? t`terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it.`
+                    : t`The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead.`}
+          </TerminalNoticeBanner>
+        ) : manualSubmitNotice ? (
+          <TerminalNoticeBanner
+            testId="terminal-manual-submit-notice-banner"
+            onDismiss={() => setManualSubmitNotice(false)}
+          >
+            {t`The prompt was pasted but not submitted automatically. Review it, then press Enter to send it.`}
+          </TerminalNoticeBanner>
+        ) : null
       ) : null}
       {/* This wrapper exists so the pending notice covers the CANVAS only. The
           readiness / CLI banners above are gated on `status === 'running'`, and

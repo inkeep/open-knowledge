@@ -8,9 +8,9 @@
  * did nothing until the loop's ten-second backstop expired, which reads as
  * "it works after five or six taps".
  *
- * `acquireScrollRestoreSuppression` is the channel the loop actually watches
- * (it exits with `reason: 'landing'` on the next frame), so what this pins is
- * that the jump holds it ACROSS the write and lets go afterwards.
+ * `acquireScrollRestoreSuppression` is the channel the loop actually watches (it
+ * exits on the next frame, naming whichever holder raised it), so what this pins
+ * is that the jump holds it ACROSS the write and lets go afterwards.
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

@@ -218,15 +218,9 @@ export function attachAcpThreadSocket(
     // for the same thread no-ops instead of double-attaching.
     subscriptions.set(threadId, sink);
     try {
-      // Replay happens inside subscribe() through the sink, AFTER the
-      // subscribed frame below has announced the replay window start.
-      const info = manager.getInfo(threadId);
-      if (info === undefined) {
-        subscriptions.delete(threadId);
-        sendError('unknown-thread', `no thread '${threadId}'`, { threadId });
-        return;
-      }
-      send({ op: 'subscribed', threadId, fromSeq: Math.max(sinceSeq, 0), info });
+      // Both the `subscribed` announcement and the replay that follows it
+      // reach the client through this sink — the manager emits them in the
+      // one order that lets a client tell replayed history from live traffic.
       await manager.subscribe(threadId, sinceSeq, sink);
     } catch (err) {
       subscriptions.delete(threadId);

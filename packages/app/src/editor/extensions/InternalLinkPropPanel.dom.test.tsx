@@ -88,6 +88,21 @@ vi.doMock('../../lib/config-provider', () => ({
   }),
 }));
 
+// The create-missing-page boundary. The real implementation writes a file;
+// the panel's contract is what it does with the name it gets back, so the mock
+// hands one straight to `onCreated`.
+let createdDocName = 'created/doc';
+vi.doMock('../../lib/create-page', () => ({
+  createPageFromSeedAndUpdate: async (
+    _seed: unknown,
+    options: { addPage: (d: string) => void; onCreated: (d: string) => void },
+  ) => {
+    options.addPage(createdDocName);
+    options.onCreated(createdDocName);
+    return { docName: createdDocName };
+  },
+}));
+
 vi.doMock('../../components/InteractionPropPanel', () => ({
   InteractionPropPanel: ({ children }: { children: ReactNode }) => (
     <div data-testid="prop-panel">{children}</div>
@@ -96,6 +111,7 @@ vi.doMock('../../components/InteractionPropPanel', () => ({
 
 const { InternalLinkPropPanel } = await import('./InternalLinkPropPanel');
 const { _resetPendingLinkEditForTest, setPendingLinkEdit } = await import('./link-edit-autoopen');
+const { docNameFromHash } = await import('@/lib/doc-hash');
 
 function makeEditor(
   options: {
@@ -305,7 +321,46 @@ describe('InternalLinkPropPanel', () => {
     expect(container.querySelector('[data-slot="internal-link-prop-panel-create"]')).toBeNull();
     expect(
       container.querySelector('[data-slot="internal-link-prop-panel-text"]')?.getAttribute('href'),
-    ).toBe('#/targets/Case Sensitive');
+    ).toBe('#/targets/Case%20Sensitive');
+  });
+
+  test('creating a missing page navigates to the created doc, not past its `#`', () => {
+    // The writer this pins is the one the source lint rule cannot see: the rule
+    // catches a re-inlined `#/` prefix, not a builder called on the wrong value
+    // or an assignment dropped altogether. Assert through the reader rather
+    // than on the hash string, so the test states the contract the user cares
+    // about — the created page is the one that opens.
+    createdDocName = 'targets/# 2 - Tokens';
+    currentMarkInfo = {
+      id: 'm1',
+      markType: 'link',
+      attrs: { href: 'targets/# 2 - Tokens' },
+      from: 0,
+      to: 4,
+    };
+    pageListHarness.pages = new Set();
+    pageListHarness.pagesBySlug = new Map();
+    window.location.hash = '#/somewhere-else';
+
+    const { container } = render(
+      <TooltipProvider>
+        <InternalLinkPropPanel
+          editor={makeEditor()}
+          nodeId="m1"
+          sourceDocName="all-link-types"
+          onClose={() => {}}
+          onNavigate={() => true}
+        />
+      </TooltipProvider>,
+    );
+
+    const create = container.querySelector('[data-slot="internal-link-prop-panel-create"]');
+    expect(create).not.toBeNull();
+    fireEvent.click(create as Element);
+
+    return waitFor(() => {
+      expect(docNameFromHash(window.location.hash)).toBe('targets/# 2 - Tokens');
+    });
   });
 
   test('reference-style links preserve navigation without offering a lossy destination edit', () => {

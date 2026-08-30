@@ -58,9 +58,26 @@ import { cn } from '@/lib/utils';
 
 /**
  * Vendor icon per target. Claude Cowork and Claude share `ClaudeIcon`
- * since both dispatch to Claude Desktop. Unknown ids render nothing — the
- * row still reads correctly without an icon (graceful no-op if a 5th target
- * lands here before the map is updated).
+ * since both dispatch to Claude Desktop. `TARGET_ICON_KEY` is an exhaustive
+ * `Record<TargetData['id'], string>`, so adding a target forces a KEY there —
+ * but the `if`-chain below has no exhaustiveness assertion, so a new target with
+ * a key and no branch still falls through to `null`. That is precisely the
+ * `lm-studio` shape this comment used to claim was impossible.
+ *
+ * The nearest guard is the skill-host icon-coverage test, but it is narrower
+ * than this chain. It iterates `SkillUserTargetEditorSchema.options`, which
+ * excludes `openclaw` and `hermes` — so those TWO branches can each be deleted
+ * with the suite green. (`claude-cowork` is also never reached, since
+ * `targetIconIdForHost` maps to `claude-code`, but it shares an `if` with
+ * `claude-code`, so deleting it goes red anyway.) Adding a target here without a
+ * mark is caught only when that target is also a user-global skill host.
+ *
+ * Deliberately NOT a neutral-glyph fallback: skill hosts are a WIDER vocabulary
+ * than handoff targets and reach these marks through `AgentBrandIcon`, so a
+ * runtime fallback here would silently absorb a missing skill-host mark — the
+ * exact `lm-studio` failure this comment used to describe — and would make the
+ * icon-coverage test unable to fail. `Sparkles` is also already reserved as the
+ * `.agents` hub's own mark.
  *
  * DropdownMenuItem + DropdownMenuSubTrigger both auto-size `<svg>` children
  * to `size-4`, so the icon doesn't need an explicit size prop.

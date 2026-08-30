@@ -170,6 +170,32 @@ describe('attachRendererConsoleCapture', () => {
     expect(JSON.stringify(call.data)).not.toContain(secret);
   });
 
+  test('a bearer credential is masked without taking the record with it', () => {
+    // The pattern class the AWS-key case above cannot reach. `bearer-token`
+    // ends at whitespace and serialized JSON has none, so a scrub applied to
+    // the line before parsing runs to its end and `JSON.parse` then throws —
+    // costing the event name and every field. Parsing first and masking the
+    // values keeps both the record and the redaction.
+    const wc = makeFakeWebContents();
+    const spy = makeSpyLogger();
+    attachRendererConsoleCapture(wc, { getLogger: spy.getLogger });
+
+    wc.emit({
+      level: 'warning',
+      message: JSON.stringify({
+        event: 'ok-provider-auth-failed',
+        detail: 'authorization: Bearer abc123secret',
+        docName: 'notes/plan',
+      }),
+    });
+
+    const call = spy.calls[0];
+    if (!call) throw new Error('expected exactly one log call');
+    expect(call.msg).toBe('ok-provider-auth-failed');
+    expect(call.data.docName).toBe('notes/plan');
+    expect(JSON.stringify(call.data)).not.toContain('abc123secret');
+  });
+
   test('scrubs before truncating so a secret straddling the cap cannot survive', () => {
     const wc = makeFakeWebContents();
     const spy = makeSpyLogger();

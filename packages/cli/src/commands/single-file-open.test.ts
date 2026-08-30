@@ -6,11 +6,13 @@ import {
   SingleFileProjectOverrideError,
 } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
+import type { OpenTargetOptions } from '../utils/open-target.ts';
 import { runSingleFileOpen, type SingleFileOpenDeps } from './single-file-open.ts';
 
 interface Recorder {
   prepareOptions: Array<PrepareSingleFileOpenOptions | undefined>;
   openTargets: string[];
+  openTargetOptions: Array<Pick<OpenTargetOptions, 'desktopBundlePath'> | undefined>;
   projectOpens: Array<{ docName: string; projectRoot: string }>;
   browserOpens: Array<Extract<SingleFileOpenPlan, { mode: 'ephemeral' }>>;
   logs: string[];
@@ -23,6 +25,7 @@ function makeDeps(
   const rec: Recorder = {
     prepareOptions: [],
     openTargets: [],
+    openTargetOptions: [],
     projectOpens: [],
     browserOpens: [],
     logs: [],
@@ -38,8 +41,9 @@ function makeDeps(
     detectBundlePath: overrides.detectBundlePath ?? (() => null),
     openTarget:
       overrides.openTarget ??
-      (async (t) => {
+      (async (t, options) => {
         rec.openTargets.push(t);
+        rec.openTargetOptions.push(options);
         return { ok: true };
       }),
     runProjectOpen:
@@ -92,6 +96,12 @@ describe('runSingleFileOpen', () => {
     expect(code).toBe(0);
     expect(rec.openTargets).toEqual([
       `openknowledge://open?file=${encodeURIComponent('/Users/me/notes/todo.md')}`,
+    ]);
+    // The dispatcher (open-target.ts) names this exact bundle directly on
+    // darwin instead of resolving the openknowledge:// scheme through Launch
+    // Services — verified path threaded through, not re-derived.
+    expect(rec.openTargetOptions).toEqual([
+      { desktopBundlePath: '/Applications/OpenKnowledge.app' },
     ]);
     expect(rec.browserOpens).toHaveLength(0);
   });

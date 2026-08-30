@@ -259,4 +259,55 @@ describe('computeWriteAdvisoryLinks', () => {
     );
     expect(links).toEqual([]);
   });
+
+  test('a JSX src-ref to a missing board survives the inline-href reconciliation filter', () => {
+    // The lossless extractor cannot observe JSX attributes, so without the
+    // sourceForm passthrough this entry would be filtered out and a write
+    // embedding a missing board would report no broken links at all.
+    const links = computeWriteAdvisoryLinks(
+      '<Excalidraw src="board.excalidraw" />\n',
+      'notes/index',
+      new Set<string>(),
+      fileOracle(),
+    );
+    expect(links).toEqual([
+      {
+        href: 'board.excalidraw',
+        resolvedTo: 'notes/board.excalidraw',
+        reason: 'no-such-file',
+        sourceForm: 'jsx',
+      },
+    ]);
+  });
+
+  test('a JSX src-ref to an existing board reports nothing', () => {
+    const links = computeWriteAdvisoryLinks(
+      '<Excalidraw src="board.excalidraw" /> and <Mirror src="api-spec" anchor="x" />\n',
+      'notes/index',
+      new Set(['api-spec']),
+      fileOracle('notes/board.excalidraw'),
+    );
+    expect(links).toEqual([]);
+  });
+
+  test('a JSX src-ref survives when a markdown-looking link with the identical href scans first', () => {
+    // The byte scanner has no comment skip, so the markdown-shaped link inside
+    // the HTML comment records the href first — with no sourceForm. The scan
+    // dedupes per (plane, href), so the JSX record still lands as its own
+    // entry; the markdown-plane one (never observed by the lossless
+    // extractor) is dropped by the reconciliation filter. Keyed on href alone
+    // the JSX record would be swallowed and the missing board unreported.
+    const md = ['<!-- [b](board.excalidraw) -->', '<Excalidraw src="board.excalidraw" />', ''].join(
+      '\n',
+    );
+    const links = computeWriteAdvisoryLinks(md, 'notes/index', new Set<string>(), fileOracle());
+    expect(links).toEqual([
+      expect.objectContaining({
+        href: 'board.excalidraw',
+        resolvedTo: 'notes/board.excalidraw',
+        reason: 'no-such-file',
+        sourceForm: 'jsx',
+      }),
+    ]);
+  });
 });

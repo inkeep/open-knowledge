@@ -103,6 +103,9 @@
     ],
     "0QVrvp": ["Já está no número máximo de agentes em execução"],
     "0TnCvC": ["Renomear ", ["0"]],
+    "0WsUA2": [
+      "O prompt foi colado, mas não foi enviado automaticamente. Revise-o e pressione Enter para enviá-lo."
+    ],
     "0YUS3Q": ["Subpasta dentro da pasta atual"],
     "0_J12R": [
       "Novo arquivo a partir do modelo \"",
@@ -136,6 +139,9 @@
     "0pZmTP": ["Não é possível compartilhar este caminho."],
     "0qyKG6": ["Sincronizado a partir do disco"],
     "0r6d6v": ["Alterações salvas automaticamente."],
+    "0rT21w": [
+      "terminal.shell em .ok/local/config.yml aceita PowerShell, cmd.exe ou Git Bash para inicializações gerenciadas pelo OpenKnowledge e caminhos de arquivos soltos. Este shell abre apenas um terminal comum; inicializações de agentes e comandos não são executadas nele."
+    ],
     "0rwwOn": ["Por tag"],
     "0s8-e8": [
       "Seleciona, entra ou sai de componentes de bloco e blocos de código alternativos a partir dos limites do teclado."
@@ -410,6 +416,9 @@
     "4PYsOz": ["Ocultar Arquivos (", ["sidebarShortcutLabel"], ")"],
     "4Sxexw": ["Desfazer ou refazer no código"],
     "4TzU0n": ["Inicializar"],
+    "4Vgtaz": [
+      "Não foi possível acessar o quadro. Ele pode não existir, ou o servidor pode estar offline."
+    ],
     "4buZWd": ["Herdado de ", ["path"]],
     "4c_a6S": ["Ainda não há nada definido."],
     "4d0VYJ": ["Criaremos um ID de tema seguro a partir deste nome."],
@@ -419,7 +428,6 @@
       ["0"],
       " sem autenticação integrada. Qualquer pessoa que consiga acessar seu túnel terá controle total desta base de conhecimento, incluindo sincronização, credenciais do GitHub e operações locais. Garanta que a borda do túnel restrinja quem pode se conectar."
     ],
-    "4h3e0H": ["Não deu para atualizar o compartilhamento de habilidades — ", ["detail"], "."],
     "4hJhzz": ["Tabela"],
     "4ivBhl": [
       "Mostra ou oculta o painel direito de agentes, onde ficam as conversas com agentes."
@@ -567,6 +575,9 @@
     "67f-3g": [
       "A duplicação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
     ],
+    "69E1Pq": [
+      "terminal.shell em .ok/local/config.yml deve ser uma string. Um shell do Windows disponível será usado."
+    ],
     "69KLIV": ["Esc"],
     "6ASTuj": [
       "Os comandos rodam com todo o acesso da sua conta de usuário nesta máquina. Desative isto para desabilitar o shell."
@@ -579,6 +590,7 @@
     "6KXnz5": ["Você pode restaurar este arquivo do Lixo."],
     "6LJJ1v": ["Arquivo ", ["identity"], ". Ir para a referência."],
     "6LbUG7": ["O repositório é privado e sua conta do GitHub não tem acesso a ele."],
+    "6M2L3X": ["Abrir o quadro"],
     "6MnZEC": ["Falha ao carregar o terminal"],
     "6Nea1q": ["Usar ", ["0"], " no modo escuro ativo"],
     "6O626z": ["Nenhum título corresponde a \"", ["trimmedAnchorQuery"], "\""],
@@ -765,6 +777,7 @@
     ],
     "8PifYj": ["Diagrama do Mermaid"],
     "8PmoQF": ["Abre o menu de inserção em uma posição de texto vazia ou ativa."],
+    "8QLpZe": ["O servidor parou. Reinicie-o para reconectar."],
     "8RtNI0": ["Falha ao carregar os documentos"],
     "8TvlHF": ["Despejo de falha"],
     "8Uv5e6": ["Agentes"],
@@ -947,6 +960,9 @@
       ]
     ],
     "ALhMYW": ["Terminal"],
+    "AN-UPd": [
+      "terminal.shell em .ok/local/config.yml deve ser um caminho absoluto do Windows. Um shell do Windows disponível será usado."
+    ],
     "ANFxWn": ["Não foi possível excluir este tema. Atualize a página e tente novamente."],
     "APNlbk": ["saída ", ["0"]],
     "AQ-Lfg": ["Não foi possível carregar os modelos"],
@@ -959,6 +975,7 @@
     "AVW-K9": ["Falha ao carregar as páginas órfãs"],
     "AWOSPo": ["Aproximar"],
     "AYoYhU": ["Falha na atualização: ", ["0"]],
+    "AaC-CE": ["Quadro vazio"],
     "AcK_r0": ["Claude CLI"],
     "AczYxH": ["Entrada open-knowledge personalizada — não gerenciada pelo OpenKnowledge"],
     "AdcGcG": ["Aplicando sua alteração"],
@@ -991,6 +1008,7 @@
     "AqnqMJ": ["Chave de API definida"],
     "AsqRE_": ["Local padrão para novos anexos"],
     "AtBdnD": ["Não deu para excluir a habilidade: ", ["error"]],
+    "AvqEDl": ["Alguns arquivos soltos não puderam ser inseridos com segurança."],
     "AwLCZA": [
       "O endpoint respondeu, mas não com uma resposta de embeddings compatível com a OpenAI. Verifique a URL base."
     ],
@@ -1050,9 +1068,6 @@
     "BeWTQy": ["Carregando pacotes iniciais"],
     "BgV29F": ["Campo de busca do editor visual em foco"],
     "Bgaa_U": ["Failed to update performance setting — ", ["detail"]],
-    "Bh9671": [
-      "Este projeto é somente local, então .ok/skills fica oculto para o git e estas habilidades não podem receber commit nem ser compartilhadas. Compartilhe só a pasta de habilidades — o resto da sua configuração do OK fica neste computador."
-    ],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
     "BjitBo": ["Baixar ", ["0"]],
     "BkGtRl": [
@@ -1103,6 +1118,9 @@
     "CFnavk": ["Este projeto não é um repositório git, então worktrees não estão disponíveis."],
     "CGj3gX": ["erro de análise"],
     "CHfFN_": ["Remover o OpenKnowledge de ", ["0"]],
+    "CJpuc1": [
+      "Inicia um relatório de erro com uma captura de tela exatamente como ela está agora."
+    ],
     "CKyk7Q": ["Voltar"],
     "CMd-g-": [
       "Sua URL remota indica ",
@@ -1167,6 +1185,9 @@
     "D12vtS": ["(desanexado)"],
     "D2emTw": ["Algo deu errado ao enviar seus comentários. Tente de novo."],
     "D4H2N6": ["Remover ", ["tag"]],
+    "D7gKrd": [
+      "O OpenKnowledge não conseguiu gravar as configurações de inicialização em .ok/local/terminal porque a pasta não está contida com segurança neste projeto. Verifique se ela é uma pasta real dentro do projeto, e não um link. O Claude pedirá que você aprove o OpenKnowledge."
+    ],
     "D7hnvB": ["Ponderando…"],
     "D8JJwQ": ["Não dá para enviar comentários agora. Tente mais tarde."],
     "D8OV7J": ["Somente colaboradores"],
@@ -1268,7 +1289,6 @@
     "E91VZY": ["Abrir em nova janela"],
     "E9bKSA": ["Criando"],
     "E9gh86": ["Você pode anexar até ", ["MAX_ATTACHMENTS"], " imagens."],
-    "EARn6h": ["Não deu para compartilhar as habilidades — ", ["detail"], "."],
     "EBVbtP": ["Não foi possível duplicar o item"],
     "EDl9kS": ["Assinar"],
     "EDm3wJ": ["Carregando o visualizador de diferenças"],
@@ -1377,6 +1397,7 @@
     "F4_wQj": ["Pesquisar com o Google"],
     "F4vEsL": ["Status da sincronização: ", ["syncStateLabel"]],
     "F6pfE9": ["Ativo"],
+    "F8DaWi": ["Somente visualização"],
     "F8GW_c": [["label"], " problemas"],
     "FBIuPX": ["Limpar seleção"],
     "FBknns": ["HTML"],
@@ -1425,6 +1446,7 @@
     "Fhp4Gn": ["Ver o plugin"],
     "FiyNln": ["Ir para o texto selecionado na propriedade"],
     "FjkaiT": ["Afastar"],
+    "Fjz6aJ": ["Enviar para um novo chat"],
     "FqGWeR": ["Não deu para contatar o registro de agentes."],
     "FqTpiN": ["Wiki de aves"],
     "Fqr8BP": [
@@ -1612,6 +1634,7 @@
     "HdS4Ft": ["Não foi possível restaurar seu último documento aberto."],
     "HdkSiO": ["Novo arquivo"],
     "HfI1dR": ["Já tenho isso localmente →"],
+    "HimZ41": ["Expandir o diagrama"],
     "HjNrT0": [
       [
         "0",
@@ -1784,18 +1807,17 @@
     "K-NcyU": ["Esta pasta não contém um repositório git. Escolher outra pasta?"],
     "K-a33w": ["Comece a escrever para criar esta página"],
     "K-h9cT": ["Não deu para salvar a resolução de ", ["filePath"], "."],
-    "K0FgsP": [
-      ".ok/skills pode ser versionado para que sua equipe receba suas habilidades; o resto de .ok/ fica neste computador."
-    ],
     "K0N7zS": ["Falha ao ler o estado do compartilhamento de configuração"],
     "K1ckLX": ["Falha ao criar a pasta"],
-    "K2v7QF": ["Não deu para compartilhar as habilidades"],
     "K4G55s": ["Verificando a fonte"],
     "K6MQQk": ["A sincronização está falhando. Veja o status de sincronização para os detalhes."],
     "K6jjWB": [["packName"], " já estava configurado. Nada a fazer."],
     "K6jxcj": ["Adicionar uma chave"],
     "K7NMEc": [["uploadFolderName"], " — ", ["0"], " arquivos"],
     "K8-WWn": ["Mover entre as células da tabela"],
+    "K8EvAV": [
+      "O OpenKnowledge não conseguiu ler terminal.shell em .ok/local/config.yml. Um shell do Windows disponível será usado."
+    ],
     "K9J00P": ["Falha ao clonar — erro de conexão"],
     "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
@@ -1810,6 +1832,9 @@
     ],
     "KOZud0": [
       "Monte uma base de conhecimento sobre a concorrência. Comece com uma página geral e depois acrescente páginas interligadas para cada concorrente, seus produtos e preços, e as fontes por trás de cada afirmação."
+    ],
+    "KOeFXa": [
+      "O OpenKnowledge não conseguiu gravar as configurações de inicialização em .ok/local/terminal desta vez. Verifique se a pasta permite gravação. O Claude pedirá que você aprove o OpenKnowledge."
     ],
     "KPW5WC": ["modelo movido"],
     "KQGZuq": ["Reaproveitada se já existir; criada se não."],
@@ -1835,7 +1860,6 @@
       "> não é um componente conhecido. Copie o código para usá-lo em outro lugar ou exclua o bloco."
     ],
     "Khxcyu": ["O acesso ao terminal não está ativado neste projeto."],
-    "Kiytqd": ["Exceção: as habilidades são compartilhadas"],
     "KjTmeO": ["Atualize o OpenKnowledge para abrir este compartilhamento."],
     "KkEAud": ["Cria um arquivo a partir do documento ou da pasta atual."],
     "KkRyMI": ["Não foi possível classificar a mesclagem. Tente novamente."],
@@ -1878,6 +1902,7 @@
     "LE7t79": ["Clonar em uma nova pasta"],
     "LGvaif": ["Ver o repositório do plugin ", ["plugin"]],
     "LHH461": ["Concluir configuração"],
+    "LJHTS5": ["Escolher para onde enviar esta mensagem"],
     "LJXDjm": ["Não foi possível salvar sua preferência de tema."],
     "LJeFU6": [
       "Inicie o OpenKnowledge de qualquer terminal: <0>ok</0> abre um projeto e <1>ok init</1> conecta seus agentes."
@@ -1895,6 +1920,7 @@
     ],
     "LKOLNn": ["Nenhum agente de IA instalado"],
     "LPAv9E": ["há ", ["days"], " d"],
+    "LPLWpO": ["O conteúdo do quadro não é uma cena válida do Excalidraw."],
     "LQdLio": ["Novo esquema"],
     "LQsCPn": ["Commits locais estão impedindo esta cópia de atualizar"],
     "LRLKnQ": ["Ocultar os resolvidos"],
@@ -2227,7 +2253,6 @@
     "P-ye9o": ["Não foi possível abrir o seletor de pastas"],
     "P0HC30": ["Este ", ["targetNoun"], " foi movido para <0>", ["0"], "</0>. Abrir por lá?"],
     "P3NS4G": ["Erro de sintaxe no padrão (linha ", ["lineNumber"], "): ", ["message"]],
-    "P3S14k": [".ok/skills voltou para Somente eu."],
     "P3hnm0": ["Arquivo grande demais para abrir"],
     "P441h8": [
       "Conte o que deu errado e reuniremos os logs. Nada sai do seu computador até você revisar."
@@ -2298,7 +2323,6 @@
     "PijLsG": ["Nome do arquivo (criado em .ok/schemas/)"],
     "PkeYXL": ["Modo de grafo expandido"],
     "Pkw7J9": ["Esta pasta está vazia."],
-    "PlGC6r": ["o arquivo de exclusão do git não permite escrita"],
     "Pp0Vgd": ["Clique para instalar em ", ["label"]],
     "PpJy-V": ["O endpoint não respondeu a tempo."],
     "PqYWiC": [
@@ -2317,9 +2341,6 @@
     "Q5fqMz": ["Erro de conexão — tente de novo"],
     "Q6hhn8": ["Preferências"],
     "Q7W-mC": ["Mesma pasta do arquivo atual"],
-    "Q7cNKe": [
-      "As habilidades agora são compartilhadas. Faça commit de .ok/skills para compartilhá-las com sua equipe."
-    ],
     "Q7xfEj": ["pronto"],
     "Q8A-U_": ["Conectado a"],
     "Q9AxTM": [
@@ -2348,6 +2369,9 @@
     "QLgdT6": ["qualquer documento chamado ", ["0"]],
     "QM3SBZ": ["Plano (", ["done"], "/", ["0"], ")"],
     "QOINDn": ["vazio"],
+    "QP9OU3": [
+      "Vincular mescla outra pasta nesta. Esta pasta ainda não existe, então instale primeiro uma habilidade aqui."
+    ],
     "QPWyTw": ["Agrupar habilidades por origem"],
     "QQbwzK": ["Nenhum agente disponível."],
     "QQghPu": ["Instalar no Claude Desktop"],
@@ -2513,6 +2537,11 @@
     "STTOnz": ["Tipo de ", ["keyName"], ": valor complexo (aninhado; somente leitura)"],
     "SUOoXn": ["Falha ao abrir o projeto."],
     "SVLPt5": [["formatted"], " estrelas no GitHub"],
+    "SWTmnY": [
+      "<0>Referências ao vivo demais nesta página.</0> Este espelho de <1>",
+      ["src"],
+      "</1> não foi carregado."
+    ],
     "SWX1O7": [
       [
         "total",
@@ -2528,6 +2557,7 @@
     "SXCSQd": ["Caminho copiado"],
     "SXEdCq": ["Mover para ", ["0"], "?"],
     "SYfHmN": ["Desafixar a aba"],
+    "Sad2tK": ["Enviando…"],
     "Sbb90e": [
       [
         "unknownPathCount",
@@ -2601,7 +2631,6 @@
       ]
     ],
     "TTDXD8": ["Novo worktree…"],
-    "TUzThQ": ["Compartilhar habilidades"],
     "T_N0ro": ["Solicitar alterações…"],
     "T_j5G0": ["Esta não é uma versão compatível do Slidev."],
     "T_wG4n": ["Não foi possível verificar sua conexão com o GitHub."],
@@ -2638,6 +2667,7 @@
     "U2pMtf": ["nome-da-tag"],
     "U3IvM5": ["Guia completo"],
     "U3RIJu": ["Arquivos locais"],
+    "U4ZE26": ["Não foi possível renderizar o instantâneo do quadro."],
     "U5Spo9": ["O diretório de conteúdo precisa ficar dentro do projeto"],
     "U6Mdhd": ["Vamos configurar."],
     "U6wmNc": ["Sincronização pausada"],
@@ -2869,6 +2899,9 @@
     ],
     "WG3MZ4": [["0"], " habilidades selecionadas"],
     "WGMoTY": ["Bugs, travamentos ou sensação de pouca confiabilidade"],
+    "WH3roC": [
+      "Nenhum quadro selecionado. Insira o caminho de um documento .excalidraw nas propriedades deste bloco."
+    ],
     "WHPvOb": ["Os filtros de visualização ocultam todos os arquivos."],
     "WJjviG": ["O que incluir"],
     "WL6puM": ["O caminho aponta para fora do projeto"],
@@ -2926,6 +2959,9 @@
     "X3MMeA": ["Nenhum destes problemas tem correção automática."],
     "X59Fx2": ["Não foi possível abrir este documento no Slidev."],
     "X7ShnN": ["Abrir o painel de agentes"],
+    "X7fxS9": [
+      "Conectado, mas suas edições ainda não estão chegando ao servidor. Reinicie-o se isso continuar."
+    ],
     "X7u0xR": [["0"], " modelos disponíveis"],
     "X8kjQX": ["Autenticar de novo no GitHub"],
     "X9VpsP": ["Carregando o conteúdo da pasta"],
@@ -3022,7 +3058,6 @@
       "Não deu para reiniciar o servidor — outro processo está com ele. Feche as outras janelas do OpenKnowledge deste projeto e tente de novo."
     ],
     "Xv_ijG": ["https://github.com/dono/repo ou dono/repo"],
-    "Xwump4": ["não há repositório git aqui"],
     "XyOUTJ": ["Sair da mesclagem"],
     "Xzy0s0": ["Remover ", ["fullLabel"], " do contexto"],
     "Y-Urt2": ["Equação matemática em bloco renderizada com KaTeX a partir de código LaTeX."],
@@ -3057,6 +3092,7 @@
     "YLMBSd": ["ex.: O editor travou depois que colei uma tabela grande"],
     "YMlS7s": ["Abrir no aplicativo padrão"],
     "YPFBfr": [["detail"], " - ", ["kind"], " \"", ["createdPath"], "\" ainda existe no disco"],
+    "YPJfPD": ["Enviar neste chat"],
     "YRavYS": [
       "Um seletor de tema de cores pessoal — não compartilhado com seu projeto. Quando ativado, aparece em Plugins na barra lateral."
     ],
@@ -3531,6 +3567,7 @@
     "cyoNqf": ["Sem merge"],
     "czQDKY": ["Cada push é um commit no seu remoto."],
     "d-GtJt": ["Ver no Markdown de origem"],
+    "d-RYHO": ["Quadro do Excalidraw"],
     "d1JjXo": [
       "Sua cópia local do ramo <0>",
       ["branch"],
@@ -3541,6 +3578,7 @@
     "d5rK4X": [
       ["chars", "plural", { "one": ["caractere"], "many": ["caracteres"], "other": ["caracteres"] }]
     ],
+    "d6qW27": [["agentName"], " informou: ", ["headline"]],
     "dD7NPy": ["Estrutura"],
     "dDpCOp": [
       "A renomeação deu certo, mas a barra lateral pode estar desatualizada — atualize para ressincronizar"
@@ -3562,6 +3600,7 @@
     "dOxPd4": ["Nota de rodapé"],
     "dQHSCs": ["Converter (excluir o original)"],
     "dSORvE": ["Interrompe a execução atual e envia isto no lugar"],
+    "dT-HIQ": ["Referências ao vivo demais nesta página. Este quadro não foi carregado."],
     "dTaauv": ["Motivo: ", ["reason"]],
     "dURmlQ": ["\"frontmatter\" é um nome de propriedade reservado"],
     "dVaXnv": ["As regras de conteúdo ainda não carregaram — tente de novo em instantes"],
@@ -3639,6 +3678,7 @@
         { "one": ["#", " problema"], "many": ["#", " problemas"], "other": ["#", " problemas"] }
       ]
     ],
+    "eCOktA": ["Já está sendo iniciado um chat com este agente; tente de novo em um instante."],
     "eFJkVt": ["Falha ao clonar: ", ["cloneError"]],
     "eG8Jsg": ["Ativar ou desativar o modo de foco do Tab no código"],
     "eGUbmF": ["Copiar o arquivo ou a pasta selecionados"],
@@ -3672,6 +3712,7 @@
     "ee15Vl": [
       "As habilidades ensinam tarefas repetíveis às suas ferramentas de IA. Escreva as suas na barra lateral Habilidades do editor; esta página é onde elas são ativadas e compartilhadas."
     ],
+    "eh3QBq": ["Falha ao carregar o quadro do Excalidraw."],
     "eiUA4k": [
       [
         "count",
@@ -3990,6 +4031,7 @@
     ],
     "i9toLO": ["Arquivo de configuração do agente"],
     "iBVgIQ": ["O servidor retornou uma resposta malformada."],
+    "iBei3o": ["Controles do quadro"],
     "iDZtvM": ["Falha ao carregar os modelos: ", ["message"]],
     "iE-yoU": [
       "Isto é uma pré-visualização de ",
@@ -4197,6 +4239,9 @@
     "kEiVv6": [
       "Elas ensinam suas ferramentas de IA a trabalhar com o OpenKnowledge. Instalar uma a adiciona a todas as ferramentas de IA desta máquina."
     ],
+    "kF2Yua": [
+      "O executável terminal.shell em .ok/local/config.yml não foi encontrado. Um shell do Windows disponível será usado."
+    ],
     "kFLlsI": ["Insere uma referência de nota de rodapé e a definição correspondente."],
     "kGp168": ["Não foi possível preparar este projeto para publicação."],
     "kI5pWt": ["Imagem não encontrada: ", ["errorLabel"]],
@@ -4216,6 +4261,7 @@
     "kNGLX6": ["Tentando novamente…"],
     "kNiQp6": ["Fixados"],
     "kNqMMd": ["Pasta"],
+    "kPOw9O": ["Copiar a mensagem"],
     "kSiB3X": ["Não foi possível mover para ", ["trashNoun"]],
     "kUgGPO": ["Character budget per indexing request"],
     "kV2YZv": [
@@ -4328,6 +4374,7 @@
     "lPzyrU": ["Todos os trechos resolvidos"],
     "lS83Sg": ["Não foi possível acessar a área de transferência."],
     "lScd1O": ["Os slides do Slidev abrem apenas no aplicativo de desktop do OpenKnowledge."],
+    "lT6wjt": ["Expandir o quadro"],
     "lUtr1r": [["0"], " de ", ["1"], " selecionados"],
     "lVWEIL": [["embedded"], " de ", ["total"], " páginas indexadas."],
     "lWNpNB": ["Adicione cursores ou selecione ocorrências correspondentes pelo CodeMirror."],
@@ -4407,13 +4454,11 @@
     "mLAjyL": [
       "Dê às ferramentas de IA que você usa acesso para ler e atualizar seus projetos. Marcar uma caixa configura na hora; desmarcar remove."
     ],
+    "mPoOmg": ["instale primeiro uma habilidade aqui"],
     "mPy9lS": [
       "Organize minhas especificações existentes em um índice interligado e agrupado por área, e sinalize as que se desencontraram do código atual."
     ],
     "mPzgTS": ["Abrir ", ["docName"]],
-    "mR3Bly": [
-      "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta) e as habilidades do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
-    ],
     "mToVM9": ["Enviar mensagem para ", ["agentName"]],
     "mU3j1b": ["Remover o item ", ["0"]],
     "mVFyH-": [["accessibleLabel"], " (conflito)"],
@@ -4421,6 +4466,7 @@
     "mYGY3B": ["Data"],
     "mYzDD_": ["Já existe uma pasta de worktree para esse ramo."],
     "mZ1r4i": ["Criar um documento a partir de ", ["label"]],
+    "m_mtGl": ["O servidor parou."],
     "maDWIB": ["Fonte do espelho <0>api-spec</0>"],
     "makN88": [
       "Ainda não há padrões. Digite abaixo o nome de uma pasta ou arquivo para começar a ocultar arquivos."
@@ -4508,6 +4554,7 @@
     "n4vt3Q": ["Baixar aplicativo"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
+    "n6N-xC": ["Conectado, mas suas edições ainda não estão chegando ao servidor."],
     "n6hXUm": [
       "A sincronização automática faz fetch, pull e push de commits para seu repositório git remoto de tempos em tempos, para que suas edições fiquem em sincronia entre computadores."
     ],
@@ -4633,7 +4680,6 @@
     "ojGc_T": ["Abrir o comentário"],
     "olb6oq": ["Como configurar novos projetos com o OpenKnowledge."],
     "omXJcU": ["Fechar as outras"],
-    "onTlRk": ["Não deu para atualizar o compartilhamento de habilidades"],
     "opPbzN": ["Copia a habilidade para ", ["path"]],
     "optX0N": ["há ", ["0"], " h"],
     "oqB2ez": ["Ocorrência anterior"],
@@ -4668,12 +4714,18 @@
     "pFPzHA": ["Seletor de emojis"],
     "pFRz_E": ["Deixar estes comentários fora desta mensagem"],
     "pFagOn": ["Edição de código"],
+    "pGYklE": [
+      "O visualizador do quadro não pôde ser carregado. Verifique sua conexão e tente novamente."
+    ],
     "pHYP6v": ["Abra <0>Personalizar</0> na barra lateral <1/> <2>Habilidades</2>."],
     "pI_bKs": ["<0>Espaço</0> para pular · <1>↓</1> para agachar"],
     "pJ7XCo": ["Esta página não faz referência a nenhum arquivo ou imagem local."],
     "pMPnZv": [["deleted"], " habilidades excluídas"],
     "pOo4Aa": ["Texto simples"],
     "pPiV8s": ["Ativar Automático (Pull e Push)"],
+    "pRq670": [
+      "Uma imagem do app pouco antes de você abrir isto, com uma marca mostrando onde estava o seu ponteiro. Ela não é ocultada, então revise a pré-visualização e desmarque se houver algo que não deva ser compartilhado."
+    ],
     "pSimwP": ["Novo nome para a versão do ", ["editor"]],
     "pTPqMK": ["Liga ou desliga um bloco de código delimitado."],
     "pTyA_t": ["tags"],
@@ -4774,7 +4826,6 @@
       "Falha ao carregar as tags. Pressione <0>Esc</0> e abra de novo para tentar outra vez."
     ],
     "qX-ABr": ["Ou, para usar o login pelo navegador:"],
-    "qXN416": ["Não deu para compartilhar as habilidades: erro interno. Reinicie o app."],
     "qXg5W9": ["O arquivo é salvo em <0>~/Downloads/openknowledge.skill</0>."],
     "qXsafh": ["Publicar no GitHub"],
     "qZv5ZR": ["Falha ao alternar o compartilhamento de configuração"],
@@ -4809,6 +4860,9 @@
     "qbfj1f": ["Recebendo objetos"],
     "qd7L1J": [["source"], ": ", ["updated"], " atualizados, ", ["upToDate"], " já atualizados"],
     "qdBUHP": ["Não deu para carregar ", ["fileName"]],
+    "qi17kj": [
+      "Incorpore um instantâneo ao vivo de um quadro .excalidraw deste espaço de trabalho."
+    ],
     "qi1F96": ["Mostrar no Explorador de Arquivos"],
     "qiRoLb": ["Resuma tudo o que mudei esta semana"],
     "qioCwA": ["Ir para a página ", ["pageNumber"]],
@@ -4938,6 +4992,7 @@
     "sKEgGd": ["Enviar para o chat"],
     "sKHiNR": [["count"], " atrás"],
     "sNeKjP": ["Falha ao guardar o token — tente de novo"],
+    "sOafXU": ["Editar e enviar de novo"],
     "sOxZaS": ["Falha ao carregar o grafo"],
     "sQoLn0": ["Sair"],
     "sR0I-f": ["Recolher todos os arquivos"],
@@ -5122,6 +5177,9 @@
     ],
     "uUCrBv": ["link simbólico"],
     "uVbUP8": ["Configurações…"],
+    "uX85yl": [
+      "Os arquivos de configuração incluem: <0>.ok/</0>, as configurações MCP das ferramentas de IA (<1>.mcp.json</1> e os arquivos de cada ferramenta). Suas habilidades não são incluídas: elas seguem o git como qualquer outro arquivo do projeto.<2/><3>Compartilhado</3> faz commit deles no git, então quem clonar o repositório recebe a mesma configuração. <4/><5>Somente eu</5> mantém tudo fora do git (via <6>.git/info/exclude</6>)."
+    ],
     "uY5Z7P": ["Fim de jogo · pressione <0>Espaço</0> para jogar de novo"],
     "uYZTcW": ["Não é possível compartilhar esta URL do GitHub."],
     "u_lS4C": ["Clonagem concluída — abrindo o projeto"],
@@ -5355,6 +5413,9 @@
     "wvbc1r": ["Não deu para abrir o documento"],
     "wxRR0H": ["Tela do Excalidraw"],
     "wzq9Rv": ["Já existe um ramo com esse nome. Abra o worktree dele pelo seletor."],
+    "x-E_vF": [
+      "Você está enviando com mais frequência do que verifica atualizações. Se outras pessoas também escrevem neste repositório, os pushes muitas vezes terão que buscar as alterações e tentar de novo."
+    ],
     "x-fZxg": ["Envie o ramo ", ["branch"], " para o GitHub antes de compartilhar."],
     "x0RE0M": ["Tem certeza de que deseja excluir \"", ["name"], "\" e seu conteúdo?"],
     "x2fr_j": ["Grafo"],
@@ -5578,7 +5639,6 @@
       "O bloco de propriedades no topo deste documento tem um erro de formatação. Mude para o modo código para corrigir."
     ],
     "zbymaY": ["há ", ["0"], " min"],
-    "zcmYx4": ["a configuração do git não está disponível"],
     "zd00pH": ["Copiar caminho"],
     "zgSFyG": ["Link externo"],
     "zkz0Fg": ["Configurar a sincronização"],

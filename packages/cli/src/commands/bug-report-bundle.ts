@@ -79,6 +79,19 @@ export interface CollectStandardBundleOptions {
   projectDir?: string;
   /** Apply the secret-pattern scrub to every bundled file. */
   redact: boolean;
+  /**
+   * Ship document names as written instead of as digests. Defaults to false,
+   * because this collector's tier discloses logs and system info and says
+   * nothing about which documents a session opened.
+   *
+   * Set only for a `full` bundle, whose consent covers them. That level
+   * normally uses its own staging path and never reaches here — except when it
+   * runs with no `projectDir`, where every full-only artifact is
+   * project-scoped and the two levels collapse onto this collector. Passing the
+   * level explicitly is what keeps the consented case consented there, rather
+   * than leaving it to that coincidence.
+   */
+  revealDocNames?: boolean;
   /** Zip destination; parent directories are created as needed. */
   outputPath: string;
   /** Override the user-level logs directory (defaults to `~/.ok/logs`). */
@@ -246,12 +259,38 @@ export function collectUserLogFiles(projectSlug: string | null, logsDir: string)
 export { DESKTOP_BUNDLE_ID };
 
 /**
- * The two text logs Squirrel.Mac's ShipIt writes into its per-bundle cache
- * dir. `ShipItState.plist` sits beside them but is a binary plist — staging it
- * through the text scrub would garble it, and the swap narrative lives in
- * stderr regardless.
+ * The two text log STREAMS Squirrel.Mac's ShipIt writes into its per-bundle
+ * cache dir. `ShipItState.plist` sits beside them but is a binary plist —
+ * staging it through the text scrub would garble it, and the swap narrative
+ * lives in stderr regardless.
+ *
+ * These are stream names rather than filenames because ShipIt opens each one
+ * with `ensureWritable`: when the existing file cannot be opened for writing it
+ * appends `.1`, `.2`, … (walking as far as `.100`) and writes to that instead.
+ * Squirrel's own source attributes the un-writable case to the log ending up
+ * owned by root, which is exactly the state a machine whose installs escalate
+ * gets into — so on the machines most worth collecting from, the base name
+ * holds a stale log and the live run is in a suffixed sibling.
  */
-const SHIPIT_LOG_FILES = ['ShipIt_stderr.log', 'ShipIt_stdout.log'] as const;
+const SHIPIT_LOG_STREAMS = ['ShipIt_stderr.log', 'ShipIt_stdout.log'] as const;
+
+/**
+ * How many files one stream may contribute, in suffix order.
+ *
+ * Spent on siblings when the base file is absent, which is what you want: once
+ * the log is root-owned the base holds a stale run and every live one sits in a
+ * sibling, so a missing base should not shrink what gets collected.
+ *
+ * Squirrel walks to `.100` and each file can reach megabytes, so an uncapped
+ * collector would scale the bundle with how long a machine has been failing to
+ * install. Lowest suffix first: Squirrel takes the FIRST candidate it can open,
+ * so the low numbers are the ones still being written.
+ *
+ * Capped on file COUNT, not bytes — the bundle's overall size guard is what
+ * bounds total volume, and splitting that budget per-source here would make one
+ * noisy stream silently evict another.
+ */
+const SHIPIT_LOG_FILES_PER_STREAM = 4;
 
 /**
  * Squirrel.Mac's own install logs (`~/Library/Caches/<bundleId>.ShipIt/`).
@@ -278,7 +317,36 @@ export function collectShipItLogFiles(
 ): string[] {
   const shipItDir = join(cachesDir, `${bundleId}.ShipIt`);
   if (!existsSync(shipItDir)) return [];
-  return SHIPIT_LOG_FILES.map((name) => join(shipItDir, name)).filter((p) => existsSync(p));
+
+  let entries: string[];
+  try {
+    entries = readdirSync(shipItDir);
+  } catch {
+    // Same empty result as the missing-directory case above, and deliberately
+    // indistinguishable from it downstream: the realistic reason a ShipIt dir
+    // exists but cannot be read is the root ownership this whole collector is
+    // built around, and there is nothing a bug reporter could do about it. The
+    // absence shows up where it is actionable — the bundle simply carries no
+    // ShipIt logs, which the reader can see.
+    return [];
+  }
+
+  return SHIPIT_LOG_STREAMS.flatMap((stream) =>
+    entries
+      .map((entry) => {
+        // Sorted as a number, so the base file leads and `.2` precedes `.10`.
+        if (entry === stream) return { entry, suffix: -1 };
+        if (!entry.startsWith(`${stream}.`)) return null;
+        // Anchored on digits alone: the suffix is the only thing distinguishing
+        // a fallback from a neighbour that merely shares the prefix.
+        const suffix = entry.slice(stream.length + 1);
+        return /^\d+$/.test(suffix) ? { entry, suffix: Number(suffix) } : null;
+      })
+      .filter((match) => match !== null)
+      .sort((a, b) => a.suffix - b.suffix)
+      .slice(0, SHIPIT_LOG_FILES_PER_STREAM)
+      .map((match) => join(shipItDir, match.entry)),
+  );
 }
 
 /**
@@ -419,23 +487,108 @@ function collectLocalSinkLogs(cwd: string): { files: string[] } {
   return { files: found };
 }
 
+/**
+ * Document names are a Detailed-diagnostics-tier field. This tier's consent
+ * copy names "app & system info, recent app logs, and project server logs" and
+ * says nothing about the documents a session opened, so this replaces every
+ * `docName` / `doc.name` value with a digest before the bytes reach the zip.
+ *
+ * A digest rather than a fixed marker, following `contentDir` in the manifest,
+ * which masks `absolutePath` while keeping `pathSha256` "a stable correlation
+ * identifier for the recipient". Triage of the scroll and outline breadcrumbs
+ * needs to group a document's marks and read its before/after sequence; it does
+ * not need the title. Equal digests mean the same document, here and across
+ * bundles.
+ *
+ * BE PRECISE ABOUT WHAT THIS BUYS, because the tempting sentence is wrong. It is
+ * not that the name cannot be recovered. The digest is an unsalted SHA-256 over a
+ * short, relative, highly guessable path, truncated to 48 bits, and the party
+ * holding it is the one the name is being kept from — so confirming a GUESSED name
+ * costs one hash, and a candidate list built once works on every bundle forever.
+ * No salt fixes that: one the recipient can see is no obstacle to the recipient,
+ * and a secret per-bundle salt would destroy the cross-bundle grouping above. What
+ * this delivers is that a bundle no longer HANDS OVER the list — bulk readability
+ * is gone, targeted confirmation is not. The stronger property has only one lever,
+ * which is not sending the field at this tier at all.
+ *
+ * NOT gated on `redact`: that flag chooses whether to hunt for secrets in
+ * content the user has agreed to send. This is a question of which tier the
+ * field belongs to, and the answer does not change when a caller passes
+ * `--no-redact`.
+ *
+ * TWO PASSES, because a document name reaches this tier in more than one shape.
+ * The first is key-anchored and authoritative: it finds the field, and its body
+ * pattern is the JSON string production — `(?:[^"\\]|\\.)*` consumes an escaped
+ * pair whole and so cannot stop on an escaped quote or run past the real
+ * terminator. Overshooting would eat the next field; undershooting would ship the
+ * tail of the very name this is removing.
+ *
+ * The second sweeps the names the first pass LEARNED through the rest of the text,
+ * because the same name also arrives interpolated into a message body — the
+ * renderer's `[syncPromise] <name> resolved...` fires on every successful open,
+ * and the server's `[reconcile] delete: <name>` and its siblings reach this tier
+ * through `local-logs/`. Both duplicate a name they already pass as a field, which
+ * is what makes the sweep sufficient and why fixing it here rather than at ten
+ * emit sites loses a triager nothing.
+ *
+ * Its BOUND, stated rather than hoped: it can only mask a name that appears at
+ * least once as a field IN THE SAME FILE. That holds for both sinks today because
+ * every one of those call sites passes the name as a field too. A future emitter
+ * that interpolates a name it never fields would slip through, and nothing here
+ * would notice — which is the argument for eventually dropping the interpolations.
+ *
+ * Longest-first, so a name that is a prefix of another cannot be rewritten inside
+ * it and leave the longer one's tail exposed.
+ */
+function pseudonymizeDocNames(content: string): { text: string; count: number } {
+  let count = 0;
+  const digests = new Map<string, string>();
+  let text = content.replace(
+    /("(?:docName|doc\.name|documentName)"\s*:\s*")((?:[^"\\]|\\.)*)"/g,
+    (_match, prefix: string, value: string) => {
+      count += 1;
+      let digest = digests.get(value);
+      if (digest === undefined) {
+        digest = `doc#${createHash('sha256').update(value).digest('hex').slice(0, 12)}`;
+        digests.set(value, digest);
+      }
+      return `${prefix}${digest}"`;
+    },
+  );
+
+  for (const [value, digest] of [...digests].sort(([a], [b]) => b.length - a.length)) {
+    // `split`/`join` rather than a built regex: a document name is arbitrary user
+    // text and may carry regex metacharacters. An empty value is skipped because
+    // splitting on '' would wedge a digest between every character.
+    if (value.length === 0 || !text.includes(value)) continue;
+    const parts = text.split(value);
+    count += parts.length - 1;
+    text = parts.join(digest);
+  }
+
+  return { text, count };
+}
+
 function addTextEntry(args: {
   zipfile: ZipFile;
   name: string;
   content: string;
   redact: boolean;
+  revealDocNames?: boolean;
   bundleFiles: string[];
   redactions: BundleRedaction[];
 }): void {
+  // Tier gate first, so it applies on both arms — see `pseudonymizeDocNames`.
+  const content = args.revealDocNames ? args.content : pseudonymizeDocNames(args.content).text;
   if (args.redact) {
-    const { redacted, patterns, lineCount } = redactContent(args.content);
+    const { redacted, patterns, lineCount } = redactContent(content);
     args.zipfile.addBuffer(Buffer.from(redacted, 'utf8'), args.name);
     args.bundleFiles.push(args.name);
     if (patterns.length > 0) {
       args.redactions.push({ file: args.name, lineCount, patterns });
     }
   } else {
-    args.zipfile.addBuffer(Buffer.from(args.content, 'utf8'), args.name);
+    args.zipfile.addBuffer(Buffer.from(content, 'utf8'), args.name);
     args.bundleFiles.push(args.name);
   }
 }
@@ -445,6 +598,7 @@ function addContentFiles(args: {
   files: string[];
   prefix: string;
   redact: boolean;
+  revealDocNames?: boolean;
   bundleFiles: string[];
   redactions: BundleRedaction[];
   logger?: BundleLogger;
@@ -456,6 +610,7 @@ function addContentFiles(args: {
         name: `${args.prefix}/${basename(file)}`,
         content: readFileSync(file, 'utf8'),
         redact: args.redact,
+        revealDocNames: args.revealDocNames,
         bundleFiles: args.bundleFiles,
         redactions: args.redactions,
       });
@@ -477,6 +632,7 @@ export async function collectStandardBundle(
   opts: CollectStandardBundleOptions,
 ): Promise<StandardBundleResult> {
   const { redact, outputPath, logger } = opts;
+  const revealDocNames = opts.revealDocNames ?? false;
   const userLogsDir = opts.userLogsDir ?? join(homedir(), '.ok', 'logs');
   const projectSlug = opts.projectDir ? resolveProjectSlug(opts.projectDir, logger) : null;
 
@@ -528,6 +684,7 @@ export async function collectStandardBundle(
     files: [...logFiles, ...shipItFiles],
     prefix: 'logs',
     redact,
+    revealDocNames,
     bundleFiles,
     redactions,
     logger,
@@ -537,6 +694,7 @@ export async function collectStandardBundle(
     files: lockFiles,
     prefix: 'lockdir',
     redact,
+    revealDocNames,
     bundleFiles,
     redactions,
     logger,
@@ -546,6 +704,7 @@ export async function collectStandardBundle(
     files: localSinkFiles,
     prefix: 'local-logs',
     redact,
+    revealDocNames,
     bundleFiles,
     redactions,
     logger,
@@ -558,6 +717,7 @@ export async function collectStandardBundle(
     files: opts.bugReportLedgerFiles ?? [],
     prefix: REPORT_SIDECAR_BUNDLE_DIR,
     redact,
+    revealDocNames,
     bundleFiles,
     redactions,
     logger,
@@ -588,6 +748,7 @@ export async function collectStandardBundle(
       name: 'note.txt',
       content: opts.note,
       redact,
+      revealDocNames,
       bundleFiles,
       redactions,
     });

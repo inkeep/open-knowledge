@@ -21,6 +21,7 @@ import {
   EDITOR_PROJECT_SKILL_ROOT,
   EDITOR_USER_SKILL_ROOT,
   HOSTS_WITH_USER_SKILL_DIR,
+  HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
   receivesProjectIntegrationWrite,
   USER_MCP_GATED_EDITOR_IDS,
@@ -145,6 +146,30 @@ describe('receivesProjectIntegrationWrite', () => {
     for (const id of USER_MCP_GATED_EDITOR_IDS) {
       expect(EDITOR_PROJECT_CONFIG_PATH[id]).toBeNull();
       expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
+    }
+  });
+});
+
+describe('HUB_READER_EDITORS', () => {
+  // The docblock's rule is "reads the hub AND has no root of its own at that
+  // scope". Pinning two example exclusions (OpenCode, Pi) by name does not stop
+  // a future `{ editorId: 'codex', dotDir: '.codex', scope: 'project' }` — which
+  // violates the rule, compiles cleanly, and reintroduces the double-load hazard
+  // silently. This pins the invariant.
+  test('every member has a null skill root at its declared scope', () => {
+    for (const { editorId, scope } of HUB_READER_EDITORS) {
+      const map = scope === 'project' ? EDITOR_PROJECT_SKILL_ROOT : EDITOR_USER_SKILL_ROOT;
+      expect({ editorId, scope, root: map[editorId] }).toEqual({ editorId, scope, root: null });
+    }
+  });
+
+  test('a host with its own root at that scope is rejected by the rule', () => {
+    // The counter-case the rule exists for, stated as a property rather than a
+    // name: OpenCode and Pi read `.agents` too, but both have project roots, so
+    // neither may be a member.
+    for (const id of ['opencode', 'pi'] as const) {
+      expect(EDITOR_PROJECT_SKILL_ROOT[id]).not.toBeNull();
+      expect(HUB_READER_EDITORS.some((r) => r.editorId === id)).toBe(false);
     }
   });
 });

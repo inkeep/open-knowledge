@@ -2,8 +2,8 @@ import { resolveAssetProjectPath, resolveInternalHref } from '@inkeep/open-knowl
 import { describe, expect, test } from 'vitest';
 import {
   rewriteAssetReferencesForRename,
+  rewriteJsxSrcRefsForDocumentRename,
   rewriteMarkdownLinksForDocumentRename,
-  rewriteMirrorSrcForDocumentRename,
   rewriteOutboundMarkdownLinksForSourceMove,
   rewriteWikiLinksForDocumentRename,
 } from './managed-rename-rewrite.ts';
@@ -359,11 +359,12 @@ describe('rewriteMarkdownLinksForDocumentRename — image refs (FR-7)', () => {
   });
 });
 
-describe('rewriteMirrorSrcForDocumentRename', () => {
+describe('rewriteJsxSrcRefsForDocumentRename', () => {
   test('rewrites Mirror src when value matches the rename source', () => {
     expect(
-      rewriteMirrorSrcForDocumentRename(
+      rewriteJsxSrcRefsForDocumentRename(
         'Before <Mirror src="api-spec" anchor="deprecation" /> after.\n',
+        'index',
         'api-spec',
         'api-reference',
       ),
@@ -375,8 +376,9 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
 
   test('leaves Mirror src that points at a different doc untouched', () => {
     expect(
-      rewriteMirrorSrcForDocumentRename(
+      rewriteJsxSrcRefsForDocumentRename(
         '<Mirror src="other-doc" anchor="foo" />\n',
+        'index',
         'api-spec',
         'api-reference',
       ),
@@ -388,8 +390,9 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
 
   test('supports single-quoted attribute values', () => {
     expect(
-      rewriteMirrorSrcForDocumentRename(
+      rewriteJsxSrcRefsForDocumentRename(
         "<Mirror src='api-spec' anchor='deprecation' />\n",
+        'index',
         'api-spec',
         'api-reference',
       ),
@@ -401,8 +404,9 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
 
   test('handles multiple Mirrors on the same line', () => {
     expect(
-      rewriteMirrorSrcForDocumentRename(
+      rewriteJsxSrcRefsForDocumentRename(
         '<Mirror src="api-spec" anchor="a" /> and <Mirror src="api-spec" anchor="b" />\n',
+        'index',
         'api-spec',
         'api-reference',
       ),
@@ -415,7 +419,7 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
 
   test('ignores Mirror tags inside fenced code blocks', () => {
     const md = ['```mdx', '<Mirror src="api-spec" anchor="x" />', '```', ''].join('\n');
-    expect(rewriteMirrorSrcForDocumentRename(md, 'api-spec', 'api-reference')).toEqual({
+    expect(rewriteJsxSrcRefsForDocumentRename(md, 'index', 'api-spec', 'api-reference')).toEqual({
       markdown: md,
       rewrites: 0,
     });
@@ -423,7 +427,12 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
 
   test('preserves prop order (anchor stays after src)', () => {
     expect(
-      rewriteMirrorSrcForDocumentRename('<Mirror anchor="x" src="old" />\n', 'old', 'new'),
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Mirror anchor="x" src="old" />\n',
+        'index',
+        'old',
+        'new',
+      ),
     ).toEqual({
       markdown: '<Mirror anchor="x" src="new" />\n',
       rewrites: 1,
@@ -431,7 +440,9 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
   });
 
   test('returns rewrites=0 for docs with no Mirror tags', () => {
-    expect(rewriteMirrorSrcForDocumentRename('Just prose, no JSX here.\n', 'old', 'new')).toEqual({
+    expect(
+      rewriteJsxSrcRefsForDocumentRename('Just prose, no JSX here.\n', 'index', 'old', 'new'),
+    ).toEqual({
       markdown: 'Just prose, no JSX here.\n',
       rewrites: 0,
     });
@@ -443,10 +454,12 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
     // Mirrors `rewriteWikiLinksInLine`'s `readInlineCode` skip behavior.
     const input =
       'To embed the deprecation block, write `<Mirror src="api-spec" anchor="dep" />`.\n';
-    expect(rewriteMirrorSrcForDocumentRename(input, 'api-spec', 'api-reference')).toEqual({
-      markdown: input,
-      rewrites: 0,
-    });
+    expect(rewriteJsxSrcRefsForDocumentRename(input, 'index', 'api-spec', 'api-reference')).toEqual(
+      {
+        markdown: input,
+        rewrites: 0,
+      },
+    );
   });
 
   test('ignores Mirror tags inside tilde fences', () => {
@@ -454,7 +467,7 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
     // use the same `matchFence` / `isFenceClose` machinery and must skip
     // identically. Symmetry guard.
     const markdown = ['~~~md', '<Mirror src="old" anchor="x" />', '~~~', ''].join('\n');
-    expect(rewriteMirrorSrcForDocumentRename(markdown, 'old', 'new')).toEqual({
+    expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'old', 'new')).toEqual({
       markdown,
       rewrites: 0,
     });
@@ -467,9 +480,295 @@ describe('rewriteMirrorSrcForDocumentRename', () => {
       'See `<Mirror src="api-spec" anchor="x" />` in docs. Live: <Mirror src="api-spec" anchor="y" />\n';
     const out =
       'See `<Mirror src="api-spec" anchor="x" />` in docs. Live: <Mirror src="api-reference" anchor="y" />\n';
-    expect(rewriteMirrorSrcForDocumentRename(input, 'api-spec', 'api-reference')).toEqual({
-      markdown: out,
+    expect(rewriteJsxSrcRefsForDocumentRename(input, 'index', 'api-spec', 'api-reference')).toEqual(
+      {
+        markdown: out,
+        rewrites: 1,
+      },
+    );
+  });
+
+  test('rewrites Excalidraw src preserving the leading slash', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        'Board: <Excalidraw src="/old/board.excalidraw" />\n',
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: 'Board: <Excalidraw src="/new/board.excalidraw" />\n',
       rewrites: 1,
+    });
+  });
+
+  test('rewrites a bare (no leading slash) Excalidraw src without adding one', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="old/board.excalidraw" />\n',
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="new/board.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('leaves an Excalidraw src that points at a different board untouched', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="/other/board.excalidraw" />\n',
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="/other/board.excalidraw" />\n',
+      rewrites: 0,
+    });
+  });
+
+  test('skips Excalidraw tags inside inline code spans', () => {
+    const input = 'Write `<Excalidraw src="/old/board.excalidraw" />` to embed a board.\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        input,
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: input,
+      rewrites: 0,
+    });
+  });
+
+  test('ignores Excalidraw tags inside fenced code blocks', () => {
+    const markdown = ['```mdx', '<Excalidraw src="/old/board.excalidraw" />', '```', ''].join('\n');
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        markdown,
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown,
+      rewrites: 0,
+    });
+  });
+
+  test('renaming a plain .md doc does not touch an Excalidraw src pointing elsewhere', () => {
+    const markdown = 'See [[guides/setup]] and <Excalidraw src="/diagrams/arch.excalidraw" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        markdown,
+        'docs/overview',
+        'guides/setup',
+        'guides/install',
+      ),
+    ).toEqual({
+      markdown,
+      rewrites: 0,
+    });
+  });
+
+  test('preserves title and other Excalidraw attrs byte-for-byte', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw title="Architecture  sketch" src=\'/old/board.excalidraw\' height="480" />\n',
+        'index',
+        'old/board.excalidraw',
+        'new/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown:
+        '<Excalidraw title="Architecture  sketch" src=\'/new/board.excalidraw\' height="480" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('rewrites Mirror and Excalidraw refs in one pass when both name the renamed doc', () => {
+    // Degenerate on purpose: one docName referenced through both registry
+    // tags proves the single pass covers every entry, not just the first.
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Mirror src="old" anchor="x" /> and <Excalidraw src="/old" />\n',
+        'index',
+        'old',
+        'new',
+      ),
+    ).toEqual({
+      markdown: '<Mirror src="new" anchor="x" /> and <Excalidraw src="/new" />\n',
+      rewrites: 2,
+    });
+  });
+
+  test('matches a doc-relative Excalidraw src the way the renderer resolves it', () => {
+    // `board.excalidraw` inside `notes/index` addresses docName
+    // `notes/board.excalidraw` (normalizeDocRelativeAssetUrl) — the rename
+    // must match on the resolved name, and write back doc-relative.
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="board.excalidraw" />\n',
+        'notes/index',
+        'notes/board.excalidraw',
+        'notes/sketch.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="sketch.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('a doc-relative src stays doc-relative when the board moves to a sibling folder', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="board.excalidraw" />\n',
+        'notes/index',
+        'notes/board.excalidraw',
+        'archive/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="../archive/board.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('a ./-prefixed doc-relative src keeps its prefix on a same-folder rename', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="./board.excalidraw" />\n',
+        'notes/index',
+        'notes/board.excalidraw',
+        'notes/sketch.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="./sketch.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('a doc-relative-looking src that resolves elsewhere does not match the rename', () => {
+    // From `notes/index`, `diagrams/board.excalidraw` resolves to
+    // `notes/diagrams/board.excalidraw` — NOT the renamed board. Rewriting it
+    // would repoint a (broken or sibling) reference at a doc it never named.
+    const markdown = '<Excalidraw src="diagrams/board.excalidraw" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        markdown,
+        'notes/index',
+        'diagrams/board.excalidraw',
+        'archive/board.excalidraw',
+      ),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('root-relative spelling is preserved on a doc-relative-capable tag', () => {
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="/notes/board.excalidraw" />\n',
+        'notes/index',
+        'notes/board.excalidraw',
+        'archive/board.excalidraw',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="/archive/board.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('containing-doc move recomputes a doc-relative src for the new location', () => {
+    // `notes/index` moves to `archive/index`; the board stays put. The
+    // doc-relative src must be recomputed or the embed silently addresses
+    // `archive/board.excalidraw` — a different board.
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        '<Excalidraw src="board.excalidraw" />\n',
+        'notes/index',
+        'notes/index',
+        'archive/index',
+      ),
+    ).toEqual({
+      markdown: '<Excalidraw src="../notes/board.excalidraw" />\n',
+      rewrites: 1,
+    });
+  });
+
+  test('containing-doc same-folder rename leaves a doc-relative src untouched', () => {
+    const markdown = '<Excalidraw src="board.excalidraw" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(markdown, 'notes/index', 'notes/index', 'notes/overview'),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('containing-doc move leaves root-relative and bare-doc-name srcs untouched', () => {
+    // Both spellings are location-independent — only doc-relative values need
+    // recomputing when the containing doc moves.
+    const markdown =
+      '<Excalidraw src="/notes/board.excalidraw" /> and <Mirror src="api-spec" anchor="x" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(markdown, 'notes/index', 'notes/index', 'archive/index'),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('refuses a quote-bearing newDocName on the bare-doc-name branch', () => {
+    // The next value is spliced between the original quote pair unescaped, so
+    // a quote in it would terminate the attribute early and inject markup
+    // into the containing document. The rewriter must refuse and leave the
+    // line byte-identical; the stale src surfaces via the broken-links
+    // advisory instead.
+    const markdown = '<Mirror src="api-spec" anchor="x" />\n';
+    expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'api-spec', 'api"spec')).toEqual({
+      markdown,
+      rewrites: 0,
+    });
+  });
+
+  test('refuses a >-bearing newDocName on the bare-doc-name branch', () => {
+    // `notes > archive` is a name a person might actually type. Written back,
+    // the `[^>]*` tag matcher could never re-match the tag — one-way
+    // corruption no later rename could repair — so the rewrite must refuse.
+    const markdown = '<Mirror src="api-spec" anchor="x" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'api-spec', 'notes > archive'),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('refuses a quote-bearing newDocName on the doc-relative branch', () => {
+    const markdown = '<Excalidraw src="board.excalidraw" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        markdown,
+        'notes/index',
+        'notes/board.excalidraw',
+        'notes/bo"ard.excalidraw',
+      ),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('refuses a >-bearing newDocName on the doc-relative branch', () => {
+    const markdown = '<Excalidraw src="/notes/board.excalidraw" />\n';
+    expect(
+      rewriteJsxSrcRefsForDocumentRename(
+        markdown,
+        'index',
+        'notes/board.excalidraw',
+        'notes > archive.excalidraw',
+      ),
+    ).toEqual({ markdown, rewrites: 0 });
+  });
+
+  test('data-src is not read as src (whitespace-anchored attribute matcher)', () => {
+    // `\b` would match the `-`→`s` transition inside `data-src=`; the matcher
+    // anchors on preceding whitespace like HTML_ASSET_ATTR_RE, so a
+    // coincidentally-suffixed attribute is never rewritten.
+    const markdown = '<Mirror data-src="old" anchor="x" src="other" />\n';
+    expect(rewriteJsxSrcRefsForDocumentRename(markdown, 'index', 'old', 'new')).toEqual({
+      markdown,
+      rewrites: 0,
     });
   });
 });

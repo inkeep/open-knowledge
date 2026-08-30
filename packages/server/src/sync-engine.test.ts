@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 // narrow to a targeted skip of the specific live-git describe blocks —
 // do not restore a blanket process.env.CI gate.
 
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -44,7 +44,13 @@ import { listNames } from './git-paths.ts';
 import type { DetectGhAccountsFn, DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
 import type { CredentialUrlMatchReader } from './share/github-account.ts';
-import { classifyFastForwardRefusal, SyncEngine, type SyncState } from './sync-engine.ts';
+import {
+  CONTENTION_WARN_THRESHOLD,
+  classifyFastForwardRefusal,
+  isFetchDisprovableFailure,
+  SyncEngine,
+  type SyncState,
+} from './sync-engine.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -2049,6 +2055,83 @@ describe('SyncEngine backoff thresholds via persisted state', () => {
     await engine.trigger();
     expect(engine.getStatus().consecutiveFailures).toBe(0);
   });
+
+  test('consecutivePushFailures is restored independently of the pull leg', async () => {
+    persistState({ consecutiveFailures: 2, consecutivePushFailures: 6 });
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    expect(engine.getStatus().consecutiveFailures).toBe(2);
+    expect(engine.getStatus().consecutivePushFailures).toBe(6);
+  });
+
+  test('a state file predating the push leg restores it as 0', async () => {
+    // The key is absent, not zero — the shape every state file written before
+    // the legs were split still has on disk.
+    persistState({ consecutiveFailures: 4 });
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    expect(engine.getStatus().consecutiveFailures).toBe(4);
+    expect(engine.getStatus().consecutivePushFailures).toBe(0);
+  });
+
+  test('the connectivity latch survives a restart, so the release stays available', async () => {
+    // The field exists to keep the discharge reachable after a restart mid
+    // outage — closing the laptop while offline is the common case. If the
+    // write or the read is dropped it reloads `false`, the release never fires,
+    // and the user sits out the full tier after reconnecting.
+    persistState({ consecutivePushFailures: 4, pushStreakIsConnectivity: true });
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    const internals = engine as unknown as { pushStreakIsConnectivity: boolean };
+    expect(engine.getStatus().consecutivePushFailures).toBe(4);
+    expect(internals.pushStreakIsConnectivity).toBe(true);
+  });
+
+  test('the latch round-trips through saveStateNow, not just through a hand-written file', async () => {
+    // The two tests around this one seed state with `persistState()`, which is
+    // a raw writeFileSync — so neither reaches `saveStateNow`'s serializer.
+    // Deleting the write there would leave both green while every restart
+    // reloaded `false`, which is the exact regression the field prevents.
+    const writer = makeEngine({ syncEnabled: false });
+    await writer.start();
+    const internals = writer as unknown as {
+      consecutivePushFailures: number;
+      pushStreakIsConnectivity: boolean;
+      saveStateNow(): void;
+    };
+    internals.consecutivePushFailures = 3;
+    internals.pushStreakIsConnectivity = true;
+    internals.saveStateNow();
+    await writer.stop();
+
+    const reader = makeEngine({ syncEnabled: false });
+    await reader.start();
+    expect({
+      streak: reader.getStatus().consecutivePushFailures,
+      latch: (reader as unknown as { pushStreakIsConnectivity: boolean }).pushStreakIsConnectivity,
+    }).toEqual({ streak: 3, latch: true });
+    await reader.stop();
+  });
+
+  test('a state file predating the latch restores it as not-dischargeable', async () => {
+    // Absent, not false: a restored streak with no recorded cause must keep its
+    // backoff rather than be released on evidence that never covered it.
+    persistState({ consecutivePushFailures: 6 });
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    const internals = engine as unknown as { pushStreakIsConnectivity: boolean };
+    expect(engine.getStatus().consecutivePushFailures).toBe(6);
+    expect(internals.pushStreakIsConnectivity).toBe(false);
+  });
+
+  test('trigger() resets both legs', async () => {
+    persistState({ consecutiveFailures: 5, consecutivePushFailures: 7 });
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    await engine.trigger();
+    expect(engine.getStatus().consecutiveFailures).toBe(0);
+    expect(engine.getStatus().consecutivePushFailures).toBe(0);
+  });
 });
 
 // ─── Auth-conditional pull cadence ──────────────────────────────────────────
@@ -2589,6 +2672,356 @@ describe('SyncEngine setIntervals()', () => {
     const delayMs = internals.effectivePullDelayMs();
     expect(delayMs).toBeGreaterThanOrEqual(band(3600).min);
     expect(delayMs).toBeLessThanOrEqual(band(3600).max);
+  });
+});
+
+// ─── Push backoff interval math ─────────────────────────────────────────────
+
+describe('SyncEngine contention warn threshold', () => {
+  test('escalates to warn only once the run reaches the threshold', async () => {
+    // Both e2e contention tests drive exactly one lost race, so the escalation
+    // branch never runs there. A run of contentions is the signal an operator
+    // needs — one is routine, a sustained run means the remote is moving faster
+    // than this client can land a push.
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    });
+    const internals = engine as unknown as {
+      consecutiveContentions: number;
+      logContention(): void;
+    };
+    const cap = captureSyncLogs();
+    try {
+      // Drive the counter through the branch the way the retry path does.
+      for (let i = 0; i < CONTENTION_WARN_THRESHOLD + 1; i++) {
+        internals.consecutiveContentions = i + 1;
+        internals.logContention();
+      }
+      const levels = cap.entries
+        .filter((e) => /contention|contended/i.test(e.msg))
+        .map((e) => e.level);
+      // Below the threshold it stays info; at and past it, warn.
+      expect(levels.slice(0, CONTENTION_WARN_THRESHOLD - 1)).toEqual(
+        Array(CONTENTION_WARN_THRESHOLD - 1).fill('info'),
+      );
+      expect(levels.slice(CONTENTION_WARN_THRESHOLD - 1)).toEqual(['warn', 'warn']);
+    } finally {
+      cap.restore();
+      await engine.stop();
+    }
+  });
+});
+
+describe('SyncEngine runPushCycle pullInFlight guard', () => {
+  type GuardInternals = {
+    pullInFlight: boolean;
+    pushTimer: NodeJS.Timeout | null;
+    state: SyncState;
+    doPushCycle(retriesLeft?: number): Promise<void>;
+    runPushCycle(): Promise<void>;
+  };
+
+  /**
+   * Put the engine past every guard that sits ABOVE `pullInFlight`, and stub the
+   * cycle so the assertions observe the guard rather than its side effects.
+   *
+   * Five guards precede it: `pushInFlight`, `mode !== 'full'`, `state`
+   * dormant/disabled/conflict/auth-error, `conflictCount > 0`, and
+   * `isUnbornHead`. All are clear here, but `isUnbornHead` is false because
+   * `projectDir` has no `.git` at all (a non-repository returns false early) —
+   * NOT because the repo has commits. Add a `git init` to the shared beforeEach
+   * and it flips true, which re-arms unconditionally and would quietly move the
+   * assertions off this guard.
+   *
+   * The stub is what makes the contract observable: `runPushCycle`'s `finally`
+   * unconditionally clears `pushInFlight` and calls `schedulePush()`, so an
+   * assertion on either of those cannot distinguish "never entered" from
+   * "entered and exited". `cycles` can.
+   */
+  function makeGuardEngine() {
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+    });
+    const internals = engine as unknown as GuardInternals;
+    internals.state = 'idle';
+    internals.pullInFlight = true;
+    const cycles: number[] = [];
+    internals.doPushCycle = async (retriesLeft = 0) => {
+      cycles.push(retriesLeft);
+    };
+    return { engine, internals, cycles };
+  }
+
+  test('a pull in flight defers the push without running a cycle', async () => {
+    const { engine, internals, cycles } = makeGuardEngine();
+    await internals.runPushCycle();
+    // The contract this block's name promises. Deleting the guard makes this
+    // red; the `pushInFlight`/`pushTimer` assertions below cannot say the same,
+    // because the `finally` produces the identical end state either way.
+    expect(cycles).toEqual([]);
+    await engine.stop();
+  });
+
+  test('the timer path re-arms, and a press does not clobber a live timer', async () => {
+    // `runOneShotPush` has deliberately different re-arm semantics, so its
+    // coverage says nothing about this branch. The conditional matters because
+    // `pushOnce()` routes a full-mode press through here with a timer still
+    // armed — re-arming would push the next scheduled push back a fresh
+    // interval every time a press lost this race.
+    const timer = makeGuardEngine();
+    timer.internals.pushTimer = null;
+    await timer.internals.runPushCycle();
+    expect(timer.cycles).toEqual([]);
+    expect(timer.internals.pushTimer).not.toBeNull();
+    await timer.engine.stop();
+
+    const press = makeGuardEngine();
+    const armed = setTimeout(() => {}, 60_000);
+    press.internals.pushTimer = armed;
+    await press.internals.runPushCycle();
+    expect(press.cycles).toEqual([]);
+    expect(press.internals.pushTimer).toBe(armed);
+    clearTimeout(armed);
+    await press.engine.stop();
+  });
+});
+
+describe('SyncEngine push-streak cause tracking', () => {
+  type CauseInternals = {
+    bumpFailureCount(op: 'push' | 'pull', connectivityClass?: boolean): void;
+    consecutivePushFailures: number;
+    pushStreakIsConnectivity: boolean;
+  };
+
+  function makeEngineForCause() {
+    return new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds: 60,
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    }) as unknown as CauseInternals;
+  }
+
+  test('a streak of pure connectivity failures stays dischargeable', () => {
+    const e = makeEngineForCause();
+    e.bumpFailureCount('push', true);
+    e.bumpFailureCount('push', true);
+    expect(e.consecutivePushFailures).toBe(2);
+    expect(e.pushStreakIsConnectivity).toBe(true);
+  });
+
+  test('one non-connectivity failure latches the streak undischargeable', () => {
+    // A fetch disproves an outage; it says nothing about a protected branch. So
+    // a single semantic failure has to poison the whole streak, even when a
+    // network blip started it and more network blips follow.
+    const e = makeEngineForCause();
+    e.bumpFailureCount('push', true);
+    e.bumpFailureCount('push', false);
+    e.bumpFailureCount('push', true);
+    expect(e.consecutivePushFailures).toBe(3);
+    expect(e.pushStreakIsConnectivity).toBe(false);
+  });
+
+  test('the cause defaults to non-connectivity when the caller does not classify', () => {
+    const e = makeEngineForCause();
+    e.bumpFailureCount('push');
+    expect(e.pushStreakIsConnectivity).toBe(false);
+  });
+
+  test('the predicate is driven by real classifier output, not a hand-passed flag', () => {
+    // Every case below is classified by the production classifier, so a change
+    // to the taxonomy or the subclass names turns this red rather than leaving
+    // it green while the behaviour inverts.
+    // Each row is asserted on its CLASSIFICATION as well as the predicate, so
+    // a string that stops reaching the class it is meant to represent fails
+    // loudly instead of passing for the wrong reason. The first attempt at this
+    // table used `fatal: unable to access: ... error: 429`, which classifies as
+    // `local/unknown-local` — the 429 rows proved nothing.
+    const cases: Array<[string, string, boolean]> = [
+      ['fatal: unable to access: Could not resolve host: github.com', 'network/dns', true],
+      [
+        'fatal: unable to access: Failed to connect to github.com port 443: Connection refused',
+        'network/connection-refused',
+        true,
+      ],
+      [
+        'fatal: unable to access: Operation timed out after 30001 milliseconds',
+        'network/timeout',
+        true,
+      ],
+      // The residual network bucket — where most genuine unreachability lands,
+      // and what an allowlist of the three named subclasses silently dropped.
+      [
+        'fatal: unable to access: Failed to connect: Network is unreachable',
+        'network/unknown-network',
+        true,
+      ],
+      ['fatal: Temporary failure in name resolution', 'network/unknown-network', true],
+      // Refusing work, not unreachable: a read cannot disprove either.
+      [
+        'error: RPC failed; HTTP 429 curl 22 The requested URL returned error: 429',
+        'network/429',
+        false,
+      ],
+      [
+        'error: RPC failed; HTTP 503 curl 22 The requested URL returned error: 503',
+        'network/5xx',
+        false,
+      ],
+      [
+        '! [remote rejected] main -> main (protected branch hook declined)',
+        'semantic/protected-branch',
+        false,
+      ],
+      // Retryable but NOT network. Without this row the table cannot tell a
+      // predicate keyed on `class === 'network'` from one keyed on
+      // `retryable === true` — both would pass every other row.
+      ['error: could not write to index file: No space left on device', 'local/disk-full', false],
+    ];
+    for (const [stderr, expectedClass, expected] of cases) {
+      const classified = classifyGitError(new Error(stderr));
+      expect({
+        stderr,
+        classified: `${classified.class}/${classified.subclass}`,
+        disprovable: isFetchDisprovableFailure(classified),
+      }).toEqual({ stderr, classified: expectedClass, disprovable: expected });
+    }
+  });
+
+  test('a rate-limited or 5xx push streak is NOT dischargeable by a fetch', () => {
+    // Both share the `network` class, but they describe the remote refusing
+    // work rather than being unreachable — and a fetch is a read, so it cannot
+    // clear a write-path throttle. Treating them as disproven made a throttled
+    // remote the one we retried hardest.
+    for (const subclass of ['429', '5xx'] as const) {
+      const e = makeEngineForCause();
+      const classified = { class: 'network' as const, subclass, retryable: true as const };
+      // The shipped predicate, not a copy of it: an inline re-implementation
+      // silently goes stale the moment the real one changes, which is exactly
+      // what happened when the allowlist became a denylist.
+      e.bumpFailureCount('push', isFetchDisprovableFailure(classified));
+      expect(e.pushStreakIsConnectivity).toBe(false);
+    }
+  });
+
+  test('a pull failure never touches the push cause flag', () => {
+    const e = makeEngineForCause();
+    e.bumpFailureCount('push', true);
+    e.bumpFailureCount('pull');
+    expect(e.consecutivePushFailures).toBe(1);
+    expect(e.pushStreakIsConnectivity).toBe(true);
+  });
+});
+
+describe('SyncEngine effectivePushDelayMs floors on the configured interval', () => {
+  // effectivePushDelayMs() must pick max(backoff, interval), not replace one
+  // with the other.  With no streak the backoff is 0 and the interval wins;
+  // once streak ≥ 3 the 5-min backoff is the floor for short intervals, but a
+  // longer configured interval is never cut down to the backoff.
+
+  type PushDelayInternals = {
+    effectivePushDelayMs(): number;
+    consecutivePushFailures: number;
+  };
+
+  function bandP(seconds: number) {
+    return { min: seconds * 0.85 * 1000, max: seconds * 1.15 * 1000 };
+  }
+
+  function makePushEngine(pushIntervalSeconds: number) {
+    return new SyncEngine({
+      projectDir,
+      contentDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      pullIntervalSeconds: 30,
+      pushIntervalSeconds,
+      detectGh: () => ({ available: true, token: 'gh-token' }),
+    });
+  }
+
+  test('with no streak, delay equals the configured push interval', () => {
+    const engine = makePushEngine(60);
+    const internals = engine as unknown as PushDelayInternals;
+    expect(internals.consecutivePushFailures).toBe(0);
+    const delayMs = internals.effectivePushDelayMs();
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(60).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(60).max);
+  });
+
+  test('with streak=3 (5-min backoff) and a short interval, backoff wins', () => {
+    const engine = makePushEngine(60);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = 3;
+    const delayMs = internals.effectivePushDelayMs();
+    // 5 min = 300 s > 60 s → backoff is the floor
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(300).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(300).max);
+  });
+
+  test.each([
+    [5, 900],
+    [8, 3600],
+  ])('streak=%i climbs to the %i-second tier', (streak, tierSeconds) => {
+    const engine = makePushEngine(60);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = streak;
+    const delayMs = internals.effectivePushDelayMs();
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(tierSeconds).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(tierSeconds).max);
+  });
+
+  test('with streak=3 (5-min backoff) and a long interval, interval wins', () => {
+    const engine = makePushEngine(900);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = 3;
+    const delayMs = internals.effectivePushDelayMs();
+    // 900 s > 300 s → interval is already gentler; backoff is not a cap
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(900).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(900).max);
+  });
+
+  test('with streak=5 (15-min backoff) and a short interval, backoff wins', () => {
+    const engine = makePushEngine(60);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = 5;
+    const delayMs = internals.effectivePushDelayMs();
+    // 15 min = 900 s > 60 s → backoff is the floor
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(900).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(900).max);
+  });
+
+  test('with streak=5 (15-min backoff) and an interval already longer, interval wins', () => {
+    const engine = makePushEngine(3600);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = 5;
+    const delayMs = internals.effectivePushDelayMs();
+    // 3600 s > 900 s → configured interval is gentler; backoff must not cap it
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(3600).max);
+  });
+
+  test('with streak=8 (60-min backoff) and a short interval, backoff wins', () => {
+    const engine = makePushEngine(60);
+    const internals = engine as unknown as PushDelayInternals;
+    internals.consecutivePushFailures = 8;
+    const delayMs = internals.effectivePushDelayMs();
+    // 60 min = 3600 s > 60 s → backoff is the floor
+    expect(delayMs).toBeGreaterThanOrEqual(bandP(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(bandP(3600).max);
   });
 });
 
@@ -3192,7 +3625,8 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
 
         const status = engine.getStatus();
         expect(status.pushError).toContain('Shareable .ok subtree ".ok/schemas"');
-        expect(status.consecutiveFailures).toBeGreaterThan(0);
+        expect(status.consecutivePushFailures).toBeGreaterThan(0);
+        expect(status.consecutiveFailures).toBe(0);
         const detail = cap.entries.find(
           (entry) => entry.msg === '[sync] push cycle: staging error detail',
         );
@@ -3857,7 +4291,8 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
 
           const status = engine.getStatus();
           expect(status.pushError).toContain('Shareable .ok subtree ".ok"');
-          expect(status.consecutiveFailures).toBeGreaterThan(0);
+          expect(status.consecutivePushFailures).toBeGreaterThan(0);
+          expect(status.consecutiveFailures).toBe(0);
           expect((await git.revparse(['HEAD'])).trim()).toBe(headBefore);
           expect((await git.revparse(['origin/main'])).trim()).toBe(remoteBefore);
           const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
@@ -3898,7 +4333,8 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
 
           const status = engine.getStatus();
           expect(status.pushError).toContain('Shareable .ok subtree ".ok/schemas"');
-          expect(status.consecutiveFailures).toBeGreaterThan(0);
+          expect(status.consecutivePushFailures).toBeGreaterThan(0);
+          expect(status.consecutiveFailures).toBe(0);
           expect((await git.revparse(['HEAD'])).trim()).toBe(headBefore);
           expect((await git.revparse(['origin/main'])).trim()).toBe(remoteBefore);
           const headPaths = await listNames(git, ['ls-tree', '-r', '--name-only', 'HEAD']);
@@ -7296,6 +7732,204 @@ describe('SyncEngine blocking-change resolution', () => {
       expect(readFileSync(join(projectDir, 'settings.json'), 'utf-8')).toBe('{"a":2}\n');
     } finally {
       await engine.destroy();
+    }
+  });
+});
+
+// ─── Black-box: the split-leg backoff against a real remote ──────────────────
+
+describe('SyncEngine split-leg backoff, end to end', () => {
+  /**
+   * Land a commit on the bare remote from the sister clone.
+   *
+   * Synchronous by necessity, not by preference: the deterministic seam is
+   * `setBatchInProgress`, which the engine calls synchronously, so an awaited
+   * push cannot be used there. Both the seed push and the raced push go through
+   * this one helper so the tests do not describe the same operation two ways.
+   */
+  function pushCompeting(sisterDir: string, marker: string): void {
+    writeFileSync(join(sisterDir, 'foo.md'), `${marker}\n`, 'utf-8');
+    // `stdio: 'pipe'` so routine commit/push chatter stays out of the suite
+    // output; a failure still carries git's message on the thrown error.
+    execFileSync('git', ['-C', sisterDir, 'commit', '-am', marker], { stdio: 'pipe' });
+    execFileSync('git', ['-C', sisterDir, 'push', 'origin', 'main'], { stdio: 'pipe' });
+  }
+
+  /** Bare remote + a sister clone that can race the project's pushes. */
+  async function setupWithSister(): Promise<{ bareDir: string; sisterDir: string }> {
+    const bareDir = join(tmpDir, 'bare.git');
+    mkdirSync(bareDir, { recursive: true });
+    const bare = simpleGit(bareDir);
+    await bare.init(true);
+    await bare.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+
+    const sisterDir = join(tmpDir, 'sister');
+    mkdirSync(sisterDir, { recursive: true });
+    const sister = simpleGit(sisterDir);
+    await sister.init(['--initial-branch=main']);
+    await sister.raw('config', 'user.name', 'Sister');
+    await sister.raw('config', 'user.email', 'sister@test.com');
+    writeFileSync(join(sisterDir, 'foo.md'), 'base\n', 'utf-8');
+    await sister.add('.');
+    await sister.commit('base');
+    await sister.addRemote('origin', bareDir);
+    await sister.push('origin', 'main');
+
+    rmSync(projectDir, { recursive: true, force: true });
+    await simpleGit(tmpDir).clone(bareDir, projectDir);
+    mkdirSync(okDir, { recursive: true });
+    const project = simpleGit(projectDir);
+    await project.raw('config', 'user.name', 'Project');
+    await project.raw('config', 'user.email', 'project@test.com');
+    return { bareDir, sisterDir };
+  }
+
+  test('a real DNS-failure push charges the push leg, and a real fetch discharges it', async () => {
+    const { bareDir } = await setupWithSister();
+    const project = simpleGit(projectDir);
+
+    // A host that cannot resolve, so git emits a real "Could not resolve host"
+    // and `classifyGitError` produces the network class this test exists to
+    // exercise — the wiring the white-box tests bypass by hand-passing the
+    // boolean. `.invalid` is reserved by RFC 2606 and never resolves.
+    //
+    // NOT a refused connection: curl reports that as "Couldn't connect to
+    // server", which no NETWORK_PATTERNS entry matches, so it classifies as
+    // non-network today and would make this test assert the wrong thing.
+    await project.remote(['set-url', 'origin', 'http://sync-test.invalid/nope.git']);
+    writeFileSync(join(projectDir, 'note.md'), 'local\n', 'utf-8');
+
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      syncEnabled: true,
+    });
+    try {
+      await engine.start();
+      await engine.trigger('push');
+      expect(engine.getStatus().consecutivePushFailures).toBeGreaterThan(0);
+
+      // Remote reachable again. The discharge lives in the PULL cycle, and
+      // `trigger()` zeroes both legs by design, so driving it through the
+      // public trigger would pass no matter what. The scheduled loop is the
+      // real caller; this reaches it directly rather than waiting on a timer.
+      await project.remote(['set-url', 'origin', bareDir]);
+      await (engine as unknown as { runPullCycle(): Promise<void> }).runPullCycle();
+
+      expect(engine.getStatus().consecutivePushFailures).toBe(0);
+    } finally {
+      await engine.stop();
+    }
+  });
+
+  test('contention releases a connectivity streak and the message it disproved', async () => {
+    // The sibling test seeds a non-connectivity streak, so only the do-nothing
+    // arm of `if (this.pushStreakIsConnectivity)` runs. The asymmetry between
+    // the two arms is the point of that block: the retry's own fetch succeeded,
+    // which disproves a connectivity streak and the error text it wrote, but
+    // says nothing about a semantic one.
+    const { sisterDir } = await setupWithSister();
+    writeFileSync(join(projectDir, 'note.md'), 'mine\n', 'utf-8');
+    pushCompeting(sisterDir, 'remote-1');
+
+    let raced = false;
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      syncEnabled: true,
+      setBatchInProgress: (value: boolean) => {
+        // FALSE edge: `true` fires before the retry's fetch, so acting there
+        // would only race the fetch+merge+push sequence. `false` fires in the
+        // inner finally — after fetch and merge, before the re-push — which is
+        // exactly the window that produces a second non-fast-forward.
+        if (value || raced) return;
+        raced = true;
+        pushCompeting(sisterDir, 'remote-2');
+      },
+    });
+    try {
+      await engine.start();
+      const internals = engine as unknown as {
+        consecutivePushFailures: number;
+        consecutiveContentions: number;
+        pushStreakIsConnectivity: boolean;
+        pushError: string | undefined;
+        runPushCycle(): Promise<void>;
+      };
+      internals.consecutivePushFailures = 5;
+      internals.pushStreakIsConnectivity = true;
+      internals.pushError = 'Connection timed out';
+
+      await internals.runPushCycle();
+
+      expect(raced).toBe(true);
+      // The field that separates this branch from an ordinary landed push: a
+      // push that succeeds also zeroes the streak, clears the latch and clears
+      // the error, so without this the assertions below would pass on the wrong
+      // path entirely.
+      expect(internals.consecutiveContentions).toBe(1);
+      expect(internals.consecutivePushFailures).toBe(0);
+      expect(internals.pushStreakIsConnectivity).toBe(false);
+      // The same fetch that released the streak disproved this text; keeping it
+      // would let the badge show a dead network error for as long as contention
+      // keeps any push from landing.
+      expect(engine.getStatus().pushError).toBeUndefined();
+    } finally {
+      await engine.stop();
+    }
+  });
+
+  test('a double non-fast-forward counts as contention, not as backoff', async () => {
+    const { sisterDir } = await setupWithSister();
+
+    writeFileSync(join(projectDir, 'note.md'), 'mine\n', 'utf-8');
+    pushCompeting(sisterDir, 'remote-1');
+
+    let raced = false;
+    const engine = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'full',
+      syncEnabled: true,
+      setBatchInProgress: (value: boolean) => {
+        // FALSE edge: `true` fires before the retry's fetch, so acting there
+        // would race the whole fetch+merge+push sequence instead of landing in
+        // the contention window.
+        if (value || raced) return;
+        raced = true;
+        pushCompeting(sisterDir, 'remote-2');
+      },
+    });
+    try {
+      await engine.start();
+
+      // Seed a non-zero streak first. `trigger('push')` zeroes both legs before
+      // running and both push-success sites zero them again, so asserting 0
+      // after the fact would pass whether or not contention accrued. What this
+      // pins is that the contention path does not CHARGE the streak, which is
+      // only observable against one the cycle inherits.
+      const internals = engine as unknown as {
+        consecutivePushFailures: number;
+        consecutiveContentions: number;
+        runPushCycle(): Promise<void>;
+      };
+      internals.consecutivePushFailures = 4;
+      await internals.runPushCycle();
+
+      expect(raced).toBe(true);
+      // Unchanged: contention is not an outage, so it neither charges the tier
+      // nor releases a streak it did not disprove — 4 was seeded without the
+      // connectivity latch, so the discharge must not fire either.
+      expect(internals.consecutivePushFailures).toBe(4);
+      // Exactly one: a single cycle lost a single race.
+      expect(internals.consecutiveContentions).toBe(1);
+    } finally {
+      await engine.stop();
     }
   });
 });

@@ -765,10 +765,20 @@ export class AcpThreadManager {
     return t === undefined ? undefined : { ...t.info };
   }
 
+  /**
+   * Replay a thread from `sinceSeq` into `sink`, then attach it to the feed.
+   *
+   * The `subscribed` frame is emitted here rather than by the caller because
+   * its `info` is only trustworthy in the window this method opens: before
+   * `ensureLogResolved` a crash-recovered record still carries the meta's
+   * stale `lastSeq`, and after the first replay frame the announcement is too
+   * late to bound the replay a client is already receiving.
+   */
   async subscribe(threadId: string, sinceSeq: number, sink: Subscriber): Promise<ThreadInfo> {
     const t = this.mustGet(threadId);
     await this.ensureLogResolved(t);
     const from = Math.max(sinceSeq, 0);
+    sink({ op: 'subscribed', threadId, fromSeq: from, info: { ...t.info } });
     // Seqs below the in-memory window (an archived/rehydrated thread, or a
     // live log that trimmed past 5k events) replay from disk first. Looped:
     // `baseSeq` only ever grows, and a concurrent archive during the async
@@ -814,11 +824,25 @@ export class AcpThreadManager {
   private ensureLogResolved(t: ThreadRecord): Promise<void> {
     if (t.logResolved) return Promise.resolve();
     t.logResolution ??= (async () => {
-      const resolved = await this.persistence.resolveEventLog(t.info.threadId);
-      t.baseSeq = resolved.count;
-      t.midTurnOnDisk = resolved.midTurn;
-      t.info.lastSeq = resolved.count - 1;
-      t.logResolved = true;
+      try {
+        const resolved = await this.persistence.resolveEventLog(t.info.threadId);
+        t.baseSeq = resolved.count;
+        t.midTurnOnDisk = resolved.midTurn;
+        t.info.lastSeq = resolved.count - 1;
+        t.logResolved = true;
+      } catch (err) {
+        // Drop the memo before rethrowing. `??=` will not replace a settled
+        // promise, so a rejected one left in place makes every later subscribe
+        // and resume re-await the same failure for the life of the process —
+        // and since the `subscribed` frame is emitted after this resolves, the
+        // thread would stay dark rather than merely lose its transcript.
+        t.logResolution = null;
+        this.opts.log.error(
+          { err, threadId: t.info.threadId },
+          '[acp-threads] durable log resolution failed',
+        );
+        throw err;
+      }
     })();
     return t.logResolution;
   }
@@ -3681,7 +3705,7 @@ export class AcpThreadManager {
     // pendingBroadcast non-empty also implies a flush timer is already pending
     // (set when it went non-empty below), so the fold needs no new timer.
     const pending = t.pendingBroadcast;
-    if (pending.length > 0 && coalesceChunkInto(pending[pending.length - 1], event)) {
+    if (pending.length > 0 && coalesceChunkInto(pending[pending.length - 1], event, t.info.agent)) {
       return;
     }
     const seq = t.baseSeq + t.events.length;

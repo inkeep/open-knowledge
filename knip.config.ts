@@ -26,6 +26,7 @@ export default {
     'mkfifo', // named-pipe creation — keepalive-orphan-reaping.test.ts
     'xcrun', // macOS notarization tool — desktop afterSign.mjs
     'xdg-mime', // Linux default-app query — desktop ipc-handlers.ts
+    'ssh-keygen', // ephemeral VM keypair — lume-qa lume-orchestrator.ts
   ],
   ignoreIssues: {
     'test-support/vitest.base.ts': ['exports'],

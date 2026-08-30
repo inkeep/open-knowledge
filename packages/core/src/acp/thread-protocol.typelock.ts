@@ -1,11 +1,17 @@
 /**
  * Compile-time pins on the `@agentclientprotocol/sdk` unions and shapes this
- * codebase attaches BEHAVIOR to. Nothing here runs — each alias fails
- * `tsc --noEmit` when an SDK upgrade changes the pinned contract, turning
- * silent semantic drift (a new union member falling through a `default:`
- * branch, a reshaped field read through a cast) into a loud, located build
- * error on the upgrade PR. When a pin fires: review the dependents named on
- * it, adapt them if needed, then update the pin to the new shape.
+ * codebase attaches BEHAVIOR to. Every alias fails `tsc --noEmit` when an SDK
+ * upgrade changes the pinned contract, turning silent semantic drift (a new
+ * union member falling through a `default:` branch, a reshaped field read
+ * through a cast) into a loud, located build error on the upgrade PR. When a
+ * pin fires: review the dependents named on it, adapt them if needed, then
+ * update the pin to the new shape.
+ *
+ * `TRIAGED_SESSION_UPDATE_KINDS` is the one runtime value here. It exists so
+ * the session-update roster has a single spelling: the compile-time pin below
+ * derives its expected union from it, and a runtime check compares it against
+ * the discriminators the installed SDK actually declares. A second hand-copied
+ * list would let those two tripwires disagree about what has been triaged.
  */
 
 import type {
@@ -29,27 +35,38 @@ type Equal<A, B> =
   (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Expect<T extends true> = T;
 
+/**
+ * Every `session/update` discriminator that has been looked at and given a
+ * deliberate disposition — rendered, folded, or knowingly ignored. Adding a
+ * member here is the act of triaging it; there is no way to accept a new SDK
+ * discriminator without editing this list.
+ *
+ * `notice` is deliberately absent: no released SDK carries it yet, and its
+ * arrival is the trigger for adopting typed agent notices rather than a
+ * routine roster update.
+ */
+export const TRIAGED_SESSION_UPDATE_KINDS = [
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+  'plan_update',
+  'plan_removed',
+  'available_commands_update',
+  'current_mode_update',
+  'config_option_update',
+  'session_info_update',
+  'usage_update',
+] as const;
+
 // Dependents: the thread model's `applyUpdate` switch routes on this
 // discriminant with a permissive `default:` (forward compatibility), so a
 // NEW member never breaks the build — it silently renders as nothing. This
 // pin makes the addition loud so someone decides how it should render.
 export type PinSessionUpdateKinds = Expect<
-  Equal<
-    SessionUpdate['sessionUpdate'],
-    | 'user_message_chunk'
-    | 'agent_message_chunk'
-    | 'agent_thought_chunk'
-    | 'tool_call'
-    | 'tool_call_update'
-    | 'plan'
-    | 'plan_update'
-    | 'plan_removed'
-    | 'available_commands_update'
-    | 'current_mode_update'
-    | 'config_option_update'
-    | 'session_info_update'
-    | 'usage_update'
-  >
+  Equal<SessionUpdate['sessionUpdate'], (typeof TRIAGED_SESSION_UPDATE_KINDS)[number]>
 >;
 
 // Dependents: the thread manager forwards `availableCommands` verbatim onto

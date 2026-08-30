@@ -7,19 +7,20 @@
  * (human-only), so an agent can never silence a human who wants the terminal nor
  * re-enable a shell a human turned off; the explicit opt-out is the only refusal.
  *
- * The mount waits for the project-local binding to sync, so an opted-out project
- * never flashes the shell (nor fires a PTY spawn the main backstop would refuse)
- * during the cold-start window before the real value is known. That wait is
- * unbounded — the binding syncs over the collab WebSocket, and a congested cold
- * start can hold it for seconds — so both pre-mount states render a pending
- * notice rather than an empty pane: withholding the shell is right, but saying
- * nothing while withholding it reads as a dead keystroke and gets re-invoked.
+ * The first mount waits for the project-local binding to sync, so an opted-out
+ * project never flashes the shell (nor fires a PTY spawn the main backstop would
+ * refuse) during cold start. After that first sync, the last settled decision is
+ * retained through config-binding rebuilds: a live terminal stays mounted, and
+ * an opted-out project stays closed. The cold-start wait is unbounded — the
+ * binding syncs over the collab WebSocket, and congestion can hold it for seconds
+ * — so both pre-mount states render a pending notice rather than an empty pane
+ * that would make the user's toggle look unresponsive.
  *
- * Opting out while a shell is running unmounts TerminalPanel, whose cleanup kills
- * the PTY — turning the terminal off takes effect immediately.
+ * A newly-synced opt-out while a shell is running unmounts TerminalPanel, whose
+ * cleanup kills the PTY — turning the terminal off takes effect immediately.
  */
 import { useLingui } from '@lingui/react/macro';
-import { Suspense, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -69,7 +70,30 @@ export function TerminalGate({
   const writer = useTerminalEnabledWriter();
   const { t } = useLingui();
 
-  const optedOut = synced && enabled === false;
+  // Starts unlatched even when the current binding is already synced. Pre-sync
+  // `gateEnabled` reads as this null, but `hasSynced: false` holds `gateSynced`
+  // false. Both consumers require `gateSynced`, so the null cannot be observed
+  // as permission before this latch settles.
+  const [settledConsent, setSettledConsent] = useState<{
+    enabled: boolean | null;
+    hasSynced: boolean;
+  }>({ enabled: null, hasSynced: false });
+  useEffect(() => {
+    if (!synced) return;
+    setSettledConsent((previous) =>
+      previous.hasSynced && previous.enabled === enabled ? previous : { enabled, hasSynced: true },
+    );
+  }, [enabled, synced]);
+
+  // Config bindings rebuild when the server epoch arrives or changes. Keep the
+  // last fully-synced consent during that transient so a live terminal is not
+  // unmounted and killed, while an opted-out project cannot briefly spawn one.
+  // A newly-synced explicit revoke still wins immediately.
+  // Project opens currently create a new renderer. If same-renderer project
+  // switching gains a main-process sender, key or reset this latch by project.
+  const gateSynced = synced || settledConsent.hasSynced;
+  const gateEnabled = synced ? enabled : settledConsent.enabled;
+  const optedOut = gateSynced && gateEnabled === false;
 
   // Warm the panel chunk without waiting for the gate to open. Plain `lazy()`
   // runs its factory only when the lazy element first renders, and that render
@@ -78,18 +102,11 @@ export function TerminalGate({
   // it does not weaken what the gate withholds; it only stops the two waits from
   // being serialized. `.preload()` is idempotent, so repeat calls are free.
   //
-  // Skipped once the project is known to have opted out. `synced` is NOT
-  // monotonic — ConfigProvider re-keys its bindings on `[collabUrl,
-  // serverInstanceId]` and every rebuild nulls the state, so it goes back to
-  // false on the boot-time epoch landing, on a server respawn, and on a project
-  // switch. So this is a best-effort skip, not a guarantee: `optedOut` reads
-  // false during each of those windows and the warm proceeds. The cost when it
-  // does is a chunk fetched and never mounted — genuinely new here, since plain
-  // `lazy()` only ran its factory from inside the opened gate and so an
-  // opted-out project fetched nothing at all. It stays bounded because
-  // `.preload()` memoizes: one fetch per renderer, worst case. What the guard
-  // buys is the common dock-reveal case on an opted-out project, where the
-  // value is already known at mount.
+  // Skipped once the project is known to have opted out. The settled-consent
+  // latch above carries that decision through config binding rebuilds, so an
+  // opted-out project stops re-warming on every rebuild. It stays best-effort on
+  // cold start: before the first sync `hasSynced` is false, so an opted-out
+  // project still warms once per renderer.
   useEffect(() => {
     if (optedOut) return;
     TerminalPanel.preload();
@@ -104,7 +121,7 @@ export function TerminalGate({
     if (!result.ok) toast.error(t`Could not enable the terminal: ${result.error}`);
   }
 
-  if (synced && !optedOut) {
+  if (gateSynced && !optedOut) {
     return (
       // Boundary OUTER, Suspense INNER (same composition as SettingsDialog /
       // EditorActivityPool): Suspense only covers the lazy chunk's pending state.

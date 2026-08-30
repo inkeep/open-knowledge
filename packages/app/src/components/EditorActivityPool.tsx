@@ -38,6 +38,7 @@ import {
   isEditableTextDocFile,
   isExcalidrawDocFile,
   isManagedArtifactDocName,
+  isMarkdownDocFile,
   isMermaidDocFile,
   parseTemplateContentDocName,
   randomUUID,
@@ -65,9 +66,9 @@ import type { ServerRestartRecoveryState } from '@/editor/provider-pool';
 import {
   BODY_ANCHOR_ATTR,
   getDocScrollState,
-  isScrollRestoreSuppressed,
   rememberDocScrollState,
   scrollFraction,
+  scrollSuppressionHolder,
 } from '@/editor/scroll-restore-coordination';
 import { TiptapEditor } from '@/editor/TiptapEditor';
 import type { EditorModeValue } from '@/editor/use-editor-mode';
@@ -243,8 +244,9 @@ export function computeEffectiveSourceMode(
  * Whether an Activity entry should render the create-mode "new doc" affordance
  * (empty draft that starts a page on first keystroke). A doc counts as new only
  * when it is genuinely absent from every surface a real doc registers under:
- * the page index, managed artifacts, template content docs, and Mermaid /
- * editable-text docs.
+ * the page index, managed artifacts, and template content docs — and only
+ * for the markdown doc class (`isMarkdownDocFile` rejects Mermaid /
+ * Excalidraw / editable-text names).
  *
  * Templates and project skills only enter the page list after the async `files`
  * refetch, so a purely `pages`-membership check would flash the create-mode
@@ -263,9 +265,7 @@ export function computeIsNewDoc(args: {
     !pages.has(docName) &&
     !isManagedArtifactDocName(docName) &&
     parseTemplateContentDocName(docName) === null &&
-    !isMermaidDocFile(docName) &&
-    !isExcalidrawDocFile(docName) &&
-    !isEditableTextDocFile(docName)
+    isMarkdownDocFile(docName)
   );
 }
 
@@ -598,6 +598,30 @@ interface ActivityEntryProps {
 }
 
 /**
+ * The scroller's measurements at the instant a restore mark fires. Every mark in
+ * the `ok/scroll-restore` family carries them, because the family is routed into
+ * diagnostic bundles and re-deriving them after the fact is precisely what a
+ * bundle cannot do.
+ *
+ * How they are READ differs by outcome — by enough that no summary of it is
+ * safe. The `yielded` sites pass `contentBottom: null` unconditionally, so an
+ * absent value there means "not measured" rather than "not measurable" and
+ * inverts the reading that holds elsewhere; `abandoned` splits again on
+ * `anchorMeasurable`. The triage playbook in the bug-triage skill is the single
+ * statement of all of it, kept there rather than restated here so the two
+ * cannot drift — a short version lived here for several revisions and was
+ * wrong about `yielded` for all of them.
+ */
+function geometry(el: HTMLElement, contentBottom: number | null) {
+  return {
+    scrollTop: el.scrollTop,
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+    ...(contentBottom !== null ? { contentBottom } : {}),
+  };
+}
+
+/**
  * Owns one imperative host for a document Activity. Moving that host between
  * pane mounts reparents DOM without changing the ActivityEntry's React key,
  * preserving its scroll state and exclusive TipTap portal target.
@@ -820,7 +844,17 @@ export function ScrollPreservingContainer({
     // A mode-switch landing owns the scroll for this document during its settle
     // window; stand down so there is a single writer and the restore does not
     // overwrite the landing with the pre-landing position.
-    if (isScrollRestoreSuppressed(docName)) return;
+    //
+    // For a LANDING only, because this effect gets exactly one chance: it reads
+    // the holder once and its deps carry no signal that fires when a hold
+    // lapses, so returning here is a restore that never runs rather than one
+    // that runs later. Standing down for a landing still leaves a deliberate
+    // position, since the landing writes one. Standing down for an explicit
+    // navigation would not: it has already written its position and is only
+    // defending it, while `display:none` zeroed this scroller on the way out
+    // (the reason the position is captured by the scroll listener above and not
+    // read here) — so the reader would be handed the top of the document.
+    if (scrollSuppressionHolder(docName) === 'landing') return;
 
     const saved = getDocScrollState(docName);
     // Cross-mode re-activation floor. The saved offset was measured against the
@@ -844,6 +878,11 @@ export function ScrollPreservingContainer({
         fraction: Number(saved.fraction.toFixed(4)),
         target,
         applied: applicable && el.scrollTop === target,
+        // Measured here rather than passed null: this branch lands on a
+        // fraction of the OTHER mode's geometry, which makes it the restore
+        // most likely to come to rest past where the document actually
+        // reaches — the one case where the content extent is the whole answer.
+        ...geometry(el, measureContentExtent(el)),
       });
       return;
     }
@@ -919,8 +958,10 @@ export function ScrollPreservingContainer({
       ) {
         hasLandedOnce = true;
         mark('ok/scroll-restore/phase1-success', {
+          docName,
           target: frame.target,
           elapsedMs: performance.now() - startTs,
+          ...geometry(el, frame.contentBottom),
         });
       }
     }
@@ -955,9 +996,10 @@ export function ScrollPreservingContainer({
         // invisible (no phase1/phase2-success, no abandoned) — surface it so
         // operators can distinguish "user took over" from "never ran".
         mark('ok/scroll-restore/yielded', {
+          docName,
           reason: 'user',
           elapsedMs: performance.now() - startTs,
-          finalScrollTop: el.scrollTop,
+          ...geometry(el, null),
         });
       }
       finish();
@@ -971,17 +1013,50 @@ export function ScrollPreservingContainer({
     el.addEventListener('keydown', yieldToUser);
     const tick = () => {
       if (done) return;
-      // A landing acquired the scroll for this document mid-restore — stop
-      // competing so the landing is the single writer. Probed BEFORE the
-      // external-scroll check below: a landing's own writes would otherwise
-      // read as a takeover of unknown origin, and the named reason is the more
-      // precise signal for an exit we can attribute exactly.
-      if (isScrollRestoreSuppressed(docName)) {
+      // Another writer acquired the scroll for this document mid-restore — a
+      // mode-switch landing for its settle window, or an explicit navigation
+      // for its brief hold. Stop competing either way, so that writer is the
+      // single one. Probed BEFORE the external-scroll check below: its own
+      // writes would otherwise read as a takeover of unknown origin, and the
+      // holder attributes the exit exactly.
+      //
+      // `reason` carries the holder rather than a fixed value. Each of the
+      // sibling reasons names a real actor, and this is the branch that used to
+      // absorb every navigation under the wrong one: an operator reading a
+      // trace for "why did scroll restore stop here" would go to the landing
+      // controller and find no matching mode-switch mark, when the cause was an
+      // outline click.
+      //
+      // The handover gets a mark of its own, UNGATED, because `yielded` cannot
+      // carry it: `yielded` means a restore that never completed, which is why
+      // IT is gated — and a restore that HAS landed and is re-applying its
+      // target frame after frame is exactly the state an explicit navigation
+      // collides with. Reported only through `yielded`, that common case is
+      // silent: the last thing recorded is a phase-success, so a restore cut
+      // short by a named writer reads the same as one that ran undisturbed.
+      // Widening `yielded` instead would make a healthy restore read as an
+      // incomplete one, trading one attribution error for another. Both marks
+      // fire when a restore that never landed is taken over, and they say
+      // different things: one that it did not complete, one who has the
+      // scroller now. No seam here — this reader sees the holder kind the
+      // registry keeps, not the click that produced it.
+      const holder = scrollSuppressionHolder(docName);
+      if (holder) {
+        mark('ok/scroll-restore/superseded', {
+          // Carried for the same reason as every other mark on this track: this
+          // one reaches a diagnostic bundle now, and a line there that names no
+          // document cannot be tied to the restore it describes.
+          docName,
+          holder,
+          elapsedMs: performance.now() - startTs,
+          finalScrollTop: el.scrollTop,
+        });
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
-            reason: 'landing',
+            docName,
+            reason: holder,
             elapsedMs: performance.now() - startTs,
-            finalScrollTop: el.scrollTop,
+            ...geometry(el, null),
           });
         }
         finish();
@@ -996,9 +1071,10 @@ export function ScrollPreservingContainer({
       if (isExternalScroll(prevScrollTop, el.scrollTop)) {
         if (!hasLandedOnce) {
           mark('ok/scroll-restore/yielded', {
+            docName,
             reason: 'external',
             elapsedMs: performance.now() - startTs,
-            finalScrollTop: el.scrollTop,
+            ...geometry(el, null),
           });
         }
         finish();
@@ -1020,8 +1096,10 @@ export function ScrollPreservingContainer({
           // At-most-once per restore session: phase2-success fires on the
           // first re-apply that lands, not every frame thereafter.
           mark('ok/scroll-restore/phase2-success', {
+            docName,
             target: frame.target,
             elapsedMs: performance.now() - startTs,
+            ...geometry(el, frame.contentBottom),
           });
           phase2Marked = true;
           hasLandedOnce = true;
@@ -1054,11 +1132,11 @@ export function ScrollPreservingContainer({
         // the unmeasurable-anchor case is carried by `anchorMeasurable`
         // with `target` omitted.
         mark('ok/scroll-restore/abandoned', {
+          docName,
           ...(finalTarget !== null ? { target: finalTarget } : {}),
           anchorMeasurable: finalTarget !== null,
           elapsedMs: performance.now() - startTs,
-          scrollHeight: el.scrollHeight,
-          finalScrollTop: el.scrollTop,
+          ...geometry(el, final.contentBottom),
         });
       }
       finish();
@@ -1071,7 +1149,7 @@ export function ScrollPreservingContainer({
     <div
       ref={ref}
       data-testid="editor-scroll-container"
-      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Six
+      // Toolbar exclusion zone = 3.5rem (EditorToolbar's rendered height). Seven
       // load-bearing constants must move together if the toolbar height changes:
       //   - `pt-14` (here): initial-paint content reserve so doc content doesn't
       //     start behind the absolute-positioned EditorToolbar overlay.
@@ -1095,6 +1173,12 @@ export function ScrollPreservingContainer({
       //   - editorToolbarOverlapPx in editor/utils/editor-visible-region.ts: the
       //     top inset of the region selection-anchored floating surfaces clip
       //     and clamp against, so the toolbar band counts as occluded.
+      //   - the outline-click section of the bug-triage skill's
+      //     references/bundle-forensics.md: a healthy `block: 'start'` landing
+      //     rests AT this inset, so the playbook states it as the value
+      //     `targetTopAfter` is read against. The only entry outside the app,
+      //     and the only one nothing here would fail on — it goes stale silently
+      //     and a triager measures against the wrong number.
       // The toolbar itself: components/EditorToolbar.tsx.
       className={cn(
         'editor-doc-scroll subtle-scrollbar h-full overflow-y-auto',
@@ -1217,6 +1301,11 @@ function ActivityEntry({
   // Editable text docs (`.ts` / `.json` / `.txt` / …) — verbatim Y.Text docs
   // rendered by a dedicated CodeMirror editor (no markdown dual-editor).
   const isTextDoc = !isMermaid && !isExcalidraw && isEditableTextDocFile(entry.docName);
+  // The doc-class half of this gate is the exact predicate the warm-snapshot
+  // producer uses (`captureRenameSnapshots` in editor-cache.ts), so producer
+  // and consumer classify docs identically. `isConflict` is this consumer's
+  // own added concern — a runtime CRDT signal the producer cannot see.
+  const isDualEditor = !isConflict && isMarkdownDocFile(entry.docName);
   // Per-Activity portal target for <EditorContent>. Stable DOM element
   // exclusively owned by THIS ActivityEntry — `useState` with a lazy
   // initializer ensures the same `HTMLDivElement` reference survives across
@@ -1475,7 +1564,16 @@ function ActivityEntry({
             skeleton meets it trivially.
           */}
               <Suspense
-                fallback={warmHtml ? <WarmContentFallback html={warmHtml} /> : <EditorSkeleton />}
+                // The warm HTML snapshot is markdown-editor output; on a
+                // doc-class branch it would render the pre-rename text over
+                // a surface that is about to become a canvas or CodeMirror.
+                fallback={
+                  warmHtml && isDualEditor ? (
+                    <WarmContentFallback html={warmHtml} />
+                  ) : (
+                    <EditorSkeleton />
+                  )
+                }
               >
                 <DocumentBoundary docName={entry.docName} provider={entry.provider}>
                   {isConflict ? (

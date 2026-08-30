@@ -74,6 +74,8 @@ Both automatic modes run on a timer, and the two directions have their own caden
 
 Change either one in **Settings → Sync → Advanced** (the disclosure is collapsed by default), under **Check for updates every** and **Push my edits every**. The controls appear only while an automatic mode is active — in Manual nothing runs on a schedule, so there is no cadence to set. Both accept 30 seconds, 1 minute, 5 minutes, 15 minutes, or 1 hour, and both are per-machine — your choice stays on this computer and is not committed to the repository. **Push my edits every** appears only in Auto (Pull and Push), since no other mode pushes on a schedule.
 
+After repeated failures, OpenKnowledge slows each direction down independently: 3 failures in a row hold the next attempt for at least 5 minutes, 5 failures for at least 15 minutes, and 8 failures for at least 1 hour. These are floors, not replacements: if your configured interval is already longer than the tier, the interval stands. The two directions back off on separate counters — push failures do not slow down pulls, and pull failures do not slow down pushes. A successful sync in a direction resets that direction's backoff; a manual trigger from the sync indicator (or clicking Pull/Push) resets both directions immediately. One cross-direction case: if pushes were backing off because the network was unreachable, the next successful update check releases that backoff straight away — it is direct proof the remote is reachable again. A backoff from a rejected push (a protected branch, say) is left alone, since reaching the remote says nothing about whether it will accept the write.
+
 While you are signed out, **Auto (Pull only)** checks for updates at most every 3 minutes no matter what you choose here — a signed-out client is anonymous to GitHub, and the limit protects the repository from the combined polling of everyone following it. Auto (Pull and Push) is unaffected: pushing requires being signed in to begin with.
 
 When you open a freshly cloned project, you will be prompted to enable sync. If you have push access to the repository, you will be prompted to enable **Auto (Pull and Push)**. If you have read-only access, you will be prompted to enable **Auto (Pull only)**. You can change the sync mode from the sync popover (the <Cloud role="img" aria-label="Sync" className="inline size-4 align-text-bottom" /> icon) or from **Settings → Sync** at any time.
@@ -164,5 +166,5 @@ A few situations stop sync from completing successfully. In each case the sync s
 
 ### Temporary problems
 
-- **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge keeps retrying in the background; no action needed unless the issue lasts long enough that you want to manually trigger a sync from the indicator.
+- **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge retries automatically, slowing down progressively as described in [How often sync runs](#how-often-sync-runs). No action needed; a manual trigger from the sync indicator resets the backoff immediately if you want sync to run sooner.
 

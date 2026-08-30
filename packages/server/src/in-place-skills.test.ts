@@ -14,6 +14,7 @@ import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import {
+  isActivatedSkillRoot,
   removableSkillOccurrenceDirs,
   resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
@@ -563,5 +564,78 @@ describe('removableSkillOccurrenceDirs', () => {
 
   test('nothing to remove is an empty list', () => {
     expect(removableSkillOccurrenceDirs(base, 'project', 'nothing-here', 'h')).toEqual([]);
+  });
+});
+
+describe('isActivatedSkillRoot', () => {
+  let base: string;
+  let home: string;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'ok-activated-root-'));
+    home = mkdtempSync(join(tmpdir(), 'ok-activated-home-'));
+  });
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  test('an agent-owned root is gated on its dotdir', () => {
+    expect(isActivatedSkillRoot(base, 'project', '.claude/skills', home)).toBe(false);
+    mkdirSync(join(base, '.claude'), { recursive: true });
+    expect(isActivatedSkillRoot(base, 'project', '.claude/skills', home)).toBe(true);
+  });
+
+  test('the hub is NOT offered when nothing on the machine reads it', () => {
+    // The hub has no owning tool, so it must not be offered just because it
+    // could exist — that would put a folder nothing here would read in front of
+    // every user.
+    expect(existsSync(join(base, '.agents'))).toBe(false);
+    expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(false);
+    expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(false);
+  });
+
+  test('an installed hub reader activates the hub, at the scope it reads', () => {
+    // LM Studio reads `<project>/.agents/skills`, so installing it makes the
+    // hub a real project destination on a project that has never used it — the
+    // case that was previously reachable only by typing the path into "Add
+    // custom path". It does not speak for global scope, where LM Studio reads
+    // `~/.agents/skills` only behind an off-by-default toggle.
+    mkdirSync(join(home, '.lmstudio'), { recursive: true });
+    expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(true);
+    expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(false);
+  });
+
+  test('OpenClaw activates the hub at global scope, where it reads it', () => {
+    mkdirSync(join(home, '.openclaw'), { recursive: true });
+    expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(true);
+  });
+
+  test('a hub reader that already has its own root does NOT activate the hub', () => {
+    // OpenCode and Pi read `.agents/skills` too, but OK already writes
+    // `.opencode/skills` and `.pi/skills`. Activating the hub for them would add
+    // a SECOND place the same agent reads rather than reach one it was missing —
+    // the double-load hazard `EDITOR_PROJECT_SKILL_ROOT`'s header warns about.
+    mkdirSync(join(home, '.opencode'), { recursive: true });
+    mkdirSync(join(home, '.pi'), { recursive: true });
+    expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(false);
+    expect(isActivatedSkillRoot(base, 'global', '.agents/skills', home)).toBe(false);
+  });
+
+  test('an existing .agents dir activates it through the standard dotdir check', () => {
+    // Named for what it actually pins. `isActivatedSkillRoot` short-circuits on
+    // the dotdir check BEFORE the reader branch, so with `base/.agents` present
+    // the `true` comes entirely from that branch — this asserts nothing about
+    // HUB_READER_EDITORS, and would still pass if the reader branch were
+    // deleted. The two that DO go red if it is deleted are 'an installed hub
+    // reader activates the hub, at the scope it reads' and 'OpenClaw activates
+    // the hub at global scope, where it reads it' — named, not counted, because
+    // the negative assertions beside them stay green either way and a positional
+    // pointer breaks on the next insertion into this block.
+    mkdirSync(join(base, '.agents'), { recursive: true });
+    expect(isActivatedSkillRoot(base, 'project', '.agents/skills', home)).toBe(true);
+  });
+
+  test('a custom root always qualifies', () => {
+    expect(isActivatedSkillRoot(base, 'project', '.tim/skills', home)).toBe(true);
   });
 });

@@ -13,7 +13,6 @@ import type { AddSkillTab } from '@/components/ImportSkillDialog';
 import { NewSkillDialog } from '@/components/NewSkillDialog';
 import { SkillsTree } from '@/components/SkillsTree';
 import { useSkillActions } from '@/components/skill-actions';
-import { Button } from '@/components/ui/button';
 import { SidebarGroup, SidebarGroupContent } from '@/components/ui/sidebar';
 import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext } from '@/editor/DocumentContext';
@@ -499,9 +498,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   return (
     <SidebarGroup ref={sectionRef} className="px-0">
       <SidebarGroupContent>
-        <SkillsShareLocalOnlyPrompt
-          hasProjectSkills={skills.some((s) => s.scope === 'project' && !s.managed)}
-        />
         {skillsLoading ? (
           <div
             className="flex items-center gap-2 px-3 py-1.5 text-muted-foreground text-xs"
@@ -578,114 +574,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
         </Suspense>
       ) : null}
     </SidebarGroup>
-  );
-}
-
-/**
- * Local-only skills-are-hidden prompt. In local-only mode the whole `.ok/`
- * tree is git-ignored, so `.ok/skills/` (shareable content) can't be committed
- * — the "skills silently can't be shared" trap. When project skills exist in
- * that state, offer a one-click carve-out that makes JUST `.ok/skills/`
- * shareable while the rest of `.ok/` stays local (via `sharing.setSkillsShared`).
- * Desktop-only (the sharing bridge is absent on the web host).
- */
-function SkillsShareLocalOnlyPrompt({ hasProjectSkills }: { hasProjectSkills: boolean }) {
-  const { t } = useLingui();
-  // `localOnlyHidden` = local-only AND skills not yet carved out (the broken
-  // state this prompt exists to fix). null = not yet read / not applicable.
-  const [localOnlyHidden, setLocalOnlyHidden] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    // useEffect runs client-side, so `window` is defined (oxlint no-restricted-syntax).
-    const bridge = window.okDesktop?.sharing;
-    if (!bridge) return;
-    let cancelled = false;
-    const read = () => {
-      void bridge
-        .status()
-        .then((s) => {
-          if (!cancelled) setLocalOnlyHidden(s.mode === 'local-only' && !s.skillsShared);
-        })
-        .catch((err) => {
-          // Advisory read — degrade to hiding the prompt, but keep a signal so an
-          // IPC regression isn't invisible (packaged desktop has no user console).
-          console.warn(
-            JSON.stringify({
-              event: 'skills-share-status-read-failed',
-              error: err instanceof Error ? err.message : String(err),
-            }),
-          );
-        });
-    };
-    read();
-    // Re-read on window refocus so the banner tracks a sharing-mode change made
-    // in Settings while the sidebar stayed mounted (closing that dialog refocuses
-    // the window). Without this the mount-time read goes stale.
-    window.addEventListener('focus', read);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('focus', read);
-    };
-  }, []);
-
-  if (!hasProjectSkills || localOnlyHidden !== true) return null;
-
-  // No try/finally: this repo's React Compiler can't lower a finalizer clause,
-  // so capture the result/error and settle `busy` after the await (mirrors
-  // SharingSection's handler).
-  const share = async () => {
-    const bridge = window.okDesktop?.sharing;
-    if (!bridge || busy) return;
-    setBusy(true);
-    let result: Awaited<ReturnType<typeof bridge.setSkillsShared>> | null = null;
-    let err: unknown = null;
-    try {
-      result = await bridge.setSkillsShared(true);
-    } catch (caught) {
-      err = caught;
-    }
-    setBusy(false);
-    if (err !== null) {
-      // A wire-protocol violation surfaces as `ok:sharing:dispatch: ...` from the
-      // preload — meaningless to end users, so show a generic message instead.
-      const raw = err instanceof Error ? err.message : '';
-      toast.error(
-        raw.startsWith('ok:sharing:dispatch:')
-          ? t`Couldn't share skills: internal error. Please restart the app.`
-          : raw || t`Couldn't share skills`,
-      );
-      return;
-    }
-    if (result === null) return;
-    if (result.kind === 'applied') {
-      toast.success(t`Skills are now shared. Commit .ok/skills to share them with your team.`);
-      setLocalOnlyHidden(false);
-    } else if (result.kind === 'no-exclude') {
-      // Map internal reason codes to plain English (mirrors SharingSection).
-      const detail =
-        result.reason === 'no-git'
-          ? t`no git repository here`
-          : result.reason === 'inaccessible'
-            ? t`the git exclude file isn't writable`
-            : t`git configuration is unavailable`;
-      toast.warning(t`Couldn't share skills — ${detail}.`);
-    }
-  };
-
-  return (
-    <div className="mx-2 mb-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-700 dark:bg-amber-950">
-      <p className="mb-2 text-amber-900 dark:text-amber-200">
-        <Trans>
-          This project is local-only, so .ok/skills is hidden from git and these skills can't be
-          committed or shared. Share just the skills folder — the rest of your OK config stays on
-          this computer.
-        </Trans>
-      </p>
-      <Button size="sm" className="h-6 px-2 text-xs" disabled={busy} onClick={() => void share()}>
-        <Trans>Share skills</Trans>
-      </Button>
-    </div>
   );
 }
 

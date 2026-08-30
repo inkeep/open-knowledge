@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok ফোল্ডার"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills আবার শুধু আমার হয়ে গেছে।"
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills কমিট করা যায় যাতে আপনার দল আপনার স্কিল পায়; বাকি .ok/ এই কম্পিউটারেই থাকে।"
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -490,6 +482,10 @@ msgstr "{agentName} শুরু হতে পারেনি।"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} ছবি সংযুক্তি গ্রহণ করে না।"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} জানিয়েছে: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} এগিয়ে"
@@ -704,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, one {১টি ফাইল আপলোড করা যায়নি} other {{failedCount}টি ফাইল আপলোড করা যায়নি}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# ফাইল} other {# ফাইল}}"
 
@@ -1055,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ {addChildName} যোগ করুন"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+আরও {overflowCount}"
 
@@ -1095,6 +1093,10 @@ msgstr "পরে File মেনু থেকে যোগ না করা প�
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "লাফাতে <0>স্পেস</0> · নিচু হতে <1>↓</1>"
+
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>এই পাতায় অনেক বেশি লাইভ রেফারেন্স।</0> <1>{src}</1>-এর এই মিররটি লোড করা হয়নি।"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
@@ -1228,6 +1230,10 @@ msgstr "স্কিলের ভেতরের একটি পথ — যে�
 #: src/components/settings/LintingSection.tsx
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "একটি ব্যক্তিগত রঙ-থিম নির্বাচক — আপনার প্রকল্পের সঙ্গে ভাগ করা হয় না। চালু থাকলে এটি সাইডবারে Plugins-এর নিচে দেখা যায়।"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "আপনি এটি খোলার ঠিক আগের অ্যাপের একটি ছবি, সঙ্গে আপনার পয়েন্টার কোথায় ছিল তা দেখানো একটি চিহ্ন। এ থেকে গোপন তথ্য সরানো হয় না, তাই প্রাকদর্শন দেখে নিন এবং কিছু ভাগ করা উচিত না হলে এটি অচিহ্নিত করে দিন।"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
@@ -1737,6 +1743,11 @@ msgstr "আগে থেকেই সেট আপ করা — ok আপনা
 msgid "Already signed in?"
 msgstr "আগে থেকেই সাইন ইন করা আছে?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "এই এজেন্টের সাথে ইতিমধ্যেই একটি চ্যাট শুরু হচ্ছে — একটু পরে আবার চেষ্টা করুন।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "সবসময় অন্তর্ভুক্ত"
@@ -2193,6 +2204,10 @@ msgstr "ব্লগ পোস্ট"
 msgid "blog-post"
 msgstr "blog-post"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "বোর্ড নিয়ন্ত্রণ"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
 msgstr "গাঢ়"
@@ -2365,6 +2380,7 @@ msgstr "এই পাথ শেয়ার করা যাচ্ছে না�
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2614,6 +2630,10 @@ msgstr "নতুন ট্যাব কী চালু করবে তা ব
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "এই মন্তব্যগুলো কোথায় পাঠাবেন তা বাছুন"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "এই বার্তাটি কোথায় পাঠাবেন তা বেছে নিন"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -2900,6 +2920,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "সহযোগীরা সিঙ্ক হওয়ামাত্রই আপনার চলমান সম্পাদনা দেখতে পান।"
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "গুটিয়ে নিন"
 
@@ -3204,6 +3225,14 @@ msgstr "যার সঙ্গে যুক্ত"
 msgid "Connected to GitHub"
 msgstr "GitHub-এর সঙ্গে যুক্ত হয়েছে"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "সংযোগ হয়েছে, কিন্তু আপনার সম্পাদনা এখনও সার্ভারে পৌঁছাচ্ছে না। এটি চলতে থাকলে সার্ভার পুনরায় চালু করুন।"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -3400,6 +3429,10 @@ msgstr "এখানে কপি করুন"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "লিংক কপি করুন"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "বার্তা কপি করুন"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -4062,18 +4095,6 @@ msgstr "আপনার মন্তব্য পাঠানো যায়ন
 msgid "Couldn't send your prompt — please try again."
 msgstr "আপনার প্রম্পট পাঠানো যায়নি — অনুগ্রহ করে আবার চেষ্টা করুন।"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "স্কিল ভাগ করা যায়নি"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "স্কিল ভাগ করা যায়নি — {detail}।"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "স্কিল ভাগ করা যায়নি: অভ্যন্তরীণ ত্রুটি। অনুগ্রহ করে অ্যাপটি পুনরায় চালু করুন।"
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4123,14 +4144,6 @@ msgstr "{subRoot} হালনাগাদ করা যায়নি: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "{0} থেকে আপডেট করা যায়নি: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "স্কিল ভাগাভাগি হালনাগাদ করা যায়নি"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "স্কিল ভাগাভাগি হালনাগাদ করা যায়নি — {detail}।"
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -4728,12 +4741,10 @@ msgstr "সংযোগ বিচ্ছিন্ন করা হচ্ছে"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "সরিয়ে দিন"
 
@@ -5017,6 +5028,10 @@ msgstr "একটি অনুলিপি সম্পাদনা করুন
 msgid "Edit and resend"
 msgstr "সম্পাদনা করে আবার পাঠান"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "সম্পাদনা করে আবার পাঠান"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "কনফিগ ফাইলে সম্পাদনা করুন"
@@ -5144,6 +5159,10 @@ msgid "Emailed"
 msgstr "ইমেইল করা হয়েছে"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "এই ওয়ার্কস্পেসের একটি .excalidraw বোর্ডের লাইভ স্ন্যাপশট এম্বেড করুন।"
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "নিজস্ব প্লেয়ার নিয়ন্ত্রণসহ একটি ভিডিও এমবেড করুন।"
 
@@ -5190,6 +5209,10 @@ msgstr "খালি"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "খালি"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "খালি বোর্ড"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5411,13 +5434,17 @@ msgstr "{1}/-এর ভেতরের {0}/ ফোল্ডারগুলোর
 msgid "everything under any {0}/ folder"
 msgstr "যেকোনো {0}/ ফোল্ডারের নিচের সবকিছু"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Excalidraw বোর্ড"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Excalidraw বোর্ড লোড করা যায়নি।"
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Excalidraw ক্যানভাস"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "ব্যতিক্রম: স্কিল ভাগ করা হয়"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
@@ -5456,6 +5483,15 @@ msgstr "সব ফাইল গোষ্ঠী মেলে ধরুন"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "সব ফাইল মেলে ধরুন"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "বোর্ড মেলে ধরুন"
+
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "চিত্র মেলে ধরুন"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -6256,11 +6292,6 @@ msgstr "Git ও PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git এই ফোল্ডারের হিসাব রাখতে পারে না — এটি খালি বা এতে কেবল উপেক্ষিত ফাইল আছে। আপনি একটি হিসাবভুক্ত নথি যোগ না করা পর্যন্ত লিংকটি কাজ করবে না।"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "git কনফিগারেশন পাওয়া যাচ্ছে না"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Git পরিচয় নির্ধারিত নেই — কমিটগুলো একটি ডিফল্ট লেখক ব্যবহার করে। আপনারটি নির্ধারণ করুন যাতে সহকর্মীরা আপনার নাম দেখতে পান।"
@@ -7050,6 +7081,10 @@ msgstr "{0} ইনস্টল করুন"
 msgid "Install {brand} →"
 msgstr "{brand} ইনস্টল করুন →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "প্রথমে এখানে একটি স্কিল ইনস্টল করুন"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7543,6 +7578,10 @@ msgstr "লিংক-গ্রাফের সাড়া প্রত্যা
 msgid "Linked theme files aren’t supported"
 msgstr "লিঙ্ক করা থিম ফাইল সমর্থিত নয়"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "লিংক করলে অন্য একটি ফোল্ডার এই ফোল্ডারে মার্জ হয়ে যায়। এই ফোল্ডারটি এখনও নেই, তাই প্রথমে এখানে একটি স্কিল ইনস্টল করুন।"
+
 #: src/components/DocPanel.tsx
 msgid "Links"
 msgstr "লিংক"
@@ -7916,6 +7955,7 @@ msgid "Medium section heading."
 msgstr "মাঝারি বিভাগ শিরোনাম।"
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Mermaid চিত্র"
 
@@ -8524,6 +8564,10 @@ msgstr "কোনো AI টুল পাওয়া যায়নি। এ�
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "এই এন্ডপয়েন্টের জন্য কোনো API কী নির্ধারিত নেই। উপরে একটি যোগ করুন।"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "কোনো বোর্ড নির্বাচন করা হয়নি। এই ব্লকের প্রপার্টিতে একটি .excalidraw ডকুমেন্টের পাথ লিখুন।"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "এই সংস্করণে মূল অংশের কোনো পরিবর্তন নেই।"
@@ -8611,11 +8655,6 @@ msgstr "কোনো git রিমোট নেই"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "কোনো git রিপোজিটরি নেই — কনফিগ ভাগাভাগি এখানে প্রযোজ্য নয়।"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "এখানে কোনো git রিপোজিটরি নেই"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -9145,6 +9184,10 @@ msgstr "ডিস্ক থেকে একটি বিদ্যমান প�
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "নিচের Ask AI প্রম্পট রচনাপট খুলুন ও তাতে ফোকাস করুন।"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "বোর্ড খুলুন"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
 msgstr "সোর্স সম্পাদক মোডে CodeMirror অনুসন্ধান খুলুন।"
@@ -9449,6 +9492,18 @@ msgstr "OpenKnowledge দ্বন্দ্ব পরীক্ষা করে�
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge প্রকল্প পরীক্ষা করেছে"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge .ok/local/config.yml-এ terminal.shell পড়তে পারেনি। পরিবর্তে একটি উপলভ্য Windows শেল ব্যবহার করা হচ্ছে।"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge .ok/local/terminal-এর অধীনে লঞ্চ সেটিংস লিখতে পারেনি, কারণ ফোল্ডারটি এই প্রকল্পের মধ্যে নিরাপদভাবে অবস্থিত নয়। নিশ্চিত করুন যে এটি প্রকল্পের ভেতরের একটি আসল ফোল্ডার, কোনো লিংক নয়। Claude আপনাকে OpenKnowledge অনুমোদন করতে বলবে।"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge এবার .ok/local/terminal-এর অধীনে লঞ্চ সেটিংস লিখতে পারেনি। ফোল্ডারটিতে লেখার অনুমতি আছে কি না পরীক্ষা করুন। Claude আপনাকে OpenKnowledge অনুমোদন করতে বলবে।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
@@ -10914,6 +10969,7 @@ msgstr "প্রত্যেকটিতে আগে থেকে থাকা
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "একটি বাগ জানান"
 
@@ -11647,6 +11703,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "অর্থভিত্তিক অনুসন্ধান চালু, কিন্তু কোনো API কী নির্ধারিত নেই — অনুসন্ধান কীওয়ার্ড মিলানোয় ফিরে যায়। নিচে একটি যোগ করুন।"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "পাঠান"
@@ -11672,6 +11729,10 @@ msgstr "মতামত পাঠান"
 msgid "Send feedback…"
 msgstr "মতামত পাঠান…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "এই চ্যাটেই পাঠান"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "রিপোর্ট পাঠান"
@@ -11679,6 +11740,10 @@ msgstr "রিপোর্ট পাঠান"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "এই মন্তব্যটি পাঠান"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "নতুন চ্যাটে পাঠান"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11705,6 +11770,10 @@ msgstr "পাঠানো হচ্ছে"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "রিপোর্ট পাঠানো হচ্ছে"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "পাঠানো হচ্ছে…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"
@@ -11869,8 +11938,8 @@ msgid "Setup"
 msgstr "সেটআপ"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "সেটআপ ফাইলের মধ্যে আছে: <0>.ok/</0>, AI-টুল MCP কনফিগ (<1>.mcp.json</1> ও প্রতি-টুল ফাইল), প্রকল্প স্কিল।<2/><3>ভাগ করা</3> সেগুলো git-এ কমিট করে, তাই যে-ই রিপোজিটরিটি ক্লোন করুক একই সেটআপ পায়। <4/><5>শুধু আমার</5> সেগুলো git-এর বাইরে রাখে (<6>.git/info/exclude</6>-এর মাধ্যমে)।"
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "সেটআপ ফাইলের মধ্যে আছে: <0>.ok/</0>, AI-টুল MCP কনফিগ (<1>.mcp.json</1> ও প্রতি-টুল ফাইল)। আপনার স্কিল এর মধ্যে নেই — সেগুলো প্রকল্পের অন্য যেকোনো ফাইলের মতোই git অনুসরণ করে।<2/><3>ভাগ করা</3> সেগুলো git-এ কমিট করে, তাই যে-ই রিপোজিটরিটি ক্লোন করুক একই সেটআপ পায়। <4/><5>শুধু আমার</5> সেগুলো git-এর বাইরে রাখে (<6>.git/info/exclude</6>-এর মাধ্যমে)।"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11893,10 +11962,6 @@ msgstr "মতামত ভাগ করুন"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "ফোল্ডার ভাগ করুন"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "স্কিল ভাগ করুন"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12222,10 +12287,6 @@ msgstr "SKILL.md স্কিল নিজেই পরিচালনা কর
 msgid "Skills"
 msgstr "স্কিল"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "স্কিল এখন ভাগ করা। আপনার দলের সঙ্গে ভাগ করতে .ok/skills কমিট করুন।"
-
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
 msgid "Skills from {0}."
@@ -12360,6 +12421,10 @@ msgstr "Slidev চালু হতে সময় শেষ হয়ে গে
 msgid "Small section heading."
 msgstr "ছোট বিভাগ শিরোনাম।"
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "ফেলে দেওয়া কিছু ফাইল নিরাপদে সন্নিবেশ করা যায়নি।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "কিছু ফাইল তালিকায় নেই: ওয়ার্কিং ট্রিতে অনেক বেশি পরিবর্তন আছে।"
@@ -12485,6 +12550,10 @@ msgstr "নির্বাচিত অংশ এজেন্ট প্যান
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "GitHub-এ আমাদের স্টার দিন"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "স্ক্রিন এখন যেমন দেখাচ্ছে তার স্ক্রিনশট নিয়ে একটি বাগ রিপোর্ট শুরু করুন।"
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
@@ -13017,6 +13086,18 @@ msgstr "টার্মিনালের সেটিং এখনও লোড
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "টার্মিনালের সেটিং এখনও লোড হয়নি — একটু পরে আবার চেষ্টা করুন"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml-এ terminal.shell অবশ্যই একটি স্ট্রিং হতে হবে। পরিবর্তে একটি উপলভ্য Windows শেল ব্যবহার করা হচ্ছে।"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml-এ terminal.shell অবশ্যই একটি সম্পূর্ণ Windows পাথ হতে হবে। পরিবর্তে একটি উপলভ্য Windows শেল ব্যবহার করা হচ্ছে।"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr ".ok/local/config.yml-এ terminal.shell OpenKnowledge-পরিচালিত লঞ্চ এবং ড্রপ করা ফাইলের পাথের জন্য PowerShell, cmd.exe অথবা Git Bash সমর্থন করে। এই শেলটি শুধু একটি সাধারণ টার্মিনাল খোলে; এজেন্ট এবং কমান্ড লঞ্চ এতে চলে না।"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "সংযোগ পরীক্ষা করুন"
@@ -13123,6 +13204,22 @@ msgstr "প্রত্যয়িত-গণনা চুক্তি। শু
 msgid "The audit could not be completed. Try again."
 msgstr "নিরীক্ষা সম্পূর্ণ করা যায়নি। আবার চেষ্টা করুন।"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "বোর্ডে পৌঁছানো যায়নি। এটি হয়তো নেই, অথবা সার্ভার অফলাইন হতে পারে।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "বোর্ডের স্ন্যাপশট রেন্ডার করা যায়নি।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "বোর্ড ভিউয়ার লোড করা যায়নি। আপনার সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "বোর্ডের বিষয়বস্তু কোনো বৈধ Excalidraw দৃশ্য নয়।"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App ফাইলটি খোলেনি। সেটি কি ইনস্টল করা আছে? ({msg})"
@@ -13172,11 +13269,6 @@ msgstr "ফোল্ডার ও টেমপ্লেট আগে থেক�
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "সূত্র <0>c = √(a² + b²)</0> ইনলাইনে রেন্ডার হয়।"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "git exclude ফাইলটি লেখার যোগ্য নয়"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "ইনডেক্স ফাইলগুলি জায়গায় থাকে। Open Knowledge শুধুমাত্র এটি যোগ করা Git নিয়মটিকে সরিয়ে দেয়।"
@@ -13221,6 +13313,10 @@ msgstr "প্রাকদর্শন সেসব সম্পদ আটকে
 #: src/components/BranchRecycleBanner.tsx
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "এই প্রজেক্টের সার্ভার এই উইন্ডো থেকে ভিন্ন ব্রাঞ্চে আছে — কনটেন্ট লোড করা যাচ্ছে না।"
+
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "প্রম্পটটি পেস্ট করা হয়েছে, কিন্তু স্বয়ংক্রিয়ভাবে জমা দেওয়া হয়নি। এটি পর্যালোচনা করুন, তারপর পাঠাতে Enter চাপুন।"
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13275,6 +13371,14 @@ msgstr "স্কিমা ফাইলটি নেই বা লোড কর�
 msgid "the server responded but server.lock has no port yet"
 msgstr "সার্ভার সাড়া দিয়েছে কিন্তু server.lock-এ এখনো কোনো পোর্ট নেই"
 
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "সার্ভার বন্ধ হয়ে গেছে।"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "সার্ভার বন্ধ হয়ে গেছে। পুনরায় সংযোগের জন্য এটি পুনরায় চালু করুন।"
+
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
@@ -13325,6 +13429,10 @@ msgstr "টার্মিনাল সেশন শেষ হয়েছে।
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "টার্মিনাল অপ্রত্যাশিতভাবে থেমে গেছে।"
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml-এ terminal.shell এক্সিকিউটেবলটি পাওয়া যায়নি। পরিবর্তে একটি উপলভ্য Windows শেল ব্যবহার করা হচ্ছে।"
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
@@ -13714,10 +13822,6 @@ msgstr "এই প্রকল্পে কোনো git রিপোজিট�
 msgid "This project has no GitHub remote."
 msgstr "এই প্রকল্পের কোনো GitHub রিমোট নেই।"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "এই প্রকল্পটি শুধু-স্থানীয়, তাই .ok/skills git থেকে লুকানো এবং এই স্কিলগুলো কমিট বা ভাগ করা যায় না। শুধু স্কিল ফোল্ডারটিই ভাগ করুন — আপনার বাকি OK কনফিগ এই কম্পিউটারেই থাকে।"
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -13960,6 +14064,10 @@ msgstr "প্যাটার্ন {0}/** টগল করুন"
 msgid "tokens"
 msgstr "টোকেন"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "এই পাতায় অনেক বেশি লাইভ রেফারেন্স। এই বোর্ডটি লোড করা হয়নি।"
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "খুব ধীর"
@@ -14008,6 +14116,7 @@ msgstr "একটি প্রম্পট চেষ্টা করে দে�
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "আবার চেষ্টা করুন"
 
@@ -14128,7 +14237,6 @@ msgstr "{docName}-এর শেষ সম্পাদনাটি পূর্�
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "পূর্বাবস্থায় ফেরান"
@@ -14589,6 +14697,11 @@ msgstr "সোর্স markdown-এ দেখুন"
 msgid "View in Source Markdown"
 msgstr "উৎস Markdown-এ দেখুন"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "শুধু দেখার জন্য"
+
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx
 msgid "View plugin"
@@ -14651,6 +14764,7 @@ msgstr "অনুমোদনের অপেক্ষা"
 msgid "Waiting for your approval"
 msgstr "আপনার অনুমোদনের অপেক্ষা"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
@@ -15008,6 +15122,10 @@ msgstr "আপনি আপনার হোম ডিরেক্টরি ব�
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "আপনার সব প্রস্তুত!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "আপনি আপডেট দেখার চেয়ে বেশি ঘন ঘন পুশ করছেন। এই রিপোজিটরিতে অন্যরাও লিখলে, পুশকে প্রায়ই আগে পরিবর্তন টেনে এনে আবার চেষ্টা করতে হবে।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

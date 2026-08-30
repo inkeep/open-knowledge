@@ -154,6 +154,7 @@ import type {
   CliReadiness,
   OkChromeColors,
   OkMenuAction,
+  OkMenuActionOrigin,
 } from '../shared/bridge-contract.ts';
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
@@ -165,8 +166,8 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
-import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
+import { getWindowsEnvValue } from '../shared/windows-env.ts';
 import { resolveShell } from '../utility/pty-host.ts';
 import { buildAboutPanelOptions } from './about-panel.ts';
 import {
@@ -183,7 +184,7 @@ import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
   channelFromVersion,
-  installMayStillBeRunning,
+  installWasInFlightDuring,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
@@ -218,10 +219,14 @@ import {
 } from './check-target-exists.ts';
 import {
   cliProbeArgs,
+  type ProbeChild,
+  type ProbeTimers,
+  probePlatformCliOnPath,
   resolveClaudeReadiness,
   resolveCliOnPath,
   resolvePlatformCliInstalledMap,
   runLoginShellProbe,
+  runWindowsPathProbe,
 } from './claude-readiness.ts';
 import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
 import { copyImageToClipboard } from './copy-image-clipboard.ts';
@@ -269,7 +274,7 @@ import {
   runDriverBootSmoke,
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
-import { discoverProject, validateFolderPick } from './folder-admission.ts';
+import { defaultGitTopLevel, discoverProject, validateFolderPick } from './folder-admission.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
@@ -301,11 +306,7 @@ import {
   type LocalOpDeps,
 } from './ipc/local-op.ts';
 import { handleSeedApply, handleSeedListPacks, handleSeedPlan } from './ipc/seed.ts';
-import {
-  handleSharingSetMode,
-  handleSharingSetSkillsShared,
-  handleSharingStatus,
-} from './ipc/sharing.ts';
+import { handleSharingSetMode, handleSharingStatus } from './ipc/sharing.ts';
 import { handleSlidesOpen, handleSlidesStatus } from './ipc/slides.ts';
 import {
   detectProtocol as detectProtocolImpl,
@@ -331,7 +332,11 @@ import {
   runMcpWiringOnFirstLaunch,
 } from './mcp-wiring.ts';
 import { installApplicationMenu } from './menu.ts';
-import { resolveMenuActionTarget } from './menu-action-target.ts';
+import {
+  LAUNCHER_FREE_ORIGIN,
+  originForMenuDispatch,
+  resolveMenuActionTarget,
+} from './menu-action-target.ts';
 import type { MenuTranslator } from './menu-translator.ts';
 import { beginNavigatorHandoff, createNavigatorWindow } from './navigator-window.ts';
 import {
@@ -445,7 +450,12 @@ import {
   windowRestoreKey,
 } from './state-store.ts';
 import { quoteStopCommandPath } from './stop-command.ts';
-import { isTerminalConsented, isTerminalConsentedWithGrace } from './terminal-consent.ts';
+import { isTerminalAvailable, withTerminalCapabilityArg } from './terminal-capability.ts';
+import {
+  isTerminalConsented,
+  isTerminalConsentedWithGrace,
+  readTerminalShellSetting,
+} from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
@@ -455,6 +465,7 @@ import {
   DEFAULT_PTY_ROWS,
   type PtyUtilityLike,
 } from './terminal-manager.ts';
+import { createTerminalQuitDrain } from './terminal-quit-drain.ts';
 import { terminalStateKeyForContext } from './terminal-state-key.ts';
 import {
   recordConcurrentSessions,
@@ -503,6 +514,10 @@ import {
 } from './window-manager.ts';
 import { WINDOW_MIN_SIZE } from './window-min-size.ts';
 import { resolveRestoredPlacement, sortWindowsByFocusSequence } from './window-placement.ts';
+import {
+  sweepWindowsUpdateSurvivors,
+  type WindowsUpdateSurvivorSweepResult,
+} from './windows-update-survivor-sweep.ts';
 import {
   classifyRecentGit,
   classifyRecentGitAsync,
@@ -1128,7 +1143,13 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
       // the menu click fires async, and a send on a destroyed webContents throws
       // and crashes main (no userland uncaughtException handler).
       if (win.isDestroyed()) return;
-      sendToRenderer(win.webContents, 'ok:menu-action', 'toggle-source');
+      // Launcher-free even though a menu is open: this one is a native
+      // `Menu.popup()`, so it is OS chrome rather than a DOM layer — nothing a
+      // renderer-side capture could see, and nothing worth waiting on.
+      sendToRenderer(win.webContents, 'ok:menu-action', {
+        action: 'toggle-source',
+        origin: { launcherBorne: false },
+      });
     },
     popMenu: (input) => {
       popSpellcheckMenu({ Menu, window: win }, { ...input, translate: currentMenuTranslator() });
@@ -1146,6 +1167,17 @@ let wm: WindowManager;
  * quit — callers guard with `?.` / a truthiness check.
  */
 let terminalReaper: TerminalReaper | null = null;
+
+function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
+  const logger = getLogger('updater');
+  return sweepWindowsUpdateSurvivors({
+    installTree: process.resourcesPath,
+    logger: {
+      info: (event) => logger.info(event, 'Windows update console-host sweep complete'),
+      warn: (event) => logger.warn(event, 'Windows update console-host sweep warning'),
+    },
+  });
+}
 /**
  * Every open Slidev deck (server + its window), keyed by deck path. Module-scoped
  * so the `ok:slides:dispatch` `open` handler can focus-existing / open, each
@@ -1638,15 +1670,12 @@ function runDriverBootSmokeInProduction(): void {
   });
 }
 
-/**
- * Appends the `--ok-debug-keyring-smoke=1` argv flag when the gate allows it,
- * so the preload can populate `bridge.debug`. Preload reads the flag via
- * `parseArg` just like the other window-bound config fields.
- */
-function withDebugFlagIfAllowed(args: readonly string[]): string[] {
+/** Add main-owned runtime facts to every editor-renderer window. */
+function withWindowRuntimeArgs(args: readonly string[]): string[] {
   const withDebug = isDebugKeyringSmokeAllowed()
     ? [...args, '--ok-debug-keyring-smoke=1']
     : [...args];
+  const withTerminalCapability = withTerminalCapabilityArg(withDebug, isTerminalAvailable());
   // Under the Electron smoke suite, force xterm's DOM renderer (not the WebGL
   // canvas) via this flag — the canvas can't be read by the DOM-based smoke
   // assertions and captures focus from synthetic keystrokes. Gating only xterm
@@ -1654,7 +1683,9 @@ function withDebugFlagIfAllowed(args: readonly string[]): string[] {
   // suite doesn't trigger whole-app software rendering that starves CPU on
   // constrained CI runners. See TerminalPanel's WebGL gate.
   const withSmoke =
-    process.env.OK_DESKTOP_E2E_SMOKE === '1' ? [...withDebug, '--ok-e2e-smoke=1'] : withDebug;
+    process.env.OK_DESKTOP_E2E_SMOKE === '1'
+      ? [...withTerminalCapability, '--ok-e2e-smoke=1']
+      : withTerminalCapability;
   // Cold-start assistive-tech signal for the preload's live mirror (see
   // `ok:accessibility:changed` in ipc-events.ts): the terminal gates xterm's
   // costly `screenReaderMode` on it. Read per window creation so a window
@@ -1750,7 +1781,7 @@ function ensureWindowManager() {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -1938,7 +1969,10 @@ function ensureWindowManager() {
             let childRef: ReturnType<typeof spawn>;
             startupWaterfall.mark('serverSpawned');
             try {
-              childRef = spawn(spawnArgs.file, spawnArgs.args, spawnArgs.opts);
+              childRef = spawn(spawnArgs.file, spawnArgs.args, {
+                ...spawnArgs.opts,
+                windowsHide: true,
+              });
             } catch (spawnErr) {
               // Synchronous spawn failure — close fd before rethrowing.
               // Re-throw with the same `kind: 'spawn-error'` discriminant the
@@ -2227,7 +2261,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
         height: 680,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -2314,7 +2348,7 @@ async function openProject(
 ) {
   getLogger('project').info(
     {
-      projectName: basename(projectPath),
+      pickedName: basename(projectPath),
       entryPoint,
       hasDeepLinkTarget: !!pendingDeepLinkTarget,
       hasPendingBranch: !!pendingBranch,
@@ -2329,6 +2363,10 @@ async function openProject(
   // Admission funnel. Resolve the pick BEFORE any window/utility spawn so we
   // know whether to ancestor-promote, silent-onboard, dialog, or refuse.
   const validation = validateFolderPick(projectPath);
+  // Open-bracket: discoverProject is one await spanning several unbounded fs
+  // and subprocess steps, so without a mark here a stall inside it is
+  // indistinguishable from a stall anywhere else in the funnel.
+  getLogger('project').info({ pickedName: basename(projectPath) }, 'resolving project admission');
   const discovery = await discoverProject(projectPath, {
     // Probe consulted only when the ancestor walk strictly promotes — gates
     // silent fork against an ancestor too large to boot in 15s (the dragon-wiki
@@ -2336,15 +2374,76 @@ async function openProject(
     // utility against `~/Documents` and timed out). Failsafe to "show the
     // dialog" on any throw so a probe failure can't reintroduce silent fork.
     dirSizeProbe: async (dir) => {
+      getLogger('project').info(
+        { projectName: basename(dir), pickedName: basename(projectPath) },
+        'probing ancestor size',
+      );
       try {
         const exceedsCap = await walkExceedsCap(dir, BOOT_BUDGET_FILE_CAP);
         return { exceedsCap };
       } catch (err) {
-        console.warn('[openProject] dirSizeProbe failed, failsafe to exceedsCap:true', err);
+        // Pino, not console: this failsafe silently forces the confirmation
+        // dialog, so the branch would flip with no surviving record of why.
+        getLogger('project').warn(
+          { err },
+          'project admission size probe failed, treating as over cap',
+        );
         return { exceedsCap: true };
       }
     },
+    // The other arm of the same await, and the unbounded one: `git rev-parse`
+    // runs without a timeout, so a locked index or a network-mounted `.git`
+    // hangs here. Reached only when the ancestor walk promoted nothing.
+    // create-new's own pre-scaffold `discoverProject` call is deliberately not
+    // wrapped; the open that follows it lands in this funnel.
+    gitTopLevel: async (cwd) => {
+      // Not `projectName`: `cwd` is the resolved pick, and on this arm the
+      // project dir is whatever the git root turns out to be, which is not
+      // known until the call returns. `pickedName` rides along because neither
+      // the `projectName` const nor `discovery` exists yet at this point in the
+      // function, so the pick is the only name in scope here, and a symlinked
+      // pick makes the two basenames differ.
+      getLogger('project').info(
+        { pickedName: basename(projectPath), resolvedPickedName: basename(cwd) },
+        'resolving git root',
+      );
+      return defaultGitTopLevel(cwd);
+    },
   });
+
+  // Payloads stay basenames and enums, matching the entry log above.
+  getLogger('project').info(
+    discovery.kind === 'rejected'
+      ? {
+          // `rejected` carries no `projectDir`, so the pick is the only name
+          // this arm can correlate on.
+          pickedName: basename(projectPath),
+          discoveryKind: discovery.kind,
+          reason: discovery.reason,
+        }
+      : {
+          // Not the `projectName` const below: this line precedes the `rejected`
+          // early return that narrows `discovery`, so the const does not exist yet.
+          projectName: basename(discovery.projectDir),
+          // Ungated, unlike `resolvedPickedName` below: on a symlinked direct
+          // open that gate drops out and `projectName` is the realpath
+          // basename, while the entry logs carry the raw pick. On a managed
+          // direct hit neither bridging milestone fires, because the ancestor
+          // walk returns before the git-root lookup is reached, so this is the
+          // only line that can carry both.
+          pickedName: basename(projectPath),
+          discoveryKind: discovery.kind,
+          // The pair is what separates an ancestor / git-root promote from a
+          // direct open.
+          ...(discovery.projectDir === discovery.pickedPath
+            ? {}
+            : { resolvedPickedName: basename(discovery.pickedPath) }),
+          ...(discovery.kind === 'fresh'
+            ? { gitState: discovery.gitState, gitRootPromoted: discovery.gitRootPromoted }
+            : { ancestorPromoted: discovery.ancestorPromoted }),
+        },
+    'project admission resolved',
+  );
 
   if (discovery.kind === 'rejected') {
     dialog.showErrorBox(
@@ -2363,6 +2462,7 @@ async function openProject(
 
   const warningsCount = validation.warnings.length;
   const resolvedProjectDir = discovery.projectDir;
+  const projectName = basename(resolvedProjectDir);
   void checkAndRepairProjectMcpOnProjectOpen({
     projectDir: resolvedProjectDir,
     executablePath: app.getPath('exe'),
@@ -2403,21 +2503,28 @@ async function openProject(
     // existing managed-promote silent flow. This is the only path that can
     // reach this branch (cursor !== realPicked), so ancestorPromoted is
     // guaranteed true.
-    const ancestorName = basename(discovery.projectDir);
-    const pickedName = basename(discovery.pickedPath);
+    const resolvedPickedName = basename(discovery.pickedPath);
     // Async dialog matches the codebase convention (every other dialog in
     // packages/desktop/src/main/ uses await dialog.showMessageBox); sync would
     // freeze IPC, the auto-updater pipeline, and the cc1-broadcast debouncer
     // until the user clicks. Button order [Cancel, Open <ancestor>] with
     // cancelId:0 / defaultId:0: Enter and Escape both land on the safe path.
+    getLogger('project').info(
+      { projectName, resolvedPickedName },
+      'project admission confirmation requested',
+    );
     const { response } = await dialog.showMessageBox({
       type: 'question',
-      buttons: ['Cancel', `Open ${ancestorName}`],
+      buttons: ['Cancel', `Open ${projectName}`],
       cancelId: 0,
       defaultId: 0,
       title: 'Open existing project?',
-      message: `OpenKnowledge wants to open the existing project at ${discovery.projectDir} (because it contains an .ok/ config). The folder you picked, ${pickedName}, is inside that project. Open ${ancestorName}?`,
+      message: `OpenKnowledge wants to open the existing project at ${discovery.projectDir} (because it contains an .ok/ config). The folder you picked, ${resolvedPickedName}, is inside that project. Open ${projectName}?`,
     });
+    getLogger('project').info(
+      { projectName, confirmed: response !== 0 },
+      'project admission confirmation answered',
+    );
     if (response === 0) {
       recordOnboardingFlow({
         flowKind: 'managed-promote-cancelled',
@@ -2480,6 +2587,7 @@ async function openProject(
       const navigatorWebContents = (navigator as unknown as { webContents: Electron.WebContents })
         .webContents;
       if (navigatorWebContents.isLoading()) {
+        getLogger('project').info({ projectName }, 'awaiting navigator load');
         // Promise.race the load against the renderer being destroyed —
         // a closed Navigator window or a crashed renderer mid-load would
         // otherwise leave openProject stuck on a Promise that never
@@ -2518,6 +2626,12 @@ async function openProject(
       gitRootPromoted: discovery.gitRootPromoted,
       warnings: validation.warnings.map((w) => ({ kind: w.kind })),
     };
+    // The dialog's own content probe walks the picked tree synchronously on the
+    // main thread, so this pair brackets the funnel's least bounded step.
+    getLogger('project').info(
+      { projectName, gitState: discovery.gitState },
+      'onboarding consent requested',
+    );
     const decision = await requestUserConsent(
       {
         // Sink facade, not the raw ipcMain: the flow's one-shot renderer-ready
@@ -2527,6 +2641,10 @@ async function openProject(
         previewContent,
       },
       showPayload,
+    );
+    getLogger('project').info(
+      { projectName, outcome: decision.outcome },
+      'onboarding consent answered',
     );
     if (decision.outcome === 'cancel') {
       // Return to Navigator with no fs changes, no Recents add.
@@ -2555,12 +2673,21 @@ async function openProject(
       request.initGit &&
       (discovery.gitState === 'absent' || discovery.gitState === 'shell-only')
     ) {
+      getLogger('project').info(
+        { projectName, gitState: discovery.gitState },
+        'ensuring project git',
+      );
       await ensureProjectGit(discovery.projectDir);
       didEnsureGit = true;
+      // No gitState: `discovery.gitState` is the pre-init value and is never
+      // recomputed, so echoing it here would pair "ensured" with "absent".
+      getLogger('project').info({ projectName }, 'ensured project git');
     }
+    getLogger('project').info({ projectName, contentDirChanged }, 'initializing project content');
     await initContent(discovery.projectDir, {
       contentDir: request.contentDir !== '.' ? request.contentDir : undefined,
     });
+    getLogger('project').info({ projectName, contentDirChanged }, 'initialized project content');
     if (request.additionalIgnores.trim().length > 0) {
       appendOkIgnoreSync(discovery.projectDir, request.additionalIgnores);
     }
@@ -2615,6 +2742,15 @@ async function openProject(
         pickedPath: discovery.pickedPath,
       };
     }
+    getLogger('project').info(
+      {
+        projectName,
+        aiIntegrationsFailedCount,
+        sharing: request.sharing,
+        toastKind: toastPayload?.kind,
+      },
+      'project artifacts written',
+    );
   }
 
   // Project-skill reclaim — gated to committed managed opens. Reaching here
@@ -2628,6 +2764,10 @@ async function openProject(
   // double-write, and no seeding a folder the consent dialog just configured a
   // different way.
   if (discovery.kind === 'managed' || discovery.kind === 'managed-requires-confirmation') {
+    // A managed open skips the whole fresh branch above, so without this the
+    // only marks on that path are admission and the window itself — and the
+    // gitignore ensure below is synchronous.
+    getLogger('project').info({ projectName }, 'reclaiming project skills');
     void reclaimProjectSkillsOnProjectOpen({
       projectDir: resolvedProjectDir,
       executablePath: app.getPath('exe'),
@@ -2705,6 +2845,9 @@ async function openProject(
     failedCount: aiIntegrationsFailedCount,
   });
 
+  // Paired with the window-created line below, which only lands once the fork
+  // resolves — a stall inside the utility spawn would otherwise be silent.
+  getLogger('project').info({ projectName, flowKind, didEnsureGit }, 'creating project window');
   const ctx = await wm.createProjectWindow({
     projectPath: resolvedProjectDir,
     pendingDeepLinkTarget,
@@ -2721,7 +2864,7 @@ async function openProject(
   });
   getLogger('project').info(
     {
-      projectName: basename(resolvedProjectDir),
+      projectName,
       apiOrigin: ctx.apiOrigin,
       flowKind,
       didEnsureGit,
@@ -3397,6 +3540,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // `-beta.N` via `--config.extraMetadata.version=X.Y.Z`. Reuses
     // `channelFromVersion` so this stays aligned with the auto-updater channel.
     showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+    terminalCapable: isTerminalAvailable(),
     dialog,
     openNavigator,
     openProject: (path, entryPoint) => openProjectOrFallbackToNavigator(path, entryPoint),
@@ -3545,7 +3689,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     // Overrides the three handlers `buildViewMenuStateDeps` just spread in.
     // `onToggleAgentPanel` is deliberately absent from the strip list: agent
     // threads are server-hosted, so the agents panel works everywhere pty does not.
-    ...(isTerminalPlatform(process.platform)
+    ...(isTerminalAvailable()
       ? { onNewTerminalWindow: () => openTerminalWindow() }
       : {
           onToggleTerminal: undefined,
@@ -4284,16 +4428,24 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
  * BrowserWindow (for a menu click from the Dock).
  * Silent no-op when no windows are open (e.g. last project closed but app
  * still running on macOS via the Dock).
+ *
+ * `sender` picks the target window and nothing else; `origin` states the
+ * dispatching surface separately, so a caller that threads a sender purely to
+ * choose a window does not accidentally claim to be a launcher.
  */
 
-function sendMenuAction(action: OkMenuAction, sender: WebContents | null = null): void {
+function sendMenuAction(
+  action: OkMenuAction,
+  sender: WebContents | null = null,
+  origin: OkMenuActionOrigin = LAUNCHER_FREE_ORIGIN,
+): void {
   const target = resolveMenuActionTarget(sender, {
     fromWebContents: (contents) => BrowserWindow.fromWebContents(contents),
     getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
     getAllWindows: () => BrowserWindow.getAllWindows(),
   });
   if (!target) return;
-  sendToRenderer(target.webContents, 'ok:menu-action', action);
+  sendToRenderer(target.webContents, 'ok:menu-action', { action, origin });
 }
 
 /**
@@ -4325,7 +4477,7 @@ function openTerminalWindow(): void {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -4520,7 +4672,7 @@ function openNoteWindowForDoc(args: {
         title: opts.title,
         webPreferences: {
           ...DEFAULT_WIN_OPTS.webPreferences,
-          additionalArguments: withDebugFlagIfAllowed(opts.additionalArguments),
+          additionalArguments: withWindowRuntimeArgs(opts.additionalArguments),
           preload: join(__dirname, '../preload/index.js'),
         },
       });
@@ -4890,56 +5042,60 @@ function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** The real `child_process` + timer wiring behind both platform probes. The
+ *  timeout/exit-code/settle-once routing they share is unit-tested in
+ *  claude-readiness.test.ts against these seams. */
+function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
+  const child = spawn(file, [...spawnArgs], {
+    stdio: 'ignore',
+    shell: false,
+    windowsHide: true,
+  });
+  return {
+    onExit: (cb) => {
+      child.on('exit', (code) => cb(code));
+    },
+    onError: (cb) => {
+      child.on('error', (err) => cb(err));
+    },
+    kill: () => {
+      child.kill('SIGKILL');
+    },
+  };
+}
+
+const realProbeTimers: ProbeTimers = {
+  setTimer: (cb, ms) => setTimeout(cb, ms),
+  clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
+};
+
+/**
+ * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
+ * this process's PATH? Resolves `where.exe` under the real `SystemRoot` and
+ * hands the tri-state routing to {@link runWindowsPathProbe} — exit code, or
+ * `null` when the probe could not produce a verdict.
+ */
+function probeWindowsPath(bin: string): Promise<number | null> {
+  const systemRoot = getWindowsEnvValue(process.env, 'SystemRoot') ?? 'C:\\Windows';
+  return runWindowsPathProbe(
+    realProbeSpawn,
+    join(systemRoot, 'System32', 'where.exe'),
+    bin,
+    realProbeTimers,
+  );
+}
+
 /**
  * Run an interactive-shell `command -v <bin>` probe in the real shell (the same
  * `resolveShell` the PTY spawns), with `spawn` + timers wired to the OS. Shared
- * by the Claude readiness path and the generic non-Claude CLI path; the
- * timeout/exit-code routing is unit-tested in claude-readiness.test.ts via an
- * injected spawn. `args` selects the binary (`cliProbeArgs(bin)`); it defaults
- * to the `claude` probe.
+ * by the Claude readiness path and the generic non-Claude CLI path. `args`
+ * selects the binary (`cliProbeArgs(bin)`); it defaults to the `claude` probe.
  */
-/**
- * Windows counterpart to {@link probeLoginShellOnPath}: is `bin` resolvable on
- * this process's PATH? `where.exe` honours PATHEXT, so it finds the `.cmd`
- * shim that `CreateProcess` can actually run — an extension-less existence
- * check would report a POSIX shim that then fails to spawn. Exit 0 = found.
- */
-function probeWindowsPath(bin: string): Promise<boolean> {
-  return new Promise((resolveProbe) => {
-    try {
-      // `where`, not `where.exe` — matches the binary name the CLI's git
-      // preflight already uses (and the one knip's ignore list declares).
-      // CreateProcess resolves it via PATHEXT either way.
-      const child = spawn('where', [bin], { stdio: 'ignore', shell: false, windowsHide: true });
-      child.on('exit', (code) => resolveProbe(code === 0));
-      child.on('error', () => resolveProbe(false));
-    } catch {
-      resolveProbe(false);
-    }
-  });
-}
-
 function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null> {
   return runLoginShellProbe(
-    (file, spawnArgs) => {
-      const child = spawn(file, [...spawnArgs], { stdio: 'ignore', shell: false });
-      return {
-        onExit: (cb) => {
-          child.on('exit', (code) => cb(code));
-        },
-        onError: (cb) => {
-          child.on('error', (err) => cb(err));
-        },
-        kill: () => {
-          child.kill('SIGKILL');
-        },
-      };
-    },
+    realProbeSpawn,
     resolveShell(process.env, { platform: process.platform }),
-    {
-      setTimer: (cb, ms) => setTimeout(cb, ms),
-      clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-    },
+    realProbeTimers,
     undefined,
     args,
   );
@@ -4973,7 +5129,13 @@ function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
  */
 function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promise<ClaudeReadiness> {
   return resolveClaudeReadiness({
-    probeClaude: () => probeLoginShellOnPath(),
+    probeClaude: () =>
+      probePlatformCliOnPath({
+        platform: process.platform,
+        bin: 'claude',
+        probePosix: (args) => probeLoginShellOnPath(args),
+        probeWindows: (bin) => probeWindowsPath(bin),
+      }),
     classifyMcpEntry: () =>
       createMcpWiringCliSurface().classifyExistingMcpEntry('claude', osHomedir()).kind,
     isProjectMcpPreApprovable: () => isProjectClaudeMcpOwn(projectRoot),
@@ -4988,7 +5150,13 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
  */
 function resolveTerminalCliOnPath(cli: TerminalCli): Promise<CliReadiness> {
   return resolveCliOnPath({
-    probe: () => probeLoginShellOnPath(cliProbeArgs(TERMINAL_CLIS[cli].bin, process.platform)),
+    probe: () =>
+      probePlatformCliOnPath({
+        platform: process.platform,
+        bin: TERMINAL_CLIS[cli].bin,
+        probePosix: (args) => probeLoginShellOnPath(args),
+        probeWindows: (bin) => probeWindowsPath(bin),
+      }),
     // Codex-only: report whether OK's `open-knowledge` server is already in the
     // user's codex config, so the launch site adds the `-c` tool-auto-approve
     // override only when it won't break config load (a `-c` under an undefined
@@ -5197,6 +5365,7 @@ function registerIpcHandlers() {
       utilityProcess.fork(join(__dirname, 'utility/pty-host.js')) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
+    sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
     newPtyId: () => randomUUID(),
     setTimer: (cb, ms) => setTimeout(cb, ms),
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
@@ -5254,12 +5423,18 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'not-consented' };
     }
+    const shellSetting =
+      process.platform === 'win32'
+        ? readTerminalShellSetting(projectPath)
+        : { kind: 'unset' as const };
     return terminalManager.create({
       windowId: win.id,
       webContents: win.webContents,
       projectRoot: projectPath,
       cols: clampPtyDimension(opts.cols, DEFAULT_PTY_COLS),
       rows: clampPtyDimension(opts.rows, DEFAULT_PTY_ROWS),
+      ...(shellSetting.kind === 'configured' ? { shell: shellSetting.shell } : {}),
+      ...(shellSetting.kind === 'invalid' ? { shellInvalidReason: shellSetting.reason } : {}),
       launchCommand: opts.launchCommand,
     });
   });
@@ -5514,6 +5689,7 @@ function registerIpcHandlers() {
                 shell: false,
                 timeout: timeoutMs,
                 stdio: ['ignore', 'ignore', 'pipe'],
+                windowsHide: true,
               });
               // Drain stderr so a chatty child can't block on a full pipe buffer.
               child.stderr?.on('data', () => {});
@@ -5956,7 +6132,7 @@ function registerIpcHandlers() {
           })(),
         };
       case 'menu-action':
-        sendMenuAction(request.action, event.sender);
+        sendMenuAction(request.action, event.sender, originForMenuDispatch(request.kind));
         return undefined;
       case 'open-recent-project':
         await openProjectOrFallbackToNavigator(request.path, 'recents');
@@ -5967,6 +6143,15 @@ function registerIpcHandlers() {
       case 'role':
         applyMenuDispatchRole(request.role, event.sender);
         return undefined;
+      default: {
+        // The roster's `satisfies` forces a new dispatch kind to be CLASSIFIED;
+        // this forces it to be HANDLED. Without both, a sixth kind compiles
+        // clean and then silently no-ops here — noticed on first manual use,
+        // unlike a misclassified origin, but still a compile error we can have
+        // for four lines.
+        const _exhaustive: never = request;
+        return _exhaustive;
+      }
     }
   });
 
@@ -6003,7 +6188,7 @@ function registerIpcHandlers() {
       singleFile: ctx.ephemeral !== undefined,
       // Mirrors the preload's cold-start config: PTY capability is the same
       // platform fact for a re-queried live window.
-      ptyAvailable: isTerminalPlatform(process.platform),
+      ptyAvailable: isTerminalAvailable(),
       // `initialDoc` is a cold-start-only hash seed (consumed once at renderer
       // boot from the preload-injected bridge config). A live window queried via
       // get-info has already navigated, so there is nothing to re-seed → null.
@@ -6026,9 +6211,6 @@ function registerIpcHandlers() {
     if (!ctx) throw new Error('No project context for this window');
     if (request.kind === 'status') {
       return handleSharingStatus(ctx.projectPath);
-    }
-    if (request.kind === 'set-skills-shared') {
-      return handleSharingSetSkillsShared(ctx.projectPath, request.shared);
     }
     const mode: 'shared' | 'local-only' = request.mode === 'local-only' ? 'local-only' : 'shared';
     return handleSharingSetMode(ctx.projectPath, mode);
@@ -6054,24 +6236,15 @@ function registerIpcHandlers() {
       // has neither that problem (a GUI process inherits the user PATH from the
       // registry) nor a POSIX login shell to run `-l -i -c` against, so it uses
       // `where.exe`, which also honours PATHEXT and finds the `.cmd` shim.
+      // This yes/no surface admits only a verified exit-zero probe.
       isOnLoginPath: async (bin: string) =>
-        process.platform === 'win32'
-          ? await probeWindowsPath(bin)
-          : (await probeLoginShellOnPath(cliProbeArgs(bin, process.platform))) === 0,
+        (await (process.platform === 'win32'
+          ? probeWindowsPath(bin)
+          : probeLoginShellOnPath(cliProbeArgs(bin, process.platform)))) === 0,
     };
     if (request.kind === 'status') {
       return handleSlidesStatus(projectRoot, probes);
     }
-    // Trust boundary: the deck path is a renderer-supplied string over IPC.
-    // Require a bound project and a well-formed absolute path, then canonicalize
-    // via realpath and enforce project containment on the RESOLVED path before
-    // spawning a server against it — the same order the trash / asset handlers
-    // apply. Lexical containment alone would let an in-project symlink whose
-    // target is OUTSIDE the project pass, and Slidev/Vite would then serve that
-    // out-of-project target over loopback; realpath collapses the symlink so the
-    // escape is refused (the window's projectPath is already realpath-canonical
-    // via discoverProject). A window with no project has nothing to contain
-    // against, so it is refused.
     // Trust boundary: the deck path is a renderer-supplied string over IPC.
     // The admission decision (bound project + well-formed absolute path +
     // realpath-then-contain, so an in-project symlink cannot escape) lives in
@@ -6618,13 +6791,13 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:restart-server', async (_event, projectPath) => {
-    // Renderer-initiated from the version-drift notification. Terminates the
-    // attached (not-owned) server and recreates the window against a fresh
-    // own-version spawn. The returned outcome only reaches the renderer on
-    // failure (a surviving window) — success recreates the originating window.
-    // The try/catch makes the contract uniform: every path resolves with an
-    // outcome rather than rejecting on a destroyed renderer.
+  handle('ok:project:restart-server', async (event, projectPath) => {
+    // Renderer-initiated from the version-drift notification or the "server
+    // gone" error affordance. Terminates the server and recreates/retires the
+    // originating window against a fresh spawn. The returned outcome only reaches
+    // the renderer on failure (a surviving window). The try/catch makes the
+    // contract uniform: every path resolves with an outcome rather than rejecting
+    // on a destroyed renderer.
     if (!wm) {
       logIpcError({
         event: 'ipc.error',
@@ -6635,7 +6808,14 @@ function registerIpcHandlers() {
       return { ok: false, reason: 'other' };
     }
     try {
-      const outcome = await wm.restartAttachedServer(projectPath, {
+      // Route by the REQUESTING window, not the `projectPath` arg — an ephemeral
+      // single-file window's server is file-keyed under a throwaway temp dir the
+      // directory-keyed `restartAttachedServer` can't reach. The decision lives in
+      // `restartServerForWindow` (on the class that owns the identity map) so it is
+      // unit-testable through the DI harness; this handler only adapts the sender
+      // webContents to a window and threads the CLI args.
+      const senderWindow = BrowserWindow.fromWebContents(event.sender);
+      const outcome = await wm.restartServerForWindow(senderWindow, projectPath, {
         localOpCliArgs: resolveLocalOpCliArgs(),
       });
       if (outcome.ok === false) {
@@ -7829,8 +8009,10 @@ function bootPrimaryInstance(): void {
     now: () => new Date(),
     currentBootSessionUuid: readBootSessionUuid,
     // Was an install this app committed to still possibly running when the
-    // previous session ended? If so the installer killed it to replace its
-    // files, and the dirty sentinel it left behind is not a crash.
+    // previous session ended? If so the session ended without its quit sequence
+    // completing so the installer could replace the app's files, and the dirty
+    // sentinel it left behind is not a crash. Which of the two platforms ends
+    // it, and how, is `crash-detection.ts`'s account to keep.
     //
     // Answered from `bootStateSnapshot`, taken at the top of this function
     // before anything here can mutate the state file, so the verdict does not
@@ -7838,13 +8020,18 @@ function bootPrimaryInstance(): void {
     // The staging stamp is passed as-is: the snapshot predates the stale-pending
     // clear, so the field still holds the moment the artifact was staged.
     //
-    // Asked of the updater's own predicate rather than re-derived, so the bound
-    // cannot drift from the one deciding whether to tell the user an install
-    // failed.
-    installInFlight: () =>
-      installMayStillBeRunning(
+    // The span comes from detection and is forwarded whole. Only `deathFromMs`
+    // carries anything this boot does not already have, and substituting a
+    // wall-clock read for it reverts the suppression to decaying with how long
+    // the user left the app closed. TypeScript does not reject that
+    // substitution, so `install-in-flight-wiring.test.ts` pins this wiring and
+    // carries the derivation. Asked of the updater's own predicate rather than
+    // re-derived, so neither the bound nor the handoff resolution can drift
+    // from the one deciding whether to tell the user an install failed.
+    installInFlight: (span) =>
+      installWasInFlightDuring(
         bootStateSnapshot,
-        Date.now(),
+        span,
         bootStateSnapshot.versionPendingInstallStagedAt,
       ),
     logger: getLogger('crash-detection'),
@@ -8019,7 +8206,7 @@ function bootPrimaryInstance(): void {
   // Assistive-tech flips (e.g. VoiceOver, NVDA attach/detach) fan out to every window so
   // the preload's live mirror stays current and an open terminal can toggle
   // xterm's `screenReaderMode` in place. Cold-start value rides window
-  // creation via `--ok-screen-reader-active` (see withDebugFlagIfAllowed).
+  // creation via `--ok-screen-reader-active` (see withWindowRuntimeArgs).
   app.on('accessibility-support-changed', (_event, screenReaderActive) => {
     // Logged before the fan-out, so the record survives a send that throws.
     // The timestamp is the point: it places an AT client attaching against the
@@ -8266,8 +8453,9 @@ function bootPrimaryInstance(): void {
     },
     getInitialArgv: () => process.argv,
     log: {
-      warn: (obj, msg) => console.warn(msg, obj),
-      info: (obj, msg) => console.info(msg, obj),
+      warn: (obj, msg) => getLogger('url-scheme').warn(obj, msg),
+      info: (obj, msg) => getLogger('url-scheme').info(obj, msg),
+      error: (obj, msg) => getLogger('url-scheme').error(obj, msg),
     },
   });
 
@@ -8984,11 +9172,12 @@ function bootPrimaryInstance(): void {
           : {}),
         // Pre-relaunch teardown — synchronously hard-kill every project-window
         // utility (Hocuspocus host) right before
-        // `autoUpdater.quitAndInstall()` so Squirrel.Mac's pre-swap
-        // not-still-running validation doesn't see a stale process and abort with code -9
-        // ("App Still Running Error"). The graceful `{type:'shutdown'}`
-        // window-close IPC isn't fast enough — Hocuspocus drain + file-watcher
-        // teardown can outlast ShipIt's poll budget.
+        // `autoUpdater.quitAndInstall()`, so no server outlives the bundle swap
+        // and gets re-attached by the relaunched app at an older version. The
+        // graceful `{type:'shutdown'}` window-close IPC isn't fast enough —
+        // Hocuspocus drain + file-watcher teardown can outlast the swap window.
+        // Not about ShipIt's "App Still Running" abort, which cannot see these
+        // processes; `prepareForRelaunch` in `auto-updater.ts` says why.
         prepareForRelaunch: async () => {
           // Freeze focus tracking BEFORE any teardown: the window-close
           // cascade below re-focuses each surviving window, and tracking
@@ -9003,6 +9192,10 @@ function bootPrimaryInstance(): void {
           // that completes well before `stopAllOwnedServers` returns or
           // `quitAndInstall()` fires.
           captureWindowRestoreSnapshot('prepare-for-relaunch');
+          // Start the terminal hosts' graceful shutdown before waiting on the
+          // server drain. Any bundled console host still present after that
+          // wait is then removed by the install-tree-owned survivor sweep.
+          await terminalReaper?.killAll();
           // Two-phase shutdown: SIGTERM detached server pids (and SIGKILL any
           // dev-path utilityProcess.fork helpers), then poll the lock files
           // until they release or 10 s elapses, then escalate to SIGKILL on
@@ -9011,11 +9204,12 @@ function bootPrimaryInstance(): void {
           // genuinely clean before ShipIt's pre-swap validation runs.
           await wm?.stopAllOwnedServers();
           // Drain the async log buffer before `quitAndInstall()` hands off to
-          // Squirrel, which SIGKILLs this process for the bundle swap. Without
-          // this, the relaunch-trigger + update lines emitted moments earlier
-          // never reach disk (the destination is `sync: false`).
+          // Squirrel, which waits for this process to exit and then swaps the
+          // bundle. Without this, the relaunch-trigger + update lines emitted
+          // moments earlier never reach disk (the destination is `sync: false`).
           flushDesktopLogger();
         },
+        sweepUpdateSurvivors: sweepConsoleHostsBeforeUpdate,
         // User feedback for menu-driven `Check for Updates…` clicks. The
         // periodic hourly check stays silent on a no-update outcome (the
         // existing `update-not-available` log-only handler), but a manual
@@ -9037,6 +9231,24 @@ function bootPrimaryInstance(): void {
               title: 'Up to Date',
               message: "You're on the latest version of OpenKnowledge.",
               detail: `OpenKnowledge ${result.currentVersion} is the most current version available.`,
+            });
+          } else if (result.kind === 'ready-to-install') {
+            // Stated, not instructed. Every dialog in this chain is OK-only,
+            // and the wired "Relaunch" affordance lives on Toast A, which is
+            // dismissible — so a user can reach this dialog with no relaunch
+            // button anywhere on screen. Copy that said "Relaunch to install
+            // it" pointed at a control that may not exist. It also cannot say
+            // "quit and reopen": that installs on macOS and Windows, but Linux
+            // has `autoInstallOnAppQuit` off, so a plain quit installs nothing
+            // there. What holds on all three is that relaunching is when it
+            // lands.
+            void dialog.showMessageBox(target, {
+              type: 'info',
+              buttons: ['OK'],
+              defaultId: 0,
+              title: 'Update Ready',
+              message: `OpenKnowledge ${result.stagedVersion} is downloaded and ready.`,
+              detail: `It installs the next time you relaunch. Any newer build is offered after that.`,
             });
           } else if (result.kind === 'available') {
             void dialog.showMessageBox(target, {
@@ -9158,6 +9370,18 @@ function bootPrimaryInstance(): void {
     // capture point. Write-once, so the "Relaunch now" path (already
     // snapshotted in `prepareForRelaunch`) no-ops here.
     captureWindowRestoreSnapshot('before-quit-for-update');
+    // The silent install-on-quit path bypasses prepareForRelaunch. Start the
+    // same bounded terminal drain; the will-quit barrier below keeps the main
+    // process alive, and the survivor sweep follows only after the drain.
+    void (terminalReaper?.killAll() ?? Promise.resolve()).then(() => {
+      const result = sweepConsoleHostsBeforeUpdate();
+      if (result.scanFailed || result.revalidationFailed || result.failedCount > 0) {
+        getLogger('updater').warn(
+          { result },
+          'Silent update console-host sweep incomplete — continuing shutdown',
+        );
+      }
+    });
     // Shut down the servers this desktop spawned BEFORE the swap completes, so
     // the relaunched (new-version) app spawns fresh instead of attaching to a
     // stale old-version server and showing the version-drift toast. Fires on
@@ -9174,9 +9398,16 @@ function bootPrimaryInstance(): void {
 
   // Cleared on `will-quit` (canonical shutdown ordering — NOT `before-quit`,
   // which fires earlier in the shutdown sequence). Each handle's teardown
-  // method (`destroy()` or `stop()`) is idempotent, and the null-assignment
-  // after each call makes subsequent will-quit re-entrances no-ops.
-  app.on('will-quit', () => {
+  // method (`destroy()` or `stop()`) is idempotent. The first pass holds quit
+  // for the terminal drain; the re-entrant pass performs the remaining teardown.
+  // Windows session-end terminates without `will-quit`, so this drain does not run there.
+  const runTerminalQuitDrain = createTerminalQuitDrain({
+    defer: (callback) => setImmediate(callback),
+    drain: () => terminalReaper?.killAll() ?? Promise.resolve(),
+    resumeQuit: () => app.quit(),
+  });
+  app.on('will-quit', (event) => {
+    if (runTerminalQuitDrain(event)) return;
     getLogger('lifecycle').info({}, 'will-quit');
     // A quit that reaches here was orderly — clear the dirty-shutdown
     // sentinel so the next boot doesn't read this session as a crash.
@@ -9194,7 +9425,7 @@ function bootPrimaryInstance(): void {
     rendererRecovery = null;
     // Reap every window's PTY host first so no user shell / spawn-helper
     // outlives the app. Idempotent (clears the map; a second pass no-ops).
-    terminalReaper?.killAll();
+    void terminalReaper?.killAll();
     // Reap every spawned Slidev server for the same reason. Idempotent.
     slidesDeckRegistry.reapAll();
     dockVisibleForWindow.clear();

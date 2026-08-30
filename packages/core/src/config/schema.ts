@@ -790,6 +790,17 @@ export const ConfigSchema = z.looseObject({
         })
         .nullable()
         .default(null),
+      shell: z
+        .string()
+        .register(fieldRegistry, {
+          scope: 'project-local',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'project-local',
+          description:
+            'Absolute Windows shell executable override for the in-app terminal. PowerShell, cmd.exe, and Git Bash support OpenKnowledge-managed launches (agent chat tabs and fixed commands such as Resolve in terminal or Install Slidev) and dropped-file path insertion. A different existing executable remains usable for plain terminal tabs and shows a capability notice; requested agent and command launches open only the plain shell without running the agent or command, and dropped-file paths are refused. Empty values use automatic shell discovery. Per-machine (project-local), human-managed, and never shared via git, clone, or sync.',
+        })
+        .optional(),
     })
     .default({ enabled: null }),
   // USER-scope: whether the Slides plugin is offered is a personal preference,
@@ -1441,11 +1452,12 @@ export const ConfigSchema = z.looseObject({
   // `agentSettable: false` on every leaf: an agent must never widen its own
   // network exposure.
   //
-  // `openBrowser` and `idleShutdown` have DERIVED defaults (they depend on
-  // whether the resolved `bind` is loopback-only), so those leaves stay
-  // optional here — a schema-time `.default()` cannot see `bind`. The
-  // derivation lives in `resolveServerRuntimeConfig`
-  // (`resolve-server-config.ts`).
+  // `openBrowser` and `idleShutdown` have DERIVED defaults, so those leaves stay
+  // optional here — a schema-time `.default()` cannot see the other fields.
+  // `openBrowser` keys off whether the resolved `bind` is loopback-only;
+  // `idleShutdown` additionally keys off exposure (a loopback bind declared
+  // externally reachable via `allowExternal` + `externalUrl` stays up too). The
+  // derivation lives in `resolveServerRuntimeConfig` (`resolve-server-config.ts`).
   server: z
     .looseObject({
       port: z
@@ -1519,7 +1531,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project-local',
           description:
-            "Shut the server down after this long with no activity: a duration like '30m' (positive integer with unit s, m, or h), or 'off'. Default derived: '30m' when every bind address is loopback, 'off' otherwise (an exposed or containerized server stays up). Reloadable — a valid change applies without a restart. Per-machine (project-local) — not shared.",
+            "Shut the server down after this long with no activity: a duration like '30m' (positive integer with unit s, m, or h), or 'off'. Default derived: '30m' for a loopback-only, unexposed server; 'off' otherwise — a non-loopback bind, or a loopback bind declared externally reachable (server.allowExternal + server.externalUrl), stays up, because a remote agent keeps it busy over /mcp, which the idle timer does not count. Residual case the derivation cannot see: a loopback server reached by remote agents with no server.externalUrl (e.g. behind a same-box reverse proxy) still idles at 30m — set 'off' by hand. Reloadable — a valid change applies without a restart. Per-machine (project-local) — not shared.",
         })
         .optional(),
     })

@@ -40,6 +40,7 @@ function runGit(args: readonly string[], dir: string): string | null {
       // Silence git's stderr — a non-repo / missing-git failure is expected
       // and handled via the null return, not surfaced to the desktop log.
       stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim();
     return out.length > 0 ? out : null;
   } catch {

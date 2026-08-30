@@ -16,7 +16,11 @@ import type {
   WorktreeCreateResult,
   WorktreeListResult,
 } from './git/worktree-selector-model.ts';
-import type { TerminalCli } from './handoff/terminal-launch.ts';
+import type {
+  TerminalCli,
+  TerminalLaunchCommand,
+  WindowsShellFamily,
+} from './handoff/terminal-launch.ts';
 import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
 import type { LanguagePreference } from './i18n/locales.ts';
 import type {
@@ -233,6 +237,49 @@ export type OkMenuAction =
   // Help → Send feedback… — opens the in-app feedback form, the same one
   // the Resources menu and the Cmd+K palette open. Both window types subscribe.
   | 'send-feedback';
+
+/**
+ * Where a menu action was dispatched from, for the few subscribers whose
+ * behavior depends on the dispatching SURFACE rather than on the action.
+ *
+ * `launcherBorne` means the surface the user reached the command through is a
+ * transient overlay that is still on screen at dispatch time and is about to
+ * dismiss itself — the Cmd+K palette, the renderer-drawn menu bar, a popover.
+ * A native menu bar item, a keyboard accelerator, and a persistent chrome
+ * button are all launcher-free: nothing is on screen that the command's own
+ * arrival will take away.
+ *
+ * The bug-report dialog is the motivating consumer: it screenshots the page
+ * beneath itself before revealing, and a launcher-borne open must let its
+ * launcher unmount first (or the report is a picture of the palette the user
+ * only opened to file it), while a launcher-free open must shoot immediately
+ * (or the report is a picture of the app after the defect went away).
+ *
+ * An object rather than a bare boolean so call sites read as prose and so a
+ * second provenance fact can be added without changing every signature.
+ *
+ * Electron already supplies one candidate for that second fact: the
+ * `KeyboardEvent` handed to a `MenuItem` click carries `triggeredByAccelerator`,
+ * separating a chord press from a click on the same item. This type deliberately
+ * collapses both into launcher-free, because a native menu is OS chrome that no
+ * renderer capture can see at any timing — but whoever adds the second fact
+ * should know the platform is already offering one, and that every menu callback
+ * in main currently discards the argument that carries it.
+ */
+export interface OkMenuActionOrigin {
+  readonly launcherBorne: boolean;
+}
+
+/**
+ * The `ok:menu-action` wire payload: the action plus where it came from. The
+ * origin is REQUIRED so main cannot forget to classify a new dispatch site —
+ * a bare action would silently default to launcher-free and leak its launcher
+ * into the next screenshot.
+ */
+export interface OkMenuActionDispatch {
+  readonly action: OkMenuAction;
+  readonly origin: OkMenuActionOrigin;
+}
 
 /**
  * Unsubscribe closure returned from `onProjectSwitched` / `onMenuAction`.
@@ -1144,8 +1191,6 @@ export interface OkSharingStatusResult {
   readonly mode: 'shared' | 'local-only' | 'no-git';
   readonly excluded: readonly string[];
   readonly trackedUpstream: readonly string[];
-  /** True when local-only but `.ok/skills/` is carved back out as shareable. */
-  readonly skillsShared: boolean;
 }
 
 export type OkSharingSetModeResult =
@@ -1239,7 +1284,13 @@ export interface OkPtyListEntry {
 
 /** Result of `terminal.adopt`. */
 export type OkPtyAdoptResult =
-  | { readonly ok: true; readonly replay: string }
+  | {
+      readonly ok: true;
+      readonly replay: string;
+      readonly shellFamily?: WindowsShellFamily;
+      /** Standing capability notice restored when a live session is adopted after reload. */
+      readonly shellNoticeReason?: Extract<TerminalShellNoticeReason, 'unsupported-family'>;
+    }
   | { readonly ok: false; readonly reason: 'unknown-session' };
 
 /** Push payload for `ok:pty:data`. */
@@ -1255,6 +1306,67 @@ export interface OkPtyExit {
   readonly signal: number | null;
   readonly error?: string;
 }
+
+/** Add recoverable shell-resolution reasons here and nowhere else. */
+const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
+  'config-unreadable',
+  'invalid-value',
+  'not-absolute',
+  'not-found',
+  'unsupported-family',
+] as const;
+
+/** Push payload for a recoverable PTY shell-resolution notice. */
+export type TerminalShellNoticeReason = (typeof TERMINAL_SHELL_NOTICE_REASON_VOCABULARY)[number];
+
+export const TERMINAL_SHELL_NOTICE_REASONS: ReadonlySet<TerminalShellNoticeReason> = new Set(
+  TERMINAL_SHELL_NOTICE_REASON_VOCABULARY,
+);
+
+/** Guard the reason after its JSON IPC round-trip. */
+export function isTerminalShellNoticeReason(value: unknown): value is TerminalShellNoticeReason {
+  return (
+    typeof value === 'string' &&
+    TERMINAL_SHELL_NOTICE_REASONS.has(value as TerminalShellNoticeReason)
+  );
+}
+
+const TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY = [
+  'containment-refused',
+  'write-failed',
+] as const;
+
+export type TerminalSupportFileNoticeReason =
+  (typeof TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY)[number];
+
+export const TERMINAL_SUPPORT_FILE_NOTICE_REASONS: ReadonlySet<TerminalSupportFileNoticeReason> =
+  new Set(TERMINAL_SUPPORT_FILE_NOTICE_REASON_VOCABULARY);
+
+export function isTerminalSupportFileNoticeReason(
+  value: unknown,
+): value is TerminalSupportFileNoticeReason {
+  return (
+    typeof value === 'string' &&
+    TERMINAL_SUPPORT_FILE_NOTICE_REASONS.has(value as TerminalSupportFileNoticeReason)
+  );
+}
+
+export type OkPtyNotice =
+  | {
+      readonly ptyId: string;
+      readonly notice: 'invalid-shell-override';
+      readonly reason: TerminalShellNoticeReason;
+    }
+  | {
+      readonly ptyId: string;
+      readonly notice: 'shell-resolved';
+      readonly shellFamily: WindowsShellFamily;
+    }
+  | {
+      readonly ptyId: string;
+      readonly notice: 'support-file-degraded';
+      readonly reason: TerminalSupportFileNoticeReason;
+    };
 
 /**
  * Claude Code readiness for the docked terminal.
@@ -1305,8 +1417,12 @@ export interface OkDesktopBridge {
 
   /** Subscribe to project-switch events. Returns unsubscribe. */
   onProjectSwitched(cb: (next: OkDesktopConfig) => void): OkUnsubscribe;
-  /** Subscribe to menu-bar actions. Returns unsubscribe. */
-  onMenuAction(cb: (action: OkMenuAction) => void): OkUnsubscribe;
+  /**
+   * Subscribe to menu-bar actions. Returns unsubscribe. The second argument
+   * carries the dispatching surface — subscribers that only branch on the
+   * action may keep a one-parameter callback.
+   */
+  onMenuAction(cb: (action: OkMenuAction, origin: OkMenuActionOrigin) => void): OkUnsubscribe;
   /**
    * Subscribe to `autoUpdater` `update-downloaded` events. Fires once per
    * pending-update version (gated in main by `AppState.versionPendingInstall`).
@@ -1726,8 +1842,6 @@ export interface OkDesktopBridge {
   sharing: {
     status(): Promise<OkSharingStatusResult>;
     setMode(mode: 'shared' | 'local-only'): Promise<OkSharingSetModeResult>;
-    /** Toggle `.ok/skills/` shareability within local-only mode. */
-    setSkillsShared(shared: boolean): Promise<OkSharingSetModeResult>;
   };
 
   /**
@@ -2093,7 +2207,7 @@ export interface OkDesktopBridge {
     create(opts: {
       cols: number;
       rows: number;
-      launchCommand?: string;
+      launchCommand?: string | TerminalLaunchCommand;
     }): Promise<OkPtyCreateResult>;
     input(ptyId: string, data: string): void;
     resize(ptyId: string, cols: number, rows: number): void;
@@ -2120,6 +2234,7 @@ export interface OkDesktopBridge {
     setDockState(state: OkTerminalDockStateUpdate): Promise<OkTerminalDockStateWriteResult>;
     onData(cb: (msg: OkPtyData) => void): OkUnsubscribe;
     onExit(cb: (msg: OkPtyExit) => void): OkUnsubscribe;
+    onNotice(cb: (msg: OkPtyNotice) => void): OkUnsubscribe;
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
     /**

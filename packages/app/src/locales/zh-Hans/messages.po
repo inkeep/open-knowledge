@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr ".ok 文件夹"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills 已改回「仅自己」。"
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills 可以提交，让团队获得你的技能；.ok/ 的其余内容只保留在这台电脑上。"
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -490,6 +482,10 @@ msgstr "{agentName} 无法启动。"
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} 不接受图像附件。"
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} 报告：{headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "领先 {ahead} 个"
@@ -704,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, other {{failedCount} 个文件上传失败}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# 个文件}}"
 
@@ -1059,6 +1056,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ 添加 {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+还有 {overflowCount} 个"
 
@@ -1099,6 +1097,10 @@ msgstr "<0>ok</0> 在你稍后从“文件”菜单添加之前，无法在外�
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>空格</0>跳跃 · <1>↓</1>下蹲"
+
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>此页面的实时引用过多。</0><1>{src}</1> 的此镜像未加载。"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
@@ -1232,6 +1234,10 @@ msgstr "技能内部的一个路径——任何文件夹都可以（例如 refer
 #: src/components/settings/LintingSection.tsx
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "个人配色主题选择器——不与你的项目共享。开启后会出现在侧边栏的「插件」下。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "你打开这个界面之前的应用截图，上面有一个标记显示指针当时的位置。它没有做隐去处理，请查看预览；如果有不该分享的内容，请取消勾选。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
@@ -1741,6 +1747,11 @@ msgstr "已配置完成——ok 现在可以在你的终端中使用"
 msgid "Already signed in?"
 msgstr "已经登录了？"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "已经在与该智能体开启对话了，请稍后再试。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "始终包含"
@@ -2197,6 +2208,10 @@ msgstr "博客文章"
 msgid "blog-post"
 msgstr "blog-post"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "画板控件"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
 msgstr "粗体"
@@ -2369,6 +2384,7 @@ msgstr "无法共享此路径。"
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2618,6 +2634,10 @@ msgstr "选择新标签页启动的内容"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "选择把这些评论发送到哪里"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "选择把这条消息发送到哪里"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -2904,6 +2924,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "协作者一同步就能看到你正在进行的编辑。"
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "折叠"
 
@@ -3208,6 +3229,14 @@ msgstr "已连接到"
 msgid "Connected to GitHub"
 msgstr "已连接到 GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "已连接，但你的编辑尚未送达服务器。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "已连接，但你的编辑尚未送达服务器。如果持续如此，请重启服务器。"
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -3404,6 +3433,10 @@ msgstr "复制进来"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "复制链接"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "复制消息"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -4066,18 +4099,6 @@ msgstr "无法发送你的评论——工作区尚未就绪。"
 msgid "Couldn't send your prompt — please try again."
 msgstr "无法发送你的提示词——请重试。"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "无法共享技能"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "无法共享技能——{detail}。"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "无法共享技能：内部错误。请重启应用。"
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4127,14 +4148,6 @@ msgstr "无法更新 {subRoot}：{0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "无法从 {0} 更新：{1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "无法更新技能共享设置"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "无法更新技能共享设置——{detail}。"
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -4732,12 +4745,10 @@ msgstr "正在断开连接"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "忽略"
 
@@ -5021,6 +5032,10 @@ msgstr "编辑一份副本"
 msgid "Edit and resend"
 msgstr "编辑并重发"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "编辑后重新发送"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "在配置文件中编辑"
@@ -5148,6 +5163,10 @@ msgid "Emailed"
 msgstr "已通过邮件发送"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "嵌入此工作区中 .excalidraw 画板的实时快照。"
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "嵌入一段视频，带原生播放器控件。"
 
@@ -5194,6 +5213,10 @@ msgstr "空"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "空"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "空白板"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5415,13 +5438,17 @@ msgstr "{1}/ 中各个 {0}/ 文件夹下的所有内容"
 msgid "everything under any {0}/ folder"
 msgstr "任意 {0}/ 文件夹下的所有内容"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Excalidraw 画板"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Excalidraw 画板加载失败。"
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Excalidraw 画布"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "例外：技能是共享的"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
@@ -5460,6 +5487,15 @@ msgstr "展开所有文件分组"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "展开全部文件"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "展开画板"
+
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "展开图示"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -6260,11 +6296,6 @@ msgstr "Git 与 PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git 无法跟踪这个文件夹——它是空的，或者只包含被忽略的文件。在你添加一个受跟踪的文档之前，链接不会生效。"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "git 配置不可用"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "尚未设置 git 身份——提交会使用默认作者。设置你自己的身份，队友才能看到你的名字。"
@@ -7054,6 +7085,10 @@ msgstr "安装 {0}"
 msgid "Install {brand} →"
 msgstr "安装 {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "请先在此处安装一个技能"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7547,6 +7582,10 @@ msgstr "链接关系图响应的结构与预期不符。"
 msgid "Linked theme files aren’t supported"
 msgstr "不支持链接的主题文件"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "链接会将另一个文件夹合并到此文件夹中。此文件夹尚不存在，因此请先在此处安装一个技能。"
+
 #: src/components/DocPanel.tsx
 msgid "Links"
 msgstr "链接"
@@ -7920,6 +7959,7 @@ msgid "Medium section heading."
 msgstr "中号章节标题。"
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Mermaid 图示"
 
@@ -8528,6 +8568,10 @@ msgstr "未检测到 AI 工具。请先安装一个再使用此技能。"
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "这个端点还没有设置 API 密钥。请在上方添加一个。"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "尚未选择画板。在此块的属性中输入 .excalidraw 文档的路径。"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "这个版本没有正文改动。"
@@ -8615,11 +8659,6 @@ msgstr "没有 git 远程"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "没有 git 仓库——配置共享在这里不适用。"
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "这里没有 git 仓库"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -9149,6 +9188,10 @@ msgstr "从磁盘打开一个已有的项目文件夹。"
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "打开并聚焦底部的「问 AI」提示词输入框。"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "打开画板"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
 msgstr "在源码编辑器模式下打开 CodeMirror 搜索。"
@@ -9453,6 +9496,18 @@ msgstr "OpenKnowledge 检查了冲突"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge 检查了项目"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge 无法读取 .ok/local/config.yml 中的 terminal.shell，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge 无法在 .ok/local/terminal 下写入启动设置，因为该文件夹未安全地包含在此项目中。请确认它是项目内的真实文件夹，而不是链接。Claude 将要求你批准 OpenKnowledge。"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge 此次无法在 .ok/local/terminal 下写入启动设置。请确认该文件夹可写。Claude 将要求你批准 OpenKnowledge。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
@@ -10918,6 +10973,7 @@ msgstr "替换它们各自已有的 OpenKnowledge 条目。"
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "报告问题"
 
@@ -11651,6 +11707,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "语义搜索已开启，但没有设置 API 密钥——搜索会退回到关键词匹配。请在下方添加一个。"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "发送"
@@ -11676,6 +11733,10 @@ msgstr "发送反馈"
 msgid "Send feedback…"
 msgstr "发送反馈…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "在当前对话中发送"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "发送报告"
@@ -11683,6 +11744,10 @@ msgstr "发送报告"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "发送这条评论"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "发送到新对话"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11709,6 +11774,10 @@ msgstr "正在发送"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "正在发送报告"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "正在发送…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"
@@ -11873,8 +11942,8 @@ msgid "Setup"
 msgstr "设置"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "配置文件包括：<0>.ok/</0>、AI 工具的 MCP 配置（<1>.mcp.json</1> 及各工具自己的文件）、项目技能。<2/><3>共享</3>会把它们提交到 git，因此克隆这个仓库的人都会得到相同的配置。<4/><5>仅自己</5>会把它们排除在 git 之外（通过 <6>.git/info/exclude</6>）。"
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "配置文件包括：<0>.ok/</0>、AI 工具的 MCP 配置（<1>.mcp.json</1> 及各工具自己的文件）。你的技能不在其中：它们和项目里的其他文件一样受 git 管理。<2/><3>共享</3>会把它们提交到 git，因此克隆这个仓库的人都会得到相同的配置。<4/><5>仅自己</5>会把它们排除在 git 之外（通过 <6>.git/info/exclude</6>）。"
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11897,10 +11966,6 @@ msgstr "分享反馈"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "共享文件夹"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "共享技能"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12226,10 +12291,6 @@ msgstr "SKILL.md 由技能本身管理——请选择其他名称"
 msgid "Skills"
 msgstr "技能"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "技能现在已共享。提交 .ok/skills 即可分享给你的团队。"
-
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
 msgid "Skills from {0}."
@@ -12364,6 +12425,10 @@ msgstr "Slidev 启动超时。请重试。"
 msgid "Small section heading."
 msgstr "小号章节标题。"
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "部分拖放的文件无法安全插入。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "部分文件未列出：工作区的更改过多。"
@@ -12489,6 +12554,10 @@ msgstr "把选中的内容放入智能体面板，随时可以补充并发送。
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "发起一份错误报告，并附上此刻画面的截图。"
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
@@ -13021,6 +13090,18 @@ msgstr "终端设置尚未加载——请稍后再试。"
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "终端设置尚未加载——请稍后再试"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml 中的 terminal.shell 必须是字符串，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr ".ok/local/config.yml 中的 terminal.shell 必须是 Windows 绝对路径，将改用可用的 Windows shell。"
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr ".ok/local/config.yml 中的 terminal.shell 支持使用 PowerShell、cmd.exe 或 Git Bash 执行 OpenKnowledge 管理的启动以及插入拖放文件的路径。此 shell 仅打开普通终端；智能体和命令启动无法在其中运行。"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "测试连接"
@@ -13127,6 +13208,22 @@ msgstr "经证明的计算合约。仅适用于类型为 Attested Computation �
 msgid "The audit could not be completed. Try again."
 msgstr "审查未能完成。请重试。"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "无法访问画板。它可能不存在，或服务器已离线。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "无法渲染画板快照。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "画板查看器加载失败。请检查网络连接后重试。"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "画板内容不是有效的 Excalidraw 场景。"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude 桌面应用没有打开这个文件。它安装了吗？（{msg}）"
@@ -13176,11 +13273,6 @@ msgstr "文件夹和模板都已经在这里了，没有需要添加的内容。
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "公式 <0>c = √(a² + b²)</0> 以行内形式渲染。"
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "git 的 exclude 文件不可写"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "索引文件保留在原处。 Open Knowledge 仅删除它添加的 Git 规则。"
@@ -13225,6 +13317,10 @@ msgstr "预览会拦截不符合其安全规则的资源（例如纯 http:// 的
 #: src/components/BranchRecycleBanner.tsx
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "该项目的服务器所在分支与此窗口不一致，内容无法加载。"
+
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "提示词已粘贴，但未自动提交。请检查内容，然后按 Enter 发送。"
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13279,6 +13375,14 @@ msgstr "架构文件不存在或加载失败——添加字段会自动创建它
 msgid "the server responded but server.lock has no port yet"
 msgstr "服务器有响应，但 server.lock 中还没有端口"
 
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "服务器已停止。"
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "服务器已停止。重启服务器以重新连接。"
+
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
@@ -13329,6 +13433,10 @@ msgstr "终端会话已结束。"
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "终端意外停止了。"
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "未找到 .ok/local/config.yml 中指定的 terminal.shell 可执行文件，将改用可用的 Windows shell。"
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
@@ -13718,10 +13826,6 @@ msgstr "这个项目没有 git 仓库，因此共享模式不适用。初始化�
 msgid "This project has no GitHub remote."
 msgstr "此项目没有 GitHub 远程仓库。"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "这个项目是仅本地的，因此 .ok/skills 对 git 隐藏，这些技能无法提交或共享。可以只共享技能文件夹——你 OK 配置的其余部分仍留在这台电脑上。"
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -13964,6 +14068,10 @@ msgstr "切换模式 {0}/**"
 msgid "tokens"
 msgstr "token"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "此页面的实时引用过多。此画板未加载。"
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "太慢了"
@@ -14012,6 +14120,7 @@ msgstr "试试一段提示词"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "重试"
 
@@ -14132,7 +14241,6 @@ msgstr "已撤销 {docName} 上的最后一次编辑"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "撤销"
@@ -14593,6 +14701,11 @@ msgstr "在 markdown 源码中查看"
 msgid "View in Source Markdown"
 msgstr "在 Markdown 源码中查看"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "仅供查看"
+
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx
 msgid "View plugin"
@@ -14655,6 +14768,7 @@ msgstr "正在等待授权"
 msgid "Waiting for your approval"
 msgstr "正在等待你的批准"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
@@ -15012,6 +15126,10 @@ msgstr "你选择了主目录。OpenKnowledge 会索引整个主目录树——�
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "全都设置好了！"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "你推送的频率高于检查更新的频率。如果其他人也在这个仓库里写入，推送往往需要先拉取更改再重试。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

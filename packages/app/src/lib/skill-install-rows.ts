@@ -53,6 +53,7 @@ export type SkillInstallMenuSkill = Pick<SkillsListEntry, 'scope' | 'name'> &
       | 'conflictHosts'
       | 'driftPaths'
       | 'installableEditors'
+      | 'hubOffered'
       | 'origin'
       | 'plugin'
     >
@@ -115,14 +116,35 @@ export function deriveSkillInstallRows({
   const pathFor = (host: string): string | null =>
     skill ? `${skillHostRootDir(host, skill.scope)}/${skill.name}` : null;
 
-  // The `.agents` hub is EXISTENCE-ACTIVATED: offered only when this project
-  // already adopted it (any skill lives there or lists it as a host). OK never
-  // pushes the hub on a repo — adopting it is one Custom path away, and the
-  // first placement there lights this row up for every skill.
+  // The `.agents` hub is offered when the project has ALREADY adopted it (any
+  // skill lives there or lists it as a host) OR when the server says a host that
+  // reads it is installed (`hubOffered`, computed by the same predicate that
+  // filters the Folders surface). OK still never pushes the hub on a repo where
+  // nothing would read it.
+  //
+  // `hubOffered` is not a convenience: adoption-only was circular. The hub is
+  // not a link target until it exists (see `SkillTargetsPicker`), so with no
+  // skill under `.agents/` there was no non-circular way to make the first
+  // placement — the answer was offered only to people who already knew to type
+  // the path into Custom path. Reading the server's flag is also what keeps this
+  // surface and Settings from answering the same question differently.
+  const hubOffered =
+    skill?.hubOffered ??
+    (skill && allSkills !== null
+      ? allSkills.find((s) => s.scope === skill.scope)?.hubOffered
+      : undefined);
   const hubActive =
     skill !== undefined &&
-    ((skill.hosts ?? []).includes('agents') ||
-      allSkills?.some((s) => s.hosts.includes('agents') || s.path.startsWith(AGENTS_DIR_PREFIX)));
+    (hubOffered === true ||
+      (skill.hosts ?? []).includes('agents') ||
+      allSkills?.some(
+        (s) =>
+          // Scope-filtered: without this, ONE global skill under `~/.agents/skills`
+          // activates the hub on a PROJECT menu the server said `hubOffered: false`
+          // for — the two surfaces disagreeing again, by a different route.
+          s.scope === skill.scope &&
+          (s.hosts.includes('agents') || s.path.startsWith(AGENTS_DIR_PREFIX)),
+      ));
 
   // Folder-level aliases. An aliased folder is a derived view of its target: NO
   // row of its own (checking it could only write through the alias), its agent

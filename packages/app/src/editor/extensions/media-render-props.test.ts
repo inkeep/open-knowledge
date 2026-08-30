@@ -93,3 +93,25 @@ describe('normalizeDocRelativeMediaRenderProps', () => {
     ).toEqual({ src: '/notes/archive.zip' });
   });
 });
+
+/**
+ * Cross-package parity pin: the JSX src-reference registry's `resolution`
+ * field must agree with the render normalization's doc-relative allowlist
+ * — it is the field that decides whether the backlink graph and the
+ * rename rewriter resolve a `src` the same way the renderer loads it.
+ */
+describe('JSX src-ref registry ↔ render-prop normalization parity', () => {
+  test("every registry row's resolution matches the renderer's doc-relative set", async () => {
+    const { JSX_SRC_REF_TAGS } = await import('@inkeep/open-knowledge-core');
+    const { DOC_RELATIVE_SRC_COMPONENTS } = await import('./media-render-props.ts');
+    for (const spec of JSX_SRC_REF_TAGS) {
+      const rendererResolvesDocRelative = DOC_RELATIVE_SRC_COMPONENTS.has(spec.tagName);
+      expect
+        .soft(
+          spec.resolution === 'doc-relative',
+          `${spec.tagName}: registry says '${spec.resolution}' but DOC_RELATIVE_SRC_COMPONENTS.has(...) is ${rendererResolvesDocRelative} — the graph/rewriter would resolve srcs differently than the renderer loads them`,
+        )
+        .toBe(rendererResolvesDocRelative);
+    }
+  });
+});

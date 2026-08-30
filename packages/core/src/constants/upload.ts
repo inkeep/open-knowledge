@@ -416,6 +416,12 @@ export const INLINE_RENDERABLE_EXTENSIONS: ReadonlySet<string> = new Set([
   //   (c) `handleAsset` adds a CSP sandbox header on direct fetches
   //       (`Content-Security-Policy: sandbox; default-src 'none'; ...`)
   //       to neutralize embedded `<script>` if SVG IS served inline.
+  //   (d) blob-backed SVG shown via `<img src="blob:…">` (the Excalidraw
+  //       embed snapshot path) is contained for RENDERING — image mode
+  //       blocks script and external subresources — but a user-initiated
+  //       top-level navigation to the blob URL ("Open image in new tab")
+  //       executes embedded SVG script, and (b)/(c) cannot reach a
+  //       blob: URL (no HTTP response, no serve middleware).
   // Aligns with Docmost's posture; cf. GHSA-rcg8-g69v-x23j (Plane SVG
   // XSS) for the upstream class. nosniff stays on the response for
   // additional defense against MIME confusion attacks even though it
@@ -726,12 +732,32 @@ export function isExcalidrawDocFile(path: string): boolean {
   return EXCALIDRAW_FILE_EXTENSIONS.has(path.slice(lastDot + 1).toLowerCase());
 }
 
+/**
+ * True when a docName belongs to the markdown dual-editor class — the
+ * literal negation of the per-class discriminators, so it agrees with the
+ * editor's doc-class dispatch by construction instead of via a parallel
+ * extension heuristic. A new doc class leaves "markdown" only when its
+ * discriminator is added to this negation chain — a separate edit from
+ * shipping the discriminator function itself — and the fail-safe is that
+ * an unrecognized name classifies as markdown here exactly when the
+ * dispatch would open it in the dual editor. Notably that
+ * admits extension-less names (`notes/today`),
+ * dotted stems (`release-v1.2`), and dotfile basenames (`.gitignore` —
+ * the dual-editor dispatch treats those as markdown too; parity with the
+ * dispatch is the contract, not an extension judgment).
+ */
+export function isMarkdownDocFile(path: string): boolean {
+  return !isMermaidDocFile(path) && !isExcalidrawDocFile(path) && !isEditableTextDocFile(path);
+}
+
 // Code-file extensions live in a sibling module so the
 // language→extension table can be shared with the app-side TextViewer
 // (which maps the same canonical IDs to CodeMirror language packs).
 // Re-exporting here keeps the existing dispatch import surface (one
 // `mediaKindForSidebarAssetExtension` call site) unchanged.
-import { CODE_FILE_EXTENSIONS } from './code-languages.ts';
+// (`code-languages.ts` is pure data + string predicates with no imports,
+// so pulling `isEditableTextDocFile` from it cannot form a cycle.)
+import { CODE_FILE_EXTENSIONS, isEditableTextDocFile } from './code-languages.ts';
 
 export { CODE_FILE_EXTENSIONS };
 

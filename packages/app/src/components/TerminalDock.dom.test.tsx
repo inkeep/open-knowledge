@@ -165,7 +165,7 @@ vi.doMock('./TerminalGate', () => ({
 // agents-panel launch happens to be in flight.
 let mockInflightThreadLaunch = false;
 vi.doMock('@/lib/acp/launch-agent-thread', () => ({
-  launchAgentThread: () => {},
+  launchAgentThread: () => Promise.resolve('started' as const),
   hasInflightThreadLaunch: () => mockInflightThreadLaunch,
 }));
 

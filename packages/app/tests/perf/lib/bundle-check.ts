@@ -10,17 +10,23 @@
  *      (`ok-hdr-histogram-v1`) is absent from prod chunks.
  *   4. The typing-burst-detector sentinel
  *      (`ok-typing-burst-detector-v1`) is absent from prod chunks.
- *   5. The main `index-*.js` gzipped size has not regressed by more
+ *   5. The `__acpThreadHarness` ACP thread-injection global is absent
+ *      from every prod chunk.
+ *   6. The main `index-*.js` gzipped size has not regressed by more
  *      than 2 KB vs the pre-spec baseline.
  *
- * Run after `bun run build` in `packages/app`. The test that drives
- * this skips with a warning if `dist/` is absent — local convenience;
- * CI builds before invoking.
+ * Run by hand after `pnpm run build` in `packages/app`: no vitest tier
+ * collects `tests/perf/lib/`, so nothing here executes in CI. The DEV
+ * ACP-harness sentinel is separately gated on every production build by
+ * `scripts/check-dev-harness-absent.mjs`, which the `build` script invokes
+ * against the emitted `dist/`; the entry below is the manual-run twin of that
+ * gate, not a second one.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
+import { DEV_HARNESS_SENTINEL } from '../../../scripts/check-dev-harness-absent.mjs';
 
 /**
  * Baseline for `index-*.js` gzipped size,
@@ -41,6 +47,10 @@ const FORBIDDEN_SENTINELS = [
   '__ok_perf',
   'ok-hdr-histogram-v1',
   'ok-typing-burst-detector-v1',
+  // Taken from the build gate rather than retyped: a rename that followed the
+  // exported constant would otherwise leave this copy scanning for a string
+  // nothing writes any more.
+  DEV_HARNESS_SENTINEL,
 ] as const;
 
 export interface BundleHealthReport {
@@ -69,7 +79,7 @@ export interface AssertBundleHealthOpts {
 }
 
 /**
- * Run all 5 assertions. Returns a structured report so callers can
+ * Run all 6 assertions. Returns a structured report so callers can
  * decide between hard-fail and soft-warn (e.g. CI variant where dist/
  * isn't built fresh).
  */
@@ -81,7 +91,7 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
   if (!existsSync(distAssetsDir)) {
     return {
       ok: false,
-      failures: [`dist/assets not found at ${distAssetsDir}; run \`bun run build\` first`],
+      failures: [`dist/assets not found at ${distAssetsDir}; run \`pnpm run build\` first`],
       forbiddenHits: [],
     };
   }
@@ -106,7 +116,7 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
     }
   }
 
-  // ── Assertions 2-4: forbidden sentinels in main / non-telemetry chunks ──
+  // ── Assertions 2-5: forbidden sentinels in main / non-telemetry chunks ──
   const allFiles = readdirSync(distAssetsDir).filter(
     (f) => f.endsWith('.js') && !f.startsWith('telemetry-impl-'),
   );
@@ -122,7 +132,7 @@ export function assertBundleHealth(opts: AssertBundleHealthOpts = {}): BundleHea
     }
   }
 
-  // ── Assertion 5: index chunk gzipped size delta ─────────────────
+  // ── Assertion 6: index chunk gzipped size delta ─────────────────
   const indexChunk = findFirstMatching(distAssetsDir, 'index-');
   let indexGzippedKb: number | undefined;
   if (indexChunk) {

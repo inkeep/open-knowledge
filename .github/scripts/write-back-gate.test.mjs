@@ -6,6 +6,8 @@ import {
   evaluateFanIn,
   isOriginRepliableFrom,
   highestVersion,
+  markerSuffixFor,
+  originAlreadyNotified,
   partitionAttachments,
 } from './write-back-gate.mjs';
 
@@ -283,6 +285,36 @@ describe('reply composition', () => {
     expect(compose()).toContain('stays literal instead of turning into a highlight');
   });
 
+  test('a multi-paragraph changeset that fits the bound is quoted in full', () => {
+    // A body that fits the bound is quoted whole, paragraph breaks included: a
+    // changeset that leads with a list stem is meaningless without the list in
+    // the block below it.
+    const text = compose({
+      changeset: {
+        title: 'Message actions',
+        body: 'Messages you send now carry their own actions:\n\n- Resend to a different agent.\n- Copy and edit.',
+      },
+    });
+    expect(text).toContain('Messages you send now carry their own actions:');
+    expect(text).toContain('Resend to a different agent.');
+  });
+
+  test('quote: false omits the changeset prose but keeps the rest of the reply', () => {
+    // The second reply on an origin that already received one has nothing new
+    // to quote: the opening line, coverage, and update instruction already
+    // say everything it needs to.
+    const text = compose({ quote: false });
+    expect(text).not.toContain('stays literal instead of turning into a highlight');
+    expect(text).toContain('v0.36.0');
+    expect(text).toContain('update to the latest desktop app');
+  });
+
+  test('quote: false still refuses to compose from an empty changeset', () => {
+    // A changeset that does not exist is not a fact this reply can stand on,
+    // whether or not the caller intended to quote it.
+    expect(compose({ quote: false, changeset: { title: '', body: '' } })).toBeNull();
+  });
+
   test('the reply lists every contributing ticket in sorted order', () => {
     const text = compose({ coverage: ['PRD-7403', 'PRD-7398', 'PRD-7400'] });
     expect(text).toContain('Covers PRD-7398, PRD-7400, PRD-7403.');
@@ -331,6 +363,31 @@ describe('reply composition', () => {
     expect(text).toContain('...');
   });
 
+  // Mirrors write-back-gate.mjs's MAX_PROSE_CHARS (1200). A single-token body
+  // like 'x'.repeat(5000) above can't tell `>` from `>=` at the boundary, and
+  // can't tell .trimEnd() from .trimStart() (both are no-ops on all-x input) —
+  // these three pin the boundary itself and a realistic multi-word cut.
+  test('a body exactly at the bound is quoted whole, not truncated', () => {
+    const body = 'x'.repeat(1200);
+    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
+    expect(text).toContain(body);
+    expect(text).not.toContain('...');
+  });
+
+  test('one character past the bound is truncated', () => {
+    const body = 'x'.repeat(1201);
+    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
+    expect(text).toContain(`${'x'.repeat(1200)}...`);
+    expect(text).not.toContain(body);
+  });
+
+  test('a realistic multi-word body is cut mid-word with the trailing space trimmed', () => {
+    const body = `${'word '.repeat(240)}tail`; // 240*5 + 4 = 1204 chars, space right at the cut
+    const text = compose({ changeset: { title: 't', body }, coverage: ['PRD-1'] });
+    expect(text).toContain('word...');
+    expect(text).not.toContain('word ...');
+  });
+
   test('no internal ticket detail reaches the composed reply', () => {
     // An adversarial candidate: every field a reporter must never see is
     // populated with a recognizable value. The composer's parameter list is
@@ -369,10 +426,12 @@ describe('reply composition', () => {
     }
   });
 
-  test('the composer accepts nothing beyond the changeset, the version, the channel, and the coverage', () => {
-    // A regression pin on the redaction mechanism itself: if a future change
-    // widens the parameter object, this states the intended surface out loud.
-    expect(composeReply.length).toBe(1);
+  test('the composer redacts extraneous fields rather than trusting the caller to omit them', () => {
+    // A regression pin on the redaction mechanism itself: `composeReply` reads
+    // only the fields it destructures, so passing more can never leak. This
+    // does not (and, being a single destructured object, structurally cannot)
+    // pin which fields those are — that surface is the explicit parameter
+    // list at the function's own definition.
     const text = composeReply({
       changeset: CHANGESET,
       version: '0.36.0',
@@ -407,6 +466,44 @@ describe('origin remit', () => {
     expect(isOriginRepliableFrom({ channel: 'discord-thread', threadId: '1' }, '')).toBe(true);
     expect(isOriginRepliableFrom(issue('inkeep', 'open-knowledge'), '')).toBe(false);
     expect(isOriginRepliableFrom(undefined, 'inkeep/open-knowledge')).toBe(false);
+  });
+});
+
+describe('repeat-reply detection', () => {
+  const ORIGIN = 'https://github.com/inkeep/open-knowledge/issues/1414';
+  // Built from the real `markerSuffixFor`, not a hand-rolled restatement of
+  // it, so this pins the shared contract rather than a second copy of it.
+  const marker = (version, originUrl = ORIGIN) =>
+    `https://github.com/inkeep/open-knowledge/releases/tag/v${version}${markerSuffixFor(originUrl)}`;
+
+  test('no marker for this origin at all means no earlier reply', () => {
+    expect(originAlreadyNotified([], ORIGIN)).toBe(false);
+    expect(originAlreadyNotified([marker('0.59.0')], 'https://github.com/other/repo/issues/1')).toBe(
+      false,
+    );
+  });
+
+  test('a marker for a DIFFERENT version on this origin means an earlier reply already quoted it', () => {
+    // The beta leg marks the origin with its own version; the stable run
+    // reads that marker for a version that is not the one it is about to post.
+    expect(originAlreadyNotified([marker('0.59.0-beta.2')], ORIGIN)).toBe(true);
+  });
+
+  test('an origin carrying its own query string still gets an unambiguous suffix', () => {
+    // encodeURIComponent escapes both `?` and `&`, so a `?notified=` inside the
+    // origin URL itself cannot be confused with the marker's own suffix.
+    const trickyOrigin = 'https://github.com/inkeep/open-knowledge/issues/1?notified=x';
+    expect(originAlreadyNotified([marker('0.59.0')], trickyOrigin)).toBe(false);
+    expect(originAlreadyNotified([marker('0.59.0', trickyOrigin)], trickyOrigin)).toBe(true);
+    expect(originAlreadyNotified([marker('0.59.0', trickyOrigin)], ORIGIN)).toBe(false);
+  });
+
+  test('the suffix must be at the tail, not merely present', () => {
+    // Pins .endsWith over .includes: a plausible-looking simplification to
+    // .includes would leave this suite green everywhere else, since every
+    // other case here puts the suffix genuinely last or leaves it out
+    // entirely.
+    expect(originAlreadyNotified([`${marker('0.59.0')}&ref=slack`], ORIGIN)).toBe(false);
   });
 });
 

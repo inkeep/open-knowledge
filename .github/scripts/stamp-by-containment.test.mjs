@@ -5,6 +5,11 @@ import {
   summarize,
 } from './stamp-by-containment.mjs';
 
+// Importing this module in-process cannot prove it LINKS: vitest resolves `.mjs`
+// through Vite's transform, which leaves a missing named import as `undefined`
+// rather than the load-time SyntaxError real node raises. `module-graph.test.mjs`
+// is what covers that, for every script here rather than only this one.
+
 const rel = (id, version) => ({ id, name: `v${version}`, version });
 
 const R = {

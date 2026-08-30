@@ -79,6 +79,7 @@ export {
 // and the web renderer forwarder, plus the server `/api/client-logs` ingest
 // that receives what the forwarder captured.
 export {
+  LOGGER_OWNED_FIELDS,
   mapConsoleLevel,
   parseStructuredConsoleMessage,
   prepareCapturedConsoleMessage,
@@ -366,6 +367,7 @@ export {
   EDITOR_USER_SKILL_ROOT,
   type EditorId,
   HOSTS_WITH_USER_SKILL_DIR,
+  HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
   PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
@@ -478,6 +480,7 @@ export {
   INLINE_RENDERABLE_EXTENSIONS,
   type InlineAssetMediaKind,
   isExcalidrawDocFile,
+  isMarkdownDocFile,
   isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
@@ -588,6 +591,7 @@ export {
   buildCodexUrl,
   buildCursorUrl,
   buildStartupInjectionBytes,
+  buildWindowsCliLaunch,
   type ComposeSelection,
   type CreateScenario,
   composeAskProjectPrompt,
@@ -602,6 +606,7 @@ export {
   composeSkillPrompt,
   composeTerminalBareLaunchPrompt,
   composeThreadBareLaunchPrompt,
+  composeWindowsShellLaunchArgs,
   type DocContext,
   type HandoffFailureReason,
   type HandoffOutcome,
@@ -611,13 +616,18 @@ export {
   type InstallState,
   type IpcChannelReason,
   type IpcChannelWithUrn,
+  isWindowsShellFamily,
   type LintFixPromptInput,
+  launchWithoutSupportFile,
   lookupUrnInRegistry,
   OK_GATED_TOOL_NAMES,
   OK_PROJECT_SKILL_POINTER,
   OK_TERMINAL_SURFACE_PREAMBLE,
   OK_THREAD_SURFACE_PREAMBLE,
   type PromptTransport,
+  psQuoteArg,
+  quoteWindowsShellPath,
+  resolveWindowsShellFamily,
   shellSingleQuote,
   startupInjectionFor,
   type TargetData,
@@ -626,9 +636,12 @@ export {
   TERMINAL_INLINE_PROMPT_BUDGET,
   type TerminalCli,
   type TerminalCliInfo,
+  type TerminalLaunchCommand,
   URN_HTTP_ONLY,
   URN_IPC_REGISTRY,
   type UrnIpcLookup,
+  WINDOWS_SHELL_FAMILIES,
+  type WindowsShellFamily,
   withSkillPointer,
 } from './handoff/index.ts';
 // Interface locales — the single source of truth the config enum, the Lingui
@@ -851,6 +864,7 @@ export {
   createRegistry,
   wildcardMeta,
 } from './registry/index.ts';
+export { JSX_SRC_REF_TAGS, type JsxSrcRefTagSpec } from './registry/jsx-src-ref-tags.ts';
 export {
   type ComponentEntryFull,
   type ComponentEntryLite,

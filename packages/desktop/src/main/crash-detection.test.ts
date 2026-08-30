@@ -19,13 +19,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { installWasInFlightDuring } from './auto-updater.ts';
 import {
   type CrashDetectionDeps,
   createCrashDetection,
   type InstallInFlight,
+  SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
 import { buildMinidump } from './minidump.test-helper.ts';
+import { type AppState, emptyState } from './state-store.ts';
 
 const tmpDirs: string[] = [];
 
@@ -88,6 +91,13 @@ interface Rig {
   tick(): Date;
   /** Jump the fake clock forward, for windows measured in minutes. */
   advance(ms: number): void;
+  /**
+   * Read the fake clock without moving it, to date a moment in the session
+   * under test before advancing past it. Reading it must not perturb the tick
+   * budget the surrounding assertions depend on, which is why this exists
+   * alongside `tick`.
+   */
+  nowMs(): number;
   dir: string;
 }
 
@@ -152,6 +162,9 @@ function makeRig(): Rig {
     },
     advance(ms: number) {
       clockMs += ms;
+    },
+    nowMs() {
+      return clockMs;
     },
     deps: {
       sentinelPath: join(dir, 'user-data', 'bug-report-dirty-shutdown.json'),
@@ -1710,6 +1723,11 @@ describe('when a boot invitation says the dead session stopped', () => {
     expect(breadcrumb?.lastAliveAt).toBe(lastAliveAt);
     expect(breadcrumb?.suspendedAt).toBeNull();
     expect(breadcrumb?.pendingOsShutdownAt).toBeNull();
+    // The fourth witness the suppression predicate is built from. Present as an
+    // explicit null on every dirty-shutdown prompt, which is what lets a reader
+    // tell this build from one predating the question entirely.
+    expect(breadcrumb).toHaveProperty('attemptedInstall');
+    expect(breadcrumb?.attemptedInstall).toBeNull();
   });
 
   test('a sentinel written before the liveness fields existed logs them as null', () => {
@@ -1972,6 +1990,12 @@ describe('auto-update install kill suppression', () => {
     // indistinguishable in the logs from one where detection never ran.
     expect(breadcrumb?.attemptedInstall).toBe('0.61.3');
     expect(breadcrumb?.recordedHandoff).toBe(true);
+    // Every other moment on this line is an ISO string. A raw epoch here would
+    // read as a plausible number beside them and quietly cost the reader the
+    // comparison the field exists for. Named apart from the updater's own
+    // `handoffAt`, which stays epoch ms, so one key never carries two
+    // datatypes across the stream the two modules share.
+    expect(breadcrumb?.handoffAtIso).toBe('2026-08-23T23:10:28.727Z');
   });
 
   test('a fresh minidump still prompts through an install kill', () => {
@@ -2027,9 +2051,9 @@ describe('auto-update install kill suppression', () => {
     const rig = makeRig();
     createCrashDetection(rig.deps).detectBootCrash();
     // No live process saw the commit (a force-quit, a power loss), so the
-    // updater fell back to the staging moment. The macOS instances this ticket
-    // was opened from take this path — a session killed mid-flight never
-    // quits, so it never stamps a handoff of its own.
+    // updater fell back to the staging moment. A session that reached neither
+    // commit point, neither the "Relaunch now" click nor `before-quit`, takes
+    // this path. `crash-detection.ts` keeps the platform account.
     rig.setInstallInFlight({ ...IN_FLIGHT, recordedHandoff: false });
 
     expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
@@ -2044,5 +2068,583 @@ describe('auto-update install kill suppression', () => {
 
     const armed = createCrashDetection(rig.deps).detectBootCrash();
     expect(armed?.kind).toBe('boot');
+  });
+});
+
+/**
+ * The join between crash detection and the updater's verdict, exercised with
+ * the real predicate rather than a canned answer.
+ *
+ * Every test in the block above hands detection a fixed `InstallInFlight` and
+ * so can only observe what detection does with a verdict, never how the
+ * verdict was reached. The bound that decides the verdict is a window measured
+ * from the install handoff, which means the instant the question is asked in
+ * changes the answer. These tests therefore wire the real updater predicate and
+ * model the one variable no test at either rung models: how long the app stayed
+ * closed between the session the installer killed and the boot that detects it.
+ *
+ * The dep here answers about the span the previous session died in, which
+ * detection bounds below by the sentinel's own `lastAliveAt` and above by the
+ * moment this boot noticed the death. When the sentinel carries no usable one that
+ * lower bound collapses onto the detecting boot's own clock, the one frame in
+ * which the question decays with how long the app stayed closed, so a test
+ * that suppresses only once a usable lower bound arrives is pinning the frame
+ * rather than the plumbing.
+ */
+describe('the instant the install-kill question is asked in', () => {
+  const ATTEMPTED = '0.61.3';
+  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+
+  /**
+   * What a boot reads after a quit committed to an install: an attempt with a
+   * handoff stamped at `handoffAt` and nothing yet observed to land. Callers
+   * place that moment before, during, or after the doomed session's life
+   * deliberately, since where it falls relative to the last heartbeat is what
+   * most of this block is about.
+   */
+  function committedInstall(handoffAt: number): AppState {
+    return {
+      ...emptyState(),
+      versionPendingInstall: ATTEMPTED,
+      attemptedInstall: ATTEMPTED,
+      attemptedInstallHandoffAt: handoffAt,
+      versionPendingInstallStagedAt: handoffAt - 60_000,
+      attemptedInstallDeferredBoots: 0,
+    };
+  }
+
+  /**
+   * What a boot reads after a download finished and nothing quit afterwards:
+   * an attempt on record with no handoff stamped, so the only moment the
+   * updater can date the commit to is when the artifact was staged. A session
+   * that reached neither commit point arrives in exactly this shape, whatever
+   * ended it. `crash-detection.ts` keeps the platform account.
+   */
+  function stagedButNeverCommitted(stagedAt: number): AppState {
+    return {
+      ...emptyState(),
+      versionPendingInstall: ATTEMPTED,
+      attemptedInstall: ATTEMPTED,
+      attemptedInstallHandoffAt: null,
+      versionPendingInstallStagedAt: stagedAt,
+      attemptedInstallDeferredBoots: 0,
+    };
+  }
+
+  function wireRealUpdater(rig: Rig, state: AppState): void {
+    // The span forwarded whole, as the dep declares it. Substituting either end
+    // would substitute the detecting boot's own clock, which is the one frame
+    // this block exists to prove the verdict is not asked in.
+    rig.deps.installInFlight = (span) =>
+      installWasInFlightDuring(state, span, state.versionPendingInstallStagedAt);
+  }
+
+  test('an install in flight when the previous session died stays suppressed however late the reopen', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    // The doomed session boots on the outgoing binary and is killed mid-swap,
+    // so no quit sequence runs and its sentinel survives dirty, dated by the
+    // heartbeat it wrote while alive.
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    // The user does not come back until the evening. Whether an install was
+    // running when that session died is settled history by then, and no amount
+    // of the app sitting closed can unsettle it.
+    rig.advance(TWO_HOURS_MS);
+
+    const sessionB = createCrashDetection(rig.deps);
+    expect(sessionB.detectBootCrash()).toBeNull();
+    sessionB.notifyRendererReady();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('the same install kill is still suppressed when the user reopens promptly', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    // The negative control for the test above. Anchoring the question to the
+    // death must not cost the suppression that already works on a fast reopen,
+    // which is what a fix that merely widened or moved the window would do.
+    rig.advance(5 * 60_000);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a dirty shutdown with nothing committed still prompts however late the reopen', () => {
+    const rig = makeRig();
+    // Nothing was ever handed off, so there is no install to attribute the
+    // death to and the prompt is the whole point. This is the guard against
+    // answering the frame question by suppressing everything.
+    wireRealUpdater(rig, emptyState());
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(TWO_HOURS_MS);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a clean quit inside an install window arms nothing, with no death to date', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    const sessionA = createCrashDetection(rig.deps);
+    sessionA.detectBootCrash();
+    sessionA.markCleanQuit();
+
+    rig.advance(TWO_HOURS_MS);
+
+    // No sentinel means no previous session to anchor to. Reaching for an
+    // anchor that is not there must stay a no-op rather than throwing or
+    // arming on a session that quit properly.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+    expect(rig.emitted).toHaveLength(0);
+  });
+
+  test('a torn sentinel carries no death to anchor to, so a late reopen still prompts', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(rig.deps.sentinelPath, 'torn-write-not-json');
+
+    rig.advance(TWO_HOURS_MS);
+
+    // Nothing in the file survived, so there is no lower bound on the death
+    // and the detecting clock is the only instant there is. Falling back to it
+    // is the fail-open-toward-prompting posture this module takes for any
+    // probe it cannot reason from, rather than inventing an anchor.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a torn sentinel on a prompt reopen keeps the suppression it has today', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(rig.deps.sentinelPath, 'torn-write-not-json');
+
+    rig.advance(5 * 60_000);
+
+    // The other half of the same fallback, and the half a fix that treated a
+    // missing anchor as "assume no install" would silently regress: the
+    // installer really did kill this session, and losing the sentinel to a
+    // torn write is not evidence that it did not.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a sentinel written before the liveness fields existed still suppresses a prompt reopen', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(prevBootedAt));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    // The shape an upgrade from a build predating the heartbeat field leaves
+    // behind: readable, dated only by the instant the session started, and
+    // carrying no version either, since that field is younger still. A reopen
+    // this fast is inside the window under any lower bound at or after that
+    // instant, so the suppression must not depend on `lastAliveAt` being
+    // present.
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+      }),
+    );
+
+    rig.advance(5 * 60_000);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a handoff stamped after the previous session stopped heartbeating still suppresses', () => {
+    const rig = makeRig();
+    // The doomed session starts with nothing committed, so its sentinel is
+    // dated by the heartbeat it last wrote rather than by any install record.
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveMs = Date.parse(readSentinel(rig).lastAliveAt ?? '');
+
+    // Setup shared with the late-reopen sibling below, which differs only in
+    // how long the user stays away. This one reopens promptly, so it pins the
+    // half of the class that worked before the span reduction and must not
+    // regress.
+    rig.advance(SENTINEL_HEARTBEAT_INTERVAL_MS - 15_000);
+    const handoffAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(handoffAt));
+    // Asserted rather than assumed: a rig whose two moments coincided would
+    // suppress under every anchoring scheme and would therefore pin nothing.
+    expect(handoffAt).toBeGreaterThan(lastAliveMs);
+
+    rig.advance(5 * 60_000);
+
+    // A question asked only at the last heartbeat reads this handoff as
+    // sitting in the future, which the updater declines to reason from and
+    // reports as no install at all. Anchoring there would arm a false prompt
+    // on a prompt reopen, which is the half of the class that has always
+    // worked. The death is an interval, and the install was in flight at its
+    // far end.
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a sentinel dated only by when its session started collapses onto this boot', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    // A commit made before the doomed session started, which is the shape an
+    // install that never lands leaves behind: the record outlives the
+    // relaunch, and the session that inherits it is the one the installer
+    // kills on the next attempt.
+    wireRealUpdater(rig, committedInstall(prevBootedAt - 5 * 60_000));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+      }),
+    );
+
+    rig.advance(TWO_HOURS_MS);
+
+    // A session cannot die before it started, so that stamp does bound the
+    // death from below, and it is deliberately not used anyway. It dates the
+    // boot, not the death, so a session the installer killed seconds in and
+    // one that ran for hours before genuinely crashing arrive here as the same
+    // input, and reading it would resolve that ambiguity toward silence for
+    // both. The span collapses onto this boot instead and the prompt is owed.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('an unreadable last-alive stamp reads as no heartbeat at all', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(prevBootedAt - 5 * 60_000));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    // The sentinel reader admits any non-empty string, so a field mangled by a
+    // partial write, or written in some other build's format, arrives here as
+    // text no date parser will take.
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+        lastAliveAt: 'not-a-date',
+        appVersion: CRASHED_VERSION,
+      }),
+    );
+
+    rig.advance(TWO_HOURS_MS);
+
+    // Present but unparseable has to land where absent lands, or the parse
+    // failure quietly buys a suppression the same sentinel would not get if
+    // the field had been left out entirely.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('an unreadable last-alive stamp still renders a suppression breadcrumb', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    // The two siblings above both park the handoff outside the grace, so the
+    // verdict is null and the breadcrumb is never built. Putting it inside is
+    // what carries an unparseable stamp all the way to the line that formats
+    // the span, which is the only place a raw NaN would throw rather than
+    // degrade. `detectBootCrash()` returning at all is half the assertion.
+    wireRealUpdater(rig, committedInstall(prevBootedAt));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+        lastAliveAt: 'not-a-date',
+        appVersion: CRASHED_VERSION,
+      }),
+    );
+
+    rig.advance(5 * 60_000);
+    const lines = captureInfo(rig);
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+
+    const breadcrumb = suppressionBreadcrumb(lines);
+    expect(breadcrumb.deathFromSource).toBe('detected-at');
+    expect(breadcrumb.deathFrom).toBe(new Date(rig.nowMs()).toISOString());
+  });
+
+  test('an unreadable last-alive stamp does not clear the staleness bound', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    // Handed off well outside the in-flight window before that session even
+    // booted, so the correct verdict is that nothing was still running and the
+    // prompt is owed.
+    wireRealUpdater(rig, committedInstall(prevBootedAt - 45 * 60_000));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+        lastAliveAt: 'not-a-date',
+        appVersion: CRASHED_VERSION,
+      }),
+    );
+
+    rig.advance(TWO_HOURS_MS);
+
+    // Every comparison against a non-number is false, so an anchor that
+    // reached the updater as one would pass the staleness bound by failing it
+    // and suppress prompts this class was never meant to touch. The stale
+    // handoff has to arrive at the window as a real number and lose.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a handoff stamped after the last heartbeat still suppresses a late reopen', () => {
+    const rig = makeRig();
+    // Setup identical to the prompt-reopen sibling above, up to the reopen
+    // delay further down, which is the only thing that differs and is the whole
+    // reduction: the window lands strictly inside the span rather than touching
+    // either end.
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveMs = Date.parse(readSentinel(rig).lastAliveAt ?? '');
+    rig.advance(SENTINEL_HEARTBEAT_INTERVAL_MS - 15_000);
+    const handoffAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(handoffAt));
+    expect(handoffAt).toBeGreaterThan(lastAliveMs);
+
+    // And then the user does not come back until the evening. The install
+    // window opens after the last heartbeat and closes long before the reopen,
+    // so it lies strictly inside the span between them and touches neither
+    // end. Two questions asked at the ends of that span both come back empty
+    // and arm a prompt for a session the installer ended on purpose.
+    rig.advance(TWO_HOURS_MS);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a commit no live process recorded still suppresses a prompt reopen', () => {
+    const rig = makeRig();
+    // The half of the stampless branch that must keep working. Nothing quit, so
+    // the staging moment is the only date the updater has, and the question
+    // falls back to the detecting instant. Inside the grace of that download the
+    // answer is still a suppression, exactly as it was before the span reduction
+    // existed. Without this the branch has no positive case anywhere, and a
+    // refactor that bailed out early on a null stamp would leave every other
+    // assertion in this file green.
+    wireRealUpdater(rig, stagedButNeverCommitted(rig.nowMs()));
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(5 * 60_000);
+
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+  });
+
+  test('a commit no live process recorded does not widen the span', () => {
+    const rig = makeRig();
+    // Nothing ever quit, so no handoff was stamped and the staging moment is
+    // the only date the updater has. That moment records a download finishing,
+    // not a process committing to run an installer, so widening the span for
+    // it would read every dirty shutdown inside the grace of a completed
+    // download as an install kill. The span reasoning stops at the stamped
+    // shape and this path answers exactly as it did before.
+    wireRealUpdater(rig, stagedButNeverCommitted(rig.nowMs()));
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(TWO_HOURS_MS);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('a staged install whose window closed before the death still prompts', () => {
+    const rig = makeRig();
+    // Same shape, staged well outside the window before the doomed session was
+    // last alive. The staging fallback is a loose lower bound on the commit,
+    // not a licence to suppress every death that follows a download.
+    wireRealUpdater(rig, stagedButNeverCommitted(rig.nowMs() - 45 * 60_000));
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(TWO_HOURS_MS);
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  /**
+   * Swap in a payload-capturing logger, as the breadcrumb test in the block
+   * above does. The tier label is a second expression of the same fallback
+   * ladder that produced the bound, so the two can disagree with every verdict
+   * still correct, and a responder who trusts a label naming the wrong tier
+   * chases a widened span that never happened.
+   */
+  function captureInfo(rig: Rig): Array<Record<string, unknown>> {
+    const lines: Array<Record<string, unknown>> = [];
+    rig.deps.logger = {
+      info: (payload: Record<string, unknown>) => {
+        lines.push(payload);
+      },
+      warn: (payload: Record<string, unknown>) => {
+        rig.warnings.push(payload);
+      },
+    };
+    return lines;
+  }
+
+  function suppressionBreadcrumb(lines: Array<Record<string, unknown>>) {
+    const line = lines.find((l) => l.event === 'crash-detection.machine-level-death');
+    expect(line).toBeDefined();
+    return line as Record<string, unknown>;
+  }
+
+  test('a suppression names the handoff it accepted and the tier that dated the span', () => {
+    const rig = makeRig();
+    const handoffAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(handoffAt));
+    createCrashDetection(rig.deps).detectBootCrash();
+    const lastAliveMs = Date.parse(readSentinel(rig).lastAliveAt ?? '');
+
+    rig.advance(TWO_HOURS_MS);
+    const lines = captureInfo(rig);
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+
+    const breadcrumb = suppressionBreadcrumb(lines);
+    // ISO rather than epoch ms, so a responder can read it against deathFrom on
+    // the same line without converting one of the two by hand, and under its
+    // own key so the updater's epoch-ms `handoffAt` keeps one datatype.
+    expect(breadcrumb.handoffAtIso).toBe(new Date(handoffAt).toISOString());
+    expect(breadcrumb.deathFromSource).toBe('last-alive');
+    expect(breadcrumb.deathFrom).toBe(new Date(lastAliveMs).toISOString());
+    // The width the question was actually asked over. A non-zero value here is
+    // what marks a suppression whose span widened, which is the only shape the
+    // handoff-against-deathFrom read above is valid on.
+    expect(breadcrumb.deathSpanMs).toBe(rig.nowMs() - lastAliveMs);
+  });
+
+  test('a heartbeat postdating this boot collapses the span without inverting it', () => {
+    const rig = makeRig();
+    const handoffAt = rig.nowMs();
+    wireRealUpdater(rig, committedInstall(handoffAt));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    // A clock correction across the quit leaves a heartbeat dated after the
+    // boot that reads it. The span has no width to report there, so zero is
+    // the true answer rather than a negative one, and a triage rule keyed on a
+    // non-zero width has to exclude this line rather than count it.
+    const impossibleLastAlive = rig.nowMs() + 3 * 60 * 60 * 1000;
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(rig.nowMs()),
+        startedAt: new Date(rig.nowMs()).toISOString(),
+        lastAliveAt: new Date(impossibleLastAlive).toISOString(),
+        appVersion: CRASHED_VERSION,
+      }),
+    );
+
+    rig.advance(5 * 60_000);
+    const lines = captureInfo(rig);
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+
+    const breadcrumb = suppressionBreadcrumb(lines);
+    expect(breadcrumb.deathSpanMs).toBe(0);
+    // The inversion itself stays legible: both unclamped moments are on the
+    // line, so a reader can still see that the floor postdates the detection.
+    expect(breadcrumb.deathFrom).toBe(new Date(impossibleLastAlive).toISOString());
+    expect(Date.parse(breadcrumb.detectedAt as string)).toBeLessThan(impossibleLastAlive);
+    expect(breadcrumb.deathFromSource).toBe('last-alive');
+  });
+
+  test('a fresh dump inside an install window prompts and names the attempt', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    createCrashDetection(rig.deps).detectBootCrash();
+
+    rig.advance(5 * 60_000);
+    seedMinidump(rig, 'faulted.dmp', new Date(rig.nowMs()));
+    const lines = captureInfo(rig);
+
+    // The installer ended the session AND the app faulted on its own, so the
+    // dump decides: this prompts as the dump-driven variant rather than being
+    // suppressed. It is also the only route by which the boot line carries a
+    // non-null attempt, which is what makes the key readable as evidence there
+    // rather than only as an era marker.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(false);
+    const boot = lines.find((l) => l.event === 'crash-detection.boot');
+    expect(boot?.attemptedInstall).toBe(ATTEMPTED);
+  });
+
+  test('a torn sentinel says the span collapsed onto this boot, and warns', () => {
+    const rig = makeRig();
+    wireRealUpdater(rig, committedInstall(rig.nowMs()));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    writeFileSync(rig.deps.sentinelPath, 'torn-write-not-json');
+
+    rig.advance(5 * 60_000);
+    const lines = captureInfo(rig);
+    expect(createCrashDetection(rig.deps).detectBootCrash()).toBeNull();
+
+    // A file that parsed and carried no dates reaches the breadcrumb as the
+    // same nulls, so without the warn a degraded read is indistinguishable
+    // from a clean one that simply had nothing to say.
+    expect(suppressionBreadcrumb(lines).deathFromSource).toBe('detected-at');
+    expect(rig.warnings.map((w) => w.event)).toContain('crash-detection.sentinel-parse-failed');
+  });
+
+  test('a sentinel that exists but cannot be read warns rather than passing as absent', () => {
+    const rig = makeRig();
+    // A directory where the file should be stands in for the class the field
+    // actually produces: an antivirus or indexer lock, a permission the app
+    // lost. The read throws with something other than ENOENT, so the previous
+    // session still did not clean-quit, but every dated field is gone and the
+    // span collapses. That reaches the breadcrumb identically to a build from
+    // before those fields existed, and the two call for opposite responses,
+    // so the errno is the only thing that separates them.
+    mkdirSync(rig.deps.sentinelPath, { recursive: true });
+
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+
+    const warn = rig.warnings.find((w) => w.event === 'crash-detection.sentinel-read-failed');
+    expect(warn).toBeDefined();
+    // The errno is the whole point of the line, so assert it arrives rather
+    // than trusting the payload shape. Presence first: an optional chain into a
+    // negative matcher passes on `undefined`, which would let a payload that
+    // dropped `err` keep this green.
+    const errno = (warn?.err as NodeJS.ErrnoException | undefined)?.code;
+    expect(errno).toBeDefined();
+    // Asserted as "not the missing-file code" rather than as the exact one,
+    // because EISDIR is this rig's way of provoking the class and the field
+    // produces others.
+    expect(errno).not.toBe('ENOENT');
+    // The other half of the same catch: a file that exists but cannot be read
+    // is still a session that did not clean-quit, so the prompt is owed.
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
+  });
+
+  test('the heartbeat outranks the start of the session when the two straddle the grace', () => {
+    const rig = makeRig();
+    const prevBootedAt = rig.nowMs();
+    // Handed off a minute before the doomed session even started, so the
+    // window had closed many hours before that session actually died.
+    wireRealUpdater(rig, committedInstall(prevBootedAt - 60_000));
+    mkdirSync(dirname(rig.deps.sentinelPath), { recursive: true });
+    const diedAt = prevBootedAt + 8 * 60 * 60 * 1000;
+    writeFileSync(
+      rig.deps.sentinelPath,
+      JSON.stringify({
+        bootId: String(prevBootedAt),
+        startedAt: new Date(prevBootedAt).toISOString(),
+        lastAliveAt: new Date(diedAt).toISOString(),
+        appVersion: CRASHED_VERSION,
+      }),
+    );
+
+    rig.advance(9 * 60 * 60 * 1000);
+
+    // Both dates are sound lower bounds on the death and they disagree by a
+    // whole session, which is why the order they are tried in is a decision
+    // rather than a detail. Reaching past the heartbeat to the earlier one
+    // would carry this handoff back inside the window and silence a genuine
+    // crash eight hours into a session.
+    const armed = createCrashDetection(rig.deps).detectBootCrash();
+    expect(bootInvite(armed).context.dirtyShutdown).toBe(true);
   });
 });

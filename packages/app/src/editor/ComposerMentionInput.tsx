@@ -377,10 +377,18 @@ export function ComposerMentionInput({
       clear: () => editor?.commands.clearContent(true),
       setText: (text: string) => {
         if (!editor) return;
-        editor.commands.setContent(text);
+        // Structured paragraphs, not the raw string: `setContent` parses a
+        // string as HTML, so seeding a field with prose the user actually
+        // typed dropped every newline and ate anything angle-bracketed. Every
+        // caller here seeds plain text (a comment body, a starter brief, a
+        // sent message being revised).
+        editor.commands.setContent(textToParagraphs(text));
         // `setContent` does not reliably fire `onUpdate`, so mirror the resulting
         // doc into the shared draft + inline-mention set here — otherwise a
         // prefilled starter brief wouldn't carry to the other placement.
+        // `onEmptyChange` for the same reason `appendText` sends it: seeding
+        // flips the host's send-enabled state and `setContent` won't announce it.
+        onEmptyChangeRef.current(isComposerEmpty(editor));
         onContentChangeRef.current?.(editor.getJSON());
         onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
         setSlashHint(

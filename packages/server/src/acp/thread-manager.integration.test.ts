@@ -22,6 +22,9 @@ import type {
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
+  type: 'json',
+};
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
@@ -4280,4 +4283,367 @@ describe('agent failures reach the server log', () => {
     expect(exitLine?.obj.code).toBe(7);
     expect(String(exitLine?.obj.machineDetail)).toContain('ran out of memory');
   }, 30_000);
+});
+
+/**
+ * The one legacy producer envelope the transcript restyles as runtime status.
+ * Recorded from the registry-selected adapter; the fake agent below replays
+ * those exact bytes so the server's retention decision is made against real
+ * producer output rather than a paraphrase of it.
+ */
+const CODEX_WARNING_TEXT = codexFixture.candidates.find((c) => c.name === 'warning-skills-budget')
+  ?.update.content.text as string;
+const CODEX_NEIGHBOR_TEXTS = [
+  codexFixture.neighbors.contextCompacted.update.content.text,
+  codexFixture.neighbors.turnError.update.content.text,
+] as const;
+
+/**
+ * A turn that emits real no-ID Codex chrome on both sides of a real warning
+ * envelope, written to stdout in ONE call so the whole run reaches the
+ * coalescer inside a single flush window. Neighbours on both sides are what
+ * makes the retention verdict observable: a boundary can then only come from
+ * the guard, never from a flush landing there.
+ */
+function codexLegacyTurnTexts(): string[] {
+  const [compacted, turnError] = CODEX_NEIGHBOR_TEXTS;
+  return [compacted, compacted, turnError, CODEX_WARNING_TEXT, turnError, compacted, turnError];
+}
+
+function agentTextUpdate(text: string): unknown {
+  return { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } };
+}
+
+/**
+ * A fake ACP agent reachable the way a registry agent is: through an `npx`
+ * shim on the manifest's own overlay PATH. Registry source is not cosmetic
+ * here — it is half of the identity the retention guard consults, and a custom
+ * entry could never carry it.
+ *
+ * `updates` are emitted verbatim as the payloads of one prompt turn, so a
+ * caller can put a shape the SDK does not accept on the wire.
+ */
+function writeRegistryAgentShims(binDir: string, updates: readonly unknown[]): void {
+  const agentPath = join(binDir, 'agent.mjs');
+  writeFileSync(
+    agentPath,
+    `
+const write = (m) => process.stdout.write(JSON.stringify(m) + '\\n');
+const UPDATES = ${JSON.stringify(updates)};
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) => write({ jsonrpc: '2.0', id: msg.id, result });
+    if (msg.method === 'initialize') {
+      reply({ protocolVersion: 1, agentCapabilities: {} });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 'sess-fixed' });
+    } else if (msg.method === 'session/prompt') {
+      const burst = UPDATES.map((update) =>
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'session/update',
+          params: { sessionId: 'sess-fixed', update },
+        }),
+      ).join('\\n');
+      process.stdout.write(burst + '\\n');
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`,
+  );
+  writeFileSync(join(binDir, 'npx'), `#!/bin/sh\nexec "${process.execPath}" "${agentPath}"\n`, {
+    mode: 0o755,
+  });
+  // The launch path probes `node --version` for npx compatibility before it
+  // spawns anything, and the overlay PATH is the only place it can look.
+  writeFileSync(
+    join(binDir, 'node'),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v${process.versions.node}; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
+    { mode: 0o755 },
+  );
+}
+
+function registryManagerFor(
+  agentId: string,
+  contentDir: string,
+  localDir: string,
+  binDir: string,
+): AcpThreadManager {
+  const manifest = {
+    id: agentId,
+    name: agentId,
+    version: '1.6.2',
+    distribution: { npx: { package: `@fake/${agentId}`, env: { PATH: binDir } } },
+  };
+  return makeManager(contentDir, localDir, {
+    registry: new AcpRegistry({
+      localDir,
+      log,
+      fetchImpl: (async () =>
+        new Response(JSON.stringify({ agents: [manifest] }), {
+          status: 200,
+        })) as unknown as typeof fetch,
+    }),
+  });
+}
+
+describe.skipIf(process.platform === 'win32')('Codex legacy warning event boundaries', () => {
+  type Retained = { seq: number; event: ThreadEvent };
+
+  const collectAll =
+    (into: Retained[]) =>
+    (frame: ThreadServerFrame): void => {
+      if (frame.op === 'event') into.push({ seq: frame.seq, event: frame.event });
+      if (frame.op === 'events') {
+        for (const [i, event] of frame.events.entries()) {
+          into.push({ seq: frame.fromSeq + i, event });
+        }
+      }
+    };
+
+  const messageTexts = (retained: Retained[]): string[] =>
+    retained
+      .map((r) => r.event)
+      .filter((e) => e.kind === 'session_update')
+      .map((e) => (e as { update: Record<string, unknown> }).update)
+      .filter((u) => u.sessionUpdate === 'agent_message_chunk')
+      .map((u) => (u.content as { text: string }).text);
+
+  async function runTurn(
+    agentId: string,
+    contentDir: string,
+    localDir: string,
+    binDir: string,
+  ): Promise<{ manager: AcpThreadManager; threadId: string; retained: Retained[] }> {
+    writeRegistryAgentShims(binDir, codexLegacyTurnTexts().map(agentTextUpdate));
+    const manager = registryManagerFor(agentId, contentDir, localDir, binDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'agent ready',
+    );
+    manager.sendPrompt(info.threadId, 'go');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    const retained: Retained[] = [];
+    await manager.subscribe(info.threadId, 0, collectAll(retained));
+    return { manager, threadId: info.threadId, retained };
+  }
+
+  test('a registry Codex warning is retained as its own event, never merged', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const { retained } = await runTurn('codex-acp', contentDir, localDir, tmp());
+    const texts = messageTexts(retained);
+
+    expect(texts.filter((t) => t === CODEX_WARNING_TEXT)).toHaveLength(1);
+    expect(texts.filter((t) => t !== CODEX_WARNING_TEXT && t.includes(CODEX_WARNING_TEXT))).toEqual(
+      [],
+    );
+  }, 45_000);
+
+  test('the retained log keeps the producer bytes, kinds, and order intact', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const { retained } = await runTurn('codex-acp', contentDir, localDir, tmp());
+
+    expect(messageTexts(retained).join('')).toBe(codexLegacyTurnTexts().join(''));
+    // Retention is all the guard changes: no event kind was invented for it,
+    // and folding still assigns no seq of its own.
+    expect(retained.map((r) => r.event.kind)).not.toContain('agent_notice');
+    expect(retained.map((r) => r.seq)).toEqual(retained.map((_, i) => i));
+  }, 45_000);
+
+  test('ordinary no-ID chrome around the warning still coalesces', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const { retained } = await runTurn('codex-acp', contentDir, localDir, tmp());
+    const texts = messageTexts(retained);
+
+    // Seven emitted chunks; the guard draws exactly two boundaries, so the
+    // neighbours on each side must still have folded into far fewer events.
+    expect(texts.length).toBeLessThan(codexLegacyTurnTexts().length);
+    expect(
+      texts.some((t) => t !== CODEX_WARNING_TEXT && t.length > CODEX_NEIGHBOR_TEXTS[0].length),
+    ).toBe(true);
+  }, 45_000);
+
+  test('the same envelope from another registry agent is coalesced as before', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const { retained } = await runTurn('claude-acp', contentDir, localDir, tmp());
+    const texts = messageTexts(retained);
+
+    // The identity is what the decision turns on: byte-identical output from a
+    // different registry agent must stay ordinary prose. A flush cannot fake
+    // this — isolating the warning would take two timer fires inside one burst.
+    expect(texts).not.toContain(CODEX_WARNING_TEXT);
+    expect(texts.filter((t) => t.includes(CODEX_WARNING_TEXT))).toHaveLength(1);
+    expect(texts.join('')).toBe(codexLegacyTurnTexts().join(''));
+  }, 45_000);
+
+  test('the warning occupies one NDJSON line at its own seq', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const { manager, threadId, retained } = await runTurn('codex-acp', contentDir, localDir, tmp());
+    await manager.closeThread(threadId);
+
+    const lines = readFileSync(join(localDir, 'threads', `${threadId}.ndjson`), 'utf8')
+      .split('\n')
+      .filter((line) => line !== '');
+    const warningLines = lines.filter(
+      (line) => messageTexts([{ seq: 0, event: JSON.parse(line) }])[0] === CODEX_WARNING_TEXT,
+    );
+
+    expect(warningLines).toHaveLength(1);
+    // The line index IS the seq, so a line-for-line match with the broadcast
+    // proves durability rode the same boundaries the subscriber saw.
+    expect(lines.indexOf(warningLines[0])).toBe(
+      retained.find((r) => messageTexts([r])[0] === CODEX_WARNING_TEXT)?.seq,
+    );
+  }, 45_000);
+
+  test('a persisted warning replays with the same bytes, kind, and position', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const binDir = tmp();
+    const { manager, threadId, retained } = await runTurn(
+      'codex-acp',
+      contentDir,
+      localDir,
+      binDir,
+    );
+    const live = retained.map((r) => r.event);
+    await manager.closeThread(threadId);
+
+    const reopened = registryManagerFor('codex-acp', contentDir, localDir, binDir);
+    await reopened.init();
+    const replayed: Retained[] = [];
+    await reopened.subscribe(threadId, 0, collectAll(replayed));
+
+    const warningSeq = (rows: Retained[]): number[] =>
+      rows.filter((r) => messageTexts([r])[0] === CODEX_WARNING_TEXT).map((r) => r.seq);
+
+    expect(messageTexts(replayed)).toEqual(messageTexts(retained));
+    // Close appends its own status after the live subscription was taken, so
+    // the live log is a prefix of the replayed one rather than equal to it.
+    expect(replayed.map((r) => r.event.kind).slice(0, live.length)).toEqual(
+      live.map((e) => e.kind),
+    );
+    expect(warningSeq(replayed)).toEqual(warningSeq(retained));
+    expect(replayed.map((r) => r.seq)).toEqual(replayed.map((_, i) => i));
+  }, 60_000);
+});
+
+/**
+ * The SDK-level canary characterizes the installed validator in isolation.
+ * This one asks the question the product actually cares about: when an agent
+ * puts a typed notice on the wire mid-turn, does OK's own thread keep working?
+ * The rejection happens inside the SDK's static router, upstream of
+ * `handleSessionUpdate`, so nothing short of a real spawned connection can
+ * show whether the surrounding turn survives it.
+ */
+describe.skipIf(process.platform === 'win32')('a typed session notice mid-turn', () => {
+  const BEFORE = 'chunk emitted before the notice';
+  const AFTER = 'chunk emitted after the notice';
+
+  /**
+   * A `notice` session update carrying the required severity + title of ACP's
+   * unstable Session Notices schema.
+   */
+  const typedNotice = {
+    sessionUpdate: 'notice',
+    severity: 'warning',
+    title: 'skill bundle exceeded its budget',
+  };
+
+  type NoticeTurns = {
+    manager: AcpThreadManager;
+    threadId: string;
+    /** Every retained session_update payload, in source order. */
+    updates: () => Promise<Record<string, unknown>[]>;
+    promptAgain: () => Promise<void>;
+  };
+
+  async function startThreadEmittingNotice(): Promise<NoticeTurns> {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const binDir = tmp();
+    writeRegistryAgentShims(binDir, [agentTextUpdate(BEFORE), typedNotice, agentTextUpdate(AFTER)]);
+    const manager = registryManagerFor('codex-acp', contentDir, localDir, binDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'codex-acp' } });
+    const ready = (what: string) =>
+      waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, what);
+    await ready('agent ready');
+
+    const promptAgain = async () => {
+      manager.sendPrompt(info.threadId, 'go');
+      await ready('turn ended');
+    };
+    await promptAgain();
+
+    return {
+      manager,
+      threadId: info.threadId,
+      promptAgain,
+      updates: async () => {
+        const events: ThreadEvent[] = [];
+        const sink = (frame: ThreadServerFrame) => {
+          if (frame.op === 'event') events.push(frame.event);
+          if (frame.op === 'events') events.push(...frame.events);
+        };
+        await manager.subscribe(info.threadId, 0, sink);
+        // Read the log, don't keep watching it: a live subscriber also pins
+        // the thread's unwatched-turn clock, which this is not testing.
+        manager.unsubscribe(info.threadId, sink);
+        return events
+          .filter((e) => e.kind === 'session_update')
+          .map((e) => (e as { update: Record<string, unknown> }).update);
+      },
+    };
+  }
+
+  const textOf = (updates: Record<string, unknown>[]): string =>
+    updates.map((u) => (u.content as { text?: string })?.text ?? '').join('');
+
+  test('never reaches the thread event log, while its turn-mates do', async () => {
+    const updates = await (await startThreadEmittingNotice()).updates();
+
+    // Asserted as the WHOLE discriminator set, not as the absence of one
+    // string: an extractor reading the wrong key would report nothing but
+    // `undefined` and still satisfy a bare `not.toContain('notice')`.
+    expect(new Set(updates.map((u) => u.sessionUpdate))).toEqual(new Set(['agent_message_chunk']));
+    // Both neighbours landing is the other half of the control: an empty
+    // transcript would satisfy the absence claim without proving anything.
+    expect(textOf(updates)).toContain(BEFORE);
+    expect(textOf(updates)).toContain(AFTER);
+  }, 45_000);
+
+  test('leaves the connection usable for a whole further turn', async () => {
+    const thread = await startThreadEmittingNotice();
+    const firstTurn = textOf(await thread.updates());
+
+    await thread.promptAgain();
+    const bothTurns = textOf(await thread.updates());
+
+    // A connection torn down by the notice would strand the second prompt
+    // rather than answer it, so the doubling is the survival evidence.
+    expect(bothTurns.split(AFTER)).toHaveLength(3);
+    expect(bothTurns.length).toBe(firstTurn.length * 2);
+    expect(thread.manager.getInfo(thread.threadId)?.status).toBe('ready');
+  }, 60_000);
 });

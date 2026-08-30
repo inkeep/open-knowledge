@@ -289,8 +289,8 @@ function shSingleQuote(value: string): string {
 }
 
 /** Wrap a token for `cmd.exe`. Double quotes make `&  |  <  >  ^` inert; the
- *  two characters quoting cannot neutralize (`"` and `%`) are refused at
- *  admission by `validateSpawnPath`, so there is nothing left to escape. */
+ *  two characters quoting cannot neutralize (`"` and `%`) are refused by the
+ *  post-realpath spawn-path admission, so there is nothing left to escape. */
 function cmdQuote(value: string): string {
   return `"${value}"`;
 }
@@ -331,8 +331,8 @@ export function buildSlidevInvocation(
         ? projectLocalSlidevBin(config.projectRoot, platform)
         : 'slidev';
     // `/s` strips exactly the outer quote pair and treats the remainder
-    // literally, so each token can carry its own quotes. `"` and `%` are refused
-    // upstream by `validateSpawnPath` because quoting cannot neutralize them.
+    // literally, so each token can carry its own quotes. `resolveDeckPath`
+    // rejects `"` and `%` after realpath because quoting cannot neutralize them.
     const cmdline = `"${cmdQuote(target)} ${cmdQuote(config.docPath)} ${portArgs.join(' ')}"`;
     return {
       mode: 'windows-shell',

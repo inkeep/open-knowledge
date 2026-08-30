@@ -214,6 +214,15 @@ describe('mergeLayered — scope-aware leaf short-circuits', () => {
     expect(merged.terminal?.enabled).toBe(true);
   });
 
+  test("scope: 'project-local' (terminal.shell) returns only the machine-local override", () => {
+    const user = makeConfig({ terminal: { shell: 'user-shell.exe' } });
+    const project = makeConfig({ terminal: { shell: 'project-shell.exe' } });
+    const projectLocal = makeConfig({ terminal: { shell: 'C:\\Tools\\pwsh.exe' } });
+
+    const merged = mergeLayered(user, project, projectLocal);
+    expect(merged.terminal?.shell).toBe('C:\\Tools\\pwsh.exe');
+  });
+
   test('a clone without the project-local layer resolves terminal.enabled to null (grant never inherited)', () => {
     // Simulates a fresh clone/checkout: the gitignored .ok/local/ layer is
     // absent, and terminal.enabled can never sit in the committed project file

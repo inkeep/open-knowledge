@@ -9,7 +9,10 @@ import {
   classifyWikiLinkTarget,
   extractSkillRefs,
   getWikiLinkText,
+  isExcalidrawDocFile,
+  isExternalHref,
   isOrphanMode,
+  type JsxSrcRefTagSpec,
   MANAGED_ARTIFACT_PREFIX_SKILL,
   ORPHAN_MODES,
   type OrphanMode,
@@ -30,6 +33,11 @@ import { getLocalDir } from './config/paths.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { instrumentIndexRebuild } from './index-telemetry.ts';
+import {
+  createJsxSrcAttrRe,
+  readJsxSrcRefTagAt,
+  resolveJsxSrcRefTarget,
+} from './jsx-src-ref-tags.ts';
 import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
 import { extractLocalTargetOccurrences } from './local-target-occurrences.ts';
 import { getLogger } from './logger.ts';
@@ -99,7 +107,7 @@ export interface ExtractedWikiLink {
   anchor: string | null;
   snippet: string | null;
   /** Authored syntax that produced this graph edge. */
-  sourceForm?: 'wiki' | 'markdown';
+  sourceForm?: 'wiki' | 'markdown' | 'jsx';
   /**
    * 0-based source line of the occurrence (the extractor's `lineOffset` param
    * folds a stripped-frontmatter prefix back in, keeping this full-doc exact).
@@ -109,6 +117,8 @@ export interface ExtractedWikiLink {
    * 0-based offset into the markdown-stripped flat rendering of the line —
    * approximate against the raw source column (escapes, inline-code backticks,
    * and leading list/heading prefixes are collapsed before offsets are taken).
+   * Exception: `sourceForm: 'jsx'` occurrences report the RAW source column —
+   * the JSX extractor walks the raw line without building a flat rendering.
    */
   column?: number;
   /**
@@ -141,7 +151,7 @@ export interface BacklinkEntry {
   anchor: string | null;
   snippet: string | null;
   /** Authored syntax retained for cross-plane audit reconciliation. */
-  sourceForm?: 'wiki' | 'markdown';
+  sourceForm?: 'wiki' | 'markdown' | 'jsx';
   /**
    * 0-based full-doc position of the link occurrence in the source doc (line
    * exact, column approximate — see `ExtractedWikiLink`). Absent on entries
@@ -199,7 +209,7 @@ export { isOrphanMode, ORPHAN_MODES, type OrphanMode };
 interface BackwardLinkMeta {
   anchor: string | null;
   snippet: string | null;
-  sourceForm?: 'wiki' | 'markdown';
+  sourceForm?: 'wiki' | 'markdown' | 'jsx';
   line?: number;
   column?: number;
   /** See {@link ExtractedWikiLink.rawWikiTarget}. */
@@ -248,8 +258,14 @@ interface BranchGraphState {
  * a project skill authors is missing until that file happens to be edited.
  * Global bundles hid the bug — `ingestGlobalSkillBundles` re-reads them on
  * every boot, so their refs looked fine while project skills had none.
+ *
+ * Bump on a CHANGED extraction rule too. v3 covers JSX src-ref edges
+ * (`<Mirror src>` / `<Excalidraw src>`): a v2 cache holds no such edge, and
+ * the mtime reconcile skips every unchanged file, so a doc whose only
+ * reference to a board is a JSX embed would stay invisible to backlinks —
+ * and to rename discovery — until it happened to be edited.
  */
-const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_VERSION = 3;
 
 interface SerializedBranchGraphState {
   version?: number;
@@ -761,6 +777,88 @@ function extractExternalMarkdownLinksFromLine(
 }
 
 /**
+ * JSX by-reference src occurrences (`<Mirror src>` / `<Excalidraw src>`,
+ * per `JSX_SRC_REF_TAGS`) as document graph edges.
+ *
+ * Without this, a document whose ONLY reference to a board or mirror source
+ * is the JSX embed has no backlink — so managed rename (which discovers
+ * rewrite candidates via `getBacklinks`) never rewrites it, and the graph,
+ * orphan, and dead-link surfaces all under-report the reference.
+ *
+ * Same fence / inline-code masking as the sibling extractors, and the same
+ * resolution rule as the rename rewriter (`resolveJsxSrcRefTarget`, pinned to
+ * the renderer's normalization), so the edges the graph records are exactly
+ * the references the rewriter can rewrite.
+ *
+ * Scheme-valued src values (`isExternalHref`) record no edge — a deliberate
+ * divergence from the renderer, which hands a bare `<Mirror src>` to the
+ * live-doc provider without scheme-filtering: a rename can never track such
+ * a reference, so instead of a graph edge it surfaces as an advisory in
+ * `computeBrokenOutboundLinks`.
+ */
+export function extractJsxSrcRefsFromMarkdown(
+  markdown: string,
+  sourceDocName: string,
+  lineOffset = 0,
+): ExtractedWikiLink[] {
+  const source = markdown.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  const lines = source.split('\n');
+  const links: ExtractedWikiLink[] = [];
+  let fence: FenceState | null = null;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex] ?? '';
+    if (fence) {
+      if (isFenceClose(line, fence)) fence = null;
+      continue;
+    }
+    const nextFence = matchFence(line);
+    if (nextFence) {
+      fence = nextFence;
+      continue;
+    }
+    let idx = 0;
+    while (idx < line.length) {
+      if (line[idx] === '\\' && idx + 1 < line.length) {
+        idx += 2;
+        continue;
+      }
+      if (line[idx] === '`') {
+        const inlineCode = readInlineCode(line, idx);
+        if (inlineCode) {
+          idx = inlineCode.nextIndex;
+          continue;
+        }
+      }
+      if (line[idx] === '<') {
+        const tag = readJsxSrcRefTagAt(line, idx);
+        if (tag) {
+          for (const attrMatch of tag.attrs.matchAll(createJsxSrcAttrRe(tag.spec.attrName))) {
+            const value = attrMatch[3] ?? '';
+            if (isExternalHref(value)) continue;
+            const target = resolveJsxSrcRefTarget(tag.spec, value, sourceDocName);
+            if (target === null) continue;
+            links.push({
+              target,
+              anchor: null,
+              // The tag itself is the occurrence's visible evidence — there
+              // is no label text to build a prose snippet from.
+              snippet: line.slice(idx, idx + tag.matchLength),
+              line: lineOffset + lineIndex,
+              column: idx,
+            });
+          }
+          idx += tag.matchLength;
+          continue;
+        }
+      }
+      idx++;
+    }
+  }
+  return links;
+}
+
+/**
  * Number of source lines a `stripFrontmatter` frontmatter block occupied —
  * the line offset that maps body-relative extractor lines back to full-doc
  * lines. The matched block always ends in a newline (or sits at EOF with an
@@ -991,6 +1089,13 @@ export interface BrokenOutboundLink {
   href: string;
   resolvedTo: string | null;
   reason: BrokenLinkReason;
+  /**
+   * Present on entries found via a JSX src-ref (`<Mirror src>` /
+   * `<Excalidraw src>`). The write-advisory layer keeps these through its
+   * inline-href reconciliation filter — the lossless markdown extractor
+   * cannot observe JSX attributes, so they'd otherwise be dropped.
+   */
+  sourceForm?: 'jsx';
 }
 
 /**
@@ -1064,10 +1169,27 @@ export function computeBrokenOutboundLinks(
   const seen = new Set<string>();
   let fence: FenceState | null = null;
 
-  const record = (href: string, resolvedTo: string | null, reason: BrokenLinkReason): void => {
-    if (seen.has(href)) return;
-    seen.add(href);
-    broken.push({ href, resolvedTo, reason });
+  const record = (
+    href: string,
+    resolvedTo: string | null,
+    reason: BrokenLinkReason,
+    sourceForm?: 'jsx',
+  ): void => {
+    // Deduped per (plane, href), not per href: the markdown and JSX planes
+    // resolve the identical bytes through different resolvers (`[x](api-spec)`
+    // is doc-relative; `<Mirror src="api-spec">` is the docName verbatim), so
+    // each occurrence must surface with its OWN resolver's `resolvedTo` and
+    // `reason` — collapsing them would label one plane's entry with the
+    // other's verdict.
+    const key = `${sourceForm ?? 'md'}\0${href}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    broken.push({
+      href,
+      resolvedTo,
+      reason,
+      ...(sourceForm ? { sourceForm } : {}),
+    });
   };
 
   const recordMarkdownLink = (rawHref: string): void => {
@@ -1109,6 +1231,39 @@ export function computeBrokenOutboundLinks(
       return;
     }
     // External URLs aren't a local link target — not our concern.
+  };
+
+  // JSX src-refs (`<Mirror src>` / `<Excalidraw src>`) are document
+  // references too — the same class the backlink graph indexes — so a write
+  // whose embed points at a missing board or mirror source reports it here,
+  // in the same advisory the graph-shaped links use. Resolution is the
+  // renderer's own (`resolveJsxSrcRefTarget`); an `.excalidraw` target is a
+  // doc class with no CRDT admission entry, so like ordinary file links it is
+  // validated against disk via `fileExists` (skipped when no oracle).
+  const recordJsxSrcRef = (spec: JsxSrcRefTagSpec, value: string): void => {
+    if (value === '') return; // unconfigured placeholder state, not a broken link
+    // Scheme-valued src: the renderer does not scheme-filter a bare
+    // `<Mirror src>` (it hands the value to the live-doc provider verbatim),
+    // but the graph records no edge for it — a rename can never track it —
+    // so the reference would go stale with zero signal. Keep the signal loud:
+    // report it here as unresolvable rather than returning silently.
+    if (isExternalHref(value)) {
+      record(value, null, 'unresolvable', 'jsx');
+      return;
+    }
+    const resolved = resolveJsxSrcRefTarget(spec, value, sourceDocName);
+    if (resolved === null) {
+      record(value, null, 'unresolvable', 'jsx');
+      return;
+    }
+    if (isExcalidrawDocFile(resolved)) {
+      if (!fileExists) return;
+      if (!fileExists(resolved)) record(value, resolved, 'no-such-file', 'jsx');
+      return;
+    }
+    if (!admitted.has(resolved) && folderExists?.(resolved) !== true) {
+      record(value, resolved, 'no-such-doc', 'jsx');
+    }
   };
 
   // Built on first read, not per call: the two maps cost a pass over the
@@ -1175,6 +1330,16 @@ export function computeBrokenOutboundLinks(
         const inlineCode = readInlineCode(line, idx);
         if (inlineCode) {
           idx = inlineCode.nextIndex;
+          continue;
+        }
+      }
+      if (line[idx] === '<') {
+        const tag = readJsxSrcRefTagAt(line, idx);
+        if (tag) {
+          for (const attrMatch of tag.attrs.matchAll(createJsxSrcAttrRe(tag.spec.attrName))) {
+            recordJsxSrcRef(tag.spec, attrMatch[3] ?? '');
+          }
+          idx += tag.matchLength;
           continue;
         }
       }
@@ -1300,7 +1465,9 @@ function deserializeState(data: SerializedBranchGraphState): BranchGraphState {
               anchor: entry.anchor ?? null,
               snippet: entry.snippet ?? null,
               sourceForm:
-                entry.sourceForm === 'wiki' || entry.sourceForm === 'markdown'
+                entry.sourceForm === 'wiki' ||
+                entry.sourceForm === 'markdown' ||
+                entry.sourceForm === 'jsx'
                   ? entry.sourceForm
                   : undefined,
               // Cache files predating position indexing lack these fields, and
@@ -1669,11 +1836,20 @@ export class BacklinkIndex {
         lineOffset,
         this.getFileOracle(),
       ).map((link) => ({ ...link, sourceForm: 'markdown' as const }));
+      const jsxLinks = extractJsxSrcRefsFromMarkdown(body, docName, lineOffset).map((link) => ({
+        ...link,
+        sourceForm: 'jsx' as const,
+      }));
       const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
       const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
       // Merge: wiki links take precedence for duplicate targets (they have richer snippet context)
       const seen = new Set(wikiLinks.map((l) => l.target));
-      const merged = [...wikiLinks, ...mdLinks.filter((l) => !seen.has(l.target))];
+      const merged: ExtractedWikiLink[] = [
+        ...wikiLinks,
+        ...mdLinks.filter((l) => !seen.has(l.target)),
+      ];
+      for (const link of merged) seen.add(link.target);
+      merged.push(...jsxLinks.filter((l) => !seen.has(l.target)));
       const externalSeen = new Set(wikiExternalLinks.map((l) => l.url));
       const mergedExternal = [
         ...wikiExternalLinks,
@@ -1918,6 +2094,19 @@ export class BacklinkIndex {
           // asset would fill with dead links. A target left with no decided
           // occurrence drops out below.
           .filter(([, meta]) => meta.rawWikiTarget !== true)
+          // A JSX src-ref to an `.excalidraw` board names a doc class the
+          // graph never indexes (`walkForPaths` admits `.md`/`.mdx` only) and
+          // the admitted set never carries, so the doc-existence test above
+          // can't clear it. The board IS an on-disk file the watcher
+          // inventory tracks, so ask the file oracle instead: an existing
+          // board is not dead, a missing one is, and an unavailable oracle
+          // (inventory not seeded) stays silent — the safe default, matching
+          // the undecided-wiki-target rule above.
+          .filter(([, meta]) => {
+            if (meta.sourceForm !== 'jsx' || !isExcalidrawDocFile(target)) return true;
+            const oracle = this.getFileOracle();
+            return oracle !== undefined && !oracle.hasFile(target);
+          })
           // The existence test above compares literal names, but a wiki target
           // reaches its document through the whole chain — slug, folder index,
           // basename. Without this, `[[analysis]]` naming `research/analysis`
@@ -2284,10 +2473,19 @@ export class BacklinkIndex {
           lineOffset,
           this.getFileOracle(),
         ).map((link) => ({ ...link, sourceForm: 'markdown' as const }));
+        const jsxLinks = extractJsxSrcRefsFromMarkdown(body, docName, lineOffset).map((link) => ({
+          ...link,
+          sourceForm: 'jsx' as const,
+        }));
         const wikiExternalLinks = extractExternalWikiLinksFromMarkdown(body);
         const mdExternalLinks = extractExternalMarkdownLinksFromMarkdown(body, docName);
         const seen = new Set(wikiLinks.map((l) => l.target));
-        const links = [...wikiLinks, ...mdLinks.filter((l) => !seen.has(l.target))];
+        const links: ExtractedWikiLink[] = [
+          ...wikiLinks,
+          ...mdLinks.filter((l) => !seen.has(l.target)),
+        ];
+        for (const link of links) seen.add(link.target);
+        links.push(...jsxLinks.filter((l) => !seen.has(l.target)));
         const externalSeen = new Set(wikiExternalLinks.map((l) => l.url));
         const externalLinks = [
           ...wikiExternalLinks,

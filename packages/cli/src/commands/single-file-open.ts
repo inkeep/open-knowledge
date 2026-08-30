@@ -25,7 +25,11 @@ import {
   SingleFileProjectOverrideError,
 } from '@inkeep/open-knowledge-server';
 import type { SpawnDetachedScrubbedOutcome } from '../utils/detached-spawn.ts';
-import { openTargetFailureMessage, openTarget as openTargetReal } from '../utils/open-target.ts';
+import {
+  type OpenTargetOptions,
+  openTargetFailureMessage,
+  openTarget as openTargetReal,
+} from '../utils/open-target.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 import { createRealOpenDeps, runOpen } from './open.ts';
 
@@ -43,8 +47,15 @@ export interface SingleFileOpenDeps {
   prepare: (filePath: string, options?: PrepareSingleFileOpenOptions) => SingleFileOpenPlan;
   /** Absolute desktop bundle path when one is installed, else null. */
   detectBundlePath: () => string | null;
-  /** Hand a URL / `openknowledge://` deep link to the OS to open. */
-  openTarget: (target: string) => Promise<SpawnDetachedScrubbedOutcome>;
+  /**
+   * Hand a URL / `openknowledge://` deep link to the OS to open.
+   * `desktopBundlePath` should be the same value `detectBundlePath()` just
+   * returned — see `open-target.ts`'s `desktopBundlePath`.
+   */
+  openTarget: (
+    target: string,
+    options?: Pick<OpenTargetOptions, 'desktopBundlePath'>,
+  ) => Promise<SpawnDetachedScrubbedOutcome>;
   /** Reuse `ok open`'s project-mode deep-link/browser path. Returns exit code. */
   runProjectOpen: (docName: string, projectRoot: string) => Promise<number>;
   /** Browser fallback — boot an ephemeral single-file server + open a tab. */
@@ -114,7 +125,7 @@ export async function runSingleFileOpen(
   const bundlePath = deps.detectBundlePath();
   if (bundlePath) {
     const deepLink = `openknowledge://open?file=${encodeURIComponent(plan.canonicalFilePath)}`;
-    const outcome = await deps.openTarget(deepLink);
+    const outcome = await deps.openTarget(deepLink, { desktopBundlePath: bundlePath });
     if (!outcome.ok) {
       deps.error(
         `Could not open the OpenKnowledge desktop app: ${openTargetFailureMessage(

@@ -7,6 +7,7 @@ import {
   IMAGE_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
   isExcalidrawDocFile,
+  isMarkdownDocFile,
   isMermaidDocFile,
   LINKABLE_ASSET_EXTENSIONS,
   MERMAID_FILE_EXTENSIONS,
@@ -333,5 +334,34 @@ describe('isMermaidDocFile', () => {
     // A markdown doc whose stem merely contains `mmd`/`mermaid` is not a match.
     expect(isMermaidDocFile('mmd-notes/plan')).toBe(false);
     expect(isMermaidDocFile('flow.mmd.md')).toBe(false);
+  });
+});
+
+describe('isMarkdownDocFile', () => {
+  test('true for extension-less docNames and markdown extensions (any casing)', () => {
+    expect(isMarkdownDocFile('notes/today')).toBe(true);
+    expect(isMarkdownDocFile('a.md')).toBe(true);
+    expect(isMarkdownDocFile('a.mdx')).toBe(true);
+    expect(isMarkdownDocFile('A.MD')).toBe(true);
+  });
+
+  test('false for the sibling doc classes (boards, diagrams, text docs)', () => {
+    expect(isMarkdownDocFile('board.excalidraw')).toBe(false);
+    expect(isMarkdownDocFile('flow.mmd')).toBe(false);
+    expect(isMarkdownDocFile('notes.txt')).toBe(false);
+  });
+
+  test('dotfile basename classifies as markdown (dual-editor dispatch parity)', () => {
+    expect(isMarkdownDocFile('.gitignore')).toBe(true);
+  });
+
+  test('dotted stems without a recognized doc-class extension are markdown', () => {
+    expect(isMarkdownDocFile('release-v1.2')).toBe(true);
+    expect(isMarkdownDocFile('spec.draft')).toBe(true);
+  });
+
+  test('classifies by basename, not by dots in directory segments', () => {
+    expect(isMarkdownDocFile('a.md/util.ts')).toBe(false);
+    expect(isMarkdownDocFile('flow.mmd.md')).toBe(true);
   });
 });

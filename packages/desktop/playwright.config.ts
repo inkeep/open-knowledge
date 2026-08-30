@@ -9,11 +9,15 @@ import { defineConfig } from '@playwright/test';
  * config relies on a Vite dev server fixture while desktop tests drive a real
  * Electron binary.
  *
- * Expected invocation: `bunx playwright test packages/desktop/tests/smoke/`
- * after the electron-vite build has produced `out/main/index.js` (via
- * `bun run build:desktop`). Individual tests guard against "built output
- * missing" with a `test.skip` + structured reason so CI runs without a
- * pre-build are informative rather than silently red.
+ * Expected invocation: `cd packages/desktop && pnpm exec playwright test
+ * tests/smoke/` after the electron-vite build has produced `out/main/index.js`
+ * (via `pnpm run build:desktop` from the repo root). The `cd` is load-bearing:
+ * `@playwright/test` is a `packages/desktop` devDependency, so running
+ * `pnpm exec playwright` at the workspace root fails resolving the binary.
+ *
+ * Individual tests guard against "built output missing" with a `test.skip` +
+ * structured reason so CI runs without a pre-build are informative rather than
+ * silently red.
  */
 
 export default defineConfig({

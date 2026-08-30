@@ -14,7 +14,11 @@
  * boundary, mirroring `TerminalPanel.dom.test.tsx`.
  */
 
-import { buildStartupInjectionBytes, type TerminalCli } from '@inkeep/open-knowledge-core';
+import {
+  buildStartupInjectionBytes,
+  type TerminalCli,
+  type TerminalLaunchCommand,
+} from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -24,6 +28,7 @@ import type {
   CliReadiness,
   OkDesktopBridge,
   OkPtyData,
+  OkPtyNotice,
 } from '@/lib/desktop-bridge-types';
 
 class MockFitAddon {
@@ -33,6 +38,8 @@ class MockWebglAddon {}
 class MockWebLinksAddon {}
 class MockUnicode11Addon {}
 
+let lastTerm: MockTerminal | null = null;
+
 class MockTerminal {
   cols = 80;
   rows = 24;
@@ -40,11 +47,16 @@ class MockTerminal {
   onDataCb: ((d: string) => void) | null = null;
   keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
   options: Record<string, unknown>;
-  hasSelection = vi.fn(() => false);
-  getSelection = vi.fn(() => '');
+  selection = '';
+  hasSelection = vi.fn(() => this.selection.length > 0);
+  getSelection = vi.fn(() => this.selection);
+  clearSelection = vi.fn(() => {
+    this.selection = '';
+  });
   open = vi.fn(() => {});
   focus = vi.fn(() => {});
   dispose = vi.fn(() => {});
+  paste = vi.fn((_data: string) => {});
   write = vi.fn((_data: string, cb?: () => void) => {
     cb?.();
   });
@@ -71,6 +83,7 @@ class MockTerminal {
   }
   constructor(options: Record<string, unknown>) {
     this.options = options;
+    lastTerm = this;
   }
 }
 
@@ -109,11 +122,18 @@ function makeBridge(
   platform: OkDesktopBridge['platform'] = 'darwin',
 ) {
   const dataSubs: Array<(m: OkPtyData) => void> = [];
+  const noticeSubs: Array<(m: OkPtyNotice) => void> = [];
   const terminal = {
-    create: vi.fn(async (_opts: { cols: number; rows: number; launchCommand?: string }) => ({
-      ok: true as const,
-      ptyId: 'pty-1',
-    })),
+    create: vi.fn(
+      async (_opts: {
+        cols: number;
+        rows: number;
+        launchCommand?: string | TerminalLaunchCommand;
+      }) => ({
+        ok: true as const,
+        ptyId: 'pty-1',
+      }),
+    ),
     input: vi.fn((_id: string, _d: string) => {}),
     resize: vi.fn(() => {}),
     kill: vi.fn(async () => {}),
@@ -129,6 +149,10 @@ function makeBridge(
       return vi.fn(() => {});
     }),
     onExit: vi.fn(() => vi.fn(() => {})),
+    onNotice: vi.fn((cb: (m: OkPtyNotice) => void) => {
+      noticeSubs.push(cb);
+      return vi.fn(() => {});
+    }),
     claudePreflight: vi.fn(async () => preflight),
     cliPreflight: vi.fn(async (_cli: TerminalCli) => cliReadiness),
     rewireClaudeMcp: vi.fn(async () => preflight),
@@ -144,6 +168,9 @@ function makeBridge(
     pushData: (m: OkPtyData) => {
       for (const f of dataSubs) f(m);
     },
+    pushNotice: (m: OkPtyNotice) => {
+      for (const f of noticeSubs) f(m);
+    },
   };
 }
 
@@ -151,9 +178,11 @@ const { TerminalPanel, STAGE_PASTE_SETTLE_MS } = await import('./TerminalPanel')
 
 /** The `launchCommand` baked into the (single) `create` call, or undefined when
  *  none was passed (plain shell). The launch's only sanctioned transport. */
-function bakedLaunch(createMock: ReturnType<typeof vi.fn>): string | undefined {
+function bakedLaunch(
+  createMock: ReturnType<typeof vi.fn>,
+): string | TerminalLaunchCommand | undefined {
   const calls = createMock.mock.calls;
-  const last = calls.at(-1)?.[0] as { launchCommand?: string } | undefined;
+  const last = calls.at(-1)?.[0] as { launchCommand?: string | TerminalLaunchCommand } | undefined;
   return last?.launchCommand;
 }
 
@@ -210,7 +239,15 @@ function renderWithAutoApproveOff(ui: ReactElement) {
 
 describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', () => {
   beforeEach(() => {
+    lastTerm = null;
     (globalThis as { ResizeObserver: unknown }).ResizeObserver = MockResizeObserver;
+    Object.defineProperty(globalThis.navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        readText: vi.fn(async () => 'launch clipboard paste'),
+        writeText: vi.fn(async () => {}),
+      },
+    });
   });
   afterEach(() => {
     cleanup();
@@ -232,6 +269,201 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(bakedLaunch(terminal.create)).not.toContain('\r');
     // The launch is never typed into the live shell (the history-pollution fix).
     expect(launchInputWrites(terminal.input)).toEqual([]);
+  });
+
+  test('Windows keeps the CLI structured and bracketed-pastes the prompt after readiness', async () => {
+    const { bridge, terminal, pushData } = makeBridge(WIRED, ON_PATH, 'win32');
+    const prompt = 'review {"quoted":"JSON"}; & calc';
+    render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'claude', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    const launch = bakedLaunch(terminal.create);
+    expect(launch).toMatchObject({
+      executable: 'claude',
+      args: ['--settings', '.ok/local/terminal/claude-settings-mcp-tools.json'],
+      supportFile: {
+        kind: 'claude-settings',
+        relativePath: '.ok/local/terminal/claude-settings-mcp-tools.json',
+      },
+    });
+    if (typeof launch !== 'object' || launch === null || launch.supportFile === undefined) {
+      throw new Error('expected a structured Claude launch with settings support file');
+    }
+    expect(JSON.parse(launch.supportFile.contents)).toEqual({
+      enabledMcpjsonServers: ['open-knowledge'],
+      permissions: {
+        allow: ['mcp__open-knowledge', 'Bash(ok open:*)'],
+        ask: [
+          'mcp__open-knowledge__delete',
+          'mcp__open-knowledge__move',
+          'mcp__open-knowledge__share_link',
+          'mcp__open-knowledge__install',
+          'mcp__open-knowledge__import',
+        ],
+      },
+    });
+    expect(JSON.stringify(bakedLaunch(terminal.create))).not.toContain(prompt);
+    const submittedBytes = buildStartupInjectionBytes('claude', prompt, 'win32');
+    expect(submittedBytes).not.toBeNull();
+    const stagedBytes = submittedBytes?.slice(0, -1);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(terminal.input).not.toHaveBeenCalled();
+    pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', stagedBytes), {
+      timeout: 2_000,
+    });
+    expect(terminal.input).not.toHaveBeenCalledWith('pty-1', submittedBytes);
+    const notice = await screen.findByTestId('terminal-manual-submit-notice-banner');
+    expect(notice.textContent).toContain('not submitted automatically');
+    expect(notice.textContent).toContain('Review it');
+  });
+
+  test('Windows cap fallback stages the prompt without submitting when readiness never arrives', async () => {
+    const { bridge, terminal } = makeBridge(WIRED, ON_PATH, 'win32');
+    const prompt = 'review this safely';
+    render(<TerminalPanel bridge={bridge} launch={{ prompt, cli: 'claude', nonce: 1 }} />);
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    const submitted = buildStartupInjectionBytes('claude', prompt, 'win32');
+    expect(submitted).not.toBeNull();
+    const staged = submitted?.slice(0, -1);
+    await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', staged), {
+      timeout: 6_000,
+    });
+    expect(terminal.input).not.toHaveBeenCalledWith('pty-1', submitted);
+    // Withholding Enter is invisible in the terminal, so the panel says so.
+    const notice = await screen.findByTestId('terminal-manual-submit-notice-banner');
+    expect(notice.textContent).toContain('not submitted automatically');
+    expect(notice.textContent).toContain('press Enter');
+  }, 10_000);
+
+  test('Windows suppresses prompt injection when the configured shell cannot run the agent launch', async () => {
+    const { bridge, terminal, pushData, pushNotice } = makeBridge(WIRED, ON_PATH, 'win32');
+    terminal.create.mockImplementationOnce(async () => {
+      pushNotice({
+        ptyId: 'pty-1',
+        notice: 'invalid-shell-override',
+        reason: 'unsupported-family',
+      });
+      return { ok: true as const, ptyId: 'pty-1' };
+    });
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: 'do not paste this into a plain shell', cli: 'claude', nonce: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toMatchObject({ executable: 'claude' });
+    expect(await screen.findByTestId('terminal-shell-notice-banner')).toBeTruthy();
+    act(() => pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' }));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, STAGE_PASTE_SETTLE_MS * 3));
+    });
+    expect(terminal.input).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('terminal-manual-submit-notice-banner')).toBeNull();
+  });
+
+  test('Windows cancels an armed prompt injection when the unsupported-shell notice arrives after attach', async () => {
+    const { bridge, terminal, pushData, pushNotice } = makeBridge(WIRED, ON_PATH, 'win32');
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: 'never execute this in the plain shell', cli: 'claude', nonce: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(document.querySelector('[data-terminal-status="running"]')).not.toBeNull(),
+    );
+    act(() => pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' }));
+    act(() =>
+      pushNotice({
+        ptyId: 'pty-1',
+        notice: 'invalid-shell-override',
+        reason: 'unsupported-family',
+      }),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, STAGE_PASTE_SETTLE_MS * 3));
+    });
+
+    expect(await screen.findByTestId('terminal-shell-notice-banner')).toBeTruthy();
+    expect(terminal.input).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('terminal-manual-submit-notice-banner')).toBeNull();
+  });
+
+  test('Windows carries Codex auto-approval as cmd-safe structured argv', async () => {
+    const { bridge, terminal, pushData } = makeBridge(WIRED, CODEX_OK_CONFIGURED, 'win32');
+    render(
+      <TerminalPanel bridge={bridge} launch={{ prompt: 'review this', cli: 'codex', nonce: 1 }} />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toEqual({
+      executable: 'codex',
+      args: ['-c', 'mcp_servers.open-knowledge.default_tools_approval_mode=approve'],
+    });
+    pushData({ ptyId: 'pty-1', data: '\x1b[?2004h' });
+    const submittedBytes = buildStartupInjectionBytes('codex', 'review this', 'win32');
+    expect(submittedBytes).not.toBeNull();
+    await waitFor(() =>
+      expect(terminal.input).toHaveBeenCalledWith('pty-1', submittedBytes?.slice(0, -1)),
+    );
+    expect(terminal.input).not.toHaveBeenCalledWith('pty-1', submittedBytes);
+    expect(await screen.findByTestId('terminal-manual-submit-notice-banner')).toBeTruthy();
+  });
+
+  test('Windows launch panels preserve selection-conditional Ctrl+C and Ctrl+V paste', async () => {
+    const { bridge, terminal } = makeBridge(WIRED, ON_PATH, 'win32');
+    render(<TerminalPanel bridge={bridge} launch={{ prompt: null, cli: 'claude', nonce: 1 }} />);
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    const handler = lastTerm?.keyHandler;
+    expect(handler).toBeTruthy();
+
+    expect(
+      handler?.({
+        type: 'keydown',
+        key: 'c',
+        ctrlKey: true,
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        preventDefault: vi.fn(() => {}),
+      } as unknown as KeyboardEvent),
+    ).toBe(true);
+    expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+
+    if (lastTerm) lastTerm.selection = 'launch selection';
+    expect(
+      handler?.({
+        type: 'keydown',
+        key: 'c',
+        ctrlKey: true,
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        preventDefault: vi.fn(() => {}),
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('launch selection'),
+    );
+
+    expect(
+      handler?.({
+        type: 'keydown',
+        key: 'v',
+        ctrlKey: true,
+        shiftKey: false,
+        altKey: false,
+        metaKey: false,
+        preventDefault: vi.fn(() => {}),
+      } as unknown as KeyboardEvent),
+    ).toBe(false);
+    await waitFor(() => expect(lastTerm?.paste).toHaveBeenCalledWith('launch clipboard paste'));
   });
 
   test('a launch carrying stagePaste writes it into the CLI input after the TUI settles — no submit', async () => {
@@ -278,7 +510,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     // Now the composed prompt lands via `input`, wrapped in bracketed paste
     // (multi-line-safe) and followed by the submit byte. Derived from core so the
     // escape framing can't rot into a hand-copied literal.
-    const expectedBytes = buildStartupInjectionBytes('hermes', prompt);
+    const expectedBytes = buildStartupInjectionBytes('hermes', prompt, 'darwin');
     expect(expectedBytes).not.toBeNull();
     await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
       timeout: 2_000,
@@ -298,7 +530,7 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     // No marker is ever pushed. The prompt must still be delivered (the cap
     // fallback), so a future Hermes that changed its ready signal never silently
     // drops it.
-    const expectedBytes = buildStartupInjectionBytes('hermes', prompt);
+    const expectedBytes = buildStartupInjectionBytes('hermes', prompt, 'darwin');
     await waitFor(() => expect(terminal.input).toHaveBeenCalledWith('pty-1', expectedBytes), {
       timeout: 6_000,
     });

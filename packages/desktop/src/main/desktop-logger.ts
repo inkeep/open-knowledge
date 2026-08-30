@@ -147,10 +147,10 @@ export function getRootDesktopLogger(): pino.Logger {
 
 /**
  * Force-drain the async log destination synchronously. Created with
- * `sync: false`, the destination buffers writes — so a process killed without
- * draining (an auto-update `quitAndInstall` → Squirrel SIGKILL, or any app
- * quit) loses its unwritten tail, which is precisely the window where the most
- * diagnostic lines are emitted. Shutdown-path callers invoke this so those
+ * `sync: false`, the destination buffers writes — so a process that exits
+ * without draining (an auto-update `quitAndInstall`, or any app quit) loses its
+ * unwritten tail, which is precisely the window where the most diagnostic lines
+ * are emitted. Shutdown-path callers invoke this so those
  * lines reach disk. Best-effort: never throws, so it can't derail a shutdown.
  */
 export function flushDesktopLogger(): void {

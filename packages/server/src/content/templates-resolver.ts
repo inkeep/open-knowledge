@@ -25,10 +25,12 @@
  * reason — see its doc comment.
  */
 
-import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { type Dirent, lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { parseTemplateFile } from '@inkeep/open-knowledge-core';
+import { SymlinkEscapeError } from '../apply-managed-rename.ts';
+import { assertNoSymlinkEscape } from '../fs-safety.ts';
 import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
 
@@ -67,6 +69,18 @@ interface ResolveTemplatesOptions {
 
 /**
  * Resolve the templates menu for a target folder.
+ *
+ * Containment contract: a `.ok/templates` that is itself a symlink is skipped
+ * wholesale (`lstat` gate — the per-entry anchors constrain entries, not the
+ * directory they were enumerated from), and every entry returned resolves (via
+ * realpath) to a file inside the real `.ok/templates/` directory it was
+ * enumerated from AND inside `projectDir` — the conjunction, not either alone.
+ * `collectFromFolder` drops any `.ok/templates/*.md` that fails either anchor:
+ * the first catches a link that stays inside the project but points at
+ * `.ok/local/` or `.git/`; the second is defense-in-depth against the dir
+ * relocating between the `lstat` gate and enumeration. A menu entry is
+ * therefore always safe for a consumer to read.
+ * Shared by `resolveProjectTemplates`, so both surfaces inherit the guarantee.
  *
  * @param projectDir    - Absolute project root.
  * @param folderRelPath - Project-root-relative folder path. Empty / `.`
@@ -263,7 +277,42 @@ function collectFromFolder(
     ? join(projectDir, folderRelPath, '.ok', 'templates')
     : join(projectDir, '.ok', 'templates');
 
-  if (!existsSync(templatesDir)) return;
+  // Refuse a `.ok/templates` that is not a REAL directory. `existsSync` /
+  // `readdirSync` follow a directory symlink, and the per-entry anchors below
+  // constrain each ENTRY, not the directory it was enumerated from — a
+  // templates dir symlinked elsewhere IN-project would pass both anchors
+  // (anchor 1 realpaths to the link target; anchor 2 because the target is
+  // inside the project) and surface foreign `.md` files as menu items. `lstat`
+  // does not follow the link, so a symlinked templates dir is skipped wholesale.
+  // Deliberately blanket: an in-project `-> ../../shared-templates` link is
+  // refused too — the safer default until shared templates are a first-class
+  // shape. Both refusals below warn once per path (the sibling drop paths'
+  // pattern) so a vanished menu is traceable; only the benign ENOENT
+  // ("no templates here", the overwhelmingly common case) stays silent.
+  let dirStat: ReturnType<typeof lstatSync>;
+  try {
+    dirStat = lstatSync(templatesDir);
+  } catch (err) {
+    if (errnoCode(err) !== 'ENOENT' && !templateMetaWarnedPaths.has(templatesDir)) {
+      templateMetaWarnedPaths.add(templatesDir);
+      const reason = err instanceof Error ? err.message : String(err);
+      getLogger('templates').warn(
+        { dir: templatesDir, reason },
+        `cannot stat templates directory ${templatesDir} — its templates are not enumerated. Reason: ${reason}`,
+      );
+    }
+    return;
+  }
+  if (!dirStat.isDirectory()) {
+    if (!templateMetaWarnedPaths.has(templatesDir)) {
+      templateMetaWarnedPaths.add(templatesDir);
+      getLogger('templates').warn(
+        { dir: templatesDir },
+        `${templatesDir} is not a real directory (symlink or file) — its templates are not enumerated`,
+      );
+    }
+    return;
+  }
 
   let entries: string[];
   try {
@@ -285,6 +334,60 @@ function collectFromFolder(
       continue;
     }
     if (!s.isFile()) continue;
+
+    // Containment is enforced HERE so every consumer of the templates menu —
+    // create-page, the MCP write tool, `/api/templates`, the `exec` ls
+    // enrichment — inherits it from one point. `statSync` above follows
+    // symlinks, so a `<folder>/.ok/templates/<name>.md` symlink would otherwise
+    // let that consumer inline arbitrary file bytes into a new doc, or surface a
+    // foreign file's frontmatter as template metadata. TWO anchors, and both are
+    // load-bearing — they are complementary, not alternatives:
+    // - `templatesDir`: the entry must not leave the dir it was enumerated from.
+    //   A link that realpaths elsewhere INSIDE the project (e.g.
+    //   `-> ../local/last-spawn-error.log` or `-> ../../.git/config`) is still an
+    //   exfiltration channel into the synced content tree; `.ok/local/` and
+    //   `.git/` are deliberately out of content scope.
+    // - `projectDir`: `assertNoSymlinkEscape` realpaths its ANCHOR, so if
+    //   `templatesDir` were itself a symlink out of the project, the first
+    //   anchor would become the link target and admit everything under it. The
+    //   `lstat` gate above refuses a symlinked templates dir before enumeration;
+    //   this anchor is the defense-in-depth backstop for a dir replaced by a
+    //   link between that gate and this check.
+    // Drop an escaping entry from the menu (a consumer can then never select it)
+    // rather than throwing: the resolver's contract is to return a menu, and such
+    // an entry simply is not a valid menu item. A raw realpath errno means the
+    // file exists but cannot be canonicalized — it cannot be read either, so it
+    // is dropped the same way.
+    try {
+      assertNoSymlinkEscape(absPath, templatesDir);
+      assertNoSymlinkEscape(absPath, projectDir);
+    } catch (err) {
+      if (err instanceof SymlinkEscapeError) {
+        if (!templateMetaWarnedPaths.has(absPath)) {
+          templateMetaWarnedPaths.add(absPath);
+          // `reason` distinguishes the two escape conditions (resolves
+          // outside / symlink cycle) — one log line per path, so the condition
+          // must ride along. A missing anchor dir throws the non-containment
+          // `ContentRootUnavailableError` and routes to the canonicalize-
+          // failure warn below instead.
+          getLogger('templates').warn(
+            { template: absPath, reason: err.message },
+            `template ${absPath} escapes its containment boundary — excluded from the menu. Reason: ${err.message}`,
+          );
+        }
+        continue;
+      }
+      const code = errnoCode(err);
+      if (code !== 'ENOENT' && !templateMetaWarnedPaths.has(absPath)) {
+        templateMetaWarnedPaths.add(absPath);
+        const reason = err instanceof Error ? err.message : String(err);
+        getLogger('templates').warn(
+          { template: absPath, reason },
+          `failed to canonicalize template ${absPath} — excluded from the menu. Reason: ${reason}`,
+        );
+      }
+      continue;
+    }
 
     const meta = readTemplateMeta(absPath);
     const relPath = folderRelPath

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { prependFrontmatter, stripFrontmatter } from '@inkeep/open-knowledge-core';
 import {
+  rewriteJsxSrcRefsForDocumentRename,
   rewriteMarkdownLinksForDocumentRename,
-  rewriteMirrorSrcForDocumentRename,
   rewriteOutboundMarkdownLinksForSourceMove,
   rewriteWikiLinksForDocumentRename,
 } from './managed-rename-rewrite.ts';
@@ -107,17 +107,10 @@ export class ManagedRenameReservedPathError extends Error {
   }
 }
 
-/**
- * Thrown when a `safeContentPath` resolution lands outside the content
- * directory — content dir missing, path resolves outside, or a symlink cycle.
- * Caller surfaces as 400 `urn:ok:error:path-escape`.
- */
-export class SymlinkEscapeError extends Error {
-  constructor(message: string) {
-    super(`symlink-escape: ${message}`);
-    this.name = 'SymlinkEscapeError';
-  }
-}
+// Re-exported for the historical import path; the containment error family
+// (SymlinkEscapeError, PathContainmentError, isContainmentRejection) lives
+// with the check that throws it in fs-safety.ts.
+export { SymlinkEscapeError } from './fs-safety.ts';
 
 /**
  * Thrown when managed rename starts before the backlink index has been
@@ -197,20 +190,25 @@ function rewriteSupportedLinksForRename(
     oldDocName,
     newDocName,
   );
-  // Mirror src prop rewrite — keeps `<Mirror src="…" />` referencing the
-  // post-rename doc path so transclusions don't break on doc moves. Runs
-  // AFTER wikilink / markdown-link passes so any earlier rewrites don't
-  // re-introduce an old name into the Mirror's `src` (the link rewriters
-  // don't touch JSX attribute values, but ordering keeps the contract
-  // robust if future passes do).
-  const mirrorRewrite = rewriteMirrorSrcForDocumentRename(
+  // JSX src-reference rewrite — keeps by-reference components
+  // (`<Mirror src="…" />`, `<Excalidraw src="…" />`) pointing at the
+  // post-rename doc path so embeds don't break on doc moves. Runs AFTER
+  // wikilink / markdown-link passes so any earlier rewrites don't
+  // re-introduce an old name into a JSX `src` (the link rewriters don't
+  // touch JSX attribute values, but ordering keeps the contract robust
+  // if future passes do). `sourceDocName` threads through so doc-relative
+  // `src` spellings resolve the way the renderer resolves them, and so the
+  // self-rename pass (sourceDocName === oldDocName) recomputes doc-relative
+  // values for the containing doc's new location.
+  const jsxRewrite = rewriteJsxSrcRefsForDocumentRename(
     markdownRewrite.markdown,
+    sourceDocName,
     oldDocName,
     newDocName,
   );
   return {
-    markdown: prependFrontmatter(frontmatter, mirrorRewrite.markdown),
-    rewrites: wikiRewrite.rewrites + markdownRewrite.rewrites + mirrorRewrite.rewrites,
+    markdown: prependFrontmatter(frontmatter, jsxRewrite.markdown),
+    rewrites: wikiRewrite.rewrites + markdownRewrite.rewrites + jsxRewrite.rewrites,
   };
 }
 

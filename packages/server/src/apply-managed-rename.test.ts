@@ -221,6 +221,44 @@ describe('applyRenameMap — multi-entry rewrites', () => {
     expect(result.markdown).toBe(`---\ntitle: Doc\n---\n\n<Mirror src="B" anchor="x" />\n`);
     expect(result.rewrites).toBe(1);
   });
+
+  test('rewrites a doc-relative Excalidraw src for a renamed board', () => {
+    const result = applyRenameMap(
+      '<Excalidraw src="board.excalidraw" />\n',
+      'notes/index',
+      new Map([['notes/board.excalidraw', 'notes/sketch.excalidraw']]),
+    );
+    expect(result.markdown).toBe('<Excalidraw src="sketch.excalidraw" />\n');
+    expect(result.rewrites).toBe(1);
+  });
+
+  test('self-rename recomputes a doc-relative Excalidraw src for the new location', () => {
+    // The containing doc moves; the board stays put. Pass 1 (the self-rename
+    // pass) must recompute the doc-relative src or the embed silently
+    // addresses a different board from the new folder.
+    const result = applyRenameMap(
+      '<Excalidraw src="board.excalidraw" />\n',
+      'notes/index',
+      new Map([['notes/index', 'archive/index']]),
+    );
+    expect(result.markdown).toBe('<Excalidraw src="../notes/board.excalidraw" />\n');
+    expect(result.rewrites).toBe(1);
+  });
+
+  test('folder move carrying both doc and board keeps the doc-relative src stable', () => {
+    // `notes/` → `archive/`: the containing doc AND the board both move. The
+    // self pass re-anchors, the placeholder cycle then applies the board's own
+    // rename — net result, the same-folder relative spelling is preserved.
+    const result = applyRenameMap(
+      '<Excalidraw src="board.excalidraw" />\n',
+      'notes/index',
+      new Map([
+        ['notes/index', 'archive/index'],
+        ['notes/board.excalidraw', 'archive/board.excalidraw'],
+      ]),
+    );
+    expect(result.markdown).toBe('<Excalidraw src="board.excalidraw" />\n');
+  });
 });
 
 describe('applyRenameMap — outbound link recomputation when source doc moves', () => {

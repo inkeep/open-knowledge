@@ -17,8 +17,8 @@
  * that drives the native menu's rendering — refreshed each time a menu
  * opens, so it is at most one open stale.
  *
- * Terminal controls stay capability-gated: Linux exposes the View toggle,
- * while Windows keeps it absent until its PTY implementation ships.
+ * Terminal controls stay capability-gated so hosts without a usable PTY never
+ * render actions that can only fail.
  */
 
 import { useLingui } from '@lingui/react/macro';
@@ -378,6 +378,7 @@ export function AppMenubar() {
           </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'report-bug' })}>
             {t`Report a bug…`}
+            <MenubarShortcut>Ctrl+Shift+D</MenubarShortcut>
           </MenubarItem>
           <MenubarItem onSelect={() => dispatch({ kind: 'menu-action', action: 'send-feedback' })}>
             {t`Send feedback…`}

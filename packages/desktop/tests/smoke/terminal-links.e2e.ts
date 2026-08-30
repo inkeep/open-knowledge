@@ -16,25 +16,37 @@
  * (out/main/index.js).
  */
 
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import {
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+  userDataDirFor,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
+import {
+  seedTerminalShellProfiles,
+  terminalSmokeEnvironment,
+  terminalSmokeShellCommands,
+  writeFakeClaudeShim,
+} from './_helpers/terminal-smoke-shell';
 
 const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
-const DESKTOP_PRODUCT_NAME = '@inkeep/open-knowledge-desktop';
+const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 interface Seed {
   tmpHome: string;
   projectDir: string;
   pathPrefix: string;
+  userDataDir: string;
 }
 
 /** Seed a consented project with a `notes.md` doc for the file-path case. */
@@ -50,11 +62,10 @@ function seed(prefix: string): Seed {
   // A fake `claude` on PATH so the readiness probe resolves deterministically
   // (mirrors the sibling terminal smokes; the banner isn't under test here).
   const binDir = join(tmpHome, 'fakebin');
-  mkdirSync(binDir, { recursive: true });
-  writeFileSync(join(binDir, 'claude'), '#!/bin/sh\necho "claude 0.0.0-fake"\n');
-  chmodSync(join(binDir, 'claude'), 0o755);
+  writeFakeClaudeShim(binDir, 'version');
+  seedTerminalShellProfiles(tmpHome, { pathPrefix: binDir });
 
-  const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
+  const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
   writeFileSync(
     join(userDataDir, 'state.json'),
@@ -70,7 +81,7 @@ function seed(prefix: string): Seed {
     }),
   );
 
-  return { tmpHome, projectDir, pathPrefix: binDir };
+  return { tmpHome, projectDir, pathPrefix: binDir, userDataDir };
 }
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
@@ -78,15 +89,11 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   return electron.launch(
     desktopLaunchOptions({
       target: TARGET,
-      args: [
-        `--user-data-dir=${join(s.tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME)}`,
-        deepLink,
-      ],
+      args: [`--user-data-dir=${s.userDataDir}`, deepLink],
       timeout: 30_000,
       env: {
         ...process.env,
-        HOME: s.tmpHome,
-        PATH: `${s.pathPrefix}:${process.env.PATH ?? ''}`,
+        ...terminalSmokeEnvironment(s.tmpHome, { pathPrefix: s.pathPrefix }),
         OK_DESKTOP_E2E_SMOKE: '1',
         OK_RECLAIM_DISABLE: '1',
       },
@@ -134,16 +141,22 @@ async function openRunningTerminal(app: ElectronApplication, page: Page): Promis
   );
   // `running` means the PTY spawned, not that the shell has reached its read
   // loop. Typing before it does swallows the keystrokes.
-  await waitForShellReady(() =>
-    page.locator('section[aria-label="Terminal"] .xterm-rows').innerText(),
+  await waitForShellReady(
+    () => page.locator('section[aria-label="Terminal"] .xterm-rows').innerText(),
+    (command) => typeTerminalCommand(page, command),
+    { resetTerminalInput: () => page.keyboard.press('Control+C') },
   );
+}
+
+async function typeTerminalCommand(page: Page, command: string): Promise<void> {
+  await page.locator('section[aria-label="Terminal"] .xterm').click();
+  await page.keyboard.type(command);
+  await page.keyboard.press('Enter');
 }
 
 /** Run a command in the focused xterm and wait for `marker` to render. */
 async function runInTerminal(page: Page, command: string, marker: string): Promise<void> {
-  await page.locator('section[aria-label="Terminal"] .xterm').click();
-  await page.keyboard.type(command);
-  await page.keyboard.press('Enter');
+  await typeTerminalCommand(page, command);
   // The command echoes + its output prints; wait for the marker to appear in the
   // rendered rows (DOM renderer under OK_DESKTOP_E2E_SMOKE=1).
   await expect(page.locator('section[aria-label="Terminal"] .xterm-rows')).toContainText(marker, {
@@ -204,7 +217,7 @@ test.describe('Terminal clickable links — live Electron', () => {
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
   test.afterAll(() => {
-    for (const p of cleanup.splice(0)) rmSync(p, { recursive: true, force: true });
+    for (const p of cleanup.splice(0)) removeTempDirBestEffort(p);
   });
 
   // Quarantined: these two have been failing in CI since before the readiness
@@ -228,7 +241,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     await openRunningTerminal(app, page);
 
     const url = 'https://ok-smoke.example/link';
-    await runInTerminal(page, `echo ${url}`, 'ok-smoke.example');
+    await runInTerminal(page, SHELL_COMMANDS.output(url), 'ok-smoke.example');
 
     // The click has to be inside the retry, not before it. Coordinates come from
     // the span's box, and an xterm repaint between measuring and clicking leaves
@@ -251,7 +264,7 @@ test.describe('Terminal clickable links — live Electron', () => {
     const page = await findEditorWindow(app);
     await openRunningTerminal(app, page);
 
-    await runInTerminal(page, 'echo notes.md', 'notes.md');
+    await runInTerminal(page, SHELL_COMMANDS.output('notes.md'), 'notes.md');
 
     // The doc link routes an in-editor hash navigation to `notes`. Click inside
     // the retry for the same reason as the URL case above — a repaint between

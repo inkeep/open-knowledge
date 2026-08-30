@@ -57,6 +57,8 @@ export function commentPromoterPlugin() {
       arr.splice(index, 1, ...replacements);
       return [SKIP, index + replacements.length];
     });
+
+    promoteSpanningInlineComments(tree, source);
   };
 }
 
@@ -386,4 +388,223 @@ function isFenceOnlyParagraph(p: Paragraph, source: string): boolean {
   if (text === null) return false;
   if (text.trim() !== '%%') return false;
   return !runEscaped(source, p.children[0] as Text, text.indexOf('%%'), 2);
+}
+
+function promoteSpanningInlineComments(tree: Root, source: string): void {
+  if (source.indexOf('%%') === -1 && source.indexOf('<!--') === -1) return;
+
+  visit(tree, (node) => {
+    if (!SPANNING_PARENT_TYPES.has(node.type)) return;
+    const children = (node as { children?: PhrasingContent[] }).children;
+    if (children === undefined || children.length < 2) return;
+    for (const spec of SPANNING_FORMS) {
+      if (promoteSpanningForm(children, source, spec)) return;
+    }
+  });
+}
+
+const SPANNING_PARENT_TYPES: ReadonlySet<string> = new Set(['paragraph', 'heading', 'tableCell']);
+
+interface SpanningFormSpec {
+  sourceForm: 'percent' | 'html';
+  open: string;
+  close: string;
+}
+
+const SPANNING_FORMS: readonly SpanningFormSpec[] = [
+  { sourceForm: 'html', open: '<!--', close: '-->' },
+  { sourceForm: 'percent', open: '%%', close: '%%' },
+];
+
+interface DelimiterHit {
+  index: number;
+  offset: number;
+}
+
+function collectDelimiterHits(children: readonly PhrasingContent[], token: string): DelimiterHit[] {
+  const hits: DelimiterHit[] = [];
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (child.type !== 'text') continue;
+    let from = 0;
+    while (true) {
+      const at = child.value.indexOf(token, from);
+      if (at === -1) break;
+      hits.push({ index: i, offset: at });
+      from = at + token.length;
+    }
+  }
+  return hits;
+}
+
+function promoteSpanningForm(
+  children: PhrasingContent[],
+  source: string,
+  spec: SpanningFormSpec,
+): boolean {
+  let open: DelimiterHit;
+  let close: DelimiterHit;
+
+  if (spec.sourceForm === 'percent') {
+    const hits = collectDelimiterHits(children, '%%');
+    if (hits.length !== 2) return false;
+    [open, close] = hits;
+  } else {
+    const opens = collectDelimiterHits(children, '<!--');
+    const closes = collectDelimiterHits(children, '-->');
+    if (opens.length !== 1 || closes.length !== 1) return false;
+    open = opens[0];
+    close = closes[0];
+  }
+
+  if (open.index >= close.index) return false;
+
+  const openChild = children[open.index] as Text;
+  const closeChild = children[close.index] as Text;
+
+  if (spec.sourceForm === 'percent') {
+    if (openChild.value[open.offset - 1] === '%') return false;
+    if (openChild.value[open.offset + 2] === '%') return false;
+    if (closeChild.value[close.offset - 1] === '%') return false;
+    if (closeChild.value[close.offset + 2] === '%') return false;
+  }
+
+  if (spanCrossesLineBreak(children, spec, open, close)) return false;
+
+  if (runEscaped(source, openChild, open.offset, spec.open.length)) return false;
+  if (runEscaped(source, closeChild, close.offset, spec.close.length)) return false;
+
+  for (let i = open.index + 1; i < close.index; i++) {
+    if (containsClaimedComment(children[i])) return false;
+  }
+
+  if (open.offset === 0 && containsClaimedComment(children[open.index - 1])) return false;
+  if (
+    close.offset + spec.close.length === closeChild.value.length &&
+    containsClaimedComment(children[close.index + 1])
+  ) {
+    return false;
+  }
+
+  const body = buildSpanningBody(children, spec, open, close, source);
+  if (body === null) return false;
+
+  const replacements: PhrasingContent[] = [];
+  const lead = openChild.value.slice(0, open.offset);
+  if (lead.length > 0) replacements.push(sliceTextNode(source, openChild, 0, open.offset));
+
+  const commentNode: CommentMdast = {
+    type: 'comment',
+    children: body,
+    data: { sourceForm: spec.sourceForm },
+  };
+  const openPos = deriveFragmentPosition(source, openChild, open.offset, openChild.value.length);
+  const closePos = deriveFragmentPosition(source, closeChild, 0, close.offset + spec.close.length);
+  if (openPos && closePos) {
+    commentNode.position = { start: openPos.start, end: closePos.end };
+  }
+  replacements.push(commentNode as unknown as PhrasingContent);
+
+  const tailFrom = close.offset + spec.close.length;
+  const tail = closeChild.value.slice(tailFrom);
+  if (tail.length > 0) {
+    replacements.push(sliceTextNode(source, closeChild, tailFrom, closeChild.value.length));
+  }
+
+  children.splice(open.index, close.index - open.index + 1, ...replacements);
+  return true;
+}
+
+function buildSpanningBody(
+  children: readonly PhrasingContent[],
+  spec: SpanningFormSpec,
+  open: DelimiterHit,
+  close: DelimiterHit,
+  source: string,
+): PhrasingContent[] | null {
+  const openChild = children[open.index] as Text;
+  const closeChild = children[close.index] as Text;
+
+  let headFrom = open.offset + spec.open.length;
+  const headTo = openChild.value.length;
+  const footFrom = 0;
+  let footTo = close.offset;
+
+  if (spec.sourceForm === 'html') {
+    while (headFrom < headTo && /\s/.test(openChild.value[headFrom])) headFrom += 1;
+    while (footTo > footFrom && /\s/.test(closeChild.value[footTo - 1])) footTo -= 1;
+  }
+
+  const body: PhrasingContent[] = [];
+  if (headFrom < headTo) {
+    body.push(sliceTextNode(source, openChild, headFrom, headTo));
+  }
+  for (let i = open.index + 1; i < close.index; i++) body.push(children[i]);
+  if (footFrom < footTo) {
+    body.push(sliceTextNode(source, closeChild, footFrom, footTo));
+  }
+
+  if (body.length === 0) return null;
+
+  const hasContent = body.some((child) =>
+    child.type === 'text' ? child.value.trim().length > 0 : true,
+  );
+  if (!hasContent) return null;
+
+  if (!body.some((child) => child.type === 'text')) return null;
+
+  return body;
+}
+
+function spanCrossesLineBreak(
+  children: readonly PhrasingContent[],
+  spec: SpanningFormSpec,
+  open: DelimiterHit,
+  close: DelimiterHit,
+): boolean {
+  const openChild = children[open.index] as Text;
+  const closeChild = children[close.index] as Text;
+  if (openChild.value.indexOf('\n', open.offset + spec.open.length) !== -1) return true;
+  if (closeChild.value.lastIndexOf('\n', close.offset) !== -1) return true;
+  for (let i = open.index + 1; i < close.index; i++) {
+    if (containsLineBreak(children[i])) return true;
+  }
+  return false;
+}
+
+function containsLineBreak(node: unknown): boolean {
+  const typed = node as { type?: string; value?: string; children?: unknown };
+  if (typed?.type === 'break') return true;
+  if (typed?.type === 'text') return (typed.value ?? '').indexOf('\n') !== -1;
+  return Array.isArray(typed?.children) && typed.children.some(containsLineBreak);
+}
+
+function containsClaimedComment(node: unknown): boolean {
+  if (node === undefined || node === null) return false;
+  if ((node as { type?: string }).type === 'comment') return true;
+  const kids = (node as { children?: unknown }).children;
+  return Array.isArray(kids) && kids.some(containsClaimedComment);
+}
+
+interface EntityRefSpan {
+  offset: number;
+  length: number;
+  raw: string;
+}
+
+function sliceTextNode(source: string, node: Text, from: number, to: number): Text {
+  const sliced: Text = { type: 'text', value: node.value.slice(from, to) };
+
+  const pos = deriveFragmentPosition(source, node, from, to);
+  if (pos) sliced.position = pos;
+
+  const spans = (node.data as { entityRefSpans?: EntityRefSpan[] } | undefined)?.entityRefSpans;
+  if (spans?.length) {
+    const inside = spans
+      .filter((span) => span.offset >= from && span.offset + span.length <= to)
+      .map((span) => ({ ...span, offset: span.offset - from }));
+    if (inside.length > 0) sliced.data = { entityRefSpans: inside } as Text['data'];
+  }
+
+  return sliced;
 }

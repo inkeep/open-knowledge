@@ -430,7 +430,7 @@ describe('TipTap cache — lifecycle', () => {
     h.editorDom.scrollTop = 1234;
     parkTiptapEditor(entry);
 
-    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppression = acquireScrollRestoreSuppression(h.docName, 'landing');
     const suppressed = makeNode();
     mountTiptapEditor({
       docName: h.docName,
@@ -450,6 +450,33 @@ describe('TipTap cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     expect(released.scrollTop).toBe(1234);
+  });
+
+  test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
+    // A navigation's hold is not a landing's, and this reader gets one chance.
+    // A landing is still placing a position and will write one, so standing down
+    // for it preserves a deliberate position. A navigation has already written
+    // its position, and the parked scrollTop IS that result — so standing down
+    // here would not defer the restore, it would drop it, and the reader would
+    // arrive at the top of the document rather than where they navigated to.
+    const h = makeTiptapHarness('doc-a');
+    const entry = mountTiptapEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.editorDom.scrollTop = 1234;
+    parkTiptapEditor(entry);
+
+    acquireScrollRestoreSuppression(h.docName, 'navigation');
+    const held = makeNode();
+    mountTiptapEditor({
+      docName: h.docName,
+      container: held as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+
+    expect(held.scrollTop).toBe(1234);
   });
 
   test('mount: cache-hit restores focus ONLY when editor owned focus at park time', () => {
@@ -1217,7 +1244,7 @@ describe('CM6 cache — lifecycle', () => {
     h.viewDom.scrollTop = 42;
     parkCmEditor(entry);
 
-    const suppression = acquireScrollRestoreSuppression(h.docName);
+    const suppression = acquireScrollRestoreSuppression(h.docName, 'landing');
     const suppressed = makeNode();
     mountCmEditor({
       docName: h.docName,
@@ -1235,6 +1262,31 @@ describe('CM6 cache — lifecycle', () => {
       factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
     });
     expect(released.scrollTop).toBe(42);
+  });
+
+  test('mount: cache-hit still restores scroll while a NAVIGATION holds the scroller', () => {
+    // Source-mode twin of the TipTap case: a navigation has already written its
+    // position, and the parked scrollTop is that result. This write is a
+    // one-shot into a target at zero, so standing down for it drops the position
+    // rather than deferring it.
+    const h = makeCmHarness('cm-doc-a');
+    const entry = mountCmEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    h.viewDom.scrollTop = 42;
+    parkCmEditor(entry);
+
+    acquireScrollRestoreSuppression(h.docName, 'navigation');
+    const held = makeNode();
+    mountCmEditor({
+      docName: h.docName,
+      container: held as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+
+    expect(held.scrollTop).toBe(42);
   });
 
   test('evict: destroys view + provider + ydoc', () => {
@@ -2693,6 +2745,47 @@ describe('captureRenameSnapshots', () => {
     const snap = __consumeRenameSnapshot('to-doc');
     expect(snap?.html).toBe('<p>warm content</p>');
     expect(__consumeRenameSnapshot(h.docName)).toBeNull();
+  });
+
+  test('skips a doc-class-changing rename — the markdown HTML has no consumer there', () => {
+    // `.md` -> `.excalidraw` / `.mmd` / text mounts a different editor whose
+    // fallback must be the skeleton: a warm markdown snapshot would paint the
+    // pre-rename text over the incoming canvas, and nothing on those branches
+    // ever clears the store entry.
+    for (const toDocName of ['board.excalidraw', 'diagram.mmd', 'notes.txt']) {
+      const h = makeTiptapHarness(`from-${toDocName}`);
+      mountTiptapEditor({
+        docName: h.docName,
+        container: h.container as unknown as HTMLElement,
+        factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+      });
+      seedSource(h);
+      (h.editor as unknown as { getHTML(): string }).getHTML = () => '<p>warm content</p>';
+
+      captureRenameSnapshots([{ fromDocName: h.docName, toDocName }]);
+
+      expect(__consumeRenameSnapshot(toDocName)).toBeNull();
+    }
+  });
+
+  test('captures for an extension without a doc-class discriminator — the dispatch mounts the dual editor there', () => {
+    // `isMarkdownDocFile` is the negation of the per-class discriminators,
+    // matching the editor's children dispatch: a name like `future.canvas`
+    // has no discriminator, so the dual editor mounts and consumes the
+    // snapshot. A class gets excluded here only by adding its discriminator
+    // — the same edit point the dispatch itself requires.
+    const h = makeTiptapHarness('from-future.canvas');
+    mountTiptapEditor({
+      docName: h.docName,
+      container: h.container as unknown as HTMLElement,
+      factory: h.factory as unknown as (el: HTMLElement) => ReturnType<typeof h.factory>,
+    });
+    seedSource(h);
+    (h.editor as unknown as { getHTML(): string }).getHTML = () => '<p>warm content</p>';
+
+    captureRenameSnapshots([{ fromDocName: h.docName, toDocName: 'future.canvas' }]);
+
+    expect(__consumeRenameSnapshot('future.canvas')?.html).toBe('<p>warm content</p>');
   });
 
   test('skips and does not store when editor.isDestroyed is true', () => {

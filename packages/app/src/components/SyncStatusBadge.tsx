@@ -24,6 +24,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpRight,
+  ChevronRight,
   Cloud,
   CloudAlert,
   CloudOff,
@@ -33,6 +34,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Spinner } from '@/components/ui/spinner';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { useBadgeSyncControls } from '@/hooks/use-enable-sync-with-confirm';
@@ -46,6 +48,12 @@ import { triggerSync } from '@/lib/trigger-sync';
 import { openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
 import { SyncBlockingChanges } from './SyncBlockingChanges';
+import {
+  groupWorktreeEntries,
+  MAX_ROWS_PER_GROUP,
+  type WorktreeFolderGroup,
+  type WorktreeRowModel,
+} from './sync-worktree-grouping.ts';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/popover';
@@ -662,9 +670,9 @@ interface PopoverBodyProps {
 }
 
 /** Section heading — the small uppercase rule the popover groups controls under. */
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({ children, id }: { children: React.ReactNode; id?: string }) {
   return (
-    <span className="font-mono uppercase tracking-wide text-2xs text-muted-foreground">
+    <span id={id} className="font-mono uppercase tracking-wide text-2xs text-muted-foreground">
       {children}
     </span>
   );
@@ -725,10 +733,21 @@ function statusCodeVariant(code: GitStatusCode): 'gray' | 'warning' | 'destructi
  * a document, or the asset viewer for everything else the sidebar would show.
  * The rows that stay plain text are the ones that would open on nothing: a
  * deletion, an incoming file that has not landed yet, a path outside the
- * content dir, and the floors the sidebar hides too. The button carries no
- * label of its own: the path IS its accessible name.
+ * content dir, and the floors the sidebar hides too. The button's accessible
+ * name is set to the full `entry.path` via `aria-label`, because the display
+ * label is relative to the enclosing folder group and would collide with
+ * sibling groups that hold files of the same name.
  */
-function WorktreeRow({ entry, dimmed }: { entry: GitWorktreeEntry; dimmed: boolean }) {
+function WorktreeRow({
+  entry,
+  dimmed,
+  label,
+}: {
+  entry: GitWorktreeEntry;
+  dimmed: boolean;
+  /** Path relative to the enclosing folder group; the header carries the rest. */
+  label: string;
+}) {
   // No locale subscription here, deliberately. `statusCodeLabel` reads the
   // module `t`, which resolves at CALL time, so on a locale switch these
   // tooltips render in the old language until something re-renders the row.
@@ -741,7 +760,17 @@ function WorktreeRow({ entry, dimmed }: { entry: GitWorktreeEntry; dimmed: boole
   // macro module instead.
   const codeLabel = statusCodeLabel(entry.code);
   const openTarget = entry.open;
-  const pathClassName = `truncate font-mono text-2xs ${dimmed ? 'text-muted-foreground/60' : 'text-foreground'}`;
+  // `text-start` AND `dir="auto"`, and the two are load-bearing for different
+  // reasons. `dir` only resolves the logical start/end keywords, so it cannot
+  // counter an inherited physical alignment: the openable row nests its span in
+  // a real <Button>, which the UA centers and neither Preflight nor
+  // `buttonVariants` resets — that is the site the round-4 regression hit, and
+  // the one `text-start` exists for. On the non-openable row the span is a
+  // direct child of a flex <li> with no button in its ancestry, so `text-start`
+  // is a harmless no-op there and is kept only so both spans share one class.
+  // `dir="auto"` is required on both: without it a non-Latin filename would be
+  // forced to render LTR.
+  const pathClassName = `truncate text-start font-mono text-2xs ${dimmed ? 'text-muted-foreground/60' : 'text-foreground'}`;
   return (
     <li className="flex min-w-0 items-center gap-2">
       <Tooltip>
@@ -759,41 +788,200 @@ function WorktreeRow({ entry, dimmed }: { entry: GitWorktreeEntry; dimmed: boole
       {openTarget ? (
         // Closing on navigate: the popover overlays the editor, so leaving it
         // open would hide the document the click just asked for.
-        <PopoverClose asChild>
-          <Button
-            variant="link"
-            size="xs"
-            // `shrink` undoes the Button base's `shrink-0`, and `min-w-0`
-            // releases the content-width floor — a flex item honors neither
-            // truncation nor its parent's width without both, at every level
-            // of the nest (li → button → span). Without `shrink` the row grew
-            // to the length of the path and spilled out of the popover.
-            // `min-h-6` restores a clickable target: `h-auto p-0` collapsed
-            // these discrete list rows to the ~14px line box, under WCAG 2.2
-            // SC 2.5.8's 24px floor — and a mis-aimed click here navigates the
-            // editor. Horizontal p-0 stays for the flush-left alignment.
-            className="h-auto min-h-6 min-w-0 shrink justify-start overflow-hidden p-0 font-normal"
-            onClick={() => navigateToHash(hashForOpenTarget(openTarget))}
-            data-testid="worktree-row-open"
-          >
-            {/* `truncate` clips the END — the filename, the only identifying
-                part — so the full path rides on `title`, the same recovery
-                every git client offers. */}
-            <span title={entry.path} className={`min-w-0 ${pathClassName}`}>
-              {entry.path}
-            </span>
-          </Button>
-        </PopoverClose>
+        // Tooltip wraps the BUTTON, not the label span: Radix opens on the
+        // trigger's focus, and Tab lands on the button — a nested span never
+        // receives focus, so a keyboard-only user got no truncation recovery.
+        // Safe here where it was not on the folder header: `PopoverClose` does
+        // not style on `data-state`, so nothing collides.
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <PopoverClose asChild>
+              <Button
+                variant="link-muted"
+                size="xs"
+                // `shrink` undoes the Button base's `shrink-0`, and `min-w-0`
+                // releases the content-width floor — a flex item honors neither
+                // truncation nor its parent's width without both, at every level
+                // of the nest (li → button → span). Without `shrink` the row grew
+                // to the length of the path and spilled out of the popover.
+                // `min-h-6` restores a clickable target: `h-auto p-0` collapsed
+                // these discrete list rows to the ~14px line box, under WCAG 2.2
+                // SC 2.5.8's 24px floor — and a mis-aimed click here navigates the
+                // editor. Horizontal p-0 stays for the flush-left alignment.
+                className="h-auto min-h-6 min-w-0 shrink justify-start overflow-hidden p-0 font-normal"
+                aria-label={entry.path}
+                onClick={() => navigateToHash(hashForOpenTarget(openTarget))}
+                data-testid="worktree-row-open"
+              >
+                <span dir="auto" className={`min-w-0 ${pathClassName}`}>
+                  {label}
+                </span>
+              </Button>
+            </PopoverClose>
+          </TooltipTrigger>
+          <TooltipContent dir="auto" className="font-mono text-2xs">
+            {entry.path}
+          </TooltipContent>
+        </Tooltip>
       ) : (
-        <span title={entry.path} className={pathClassName}>
-          {entry.path}
-        </span>
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                dir="auto"
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: tooltip-on-static-text pattern (see EditorFooter) — Radix opens on the trigger's focus, so a non-focusable span leaves sighted keyboard-only users no way to recover a truncated path. Sibling rows that link are buttons and already take focus, so this also stops the list silently skipping the rows whose path is their only content.
+                tabIndex={0}
+                className={`min-w-0 rounded-xs focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${pathClassName}`}
+              >
+                {label}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent dir="auto" className="font-mono text-2xs">
+              {entry.path}
+            </TooltipContent>
+          </Tooltip>
+          {/* Tooltip is pointer-only; give the full path to AT via a
+              screen-reader-only fallback (same pattern as the status letter).
+              Omitted when the label already IS the full path — a row in an
+              ungrouped section — so the path is not announced twice. */}
+          {label !== entry.path && <span className="sr-only">{entry.path}</span>}
+        </>
       )}
     </li>
   );
 }
 
-/** A titled group of changed paths; renders nothing when the group is empty. */
+/**
+ * Row list, capped until asked otherwise.
+ *
+ * The cap keeps a freshly-opened folder short, but the overflow is a toggle:
+ * reaching these rows already took a deliberate click, so a count that cannot
+ * be opened just says "there is more, and no." The toggle is two-way so the
+ * button stays mounted when expanded — unmounting the focused node drops
+ * keyboard focus to `<body>`. The enclosing disclosure unmounts this state on
+ * close, so the next open always starts capped.
+ */
+function WorktreeRows({ rows, dimmed }: { rows: WorktreeRowModel[]; dimmed: boolean }) {
+  const [showAll, setShowAll] = useState(false);
+  const hasOverflow = rows.length > MAX_ROWS_PER_GROUP;
+  const shown = showAll ? rows : rows.slice(0, MAX_ROWS_PER_GROUP);
+  const overflowCount = rows.length - MAX_ROWS_PER_GROUP;
+  return (
+    <ul className="flex flex-col gap-1">
+      {shown.map(({ entry, label }) => (
+        <WorktreeRow
+          key={`${entry.code}:${entry.path}`}
+          entry={entry}
+          dimmed={dimmed}
+          label={label}
+        />
+      ))}
+      {hasOverflow && (
+        <li>
+          <Button
+            variant="link-muted"
+            size="xs"
+            aria-expanded={showAll}
+            className="h-auto min-h-6 justify-start p-0 text-2xs font-normal"
+            onClick={() => setShowAll((v) => !v)}
+            data-testid="worktree-rows-show-all"
+          >
+            {showAll ? <Trans>Collapse</Trans> : <Trans>+{overflowCount} more</Trans>}
+          </Button>
+        </li>
+      )}
+    </ul>
+  );
+}
+
+/**
+ * One collapsible folder bucket. The directory is stated once in the header and
+ * its rows carry only their remainder.
+ *
+ * The label is content-sized and the count is pushed out with `ms-auto`, so
+ * alignment inside the row is unobservable — the same shape as the section
+ * header in `WorktreeGroup`. The tooltip carries `prefix + dir`, which is more than the
+ * header shows whenever the section hoisted a prefix, and equal to it when it
+ * did not. It opens on focus as well as hover, because it wraps the Button
+ * rather than a span nested inside it.
+ */
+function WorktreeFolder({
+  group,
+  prefix,
+  dimmed,
+}: {
+  group: WorktreeFolderGroup;
+  /** Section-wide directory this group's `dir` is stated relative to. */
+  prefix: string;
+  dimmed: boolean;
+}) {
+  // Named `fileCount` to match `WorktreeGroup`'s count and the entry the catalog
+  // already had: Lingui keys the plural unit on the placeholder name, so a
+  // second name mints a second translation unit for identical English.
+  const fileCount = group.rows.length;
+  // Controlled rather than reading `data-state` off the trigger. Radix Tooltip
+  // and Collapsible both write that attribute, and an `asChild` chain spreads
+  // the incoming one last — so a Tooltip wrapping the CollapsibleTrigger
+  // silently overwrites `open` with the tooltip's own `closed`. Owning the flag
+  // here lets the Tooltip wrap the BUTTON, which is what makes it reachable by
+  // keyboard: Radix opens on the trigger's focus, and Tab lands on the button,
+  // never on a span nested inside it.
+  const [open, setOpen] = useState(false);
+  // What a `WorktreeRow` never shows: its label is relative to `dir`, and
+  // `dir` is itself relative to the hoisted prefix.
+  const fullDir = prefix === '' ? group.dir : `${prefix}/${group.dir}`;
+  return (
+    <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              size="xs"
+              className="h-auto min-h-6 w-full justify-start gap-1 px-0 font-normal"
+            >
+              <ChevronRight
+                className={`size-3 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+                aria-hidden
+              />
+              <span
+                dir="auto"
+                className="min-w-0 truncate text-start font-mono text-2xs text-muted-foreground"
+              >
+                {group.dir}
+              </span>
+              <span
+                aria-hidden
+                className="ms-auto shrink-0 ps-1 text-2xs text-muted-foreground tabular-nums"
+              >
+                {fileCount}
+              </span>
+              <span className="sr-only">
+                <Plural value={fileCount} one="# file" other="# files" />
+              </span>
+            </Button>
+          </CollapsibleTrigger>
+        </TooltipTrigger>
+        <TooltipContent dir="auto" className="font-mono text-2xs">
+          {fullDir}
+        </TooltipContent>
+      </Tooltip>
+      <CollapsibleContent className="ps-4">
+        <WorktreeRows rows={group.rows} dimmed={dimmed} />
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * A titled section of changed paths; renders nothing when empty.
+ *
+ * Collapsed by default, including the section the user is about to act on. The
+ * popover is a status surface first: the count in the trigger is the signal, and
+ * the paths are detail you open when you want them. The listing's scroll region
+ * bounds the height independently, so this is a deliberate default rather than
+ * a workaround for an overflowing panel.
+ */
 function WorktreeGroup({
   title,
   note,
@@ -806,16 +994,44 @@ function WorktreeGroup({
   dimmed?: boolean;
 }) {
   if (entries.length === 0) return null;
+  const fileCount = entries.length;
+  const { prefix, groups, loose } = groupWorktreeEntries(entries);
   return (
-    <div className="flex flex-col gap-1">
-      <span className="text-2xs font-medium text-muted-foreground">{title}</span>
-      {note && <span className="text-2xs text-muted-foreground/80">{note}</span>}
-      <ul className="flex flex-col gap-1">
-        {entries.map((entry) => (
-          <WorktreeRow key={`${entry.code}:${entry.path}`} entry={entry} dimmed={dimmed} />
+    <Collapsible className="flex flex-col gap-1">
+      <CollapsibleTrigger asChild>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="group h-auto min-h-6 w-full justify-start gap-1 px-0 font-normal data-[state=open]:bg-transparent"
+        >
+          <ChevronRight
+            className="size-3 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none group-data-[state=open]:rotate-90"
+            aria-hidden
+          />
+          <span className="text-2xs font-medium text-muted-foreground">{title}</span>
+          <span className="ms-auto shrink-0 ps-1 text-2xs text-muted-foreground tabular-nums">
+            <Plural value={fileCount} one="# file" other="# files" />
+          </span>
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="flex flex-col gap-1 ps-3">
+        {note && <span className="text-2xs text-muted-foreground/80">{note}</span>}
+        {prefix !== '' && (
+          <span dir="auto" className="break-all font-mono text-2xs text-muted-foreground">
+            {prefix}/
+          </span>
+        )}
+        {groups.map((group) => (
+          <WorktreeFolder
+            key={prefix === '' ? group.dir : `${prefix}/${group.dir}`}
+            group={group}
+            prefix={prefix}
+            dimmed={dimmed}
+          />
         ))}
-      </ul>
-    </div>
+        {loose.length > 0 && <WorktreeRows rows={loose} dimmed={dimmed} />}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 
@@ -899,7 +1115,7 @@ function WorktreeStatusSection({
   return (
     <div className="flex flex-col gap-2.5 border-t pt-3">
       <div className="flex items-baseline justify-between gap-2">
-        <SectionLabel>
+        <SectionLabel id="worktree-status-label">
           <Trans>Status</Trans>
         </SectionLabel>
         {worktree && (worktree.branch || worktree.detached) && (
@@ -936,7 +1152,23 @@ function WorktreeStatusSection({
         </p>
       ) : (
         worktree && (
-          <div className="flex flex-col gap-2.5">
+          <section
+            // Its own scroll region, not the popover's: the mode selector and
+            // the Pull/Push buttons sit above this, and letting an expanded
+            // 25-file bucket grow the whole popover pushed them off-screen —
+            // the listing is context for those controls, so it is the part
+            // that should give way.
+            // tabIndex makes the scroll region keyboard-focusable (Chromium
+            // doesn't do this automatically); overscroll-contain keeps scroll
+            // from bubbling to the popover's scroll chain.
+            className="flex max-h-56 flex-col gap-2.5 overflow-y-auto overscroll-contain focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — Chromium doesn't make overflow:auto divs focusable without tabIndex.
+            tabIndex={0}
+            // <section> carries the region role implicitly, so `aria-labelledby`
+            // has a role to attach its name to; on a bare div the name is dropped.
+            aria-labelledby="worktree-status-label"
+            data-testid="worktree-listing"
+          >
             {/* Headings name the button rather than predicting the future:
                 only `full` pushes on its own, so "will be pushed" would be a
                 promise the product does not keep in Manual or Follow. */}
@@ -953,7 +1185,7 @@ function WorktreeStatusSection({
                 <Trans>Some files are not listed — the working tree has too many changes.</Trans>
               </p>
             )}
-          </div>
+          </section>
         )
       )}
     </div>

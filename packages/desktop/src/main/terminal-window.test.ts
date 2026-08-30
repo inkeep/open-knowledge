@@ -49,7 +49,10 @@ function makeDeps(opts: {
   const register = vi.fn((_window: unknown, _opts?: { kind?: string }) => disposeShowGate);
   const showGate = { register, fireThemeApplied: () => {} } as unknown as ShowGateRegistry;
   const killForWindow = vi.fn((_id: number) => {});
-  const terminalReaper = { killForWindow, killAll: () => {} } as unknown as TerminalReaper;
+  const terminalReaper = {
+    killForWindow,
+    killAll: () => Promise.resolve(),
+  } satisfies TerminalReaper;
   return {
     fake,
     createWindow,

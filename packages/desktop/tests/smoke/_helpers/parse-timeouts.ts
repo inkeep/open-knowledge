@@ -85,6 +85,8 @@ export interface TestEntry {
   cumulativeMs: number;
   /** `toPass({ timeout: N })` budgets specifically — for the Invariant-B check on Apple-Event / IPC roundtrip latency. */
   toPassBudgetsMs: number[];
+  /** Source offsets of the test body's opening and closing brace. */
+  bodyRange: readonly [number, number];
 }
 
 /** Per-file calibration analysis. */
@@ -92,6 +94,20 @@ export interface FileAnalysis {
   filePath: string;
   helpers: HelperBudget[];
   tests: TestEntry[];
+  /**
+   * `test.setTimeout(...)` calls that sit OUTSIDE any test body — at
+   * `test.describe` scope or module top level.
+   *
+   * Playwright honours those (they set the enclosing suite's timeout), but
+   * `perTestTimeoutMs` cannot see them, because a test's budget is read from
+   * its own arrow-function body. A file that declares its budget that way runs
+   * under a ceiling the calibration guard never compares against, and if the
+   * declared budget is TIGHTER than the config's the guard is looser than
+   * reality — which is the direction that lets an over-budget addition through
+   * to an unattributable runtime timeout. Reported so the guard can reject the
+   * placement instead of silently mis-scoring it.
+   */
+  looseSetTimeoutLines: number[];
 }
 
 /** Outer per-test timeout extracted from `playwright.config.ts`. */
@@ -399,6 +415,7 @@ export function extractTestEntries(src: string, helpers: HelperBudget[]): TestEn
       tracedHelperBudgetsMs,
       cumulativeMs,
       toPassBudgetsMs,
+      bodyRange: [bodyOpenIdx, bodyCloseIdx],
     });
   }
   return entries;
@@ -409,7 +426,24 @@ export function parseTestFile(filePath: string): FileAnalysis {
   const src = readFileSync(filePath, 'utf8');
   const helpers = extractHelperBudgets(src);
   const tests = extractTestEntries(src, helpers);
-  return { filePath, helpers, tests };
+  return { filePath, helpers, tests, looseSetTimeoutLines: findLooseSetTimeouts(src, tests) };
+}
+
+/**
+ * Lines carrying a `test.setTimeout(...)` that no test body encloses. Compares
+ * whole-file occurrences against the ranges `extractTestEntries` already
+ * sliced, so it stays correct as the body-finding logic evolves.
+ */
+function findLooseSetTimeouts(src: string, tests: TestEntry[]): number[] {
+  const stripped = stripCommentsAndStrings(src);
+  const bodies = tests.map((t) => t.bodyRange);
+  const lines: number[] = [];
+  for (const m of stripped.matchAll(TEST_SET_TIMEOUT_RE)) {
+    const at = m.index ?? 0;
+    if (bodies.some(([open, close]) => at > open && at < close)) continue;
+    lines.push(lineNumberAt(src, at));
+  }
+  return lines;
 }
 
 /**

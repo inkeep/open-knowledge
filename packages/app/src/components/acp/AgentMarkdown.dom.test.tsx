@@ -117,7 +117,7 @@ const workspace: Workspace = {
   contentDir: '/Users/abraham/repo/public/open-knowledge',
   pathSeparator: '/',
 };
-const pages = new Set(['reports/foo/REPORT', 'notes/haiku']);
+const pages = new Set(['reports/foo/REPORT', 'notes/haiku', 'notes/@team']);
 
 function renderWithResolver(text: string) {
   const resolver = buildDocPathResolver({ workspace, pages });
@@ -153,6 +153,37 @@ describe('AgentMarkdown doc-path links', () => {
     expect(link).not.toBeNull();
     expect(link?.getAttribute('href')).toBe('#/notes/haiku');
     expect(link?.querySelector('code')?.textContent).toBe('notes/haiku.md');
+  });
+
+  test('a resolved path whose name needs escaping keeps the tooltip readable', () => {
+    // `DOC_PATH_REGEX` admits `@`, and `encodeURIComponent` escapes it to
+    // `%40`, so the resolver's own output is enough to reach the escaped case
+    // — the one shape in this suite where the href and the name differ.
+    const { container } = renderWithResolver('see `notes/@team.md` for the roster');
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/notes/%40team');
+    expect(link?.getAttribute('title')).toBe('Open notes/@team');
+  });
+
+  test('the tooltip decodes the escapes in a hash the agent wrote itself', () => {
+    // The other way in: any `#/` link in agent markdown reaches this anchor,
+    // and a space is the common case the resolver cannot produce, since
+    // `DOC_PATH_REGEX` does not match one. A reader that does not decode shows
+    // the user `Open My%20Notes` instead of the name they know.
+    const { container } = renderWithResolver('[My Notes](#/My%20Notes)');
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('#/My%20Notes');
+    expect(link?.getAttribute('title')).toBe('Open My Notes');
+  });
+
+  test('a hash the reader cannot parse leaves the tooltip showing the raw href', () => {
+    // The `?? href` fallback. `#/` alone has no doc name to decode, and the
+    // tooltip has to say something.
+    const { container } = renderWithResolver('[home](#/)');
+    const link = container.querySelector('a[data-testid="agent-thread-doc-link"]');
+    expect(link?.getAttribute('title')).toBe('Open #/');
   });
 
   test('an unresolvable path stays plain text — no link, no create-on-open trap', () => {

@@ -271,12 +271,16 @@ describe('resolvePiAgentDirPath', () => {
 });
 
 describe('resolveLmStudioConfigPath', () => {
-  it('defaults macOS to the observed cache path when no config exists yet', () => {
-    // The documented `~/.lmstudio/mcp.json` is a silent no-op on macOS (LM
-    // Studio reads `~/.cache/lm-studio/mcp.json`; bug-tracker#1371), so a fresh
-    // install resolves to the cache path we know it actually reads.
+  it('defaults macOS to the documented ~/.lmstudio path when no config exists yet', () => {
+    // Through v0.3.33 macOS really did read `~/.cache/lm-studio/mcp.json`
+    // (bug-tracker#1371) and this defaulted there. Verified on 0.4.21: the
+    // documented path is the real one. An upgraded machine can still hold an
+    // EMPTY `~/.cache/lm-studio/` dir, and defaulting there wrote a config
+    // LM Studio never reads — an install that kept a real file at the cache
+    // path is still resolved by the existing-file check below, which does not
+    // depend on this order.
     expect(resolveLmStudioConfigPath({ home: '/Users/alice', platformName: 'darwin' })).toBe(
-      '/Users/alice/.cache/lm-studio/mcp.json',
+      '/Users/alice/.lmstudio/mcp.json',
     );
   });
 
@@ -289,10 +293,61 @@ describe('resolveLmStudioConfigPath', () => {
     );
   });
 
+  it('darwin, both dirs present and no file anywhere: an EMPTY cache home loses', () => {
+    // The upgrade-leftover case. `~/.lmstudio` exists on every population, so it
+    // cannot discriminate; an empty `~/.cache/lm-studio` is the 0.3.x remnant the
+    // old macOS-first ordering resolved to, writing a config 0.4.21 never reads.
+    const home = mkdtempSync(join(tmpdir(), 'ok-lms-both-'));
+    mkdirSync(join(home, '.lmstudio'), { recursive: true });
+    mkdirSync(join(home, '.cache', 'lm-studio'), { recursive: true });
+    expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+      join(home, '.lmstudio', 'mcp.json'),
+    );
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('darwin, both dirs present, POPULATED cache home wins', () => {
+    // A real pre-0.3.34 install: the cache home holds state, so it is the one
+    // LM Studio actually reads and must not be abandoned for the documented path.
+    const home = mkdtempSync(join(tmpdir(), 'ok-lms-pop-'));
+    mkdirSync(join(home, '.lmstudio'), { recursive: true });
+    mkdirSync(join(home, '.cache', 'lm-studio'), { recursive: true });
+    writeFileSync(join(home, '.cache', 'lm-studio', 'settings.json'), '{}');
+    expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+      join(home, '.cache', 'lm-studio', 'mcp.json'),
+    );
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('a real file at the cache path with no ~/.lmstudio still resolves there', () => {
+    // The backward-compat guarantee the docblock promises. Step 1 is order-free,
+    // so this must hold regardless of how the candidate list is ordered.
+    const home = mkdtempSync(join(tmpdir(), 'ok-lms-cachefile-'));
+    mkdirSync(join(home, '.cache', 'lm-studio'), { recursive: true });
+    writeFileSync(join(home, '.cache', 'lm-studio', 'mcp.json'), '{"mcpServers":{}}');
+    expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+      join(home, '.cache', 'lm-studio', 'mcp.json'),
+    );
+    rmSync(home, { recursive: true, force: true });
+  });
+
+  it('an EMPTY cache home does not win even when ~/.lmstudio is absent', () => {
+    // The one case the removed dir-existence step decided differently: with no
+    // `~/.lmstudio` at all, an empty `~/.cache/lm-studio` used to win purely by
+    // existing — the leftover the populated-check exists to reject.
+    const home = mkdtempSync(join(tmpdir(), 'ok-lms-emptycache-'));
+    mkdirSync(join(home, '.cache', 'lm-studio'), { recursive: true });
+    expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
+      join(home, '.lmstudio', 'mcp.json'),
+    );
+    rmSync(home, { recursive: true, force: true });
+  });
+
   it('prefers an existing candidate dir over the platform default', () => {
     const home = mkdtempSync(join(tmpdir(), 'lmstudio-home-'));
     try {
-      // Only the documented dir exists; macOS would otherwise default to cache.
+      // Only the documented dir exists. (Platform-dependent ordering is gone; the
+      // resolver is now the same on every platform.)
       mkdirSync(join(home, '.lmstudio'), { recursive: true });
       expect(resolveLmStudioConfigPath({ home, platformName: 'darwin' })).toBe(
         join(home, '.lmstudio', 'mcp.json'),

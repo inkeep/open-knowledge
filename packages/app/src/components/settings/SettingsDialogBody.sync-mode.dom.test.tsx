@@ -306,6 +306,37 @@ describe('Settings Sync section — three-way mode control (real hooks + dialog)
     expect(localPatchCalls).toEqual([{ autoSync: { mode: 'full', enabled: null } }]);
   });
 
+  test('the push-outpaces-pull hint tracks both of its conditions', async () => {
+    // Gated twice: only in `full`, and only when the push interval is the
+    // shorter of the two. `off`/`follow` never push on a schedule, so the
+    // control is absent there and a note about it would describe nothing.
+    const hint = 'settings-sync-push-outpaces-pull-hint';
+
+    projectLocalConfig = {
+      autoSync: { mode: 'full', pullIntervalSeconds: 900, pushIntervalSeconds: 30 },
+    };
+    syncStatus = { ...syncStatus, syncMode: 'full', syncEnabled: true } as SyncStatus;
+    await renderSyncSection();
+    expect(screen.queryByTestId(hint)).toBeTruthy();
+    cleanup();
+
+    // Same mode, healthy ordering — nothing to say.
+    projectLocalConfig = {
+      autoSync: { mode: 'full', pullIntervalSeconds: 30, pushIntervalSeconds: 900 },
+    };
+    await renderSyncSection();
+    expect(screen.queryByTestId(hint)).toBeNull();
+    cleanup();
+
+    // Inverted intervals but pull-only: no scheduled push exists to warn about.
+    projectLocalConfig = {
+      autoSync: { mode: 'follow', pullIntervalSeconds: 900, pushIntervalSeconds: 30 },
+    };
+    syncStatus = { ...syncStatus, syncMode: 'follow', syncEnabled: true } as SyncStatus;
+    await renderSyncSection();
+    expect(screen.queryByTestId(hint)).toBeNull();
+  });
+
   test('selecting Off writes immediately with no confirmation', async () => {
     projectLocalConfig = { autoSync: { mode: 'full' } };
     syncStatus = { ...syncStatus, syncMode: 'full', syncEnabled: true } as SyncStatus;

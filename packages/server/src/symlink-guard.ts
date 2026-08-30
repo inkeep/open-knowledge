@@ -24,6 +24,17 @@
  *      ENOENT, and a naive climb to the lexical parent would pass it — yet a
  *      write through that link CREATES the target. The link is resolved
  *      manually so its destination is checked even when absent.
+ *
+ * Sibling primitive: `canonicalRelPathForNewTarget` in `fs-safety.ts` answers
+ * the same realpath-then-refuse-`.ok`/`.git` question for the HTTP file-ops,
+ * with three deliberate differences — its consumer
+ * `isReservedProjectStatePath` matches `.ok`/`.git` at ANY depth (nested
+ * `<folder>/.ok/` is refused there, first-class here); its ENOENT branch
+ * climbs by `dirname` without the manual dangling-link resolution above; and
+ * a root that cannot be canonicalized falls back to the lexical relative path
+ * there (its caller's lexical check still stands), where
+ * `assertNoSymlinkEscape` throws `ContentRootUnavailableError` for a missing
+ * anchor. Harden one and check whether the other needs the same change.
  */
 
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';

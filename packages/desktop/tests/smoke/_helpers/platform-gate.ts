@@ -14,9 +14,9 @@
  *   - CROSS-PLATFORM specs gate on {@link PLATFORM_SUPPORTED}. They run on
  *     every OS the harness can drive. A spec belongs here when nothing in it
  *     is macOS-specific.
- *   - PTY specs gate on {@link PTY_PLATFORM_SUPPORTED}. The terminal ships on
- *     macOS and Linux; Windows remains outside this capability until its
- *     ConPTY implementation lands.
+ *   - PTY specs gate on {@link PTY_PLATFORM_SUPPORTED}. They run on macOS,
+ *     Linux, and Windows; main separately hides the product below Windows'
+ *     ConPTY build floor.
  *   - DARWIN-ONLY specs keep their local `DARWIN` constant. A spec belongs
  *     there when it drives a genuinely macOS-only surface: `open(1)` / Apple
  *     Event URL delivery or the darwin chrome stack (vibrancy / hiddenInset

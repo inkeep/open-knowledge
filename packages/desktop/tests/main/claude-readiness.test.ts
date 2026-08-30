@@ -7,11 +7,13 @@ import {
   mcpStatusFromClassification,
   type ProbeChild,
   type ProbeTimers,
+  probePlatformCliOnPath,
   resolveClaudeReadiness,
   resolveCliInstalledMap,
   resolveCliOnPath,
   resolvePlatformCliInstalledMap,
   runLoginShellProbe,
+  runWindowsPathProbe,
 } from '../../src/main/claude-readiness.ts';
 
 /** Spy logger shared by every `getLogger(name)` call inside claude-readiness —
@@ -214,6 +216,159 @@ describe('runLoginShellProbe', () => {
     fireTimeout();
     emitExit(0); // late — already settled to null
     expect(await p).toBe(null);
+  });
+});
+
+describe('runWindowsPathProbe', () => {
+  test('spawns where.exe with the PATHEXT-aware $PATH: query for the binary', async () => {
+    const { child, emitExit } = makeFakeChild();
+    const { timers } = makeFakeTimers();
+    let spawnedFile = '';
+    let spawnedArgs: readonly string[] = [];
+    const p = runWindowsPathProbe(
+      (file, args) => {
+        spawnedFile = file;
+        spawnedArgs = args;
+        return child;
+      },
+      'C:\\Windows\\System32\\where.exe',
+      'claude',
+      timers,
+    );
+    emitExit(0);
+    await p;
+    expect(spawnedFile).toBe('C:\\Windows\\System32\\where.exe');
+    expect(spawnedArgs).toEqual(['$PATH:claude']);
+  });
+
+  test('exit 0 resolves 0 and clears the timeout', async () => {
+    const { child, emitExit } = makeFakeChild();
+    const { timers, wasCleared } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
+    emitExit(0);
+    expect(await p).toBe(0);
+    expect(wasCleared()).toBe(true);
+  });
+
+  test('a non-zero exit resolves that code (where.exe ran; the binary is absent)', async () => {
+    const { child, emitExit } = makeFakeChild();
+    const { timers } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'codex', timers);
+    emitExit(1);
+    expect(await p).toBe(1);
+  });
+
+  test("an async spawn 'error' resolves null (UNKNOWN, not absent)", async () => {
+    const { child, emitError } = makeFakeChild();
+    const { timers, wasCleared } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
+    emitError(new Error('spawn where.exe ENOENT'));
+    expect(await p).toBe(null);
+    expect(wasCleared()).toBe(true);
+  });
+
+  test('a synchronous spawn throw resolves null (UNKNOWN, not absent)', async () => {
+    const { timers } = makeFakeTimers();
+    const p = runWindowsPathProbe(
+      () => {
+        throw new Error('spawn EMFILE');
+      },
+      'where.exe',
+      'claude',
+      timers,
+    );
+    expect(await p).toBe(null);
+  });
+
+  test('a wedged where.exe times out, is killed, and resolves null', async () => {
+    const { child, wasKilled } = makeFakeChild();
+    const { timers, fireTimeout } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
+    // where.exe never exits — fire the injected timeout.
+    fireTimeout();
+    expect(await p).toBe(null);
+    expect(wasKilled()).toBe(true);
+  });
+
+  test('settles once — a late exit after the timeout does not overwrite UNKNOWN', async () => {
+    const { child, emitExit } = makeFakeChild();
+    const { timers, fireTimeout } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
+    fireTimeout();
+    emitExit(0); // late — already settled to null
+    expect(await p).toBe(null);
+  });
+
+  test("settles once — an exit after an 'error' does not overwrite UNKNOWN", async () => {
+    const { child, emitError, emitExit } = makeFakeChild();
+    const { timers } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
+    emitError(new Error('spawn where.exe EACCES'));
+    emitExit(0); // Windows emits 'error' then 'exit'; the first settle wins.
+    expect(await p).toBe(null);
+  });
+});
+
+describe('windows probe verdict observability (an UNKNOWN must leave a trace)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('a where.exe timeout emits an operator-visible record naming the failure class', async () => {
+    const { child } = makeFakeChild();
+    const { timers, fireTimeout } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
+    fireTimeout();
+    expect(await p).toBe(null);
+    const messages = operatorVisibleRecords().map((call) => call.map(String).join(' '));
+    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+  });
+
+  test("an async where.exe 'error' emits an operator-visible record carrying the cause", async () => {
+    const { child, emitError } = makeFakeChild();
+    const { timers } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers);
+    const spawnFailure = new Error('spawn where.exe ENOENT');
+    emitError(spawnFailure);
+    expect(await p).toBe(null);
+    expect(
+      operatorVisibleRecords().some((call) =>
+        call.some((arg) => (arg as { err?: unknown })?.err === spawnFailure),
+      ),
+    ).toBe(true);
+  });
+
+  test('a synchronous where.exe spawn throw emits an operator-visible record carrying the cause', async () => {
+    const { timers } = makeFakeTimers();
+    const spawnFailure = new Error('spawn EMFILE');
+    const p = runWindowsPathProbe(
+      () => {
+        throw spawnFailure;
+      },
+      'where.exe',
+      'claude',
+      timers,
+    );
+    expect(await p).toBe(null);
+    expect(
+      operatorVisibleRecords().some((call) =>
+        call.some((arg) => (arg as { err?: unknown })?.err === spawnFailure),
+      ),
+    ).toBe(true);
+  });
+
+  test('the logged attributes stay bounded-cardinality (registry bin, no free-form strings)', async () => {
+    const { child } = makeFakeChild();
+    const { timers, fireTimeout } = makeFakeTimers();
+    const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
+    fireTimeout();
+    expect(await p).toBe(null);
+    const attrs = operatorVisibleRecords()
+      .flat()
+      .find((arg): arg is Record<string, unknown> => typeof arg === 'object' && arg !== null);
+    expect(attrs).toBeDefined();
+    expect(attrs?.bin).toBe('claude');
+    expect(Object.keys(attrs ?? {}).sort()).toEqual(['args', 'bin', 'timeoutMs', 'whereExe']);
   });
 });
 
@@ -452,10 +607,74 @@ describe('resolveCliInstalledMap', () => {
   });
 });
 
+describe('probePlatformCliOnPath', () => {
+  test('Windows uses the PATHEXT-aware native probe and never builds POSIX argv', async () => {
+    const probePosix = vi.fn(async () => 0);
+    const probeWindows = vi.fn(async (bin: string) => (bin === 'claude' ? 0 : 1));
+
+    await expect(
+      probePlatformCliOnPath({
+        platform: 'win32',
+        bin: 'claude',
+        probePosix,
+        probeWindows,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      probePlatformCliOnPath({
+        platform: 'win32',
+        bin: 'codex',
+        probePosix,
+        probeWindows,
+      }),
+    ).resolves.toBe(1);
+
+    expect(probeWindows).toHaveBeenCalledWith('claude');
+    expect(probeWindows).toHaveBeenCalledWith('codex');
+    expect(probePosix).not.toHaveBeenCalled();
+  });
+
+  test('Windows passes an UNKNOWN through as null, never collapsing it to a not-found code', async () => {
+    // A wedged / unspawnable where.exe means presence is UNVERIFIABLE. Mapping
+    // it to a definitive exit code here is what turns an infrastructure failure
+    // into a false "not installed" verdict downstream.
+    await expect(
+      probePlatformCliOnPath({
+        platform: 'win32',
+        bin: 'claude',
+        probePosix: vi.fn(async () => 0),
+        probeWindows: vi.fn(async () => null),
+      }),
+    ).resolves.toBe(null);
+  });
+
+  test('macOS and Linux preserve their interactive command-v argv', async () => {
+    const probePosix = vi.fn(async () => 0);
+    const probeWindows = vi.fn(async () => 1);
+
+    await probePlatformCliOnPath({
+      platform: 'darwin',
+      bin: 'claude',
+      probePosix,
+      probeWindows,
+    });
+    await probePlatformCliOnPath({
+      platform: 'linux',
+      bin: 'cursor-agent',
+      probePosix,
+      probeWindows,
+    });
+
+    expect(probeWindows).not.toHaveBeenCalled();
+    expect(probePosix).toHaveBeenNthCalledWith(1, cliProbeArgs('claude', 'darwin'));
+    expect(probePosix).toHaveBeenNthCalledWith(2, cliProbeArgs('cursor-agent', 'linux'));
+  });
+});
+
 describe('resolvePlatformCliInstalledMap', () => {
   test('Windows resolves registry binaries with the native PATH probe', async () => {
     const probePosix = vi.fn(async () => 127);
-    const probeWindows = vi.fn(async (bin: string) => bin === 'codex');
+    const probeWindows = vi.fn(async (bin: string) => (bin === 'codex' ? 0 : 1));
 
     const map = await resolvePlatformCliInstalledMap({
       platform: 'win32',
@@ -470,11 +689,25 @@ describe('resolvePlatformCliInstalledMap', () => {
     expect(probeWindows).toHaveBeenCalledWith('cursor-agent');
   });
 
+  test('an unverifiable Windows probe omits the entry rather than caching a false negative', async () => {
+    const map = await resolvePlatformCliInstalledMap({
+      platform: 'win32',
+      probePosix: vi.fn(async () => 0),
+      probeWindows: vi.fn(async (bin: string) => (bin === 'claude' ? null : 1)),
+    });
+
+    // Omitted (UNKNOWN), NOT `false` — row gating fails open on `undefined`,
+    // and auto-pick requires `=== true`, so an unverifiable CLI is never
+    // rendered as "not installed" off a probe that could not run.
+    expect('claude' in map).toBe(false);
+    expect(map.codex).toBe(false);
+  });
+
   test('macOS probes with the login-interactive shell argv', async () => {
     const probePosix = vi.fn(async (args: readonly string[]) =>
       args.at(-1) === 'command -v cursor-agent' ? 0 : 127,
     );
-    const probeWindows = vi.fn(async () => false);
+    const probeWindows = vi.fn(async () => 1);
 
     const map = await resolvePlatformCliInstalledMap({
       platform: 'darwin',
@@ -498,7 +731,7 @@ describe('resolvePlatformCliInstalledMap', () => {
     await resolvePlatformCliInstalledMap({
       platform: 'linux',
       probePosix,
-      probeWindows: vi.fn(async () => false),
+      probeWindows: vi.fn(async () => 1),
     });
 
     expect(probed).toContainEqual(['-i', '-c', 'command -v claude']);

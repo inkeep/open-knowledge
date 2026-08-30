@@ -329,3 +329,67 @@ describe('SkillTargetsPicker (folders)', () => {
     expect(screen.queryByTestId('skill-folder-link-claude-to-.codex/skills')).toBeNull();
   });
 });
+
+describe('the .agents hub row', () => {
+  const withHub = (state: string) => ({
+    targets: ['claude'],
+    configured: false,
+    folders: [
+      { scope: 'project', host: 'claude', root: '.claude/skills', state: 'own' },
+      { scope: 'project', host: 'agents', root: '.agents/skills', state },
+    ],
+  });
+
+  test('an ABSENT hub offers no Link verb and says why', async () => {
+    // The consent guard, pinned. A link mkdirs the surviving root and renames the
+    // picked folder's bundles into it, so offering it on a hub that does not
+    // exist would create `.agents` and relocate the user's skills there. Nothing
+    // failed if this guard was lost — that is what this test is for.
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => withHub('absent'),
+    })) as unknown as typeof fetch;
+
+    render(<SkillTargetsPicker scope="project" />);
+    await waitFor(() => expect(screen.getByTestId('skill-folder-row-agents')).toBeDefined());
+
+    expect(screen.queryByTestId('skill-folder-link-agents')).toBeNull();
+    expect(screen.getByTestId('skill-folder-hub-destination-only')).toBeDefined();
+  });
+
+  test('an ABSENT hub is not offered as a merge target on another row either', async () => {
+    // The row you act on is the merge TARGET, so excluding the hub from the pick
+    // list alone would have left the dangerous direction open.
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => withHub('absent'),
+    })) as unknown as typeof fetch;
+
+    render(<SkillTargetsPicker scope="project" />);
+    await waitFor(() => expect(screen.getByTestId('skill-folder-row-claude')).toBeDefined());
+
+    // Assert the TRIGGER, not the menu item. Radix portals the item and unmounts
+    // it while the menu is closed, so querying it without clicking passes either
+    // way — the assertion could not fail. What `targets` actually gates is the
+    // trigger: with the absent hub excluded the claude row has no targets, so no
+    // DropdownMenu renders at all. Drop `!isAbsentHub(o)` and the trigger
+    // appears, which is the regression this must catch.
+    expect(screen.queryByTestId('skill-folder-link-claude')).toBeNull();
+  });
+
+  test('once the hub EXISTS it behaves like any other root', async () => {
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => withHub('own'),
+    })) as unknown as typeof fetch;
+
+    render(<SkillTargetsPicker scope="project" />);
+    await waitFor(() => expect(screen.getByTestId('skill-folder-row-agents')).toBeDefined());
+
+    expect(screen.getByTestId('skill-folder-link-agents')).toBeDefined();
+    expect(screen.queryByTestId('skill-folder-hub-destination-only')).toBeNull();
+  });
+});

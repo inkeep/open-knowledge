@@ -2835,6 +2835,125 @@ describe('ProviderPool syncPromise lifecycle integration (F15)', () => {
     // see the same .status='rejected' thenable so the boundary catches).
     expect(__syncPromiseCacheSize()).toBe(1);
   });
+
+  // When the ephemeral single-file server dies, the WS reconnect loop produces
+  // close after close; each server-driven close fires a fresh `sendToken()`
+  // reauth. The `serverDrivenCloseReauthInFlight` flag only
+  // dedupes CONCURRENT closes — sequential closes over time must not reauth
+  // without limit, or the renderer loops forever against a dead server.
+  test('server-driven-close reauth is bounded — sequential closes do not sendToken without limit', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    const sendTokenSpy = vi
+      .spyOn(entry.provider, 'sendToken')
+      .mockImplementation(() => Promise.resolve());
+
+    // Fire far more server-driven closes than any reasonable ceiling. Yield two
+    // microtasks between each so the reauth's `.finally` clears the in-flight
+    // flag before the next close (otherwise the in-flight guard, not the
+    // ceiling, would be what stops the loop — masking the bug).
+    const CLOSES = 15;
+    for (let i = 0; i < CLOSES; i++) {
+      entry.provider.emit('close', {
+        event: { code: 4205, reason: 'Reset Connection', wasClean: true },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    // Exactly SERVER_DRIVEN_CLOSE_REAUTH_CEILING (5) reauths fire, then the loop
+    // terminates — the 6th close and beyond short-circuit at the ceiling.
+    expect(sendTokenSpy.mock.calls.length).toBe(5);
+  });
+
+  // A raw WS-transport drop arrives on the same `'close'` event but with an EMPTY
+  // reason (the server never sends an empty CloseMessage reason). Re-authing on it
+  // is pointless — the transport is gone — and against a dead ephemeral server it
+  // is the close-after-close that would spin, so the handler skips it at the root
+  // (the `'disconnect'` arm + the syncPromise rejection own that path).
+  test('a transport-drop close (empty reason) never triggers a reauth', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    const sendTokenSpy = vi
+      .spyOn(entry.provider, 'sendToken')
+      .mockImplementation(() => Promise.resolve());
+
+    for (let i = 0; i < 15; i++) {
+      // 1006 abnormal / empty reason = the raw socket dropped, not a server
+      // decision. (`reason: ''` and an absent reason both exercise the guard.)
+      entry.provider.emit('close', { event: { code: 1006, reason: '', wasClean: false } });
+      entry.provider.emit('close', { event: { code: 1006, wasClean: false } });
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+
+    expect(sendTokenSpy).not.toHaveBeenCalled();
+  });
+
+  test('a successful sync resets the server-driven-close reauth ceiling', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    const sendTokenSpy = vi
+      .spyOn(entry.provider, 'sendToken')
+      .mockImplementation(() => Promise.resolve());
+
+    const fireClose = async () => {
+      entry.provider.emit('close', {
+        event: { code: 4205, reason: 'Reset Connection', wasClean: true },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+
+    // Exhaust the ceiling with a burst of closes.
+    for (let i = 0; i < 10; i++) await fireClose();
+    const afterCeiling = sendTokenSpy.mock.calls.length;
+    expect(afterCeiling).toBeLessThanOrEqual(6);
+
+    // A successful sync means the reauth actually worked — the ceiling must
+    // reset so a LATER server-death is recoverable again.
+    entry.provider.emit('synced', { state: true });
+    await Promise.resolve();
+
+    for (let i = 0; i < 10; i++) await fireClose();
+
+    // After the reset, more reauths were attempted than the single-burst
+    // ceiling allowed — proving the counter cleared on sync (without a reset,
+    // the count would stay pinned at the ceiling).
+    expect(sendTokenSpy.mock.calls.length).toBeGreaterThan(afterCeiling);
+  });
+
+  test('the ceiling breadcrumb is emitted exactly once no matter how many closes follow', async () => {
+    pool = new ProviderPool(3, DUMMY_WS);
+    const entry = pool.open('doc1');
+    if (!entry) throw new Error('expected entry');
+    vi.spyOn(entry.provider, 'sendToken').mockImplementation(() => Promise.resolve());
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((msg: unknown) => {
+      warns.push(String(msg));
+    });
+
+    try {
+      // Fire far past the ceiling so many closes land in the terminal branch.
+      for (let i = 0; i < 20; i++) {
+        entry.provider.emit('close', {
+          event: { code: 4205, reason: 'Reset Connection', wasClean: true },
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+    } finally {
+      warnSpy.mockRestore();
+    }
+
+    const ceilingWarns = warns.filter((w) =>
+      w.includes('ok-provider-server-driven-close-reauth-ceiling'),
+    );
+    expect(ceilingWarns).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

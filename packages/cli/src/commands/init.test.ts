@@ -3278,6 +3278,45 @@ describe('runInit — sharing mode', () => {
     }
   });
 
+  it('formatSharingOutcome reports a drain that rode along with appends', () => {
+    // The mixed shape — append AND drain in one pass — is the ordinary upgrade
+    // path, and `action` is a three-way discriminant that cannot express it.
+    // The negative assertion is the load-bearing half: a `cleaned` outcome also
+    // carries a non-empty `alreadyPresent`, so a branch-order regression would
+    // silently fall into the "nothing to do" arm.
+    const out = formatSharingOutcome(
+      {
+        kind: 'applied',
+        mode: 'local-only',
+        action: 'added',
+        appended: ['.mcp.json', '.cursor/mcp.json'],
+        alreadyPresent: ['.ok/'],
+        removed: ['.claude/skills/trip-log/'],
+      },
+      '/tmp/project',
+    ).join('\n');
+    expect(out).toMatch(/appended 2 path\(s\)/);
+    expect(out).toMatch(/\.claude\/skills\/trip-log\//);
+    expect(out).toMatch(/stale entry/);
+    expect(out).not.toMatch(/nothing to do/);
+  });
+
+  it('formatSharingOutcome reports a drain-only pass without claiming a no-op', () => {
+    const out = formatSharingOutcome(
+      {
+        kind: 'applied',
+        mode: 'local-only',
+        action: 'cleaned',
+        appended: [],
+        alreadyPresent: ['.ok/', '.okignore'],
+        removed: ['.claude/skills/trip-log/'],
+      },
+      '/tmp/project',
+    ).join('\n');
+    expect(out).toMatch(/cleared 1 stale entry/);
+    expect(out).not.toMatch(/nothing to do/);
+  });
+
   it('formatSharingOutcome renders the explicit --local-only-without-git warning', () => {
     const lines = formatSharingOutcome(
       { kind: 'no-exclude', reason: 'no-git', localOnlyRequested: true },

@@ -75,18 +75,24 @@ export function scanSkillFolderStates(
   });
 }
 
+/**
+ * Discriminated on `reason`, so each failure carries exactly the payload it has
+ * and TypeScript enforces it. The previous shape was one arm with every payload
+ * optional, which forced `result.roots ?? []` at the call site — a fallback that
+ * cannot fire (this is a same-process typed value, not a trust boundary) and
+ * that would silently ship an empty list if it ever did, printing the sentence
+ * with its subject removed.
+ */
 export type FolderLinkResult =
   | { ok: true; moved: string[]; dropped: string[]; linked: string[] }
-  | {
-      ok: false;
-      reason: 'conflicts' | 'not-linkable' | 'not-linked' | 'stray-entries' | 'partial-move';
-      conflicts?: string[];
-      strays?: string[];
-      /** partial-move: bundles moved before the failure — each move is a
-       *  complete rename, so RE-RUNNING the link resumes and completes. */
-      moved?: string[];
-      error?: string;
-    };
+  | { ok: false; reason: 'not-permitted'; roots: string[] }
+  | { ok: false; reason: 'conflicts'; conflicts: string[] }
+  | { ok: false; reason: 'stray-entries'; strays: string[] }
+  | { ok: false; reason: 'not-linkable' }
+  | { ok: false; reason: 'not-linked' }
+  /** partial-move: bundles moved before the failure — each move is a complete
+   *  rename, so RE-RUNNING the link resumes and completes. */
+  | { ok: false; reason: 'partial-move'; moved: string[]; error?: string };
 
 /** OS / VCS noise that must not block a LINK. macOS Finder drops `.DS_Store`
  *  into any browsed directory, so treating every dotfile as a stray would
@@ -179,7 +185,9 @@ export type FolderLinkPreview =
   | { kind: 'absent' }
   | { kind: 'not-linkable' }
   | { kind: 'stray-entries'; strays: string[] }
-  | { kind: 'conflicts'; conflicts: string[] };
+  | { kind: 'conflicts'; conflicts: string[] }
+  /** A root the link would CREATE is not one the caller permits creating. */
+  | { kind: 'not-permitted'; roots: string[] };
 
 /**
  * Classify what `linkEditorSkillFolder` would do, WITHOUT writing anything.
@@ -190,10 +198,33 @@ export function previewEditorFolderLink(opts: {
   base: string;
   folderRel: string;
   targetRootRel: string;
+  /** Consent gate for roots the link would CREATE. A link mkdirs BOTH the
+   *  target root and the folder's parent dotdir, so both operands are creation
+   *  sites — guarding only one leaves the other reachable.
+   *
+   *  REQUIRED, and deliberately so. Optional-with-permissive-default only moves
+   *  the remembering from "write the guard" to "pass the argument", and a
+   *  missing optional property has no signal — no type error, no lint, nothing
+   *  for a reviewer to see. Required means a caller that does not want the gate
+   *  has to say so in a greppable way. The sibling `symlink-guard.ts` models the
+   *  same fail-closed shape; this used to invert it.
+   *
+   *  Called ONLY for roots already proven absent, and answered about the
+   *  skills-root rel (`.copilot/skills`) — NOT the dotdir that actually gets
+   *  created for the folder operand. An implementer must decide whether the
+   *  root's creation is permitted, which for a host dir normally means asking
+   *  about its dotdir (`isActivatedSkillRoot` → `skillRootActivationPath` does
+   *  exactly that); answering the question literally would refuse the supported
+   *  `.copilot` present / `.copilot/skills` absent flow. */
+  mayCreate: (rootRel: string) => boolean;
 }): FolderLinkPreview {
-  const { base, folderRel, targetRootRel } = opts;
+  const { base, folderRel, targetRootRel, mayCreate } = opts;
   const folderAbs = join(base, folderRel);
   const targetAbs = join(base, targetRootRel);
+  const wouldCreate = [targetRootRel, folderRel].filter(
+    (rel) => !existsSync(join(base, rel)) && !mayCreate(rel),
+  );
+  if (wouldCreate.length > 0) return { kind: 'not-permitted', roots: wouldCreate };
   let st: ReturnType<typeof lstatSync>;
   try {
     st = lstatSync(folderAbs);
@@ -281,11 +312,15 @@ export function linkEditorSkillFolder(opts: {
   base: string;
   folderRel: string;
   targetRootRel: string;
+  /** See `previewEditorFolderLink`. Required for the same reason. */
+  mayCreate: (rootRel: string) => boolean;
 }): FolderLinkResult {
-  const { base, folderRel, targetRootRel } = opts;
+  const { base, folderRel, targetRootRel, mayCreate } = opts;
   const folderAbs = join(base, folderRel);
   const targetAbs = join(base, targetRootRel);
-  const preview = previewEditorFolderLink({ base, folderRel, targetRootRel });
+  const preview = previewEditorFolderLink({ base, folderRel, targetRootRel, mayCreate });
+  if (preview.kind === 'not-permitted')
+    return { ok: false, reason: 'not-permitted', roots: preview.roots };
   if (preview.kind === 'absent') {
     // Absent folder: nothing to merge — create the link directly.
     tracedMkdirSync(dirname(folderAbs), { recursive: true });

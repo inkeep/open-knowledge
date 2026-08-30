@@ -166,7 +166,7 @@ patchedDependencies:
     hash: d59ed459a6ae570e843d0829f844dde24c0697b883351b198034f47606766517
     path: patches/react-medium-image-zoom@5.4.3.patch
   react-resizable-panels@4.12.1:
-    hash: 2719389c75ab504435a8017d295e1c88adae068ae5097a4ac82cef2b6cb23e92
+    hash: 187a4fcaf8f8f3fe1ecc55b98191f3ce5f23d0b28a232034821e10222f960e29
     path: patches/react-resizable-panels@4.12.1.patch
   y-indexeddb@9.0.12:
     hash: bc95fab9af70f704280673eafabcb5a40cc180fd5122d62e6c44cac2f7076245
@@ -620,7 +620,7 @@ importers:
         version: 5.4.3(patch_hash=d59ed459a6ae570e843d0829f844dde24c0697b883351b198034f47606766517)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-resizable-panels:
         specifier: ^4.9.0
-        version: 4.12.1(patch_hash=2719389c75ab504435a8017d295e1c88adae068ae5097a4ac82cef2b6cb23e92)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+        version: 4.12.1(patch_hash=187a4fcaf8f8f3fe1ecc55b98191f3ce5f23d0b28a232034821e10222f960e29)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       scheduler-polyfill:
         specifier: ^1.3.0
         version: 1.3.0
@@ -21317,7 +21317,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  react-resizable-panels@4.12.1(patch_hash=2719389c75ab504435a8017d295e1c88adae068ae5097a4ac82cef2b6cb23e92)(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+  react-resizable-panels@4.12.1(patch_hash=187a4fcaf8f8f3fe1ecc55b98191f3ce5f23d0b28a232034821e10222f960e29)(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
     dependencies:
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)

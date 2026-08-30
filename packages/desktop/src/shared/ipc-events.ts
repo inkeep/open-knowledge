@@ -20,9 +20,10 @@ import type {
   OkDesktopConfig,
   OkLocalOpAuthEvent,
   OkLocalOpCloneEvent,
-  OkMenuAction,
+  OkMenuActionDispatch,
   OkPtyData,
   OkPtyExit,
+  OkPtyNotice,
   OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
@@ -48,8 +49,12 @@ export interface EventChannels {
    * (boot restore, native File → Open Recent) prune silently and never send.
    */
   'ok:project:recent-removed-missing': { payload: OkRecentRemovedMissingInfo };
-  /** Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle Sidebar, etc.). */
-  'ok:menu-action': { payload: OkMenuAction };
+  /**
+   * Main → renderer menu-action dispatch (File → New Doc, Edit → Toggle
+   * Sidebar, etc.), stamped with the dispatching surface. Each dispatcher states
+   * its own origin explicitly — see `sendMenuAction`.
+   */
+  'ok:menu-action': { payload: OkMenuActionDispatch };
   /**
    * A popped-out note window handed a conversation/comments intent to its
    * owning project window. Main focuses that window before sending.
@@ -324,6 +329,8 @@ export interface EventChannels {
    * normal exit carries `exitCode`/`signal`.
    */
   'ok:pty:exit': { payload: OkPtyExit };
+  /** Main → renderer when shell discovery skips an invalid configured override. */
+  'ok:pty:notice': { payload: OkPtyNotice };
   /**
    * Main → every window when Electron's assistive-tech signal flips
    * (`app.on('accessibility-support-changed')` — a screen reader such as

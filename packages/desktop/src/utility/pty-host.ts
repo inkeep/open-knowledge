@@ -10,11 +10,29 @@
  * (see `tests/utility/pty-host.real-io-harness.ts`).
  */
 
-import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, delimiter, join } from 'node:path';
-import { OK_DESKTOP_TERMINAL_ENV } from '@inkeep/open-knowledge-core';
+import { basename, delimiter, join, win32 } from 'node:path';
+import {
+  composeWindowsShellLaunchArgs,
+  launchWithoutSupportFile,
+  OK_DESKTOP_TERMINAL_ENV,
+  resolveWindowsShellFamily,
+  type TerminalLaunchCommand,
+  type WindowsShellFamily,
+} from '@inkeep/open-knowledge-core';
+import { isTerminalShellNoticeReason } from '@inkeep/open-knowledge-core/desktop-bridge';
+import type {
+  TerminalShellNoticeReason,
+  TerminalSupportFileNoticeReason,
+} from '../shared/bridge-contract.ts';
 import { interactiveShellArgs } from '../shared/terminal-shell.ts';
+import { getWindowsEnvValue, windowsPathKey, windowsWherePathArgs } from '../shared/windows-env.ts';
+import {
+  materializeSupportFileSync,
+  TERMINAL_SUPPORT_FILE_ESCAPE_CODE,
+} from './support-file-write.ts';
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
 
@@ -30,18 +48,17 @@ export interface PtyCreateMessage {
   cwd: string;
   cols: number;
   rows: number;
-  /** Test-only shell override. Production uses the platform shell resolver. */
+  /** Per-machine shell override read from project-local config. */
   shell?: string;
+  /** The configured override could not be read or was not a string. */
+  shellInvalidReason?: TerminalShellNoticeReason;
   /**
-   * "Open in <Agent>" launch: the fixed `<bin> [pre-approve] '<prompt>'` shape
-   * (built by core's `buildCliLaunchArgString`, no trailing `\r`). When present,
-   * the shell is spawned with the platform's interactive argv plus `-c`
-   * so the agent runs WITHOUT the command being typed through the line editor —
-   * i.e. it never lands in the user's shell history. The
-   * `exec` tail hands the tab back to a fresh interactive shell after the agent
-   * exits. Omitted for a plain terminal tab.
+   * OpenKnowledge-composed launch. POSIX carries core's command string;
+   * Windows carries structured executable + argv data so this host can choose
+   * EncodedCommand or cmd string mode after resolving the shell. Omitted for a
+   * plain terminal tab.
    */
-  launchCommand?: string;
+  launchCommand?: string | TerminalLaunchCommand;
 }
 interface PtyInputMessage {
   type: 'input';
@@ -66,13 +83,17 @@ interface PtyResumeMessage {
   type: 'resume';
   ptyId: string;
 }
+interface PtyShutdownMessage {
+  type: 'shutdown';
+}
 export type PtyHostIncomingMessage =
   | PtyCreateMessage
   | PtyInputMessage
   | PtyResizeMessage
   | PtyKillMessage
   | PtyPauseMessage
-  | PtyResumeMessage;
+  | PtyResumeMessage
+  | PtyShutdownMessage;
 
 interface PtyDataMessage {
   type: 'data';
@@ -82,7 +103,7 @@ interface PtyDataMessage {
 interface PtyExitMessage {
   type: 'exit';
   ptyId: string;
-  exitCode: number;
+  exitCode: number | undefined;
   signal: number | null;
 }
 interface PtySpawnErrorMessage {
@@ -90,13 +111,36 @@ interface PtySpawnErrorMessage {
   ptyId: string;
   message: string;
 }
-export type PtyHostOutgoingMessage = PtyDataMessage | PtyExitMessage | PtySpawnErrorMessage;
+type PtyShellNoticeMessage =
+  | {
+      type: 'shell-notice';
+      ptyId: string;
+      notice: 'invalid-shell-override';
+      reason: TerminalShellNoticeReason;
+    }
+  | {
+      type: 'shell-notice';
+      ptyId: string;
+      notice: 'shell-resolved';
+      shellFamily: WindowsShellFamily;
+    }
+  | {
+      type: 'shell-notice';
+      ptyId: string;
+      notice: 'support-file-degraded';
+      reason: TerminalSupportFileNoticeReason;
+    };
+export type PtyHostOutgoingMessage =
+  | PtyDataMessage
+  | PtyExitMessage
+  | PtySpawnErrorMessage
+  | PtyShellNoticeMessage;
 
 /** Minimal subset of node-pty's `IPty` the host depends on. */
 export interface PtyProcessLike {
   readonly pid: number;
   onData(listener: (data: string) => void): void;
-  onExit(listener: (event: { exitCode: number; signal?: number }) => void): void;
+  onExit(listener: (event: { exitCode: number | undefined; signal?: number }) => void): void;
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
@@ -116,8 +160,14 @@ export interface PtySpawnOptions {
   /** Decode the PTY stream as UTF-8 strings; node-pty's StringDecoder keeps
    *  multibyte sequences intact across read boundaries. */
   encoding: 'utf8';
+  /** Windows only: prefer the matched bundled ConPTY dll + OpenConsole pair. */
+  useConptyDll?: boolean;
 }
-export type SpawnPty = (file: string, args: string[], options: PtySpawnOptions) => PtyProcessLike;
+export type SpawnPty = (
+  file: string,
+  args: string[] | string,
+  options: PtySpawnOptions,
+) => PtyProcessLike;
 
 interface PtyHostParentPort {
   on(event: 'message', handler: (event: { data: unknown }) => void): void;
@@ -144,6 +194,14 @@ export interface SetupPtyHostDeps {
   parentPort: PtyHostParentPort | null;
   /** node-pty's `spawn`, injected so message routing is testable without a real PTY. */
   spawn: SpawnPty;
+  /** Host-exit seam used after a message-driven shutdown; defaults to no-op in tests. */
+  exitHost?: (code: number) => void;
+  /** Flush the host's async logger destination before process exit. */
+  flushLogger?: () => void;
+  /** Host-local grace period before exiting despite a deferred PTY kill. */
+  shutdownMs?: number;
+  setTimer?: (cb: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  clearTimer?: (token: ReturnType<typeof setTimeout>) => void;
   /** Defaults to `process.env`. Injected so env-stripping is unit-testable. */
   env?: Record<string, string | undefined>;
   /** Defaults to `process.platform`. */
@@ -152,8 +210,22 @@ export interface SetupPtyHostDeps {
   userInfoShell?: () => string | null;
   /** Defaults to `existsSync`. */
   shellExists?: (path: string) => boolean;
+  /** PATH-scoped, PATHEXT-aware executable lookup; defaults to `where.exe`. */
+  pathProbe?: (command: string, env: Record<string, string | undefined>) => string | null;
+  /** Directory seam for Microsoft Store PowerShell aliases. */
+  listDirectory?: (path: string) => readonly string[];
+  /** Packaged `resources/cli/bin` directory prepended to PATH on Windows. */
+  cliBinDir?: string;
+  /** Materialize a registry-authored launch support file beneath the PTY cwd. */
+  materializeSupportFile?: (
+    cwd: string,
+    file: NonNullable<TerminalLaunchCommand['supportFile']>,
+  ) => void;
   /** Optional structured warn sink for unrecognized/malformed messages. */
-  logger?: { warn: (o: Record<string, unknown>) => void };
+  logger?: {
+    warn: (o: Record<string, unknown>) => void;
+    info?: (o: Record<string, unknown>) => void;
+  };
 }
 
 /**
@@ -167,23 +239,54 @@ function asIncomingMessage(raw: unknown): PtyHostIncomingMessage | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const m = raw as Record<string, unknown>;
   if (typeof m.type !== 'string') return null;
+  if (m.type === 'shutdown') return raw as PtyShutdownMessage;
   if (typeof m.ptyId !== 'string' || m.ptyId.length === 0) return null;
   // Validate the per-variant payload before the cast: a contract skew that sends
   // a valid `type`+`ptyId` but omits `data`/`cols`/`rows` would otherwise reach
   // node-pty's native binding with `undefined` arguments. Mirrors the sibling
   // `asHostMessage` guard in terminal-manager.ts.
   switch (m.type) {
-    case 'create':
-      // `launchCommand` is optional; when present it must be a string (it ends up
-      // in the spawn argv). A non-string value from a contract skew causes the
-      // entire create message to be rejected (asIncomingMessage → null → the
-      // handler warns and returns) rather than reach node-pty with an undefined arg.
+    case 'create': {
+      // POSIX carries the existing composed string; Windows carries a structured
+      // executable + argv object until this host has resolved the shell family.
+      // Reject any other shape before it can reach node-pty.
+      const launch = m.launchCommand;
+      const supportFile =
+        typeof launch === 'object' && launch !== null
+          ? (launch as Record<string, unknown>).supportFile
+          : undefined;
+      const supportFileValid =
+        supportFile === undefined ||
+        (typeof supportFile === 'object' &&
+          supportFile !== null &&
+          (supportFile as Record<string, unknown>).kind === 'claude-settings' &&
+          typeof (supportFile as Record<string, unknown>).relativePath === 'string' &&
+          /^\.ok\/local\/terminal\/claude-settings-(?:mcp|tools|mcp-tools)\.json$/u.test(
+            (supportFile as Record<string, unknown>).relativePath as string,
+          ) &&
+          typeof (supportFile as Record<string, unknown>).contents === 'string' &&
+          ((supportFile as Record<string, unknown>).contents as string).length <= 16_384 &&
+          (launch as Record<string, unknown>).executable === 'claude');
+      const launchValid =
+        launch === undefined ||
+        typeof launch === 'string' ||
+        (typeof launch === 'object' &&
+          launch !== null &&
+          typeof (launch as Record<string, unknown>).executable === 'string' &&
+          Array.isArray((launch as Record<string, unknown>).args) &&
+          ((launch as Record<string, unknown>).args as unknown[]).every(
+            (arg) => typeof arg === 'string',
+          ) &&
+          supportFileValid);
       return typeof m.cwd === 'string' &&
         typeof m.cols === 'number' &&
         typeof m.rows === 'number' &&
-        (m.launchCommand === undefined || typeof m.launchCommand === 'string')
+        (m.shell === undefined || typeof m.shell === 'string') &&
+        (m.shellInvalidReason === undefined || isTerminalShellNoticeReason(m.shellInvalidReason)) &&
+        launchValid
         ? (raw as PtyHostIncomingMessage)
         : null;
+    }
     case 'input':
       return typeof m.data === 'string' ? (raw as PtyHostIncomingMessage) : null;
     case 'resize':
@@ -207,9 +310,93 @@ export interface PtyHostHandle {
 export interface ResolveShellOptions {
   platform: NodeJS.Platform;
   override?: string;
+  overrideInvalidReason?: TerminalShellNoticeReason;
   userInfoShell?: () => string | null;
   shellExists?: (path: string) => boolean;
-  logger?: { warn: (o: Record<string, unknown>) => void };
+  pathProbe?: (command: string, env: Record<string, string | undefined>) => string | null;
+  listDirectory?: (path: string) => readonly string[];
+  logger?: {
+    warn: (o: Record<string, unknown>) => void;
+    info?: (o: Record<string, unknown>) => void;
+  };
+}
+
+export type ShellResolutionRung =
+  | 'override'
+  | 'pwsh-path'
+  | 'pwsh-known-install'
+  | 'windows-powershell'
+  | 'comspec'
+  | 'cmd'
+  | 'env-shell'
+  | 'platform-fallback'
+  | 'passwd-shell'
+  | 'bash'
+  | 'sh';
+
+export interface ShellResolution {
+  shell: string;
+  rung: ShellResolutionRung;
+  invalidOverride: boolean;
+  invalidOverrideReason?: TerminalShellNoticeReason;
+}
+
+/**
+ * Deadline for the `where.exe` probe. The probe runs synchronously inside the
+ * host's single `parentPort` message handler, so while it blocks, every OTHER
+ * tab in the window is unserved — `input`, `resize`, `kill`, `pause`, `resume`
+ * all wait behind it. `where.exe` walks every `PATH` entry, so a `PATH`
+ * carrying a dead UNC path or a disconnected mapped drive makes its duration a
+ * function of network state, i.e. unbounded without this cap. Matches the
+ * interactive-shell probe's bound in `claude-readiness.ts`.
+ */
+const PATH_PROBE_TIMEOUT_MS = 5000;
+
+function defaultWindowsPathProbe(
+  command: string,
+  env: Record<string, string | undefined>,
+  logger?: ResolveShellOptions['logger'],
+): string | null {
+  const systemRoot = getWindowsEnvValue(env, 'SystemRoot') ?? 'C:\\Windows';
+  const whereExe = win32.join(systemRoot, 'System32', 'where.exe');
+  try {
+    const output = execFileSync(whereExe, windowsWherePathArgs(command), {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      // On expiry `execFileSync` throws ETIMEDOUT, which the catch below already
+      // treats as "not found" — the ladder falls through to the next rung, so
+      // bounding the call needs no new error path.
+      timeout: PATH_PROBE_TIMEOUT_MS,
+    });
+    return (
+      output
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .find((line) => win32.isAbsolute(line) && line.toLowerCase().endsWith('.exe')) ?? null
+    );
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code ?? 'unknown';
+    if (code === 'ETIMEDOUT') {
+      logger?.warn({
+        event: 'pty-host-shell-path-probe-timed-out',
+        command,
+        timeoutMs: PATH_PROBE_TIMEOUT_MS,
+      });
+    } else {
+      logger?.warn({ event: 'pty-host-shell-path-probe-failed', command, code });
+    }
+    return null;
+  }
+}
+
+function defaultListDirectory(path: string): readonly string[] {
+  try {
+    return readdirSync(path);
+  } catch {
+    return [];
+  }
 }
 
 function isFalseStyleShell(shell: string): boolean {
@@ -226,27 +413,118 @@ function isUsableShell(
   );
 }
 
-/** Resolve the user's interactive shell with platform-native fallbacks. */
-export function resolveShell(
+/** Resolve the user's interactive shell and the bounded ladder rung used. */
+export function resolveShellWithDetails(
   env: Record<string, string | undefined>,
   options: ResolveShellOptions,
-): string {
-  if (options.override && options.override.length > 0) return options.override;
+): ShellResolution {
+  if (options.platform === 'win32') {
+    const shellExists = options.shellExists ?? existsSync;
+    const override = options.override?.trim();
+    let invalidOverride = options.overrideInvalidReason !== undefined;
+    let invalidOverrideReason = options.overrideInvalidReason;
+    if (override) {
+      if (win32.isAbsolute(override) && shellExists(override)) {
+        const unsupportedFamily = resolveWindowsShellFamily(override) === null;
+        return {
+          shell: override,
+          rung: 'override',
+          invalidOverride: unsupportedFamily,
+          invalidOverrideReason: unsupportedFamily ? 'unsupported-family' : undefined,
+        };
+      }
+      invalidOverride = true;
+      invalidOverrideReason = win32.isAbsolute(override) ? 'not-found' : 'not-absolute';
+    }
+
+    const pathShell = options.pathProbe
+      ? options.pathProbe('pwsh', env)
+      : defaultWindowsPathProbe('pwsh', env, options.logger);
+    if (pathShell && win32.isAbsolute(pathShell) && shellExists(pathShell)) {
+      return { shell: pathShell, rung: 'pwsh-path', invalidOverride, invalidOverrideReason };
+    }
+
+    const programFiles = getWindowsEnvValue(env, 'ProgramFiles');
+    if (programFiles) {
+      const knownPwsh = win32.join(programFiles, 'PowerShell', '7', 'pwsh.exe');
+      if (shellExists(knownPwsh)) {
+        return {
+          shell: knownPwsh,
+          rung: 'pwsh-known-install',
+          invalidOverride,
+          invalidOverrideReason,
+        };
+      }
+    }
+
+    const localAppData = getWindowsEnvValue(env, 'LOCALAPPDATA');
+    if (localAppData) {
+      const windowsApps = win32.join(localAppData, 'Microsoft', 'WindowsApps');
+      const entries = (options.listDirectory ?? defaultListDirectory)(windowsApps);
+      for (const entry of entries) {
+        if (!entry.toLowerCase().startsWith('microsoft.powershell_')) continue;
+        const alias = win32.join(windowsApps, entry, 'pwsh.exe');
+        if (shellExists(alias)) {
+          return {
+            shell: alias,
+            rung: 'pwsh-known-install',
+            invalidOverride,
+            invalidOverrideReason,
+          };
+        }
+      }
+    }
+
+    const systemRoot = getWindowsEnvValue(env, 'SystemRoot') ?? 'C:\\Windows';
+    const windowsPowerShell = win32.join(
+      systemRoot,
+      'System32',
+      'WindowsPowerShell',
+      'v1.0',
+      'powershell.exe',
+    );
+    if (shellExists(windowsPowerShell)) {
+      return {
+        shell: windowsPowerShell,
+        rung: 'windows-powershell',
+        invalidOverride,
+        invalidOverrideReason,
+      };
+    }
+
+    const comspec = getWindowsEnvValue(env, 'ComSpec');
+    if (comspec && win32.isAbsolute(comspec) && shellExists(comspec)) {
+      return { shell: comspec, rung: 'comspec', invalidOverride, invalidOverrideReason };
+    }
+
+    return {
+      shell: win32.join(systemRoot, 'System32', 'cmd.exe'),
+      rung: 'cmd',
+      invalidOverride,
+      invalidOverrideReason,
+    };
+  }
+
+  if (options.override && options.override.length > 0) {
+    return { shell: options.override, rung: 'override', invalidOverride: false };
+  }
 
   const configuredShell = env.SHELL;
   if (options.platform === 'darwin') {
     return typeof configuredShell === 'string' && configuredShell.length > 0
-      ? configuredShell
-      : DARWIN_FALLBACK_SHELL;
+      ? { shell: configuredShell, rung: 'env-shell', invalidOverride: false }
+      : { shell: DARWIN_FALLBACK_SHELL, rung: 'platform-fallback', invalidOverride: false };
   }
   if (options.platform !== 'linux') {
     return typeof configuredShell === 'string' && configuredShell.length > 0
-      ? configuredShell
-      : '/bin/sh';
+      ? { shell: configuredShell, rung: 'env-shell', invalidOverride: false }
+      : { shell: '/bin/sh', rung: 'platform-fallback', invalidOverride: false };
   }
 
   const shellExists = options.shellExists ?? existsSync;
-  if (isUsableShell(configuredShell, shellExists)) return configuredShell;
+  if (isUsableShell(configuredShell, shellExists)) {
+    return { shell: configuredShell, rung: 'env-shell', invalidOverride: false };
+  }
 
   let passwdShell: string | null = null;
   try {
@@ -259,12 +537,30 @@ export function resolveShell(
     });
     passwdShell = null;
   }
-  if (isUsableShell(passwdShell, shellExists)) return passwdShell;
-  return shellExists('/bin/bash') ? '/bin/bash' : '/bin/sh';
+  if (isUsableShell(passwdShell, shellExists)) {
+    return { shell: passwdShell, rung: 'passwd-shell', invalidOverride: false };
+  }
+  return shellExists('/bin/bash')
+    ? { shell: '/bin/bash', rung: 'bash', invalidOverride: false }
+    : { shell: '/bin/sh', rung: 'sh', invalidOverride: false };
+}
+
+/** Resolve only the executable path for callers that do not need diagnostics. */
+export function resolveShell(
+  env: Record<string, string | undefined>,
+  options: ResolveShellOptions,
+): string {
+  return resolveShellWithDetails(env, options).shell;
 }
 
 /**
  * Compute the shell argv for a PTY.
+ *
+ * Windows keeps a structured executable/argv launch until the resolved shell
+ * family is known. PowerShell receives an EncodedCommand, cmd receives its
+ * owned `/K` command string, and Git Bash receives base64-transported argv
+ * behind a fixed decoder script; the renderer delivers user prompt text later by
+ * readiness-gated bracketed paste. Plain Windows tabs use empty argv.
  *
  * macOS uses a login interactive shell; Linux uses an interactive non-login
  * shell, matching each platform's terminal convention. "Open in <Agent>"
@@ -284,10 +580,15 @@ export function resolveShell(
 export function buildShellArgs(
   platform: NodeJS.Platform,
   shell: string,
-  launchCommand?: string,
-): string[] {
+  launchCommand?: string | TerminalLaunchCommand,
+): string[] | string {
+  if (platform === 'win32') {
+    return typeof launchCommand === 'object'
+      ? composeWindowsShellLaunchArgs(shell, launchCommand)
+      : [];
+  }
   const interactiveArgs = [...interactiveShellArgs(platform)];
-  if (launchCommand === undefined || launchCommand.length === 0) return interactiveArgs;
+  if (typeof launchCommand !== 'string' || launchCommand.length === 0) return interactiveArgs;
   // Single-quote the shell path in the `exec` tail (POSIX close-escape-reopen),
   // so a shell path containing a space or quote can't break the launcher line.
   const quotedShell = `'${shell.replace(/'/g, "'\\''")}'`;
@@ -306,6 +607,7 @@ export function buildShellArgs(
  */
 export function buildShellEnv(
   parentEnv: Record<string, string | undefined>,
+  options: { platform?: NodeJS.Platform; cliBinDir?: string } = {},
 ): Record<string, string> {
   const stripped = new Set<string>(STRIPPED_ENV_MARKERS);
   const out: Record<string, string> = {};
@@ -319,12 +621,20 @@ export function buildShellEnv(
   // here touches no file OK doesn't own. The env shim the rc block sources
   // dedups by substring match, so a consenting user's login shell won't
   // re-prepend it. A missing HOME just skips the injection.
+  const platform = options.platform ?? process.platform;
+  const pathKey = windowsPathKey(out);
+  if (platform === 'win32' && options.cliBinDir) {
+    const entries = (out[pathKey] ?? '').split(';').filter(Boolean);
+    if (!entries.some((entry) => entry.toLowerCase() === options.cliBinDir?.toLowerCase())) {
+      out[pathKey] = [options.cliBinDir, ...entries].join(';');
+    }
+  }
   const home = out.HOME;
-  if (home) {
+  if (platform !== 'win32' && home) {
     const okBin = join(home, '.ok', 'bin');
-    const entries = (out.PATH ?? '').split(delimiter).filter(Boolean);
+    const entries = (out[pathKey] ?? '').split(delimiter).filter(Boolean);
     if (!entries.includes(okBin)) {
-      out.PATH = [okBin, ...entries].join(delimiter);
+      out[pathKey] = [okBin, ...entries].join(delimiter);
     }
   }
   // Positive identity for an agent running in this shell: it's the OK Desktop
@@ -336,12 +646,49 @@ export function buildShellEnv(
   return out;
 }
 
+const CONPTY_DLL_LOAD_ERROR_PREFIXES = {
+  'Cannot find conpty.dll': 'not-found',
+  'Failed to get conpty.node module handle': 'module-handle',
+  'Failed to get conpty.node module file name': 'module-file-name',
+  'Failed to load conpty.dll': 'load-failed',
+} as const;
+
+function conptyDllLoadFailureReason(
+  error: unknown,
+): (typeof CONPTY_DLL_LOAD_ERROR_PREFIXES)[keyof typeof CONPTY_DLL_LOAD_ERROR_PREFIXES] | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const prefix = Object.keys(CONPTY_DLL_LOAD_ERROR_PREFIXES).find((candidate) =>
+    message.startsWith(candidate),
+  ) as keyof typeof CONPTY_DLL_LOAD_ERROR_PREFIXES | undefined;
+  return prefix === undefined ? null : CONPTY_DLL_LOAD_ERROR_PREFIXES[prefix];
+}
+
 export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const env = deps.env ?? (process.env as Record<string, string | undefined>);
   const platform = deps.platform ?? process.platform;
   // One host per window multiplexes every terminal tab's shell, keyed by the
   // renderer-minted ptyId. Each create adds an entry; tabs are independent.
   const sessions = new Map<string, PtyProcessLike>();
+  const shutdownMs = deps.shutdownMs ?? 1_500;
+  const setHostTimer = deps.setTimer ?? setTimeout;
+  const clearHostTimer = deps.clearTimer ?? clearTimeout;
+  const materializeSupportFile = deps.materializeSupportFile ?? materializeSupportFileSync;
+  const cachedWindowsPaths = new Map<string, string>();
+
+  function probeWindowsShellPath(
+    command: string,
+    probeEnv: Record<string, string | undefined>,
+  ): string | null {
+    const cached = cachedWindowsPaths.get(command);
+    if (cached !== undefined) return cached;
+    const resolved = deps.pathProbe
+      ? deps.pathProbe(command, probeEnv)
+      : defaultWindowsPathProbe(command, probeEnv, deps.logger);
+    // A miss or failure is retried by the next create so a transient problem
+    // cannot pin every later terminal in this utility host to a fallback shell.
+    if (resolved !== null) cachedWindowsPaths.set(command, resolved);
+    return resolved;
+  }
 
   function post(message: PtyHostOutgoingMessage): void {
     deps.parentPort?.postMessage(message);
@@ -374,35 +721,148 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       safeKill(stale);
       sessions.delete(ptyId);
     }
-    const shell = resolveShell(env, {
+    const resolution = resolveShellWithDetails(env, {
       platform,
       override: message.shell,
+      overrideInvalidReason: message.shellInvalidReason,
       userInfoShell: deps.userInfoShell,
       shellExists: deps.shellExists,
+      pathProbe: platform === 'win32' ? probeWindowsShellPath : deps.pathProbe,
+      listDirectory: deps.listDirectory,
       logger: deps.logger,
     });
-    const shellEnv = buildShellEnv(env);
+    if (resolution.invalidOverride) {
+      const reason = resolution.invalidOverrideReason ?? 'invalid-value';
+      deps.logger?.warn({
+        event:
+          reason === 'unsupported-family'
+            ? 'pty-host-shell-override-capability-limited'
+            : 'pty-host-shell-override-invalid',
+        platform,
+        reason,
+      });
+      post({
+        type: 'shell-notice',
+        ptyId,
+        notice: 'invalid-shell-override',
+        reason,
+      });
+    }
+    deps.logger?.info?.({
+      event: 'pty-host-shell-resolved',
+      platform,
+      rung: resolution.rung,
+    });
+    const shell = resolution.shell;
+    if (platform === 'win32') {
+      const shellFamily = resolveWindowsShellFamily(shell);
+      if (shellFamily !== null) {
+        post({ type: 'shell-notice', ptyId, notice: 'shell-resolved', shellFamily });
+      }
+    }
+    const shellEnv = buildShellEnv(env, { platform, cliBinDir: deps.cliBinDir });
+    let launchCommand = message.launchCommand;
+    if (
+      platform === 'win32' &&
+      typeof launchCommand === 'object' &&
+      resolution.invalidOverrideReason === 'unsupported-family'
+    ) {
+      // Structured launches need a known shell parser; an unknown family can
+      // safely host an interactive tab but cannot receive composed argv.
+      deps.logger?.warn({
+        event: 'pty-host-launch-degraded-unsupported-shell',
+        platform,
+        rung: resolution.rung,
+      });
+      launchCommand = undefined;
+    }
+    if (
+      platform === 'win32' &&
+      typeof launchCommand === 'object' &&
+      launchCommand.supportFile !== undefined
+    ) {
+      // The settings file is optional pre-approval. If the project or writer
+      // refuses it, degrade to the producer's coupled bare launch so Claude can
+      // show its own trust prompt without leaving argv pointed at a missing file.
+      try {
+        materializeSupportFile(message.cwd, launchCommand.supportFile);
+      } catch (error) {
+        // Distinct from `pty-host-launch-compose-failed` so a degraded launch is
+        // never read as an aborted one.
+        deps.logger?.warn({
+          event: 'pty-host-support-file-materialize-failed',
+          kind: launchCommand.supportFile.kind,
+          code: (error as { code?: string } | null)?.code ?? 'unknown',
+        });
+        post({
+          type: 'shell-notice',
+          ptyId,
+          notice: 'support-file-degraded',
+          reason:
+            (error as { code?: string } | null)?.code === TERMINAL_SUPPORT_FILE_ESCAPE_CODE
+              ? 'containment-refused'
+              : 'write-failed',
+        });
+        launchCommand = launchWithoutSupportFile(launchCommand);
+      }
+    }
+    let shellArgs: string[] | string;
+    try {
+      shellArgs = buildShellArgs(platform, shell, launchCommand);
+    } catch (error) {
+      deps.logger?.warn({
+        event: 'pty-host-launch-compose-failed',
+        platform,
+        rung: resolution.rung,
+      });
+      post({
+        type: 'spawn-error',
+        ptyId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    const spawnOptions: PtySpawnOptions = {
+      name: 'xterm-256color',
+      cols: message.cols,
+      rows: message.rows,
+      cwd: message.cwd,
+      env: shellEnv,
+      encoding: 'utf8',
+    };
     let pty: PtyProcessLike;
     try {
-      pty = deps.spawn(shell, buildShellArgs(platform, shell, message.launchCommand), {
-        name: 'xterm-256color',
-        cols: message.cols,
-        rows: message.rows,
-        cwd: message.cwd,
-        env: shellEnv,
-        encoding: 'utf8',
+      pty = deps.spawn(shell, shellArgs, {
+        ...spawnOptions,
+        ...(platform === 'win32' ? { useConptyDll: true } : {}),
       });
     } catch (err) {
-      // node-pty can throw synchronously at spawn on resource exhaustion
-      // (EMFILE/ENOMEM). Contain it as an error message so the utility
-      // process survives instead of crashing the window (a bad shell path
-      // is NOT this path — that surfaces as an async exit with code 1).
-      // A non-Error throw must still yield a string: the main-side
-      // `asHostMessage` drops a spawn-error whose `message` is not a string,
-      // which would strand the panel with no exit ever routed.
-      const message = err instanceof Error ? err.message : String(err);
-      post({ type: 'spawn-error', ptyId, message });
-      return;
+      const conptyFailureReason = platform === 'win32' ? conptyDllLoadFailureReason(err) : null;
+      if (conptyFailureReason !== null) {
+        deps.logger?.warn({
+          event: 'pty-host-conpty-dll-fallback',
+          reason: conptyFailureReason,
+        });
+        try {
+          pty = deps.spawn(shell, shellArgs, { ...spawnOptions, useConptyDll: false });
+        } catch (fallbackErr) {
+          const fallbackMessage =
+            fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          post({ type: 'spawn-error', ptyId, message: fallbackMessage });
+          return;
+        }
+      } else {
+        // node-pty can throw synchronously at spawn on resource exhaustion or a
+        // Windows CreateProcessW failure; other Windows launch failures arrive
+        // asynchronously as exits whose value may be a Win32 error or -1.
+        // Contain the synchronous shape so the utility process survives.
+        // A non-Error throw must still yield a string: the main-side
+        // `asHostMessage` drops a spawn-error whose `message` is not a string,
+        // which would strand the panel with no exit ever routed.
+        const spawnMessage = err instanceof Error ? err.message : String(err);
+        post({ type: 'spawn-error', ptyId, message: spawnMessage });
+        return;
+      }
     }
     sessions.set(ptyId, pty);
     pty.onData((data) => {
@@ -413,6 +873,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     pty.onExit(({ exitCode, signal }) => {
       if (sessions.get(ptyId) === pty) sessions.delete(ptyId);
       post({ type: 'exit', ptyId, exitCode, signal: signal ?? null });
+      if (shuttingDown && sessions.size === 0) finishShutdown();
     });
   }
 
@@ -435,6 +896,42 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
 
   function handleResume(message: PtyResumeMessage): void {
     sessions.get(message.ptyId)?.resume();
+  }
+
+  function killActiveSessions(): void {
+    for (const pty of sessions.values()) safeKill(pty);
+    sessions.clear();
+  }
+
+  let shuttingDown = false;
+  let shutdownToken: ReturnType<typeof setTimeout> | null = null;
+  let hostExited = false;
+
+  function finishShutdown(): void {
+    if (hostExited) return;
+    hostExited = true;
+    if (shutdownToken !== null) {
+      clearHostTimer(shutdownToken);
+      shutdownToken = null;
+    }
+    sessions.clear();
+    deps.flushLogger?.();
+    deps.exitHost?.(0);
+  }
+
+  function handleShutdown(): void {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    for (const pty of sessions.values()) safeKill(pty);
+    if (sessions.size === 0) {
+      finishShutdown();
+      return;
+    }
+    shutdownToken = setHostTimer(() => {
+      shutdownToken = null;
+      deps.logger?.warn({ event: 'pty-host-shutdown-deadline', remaining: sessions.size });
+      finishShutdown();
+    }, shutdownMs);
   }
 
   deps.parentPort?.on('message', (event) => {
@@ -462,6 +959,9 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       case 'resume':
         handleResume(message);
         break;
+      case 'shutdown':
+        handleShutdown();
+        break;
       default:
         // `asIncomingMessage` admits any string `type`, so an unknown variant
         // (a future/stale contract) lands here visibly instead of silently.
@@ -477,8 +977,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     killActive(): void {
       // safeKill per entry so one shell's ESRCH (already exited) cannot abort
       // the reap of the rest.
-      for (const pty of sessions.values()) safeKill(pty);
-      sessions.clear();
+      killActiveSessions();
     },
   };
 }
@@ -540,12 +1039,16 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
   void (async () => {
     let log: {
       warn(data: Record<string, unknown>, message?: string): void;
+      info(data: Record<string, unknown>, message?: string): void;
     } = {
       warn: (data, message) => console.warn(message ?? '[pty-host] warning', data),
+      info: (data, message) => console.info(message ?? '[pty-host] info', data),
     };
+    let flushLogger = () => {};
     try {
-      const { getLogger } = await import('../main/desktop-logger.ts');
+      const { flushDesktopLogger, getLogger } = await import('../main/desktop-logger.ts');
       log = getLogger('pty-host');
+      flushLogger = flushDesktopLogger;
     } catch (err) {
       const code = (err as { code?: unknown } | null)?.code;
       console.warn('[pty-host] logger unavailable; using console fallback', {
@@ -567,8 +1070,21 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
     const handle = setupPtyHost({
       parentPort,
       spawn,
+      exitHost: (code) => process.exit(code),
+      flushLogger,
       env: process.env,
-      logger: { warn: (o) => log.warn(o, 'unexpected pty-host message') },
+      cliBinDir:
+        process.platform === 'win32'
+          ? join(
+              (process as NodeJS.Process & { resourcesPath: string }).resourcesPath,
+              'cli',
+              'bin',
+            )
+          : undefined,
+      logger: {
+        warn: (o) => log.warn(o, 'pty-host warning'),
+        info: (o) => log.info(o, 'pty-host shell resolution'),
+      },
     });
     installHostReaping(handle, process);
   })();

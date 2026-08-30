@@ -108,6 +108,11 @@ const PLATFORM_IRRELEVANT_PREDICATES = new Set([
   'BUILD_EXISTS',
   'ENABLED',
   'appIsRunning',
+  // Whether this host composited a readable surface for `capturePage()` at all.
+  // A headless or display-less runner returns an empty image on every platform,
+  // so the spec that reads it is skipped for want of pixels rather than for
+  // where it is running.
+  'preview',
 ]);
 
 /** Parse-only: no lib files, no dependency resolution, nothing on disk. */
@@ -609,10 +614,10 @@ describe('deriveGates — predicate bindings', () => {
  * the check meaningful wherever it runs.
  */
 describe('shared predicates — meaning', () => {
-  test('the terminal platform set is macOS and Linux', () => {
+  test('the terminal platform set is the three desktop targets', () => {
     expect(isTerminalPlatform('darwin')).toBe(true);
     expect(isTerminalPlatform('linux')).toBe(true);
-    expect(isTerminalPlatform('win32')).toBe(false);
+    expect(isTerminalPlatform('win32')).toBe(true);
   });
 
   test('the harness-supported platform set is the three desktop targets', () => {

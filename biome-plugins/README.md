@@ -223,7 +223,7 @@ Windows console-flash prevention. Every hand-rolled `node:child_process` process
 
 `simple-git` already sets `windowsHide: true` internally, so git routed through it (shadow repo, share, conflicts) is out of scope by nature — this rule governs only the hand-rolled call sites that bypass it.
 
-**Scoped via `overrides[].plugins`** to `packages/{server,cli}/src/**/*.ts` (the packages that spawn processes at runtime on Windows), with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded. `packages/desktop` is deliberately **out of scope** — the Electron app is macOS-only and never runs on Windows.
+**Scoped via `overrides[].plugins`** to `packages/{server,cli,desktop}/src/**/*.ts` (the packages that spawn processes at runtime on Windows), with `!**/*.test.ts` + `!**/*.test-helper.ts` excluded.
 
 **Opting out (macOS/Linux-only spawns).** For a spawn that only ever runs on macOS and/or Linux — `codesign`, `sw_vers`, an `open(1)` launch — hiding a console is meaningless. Either add the flag anyway (a harmless no-op that keeps the rule uniform) or suppress that one call with a reason:
 
@@ -339,6 +339,20 @@ The rule does NOT catch:
 - **Physical `border-*`, `rounded-*`, and `text-left`/`text-right`** — real direction hazards, outside this rule's margin/padding/inset scope.
 
 Plugin: [`biome-plugins/no-physical-direction-utility.grit`](no-physical-direction-utility.grit). Fixture: [`biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx`](__fixtures__/no-physical-direction-utility.fixture.tsx). Test: [`packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts`](../packages/app/tests/lint-plugins/no-physical-direction-utility.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
+
+### `no-raw-route-hash-construction.grit`
+
+Sole route-hash builder. [`packages/app/src/lib/doc-hash.ts`](../packages/app/src/lib/doc-hash.ts) owns the `#/` route prefix. Every other file in the app asks it for a hash — `hashFromDocName`, `hashFromFolderPath`, `hashFromAssetPath` or `encodeShareTargetForHash` — rather than joining a name onto the prefix itself.
+
+**Why.** A doc or folder name reaches the router through `window.location.hash`, and the WHATWG fragment percent-encode set does not include `#`, `?` or `%`. A hash built by hand therefore hands those characters to `docNameFromHash` as routing syntax: it reads the text before the first one, so a leading `#` yields null and the app opens a New Tab instead of the document, while a `#` mid-name resolves silently to a truncation. The rule is structural rather than a set of fixes because the prefix is trivially easy to spell, so hand-built copies accumulate faster than they are found, and each one fails silently: the link is still built, it just points somewhere else.
+
+**Scoped via `overrides[].plugins`** to `packages/app/src/**/*.{ts,tsx}`, with `!packages/app/src/lib/doc-hash.ts` (the sanctioned builder) and `!**/*.test.{ts,tsx}` (tests write expected hashes as literals) excluded. `packages/server` builds preview URLs through its own `encodeDocName` and is out of scope.
+
+Reading a hash is untouched: `hash.startsWith('#/')`, `hash === '#/'` and the bare `'#/'` content-root sentinel are comparisons, not constructions, and the fixture pins that they stay legal.
+
+The rule matches a node's own source text, so a comment, JSX text or a regex literal spelling the shape cannot trigger it — the fixture pins all three. The rule does NOT catch: the prefix behind a named constant (`const P = '#/'; P + name`), which needs dataflow and has no occurrence today; `name + '#/'`, the prefix on the right of a concatenation, which does not build a route hash; a helper that takes the prefix as a parameter; and the read side, where [`editor/internal-link-helpers.ts`](../packages/app/src/editor/internal-link-helpers.ts) still carries a hand-rolled parser — a different rule.
+
+Plugin: [`biome-plugins/no-raw-route-hash-construction.grit`](no-raw-route-hash-construction.grit). Fixture: [`biome-plugins/__fixtures__/no-raw-route-hash-construction.fixture.tsx`](__fixtures__/no-raw-route-hash-construction.fixture.tsx). Test: [`packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts`](../packages/app/src/lint-plugins/no-raw-route-hash-construction.test.ts). See [PRECEDENTS.md #42](../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the GritQL-plugin convention.
 
 ### `no-demoted-dialog-confirm.grit`
 

@@ -1,7 +1,10 @@
 /**
  * Maps component name → React component for the descriptor registry.
  *
- * Canonical pack: Callout + Image + Video + Audio + Accordion + Math + MermaidFence + Pdf + File + Tabs + Tab.
+ * The registered inventory is the `componentMap` object below — the
+ * canonical descriptor list lives in core's `built-ins.ts`. The notes
+ * that follow call out renderer-specific quirks for a subset of entries;
+ * they are not an exhaustive inventory (the map itself is).
  * Each canonical entry is a DIY renderer — Callout is a 7-prop GFM shape
  * at `./Callout`, Image wraps `react-medium-image-zoom` (8-prop at
  * `./Image`), Video is a pure HTML5 `<video>` wrapper (9-prop at `./Video`
@@ -46,6 +49,7 @@ import { AlignBlock } from './AlignBlock.tsx';
 import { Audio } from './Audio.tsx';
 import { Callout } from './Callout.tsx';
 import { Embed } from './Embed.tsx';
+import { ExcalidrawEmbed } from './ExcalidrawEmbed.tsx';
 import { File } from './File.tsx';
 import { Image } from './Image.tsx';
 import { MathView } from './Math.tsx';
@@ -85,6 +89,10 @@ export const componentMap: Record<string, React.ComponentType<any>> = {
   // `<embed>` is for legacy plugin objects, not the iframe pattern).
   // Renders via a cross-origin iframe with `referrerPolicy="no-referrer"`.
   Embed,
+  // `Excalidraw` — static SVG snapshot of a referenced `.excalidraw`
+  // board (the board's own doc stays the sole edit surface). Capitalized:
+  // no native HTML counterpart, same convention as `Pdf`.
+  Excalidraw: ExcalidrawEmbed,
   Accordion,
   // `Toggle` is Accordion's Notion-vocabulary alias — same render, different
   // stored JSX name. Both descriptors dispatch through the Accordion

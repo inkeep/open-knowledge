@@ -19,7 +19,8 @@
  * `input`/`resize`/`kill`/`drain`, plus the reload-survival `list`/`adopt`)
  * could not be folded: the STOP rule forbids any arbitrary-exec IPC outside the
  * `ok:pty:*` framing, and they are the smallest faithful PTY protocol. Streaming
- * output + exit ride `EventChannels` (`ok:pty:data` / `ok:pty:exit`). The
+ * output, exit, and notices ride `EventChannels` (`ok:pty:data` / `ok:pty:exit` /
+ * `ok:pty:notice`). The
  * `ok:terminal:*` reads — `claude-assist` (Claude readiness preflight + MCP
  * re-arm) and `dock-state` (per-window dock visibility, read on reload) — are
  * NOT exec channels. The full could-not-fold rationale lives in the ratchet test.
@@ -117,6 +118,7 @@ import type {
   ShareTargetStatusResponse,
   SkillCostTiers,
   TerminalCli,
+  TerminalLaunchCommand,
   UninstallDispatchRequest,
   UninstallDispatchResult,
   WorktreeCreateRequest,
@@ -898,21 +900,15 @@ export interface RequestChannels {
   'ok:project:get-info': { args: []; result: OkDesktopConfig };
 
   /**
-   * Single-channel discriminated surface for the read (`status`) and the two
-   * writes (`set-mode`, `set-skills-shared`). Folded into one channel to stay
-   * under the hand-rolled-channel scale-match cap; the discriminated
-   * args/result keeps the per-operation typing crisp at the call sites (preload
-   * + handler). Internally main dispatches on `request.kind`. The renderer's
-   * `bridge.sharing.{status,setMode,setSkillsShared}` surface keeps the
-   * ergonomic split.
+   * Single-channel discriminated surface for the read (`status`) and the
+   * write (`set-mode`). Folded into one channel to stay under the
+   * hand-rolled-channel scale-match cap; the discriminated args/result keeps
+   * the per-operation typing crisp at the call sites (preload + handler).
+   * Internally main dispatches on `request.kind`. The renderer's
+   * `bridge.sharing.{status,setMode}` surface keeps the ergonomic split.
    */
   'ok:sharing:dispatch': {
-    args: [
-      request:
-        | { kind: 'status' }
-        | { kind: 'set-mode'; mode: 'shared' | 'local-only' }
-        | { kind: 'set-skills-shared'; shared: boolean },
-    ];
+    args: [request: { kind: 'status' } | { kind: 'set-mode'; mode: 'shared' | 'local-only' }];
     result: OkSharingResult;
   };
   /**
@@ -1722,11 +1718,17 @@ export interface RequestChannels {
    * fire-and-forget invokes keyed by ptyId; main drops a mismatched ptyId so
    * a stale renderer can't drive a successor PTY. `drain` is the renderer's
    * backpressure ack (consumed byte count) so main can resume a paused PTY.
-   * Streaming output + exit are `EventChannels` pushes (`ok:pty:data` /
-   * `ok:pty:exit`).
+   * Streaming output, exit, and shell-resolution notices are `EventChannels`
+   * pushes (`ok:pty:data` / `ok:pty:exit` / `ok:pty:notice`).
    */
   'ok:pty:create': {
-    args: [opts: { cols: number; rows: number; launchCommand?: string }];
+    args: [
+      opts: {
+        cols: number;
+        rows: number;
+        launchCommand?: string | TerminalLaunchCommand;
+      },
+    ];
     result: OkPtyCreateResult;
   };
   'ok:pty:input': {

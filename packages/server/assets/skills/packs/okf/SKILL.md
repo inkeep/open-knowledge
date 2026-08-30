@@ -11,7 +11,7 @@ metadata:
 ---
 # Open Knowledge Format (OKF)
 
-[OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) is a portable format for agent-readable knowledge: Markdown files, YAML frontmatter, and standard links. The `/open-knowledge` skill governs tool use; this skill covers OKF semantics.
+[OKF v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) is a portable format for agent-readable knowledge: Markdown files, YAML frontmatter, and standard links. The `/open-knowledge` skill governs tool use; this skill covers OKF semantics.
 
 ## Core rules
 
@@ -31,6 +31,7 @@ metadata:
 - Use `title`, `description`, `resource`, and `tags` only when they add real information.
 - Record provenance in `sources`. Join claim-level citations with matching `sources[].id` and Markdown footnotes.
 - Keep authorship and verification separate: `generated` says who produced content; `verified` says who confirmed it. Use exact lowercase `human:` and `process:` prefixes when applicable.
+- Write every provenance timestamp as an ISO 8601 datetime with an explicit UTC offset (`stale_after: 2026-12-31T00:00:00Z`), never a bare date and never an offsetless time. This covers `generated.at`, `verified[].at`, `stale_after`, `sources[].last_modified`, and both `usage_window` bounds. A `log.md` entry heading is different: it stays a plain `YYYY-MM-DD` date.
 - Treat `status: deprecated` and expired `stale_after` values as trust signals, not validation errors.
 - For `type: Attested Computation`, follow the declared runtime and parameters. Do not rewrite the sanctioned computation.
 

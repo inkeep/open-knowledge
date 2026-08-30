@@ -28,16 +28,19 @@ import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
   killed = 0;
+  private exitCb: ((code: number | null) => void) | null = null;
   postMessage(m: PtyHostIncomingMessage): void {
     this.posted.push(m);
   }
-  on(_event: 'message' | 'exit', _cb: (arg: never) => void): void {
-    // The lifecycle harness drives create/input/kill, not host-originated
-    // data/exit, so the message/exit subscriptions are intentionally inert.
+  on(event: 'message' | 'exit', cb: (arg: never) => void): void {
+    if (event === 'exit') this.exitCb = cb as (code: number | null) => void;
   }
   kill(): boolean {
     this.killed += 1;
     return true;
+  }
+  emitExit(code: number | null): void {
+    this.exitCb?.(code);
   }
 }
 
@@ -72,6 +75,8 @@ const PROJECT = '/Users/me/project';
 
 function makeRig() {
   const forked: FakeUtility[] = [];
+  const timers: Array<{ cb: () => void; ms: number; cancelled: boolean }> = [];
+  const warnings: Array<Record<string, unknown>> = [];
   let idn = 0;
   const mgr: TerminalManager = createTerminalManager({
     forkPtyHost: () => {
@@ -82,8 +87,14 @@ function makeRig() {
     sendData: () => {},
     sendExit: () => {},
     newPtyId: () => `pty-${++idn}`,
-    setTimer: () => 0,
-    clearTimer: () => {},
+    setTimer: (cb, ms) => {
+      timers.push({ cb, ms, cancelled: false });
+      return timers.length - 1;
+    },
+    clearTimer: (token) => {
+      if (typeof token === 'number' && timers[token]) timers[token].cancelled = true;
+    },
+    logger: { warn: (event) => warnings.push(event) },
   });
   const reaper: TerminalReaper = mgr;
   // Open a terminal for a fresh window and wire its close-reap, as production
@@ -101,17 +112,28 @@ function makeRig() {
     if (!res.ok) throw new Error('expected a terminal to be created');
     return { win, ptyId: res.ptyId };
   }
-  return { mgr, reaper, forked, openTerminalWindow };
+  const runTimers = (): void => {
+    for (const timer of timers) {
+      if (!timer.cancelled) timer.cb();
+      timer.cancelled = true;
+    }
+  };
+  return { mgr, reaper, forked, timers, warnings, runTimers, openTerminalWindow };
 }
 
 describe('terminal lifecycle — window close reap', () => {
-  test('closing a window kills its PTY host and deletes the map entry', () => {
+  test('closing a window requests host shutdown and force-kills after two seconds', () => {
     const rig = makeRig();
     const { win } = rig.openTerminalWindow(1);
     expect(rig.forked[0]?.killed).toBe(0);
 
     win.close();
+    expect(rig.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(rig.forked[0]?.killed).toBe(0);
+    expect(rig.timers.at(-1)?.ms).toBe(2000);
+    rig.runTimers();
     expect(rig.forked[0]?.killed).toBe(1);
+    expect(rig.warnings).toContainEqual({ event: 'terminal-manager-shutdown-deadline' });
 
     // Map entry deleted — a later create on the same window id forks anew.
     rig.openTerminalWindow(1);
@@ -124,7 +146,10 @@ describe('terminal lifecycle — window close reap', () => {
     // close() destroys the native window before firing 'closed' (FakeWindow.id
     // then throws). The reap must use the snapshotted id, not a deferred read.
     expect(() => win.close()).not.toThrow();
-    expect(rig.forked[0]?.killed).toBe(1);
+    expect(rig.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    rig.forked[0]?.emitExit(0);
+    rig.runTimers();
+    expect(rig.forked[0]?.killed).toBe(0);
   });
 
   test('closing a window that never opened a terminal is a no-op', () => {
@@ -143,6 +168,8 @@ describe('terminal lifecycle — per-window isolation', () => {
     const b = rig.openTerminalWindow(2);
 
     a.win.close();
+    expect(rig.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    rig.runTimers();
     expect(rig.forked[0]?.killed).toBe(1);
     expect(rig.forked[1]?.killed).toBe(0);
 
@@ -180,6 +207,9 @@ describe('terminal lifecycle — app quit reap', () => {
     rig.openTerminalWindow(2);
 
     rig.reaper.killAll();
+    expect(rig.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    expect(rig.forked[1]?.posted.at(-1)).toEqual({ type: 'shutdown' });
+    rig.runTimers();
     expect(rig.forked[0]?.killed).toBe(1);
     expect(rig.forked[1]?.killed).toBe(1);
 

@@ -54,6 +54,7 @@ import {
   installColdMountInstrumentation,
   shouldInstallColdMountInstrumentation,
 } from '@/lib/perf/cold-mount-instrumentation';
+import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { installRelaunchStateBridge } from '@/lib/relaunch-store';
 import { requestStoragePersistence } from '@/lib/request-storage-persistence';
 import { installShareReceivedListener } from '@/lib/share/receive-store';
@@ -134,6 +135,17 @@ installSubscribeCardStore();
 // `firstSeenAt` clock this carries is the two-week gate on the feedback toast,
 // so it must be readable before the controller mounts and stamps it.
 installFeedbackNudgeStore();
+
+// Record where the pointer is so a bug report can show it: `capturePage()`
+// omits the cursor, and the report gate has no way to recover a position after
+// the fact. Passive and app-global, at module-init so a hover the user is
+// about to report is already recorded by the time they reach for the chord.
+// Desktop-only, and deliberately gated here rather than inside the installer:
+// the one consumer sits behind the capture bridge, so on web this would be a
+// listener on the hot input path whose value nothing can ever read.
+if (typeof window !== 'undefined' && window.okDesktop !== undefined) {
+  installPointerPositionTracker();
+}
 
 // Desktop-only: track whether an auto-update relaunch is in flight (the same
 // `ok:update:relaunching` / `ok:update:relaunch-failed` events the notice

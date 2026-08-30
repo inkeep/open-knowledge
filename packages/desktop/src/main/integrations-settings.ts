@@ -182,10 +182,12 @@ export interface EditorPresenceProbes {
  * an editor the user has never installed, and keeps reporting it after the
  * user removes the entry.
  *
- * `lm-studio` is deliberately absent: it ships no CLI and registers no scheme OK
- * can ask about, so there is nothing honest to probe. It reports undetected
- * rather than falling back to the directory check — under-claiming is the safe
- * direction, and no surface prints a presence claim anyway.
+ * `lm-studio` is deliberately absent: it ships no CLI on PATH (0.4.21 drops an
+ * `lms` binary at `~/.lmstudio/bin/lms` and only best-effort links it), and its
+ * `lmstudio:` scheme routes nothing OK can ask about, so there is nothing honest
+ * to probe. It reports undetected rather than falling back to the directory
+ * check — under-claiming is the safe direction, and no surface prints a presence
+ * claim anyway.
  */
 export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<McpWiringEditorId> {
   const scheme = (id: string): boolean => probes.schemeHandler[id] === true;
@@ -197,8 +199,8 @@ export function detectedEditorsFromProbes(probes: EditorPresenceProbes): Set<Mcp
   //
   // The gate is load-bearing, not a type formality: `cliOnPath` is keyed by
   // `string`, and an id outside this registry is one OK has no honest CLI
-  // signal for — `lm-studio` ships no CLI, so a caller handing us a `true` for
-  // it must not turn into a presence claim.
+  // signal for — `lm-studio` ships no CLI OK resolves on PATH, so a caller
+  // handing us a `true` for it must not turn into a presence claim.
   const cliIds = new Set<string>(TERMINAL_CLI_IDS);
   for (const [id, onPath] of Object.entries(probes.cliOnPath)) {
     if (onPath === true && cliIds.has(id)) detected.add(id as McpWiringEditorId);

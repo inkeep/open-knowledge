@@ -16,6 +16,7 @@ import {
   type BrokenOutboundLink,
   computeBrokenOutboundLinks,
   type ExtractedWikiLink,
+  extractJsxSrcRefsFromMarkdown,
   extractMarkdownLinksFromMarkdown,
   extractWikiLinksFromMarkdown,
   resolveMarkdownHref,
@@ -877,7 +878,7 @@ describe('BacklinkIndex', () => {
       writeFileSync(
         join(cacheDir, 'backlinks.json'),
         JSON.stringify({
-          version: 2,
+          version: 3,
           backward: {
             ghost: [{ source: 'alpha', anchor: null, snippet: 'See ghost.' }],
             // Invalid positions (hand-edited or corrupt cache) must degrade to
@@ -2292,6 +2293,19 @@ describe('computeBrokenOutboundLinks', () => {
     ]);
   });
 
+  test('the markdown and JSX planes of one href each keep their own resolution', () => {
+    // Identical bytes, different resolvers: the markdown link resolves
+    // doc-relative to `notes/api-spec`, the bare-doc-name Mirror src IS
+    // `api-spec` verbatim. Dedupe keyed on href alone would keep one plane's
+    // resolvedTo for the other's occurrence and point the author at the
+    // wrong file to repair.
+    const md = ['See [x](api-spec).', '<Mirror src="api-spec" anchor="dep" />', ''].join('\n');
+    expect(computeBrokenOutboundLinks(md, 'notes/a', new Set())).toEqual<BrokenOutboundLink[]>([
+      { href: 'api-spec', resolvedTo: 'notes/api-spec', reason: 'no-such-doc' },
+      { href: 'api-spec', resolvedTo: 'api-spec', reason: 'no-such-doc', sourceForm: 'jsx' },
+    ]);
+  });
+
   test('treats a self-link to the admitted source doc as valid', () => {
     const md = 'See [self](./a.md).';
     // The write handler adds the just-written doc to the admitted set so a
@@ -2368,5 +2382,256 @@ describe('computeBrokenOutboundLinks', () => {
       'Image ![alt](./local.png).',
     ].join('\n');
     expect(computeBrokenOutboundLinks(md, 'notes/a', new Set(), fileOracle([]))).toEqual([]);
+  });
+});
+
+describe('extractJsxSrcRefsFromMarkdown', () => {
+  test('extracts Mirror and Excalidraw src refs as document targets', () => {
+    const md = [
+      '# Doc',
+      '',
+      '<Mirror src="api-spec" anchor="dep" />',
+      '<Excalidraw src="/diagrams/board.excalidraw" />',
+      '',
+    ].join('\n');
+    const refs = extractJsxSrcRefsFromMarkdown(md, 'notes/index');
+    expect(refs.map((r) => r.target)).toEqual(['api-spec', 'diagrams/board.excalidraw']);
+    expect(refs[0]).toEqual(
+      expect.objectContaining({
+        anchor: null,
+        line: 2,
+        snippet: '<Mirror src="api-spec" anchor="dep" />',
+      }),
+    );
+  });
+
+  test('resolves a doc-relative Excalidraw src against the source doc dir', () => {
+    const refs = extractJsxSrcRefsFromMarkdown(
+      '<Excalidraw src="board.excalidraw" />\n',
+      'notes/index',
+    );
+    expect(refs.map((r) => r.target)).toEqual(['notes/board.excalidraw']);
+  });
+
+  test('skips refs inside fenced code and inline code', () => {
+    const md = [
+      '```mdx',
+      '<Excalidraw src="/fenced/board.excalidraw" />',
+      '```',
+      'Write `<Mirror src="api-spec" anchor="x" />` to mirror.',
+      '<Mirror src="live-doc" anchor="x" />',
+      '',
+    ].join('\n');
+    expect(extractJsxSrcRefsFromMarkdown(md, 'index').map((r) => r.target)).toEqual(['live-doc']);
+  });
+
+  test('skips empty, external-scheme, and contentDir-escaping values', () => {
+    const md = [
+      '<Excalidraw src="" />',
+      '<Excalidraw src="https://example.com/board.excalidraw" />',
+      '<Mirror src="https://example.com/x" anchor="a" />',
+      '<Mirror src="mailto:someone@example.com" anchor="b" />',
+      '<Excalidraw src="../../outside.excalidraw" />',
+      '',
+    ].join('\n');
+    expect(extractJsxSrcRefsFromMarkdown(md, 'notes/index')).toEqual([]);
+  });
+
+  test('does not read data-src as src', () => {
+    expect(
+      extractJsxSrcRefsFromMarkdown('<Mirror data-src="decoy" anchor="x" src="real" />\n', 'index'),
+    ).toEqual([expect.objectContaining({ target: 'real' })]);
+  });
+
+  test('applies the frontmatter line offset', () => {
+    const refs = extractJsxSrcRefsFromMarkdown(
+      '<Mirror src="api-spec" anchor="x" />\n',
+      'index',
+      4,
+    );
+    expect(refs[0]).toEqual(expect.objectContaining({ line: 4 }));
+  });
+
+  test('a >-free line of repeated tag prefixes completes within the complexity budget', () => {
+    // '<Mirror ' repeated with no closing '>' drove the earlier unanchored
+    // per-'<' scan super-linear: a fresh RegExp compile plus an O(n) slice per
+    // candidate, with '[^>]*' backtracking across the whole remainder. The
+    // shared readJsxSrcRefTagAt reader bounds the attribute window first, so
+    // this completes far inside the (deliberately generous) wall-clock
+    // budget; a failure means the scanner regressed to super-linear, not
+    // that the runner was slow.
+    const line = '<Mirror '.repeat(6400); // ~50 KB, no '>' anywhere
+    const startedAt = performance.now();
+    expect(extractJsxSrcRefsFromMarkdown(line, 'notes/index')).toEqual([]);
+    expect(computeBrokenOutboundLinks(line, 'notes/index', new Set())).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(2000);
+  });
+
+  test('a line whose only > is distant and unmatched completes within the complexity budget', () => {
+    // The single trailing '>' is not preceded by '/', so every '<' candidate
+    // must reject on the probe alone — without letting '[^>]*' consume, then
+    // backtrack across, the whole remainder up to that distant '>'. This is
+    // the residual super-linear shape a mere "a '>' exists somewhere" probe
+    // lets through.
+    const line = `${'<Mirror '.repeat(6400)}>`; // ~50 KB, one unmatched '>' at the end
+    const startedAt = performance.now();
+    expect(extractJsxSrcRefsFromMarkdown(line, 'notes/index')).toEqual([]);
+    expect(computeBrokenOutboundLinks(line, 'notes/index', new Set())).toEqual([]);
+    expect(performance.now() - startedAt).toBeLessThan(2000);
+  });
+});
+
+describe('BacklinkIndex with JSX src refs', () => {
+  test('a JSX-src-only document becomes a backlink source for the board', () => {
+    const index = new BacklinkIndex({ projectDir: '/tmp/x', contentDir: '/tmp/x' });
+    index.updateDocumentFromMarkdown(
+      'notes/embeds-only',
+      '# Embeds\n\n<Excalidraw src="board.excalidraw" />\n',
+    );
+    expect(index.getBacklinks('notes/board.excalidraw')).toEqual([
+      expect.objectContaining({ source: 'notes/embeds-only' }),
+    ]);
+    expect(index.getForwardLinks('notes/embeds-only')).toEqual(['notes/board.excalidraw']);
+  });
+
+  test('a Mirror-only document becomes a backlink source for the mirrored doc', () => {
+    const index = new BacklinkIndex({ projectDir: '/tmp/x', contentDir: '/tmp/x' });
+    index.updateDocumentFromMarkdown('mirror-only', '<Mirror src="api-spec" anchor="dep" />\n');
+    expect(index.getBacklinks('api-spec')).toEqual([
+      expect.objectContaining({ source: 'mirror-only' }),
+    ]);
+  });
+
+  test('dead-links: an existing board is exempt, a missing board reports, no oracle stays silent', () => {
+    const files = new Set<string>();
+    const makeIndex = (withOracle: boolean) => {
+      const index = new BacklinkIndex({
+        projectDir: '/tmp/x',
+        contentDir: '/tmp/x',
+        ...(withOracle ? { getFileOracle: () => ({ hasFile: (p: string) => files.has(p) }) } : {}),
+      });
+      index.updateDocumentFromMarkdown(
+        'notes/embeds-only',
+        '<Excalidraw src="board.excalidraw" />\n',
+      );
+      return index;
+    };
+
+    files.add('notes/board.excalidraw');
+    expect(makeIndex(true).getDeadLinks(['notes/embeds-only'])).toEqual([]);
+
+    files.clear();
+    expect(makeIndex(true).getDeadLinks(['notes/embeds-only'])).toEqual([
+      expect.objectContaining({ target: 'notes/board.excalidraw' }),
+    ]);
+
+    // Oracle unavailable (file inventory not seeded) — silent, never a false
+    // dead-link report for a board the inventory simply hasn't seen yet.
+    expect(makeIndex(false).getDeadLinks(['notes/embeds-only'])).toEqual([]);
+  });
+
+  test('dead-links: a Mirror src naming a missing doc still reports', () => {
+    const index = new BacklinkIndex({ projectDir: '/tmp/x', contentDir: '/tmp/x' });
+    index.updateDocumentFromMarkdown('mirror-only', '<Mirror src="ghost-doc" anchor="x" />\n');
+    expect(index.getDeadLinks(['mirror-only'])).toEqual([
+      expect.objectContaining({ target: 'ghost-doc' }),
+    ]);
+    index.updateDocumentFromMarkdown('ghost-doc', '# Now it exists\n');
+    expect(index.getDeadLinks(['mirror-only', 'ghost-doc'])).toEqual([]);
+  });
+});
+
+describe('computeBrokenOutboundLinks — JSX src refs', () => {
+  const fileOracle = (existing: string[]) => {
+    const set = new Set(existing);
+    return (p: string) => set.has(p);
+  };
+
+  test('a missing board reports no-such-file; an existing board is clean', () => {
+    const md = '<Excalidraw src="board.excalidraw" />\n';
+    expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(), fileOracle([]))).toEqual([
+      {
+        href: 'board.excalidraw',
+        resolvedTo: 'notes/board.excalidraw',
+        reason: 'no-such-file',
+        sourceForm: 'jsx',
+      },
+    ]);
+    expect(
+      computeBrokenOutboundLinks(
+        md,
+        'notes/index',
+        new Set(),
+        fileOracle(['notes/board.excalidraw']),
+      ),
+    ).toEqual([]);
+  });
+
+  test('a Mirror src naming a missing doc reports no-such-doc', () => {
+    const md = '<Mirror src="ghost-doc" anchor="x" />\n';
+    expect(computeBrokenOutboundLinks(md, 'index', new Set(['api-spec']))).toEqual([
+      { href: 'ghost-doc', resolvedTo: 'ghost-doc', reason: 'no-such-doc', sourceForm: 'jsx' },
+    ]);
+    expect(
+      computeBrokenOutboundLinks(
+        md.replace('ghost-doc', 'api-spec'),
+        'index',
+        new Set(['api-spec']),
+      ),
+    ).toEqual([]);
+  });
+
+  test('contentDir-escaping and scheme-valued srcs report unresolvable; empty stays silent', () => {
+    // A scheme-valued src records no graph edge (a rename can never track
+    // it), so silence here would leave the reference to go stale with zero
+    // signal — it must surface as an advisory instead.
+    const md = [
+      '<Excalidraw src="../../escape.excalidraw" />',
+      '<Excalidraw src="https://example.com/b.excalidraw" />',
+      '<Mirror src="mailto:someone@example.com" anchor="x" />',
+      '<Excalidraw src="" />',
+      '',
+    ].join('\n');
+    expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(), fileOracle([]))).toEqual([
+      {
+        href: '../../escape.excalidraw',
+        resolvedTo: null,
+        reason: 'unresolvable',
+        sourceForm: 'jsx',
+      },
+      {
+        href: 'https://example.com/b.excalidraw',
+        resolvedTo: null,
+        reason: 'unresolvable',
+        sourceForm: 'jsx',
+      },
+      {
+        href: 'mailto:someone@example.com',
+        resolvedTo: null,
+        reason: 'unresolvable',
+        sourceForm: 'jsx',
+      },
+    ]);
+  });
+
+  test('without a file oracle, board existence is unknowable and stays silent', () => {
+    expect(
+      computeBrokenOutboundLinks(
+        '<Excalidraw src="board.excalidraw" />\n',
+        'notes/index',
+        new Set(),
+      ),
+    ).toEqual([]);
+  });
+
+  test('JSX refs inside fences and inline code are not validated', () => {
+    const md = [
+      '```mdx',
+      '<Excalidraw src="fenced.excalidraw" />',
+      '```',
+      'Use `<Mirror src="ghost" anchor="x" />` like this.',
+      '',
+    ].join('\n');
+    expect(computeBrokenOutboundLinks(md, 'notes/index', new Set(), fileOracle([]))).toEqual([]);
   });
 });

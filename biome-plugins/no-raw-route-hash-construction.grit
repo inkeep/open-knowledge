@@ -1,0 +1,55 @@
+// no-raw-route-hash-construction — `lib/doc-hash.ts` is the sole route-hash builder.
+//
+// A doc or folder name reaches the router through `window.location.hash`, and
+// the browser does not escape `#`, `?` or `%` in a fragment. A hash built by
+// joining a name onto the `#/` prefix therefore hands those characters to the
+// parser as routing syntax: `docNameFromHash` reads the text before the first
+// one, so a leading `#` yields null and the app opens a New Tab instead of the
+// document, and a `#` mid-name silently resolves to a truncation.
+//
+// The reason this is a rule and not a set of fixes is that the prefix is
+// trivially easy to spell, so hand-built copies accumulate faster than they
+// are found — and the failure is silent, because the link is still built, it
+// just points somewhere else. So the rule is structural: ask `hashFromDocName`,
+// `hashFromFolderPath`, `hashFromAssetPath` or `encodeShareTargetForHash` for a
+// hash, and get one that is escaped.
+//
+// Reading a hash is untouched. `hash.startsWith('#/')`, `hash === '#/'` and the
+// bare `'#/'` content-root sentinel are comparisons, not constructions, and the
+// fixture pins that they stay legal.
+//
+// The two shapes, matched against a node's own source text so comments, JSX
+// text and regex literals are excluded by construction rather than by hand:
+//
+//   1. A template literal containing `#/${…}` — the prefix joined to an
+//      interpolation, wherever in the template it appears.
+//   2. A string literal `'#/'` immediately concatenated with `+`.
+//
+// Does NOT catch (documented honestly):
+//   - The prefix behind a named constant (`const P = '#/'; P + name`). That
+//     needs dataflow, which is outside a syntactic rule. No occurrence today.
+//   - `name + '#/'` — the prefix on the RIGHT of the concatenation, which does
+//     not produce a route hash.
+//   - A hash assembled by a helper that itself takes the prefix as a parameter.
+//   - The read side: `getCurrentDocNameFromHash` in `editor/internal-link-helpers.ts`
+//     is a second hand-rolled PARSER. Different rule, not this one.
+//
+// Scope: `packages/app/src/**` only, minus `lib/doc-hash.ts`, which is the
+// sanctioned builder. `packages/server` builds preview URLs through its own
+// `encodeDocName` and is out of scope.
+//
+// Suppress a legitimate exception with:
+//   // biome-ignore lint/plugin/no-raw-route-hash-construction: <reason>
+
+language js
+
+$e where {
+    or {
+        $e <: r"`[^`]*#/\$\{[^`]*`",
+        $e <: r"['\"`]#/['\"`]\s*\+.*"
+    },
+    register_diagnostic(
+        span = $e,
+        message = "Raw route-hash construction: this joins a name onto the `#/` prefix by hand, so a name containing `#`, `?` or `%` reaches the router unescaped and resolves to the wrong target (or to none, which opens a New Tab). Call `hashFromDocName`, `hashFromFolderPath`, `hashFromAssetPath` or `encodeShareTargetForHash` from `@/lib/doc-hash` instead — they percent-encode per segment so `/` stays a route separator. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-route-hash-constructiongrit"
+    )
+}

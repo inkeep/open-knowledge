@@ -661,7 +661,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             // landing that is itself an explicit navigation keeps the scroller
             // and this click stands down whole, leaving the banked source-mode
             // intent alive for the caller to replay.
-            return runScrollNavigation(docName, () => {
+            return runScrollNavigation(docName, 'problems-row', () => {
               view.dispatch(
                 view.state.tr.setSelection(
                   TextSelection.near(view.state.doc.resolve(blockOffset + 1)),

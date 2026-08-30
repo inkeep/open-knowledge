@@ -254,7 +254,17 @@ interface SyncStatus {
   lastPullOutcome: PullOutcome | null;
   ahead: number;
   behind: number;
+  /**
+   * Failure streaks, one per direction. Each governs only its own interval's
+   * backoff: a rejected push must not stretch the pull interval, because an
+   * exhausted push retry hands off to exactly that loop.
+   *
+   * `consecutiveFailures` is the pull leg, under the name it has always had on
+   * the wire. Renaming it to match its sibling would be a deliberate migration,
+   * not a field added beside it.
+   */
   consecutiveFailures: number;
+  consecutivePushFailures: number;
   conflictCount: number;
   /** True when a git remote exists, even if sync is dormant/disabled. */
   hasRemote: boolean;
@@ -385,7 +395,18 @@ interface PersistedSyncState {
   lastPushOkUtc?: string | null;
   lastFetchUtc: string | null;
   lastPushedSha: string | null;
+  /** Pull-leg failure streak. Legacy key name; see `SyncStatus`. */
   consecutiveFailures: number;
+  /** Push-leg failure streak. Absent in older state files, which read 0. */
+  consecutivePushFailures?: number;
+  /**
+   * Whether that streak is connectivity-class. Persisted with the counter it
+   * gates: without it a restart mid-outage restores the tier but not the
+   * evidence that releases it, so the engine sits out the full backoff after
+   * the network is demonstrably back — the common case for a desktop app that
+   * was closed while offline. Absent in older state files, which read false.
+   */
+  pushStreakIsConnectivity?: boolean;
   pausedReason?: string;
   pausedSinceUtc?: string;
   inflightConflicts: string[];
@@ -536,6 +557,36 @@ function isUnbornHead(projectDir: string): boolean {
 }
 
 // ─── Backoff thresholds ──────────────────────────────────────────────────────
+
+/**
+ * Consecutive contended pushes before the log escalates to `warn`. Three is one
+ * more than a coincidence at any cadence, and still well short of a remote that
+ * is merely busy for a moment.
+ */
+export const CONTENTION_WARN_THRESHOLD = 3;
+
+/**
+ * Whether a failure is the kind a later successful fetch disproves.
+ *
+ * Only transport-level unreachability qualifies. `429` and `5xx` share the
+ * `network` class but describe the remote REFUSING work — a fetch is a read and
+ * cannot clear a write-path rate limit, so treating them as disproven would
+ * give a throttled remote the tightest retry loop of all.
+ */
+export function isFetchDisprovableFailure(
+  classified: Pick<ClassifiedError, 'class' | 'subclass'>,
+): boolean {
+  // Denylist, not an allowlist. `unknown-network` is the residual bucket in
+  // `classifyGitError`, and most genuine unreachability lands there — "network
+  // is unreachable", "Temporary failure in name resolution", `ETIMEDOUT`,
+  // `EHOSTUNREACH` and SSL handshake failures all miss the narrower
+  // sub-branches and fall through to it. None describes a remote refusing
+  // work. Naming what a read cannot disprove also keeps a subclass added to the
+  // network class later dischargeable by default, which is the correct bias.
+  return (
+    classified.class === 'network' && classified.subclass !== '429' && classified.subclass !== '5xx'
+  );
+}
 
 function backoffMs(consecutiveFailures: number): number {
   if (consecutiveFailures >= 8) return 60 * 60 * 1000; // 60 min
@@ -713,7 +764,27 @@ export class SyncEngine {
   private lastPushedSha: string | null = null;
   private lastPullUtc: string | null = null;
   private lastPullOutcome: PullOutcome | null = null;
-  private consecutiveFailures = 0;
+  private consecutivePullFailures = 0;
+  private consecutivePushFailures = 0;
+  /**
+   * Whether the current push streak is connectivity-class (a retryable
+   * network/transport failure) rather than semantic or structural.
+   *
+   * A successful fetch proves the remote is reachable and the credential
+   * resolves, which falsifies a connectivity-class streak outright — but says
+   * nothing about a protected branch or an unreadable object store. Recording
+   * the cause is what lets the fetch discharge only what it disproves.
+   */
+  private pushStreakIsConnectivity = false;
+  /**
+   * Consecutive pushes lost to write contention (non-fast-forward surviving the
+   * inline fetch+merge retry). Deliberately NOT `consecutivePushFailures`:
+   * contention is not an outage and must not accrue backoff. It is counted
+   * anyway because a genuinely contended remote otherwise retries forever with
+   * no streak, no error, and nothing in the log above `info` — indistinguishable
+   * from a push that simply has not run yet.
+   */
+  private consecutiveContentions = 0;
   private ahead = 0;
   private behind = 0;
   private conflictCount = 0;
@@ -1067,7 +1138,13 @@ export class SyncEngine {
       this.lastFetchUtc,
       this.currentPullIntervalSeconds(),
     );
-    const pushRemainingMs = computeRemainingMs(this.lastSyncUtc, this.pushIntervalSeconds);
+    // Use lastPushOkUtc, not lastSyncUtc: lastSyncUtc is stamped by successful
+    // pull merges as well, so a repo where pulls keep merging but pushes keep
+    // failing would find a fresh lastSyncUtc on restart and arm the push at base
+    // cadence — ignoring a restored consecutivePushFailures streak that should
+    // gate it. lastPushOkUtc only advances on a landed push, so a failing-push
+    // streak correctly survives the restart.
+    const pushRemainingMs = computeRemainingMs(this.lastPushOkUtc, this.pushIntervalSeconds);
     this.schedulePull(pullRemainingMs > 0 ? pullRemainingMs : undefined);
     this.schedulePush(pushRemainingMs > 0 ? pushRemainingMs : undefined);
     log.info(
@@ -1178,7 +1255,9 @@ export class SyncEngine {
     this.pausedReason = undefined;
     this.clearPushError();
     this.clearPullError();
-    this.consecutiveFailures = 0;
+    this.consecutivePullFailures = 0;
+    this.consecutivePushFailures = 0;
+    this.pushStreakIsConnectivity = false;
 
     if (!this.hasRemote) {
       this.transitionTo('dormant');
@@ -1401,7 +1480,9 @@ export class SyncEngine {
     this.pausedReason = undefined;
     this.clearPushError();
     this.clearPullError();
-    this.consecutiveFailures = 0;
+    this.consecutivePullFailures = 0;
+    this.consecutivePushFailures = 0;
+    this.pushStreakIsConnectivity = false;
 
     // Remote may have changed while the user was signed out; re-detect so we
     // demote to dormant rather than scheduling cycles against no remote.
@@ -1425,8 +1506,8 @@ export class SyncEngine {
   // ─── Manual trigger ────────────────────────────────────────────────────────
 
   /**
-   * Trigger an immediate push and/or pull (bypasses backoff, resets
-   * consecutiveFailures). Every `op` runs through a once-primitive, so a
+   * Trigger an immediate push and/or pull (bypasses backoff, resets both
+   * failure legs). Every `op` runs through a once-primitive, so a
    * manual-mode project (`off`, no background loop) does real work on an
    * explicit user act.
    */
@@ -1438,7 +1519,10 @@ export class SyncEngine {
       await this.fetchOnly();
       return;
     }
-    this.consecutiveFailures = 0;
+    this.consecutivePullFailures = 0;
+    this.consecutivePushFailures = 0;
+    this.pushStreakIsConnectivity = false;
+    this.consecutiveContentions = 0;
     // Retry clears transient paused reasons; protected-branch etc. stay set.
     if (
       this.pausedReason === 'dirty-tree' ||
@@ -1837,7 +1921,8 @@ export class SyncEngine {
       lastPullOutcome: this.lastPullOutcome,
       ahead: this.ahead,
       behind: this.behind,
-      consecutiveFailures: this.consecutiveFailures,
+      consecutiveFailures: this.consecutivePullFailures,
+      consecutivePushFailures: this.consecutivePushFailures,
       conflictCount: this.conflictCount,
       hasRemote: this.hasRemote,
       syncEnabled: this.mode !== 'off',
@@ -1949,7 +2034,9 @@ export class SyncEngine {
     this.blockingPaths = [];
     this.pausedReason = undefined;
     this.clearPullError();
-    this.consecutiveFailures = 0;
+    this.consecutivePullFailures = 0;
+    this.consecutivePushFailures = 0;
+    this.pushStreakIsConnectivity = false;
     this.cc1Broadcaster?.signal('sync-status');
     this.scheduleSaveState();
   }
@@ -2296,7 +2383,9 @@ export class SyncEngine {
       this.transitionTo('idle'); // fires CC1
       this.pausedReason = undefined;
       this.schedulePull();
-      this.schedulePush();
+      // schedulePush(0): the conflict that stopped the push loop is gone, so
+      // fire immediately rather than waiting out any accumulated backoff.
+      this.schedulePush(0);
     } else {
       this.cc1Broadcaster?.signal('sync-status');
     }
@@ -2354,7 +2443,9 @@ export class SyncEngine {
         this.transitionTo('idle');
         this.pausedReason = undefined;
         this.schedulePull();
-        this.schedulePush();
+        // schedulePush(0): the user just resolved the conflict that was blocking
+        // the push loop — fire immediately, not after a potential backoff delay.
+        this.schedulePush(0);
       } else {
         // Partial resolution: state stays `conflict`, but conflictCount
         // dropped (e.g. 3 → 2). `transitionTo` is the only other site
@@ -2386,7 +2477,9 @@ export class SyncEngine {
         this.pausedReason = undefined;
         this.transitionTo('idle');
         this.schedulePull();
-        this.schedulePush();
+        // schedulePush(0): branch just reattached — no reason to wait out any
+        // backoff from whatever failures predated the detached-HEAD pause.
+        this.schedulePush(0);
       }
     }
   }
@@ -2410,7 +2503,7 @@ export class SyncEngine {
     // consent gate for any direct caller (e.g. trigger('push')).
     if (this.mode !== 'full') return;
     if (this.pushTimer !== null) clearTimeout(this.pushTimer);
-    const delayMs = overrideDelayMs ?? jitteredMs(this.pushIntervalSeconds);
+    const delayMs = overrideDelayMs ?? this.effectivePushDelayMs();
     this.pushTimer = setTimeout(() => {
       this.pushTimer = null;
       this.runPushCycle().catch((e) => {
@@ -2463,13 +2556,82 @@ export class SyncEngine {
   }
 
   private effectivePullDelayMs(): number {
-    const bkoff = backoffMs(this.consecutiveFailures);
+    const bkoff = backoffMs(this.consecutivePullFailures);
     // Jitter the backoff too, not just the normal interval: anonymous followers
     // of the same public repo fail in lockstep during an outage, so an un-jittered
     // fixed backoff (5/15/60 min) would retry at identical offsets and spike read
     // pressure on the recovering origin. jitteredMs takes seconds.
-    const baseSeconds = bkoff > 0 ? bkoff / 1000 : this.currentPullIntervalSeconds();
-    return jitteredMs(baseSeconds);
+    // Math.max: the backoff is a floor, not a replacement — if the configured
+    // interval is already slower than the backoff tier, keep the configured
+    // cadence rather than speeding up (which would invert the purpose of a slow
+    // preset for metered connections or rate-limit-sensitive hosts).
+    const backoffSeconds = bkoff > 0 ? bkoff / 1000 : 0;
+    return jitteredMs(Math.max(backoffSeconds, this.currentPullIntervalSeconds()));
+  }
+
+  /**
+   * Push delay for the current push-failure streak, mirroring
+   * `effectivePullDelayMs`. Without it a remote that keeps rejecting pushes is
+   * retried at the full configured cadence indefinitely.
+   *
+   * Recovery paths that call `schedulePush(0)` bypass this entirely; recovery
+   * paths that call `schedulePush()` without an override inherit the backoff,
+   * which is intentional for re-arms after an interval change or remote
+   * detection (not errors), but recovery sites that cleared the cause of the
+   * failure pass `schedulePush(0)` to fire immediately.
+   */
+  private effectivePushDelayMs(): number {
+    const bkoff = backoffMs(this.consecutivePushFailures);
+    // Same Math.max rationale as effectivePullDelayMs: backoff is a floor, not
+    // a replacement for the configured interval.
+    const backoffSeconds = bkoff > 0 ? bkoff / 1000 : 0;
+    return jitteredMs(Math.max(backoffSeconds, this.pushIntervalSeconds));
+  }
+
+  /**
+   * Report a push lost to write contention. One lost race is routine; a run of
+   * them means the remote is moving faster than this client can land a push,
+   * and an operator needs something above `info` to find.
+   */
+  private logContention(): void {
+    const fields = {
+      consecutiveContentions: this.consecutiveContentions,
+      consecutivePushFailures: this.consecutivePushFailures,
+      releasedConnectivityStreak: this.pushStreakIsConnectivity,
+    };
+    if (this.consecutiveContentions >= CONTENTION_WARN_THRESHOLD) {
+      log.warn(
+        fields,
+        '[sync] push repeatedly losing to remote contention — not backing off by design',
+      );
+    } else {
+      log.info(
+        fields,
+        '[sync] push still rejected after retry (contention) — scheduling next push at base cadence',
+      );
+    }
+  }
+
+  /**
+   * Charge a failure to the leg that produced it, so each direction backs off
+   * on its own streak. Routing on `op` — the direction every caller already
+   * carries — is what keeps a push failure from stretching the pull interval.
+   */
+  private bumpFailureCount(op: 'push' | 'pull', connectivityClass = false): void {
+    if (op === 'push') {
+      // Any charged push failure ends a contention run: the next contention
+      // starts a fresh streak rather than resuming one interrupted by an
+      // unrelated outage.
+      this.consecutiveContentions = 0;
+      this.consecutivePushFailures++;
+      // Latches false once any non-connectivity failure joins the streak: a
+      // fetch must not discharge a streak that a protected branch contributed
+      // to, even if a transient network blip started it.
+      this.pushStreakIsConnectivity =
+        this.consecutivePushFailures === 1
+          ? connectivityClass
+          : this.pushStreakIsConnectivity && connectivityClass;
+    } else this.consecutivePullFailures++;
   }
 
   // ─── Pull cycle ────────────────────────────────────────────────────────────
@@ -2477,7 +2639,7 @@ export class SyncEngine {
   private async runPullCycle(): Promise<void> {
     if (this.pullInFlight) return;
     // `auth-error` mirrors the push-cycle guard below. Auth errors are
-    // non-retryable and don't increment `consecutiveFailures`, so without this
+    // non-retryable and don't increment the pull failure leg, so without this
     // an authless fetch would re-park in `auth-error` and reschedule at the
     // base interval forever — a steady busy-loop with no backoff (and, since
     // each fetch invokes the credential helper, a recurring credential-miss
@@ -2536,8 +2698,26 @@ export class SyncEngine {
     try {
       await handle.git.fetch('origin');
       this.lastFetchUtc = new Date().toISOString();
-      this.consecutiveFailures = 0;
+      this.consecutivePullFailures = 0;
       this.clearPullError();
+      // The fetch just proved the remote reachable and the credential good, so
+      // a push streak built purely from connectivity failures is disproven —
+      // release it and fire, rather than leaving the push parked for up to an
+      // hour after the outage it was waiting out has demonstrably ended. A
+      // semantic or structural streak keeps its backoff: a fetch says nothing
+      // about a protected branch or an unreadable object store.
+      if (this.consecutivePushFailures > 0 && this.pushStreakIsConnectivity) {
+        log.info(
+          { cleared: this.consecutivePushFailures },
+          '[sync] fetch succeeded — releasing connectivity-class push backoff',
+        );
+        this.consecutivePushFailures = 0;
+        this.pushStreakIsConnectivity = false;
+        // Configured cadence, not 0: the point is to stop waiting out an hour
+        // of backoff for an outage that has demonstrably ended, not to promote
+        // the push leg to the pull loop's frequency.
+        this.schedulePush();
+      }
     } catch (e) {
       const classified = classifyGitError(e instanceof Error ? e : new Error(String(e)));
       this.handleError(classified, 'pull');
@@ -2695,7 +2875,7 @@ export class SyncEngine {
     // Read-only planning pass over origin's blobs — decide each overlapping
     // path's disposition before mutating the tree. A throw here (an unreadable
     // blob from `cat-file`, a corrupt object store) must route through
-    // handleError so consecutiveFailures increments and the retry backs off,
+    // handleError so the pull failure leg increments and the retry backs off,
     // rather than propagating uncaught and re-firing at the base interval.
     let plan: Awaited<ReturnType<typeof this.planOverlapReconciliation>>;
     try {
@@ -2737,7 +2917,7 @@ export class SyncEngine {
         } catch (e) {
           // Couldn't clear the overlay — abandon the cycle without mutating
           // history. The overlay is still on disk; route through handleError so
-          // consecutiveFailures increments and the retry backs off instead of
+          // the pull failure leg increments and the retry backs off instead of
           // re-firing at the base interval against a persistently locked file.
           log.warn(
             { err: e },
@@ -3267,6 +3447,28 @@ export class SyncEngine {
       this.schedulePush();
       return;
     }
+    // A pull cycle holds the working tree and index for its whole duration —
+    // it commits dirty content, may stash, and runs `git merge`. Pushing into
+    // that stages files mid-merge against an index another git process owns.
+    // Every other push entry point already asserts this; `runPushCycle` was the
+    // outlier, so any `schedulePush(0)` added from a pull-side context could
+    // reintroduce the interleave. Re-arm rather than return bare: the timer
+    // that fired is already cleared, and this is the only chain call.
+    if (this.pullInFlight) {
+      // The one refusal here that fires during ordinary healthy operation: a
+      // pull spans fetch + merge and runs every 30 s by default, so this window
+      // is open a meaningful fraction of the time. The guards above gate
+      // exceptional states the badge already explains, which is what makes
+      // their silence reasonable and this one's not — `pushOnce()` routes a
+      // full-mode press through all of them, so a press can land here.
+      log.info({ pullInFlight: true }, '[sync] push cycle deferred — a pull cycle holds the tree');
+      // Only re-arm when nothing is pending. The timer path nulls `pushTimer`
+      // before calling and needs the chain continued; a manual press arrives
+      // with one still armed, and `schedulePush()` would clear it and push the
+      // next scheduled push back a full fresh interval.
+      if (this.pushTimer === null) this.schedulePush();
+      return;
+    }
 
     this.pushInFlight = true;
     try {
@@ -3288,8 +3490,13 @@ export class SyncEngine {
   //     lifetime. The explicit path re-arms on none of them: arming a
   //     background loop the user did not choose is the bug in the other
   //     direction.
-  //   - signal: refusals here are silent by design (a timer fires constantly);
-  //     the explicit path logs every refusal, since a user is waiting on it.
+  //   - signal: most refusals here are silent by design (a timer fires
+  //     constantly); the explicit path logs every refusal, since a user is
+  //     waiting on it. `pushOnce()` routes a full-mode press through EVERY
+  //     guard below the mode check, so any of them can have a user behind it.
+  //     `pullInFlight` logs because it is the one that fires during ordinary
+  //     healthy operation rather than gating an exceptional state; a new guard
+  //     with that property should log too.
   // Collapsing them is how the loop-death case gets reintroduced. Change one
   // side deliberately, and re-read the other before assuming they should match.
 
@@ -3396,6 +3603,9 @@ export class SyncEngine {
             this.lastPushedSha = headSha;
             this.lastSyncUtc = new Date().toISOString();
             this.pushCycleLanded = true;
+            this.consecutivePushFailures = 0;
+            this.consecutiveContentions = 0;
+            this.pushStreakIsConnectivity = false;
             this.clearPushError();
             this.transitionTo('idle');
             return;
@@ -3518,6 +3728,9 @@ export class SyncEngine {
         this.lastSyncUtc = new Date().toISOString();
         this.pushCycleLanded = true;
         this.ahead = 0;
+        this.consecutivePushFailures = 0;
+        this.consecutiveContentions = 0;
+        this.pushStreakIsConnectivity = false;
         this.clearPushError();
         if (this.state === 'pushing') {
           this.transitionTo('idle');
@@ -3544,8 +3757,13 @@ export class SyncEngine {
           log.info({}, '[sync] push rejected (non-fast-forward) — fetching, merging, retrying');
           const retryHandle = this.gitHandle();
           this.setBatchInProgress?.(true);
+          // Track which step threw so the catch can route to the right leg.
+          // 'fetch' and 'merge' are pull-leg operations; everything else is
+          // push-side assembly (commit, stash restore, overlay restore, persist).
+          let retryStage: 'fetch' | 'merge' | 'push' = 'fetch';
           try {
             await retryHandle.git.fetch('origin');
+            retryStage = 'push';
             // Commit content-scoped dirty files before merging so the editor
             // racing against the outer push's `update-ref` doesn't cause
             // `git merge` to refuse with dirty-tree. `prepareForMerge` then
@@ -3561,7 +3779,9 @@ export class SyncEngine {
             let overlaysRestored = true;
             try {
               await this.applyCommitIdentity(retryHandle);
+              retryStage = 'merge';
               await retryHandle.git.merge([`origin/${this.currentBranch}`]);
+              retryStage = 'push'; // merge succeeded; subsequent steps are push-side
             } finally {
               if (mergePrep.needsStashPop) {
                 stashRestored = await this.popPreMergeStash(retryHandle);
@@ -3572,28 +3792,23 @@ export class SyncEngine {
             if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
             await this.persistReconciledMcpEntries(mergePrep.reconciled);
           } catch (mergeErr) {
+            // Routed, NOT rethrown. This catch sits inside the outer catch, so
+            // a throw here escapes doPushCycle entirely — past runOneShotPush's
+            // catch-less try/finally, out to the fire-and-forget
+            // `void engine.trigger()` call sites, where an unhandled rejection
+            // terminates the server.
             const mc = classifyGitError(
               mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
             );
             if (mc.class === 'semantic' && mc.subclass === 'merge-conflict') {
               await this.handleMergeConflict();
-            } else if (mergeErr instanceof ShareableOkEnumerationError) {
-              // Routed, NOT rethrown. This catch sits inside the outer catch, so
-              // a throw here escapes doPushCycle entirely — past runOneShotPush's
-              // catch-less try/finally, out to the fire-and-forget
-              // `void engine.trigger()` call sites, where an unhandled rejection
-              // terminates the server.
-              //
-              // `'push'`, unlike the `else` below: a staging failure is the push
-              // leg failing to assemble what it would send, so it belongs on
-              // `pushError` — where the outer catch already puts this same error
-              // type. The sibling branch says `'pull'` because it handles MERGE
-              // errors, and the merge is the retry's pull leg. Same catch block,
-              // genuinely different directions.
-              log.warn({ err: mergeErr }, '[sync] push retry: staging error detail');
-              this.handleError(mc, 'push');
             } else {
-              this.handleError(mc, 'pull');
+              // Route on the step that threw: fetch and merge are pull-leg
+              // operations; commit, stash restore, overlay restore, and persist
+              // are push-side assembly and belong on pushError.
+              const leg = retryStage === 'merge' || retryStage === 'fetch' ? 'pull' : 'push';
+              log.warn({ err: mergeErr, stage: retryStage }, '[sync] push retry error detail');
+              this.handleError(mc, leg);
             }
             this.scheduleSaveState();
             return;
@@ -3604,9 +3819,35 @@ export class SyncEngine {
           await this.doPushCycle(0);
           return;
         }
-        // Retry exhausted — let the next pull cycle handle it
-        log.info({}, '[sync] push still rejected after retry — waiting for next pull cycle');
-        this.consecutiveFailures++;
+        // Retry exhausted. The fetch above succeeded, so the remote is reachable
+        // and the credential resolves — this is write contention, not network
+        // unavailability, and contention must not accrue toward a 60-minute
+        // backoff the remote's own reachability disproves. So this path never
+        // charges the streak.
+        //
+        // It discharges one only on the same evidence the fetch-success site
+        // uses: a connectivity-class streak is disproven here, a semantic or
+        // structural one is not. Zeroing unconditionally would let a single
+        // contended push erase a protected-branch backoff that nothing about
+        // this cycle contradicts.
+        this.consecutiveContentions++;
+        this.logContention();
+        if (this.pushStreakIsConnectivity) {
+          this.consecutivePushFailures = 0;
+          this.pushStreakIsConnectivity = false;
+          // The retry's own fetch succeeded, so the connectivity message this
+          // streak carried is disproven by the same evidence that just
+          // released it. Keeping it would let the badge show a dead network
+          // error for as long as contention keeps any push from landing.
+          // Scoped to this branch: a semantic or structural message is not
+          // disproven by a successful read and still stands.
+          this.clearPushError();
+        }
+        // No blanket clear here: this cycle did not land, and a message set by
+        // an earlier, unrelated failure is still the best explanation on offer.
+        // The connectivity arm above is the one exception — there the retry's
+        // own fetch disproved the message, so it clears it. Everything else
+        // stands until something replaces it.
         if (this.state === 'pushing') this.transitionTo('idle');
       } else {
         this.handleError(classified, 'push');
@@ -3875,7 +4116,13 @@ export class SyncEngine {
       this.pullErrorCode = undefined;
       this.pullError = `Sync paused — your local changes to ${display}${rest} conflict with incoming changes. Commit, stash, or discard them before syncing.`;
       this.pausedReason = 'external-changes-pending';
-      this.consecutiveFailures = 0;
+      // Reset only the pull leg: this pause is triggered by the pull/merge cycle
+      // finding blocking paths. The push leg may have its own independent streak;
+      // resetting it here would make the push backoff unreachable on exactly the
+      // contention scenario it was added for. clearBlockingPause() (the
+      // user-driven recovery) resets both legs — that's appropriate because it
+      // represents an explicit user act, not an incidental pull-side event.
+      this.consecutivePullFailures = 0;
       this.transitionTo('idle');
       this.scheduleSaveState();
       log.warn({ files: blocking }, '[sync] paused — dirty paths overlap incoming merge');
@@ -4475,7 +4722,10 @@ export class SyncEngine {
       this.pullErrorCode = undefined;
       this.pullError = `Sync paused — couldn't auto-resolve ${display}${rest}. Resolve in your terminal (e.g. \`git rm <file>\` or \`git checkout --ours/--theirs <file> && git add <file>\`), then retry sync.`;
       this.pausedReason = 'non-content-merge-failure';
-      this.consecutiveFailures = 0;
+      // Reset only the pull leg — same rationale as the blocking-paths pause in
+      // prepareForMerge: this is a pull/merge-cycle failure and should not
+      // forgive an independent push streak.
+      this.consecutivePullFailures = 0;
       this.transitionTo('idle');
       this.scheduleSaveState();
       log.warn(
@@ -4644,15 +4894,20 @@ export class SyncEngine {
       // Self-heal: schedule an immediate push. The push cycle commits
       // working-tree edits via an isolated index, which reconciles the
       // tree against HEAD and lets the subsequent merge proceed.
-      this.consecutiveFailures++;
+      this.bumpFailureCount(op);
       this.transitionTo('idle');
       this.pausedReason = 'dirty-tree';
       this.schedulePush(0);
     } else if (classified.retryable) {
-      this.consecutiveFailures++;
+      // Only transport-level reachability failures are disproven by a later
+      // fetch. `429`/`5xx` share the `network` class but describe the remote
+      // REFUSING work, not being unreachable — and a fetch is a read, so it
+      // cannot clear a write-path rate limit. Treating them as disproven made
+      // a throttled remote the one we retried hardest.
+      this.bumpFailureCount(op, isFetchDisprovableFailure(classified));
       this.transitionTo('offline');
     } else {
-      this.consecutiveFailures++;
+      this.bumpFailureCount(op);
       this.transitionTo('idle');
     }
   }
@@ -4722,7 +4977,9 @@ export class SyncEngine {
         lastPushOkUtc: this.lastPushOkUtc,
         lastFetchUtc: this.lastFetchUtc,
         lastPushedSha: this.lastPushedSha,
-        consecutiveFailures: this.consecutiveFailures,
+        consecutiveFailures: this.consecutivePullFailures,
+        consecutivePushFailures: this.consecutivePushFailures,
+        pushStreakIsConnectivity: this.pushStreakIsConnectivity,
         pausedReason: persistedReason,
         pausedSinceUtc: persistedReason ? new Date().toISOString() : undefined,
         // Persist file paths of any in-flight conflicts so they survive restart
@@ -4745,7 +5002,13 @@ export class SyncEngine {
       this.lastPushOkUtc = data.lastPushOkUtc ?? null;
       this.lastFetchUtc = data.lastFetchUtc ?? null;
       this.lastPushedSha = data.lastPushedSha ?? null;
-      this.consecutiveFailures = data.consecutiveFailures ?? 0;
+      this.consecutivePullFailures = data.consecutiveFailures ?? 0;
+      this.consecutivePushFailures = data.consecutivePushFailures ?? 0;
+      // A state file predating this field restores a streak with no recorded
+      // cause. `false` is the safe read: it keeps the backoff until a push
+      // actually lands, rather than releasing a streak that may have been
+      // semantic on evidence that never covered it.
+      this.pushStreakIsConnectivity = data.pushStreakIsConnectivity ?? false;
       // Defense-in-depth: `saveStateNow` filters `'no-push-permission'` and
       // `'auth-error'` out, but a state file written by an earlier build (or
       // hand-edited) could still contain them. Drop both on load so a restart

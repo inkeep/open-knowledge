@@ -68,6 +68,11 @@ describe('isPathWithinProject — win32', () => {
     expect(isPathWithinProject('c:\\proj\\file.zip', 'C:\\proj', 'win32')).toBe(true);
   });
 
+  test('does not apply cmd.exe grammar to a lexical containment check', () => {
+    expect(isPathWithinProject('C:\\proj%20\\.ok', 'C:\\proj%20', 'win32')).toBe(true);
+    expect(validateSpawnPath('C:\\proj%20\\.ok', 'win32')).toBe(false);
+  });
+
   test('rejects dot-dot escapes and the sibling-prefix collision', () => {
     expect(isPathWithinProject('C:\\proj\\..\\windows\\evil.zip', 'C:\\proj', 'win32')).toBe(false);
     expect(isPathWithinProject('C:\\proj-evil\\file.zip', 'C:\\proj', 'win32')).toBe(false);
@@ -106,7 +111,7 @@ describe('isPathWithinProject — win32', () => {
 
 describe('isPathWithinProject — parity with the server isPathWithinDir', () => {
   // The two functions implement one security contract from independent copies
-  // (see the module header's consolidation note). This matrix pins them to
+  // (see the shared implementation's trust-boundary note). This matrix pins them to
   // identical verdicts so a fix or hardening applied to only one of them
   // fails here instead of drifting silently. Lexical, symlink-free vectors
   // only — neither implementation resolves symlinks.

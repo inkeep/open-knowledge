@@ -19,6 +19,10 @@ import {
   unlinkEditorSkillFolder,
 } from './skill-folder-links.ts';
 
+/** Explicit opt-out for tests whose subject is not the consent gate. `mayCreate`
+ *  is required precisely so this is greppable rather than an omitted argument. */
+const allow = (): boolean => true;
+
 function writeSkill(root: string, rel: string, body: string): void {
   const dir = join(root, rel);
   mkdirSync(dir, { recursive: true });
@@ -48,6 +52,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(preview.kind).toBe('plan');
     if (preview.kind !== 'plan') return;
@@ -57,6 +62,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     expect(lstatSync(join(base, '.codex/skills')).isSymbolicLink()).toBe(true);
@@ -72,6 +78,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -93,6 +100,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(false);
     if (r.ok) return;
@@ -114,6 +122,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -131,6 +140,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
 
     expect(r.ok).toBe(true);
@@ -152,6 +162,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('stray-entries');
@@ -160,6 +171,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.cursor/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r2.ok).toBe(true);
     expect(lstatSync(join(base, '.cursor/skills')).isSymbolicLink()).toBe(true);
@@ -180,6 +192,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     expect(lstatSync(join(base, '.codex/skills')).isSymbolicLink()).toBe(true);
@@ -192,6 +205,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.strays).toContain('notes');
@@ -206,6 +220,7 @@ describe('linkEditorSkillFolder (merge-then-swap)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     expect(lstatSync(join(base, '.codex/skills')).isSymbolicLink()).toBe(true);
@@ -243,6 +258,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(tree(base)).toEqual(before);
     expect(p.kind).toBe('plan');
@@ -255,6 +271,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -275,12 +292,18 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
     expect(p.plan.removes).toEqual(['.system']);
 
-    linkEditorSkillFolder({ base, folderRel: '.codex/skills', targetRootRel: '.agents/skills' });
+    linkEditorSkillFolder({
+      base,
+      folderRel: '.codex/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: allow,
+    });
     expect(existsSync(join(base, '.agents/skills/.system'))).toBe(false);
   });
 
@@ -293,6 +316,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
@@ -305,6 +329,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -322,12 +347,18 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
     expect(p.plan.removes).toEqual(['.git']);
 
-    linkEditorSkillFolder({ base, folderRel: '.codex/skills', targetRootRel: '.agents/skills' });
+    linkEditorSkillFolder({
+      base,
+      folderRel: '.codex/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: allow,
+    });
     // The disclosure has to match what actually happens: the history is gone.
     expect(existsSync(join(base, '.agents/skills/.git'))).toBe(false);
   });
@@ -344,13 +375,19 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
     expect(p.plan.liveDestLinks).toEqual(['shared']);
     expect(p.plan.toMove).toEqual(['shared']);
 
-    linkEditorSkillFolder({ base, folderRel: '.codex/skills', targetRootRel: '.agents/skills' });
+    linkEditorSkillFolder({
+      base,
+      folderRel: '.codex/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: allow,
+    });
     // The delivery is gone: the target now holds codex's real copy, and
     // `.ok/skills/shared` no longer reaches it.
     expect(lstatSync(join(base, '.agents/skills/shared')).isSymbolicLink()).toBe(false);
@@ -371,6 +408,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('plan');
     if (p.kind !== 'plan') return;
@@ -389,6 +427,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.codex/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(tree(base)).toEqual(before);
     expect(p.kind).toBe('conflicts');
@@ -401,6 +440,7 @@ describe('previewEditorFolderLink (what a LINK would do)', () => {
       base,
       folderRel: '.cursor/skills',
       targetRootRel: '.agents/skills',
+      mayCreate: allow,
     });
     expect(p.kind).toBe('absent');
     expect(existsSync(join(base, '.cursor'))).toBe(false);
@@ -414,7 +454,7 @@ describe('unlinkEditorSkillFolder (materialize as per-skill links)', () => {
     mkdirSync(join(base, '.codex'), { recursive: true });
     symlinkSync(join(base, '.agents/skills'), join(base, '.codex/skills'), 'dir');
 
-    const r = unlinkEditorSkillFolder({ base, folderRel: '.codex/skills' });
+    const r = unlinkEditorSkillFolder({ base, folderRel: '.codex/skills', mayCreate: allow });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.linked.sort()).toEqual(['one', 'two']);
@@ -436,6 +476,7 @@ describe('unlinkEditorSkillFolder (materialize as per-skill links)', () => {
       base,
       folderRel: '.codex/skills',
       exclude: ['not-for-codex'],
+      mayCreate: allow,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -447,8 +488,112 @@ describe('unlinkEditorSkillFolder (materialize as per-skill links)', () => {
 
   test('a real folder refuses to unlink', () => {
     writeSkill(base, '.codex/skills/foo', '# A');
-    const r = unlinkEditorSkillFolder({ base, folderRel: '.codex/skills' });
+    const r = unlinkEditorSkillFolder({ base, folderRel: '.codex/skills', mayCreate: allow });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('not-linked');
+  });
+});
+
+describe('mayCreate consent gate', () => {
+  let base: string;
+  beforeEach(() => {
+    base = mkdtempSync(join(tmpdir(), 'ok-maycreate-'));
+  });
+  afterEach(() => {
+    rmSync(base, { recursive: true, force: true });
+  });
+
+  const deny = () => false;
+
+  test('refuses when the TARGET root would be created', () => {
+    mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
+    const r = linkEditorSkillFolder({
+      base,
+      folderRel: '.claude/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: deny,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toBe('not-permitted');
+    expect(existsSync(join(base, '.agents'))).toBe(false);
+  });
+
+  test('refuses when the FOLDER operand would be created — the half a target-only guard missed', () => {
+    // A link mkdirs `dirname(folderAbs)` too, so an absent `folderRel` creates a
+    // dotdir for a tool the user never installed. Guarding only the target left
+    // this reachable from MCP and any direct call.
+    mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
+    const r = linkEditorSkillFolder({
+      base,
+      folderRel: '.copilot/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: deny,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.ok === false && r.reason).toBe('not-permitted');
+    expect(existsSync(join(base, '.copilot'))).toBe(false);
+  });
+
+  test('names every root it refused, not just the first', () => {
+    const p = previewEditorFolderLink({
+      base,
+      folderRel: '.copilot/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: deny,
+    });
+    expect(p.kind).toBe('not-permitted');
+    expect(p.kind === 'not-permitted' && [...p.roots].sort()).toEqual([
+      '.agents/skills',
+      '.copilot/skills',
+    ]);
+  });
+
+  test('bypasses the predicate entirely when neither root needs creating', () => {
+    // Named for what the body does. `deny` proves the point: with both roots
+    // present the gate is never consulted, so a refusing predicate cannot block
+    // a link that creates nothing.
+    mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
+    mkdirSync(join(base, '.agents', 'skills'), { recursive: true });
+    const r = linkEditorSkillFolder({
+      base,
+      folderRel: '.claude/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: deny,
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  test('PERMITS and creates when the predicate allows — the common path', () => {
+    // The refusal direction was well covered and the permit direction was not,
+    // so nothing proved the gate ever lets a legitimate link through. This is
+    // the ordinary flow: `.claude` installed, `.claude/skills` not yet.
+    mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
+    const r = linkEditorSkillFolder({
+      base,
+      folderRel: '.claude/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: () => true,
+    });
+    expect(r.ok).toBe(true);
+    expect(existsSync(join(base, '.agents', 'skills'))).toBe(true);
+  });
+
+  test('asks about the skills-root rel, not an absolute path or the dotdir', () => {
+    // Pins the argument contract. Every other test here ignores what the
+    // predicate receives, so passing `join(base, rel)` or the dotdir instead
+    // would leave them all green while breaking the route's real predicate,
+    // which resolves the dotdir itself via skillRootActivationPath.
+    mkdirSync(join(base, '.claude', 'skills'), { recursive: true });
+    const seen: string[] = [];
+    linkEditorSkillFolder({
+      base,
+      folderRel: '.claude/skills',
+      targetRootRel: '.agents/skills',
+      mayCreate: (rel) => {
+        seen.push(rel);
+        return true;
+      },
+    });
+    expect(seen).toEqual(['.agents/skills']);
   });
 });

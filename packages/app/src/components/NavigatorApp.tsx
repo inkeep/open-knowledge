@@ -29,6 +29,7 @@ import { useThemeBridge } from '@/hooks/use-theme-bridge';
 import type {
   OkDesktopBridge,
   OkLocalOpAuthStatusResponse,
+  OkMenuActionOrigin,
   OkPackId,
   OkProjectEntryPoint,
   OkSeedPackInfo,
@@ -113,7 +114,9 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const [openingLabel, setOpeningLabel] = useState<string | null>(null);
   const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [reportBugOpen, setReportBugOpen] = useState(false);
+  // The dispatch's origin IS the open state: it says whether the surface that
+  // fired the action is a transient launcher the screenshot must wait out.
+  const [reportBugOrigin, setReportBugOrigin] = useState<OkMenuActionOrigin | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Starter pack chosen on the first-run pack line (pill or picker), plus the
   // pack list. Threaded into CreateProjectDialog so it can name the pack as
@@ -246,9 +249,11 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   // system-wide (the Navigator has no project), and Help → Send feedback…,
   // which opens the same feedback form the editor window opens.
   useEffect(() => {
-    return subscribeLocalMenuAction((action) => {
+    return subscribeLocalMenuAction((action, origin) => {
       if (action === 'new-project') setCreateDialogOpen(true);
-      if (action === 'report-bug') setReportBugOpen(true);
+      // A second dispatch while the dialog is already open keeps the first
+      // origin: the capture it describes has already been taken.
+      if (action === 'report-bug') setReportBugOrigin((current) => current ?? origin);
       if (action === 'send-feedback') setFeedbackOpen(true);
       if (action === 'close-active-tab-or-window') window.close();
     });
@@ -540,7 +545,14 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
         packs={createPacks}
       />
 
-      <ReportBugDialog open={reportBugOpen} onOpenChange={setReportBugOpen} systemWide />
+      <ReportBugDialog
+        open={reportBugOrigin !== null}
+        onOpenChange={(next) => {
+          if (!next) setReportBugOrigin(null);
+        }}
+        launcherBorne={reportBugOrigin?.launcherBorne === true}
+        systemWide
+      />
 
       <FeedbackFormDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} source="help_menu" />
 

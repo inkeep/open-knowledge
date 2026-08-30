@@ -153,6 +153,36 @@ async function openPopover() {
   });
 }
 
+/**
+ * Reveal the whole working-tree listing.
+ *
+ * Sections and folder buckets are collapsed on open, so every assertion about
+ * rows has to expand first. Scoped to the listing because the sync-mode Select
+ * also carries `aria-expanded`, and clicking that opens a dropdown instead.
+ * Loops because expanding a section reveals buckets that were not in the DOM
+ * when the pass started.
+ */
+async function expandWorktreeListing(): Promise<void> {
+  // Three tiers can carry `aria-expanded`: section -> folder bucket -> the
+  // `+N more` control an overflowing bucket reveals. Four passes is one per
+  // tier plus a confirming pass that observes zero collapsed triggers.
+  // Exhaustion throws rather than returning quietly, so a future fifth tier
+  // names itself here instead of surfacing as a missing element in the caller.
+  for (let pass = 0; pass < 4; pass++) {
+    const listing = screen.queryByTestId('worktree-listing');
+    if (!listing) return;
+    // `{ expanded: false }` matches `aria-expanded="false"` only — Testing
+    // Library treats an absent attribute as `undefined`, not `false` — so the
+    // query needs no further filtering.
+    const collapsed = within(listing).queryAllByRole('button', { expanded: false });
+    if (collapsed.length === 0) return;
+    for (const trigger of collapsed) await userEvent.click(trigger);
+  }
+  throw new Error(
+    'expandWorktreeListing: disclosures still collapsed after 4 passes — a new nesting tier?',
+  );
+}
+
 /** Move the engine's reported state the way a poll tick would, mid-test. */
 async function advanceStatus(next: GitSyncStatus): Promise<void> {
   status = next;
@@ -1201,6 +1231,7 @@ describe('SyncStatusBadge runtime behavior', () => {
     projectLocalConfig = { autoSync: { mode: 'off' } };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     expect(screen.getByTestId('sync-popover-pull')).toBeTruthy();
     expect(screen.getByTestId('sync-popover-push')).toBeTruthy();
@@ -1234,6 +1265,7 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     // Tense-free and mode-independent: only `full` pushes on its own, so a
     // "will be pushed" heading would overstate it in Manual and Follow.
@@ -1244,10 +1276,13 @@ describe('SyncStatusBadge working-tree listing', () => {
     expect(screen.queryByText('Not staged')).toBeNull();
 
     // An unstaged in-scope edit and an untracked in-scope file both ship.
-    expect(screen.getByText('docs/sync.mdx')).toBeTruthy();
-    expect(screen.getByText('notes/cadence-draft.md')).toBeTruthy();
+    const listing = within(screen.getByTestId('worktree-listing'));
+    expect(listing.getByText('docs/sync.mdx', { selector: 'span:not(.sr-only)' })).toBeTruthy();
+    expect(
+      listing.getByText('notes/cadence-draft.md', { selector: 'span:not(.sr-only)' }),
+    ).toBeTruthy();
     // Out-of-scope lands in the other group with its explanation.
-    expect(screen.getByText('src/git/status.ts')).toBeTruthy();
+    expect(listing.getByText('src/git/status.ts', { selector: 'span:not(.sr-only)' })).toBeTruthy();
     expect(screen.getByText(/Outside what Open Knowledge commits/)).toBeTruthy();
 
     // Divergence comes from the engine payload, not the worktree read.
@@ -1280,13 +1315,25 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     await userEvent.click(screen.getByRole('button', { name: 'opencode.json' }));
     expect(window.location.hash).toBe('#/__asset__/opencode.json');
 
     await openPopover();
-    expect(screen.queryByRole('button', { name: 'notes/gone.md' })).toBeNull();
-    expect(screen.getByText('notes/gone.md')).toBeTruthy();
+    await expandWorktreeListing();
+    // Both live under the `notes` bucket, which states that segment in its
+    // header. The visible label is the remainder ("cadence.md"), but the
+    // accessible name is the full path so two folders each holding a file of
+    // the same name stay distinguishable to a screen reader.
+    expect(screen.queryByRole('button', { name: 'gone.md' })).toBeNull();
+    expect(screen.getByText('gone.md')).toBeTruthy();
+    // The `label !== entry.path` guard is what keeps the full path available to
+    // a screen reader without waiting on the tooltip. Without it, two folders
+    // each holding a `gone.md` are indistinguishable, and nothing else in the
+    // suite would go red.
+    const listing = within(screen.getByTestId('worktree-listing'));
+    expect(listing.getByText('notes/gone.md', { selector: '.sr-only' })).toBeTruthy();
 
     // Layout is the actual contract and jsdom computes none, so the guard is
     // the one class that decides it: the Button base ships `shrink-0`, and a
@@ -1298,7 +1345,10 @@ describe('SyncStatusBadge working-tree listing', () => {
     expect(rowClasses).toContain('shrink');
     expect(rowClasses).not.toContain('shrink-0');
 
-    await userEvent.click(screen.getByRole('button', { name: 'notes/cadence.md' }));
+    // Accessible name is the full path (aria-label); visible label is the tail.
+    const cadenceBtn = screen.getByRole('button', { name: 'notes/cadence.md' });
+    expect(cadenceBtn.textContent).toContain('cadence.md');
+    await userEvent.click(cadenceBtn);
 
     expect(window.location.hash).toBe('#/notes/cadence');
     // The popover overlays the editor, so it closes rather than hiding the
@@ -1306,6 +1356,93 @@ describe('SyncStatusBadge working-tree listing', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('sync-mode-select')).toBeNull();
     });
+  });
+
+  test('a folder header resolves the full path, not the label it already shows', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      // Two locale dirs under a shared prefix: the section hoists
+      // `app/src/locales`, the bucket header shows only what is left of it.
+      notStaged: ['ar', 'bn'].flatMap((l) => [
+        { path: `app/src/locales/${l}/messages.po`, code: 'M' as const, syncScoped: true },
+        { path: `app/src/locales/${l}/messages.json`, code: 'M' as const, syncScoped: true },
+      ]),
+    };
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    const listing = within(screen.getByTestId('worktree-listing'));
+    // The header's visible label is only the remainder after the hoist.
+    const header = listing.getByRole('button', { name: /^ar/ });
+    expect(header.textContent).toContain('ar');
+    expect(header.textContent).not.toContain('app/src/locales');
+
+    // FOCUS, not hover: the tooltip wraps the Button precisely so a keyboard
+    // user reaches it. Radix opens on the trigger's focus, and this assertion
+    // fails if the tooltip is ever moved back onto a nested span.
+    (document.activeElement as HTMLElement | null)?.blur();
+    header.focus();
+    expect(document.activeElement).toBe(header);
+    await waitFor(() => {
+      expect(screen.getAllByText('app/src/locales/ar').length).toBeGreaterThan(0);
+    });
+  });
+
+  test('a non-linking row is reachable by keyboard and its focus opens the full path', async () => {
+    // A deletion row takes the plain-text branch, so the tooltip is the only
+    // truncation recovery a sighted keyboard-only user has — and Radix opens on
+    // the TRIGGER's focus, so a non-focusable span would give them nothing.
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      notStaged: [
+        { path: 'notes/kept.md', code: 'M', syncScoped: true },
+        // No open target → the plain-text branch under test.
+        { path: 'notes/gone.md', code: 'D', syncScoped: true },
+      ],
+    };
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    const listing = within(screen.getByTestId('worktree-listing'));
+    const label = listing.getByText('gone.md', { selector: 'span:not(.sr-only)' });
+    // Not a button — this is the branch that has no navigation target.
+    expect(label.tagName).toBe('SPAN');
+
+    // No tooltip before focus. Asserting on the text alone would match this
+    // row's own `sr-only` full-path fallback, which is already in the DOM — so
+    // the assertion would pass with the Tooltip deleted outright.
+    expect(screen.queryByRole('tooltip')).toBeNull();
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    label.focus();
+    expect(document.activeElement).toBe(label);
+
+    await waitFor(() => {
+      expect(screen.getByRole('tooltip').textContent).toContain('notes/gone.md');
+    });
+  });
+
+  test('an ungrouped row omits the sr-only fallback rather than repeating itself', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      // One entry: no prefix is hoisted, so `label` IS the full path.
+      notStaged: [{ path: 'notes/solo.md', code: 'D', syncScoped: true }],
+    };
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    const listing = within(screen.getByTestId('worktree-listing'));
+    expect(listing.getByText('notes/solo.md')).toBeTruthy();
+    expect(listing.queryByText('notes/solo.md', { selector: '.sr-only' })).toBeNull();
   });
 
   test('clickability follows the document, not the group the row landed in', async () => {
@@ -1335,6 +1472,7 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     expect(screen.getByText('Push skips')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'notes/private.md' })).toBeTruthy();
@@ -1350,6 +1488,7 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     expect(screen.getByText('Push includes')).toBeTruthy();
     expect(screen.queryByText('Push skips')).toBeNull();
@@ -1366,8 +1505,13 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
-    expect(screen.getAllByText('docs/sync.mdx')).toHaveLength(1);
+    expect(
+      within(screen.getByTestId('worktree-listing')).getAllByText('docs/sync.mdx', {
+        selector: 'span:not(.sr-only)',
+      }),
+    ).toHaveLength(1);
     // 'A' (staged add) is more specific than the worktree's 'M'.
     expect(screen.getByText('A')).toBeTruthy();
   });
@@ -1424,11 +1568,20 @@ describe('SyncStatusBadge working-tree listing', () => {
     };
     await renderBadge();
     await openPopover();
+    await expandWorktreeListing();
 
     expect(screen.getByText('Pull brings in')).toBeTruthy();
-    expect(screen.getByText('notes/from-teammate.md')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('worktree-listing')).getByText('notes/from-teammate.md', {
+        selector: 'span:not(.sr-only)',
+      }),
+    ).toBeTruthy();
     expect(screen.getByText('Push includes')).toBeTruthy();
-    expect(screen.getByText('notes/mine.md')).toBeTruthy();
+    expect(
+      within(screen.getByTestId('worktree-listing')).getByText('notes/mine.md', {
+        selector: 'span:not(.sr-only)',
+      }),
+    ).toBeTruthy();
   });
 
   test('an up-to-date remote shows no incoming group', async () => {
@@ -1523,6 +1676,53 @@ describe('SyncStatusBadge working-tree listing', () => {
     await openPopover();
 
     expect(screen.getByText('detached HEAD')).toBeTruthy();
+  });
+
+  test('a row list with more than the cap shows only the cap and an overflow button', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    // 7 entries exceed MAX_ROWS_PER_GROUP (6), so the last entry hides behind
+    // the overflow button until the user asks for more.
+    worktree = {
+      ...emptyWorktree,
+      notStaged: Array.from({ length: 7 }, (_, i) => ({
+        path: `notes/file-${i}.md`,
+        code: 'M',
+        syncScoped: true,
+        open: { kind: 'doc' as const, docName: `notes/file-${i}` },
+      })),
+    };
+    await renderBadge();
+    await openPopover();
+    // Manually open only the section trigger. expandWorktreeListing() would also
+    // click the "+N more" button (it carries aria-expanded=false) and reveal all
+    // rows — defeating what this test measures.
+    await userEvent.click(screen.getByRole('button', { name: /Push includes/ }));
+
+    expect(screen.getByTestId('worktree-rows-show-all')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'notes/file-6.md' })).toBeNull();
+  });
+
+  test('a row list at or below the cap shows all entries without an overflow button', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    // 6 entries exactly match MAX_ROWS_PER_GROUP — all visible, no overflow.
+    worktree = {
+      ...emptyWorktree,
+      notStaged: Array.from({ length: 6 }, (_, i) => ({
+        path: `notes/file-${i}.md`,
+        code: 'M',
+        syncScoped: true,
+        open: { kind: 'doc' as const, docName: `notes/file-${i}` },
+      })),
+    };
+    await renderBadge();
+    await openPopover();
+    await expandWorktreeListing();
+
+    expect(screen.queryByTestId('worktree-rows-show-all')).toBeNull();
+    expect(screen.getByRole('button', { name: 'notes/file-0.md' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'notes/file-5.md' })).toBeTruthy();
   });
 });
 

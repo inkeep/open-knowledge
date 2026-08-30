@@ -282,7 +282,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     ]);
   });
 
-  test('project-local-strict fields cover autoSync.mode + autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.enabled', () => {
+  test('project-local-strict fields cover autoSync.mode + autoSync.enabled + appearance.sidebar.* + linkPreviews.enabled + search.semantic.* + terminal.*', () => {
     // Project-local fields are per-machine, per-project: each teammate's
     // choice never crosses the git boundary.
     // `<projectDir>/.ok/local/config.yml` is gitignored and never mirrored
@@ -337,6 +337,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'server.idleShutdown',
       'server.openBrowser',
       'terminal.enabled',
+      'terminal.shell',
     ]);
   });
 

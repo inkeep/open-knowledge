@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPageRequest, nextUntitledDocName } from './create-page-request';
+import { createPageRequest, nextUntitledDocName, openCreatedPage } from './create-page-request';
 
 describe('nextUntitledDocName', () => {
   it('starts at bare "untitled" at the content root', () => {
@@ -76,5 +76,42 @@ describe('createPageRequest', () => {
     });
     const result = await createPageRequest({ path: 'untitled.md', kind: 'file' });
     expect(result).toEqual({ ok: false, error: 'Network error — please try again' });
+  });
+});
+
+describe('openCreatedPage', () => {
+  const realWindow = (globalThis as { window?: unknown }).window;
+
+  afterEach(() => {
+    // This tier has no DOM. Restore rather than delete: leaving a stub behind
+    // makes later files in the same worker believe they are in a browser.
+    if (realWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = realWindow;
+  });
+
+  function harness(docName: string): string {
+    const stub = {
+      location: { hash: '' },
+      dispatchEvent: () => true,
+    };
+    (globalThis as { window?: unknown }).window = stub;
+    openCreatedPage(docName, () => {});
+    return stub.location.hash;
+  }
+
+  it('percent-encodes the created doc name', () => {
+    expect(harness('My Notes')).toBe('#/My%20Notes');
+  });
+
+  it('encodes a name containing a route metacharacter so the new page opens', () => {
+    // Creating is the path the bug was reported through: the name is legal to
+    // create, and left raw the "#" reads as the anchor delimiter, so the parser
+    // resolves no document and the app opens a New Tab over the new page.
+    expect(harness('# 2 - Tokens')).toBe('#/%23%202%20-%20Tokens');
+    expect(harness('What now?')).toBe('#/What%20now%3F');
+  });
+
+  it('keeps the slash a route separator for a nested name', () => {
+    expect(harness('My Notes/# 2 - Tokens')).toBe('#/My%20Notes/%23%202%20-%20Tokens');
   });
 });

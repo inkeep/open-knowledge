@@ -5,7 +5,7 @@ name: Desktop build (manual, Windows/Linux)
 # tags, or touches the release cadence — the operator downloads the
 # installers from the run's artifacts for VM/hardware QA. The release
 # path is desktop-release.yml, which builds these same targets signed
-# and publishes them; this workflow stays the unsigned QA lane.
+# and publishes them; this workflow stays the non-publishing QA lane.
 #
 # Topology: one `prepare` job on ubuntu builds the workspace (the CLI
 # build chain uses `cp -r`/`mkdir -p` bash-isms that don't survive a
@@ -24,7 +24,7 @@ name: Desktop build (manual, Windows/Linux)
 # way.
 #
 # Windows signing (D3, Azure Artifact Signing): OPTIONAL here. When the
-# three AZURE_* secrets + three AZURE_SIGNING_* repo variables are
+# three AZURE_* secrets + four AZURE_SIGNING_* repo variables are
 # configured, the Windows job passes win.azureSignOptions to
 # electron-builder; when absent it builds unsigned (acceptable for
 # internal QA only — unsigned Windows builds are never published, and
@@ -231,6 +231,7 @@ jobs:
       # so the signed branch requires the full set and PUBLISHER joins the
       # presence check.
       - name: Package NSIS installers (x64 + arm64)
+        id: package-windows
         working-directory: packages/desktop
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -243,8 +244,9 @@ jobs:
         run: |
           set -euo pipefail
           extra=()
-          if [[ -n "${AZURE_CLIENT_SECRET:-}" && -n "${AZURE_SIGNING_ENDPOINT:-}" && -n "${AZURE_SIGNING_PUBLISHER:-}" ]]; then
+          if [[ -n "${AZURE_TENANT_ID:-}" && -n "${AZURE_CLIENT_ID:-}" && -n "${AZURE_CLIENT_SECRET:-}" && -n "${AZURE_SIGNING_ENDPOINT:-}" && -n "${AZURE_SIGNING_ACCOUNT:-}" && -n "${AZURE_SIGNING_PROFILE:-}" && -n "${AZURE_SIGNING_PUBLISHER:-}" ]]; then
             echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
+            echo "signing_requested=true" >> "$GITHUB_OUTPUT"
             extra+=(
               "--config.win.azureSignOptions.endpoint=${AZURE_SIGNING_ENDPOINT}"
               "--config.win.azureSignOptions.codeSigningAccountName=${AZURE_SIGNING_ACCOUNT}"
@@ -253,8 +255,96 @@ jobs:
             )
           else
             echo "::warning::No (complete) Azure signing config — building UNSIGNED installers (internal QA only; never distribute)."
+            echo "signing_requested=false" >> "$GITHUB_OUTPUT"
           fi
           pnpm exec electron-builder --win --publish never "${extra[@]}"
+
+      - name: Attest signed Windows packages and preserved Microsoft signatures
+        id: attest-windows-signing
+        if: ${{ !cancelled() && steps.package-windows.outputs.signing_requested == 'true' }}
+        shell: pwsh
+        working-directory: packages/desktop
+        env:
+          OK_SIGNING_REQUESTED: ${{ steps.package-windows.outputs.signing_requested }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:OK_SIGNING_REQUESTED -ne 'true') {
+            throw 'Signature rider ran without a signing-enabled package step.'
+          }
+
+          $packages = @(
+            [pscustomobject]@{ Arch = 'x64'; Path = 'dist-desktop/win-unpacked' },
+            [pscustomobject]@{ Arch = 'arm64'; Path = 'dist-desktop/win-arm64-unpacked' }
+          )
+          foreach ($package in $packages) {
+            if (-not (Test-Path -LiteralPath $package.Path -PathType Container)) {
+              throw "Signing-enabled build produced no $($package.Arch) outer package at $($package.Path)."
+            }
+
+            $appExecutable = Join-Path $package.Path 'OpenKnowledge.exe'
+            if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf)) {
+              throw "Signing-enabled $($package.Arch) package has no OpenKnowledge.exe."
+            }
+            $signature = Get-AuthenticodeSignature $appExecutable
+            if ($signature.Status -ne 'Valid') {
+              throw "Our signing pass did not leave a valid signature on ${appExecutable}: $($signature.Status)"
+            }
+
+            $pairDirectories = @(Get-ChildItem $package.Path -Recurse -Directory -Filter 'conpty' |
+              Where-Object { $_.FullName -match 'node-pty[\\/]prebuilds[\\/]win32-(x64|arm64)[\\/]conpty$' })
+            if ($pairDirectories.Count -ne 2) {
+              throw "Expected both ConPTY architecture directories in the $($package.Arch) package; found $($pairDirectories.Count)."
+            }
+            foreach ($directory in $pairDirectories) {
+              foreach ($name in @('conpty.dll', 'OpenConsole.exe')) {
+                $path = Join-Path $directory.FullName $name
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+                  throw "Packaged Microsoft ConPTY pair is incomplete: $path"
+                }
+                $signature = Get-AuthenticodeSignature $path
+                if ($signature.Status -ne 'Valid') {
+                  throw "Microsoft signature is not valid on ${path}: $($signature.Status)"
+                }
+                if ($signature.SignerCertificate.Subject -notmatch 'Microsoft') {
+                  throw "Expected the original Microsoft signer on ${path}; got $($signature.SignerCertificate.Subject)"
+                }
+              }
+            }
+          }
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value 'signing_ran=true'
+          "### Windows signature rider: PASSED`n`nBoth outer architectures carry a signed app, and Microsoft signatures remain valid on every packaged ConPTY pair." |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Require completed Windows signing attestation
+        if: ${{ !cancelled() && steps.package-windows.outputs.signing_requested == 'true' }}
+        shell: pwsh
+        env:
+          OK_SIGNING_RAN: ${{ steps.attest-windows-signing.outputs.signing_ran }}
+        run: |
+          if ($env:OK_SIGNING_RAN -ne 'true') {
+            throw 'Azure signing was requested, but both signed outer packages were not attested.'
+          }
+
+      - name: Report Windows signature rider skipped
+        if: ${{ !cancelled() && steps.package-windows.outputs.signing_requested != 'true' }}
+        shell: pwsh
+        run: |
+          "### Windows signature rider: SKIPPED`n`nThis dispatch built unsigned QA artifacts, so the post-signature rider did not run and must not be read as green evidence." |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Assert Windows x64 terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_WIN_PACKAGE_DIR: dist-desktop/win-unpacked
+          OK_WIN_PACKAGE_REQUIRED: "1"
+        run: pnpm exec vitest run tests/unit/windows-package-native-guards.test.ts
+
+      - name: Assert Windows arm64 terminal native package compatibility
+        working-directory: packages/desktop
+        env:
+          OK_WIN_PACKAGE_DIR: dist-desktop/win-arm64-unpacked
+          OK_WIN_PACKAGE_REQUIRED: "1"
+        run: pnpm exec vitest run tests/unit/windows-package-native-guards.test.ts
 
       # Fail before uploading an installer that cannot start. An asar packed
       # without `node_modules` produces a binary that dies on its first bare

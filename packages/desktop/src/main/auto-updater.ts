@@ -37,6 +37,7 @@ import {
   manualInstallPlanFor,
 } from './linux-install-fallback.ts';
 import type { AppState, UpdateChannel } from './state-store.ts';
+import type { WindowsUpdateSurvivorSweepResult } from './windows-update-survivor-sweep.ts';
 
 /** GitHub provider coordinates — must match `electron-builder.yml` `publish:`. */
 const GITHUB_OWNER = 'inkeep';
@@ -154,6 +155,7 @@ export type DispatchKind =
   | 'linux-manual-fallback-no-auth'
   | 'linux-manual-fallback-after-error'
   | 'download-skipped-already-staged'
+  | 'download-skipped-install-armed'
   | 'relaunch-refresh-found-newer'
   | 'relaunch-refresh-up-to-date'
   | 'relaunch-refresh-timed-out'
@@ -239,21 +241,37 @@ interface StartAutoUpdaterOpts {
    * Synchronous teardown hook fired immediately before
    * `autoUpdater.quitAndInstall()` from the `ok:update:relaunch-now`
    * IPC handler. Production wires this to a hard SIGKILL of every
-   * project-window utility process. Squirrel.Mac's ShipIt runs a final
-   * not-still-running validation and aborts the swap with
-   * `SQRLInstallerErrorDomain Code=-9 "App Still Running Error"` if
-   * it still sees the app running when the swap window opens — the
-   * standard `app.quit()` path posts a graceful `{type:'shutdown'}`
-   * to each utility, but Hocuspocus / file-watcher cleanup can take
-   * longer than ShipIt's poll budget, leaving the swap silently
-   * cancelled. SIGKILLing the utilities first guarantees a clean
-   * process tree before ShipIt looks. Optional so unit tests don't
+   * project-window utility process.
+   *
+   * What this buys is server lifetime, not ShipIt's pre-swap validation. A
+   * detached server survives app-quit by design, and one that outlives the
+   * swap is re-attached by the relaunched app, which then reads an older
+   * version off `server.lock` and shows the version-drift toast. The graceful
+   * `{type:'shutdown'}` window-close IPC is not fast enough on its own —
+   * Hocuspocus drain plus file-watcher teardown can outlast the swap window.
+   *
+   * ShipIt's `SQRLInstallerErrorAppStillRunning` abort is NOT the reason, and
+   * restating it here would be wrong: `SQRLInstaller.m` enumerates
+   * `NSRunningApplication runningApplicationsWithBundleIdentifier:` and keeps
+   * only entries whose `bundleURL` standardizes to the target `.app`, so a
+   * `utilityProcess` fork (not an application at all) and the detached server
+   * (a distinct helper bundle under `Contents/Frameworks/`) are both filtered
+   * out. Only a second GUI instance of the installed bundle can trip it.
+   *
+   * Optional so unit tests don't
    * have to provide one — production passes
    * `async () => await windowManager.stopAllOwnedServers()`. May be
    * async — the hook is awaited before `quitAndInstall` so a two-phase
    * shutdown (SIGTERM → poll → SIGKILL) can complete cleanly.
    */
   prepareForRelaunch?: () => void | Promise<void>;
+  /**
+   * Last-moment recovery sweep before the updater replaces installed files.
+   * Production uses this on Windows to terminate console hosts proven to
+   * belong to this installation. Kept separate from server teardown so the
+   * updater owns the ordering immediately before `quitAndInstall()`.
+   */
+  sweepUpdateSurvivors?: () => WindowsUpdateSurvivorSweepResult | undefined;
   /**
    * Reclaim electron-updater's staged-installer cache (`pending/` under the
    * updater cache dir). Invoked once per boot, from the reconciliation
@@ -341,6 +359,16 @@ interface StartAutoUpdaterOpts {
  */
 type CheckNowResult =
   | { kind: 'available'; currentVersion: string; latestVersion: string }
+  /**
+   * A build is already staged and waiting, so the offer this check turned up
+   * was declined rather than fetched — whether it was the staged version
+   * re-offered or a newer one the single-flight guard turned down.
+   * `stagedVersion` is what a relaunch will actually install, which in the
+   * newer-offer case is NOT the version just offered: reporting the offer there
+   * would promise a build this session has decided not to fetch, and reporting
+   * either as "downloading" would describe a download that is not running.
+   */
+  | { kind: 'ready-to-install'; currentVersion: string; stagedVersion: string }
   | { kind: 'not-available'; currentVersion: string }
   | { kind: 'error'; message: string };
 
@@ -497,12 +525,20 @@ export const INSTALL_FAILURE_MAX_SURFACES = 3;
  * evidence needed to move it.
  *
  * The window is measured from the handoff both install paths record — the
- * "Relaunch now" click, or the quit install-on-quit commits on. The boot
- * reconciliation reaches this window only with a stamp on record: an attempt
- * with none never began, so it is re-offered rather than timed. The staging
- * fallback in `installMayStillBeRunning` therefore matters only to that
- * function's other caller, crash detection, which asks before the
- * reconciliation has run.
+ * "Relaunch now" click, or the quit install-on-quit commits on. Neither caller
+ * requires that stamp to reach the window. The boot reconciliation asks the
+ * in-flight question ahead of its own never-committed check, so a stampless
+ * attempt whose artifact was staged recently defers here on the staging
+ * fallback rather than being re-offered, and `installWasInFlightDuring` reaches
+ * the window the same way on crash detection's behalf. Removing or gating that
+ * fallback would therefore move the failed-install notice too, not just the
+ * crash prompt.
+ *
+ * This is the bound both questions apply at every handoff, stamped or not.
+ * Widening or narrowing it moves the reconciliation's verdict every time, and
+ * moves crash detection's for a handoff that predates the previous session's
+ * death. What bounds a handoff sitting inside that span is set out in
+ * `installWasInFlightDuring`, which is where that frame is reasoned about.
  */
 const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
 
@@ -521,6 +557,26 @@ const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
  * the tolerance, and the notice would never arrive. The count is the part of the
  * hold that survives that re-arm, which is what makes it the termination
  * guarantee; three mirrors the surfacing budget's shape.
+ *
+ * Crash detection is the second consumer, and only where the span it asks over
+ * collapsed onto the detecting instant, which is the frame this count was
+ * calibrated in. There the number decides how many boots may go on suppressing
+ * the prompt for a death nothing can date, before that death reads as a crash
+ * and the user is invited to report it. Raising it delays the failed-install
+ * notice by a boot and widens that suppression by one, and lowering it does the
+ * reverse.
+ *
+ * What that gates is a residual, not the ordinary install kill. The ordinary
+ * one is stamped, since install-on-quit is armed everywhere except Linux and
+ * `before-quit` runs the stamp, and its sentinel seeds a last-alive moment at
+ * arm time rather than at its first heartbeat (the arm-time seed in
+ * `detectBootCrash` carries why), so its span widens rather than collapsing
+ * and this count never sees it. A retried failing install is that same shape
+ * and is likewise out of reach. What arrives here instead is a span the
+ * reduction collapsed onto this boot's own clock. `installWasInFlightDuring`
+ * enumerates the routes to one and is the authority on them, and
+ * `bundle-forensics.md` names the same population from the triage side. Do not
+ * calibrate this against the common case.
  */
 const INSTALL_DEFER_MAX_BOOTS = 3;
 
@@ -786,11 +842,16 @@ export function installReached(running: string, attempted: string): boolean {
  *     record crosses a process quit, so an NTP correction or a VM resume can
  *     leave the recorded handoff in the future. Same coercion the write side
  *     makes on the staging age.
+ *   - non-finite elapsed: an unusable moment has to read as "no claim" rather
+ *     than slip past the staleness bound by failing every comparison against
+ *     it. Rejected at this one point every verdict path funnels through, not at
+ *     each caller. The state loader coerces these fields today, so it is the
+ *     contract holding rather than a live path.
  */
 function installHandoffAgeMs(handoffAt: number | null, nowMs: number): number | null {
   if (handoffAt === null) return null;
   const elapsed = nowMs - handoffAt;
-  return elapsed < 0 ? null : elapsed;
+  return Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : null;
 }
 
 /**
@@ -808,29 +869,84 @@ function resolveInstallHandoffMoment(state: AppState, stagedAt: number | null): 
 }
 
 /**
- * Whether an install this app committed to may still have been running at
- * `nowMs` — and, when it may, which version and from what moment.
+ * What an in-flight verdict carries: which version an installer was launched
+ * for, the moment it was handed off, and whether that moment is a stamp a live
+ * process wrote or the staging fallback.
  *
- * Two callers ask the same question for different reasons, which is why it is
- * a function rather than an inline condition. The boot reconciliation below
- * asks it to decide whether to condemn an install as failed. Crash detection
- * asks it to decide whether a session that ended without a clean quit was
- * killed by the installer rather than by a fault — the installer terminates the
- * running process to replace its files, which bypasses the quit sequence and
- * leaves the dirty-shutdown sentinel behind. Both need the claim
- * bounded the same way; two copies of the bound would drift, and the pair that
+ * Named rather than inferred from either function's body, because both return
+ * it and a field added to one literal would otherwise widen the other's
+ * declared type silently. Crash detection re-declares the same shape as its own
+ * dep contract instead of importing this one: that module is deliberately
+ * updater-agnostic, and the structural match at the injection seam is what
+ * keeps it so.
+ */
+interface InstallInFlightVerdict {
+  attemptedVersion: string;
+  handoffAt: number;
+  recordedHandoff: boolean;
+}
+
+/**
+ * Whether a live process stamped the handoff, as opposed to the moment being
+ * the staging fallback.
+ */
+function hasRecordedHandoff(state: AppState): boolean {
+  return state.attemptedInstallHandoffAt !== null;
+}
+
+/**
+ * Whether an install this app committed to may still have been running at
+ * `nowMs`.
+ *
+ * Two frames ask this, one present tense and one about a death already past,
+ * and they answer the boot-count question differently — which is why that gate
+ * is a parameter here rather than part of the arithmetic. What must not diverge
+ * is the grace window itself: two copies of it would drift, and the pair that
  * drifted would tell the user an install failed while telling them nothing
  * about the crash it caused, or the reverse.
  *
- * The bound is the interesting part, and neither half of it is optional. The
- * grace window keeps a stale record from claiming an install is in flight
- * forever; the boot count is what survives electron-updater re-arming
- * `update-downloaded` from its on-disk cache and clearing the handoff stamp,
- * which would otherwise make an install that never lands look perpetually
- * fresh. See both constants' own docs for the calibration.
+ * `enforceDeferBudget` is what separates them. See `installMayStillBeRunning`
+ * and `installWasInFlightDuring` for each frame's reasoning about it.
  *
  * Returned as a value rather than a boolean so a caller can name the version in
  * a log line without re-reading state that the next moment may have cleared.
+ */
+function installInFlightAt(
+  state: AppState,
+  nowMs: number,
+  stagedAt: number | null,
+  enforceDeferBudget: boolean,
+): InstallInFlightVerdict | null {
+  const attempted = state.attemptedInstall;
+  // Nothing was committed to, so nothing can be in flight.
+  if (attempted === null) return null;
+  const handoffAt = resolveInstallHandoffMoment(state, stagedAt);
+  const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
+  if (
+    handoffAt === null ||
+    handoffAgeMs === null ||
+    handoffAgeMs > INSTALL_IN_FLIGHT_GRACE_MS ||
+    (enforceDeferBudget && state.attemptedInstallDeferredBoots >= INSTALL_DEFER_MAX_BOOTS)
+  ) {
+    return null;
+  }
+  return {
+    attemptedVersion: attempted,
+    handoffAt,
+    recordedHandoff: hasRecordedHandoff(state),
+  };
+}
+
+/**
+ * Whether an install this app committed to may still be running right now — and,
+ * when it may, which version and from what moment.
+ *
+ * The boot reconciliation's question, asked at `now()` to decide whether to
+ * condemn an install as failed. Both halves of its bound are load-bearing, and
+ * neither is derivable from the other: the grace window keeps a stale record
+ * from claiming an install is in flight forever, and the boot count is what
+ * survives a re-arm refreshing the moment the grace measures from. Both
+ * constants' own docs carry the calibration and the re-arm derivation.
  *
  * `stagedAt` is a required parameter rather than a read of
  * `state.versionPendingInstallStagedAt`, and the difference is load-bearing.
@@ -848,25 +964,126 @@ export function installMayStillBeRunning(
   state: AppState,
   nowMs: number,
   stagedAt: number | null,
-): { attemptedVersion: string; handoffAt: number; recordedHandoff: boolean } | null {
-  const attempted = state.attemptedInstall;
-  // Nothing was committed to, so nothing can be in flight.
-  if (attempted === null) return null;
+): InstallInFlightVerdict | null {
+  return installInFlightAt(state, nowMs, stagedAt, true);
+}
+
+/**
+ * Whether an install this app committed to may still have been running at any
+ * point during a span of time, rather than at one instant.
+ *
+ * Crash detection knows when the previous session was last alive and when this
+ * boot noticed it was gone, and the truth it needs is whether the install
+ * window overlaps that span at all. Asking the instant-shaped predicate at the
+ * ends of the span answers a different and weaker question: the window is
+ * bounded by the grace, the span is not, so a window that opens after the last
+ * heartbeat and closes before the reopen sits strictly inside the span and
+ * touches neither end.
+ *
+ * Only a handoff a live process stamped reaches that geometry. It lands just
+ * after the dying session's final heartbeat, which is the ordinary
+ * quit-then-install path, and it is a record that some process committed to
+ * running an installer. The staging fallback records something weaker: a
+ * download finished. Widening the span for it would date the window to a
+ * moment no installer is known to have run from, so an ordinary crash within
+ * the grace of a completed download would be read as an install killing the
+ * session, whatever the user did next. The span therefore collapses to its
+ * later end when nothing was stamped.
+ *
+ * Reduced to one instant rather than reimplemented, so the grace window and the
+ * handoff resolution stay single-sourced. Clamping the handoff into the span
+ * lands inside the window if and only if the two overlap. Below the span the
+ * clamp yields its start, so the grace still bounds a handoff that predates the
+ * span. Inside it yields the handoff itself, so the measured age is zero and
+ * the grace can never bite, an install having been in flight at that instant by
+ * definition. Above it yields the span's end, which the predicate's own
+ * negative-elapsed guard then rejects.
+ *
+ * The deferred-boot cap is what `enforceDeferBudget` exists to express, and
+ * what it turns on is whether the span widened, not whether a stamp exists. The
+ * count measures how many boots the reconciliation has held its own notice
+ * back, which is a fact about a notice this app has not yet shown, not about
+ * whether an installer was running while the previous session died. Applying it
+ * to a verdict anchored in the past makes that death's classification depend on
+ * how many times the app has been opened since, and it bites on shapes that
+ * have nothing to do with a late reopen: an install that keeps failing reaches
+ * the cap after three boots, and the next "Retry" click re-stamps a fresh
+ * handoff without clearing the count on Windows or macOS, so the very next kill
+ * would be read as a crash.
+ *
+ * Where the span collapses the anchor is this boot's own clock, which is the
+ * frame the count was calibrated in, so it applies again. It has to: the grace
+ * alone cannot terminate a hold there, for the re-arm reason set out at
+ * `INSTALL_DEFER_MAX_BOOTS`. Every route to a collapsed span reaches that frame
+ * and so every one of them gets the bound: nothing stamped, a floor that is not
+ * a number, and a floor at or after the span's end. The last is the one the
+ * caller emits whenever the sentinel carried no usable heartbeat, and it is why
+ * the gate is read off the resolved bound rather than off the stamp.
+ *
+ * The Retry failure named above returns on those collapsed shapes, which is the
+ * price of putting the bound back. A spent count with a fresh stamp is reachable
+ * off Linux, and either collapse route can then meet it. It is corroborated from
+ * the preceding boots' suppression lines rather than the prompting one, which
+ * carries no span fields at all. The bug-triage bundle-forensics reference has
+ * that read, and owns the log-shape rules for this class.
+ *
+ * Dropping the cap where the span widened widens what gets suppressed, and the
+ * widening is worth naming rather than leaving to be discovered. A handoff
+ * stamped by an earlier boot, never retired, sitting within the grace of the
+ * span, suppresses the prompt for a death in that span even if the install it
+ * recorded finished long before. That is the same evidence the instant caller
+ * acts on, read in the frame the death actually happened in, and the grace
+ * keeps it to half an hour either way. The alternative trades it for the
+ * failure above, which arms a prompt for a death an installer demonstrably
+ * caused.
+ *
+ * How tightly the span brackets the death is the caller's problem, and it is
+ * what keeps that half hour from being a half hour of anything. Today's only
+ * caller bounds the span below by the previous session's last heartbeat, and
+ * where it has none it collapses onto its own clock, which is the residual
+ * limit of this whole reduction rather than a corner of it. The floor dates the
+ * death to a heartbeat interval only while the heartbeat was landing: what it
+ * records is the last SUCCESSFUL sentinel write, so an unwritable userData path
+ * or a synchronously blocked main thread freezes it early while the session
+ * runs on, and early is the direction that widens the span and suppresses. A
+ * hang during update teardown is where that bites, the hang being what stops
+ * the heartbeat. What the grace bounds there is the handoff-to-floor gap and
+ * not the distance from that floor to the real death, so a floor frozen inside
+ * the grace of the handoff suppresses however long the session went on running
+ * afterwards. The one-directional cost of a loose floor is set out on the dep
+ * contract crash detection declares, where a caller reads it.
+ *
+ * `deathToMs` is the later end by construction at every caller. A `deathFromMs`
+ * that arrives later anyway, which a clock correction across a process quit can
+ * produce, collapses the span to its end rather than inverting it. A bound that
+ * is not a number at all collapses the same way, or takes the whole question out
+ * of play when it is `deathToMs` that is unusable. Both are finite at today's
+ * only caller, which parses its sentinel dates through a guarded helper, so the
+ * guard here is against a failure that is one-directional at an exported seam:
+ * every comparison against `NaN` is false, so an unguarded bound would pass the
+ * staleness bound by failing it and suppress unconditionally.
+ */
+export function installWasInFlightDuring(
+  state: AppState,
+  span: { deathFromMs: number; deathToMs: number },
+  stagedAt: number | null,
+): InstallInFlightVerdict | null {
+  const { deathFromMs, deathToMs } = span;
+  if (!Number.isFinite(deathToMs)) return null;
+  const spanStartMs =
+    hasRecordedHandoff(state) && Number.isFinite(deathFromMs)
+      ? Math.min(deathFromMs, deathToMs)
+      : deathToMs;
+  // Whether the span reduced to the detecting instant, by any of the routes it
+  // can. The stamp is one of them and the caller's own floor is the others, so
+  // this is read off the resolved bound rather than off the stamp: gating on
+  // the stamp would drop the cap for a stamped handoff whose floor collapsed,
+  // which is the detecting instant asked without the bound that frame carries.
+  const spanCollapsed = spanStartMs === deathToMs;
   const handoffAt = resolveInstallHandoffMoment(state, stagedAt);
-  const handoffAgeMs = installHandoffAgeMs(handoffAt, nowMs);
-  if (
-    handoffAt === null ||
-    handoffAgeMs === null ||
-    handoffAgeMs > INSTALL_IN_FLIGHT_GRACE_MS ||
-    state.attemptedInstallDeferredBoots >= INSTALL_DEFER_MAX_BOOTS
-  ) {
-    return null;
-  }
-  return {
-    attemptedVersion: attempted,
-    handoffAt,
-    recordedHandoff: state.attemptedInstallHandoffAt !== null,
-  };
+  const anchorMs =
+    handoffAt === null ? deathToMs : Math.min(Math.max(handoffAt, spanStartMs), deathToMs);
+  return installInFlightAt(state, anchorMs, stagedAt, spanCollapsed);
 }
 
 // ————————————————————————————————————————————————————————
@@ -1196,6 +1413,32 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   // that already has a failed install behind them.
   let stagedThisSession: string | null = null;
 
+  /**
+   * The build already staged this session, when THAT is why the offer in hand
+   * is being declined — otherwise null.
+   *
+   * Both listeners must answer this identically — `onUpdateAvailable` to decide
+   * whether to fetch, `onUpdateAvailableForMenuCheck` to decide what a manual
+   * check reports — or the report path advertises a download that is not
+   * running. Derived once so the two cannot diverge; call it once per listener
+   * rather than re-testing either arm inline. Returning the version rather than
+   * a boolean is what lets the reporting path name the build without
+   * re-narrowing `stagedThisSession`.
+   *
+   * Same version: declined on every platform. Re-downloading is not a no-op
+   * even from cache, and every re-stage is a window in which a "Relaunch" click
+   * hits a half-written staging directory.
+   *
+   * Version change: declined on macOS only, because only Squirrel.Mac holds a
+   * pending install in a separate armed process that a second download races
+   * rather than replaces. `onUpdateAvailable` carries the full mechanism.
+   */
+  const declinedForStagedVersion = (offeredVersion: string | undefined): string | null => {
+    if (stagedThisSession === null) return null;
+    if (stagedThisSession === offeredVersion) return stagedThisSession;
+    return platform === 'darwin' ? stagedThisSession : null;
+  };
+
   /** Accessor form, so a read after an `await` is not stale-narrowed. */
   const currentStaging = (): { version: string } | null => stagingInFlight;
 
@@ -1337,6 +1580,52 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     );
     if (restored) {
       broadcastToAllWindows('ok:update:downloaded', { version });
+    } else if (platform !== 'darwin') {
+      // The persist failed, so `versionPendingInstall` stays cleared and there
+      // is no banner to retry from. Only `stagedThisSession` gates the decline,
+      // so without releasing it here nothing else would: the guard would turn
+      // down the re-offer of this very version on every later poll, and the
+      // session would neither re-download nor re-arm the banner.
+      //
+      // Safe on both platforms that reach this, for different reasons. Linux
+      // arms nothing at all (`autoInstallOnAppQuit` is false there), so there
+      // is no pending request to double up. Windows arms only a cache entry
+      // behind ONE idempotent quit handler, so a re-download replaces the
+      // pending installer rather than racing it — the citation for that is at
+      // the decline guard in `onUpdateAvailable`. Either way the retry banner
+      // comes back for free.
+      logger.warn(
+        stagedThisSession === null
+          ? 'relaunch-failed restore did not persist — no single-flight arm was held'
+          : 'relaunch-failed restore did not persist — releasing the single-flight arm',
+        { version, kind, armedVersion: stagedThisSession },
+      );
+      stagedThisSession = null;
+    } else {
+      // macOS keeps the arm: the trigger cannot tell us whether Squirrel's
+      // request is still live. ShipIt is armed at
+      // download-completion time (`electron-updater@6.8.4`
+      // `out/MacUpdater.js#doDownloadUpdate`), not here, and each of
+      // `failRelaunch`'s three triggers leaves a different possibility open:
+      // the watchdog fires on an app that then quits anyway, a
+      // `quitAndInstall()` throw means the app is not quitting at all, and an
+      // `error` event may be Squirrel reporting a swap that already ran and
+      // failed — or an unrelated error arriving while ShipIt is still pending
+      // (see `onError`, which says both).
+      //
+      // Keeping the arm is the conservative read of all three: releasing it can
+      // arm a SECOND ShipIt beside a live one, which is the bundle-losing race
+      // this guard exists to prevent. The price is bounded but not zero. Usually
+      // it is just the retry button, since `autoInstallOnAppQuit` installs the
+      // staged build at quit regardless; but if the swap had already failed then
+      // nothing installs at quit either, and this session takes no update at all
+      // until the next launch.
+      logger.warn(
+        stagedThisSession === null
+          ? 'relaunch-failed restore did not persist — no single-flight arm was held'
+          : 'relaunch-failed restore did not persist — keeping the single-flight arm (darwin: ShipIt may still be waiting)',
+        { version, kind, armedVersion: stagedThisSession },
+      );
     }
     broadcastToAllWindows('ok:update:relaunch-failed', {
       version,
@@ -1349,13 +1638,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       // reveal the stuck card underneath. Clear it instead.
       ...(restored ? {} : { dismissPending: true }),
     });
-    logger.warn('relaunch failed — restored pending install and re-armed windows', {
-      version,
-      kind,
-      message,
-      causeCode: cause?.code,
-      causeStack: cause?.stack,
-    });
+    logger.warn(
+      restored
+        ? 'relaunch failed — restored pending install and re-armed windows'
+        : 'relaunch failed — pending install NOT restored',
+      {
+        version,
+        kind,
+        message,
+        causeCode: cause?.code,
+        causeStack: cause?.stack,
+      },
+    );
     onDispatch?.(kind);
   };
 
@@ -1469,25 +1763,68 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // identical bytes. Every one of those re-stages is a window in which a
     // "Relaunch" click hits a half-written staging directory (see
     // `stagingInFlight`), so an hourly re-stage of a build we already hold is
-    // pure downside. A version CHANGE still re-downloads, and a download that
-    // failed left `versionPendingInstall` unset, so retries are unaffected.
+    // pure downside.
     //
-    // Both conditions are required. `stagedThisSession` is what makes the skip
+    // On macOS a version CHANGE is declined too, for a different and harder
+    // reason: Squirrel holds a pending install by LAUNCHING ShipIt, which then
+    // waits — with no timeout of its own — for this process to exit.
+    // Downloading again does not replace that request, it launches a SECOND
+    // ShipIt beside the first, and both wake in the same instant when the app
+    // finally quits. They then race the same swap: the loser moves aside the
+    // bundle the winner just installed, and if it cannot move it back the app
+    // is gone from /Applications with nothing left to launch. Nothing in
+    // Electron's autoUpdater API can withdraw an armed request, so declining
+    // the second download is the only lever available. The staged build still
+    // installs at quit and the newer one is picked up in the session after. The
+    // cost is not a one-version bound: on macOS nothing clears
+    // `stagedThisSession`, so every further offer this process sees is declined
+    // too, and a session long enough to span several releases installs the first
+    // build it staged and stays there until the next launch. (Off macOS
+    // `failRelaunch` releases it when it cannot restore the retry banner; see
+    // there for why that release stops at the macOS boundary.)
+    //
+    // Nowhere else has a request to collide with, so nowhere else pays that
+    // cost. On Windows a download only writes an installer to the cache and
+    // `BaseUpdater.addQuitHandler` is idempotent — it guards on
+    // `quitHandlerAdded`, and the handler it registers calls `install()`, which
+    // reads the most recent download — so the single quit handler runs
+    // whichever installer was downloaded LAST: a newer build replaces the
+    // pending one rather than racing it. On Linux `autoInstallOnAppQuit` is
+    // false (see its assignment), so `addQuitHandler` returns early and no quit
+    // handler is registered at all, leaving nothing pending between the
+    // download and an explicit relaunch click. Cited rather than asserted
+    // because this reading is what removes the guard on those platforms:
+    // `electron-updater@6.8.4` (exact-pinned in `packages/desktop/package.json`)
+    // `out/BaseUpdater.js#addQuitHandler` and `out/NsisUpdater.js#doDownloadUpdate`.
+    // The tests cannot catch a mistake here — they run against a stub of
+    // electron-updater, so they pin our gating, not its behaviour.
+    //
+    // `stagedThisSession` — not the persisted field — is what makes both skips
     // safe (see its declaration): the persisted field alone would also match on
     // the FIRST offer of a session that inherited a staged-but-uninstalled
     // build, and skipping there leaves electron-updater with no installer path
     // and no quit handler, so the update becomes uninstallable until a newer
-    // one ships.
-    if (
-      offeredVersion &&
-      stagedThisSession === offeredVersion &&
-      readState().versionPendingInstall === offeredVersion
-    ) {
-      logger.debug('update-available for the already-staged version — skipping re-download', {
-        version: offeredVersion,
-      });
+    // one ships. Keying on a COMPLETED stage likewise leaves a download that
+    // failed free to retry: nothing reached Squirrel, so there is no pending
+    // request to collide with.
+    const armedVersion = declinedForStagedVersion(offeredVersion);
+    if (armedVersion !== null) {
+      // `debug` for the hourly re-offer of bytes already held; `warn` for a
+      // suppressed newer build, because production's log floor is `info`, so a
+      // `debug` line never reaches `~/.ok/logs` and therefore never reaches a
+      // bug report. That decision suppresses a genuinely newer build for the
+      // rest of the process lifetime, which is exactly the question a "why am I
+      // not getting the update" report has to be able to answer.
+      const reOffer = armedVersion === offeredVersion;
+      const logFn = reOffer ? logger.debug : logger.warn;
+      logFn(
+        reOffer
+          ? 'update-available for the already-staged version — skipping re-download'
+          : 'update-available while an install is already armed — skipping re-download',
+        { version: offeredVersion, armedVersion },
+      );
       settleCheckWaiters('settled');
-      onDispatch?.('download-skipped-already-staged');
+      onDispatch?.(reOffer ? 'download-skipped-already-staged' : 'download-skipped-install-armed');
       return;
     }
     // Tag the artifact fetch with the version being installed. The Windows and
@@ -1547,6 +1884,23 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // remap in `onError`.
     if (classifyOffer(info.version) !== 'same-channel') {
       showCheckNowResult?.({ kind: 'not-available', currentVersion: getAppVersion() });
+      return;
+    }
+    // This listener fires for the same event as `onUpdateAvailable` and cannot
+    // see that it declined the offer, so it has to ask the same question that
+    // path asked, or it will advertise a download that is not happening. Report
+    // the build the session is actually holding: an offer declined by the
+    // single-flight guard is not what a relaunch installs, and saying otherwise
+    // sends the user round the same check forever waiting for a version that
+    // never arrives. The declined-because-already-staged case reaches here too
+    // — nothing is downloading there either.
+    const armedVersion = declinedForStagedVersion(info.version);
+    if (armedVersion !== null) {
+      showCheckNowResult?.({
+        kind: 'ready-to-install',
+        currentVersion: getAppVersion(),
+        stagedVersion: armedVersion,
+      });
       return;
     }
     showCheckNowResult?.({
@@ -1886,6 +2240,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
    * Never throws. Every failure and timeout falls through to installing
    * whatever is currently staged, because a stale install still beats a
    * refusal to relaunch.
+   *
+   * On macOS it can no longer resolve staleness once THIS session has staged a
+   * build: the single-flight guard in `onUpdateAvailable` declines the newer
+   * offer this check turns up, so the refresh confirms which version installs
+   * rather than changing it. That is the intended trade — a second armed ShipIt
+   * would be woken seconds later by this very click, which is the worst
+   * instance of the race the guard exists to prevent. The freshness resolution
+   * described above still applies on Windows and Linux, and on a macOS session
+   * that has not staged anything yet.
    */
   const refreshBeforeInstall = async (): Promise<void> => {
     // A stage already running is the dangerous case, and it is also the case
@@ -1938,8 +2301,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     // not model.
     const staging = currentStaging();
     if (result !== 'available' || !staging) {
-      // Either nothing newer exists, or the offer was vetoed or already
-      // staged. Both mean the staged build is the one to install.
+      // Either nothing newer exists, or the offer was vetoed, already staged,
+      // or declined by the single-flight guard. All of them mean the staged
+      // build is the one to install, which is what this kind reports — it says
+      // the refresh did not change the outcome, not that nothing newer exists.
+      // The cases stay separable downstream because each declining path emits
+      // its own kind in the same click: `download-skipped-install-armed` for
+      // the macOS single-flight, `download-skipped-already-staged` for a
+      // re-offer of the staged build, `cross-channel-blocked` for a veto. A
+      // lone `relaunch-refresh-up-to-date` is the genuinely-up-to-date case.
       onDispatch?.('relaunch-refresh-up-to-date');
       return;
     }
@@ -2142,10 +2512,14 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     broadcastToAllWindows('ok:update:relaunching', { version: pending });
     onDispatch?.('relaunching-broadcast');
     // Fire the pre-relaunch teardown hook BEFORE `quitAndInstall()`. Wrap
-    // in try/catch so a hook bug never blocks the user's relaunch — the
-    // worst case if the hook throws is the original failure mode (ShipIt's
-    // not-still-running validation aborts with code -9), which the user can recover from by
-    // quitting the app manually. We log the throw so the diagnostic is
+    // in try/catch so a hook bug never blocks the user's relaunch. The worst
+    // case if the hook throws is that the teardown it owns does not run:
+    // servers are not stopped and the async log buffer is not drained, so
+    // helper processes can outlive the swap and the tail of the log is lost.
+    // Not a blocked install — ShipIt's "App Still Running" abort keys on
+    // another process claiming THIS bundle URL, and a spawned server claims its
+    // own helper bundle, so it cannot trigger that (see `window-manager.ts`,
+    // which states the same constraint). We log the throw so the diagnostic is
     // visible in main process stderr.
     if (opts.prepareForRelaunch) {
       try {
@@ -2154,6 +2528,18 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         logger.warn('prepareForRelaunch threw — proceeding to quitAndInstall anyway', {
           err,
         });
+      }
+    }
+    if (opts.sweepUpdateSurvivors) {
+      try {
+        const result = opts.sweepUpdateSurvivors();
+        if (result && (result.scanFailed || result.revalidationFailed || result.failedCount > 0)) {
+          logger.warn('update survivor sweep incomplete — proceeding to quitAndInstall anyway', {
+            result,
+          });
+        }
+      } catch (err) {
+        logger.warn('update survivor sweep threw — proceeding to quitAndInstall anyway', { err });
       }
     }
     logger.info('relaunch-now invoked — calling autoUpdater.quitAndInstall', {
@@ -2529,9 +2915,9 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         // an installer and the only open question is its age.
         //
         // The predicate itself lives in `installMayStillBeRunning` so crash
-        // detection can ask the same question with the same bound; the locals
-        // above stay for the log lines, which report the inputs the verdict was
-        // reached from rather than the verdict alone.
+        // detection can ask its own span-shaped question against the same
+        // bound. The locals above stay for the log lines, which report the
+        // inputs the verdict was reached from rather than the verdict alone.
       } else if (state.attemptedInstallSurfacedCount >= INSTALL_FAILURE_MAX_SURFACES) {
         // Budget spent — drop `attemptedInstall` so a persistently-failing
         // ShipIt or an unreachable attempted version (a yanked release, a

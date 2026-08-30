@@ -16,6 +16,7 @@ import {
 } from '@/lib/keyboard-shortcuts';
 import { cn } from '@/lib/utils';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
+import { isOkDesktopHost } from './settings-host-gates';
 
 function ShortcutBindingChips({ binding }: { binding: ShortcutBinding }) {
   return formatShortcutBinding(binding)
@@ -39,6 +40,7 @@ function ShortcutBindingChips({ binding }: { binding: ShortcutBinding }) {
 
 export function HotkeysSection() {
   const { t } = useLingui();
+  const desktopHost = isOkDesktopHost();
   const titleId = 'settings-hotkeys-title';
   return (
     <section aria-labelledby={titleId} className="space-y-5" data-testid="settings-hotkeys">
@@ -48,7 +50,10 @@ export function HotkeysSection() {
 
       <div className="space-y-6" data-testid="settings-hotkeys-list">
         {SHORTCUT_CATEGORY_ORDER.map((category) => {
-          const shortcuts = KEYBOARD_SHORTCUTS.filter((shortcut) => shortcut.category === category);
+          const shortcuts = KEYBOARD_SHORTCUTS.filter(
+            (shortcut) =>
+              shortcut.category === category && (desktopHost || shortcut.desktopOnly !== true),
+          );
           if (shortcuts.length === 0) return null;
 
           return (

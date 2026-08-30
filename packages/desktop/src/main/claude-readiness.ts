@@ -24,6 +24,7 @@ import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import type { ClaudeReadiness, CliReadiness } from '../shared/bridge-contract.ts';
 import { interactiveShellArgs } from '../shared/terminal-shell.ts';
+import { windowsWherePathArgs } from '../shared/windows-env.ts';
 import { getLogger } from './desktop-logger.ts';
 
 export type ClaudeOnPath = ClaudeReadiness['claude'];
@@ -69,47 +70,63 @@ export interface ProbeTimers {
   clearTimer(token: unknown): void;
 }
 
+/** One platform's executable-lookup probe expressed against the injected
+ *  spawn/timer seams. `attrs` are the bounded-cardinality log fields that
+ *  identify the probe in an operator's log (fixed argv + registry values only —
+ *  never a raw user path or free-form string). */
+interface InjectedProbeSpec {
+  readonly spawn: ProbeSpawn;
+  readonly file: string;
+  readonly args: readonly string[];
+  readonly timers: ProbeTimers;
+  readonly timeoutMs: number;
+  readonly loggerName: string;
+  /** Names the probe in each degradation message ("<label> PATH probe ..."). */
+  readonly label: string;
+  readonly attrs: Record<string, unknown>;
+}
+
 /**
- * Run the interactive-shell `command -v claude` probe. Resolves the child's exit
- * code, or `null` when the probe could not produce a verdict — a synchronous
- * `spawn` throw (EMFILE/ENOMEM resource exhaustion), an async `'error'`
- * (ENOENT shell, EACCES), or a timeout (an interactive shell that hung). `null`
- * is deliberately distinct from a non-zero exit: a non-zero exit means
- * `command -v` ran and `claude` is genuinely absent, whereas `null` means the
- * probe itself failed and claude's presence is UNKNOWN — the caller must not
- * render a "not installed" message off an UNKNOWN.
+ * The one settle-once/timeout/observability engine every platform's PATH probe
+ * runs on. Resolves the child's exit code, or `null` when the probe could not
+ * produce a verdict — a synchronous `spawn` throw (EMFILE/ENOMEM resource
+ * exhaustion), an async `'error'` (ENOENT/EACCES on the probe binary), or a
+ * timeout (a lookup that hung). `null` is deliberately distinct from a non-zero
+ * exit: a non-zero exit means the lookup RAN and the binary is genuinely
+ * absent, whereas `null` means the probe itself failed and the binary's
+ * presence is UNKNOWN — the caller must not render a "not installed" message
+ * off an UNKNOWN.
  *
- * Every `null` resolution logs at warn: this probe gates launch baking and the
+ * Every `null` resolution logs at warn: these probes gate launch baking and the
  * installed-map row gating, and a silent degradation makes a field report of
  * "isn't installed" undiagnosable (genuine PATH loss and a probe flake would
  * otherwise leave identical artifacts).
+ *
+ * The timeout is unconditional, so a wedged lookup binary settles the promise
+ * instead of leaving the readiness IPC awaiting forever.
  */
-export function runLoginShellProbe(
-  spawn: ProbeSpawn,
-  shell: string,
-  timers: ProbeTimers,
-  timeoutMs: number = PROBE_TIMEOUT_MS,
-  args: readonly string[] = CLAUDE_PROBE_ARGS,
-): Promise<number | null> {
+function runInjectedProbe(spec: InjectedProbeSpec): Promise<number | null> {
+  const { spawn, file, args, timers, timeoutMs, loggerName, label, attrs } = spec;
   return new Promise<number | null>((resolve) => {
     let child: ProbeChild;
     try {
-      child = spawn(shell, args);
+      // biome-ignore lint/plugin/require-windowshide-on-spawn: injected probe seam; the production child_process adapter owns its spawn options
+      child = spawn(file, args);
     } catch (err) {
       // partial-failure boundary: spawn can throw synchronously on resource
-      // exhaustion. Claude presence is UNKNOWN, not absent.
-      getLogger('interactive-shell-probe').warn(
-        { shell, args, err },
-        'interactive-shell PATH probe spawn threw; presence unknown',
+      // exhaustion. Presence is UNKNOWN, not absent.
+      getLogger(loggerName).warn(
+        { ...attrs, err },
+        `${label} PATH probe spawn threw; presence unknown`,
       );
       resolve(null);
       return;
     }
     let settled = false;
     const timer = timers.setTimer(() => {
-      getLogger('interactive-shell-probe').warn(
-        { shell, args, timeoutMs },
-        'interactive-shell PATH probe timed out; presence unknown',
+      getLogger(loggerName).warn(
+        { ...attrs, timeoutMs },
+        `${label} PATH probe timed out; presence unknown`,
       );
       child.kill();
       finish(null);
@@ -122,14 +139,58 @@ export function runLoginShellProbe(
     }
     child.onError((err) => {
       if (!settled) {
-        getLogger('interactive-shell-probe').warn(
-          { shell, args, err },
-          'interactive-shell PATH probe failed to run; presence unknown',
+        getLogger(loggerName).warn(
+          { ...attrs, err },
+          `${label} PATH probe failed to run; presence unknown`,
         );
       }
       finish(null);
     });
     child.onExit((code) => finish(code));
+  });
+}
+
+/**
+ * Run the interactive-shell `command -v claude` probe. Tri-state per
+ * {@link runInjectedProbe}: exit code, or `null` for UNKNOWN.
+ */
+export function runLoginShellProbe(
+  spawn: ProbeSpawn,
+  shell: string,
+  timers: ProbeTimers,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+  args: readonly string[] = CLAUDE_PROBE_ARGS,
+): Promise<number | null> {
+  return runInjectedProbe({
+    spawn,
+    file: shell,
+    args,
+    timers,
+    timeoutMs,
+    loggerName: 'interactive-shell-probe',
+    label: 'interactive-shell',
+    attrs: { shell, args },
+  });
+}
+
+/** Windows `where.exe` counterpart to {@link runLoginShellProbe}. */
+export function runWindowsPathProbe(
+  spawn: ProbeSpawn,
+  whereExe: string,
+  bin: string,
+  timers: ProbeTimers,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
+): Promise<number | null> {
+  const args = windowsWherePathArgs(bin);
+  return runInjectedProbe({
+    spawn,
+    file: whereExe,
+    args,
+    timers,
+    timeoutMs,
+    loggerName: 'windows-path-probe',
+    label: 'where.exe',
+    attrs: { whereExe, bin, args },
   });
 }
 
@@ -204,8 +265,7 @@ export async function resolveClaudeReadiness(
 }
 
 export interface ResolveCliOnPathDeps {
-  /** Runs the interactive-shell PATH probe for the CLI's binary; resolves the exit
-   *  code or `null` (probe failed → UNKNOWN). */
+  /** Tri-state PATH probe per {@link runInjectedProbe}. */
   probe(): Promise<number | null>;
   /** Codex-only: whether OK's MCP server is already configured in the user's
    *  codex config (gates the per-launch `-c` auto-approve override). Synchronous;
@@ -215,14 +275,7 @@ export interface ResolveCliOnPathDeps {
   okServerConfigured?(): boolean;
 }
 
-/**
- * Generic on-PATH readiness for a non-Claude agent CLI (codex / cursor-agent).
- * Unlike {@link resolveClaudeReadiness} there is no MCP-wiring concept — these
- * CLIs ground via the OK MCP server configured in their own way — so the result
- * is purely the on-PATH verdict. Reuses {@link interpretClaudeProbe}: `null`
- * (probe failed) → `unknown`, so the caller never renders a false "not
- * installed" off a flaky probe.
- */
+/** Generic on-PATH readiness for a non-Claude agent CLI. */
 export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliReadiness> {
   const code = await deps.probe().catch((err) => {
     getLogger('cli-readiness').warn(
@@ -246,23 +299,11 @@ export async function resolveCliOnPath(deps: ResolveCliOnPathDeps): Promise<CliR
 }
 
 export interface ResolveCliInstalledMapDeps {
-  /** Login-shell PATH probe for a CLI's registry binary; resolves the exit code
-   *  or `null` (probe failed → UNKNOWN, that entry is omitted from the map). */
+  /** Tri-state PATH probe per {@link runInjectedProbe}. */
   probe(cli: TerminalCli): Promise<number | null>;
 }
 
-/**
- * Batched on-PATH readiness for every launchable CLI as an installed map:
- * `present` ⇒ `true`, `not-found` ⇒ `false`, and `unknown` ⇒ the entry is
- * OMITTED — an absent key means the probe could not verify either way, and
- * consumers must not read it as absence (row gating fails open on `undefined`;
- * auto-pick requires `=== true`, so an unverifiable CLI is still never a safe
- * auto-pick and the resolver's final fallback stays claude). This is the "which
- * CLIs can I launch?" answer the New-chat default-CLI auto-pick needs — one
- * query instead of a per-CLI {@link resolveCliOnPath} preflight fan-out. Each
- * entry still routes through {@link resolveCliOnPath}, so a flaky or rejected
- * probe degrades that one entry without crashing the batch.
- */
+/** Batched CLI readiness; unknown probes are omitted from the installed map. */
 export async function resolveCliInstalledMap(
   deps: ResolveCliInstalledMapDeps,
 ): Promise<Partial<Record<TerminalCli, boolean>>> {
@@ -282,7 +323,18 @@ export async function resolveCliInstalledMap(
 export interface ResolvePlatformCliInstalledMapDeps {
   readonly platform: NodeJS.Platform;
   readonly probePosix: (args: readonly string[]) => Promise<number | null>;
-  readonly probeWindows: (bin: string) => Promise<boolean>;
+  /** Windows tri-state executable lookup for one binary. */
+  readonly probeWindows: (bin: string) => Promise<number | null>;
+}
+
+export interface ProbePlatformCliOnPathDeps extends ResolvePlatformCliInstalledMapDeps {
+  readonly bin: string;
+}
+
+/** Probe one registered CLI with the host platform's executable lookup. */
+export function probePlatformCliOnPath(deps: ProbePlatformCliOnPathDeps): Promise<number | null> {
+  if (deps.platform === 'win32') return deps.probeWindows(deps.bin);
+  return deps.probePosix(cliProbeArgs(deps.bin, deps.platform));
 }
 
 /**
@@ -296,8 +348,7 @@ export function resolvePlatformCliInstalledMap(
   return resolveCliInstalledMap({
     probe: async (cli) => {
       const bin = TERMINAL_CLIS[cli].bin;
-      if (deps.platform === 'win32') return (await deps.probeWindows(bin)) ? 0 : 127;
-      return deps.probePosix(cliProbeArgs(bin, deps.platform));
+      return probePlatformCliOnPath({ ...deps, bin });
     },
   });
 }

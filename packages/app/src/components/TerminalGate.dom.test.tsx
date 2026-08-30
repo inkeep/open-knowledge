@@ -11,7 +11,7 @@
  */
 
 import { act, cleanup, render, screen } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
@@ -45,6 +45,9 @@ vi.doMock('@/hooks/use-terminal-enabled', () => ({
 
 // biome-ignore lint/suspicious/noExplicitAny: captured mock-component props, asserted structurally
 let lastPanelProps: Record<string, any> | null = null;
+let panelRenders = 0;
+let panelMounts = 0;
+let panelUnmounts = 0;
 // Named so the Suspense-fallback test below — which calls vi.resetModules() and
 // registers its own deferred ./TerminalPanel stub to get a fresh module graph —
 // can put the file-level stub back afterward. Without that restore the registry
@@ -54,7 +57,14 @@ let lastPanelProps: Record<string, any> | null = null;
 const mockPanelModule = () => ({
   // biome-ignore lint/suspicious/noExplicitAny: test stub
   TerminalPanel: (props: any) => {
+    panelRenders += 1;
     lastPanelProps = props;
+    useEffect(() => {
+      panelMounts += 1;
+      return () => {
+        panelUnmounts += 1;
+      };
+    }, []);
     return <span data-testid="terminal-panel" />;
   },
 });
@@ -72,6 +82,20 @@ function notice() {
   return screen.queryByRole('region', { name: 'Terminal disabled' });
 }
 
+async function resolvePanelPayloadForSyncAssertion() {
+  // The Suspense fallback and the pre-sync branch show the same notice. Resolve
+  // the lazy payload first so a wrongly opened gate cannot hide behind fallback
+  // DOM, and so a suspended pass is not lost when a render count is asserted.
+  // Returns with consentState open and synced; callers must re-seed it.
+  consentState = { enabled: true, synced: true };
+  const warmup = renderGate();
+  await screen.findByTestId('terminal-panel');
+  warmup.unmount();
+  panelRenders = 0;
+  panelMounts = 0;
+  panelUnmounts = 0;
+}
+
 describe('TerminalGate', () => {
   beforeEach(() => {
     consentState = { enabled: null, synced: true };
@@ -82,6 +106,9 @@ describe('TerminalGate', () => {
     writerCalls.length = 0;
     toastErrors.length = 0;
     lastPanelProps = null;
+    panelRenders = 0;
+    panelMounts = 0;
+    panelUnmounts = 0;
   });
   afterEach(() => {
     cleanup();
@@ -149,7 +176,8 @@ describe('TerminalGate', () => {
     expect(screen.queryByTestId('terminal-panel')).toBeNull();
   });
 
-  test('does not flash the shell before the binding syncs (cold start)', () => {
+  test('does not flash the shell before the binding syncs (cold start)', async () => {
+    await resolvePanelPayloadForSyncAssertion();
     // Pre-sync the leaf reads as the cold-start null; mounting now would spawn a
     // PTY the main backstop refuses if the project turns out to be opted out.
     consentState = { enabled: null, synced: false };
@@ -158,7 +186,75 @@ describe('TerminalGate', () => {
     expect(notice()).toBeNull();
   });
 
-  test('announces that the terminal is starting while the binding syncs (PRD-8313)', () => {
+  test('mounts directly when the first project-local consent sync completes', async () => {
+    await resolvePanelPayloadForSyncAssertion();
+
+    consentState = { enabled: null, synced: false };
+    const view = renderGate();
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+
+    const rendersBeforeSync = panelRenders;
+    consentState = { enabled: true, synced: true };
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
+    // The live binding opens the gate in the transition's first pass; the
+    // settled-consent update produces the second render without remounting.
+    expect(panelRenders).toBe(rendersBeforeSync + 2);
+    expect(panelMounts).toBe(1);
+  });
+
+  test('keeps a mounted terminal alive through a transient config epoch rebuild', async () => {
+    consentState = { enabled: true, synced: true };
+    const view = renderGate();
+    expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
+    expect(panelMounts).toBe(1);
+
+    consentState = { enabled: null, synced: false };
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    expect(screen.getByTestId('terminal-panel')).toBeTruthy();
+    expect(panelMounts).toBe(1);
+    expect(panelUnmounts).toBe(0);
+
+    consentState = { enabled: true, synced: true };
+    view.rerender(<TerminalGate bridge={bridge} />);
+    expect(screen.getByTestId('terminal-panel')).toBeTruthy();
+    expect(panelMounts).toBe(1);
+    expect(panelUnmounts).toBe(0);
+  });
+
+  test('retains an explicit opt-out through a transient config epoch rebuild', () => {
+    consentState = { enabled: false, synced: true };
+    const view = renderGate();
+    expect(screen.getByRole('region', { name: 'Terminal disabled' })).toBeTruthy();
+
+    consentState = { enabled: null, synced: false };
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    expect(screen.getByRole('region', { name: 'Terminal disabled' })).toBeTruthy();
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+    expect(panelMounts).toBe(0);
+  });
+
+  test('an explicit synced revoke still unmounts a running terminal', async () => {
+    consentState = { enabled: true, synced: true };
+    const view = renderGate();
+    expect(await screen.findByTestId('terminal-panel')).toBeTruthy();
+    const rendersBeforeRevoke = panelRenders;
+
+    consentState = { enabled: false, synced: true };
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    expect(screen.getByRole('region', { name: 'Terminal disabled' })).toBeTruthy();
+    expect(screen.queryByTestId('terminal-panel')).toBeNull();
+    expect(panelRenders).toBe(rendersBeforeRevoke);
+    expect(panelMounts).toBe(1);
+    expect(panelUnmounts).toBe(1);
+  });
+
+  test('announces that the terminal is starting while the binding syncs (PRD-8313)', async () => {
+    await resolvePanelPayloadForSyncAssertion();
     // Holding the mount is right; rendering nothing while we hold it is not. A
     // featureless pane is indistinguishable from "the keystroke did nothing", so
     // a user whose cold start runs long re-invokes and stacks up tabs. The pane

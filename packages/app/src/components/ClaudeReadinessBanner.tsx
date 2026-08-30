@@ -19,10 +19,10 @@
  * it never covers the shell prompt or first output in the degraded states.
  */
 import { useLingui } from '@lingui/react/macro';
-import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { ClaudeReadiness, OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 
 /** Claude Code docs landing — install + setup instructions live here. */
 const CLAUDE_CODE_DOCS_URL = 'https://docs.claude.com/en/docs/claude-code';
@@ -85,28 +85,20 @@ export function ClaudeReadinessBanner({
   }
 
   return (
-    <div
-      role="status"
+    <TerminalNoticeBanner
       // Stable test seam: the editor page carries several app-wide role="status"
       // nodes (SelectionAnnouncer, ConnectingBanner), so smoke tests scope to this
       // attribute instead of an ambiguous getByRole('status'). Mirrors the
       // [data-terminal-status] / settings-terminal-toggle data-testid convention.
-      data-testid="terminal-readiness-banner"
-      className="flex shrink-0 items-center gap-3 border-border border-b bg-muted px-3 py-2 text-foreground text-xs"
+      testId="terminal-readiness-banner"
+      onDismiss={onDismiss}
+      action={
+        <Button size="sm" variant="secondary" className="shrink-0" onClick={handleAction}>
+          {actionLabel}
+        </Button>
+      }
     >
-      <p className="min-w-0 flex-1">{message}</p>
-      <Button size="sm" variant="secondary" className="shrink-0" onClick={handleAction}>
-        {actionLabel}
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={t`Dismiss`}
-        className="size-6 shrink-0"
-        onClick={onDismiss}
-      >
-        <X aria-hidden="true" className="size-4" />
-      </Button>
-    </div>
+      {message}
+    </TerminalNoticeBanner>
   );
 }

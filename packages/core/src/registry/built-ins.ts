@@ -1038,6 +1038,26 @@ const pdfProps: PropDef[] = [
   },
 ];
 
+const excalidrawProps: PropDef[] = [
+  {
+    // No `defaultValue`: the board reference arrives through the gear
+    // nudge / prop panel, not an upload modal, so key-absence must stay
+    // the "not yet configured" predicate.
+    name: 'src',
+    type: 'string',
+    required: true,
+    description: 'Path to the `.excalidraw` board this embed renders',
+    autoFocus: true,
+  },
+  {
+    name: 'title',
+    type: 'string',
+    required: false,
+    advanced: true,
+    description: 'Accessible label for the embedded board',
+  },
+];
+
 // ── Mirror + MirrorSource ────────────────────────────────────────────────────
 //
 // Master/copy transclusion. A `<MirrorSource id="…">…</MirrorSource>` block
@@ -1246,6 +1266,25 @@ export const builtInComponents: JsxComponentMeta[] = [
     serialize: (node, ctx) => emitMdxJsx('Pdf', node, ctx, pdfProps),
   },
   {
+    // Excalidraw canonical — embeds a `.excalidraw` board BY REFERENCE.
+    // The scene stays in its own doc: board JSON is bulk machine-generated
+    // bytes (easily hundreds of KB with embedded images), so a fence that
+    // inlined it — the mermaid shape — would bloat the source pane and
+    // churn the bridge on every stroke. The embed renders a static
+    // snapshot; the board's own doc remains the sole edit surface.
+    name: 'Excalidraw',
+    surface: 'canonical',
+    hasChildren: false,
+    isSelfClosing: true,
+    props: excalidrawProps,
+    icon: 'PenTool',
+    category: 'embed',
+    displayName: 'Excalidraw',
+    description: 'Embedded snapshot of an `.excalidraw` board, linking to its canvas editor',
+    searchTerms: ['excalidraw', 'board', 'whiteboard', 'sketch', 'drawing', 'canvas'],
+    serialize: (node, ctx) => emitMdxJsx('Excalidraw', node, ctx, excalidrawProps),
+  },
+  {
     // File canonical — generic file attachment for arbitrary types
     // (.zip, .docx, .pptx, .xlsx, .pdf, …). Renders as a Notion-style
     // inline row — file-up icon + bold filename + optional dim size —
@@ -1280,7 +1319,9 @@ export const builtInComponents: JsxComponentMeta[] = [
     isSelfClosing: true,
     props: embedProps,
     icon: 'AppWindow',
-    category: 'media',
+    // 'embed' = external-or-by-reference surfaces (Embed, Excalidraw);
+    // 'media' = uploaded/asset-backed content (img, video, audio, Pdf, File).
+    category: 'embed',
     displayName: 'Embed',
     description:
       'Inline web embed (iframe) — drop a URL, get a resizable preview pane. For YouTube / Vimeo / Loom prefer `<video src="…">` (player props, click-facade); `<Embed>` auto-rewrites watch URLs as a fallback.',

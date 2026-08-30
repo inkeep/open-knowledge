@@ -101,7 +101,7 @@ export async function registerAppImageDeepLinks(
   const execFileFn =
     deps.execFileImpl ??
     ((cmd: string, args: string[], cb: (err: Error | null) => void) => {
-      execFile(cmd, args, { timeout: 5_000 }, (err) => cb(err));
+      execFile(cmd, args, { timeout: 5_000, windowsHide: true }, (err) => cb(err));
     });
 
   try {

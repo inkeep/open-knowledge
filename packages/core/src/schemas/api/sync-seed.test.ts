@@ -210,6 +210,22 @@ describe('SyncStatusSchema', () => {
       SyncStatusSchema.safeParse({ ...validStatus, lastPullOutcome: 'error-class' }).success,
     ).toBe(false);
   });
+  test('accepts a populated consecutivePushFailures', () => {
+    expect(SyncStatusSchema.safeParse({ ...validStatus, consecutivePushFailures: 6 }).success).toBe(
+      true,
+    );
+  });
+  test('consecutivePushFailures is additive: a status without it still parses', () => {
+    // Optional for version-skew safety — a payload from an engine predating the
+    // split-leg backoff must not fail validation on a newer client.
+    expect('consecutivePushFailures' in validStatus).toBe(false);
+    expect(SyncStatusSchema.safeParse(validStatus).success).toBe(true);
+  });
+  test('rejects a negative consecutivePushFailures', () => {
+    expect(
+      SyncStatusSchema.safeParse({ ...validStatus, consecutivePushFailures: -1 }).success,
+    ).toBe(false);
+  });
 });
 
 describe('PushPermissionSchema', () => {

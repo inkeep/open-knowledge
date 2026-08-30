@@ -40,7 +40,11 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import type { SpawnDetachedScrubbedOutcome } from '../utils/detached-spawn.ts';
-import { openTargetFailureMessage, openTarget as openTargetReal } from '../utils/open-target.ts';
+import {
+  type OpenTargetOptions,
+  openTargetFailureMessage,
+  openTarget as openTargetReal,
+} from '../utils/open-target.ts';
 import { createRealDetectDeps, type DetectResult, detectDesktop } from './desktop-dispatch.ts';
 
 export interface OpenOptions {
@@ -67,8 +71,15 @@ export interface OpenDeps {
    * This is what lets `ok open <name>` route correctly without `--folder`.
    */
   classifyName: (projectDir: string, name: string) => 'doc' | 'folder';
-  /** Hand a URL or `openknowledge://` deep link to the OS to open. */
-  openTarget: (target: string) => Promise<SpawnDetachedScrubbedOutcome>;
+  /**
+   * Hand a URL or `openknowledge://` deep link to the OS to open.
+   * `desktopBundlePath` should be the same value `detectBundlePath()` just
+   * returned for this call — see `open-target.ts`'s `desktopBundlePath`.
+   */
+  openTarget: (
+    target: string,
+    options?: Pick<OpenTargetOptions, 'desktopBundlePath'>,
+  ) => Promise<SpawnDetachedScrubbedOutcome>;
   /**
    * Nearest project root STRICTLY above `projectDir`, or null. Drives the
    * nested-project disclosure — a resolved root that sits inside another
@@ -159,6 +170,11 @@ function noTargetError(deps: OpenDeps): number {
  * whether the directory is a project root, and calling it a "project" when it
  * is only a cwd fallback is the same class of confidently-wrong output this
  * surface exists to prevent.
+ *
+ * `desktopBundlePath` is the verified bundle path when `target` is a desktop
+ * deep link (omitted for a browser-fallback URL, where it has no effect) —
+ * threaded through so darwin dispatch can name the bundle directly instead of
+ * resolving the scheme (see `open-target.ts`).
  */
 async function openAndReport(
   target: string,
@@ -166,8 +182,9 @@ async function openAndReport(
   projectDir: string,
   isProject: boolean,
   deps: OpenDeps,
+  desktopBundlePath?: string,
 ): Promise<number> {
-  const outcome = await deps.openTarget(target);
+  const outcome = await deps.openTarget(target, desktopBundlePath ? { desktopBundlePath } : {});
   if (!outcome.ok) {
     deps.error(`Could not open ${target}: ${openTargetFailureMessage(outcome.reason, target)}.`);
     return 1;
@@ -266,6 +283,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
         projectDir,
         isProject,
         deps,
+        bundlePath,
       );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
@@ -297,6 +315,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
         projectDir,
         isProject,
         deps,
+        bundlePath,
       );
     }
     const baseUrl = deps.resolveBaseUrl(projectDir);
@@ -324,6 +343,7 @@ export async function runOpen(name: string, options: OpenOptions, deps: OpenDeps
       projectDir,
       isProject,
       deps,
+      bundlePath,
     );
   }
   const baseUrl = deps.resolveBaseUrl(projectDir);

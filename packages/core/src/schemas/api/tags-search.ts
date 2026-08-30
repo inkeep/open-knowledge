@@ -550,6 +550,10 @@ export const SkillsListEntrySchema = z
      *  silently no-ops (e.g. Copilot with no `~/.copilot`), which flashed a
      * checkmark then reverted. Absent → the menu offers all. */
     installableEditors: z.array(z.string()).optional(),
+    hubOffered: z.boolean().optional().meta({
+      description:
+        'Whether the vendor-neutral `.agents/skills` hub is a live destination at this scope on THIS machine — server-computed via the same predicate that filters the Folders surface, so the install menu and Settings cannot disagree. True when the project already uses the hub OR a host that reads it is installed (`HUB_READER_EDITORS`).',
+    }),
     /** Per-skill install-mode preference: editor fan-out uses symlinks to the
      *  canonical instead of copies. Machine-local. */
     linkMode: z.boolean().optional(),

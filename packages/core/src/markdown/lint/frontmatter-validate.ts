@@ -194,6 +194,16 @@ function parseFrontmatterData(text: string): {
   return { data: data as Record<string, unknown>, keyLines };
 }
 
+const FORMAT_HINTS: Record<string, string> = {
+  'date-time':
+    'an ISO 8601 datetime with an explicit UTC offset, for example "2026-09-23T00:00:00Z"',
+};
+
+function formatHint(params: unknown): string | undefined {
+  const name = (params as { format?: unknown }).format;
+  return typeof name === 'string' ? FORMAT_HINTS[name] : undefined;
+}
+
 function describeActual(value: unknown): string {
   if (value === undefined) return '';
   let rendered: string;
@@ -267,10 +277,13 @@ export function validateFrontmatterSource(
           line = keyLines.get(anchorKey) ?? 0;
         }
         const path = pointerToDotPath(error.instancePath);
+        const actual = anchorKey !== null && path === anchorKey ? data[anchorKey] : undefined;
         if (keyword === 'enum') {
           const allowed = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
-          const actual = anchorKey !== null && path === anchorKey ? data[anchorKey] : undefined;
           message = `Frontmatter property "${path}" must be one of: ${allowed.map(String).join(', ')}${describeActual(actual)}`;
+        } else if (keyword === 'format' && formatHint(error.params) !== undefined) {
+          const name = (error.params as { format?: unknown }).format;
+          message = `Frontmatter property "${path}" must be ${formatHint(error.params)} (format "${String(name)}")${describeActual(actual)}`;
         } else {
           message = `Frontmatter property "${path}" ${error.message ?? `violates "${keyword}"`}`;
         }

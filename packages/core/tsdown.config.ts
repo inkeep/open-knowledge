@@ -12,6 +12,7 @@ export default defineConfig({
     'acp-thread-protocol': 'src/acp/thread-protocol.ts',
     'acp-agent-posture': 'src/acp/agent-posture.ts',
     'acp-permissive-mode': 'src/acp/permissive-mode.ts',
+    'acp-codex-legacy-notice': 'src/acp/codex-legacy-notice.ts',
     'desktop-bridge': 'src/desktop-bridge.ts',
   },
   unbundle: false,

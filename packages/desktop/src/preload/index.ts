@@ -52,12 +52,15 @@ import type {
   OkLocalOpStream,
   OkMcpWiringShowPayload,
   OkMenuAction,
+  OkMenuActionDispatch,
+  OkMenuActionOrigin,
   OkMenuDispatchRequest,
   OkNoteWindowMainAction,
   OkNoteWindowMainActionResult,
   OkOnboardingShowPayload,
   OkPtyData,
   OkPtyExit,
+  OkPtyNotice,
   OkRecentRemovedMissingInfo,
   OkServerRestartedInfo,
   OkServerVersionDriftInfo,
@@ -82,7 +85,6 @@ import type {
 } from '../shared/ipc-channels.ts';
 import { createInvoker } from '../shared/ipc-invoke.ts';
 import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
-import { isTerminalPlatform } from '../shared/terminal-platform.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
@@ -277,10 +279,10 @@ function readConfigFromArgv(): OkDesktopConfig {
   // when OTel is enabled in main; the renderer extracts it to parent its startup
   // span into the launch trace. Absent → renderer skips the startup span.
   const startupTraceparent = parseArg('startup-traceparent');
-  // Terminal-dock PTY capability. Platform is the whole signal: a supported
-  // install with a broken node-pty still surfaces the existing
-  // spawn-error UX, which is the correct diagnostic there.
-  const ptyAvailable = isTerminalPlatform(process.platform);
+  // Main owns the host capability decision and injects it per window. Keeping
+  // the Windows build-floor check out of this sandboxed preload also prevents
+  // an unavailable node:os import from taking down the entire bridge.
+  const ptyAvailable = parseArg('pty-available') === '1';
   return Object.freeze({
     collabUrl,
     apiOrigin,
@@ -411,7 +413,7 @@ const MENU_ACTION_BUFFER_POLICY: Record<OkMenuAction, MenuActionBufferPolicy> = 
   'send-feedback': 'additive',
 };
 
-const menuActionListeners = new Set<(action: OkMenuAction) => void>();
+const menuActionListeners = new Set<(action: OkMenuAction, origin: OkMenuActionOrigin) => void>();
 /**
  * Fan one action out, isolating subscriber faults. A throwing listener must not
  * starve the ones after it, and in the replay path it must not take the rest of
@@ -419,35 +421,43 @@ const menuActionListeners = new Set<(action: OkMenuAction) => void>();
  * escaping throw would silently discard intents the buffer promised to deliver.
  * Same contract the renderer-side bus keeps for its own subscribers.
  */
-function deliverMenuAction(action: OkMenuAction): void {
+function deliverMenuAction(dispatch: OkMenuActionDispatch): void {
   for (const listener of menuActionListeners) {
     try {
-      listener(action);
+      listener(dispatch.action, dispatch.origin);
     } catch (err) {
       console.error('[preload:menu-action] listener threw during dispatch:', err);
     }
   }
 }
 
-const bufferedMenuActions: OkMenuAction[] = [];
+// Whole dispatches, not bare actions: a buffered action replayed without its
+// origin would arrive looking launcher-free, and the one subscriber that reads
+// the origin decides whether to screenshot the launcher that is still on screen.
+const bufferedMenuActions: OkMenuActionDispatch[] = [];
 
 // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
-ipcRenderer.on('ok:menu-action', (_event, action: OkMenuAction) => {
+ipcRenderer.on('ok:menu-action', (_event, dispatch: OkMenuActionDispatch) => {
   if (menuActionListeners.size > 0) {
-    deliverMenuAction(action);
+    deliverMenuAction(dispatch);
     return;
   }
-  const policy = MENU_ACTION_BUFFER_POLICY[action];
+  const policy = MENU_ACTION_BUFFER_POLICY[dispatch.action];
   if (policy === 'never-buffer') {
     // The one drop worth a trace: a user who pressed it saw nothing happen and
     // may well report that. The parity collapse below is the designed common
     // path and would log on every repeated keypress, so it stays quiet.
-    console.debug('[preload:menu-action] destructive action dropped, nothing listening:', action);
+    console.debug(
+      '[preload:menu-action] destructive action dropped, nothing listening:',
+      dispatch.action,
+    );
     return;
   }
-  if (policy === 'parity' && bufferedMenuActions.at(-1) === action) return;
+  // Collapse on the action alone. A repeat is the same intent restated, so the
+  // queued dispatch — origin included — is the one that stands.
+  if (policy === 'parity' && bufferedMenuActions.at(-1)?.action === dispatch.action) return;
   if (bufferedMenuActions.length >= MAX_BUFFERED_MENU_ACTIONS) bufferedMenuActions.shift();
-  bufferedMenuActions.push(action);
+  bufferedMenuActions.push(dispatch);
 });
 
 const bridge: OkDesktopBridge = {
@@ -462,7 +472,7 @@ const bridge: OkDesktopBridge = {
     return () => ipcRenderer.removeListener('ok:project:switched', listener);
   },
 
-  onMenuAction(cb: (action: OkMenuAction) => void) {
+  onMenuAction(cb: (action: OkMenuAction, origin: OkMenuActionOrigin) => void) {
     // The `ipcRenderer.on` for this channel is permanent and lives at module
     // scope (see the buffering block above), so subscribing is set membership.
     const wasUnlistened = menuActionListeners.size === 0;
@@ -482,7 +492,7 @@ const bridge: OkDesktopBridge = {
           bufferedMenuActions.unshift(...replay);
           return;
         }
-        for (const action of replay) deliverMenuAction(action);
+        for (const dispatch of replay) deliverMenuAction(dispatch);
       });
     }
     return () => {
@@ -683,8 +693,8 @@ const bridge: OkDesktopBridge = {
   },
 
   sharing: {
-    // The three-method surface (status / setMode / setSkillsShared) maps onto a
-    // single discriminated channel (`ok:sharing:dispatch`) so the codebase's
+    // The two-method surface (status / setMode) maps onto a single
+    // discriminated channel (`ok:sharing:dispatch`) so the codebase's
     // hand-rolled-channel cap is respected. Each method narrows the result type
     // via the typed-IPC layer.
     status: async () => {
@@ -698,13 +708,6 @@ const bridge: OkDesktopBridge = {
       const result = await invoke('ok:sharing:dispatch', { kind: 'set-mode', mode });
       if (result.kind === 'status') {
         throw new Error('ok:sharing:dispatch: expected set-mode result, got status');
-      }
-      return result;
-    },
-    setSkillsShared: async (shared: boolean) => {
-      const result = await invoke('ok:sharing:dispatch', { kind: 'set-skills-shared', shared });
-      if (result.kind === 'status') {
-        throw new Error('ok:sharing:dispatch: expected set-skills-shared result, got status');
       }
       return result;
     },
@@ -1085,6 +1088,12 @@ const bridge: OkDesktopBridge = {
       // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
       ipcRenderer.on('ok:pty:exit', listener);
       return () => ipcRenderer.removeListener('ok:pty:exit', listener);
+    },
+    onNotice(cb) {
+      const listener = (_event: IpcRendererEvent, msg: OkPtyNotice) => cb(msg);
+      // biome-ignore lint/plugin/no-loosely-typed-webcontents-ipc: preload-side subscription wrapper (precedent #14)
+      ipcRenderer.on('ok:pty:notice', listener);
+      return () => ipcRenderer.removeListener('ok:pty:notice', listener);
     },
     claudePreflight: () => invoke('ok:terminal:claude-assist', { action: 'preflight' }),
     cliPreflight: (cli) => invoke('ok:terminal:cli-preflight', { cli }),

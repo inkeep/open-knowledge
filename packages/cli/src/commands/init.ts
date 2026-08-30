@@ -647,8 +647,7 @@ async function promptSharingMode(
   defaultMode: 'shared' | 'local-only',
 ): Promise<'shared' | 'local-only'> {
   return select<'shared' | 'local-only'>({
-    message:
-      'How do you want to handle OpenKnowledge config files (.ok/, .mcp.json, project skills)?',
+    message: 'How do you want to handle OpenKnowledge config files (.ok/, .mcp.json)?',
     default: defaultMode,
     choices: [
       {
@@ -986,7 +985,7 @@ export type SharingOutcome =
   | {
       kind: 'applied';
       mode: SharingMode;
-      action: 'added' | 'removed' | 'noop';
+      action: 'added' | 'removed' | 'cleaned' | 'noop';
       appended: string[];
       alreadyPresent: string[];
       removed: string[];
@@ -2160,10 +2159,14 @@ function summarizeApplied(
     return {
       kind: 'applied',
       mode,
-      action: result.appended.length > 0 ? 'added' : 'noop',
+      // A pass can now rewrite the exclude file without appending anything:
+      // the add path drains stale skill lines an older build wrote. Forwarding
+      // `removed` (and distinguishing `cleaned` from `noop`) is what keeps the
+      // summary from reporting "nothing to do" on an invocation that wrote.
+      action: result.appended.length > 0 ? 'added' : result.removed.length > 0 ? 'cleaned' : 'noop',
       appended: result.appended,
       alreadyPresent: result.alreadyPresent,
-      removed: [],
+      removed: result.removed,
     };
   }
   return {
@@ -2804,6 +2807,23 @@ export function formatSharingOutcome(outcome: SharingOutcome, cwd: string): stri
         if (outcome.action === 'added') {
           lines.push(
             `  ${success('local-only')} — appended ${outcome.appended.length} path(s) to ${accent(`${cwd}/.git/info/exclude`)} (per-clone, not committed).`,
+          );
+          // A pass can append AND drain: the artifact set has grown across
+          // releases, so an older local-only project picks up the newer config
+          // paths and clears its stale skill lines in one run. `action` is a
+          // three-way discriminant and cannot say both, so the drain composes
+          // here rather than competing for the slot.
+          if (outcome.removed.length > 0) {
+            lines.push(
+              `    cleared ${outcome.removed.length} stale entry(s) left by an older version: ${outcome.removed.join(', ')}.`,
+            );
+          }
+        } else if (outcome.action === 'cleaned') {
+          // Already local-only, but this run cleared stale skill-projection
+          // lines an older version left behind. Saying "nothing to do" here
+          // would deny a rewrite that just happened.
+          lines.push(
+            `  ${success('local-only')} — already excluded; cleared ${outcome.removed.length} stale entry(s) left by an older version: ${outcome.removed.join(', ')}.`,
           );
         } else if (outcome.action === 'noop' && outcome.alreadyPresent.length > 0) {
           lines.push(`  ${success('local-only')} — already excluded; nothing to do.`);

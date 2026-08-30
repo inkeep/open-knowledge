@@ -11,17 +11,27 @@
  * Invocation: `bun run test:dom` from `packages/app/`.
  */
 
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { KEYBOARD_SHORTCUTS } from '@/lib/keyboard-shortcuts';
 import {
   __resetLocalMenuActionBusForTests,
   emitLocalMenuAction,
 } from '@/lib/local-menu-action-bus';
 import { ReportBugMenuTrigger } from './ReportBugMenuTrigger';
 
+// Surfaces the launcher-borne bit the trigger derives from the dispatch, so
+// the origin's trip from the bus to the capture gate is assertable here. What
+// the gate then DOES with it is the dialog's own test's business.
 vi.mock('./ReportBugDialog', () => ({
-  ReportBugDialog: ({ open }: { open: boolean }) =>
-    open ? <div aria-label="Report a bug" role="dialog" /> : null,
+  ReportBugDialog: ({ open, launcherBorne }: { open: boolean; launcherBorne?: boolean }) =>
+    open ? (
+      <div
+        aria-label="Report a bug"
+        data-launcher-borne={String(launcherBorne === true)}
+        role="dialog"
+      />
+    ) : null,
 }));
 
 // Radix UI primitives (shadcn Dialog) reach for DOM globals at mount. The
@@ -50,10 +60,13 @@ if (globalWithDomShims.ResizeObserver === undefined) {
 
 const ASYNC_TIMEOUT_MS = 2000;
 
-// Wrap the bus emit in act so the resulting setOpen state flush is applied
-// before assertions run (mirrors fireEvent's internal act wrapping).
-function fireMenuAction(action: Parameters<typeof emitLocalMenuAction>[0]): void {
-  act(() => emitLocalMenuAction(action));
+// Wrap the bus emit in act so the resulting state flush is applied before
+// assertions run (mirrors fireEvent's internal act wrapping).
+function fireMenuAction(
+  action: Parameters<typeof emitLocalMenuAction>[0],
+  origin?: Parameters<typeof emitLocalMenuAction>[1],
+): void {
+  act(() => emitLocalMenuAction(action, origin));
 }
 
 describe('ReportBugMenuTrigger', () => {
@@ -92,6 +105,70 @@ describe('ReportBugMenuTrigger', () => {
     // Give any erroneous open a chance to render before asserting absence.
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('pressing the chord in the renderer does not open the dialog', async () => {
+    render(<ReportBugMenuTrigger />);
+
+    // The chord reaches this trigger only as a menu action main dispatched
+    // after the OS consumed the accelerator — never as a renderer keydown. A
+    // listener added here would fire a second time on desktop AND would be
+    // subject to the app-global overlay gate, which is the one thing the chord
+    // must not be.
+    //
+    // Read off the binding rather than restated, so a rebind cannot leave this
+    // probing a retired chord and passing for the wrong reason.
+    const binding = KEYBOARD_SHORTCUTS.find((shortcut) => shortcut.id === 'report-bug')
+      ?.bindings[0];
+    const key = binding?.mac.trim().slice(-1).toLowerCase() as string;
+    expect(key).toMatch(/^[a-z]$/);
+    const code = `Key${key.toUpperCase()}`;
+    fireEvent.keyDown(window, { key, code, metaKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key, code, ctrlKey: true, shiftKey: true });
+
+    // Give any erroneous open a chance to render before asserting absence.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  test('a native-menu dispatch opens a report that captures without waiting', async () => {
+    render(<ReportBugMenuTrigger />);
+
+    // The native Help menu and the keyboard accelerator both reach main with no
+    // renderer sender, so nothing on screen was opened to get here.
+    fireMenuAction('report-bug');
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.dataset.launcherBorne).toBe('false');
+  });
+
+  test('an in-app menubar dispatch opens a report that waits out the menu', async () => {
+    render(<ReportBugMenuTrigger />);
+
+    // The in-app menubar is a Radix popper — the primary menu surface on
+    // Windows and Linux, where the native bar is hidden — so it is still
+    // animating out as the report opens and must not land in the screenshot.
+    fireMenuAction('report-bug', { launcherBorne: true });
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.dataset.launcherBorne).toBe('true');
+  });
+
+  test('a second dispatch while open keeps the origin the capture was taken for', async () => {
+    render(<ReportBugMenuTrigger />);
+
+    fireMenuAction('report-bug');
+    await screen.findByRole('dialog');
+    fireMenuAction('report-bug', { launcherBorne: true });
+
+    // The screenshot for this open cycle is already taken; re-marking it would
+    // describe a capture that never happened.
+    await waitFor(
+      () => {
+        expect(screen.getByRole('dialog').dataset.launcherBorne).toBe('false');
+      },
+      { timeout: ASYNC_TIMEOUT_MS },
+    );
   });
 
   test('unsubscribes from the bus on unmount', async () => {

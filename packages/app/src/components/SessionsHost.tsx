@@ -18,6 +18,7 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from 'sonner';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ArchivedThreadChooser, ThreadHistoryMenu } from '@/components/acp/ThreadHistoryMenu';
 import { publishReusableSession } from '@/components/reusable-session-store';
@@ -692,7 +693,7 @@ export function SessionsHost({
     if (newSessionChoice.kind === 'terminal') openSession(null);
     else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
     else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
-      launchAgentThread(
+      void launchAgentThread(
         { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
         null,
         null,
@@ -717,7 +718,7 @@ export function SessionsHost({
   function seedOnReveal(): boolean {
     if (hostThreads) {
       if (newSessionChoice.kind !== 'agent' || newSessionChoice.agent == null) return false;
-      launchAgentThread(
+      void launchAgentThread(
         { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
         null,
         null,
@@ -972,8 +973,8 @@ export function SessionsHost({
       const agent = { source: selection.agent.source, id: selection.agent.id };
       // `prompt` runs on creation, `stageDraft` waits — the thread twins of the
       // launch intent's `prompt` / `stagePaste`.
-      if (submit) launchAgentThread(agent, text, null, null, null);
-      else launchAgentThread(agent, null, null, null, text);
+      if (submit) void launchAgentThread(agent, text, null, null, null);
+      else void launchAgentThread(agent, null, null, null, text);
     } else if (selection.kind === 'cli') {
       requestTerminalLaunch(text, selection.cli, { stage: !submit });
     } else {
@@ -1009,7 +1010,7 @@ export function SessionsHost({
     registerAgent(agent);
     writePreferBareTerminal(false);
     saveStickyAgent(threadAgentId(agent));
-    launchAgentThread({ source: agent.source, id: agent.id }, null, null, null);
+    void launchAgentThread({ source: agent.source, id: agent.id }, null, null, null);
   }
 
   // Record a terminal session's OSC 0/2 title. Same same-reference bailout as the
@@ -1409,8 +1410,21 @@ export function SessionsHost({
       return;
     }
     lastHandledThreadNonceRef.current = threadLaunch.nonce;
-    launchAgentThread(agent, threadLaunch.prompt, threadLaunch.docName, threadLaunch.titleHint);
-  }, [threadLaunch, hostThreads, effectiveDefaultAgent]);
+    // The nonce is spent on the line above, so this intent gets exactly one
+    // attempt. `prompt` here is the instruction the user just typed into a
+    // "Start an agent" affordance and it survives nowhere else, so a launch the
+    // dedup guard swallows would take it with no retry and nothing said.
+    void launchAgentThread(
+      agent,
+      threadLaunch.prompt,
+      threadLaunch.docName,
+      threadLaunch.titleHint,
+    ).then((outcome) => {
+      if (outcome === 'deduped') {
+        toast.error(t`Already starting a chat with this agent — try again in a moment.`);
+      }
+    });
+  }, [threadLaunch, hostThreads, effectiveDefaultAgent, t]);
 
   // Reload rehydration (capable bridge only): rebuild one terminal tab per PTY
   // survivor and read the persisted unified order + active key, so restored tabs

@@ -103,6 +103,45 @@ const PREVIEW_CONFIG: Record<string, PreviewConfig> = {
     description: msg`Block math equation rendered with KaTeX from a LaTeX source string.`,
     props: () => ({ formula: 'c = \\pm\\sqrt{a^2 + b^2}' }),
   },
+  Excalidraw: {
+    description: msg`Embed a live snapshot of an .excalidraw board from this workspace.`,
+    // Hand-mocked board sketch: the live embed would lazy-load the ~1.6 MB
+    // Excalidraw chunk and open a board subscription on every menu open.
+    render: () => (
+      <div className="flex h-full w-full items-center justify-center rounded-md border border-border bg-background p-3">
+        <svg viewBox="0 0 120 60" className="h-full w-auto" aria-hidden="true">
+          <rect
+            x="6"
+            y="10"
+            width="46"
+            height="26"
+            rx="6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-muted-foreground"
+          />
+          <ellipse
+            cx="92"
+            cy="38"
+            rx="20"
+            ry="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-muted-foreground/70"
+          />
+          <path
+            d="M52 23 C 66 23, 70 34, 72 36"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-muted-foreground/50"
+          />
+        </svg>
+      </div>
+    ),
+  },
   Embed: {
     description: msg`Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox).`,
     // Hand-built browser-pane mockup: chrome bar with traffic-light dots +

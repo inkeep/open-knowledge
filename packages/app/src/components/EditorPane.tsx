@@ -172,8 +172,8 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   // The terminal feature (dock + header New chat / toggle) needs not just a
   // desktop bridge but one that actually exposes the `terminal` surface — a
   // session-only bridge (some E2E hosts) has none — AND a host that can
-  // actually spawn a PTY: `config.ptyAvailable` is false on Windows, where a
-  // rendered affordance would only surface a spawn failure. Gate every
+  // actually spawn a PTY: `config.ptyAvailable` is false on unsupported hosts,
+  // where a rendered affordance would only surface a spawn failure. Gate every
   // terminal affordance on both so a control that can't launch never renders.
   // A popped-out note window is a reading/writing surface for one document, so
   // it carries no docked terminal. Deferred rather than refused: the surface is
@@ -809,10 +809,10 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         </div>
       </div>
       {/* The agents host mounts UNCONDITIONALLY — agent threads are server-hosted,
-          so the panel works on the web host and on Windows/Linux where pty is
-          unavailable. The terminal host mounts only where a shell can actually
-          spawn (`terminalAvailable` folds in `ptyAvailable`); an empty terminal
-          dock on those hosts would be a control that can never do anything. */}
+          so the panel works on the web host and on hosts where pty is unavailable.
+          The terminal host mounts only where a shell can actually spawn
+          (`terminalAvailable` folds in `ptyAvailable`); an empty terminal dock
+          on those hosts would be a control that can never do anything. */}
       {noteWindow ? null : (
         <Suspense fallback={null}>
           <SessionsHost

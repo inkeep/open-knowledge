@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Folder .ok"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills kembali ke Hanya saya."
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills dapat di-commit agar tim Anda mendapat keterampilan Anda; sisa .ok/ tetap di komputer ini."
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -490,6 +482,10 @@ msgstr "{agentName} tidak dapat dijalankan."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} tidak menerima lampiran gambar."
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} melaporkan: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} di depan"
@@ -704,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, other {{failedCount} berkas gagal diunggah}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, other {# berkas}}"
 
@@ -1055,6 +1052,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ Tambah {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount} lagi"
 
@@ -1095,6 +1093,10 @@ msgstr "<0>ok</0> tidak akan berjalan di terminal eksternal sampai Anda menambah
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Spasi</0> untuk melompat · <1>↓</1> untuk menunduk"
+
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>Terlalu banyak referensi langsung di halaman ini.</0> Cermin <1>{src}</1> ini tidak dimuat."
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
@@ -1228,6 +1230,10 @@ msgstr "Sebuah jalur di dalam keterampilan — folder apa pun bisa (mis. referen
 #: src/components/settings/LintingSection.tsx
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "Pemilih tema warna pribadi — tidak dibagikan dengan proyek Anda. Saat aktif, ia muncul di bawah Plugin pada bilah sisi."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "Gambar aplikasi tepat sebelum Anda membuka ini, dengan penanda yang menunjukkan posisi penunjuk Anda. Isinya tidak disunting, jadi periksa pratinjaunya dan hapus centangnya jika ada yang tidak boleh dibagikan."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
@@ -1737,6 +1743,11 @@ msgstr "Sudah disiapkan — ok tersedia di terminal Anda"
 msgid "Already signed in?"
 msgstr "Sudah masuk?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "Obrolan dengan agen ini sudah mulai dibuka — coba lagi sebentar lagi."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Selalu disertakan"
@@ -2193,6 +2204,10 @@ msgstr "Pos blog"
 msgid "blog-post"
 msgstr "blog-post"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "Kendali papan"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
 msgstr "Tebal"
@@ -2365,6 +2380,7 @@ msgstr "Tidak dapat membagikan jalur ini."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2614,6 +2630,10 @@ msgstr "Pilih apa yang dimulai tab baru"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "Pilih ke mana komentar ini dikirim"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "Pilih ke mana pesan ini dikirim"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -2900,6 +2920,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "Ciutkan"
 
@@ -3204,6 +3225,14 @@ msgstr "Terhubung ke"
 msgid "Connected to GitHub"
 msgstr "Terhubung ke GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "Terhubung, tetapi suntingan Anda belum sampai ke server. Mulai ulang server jika ini terus berlanjut."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -3400,6 +3429,10 @@ msgstr "Salin ke sini"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "Salin tautan"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "Salin pesan"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -4062,18 +4095,6 @@ msgstr "Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."
 msgid "Couldn't send your prompt — please try again."
 msgstr "Prompt Anda tidak bisa dikirim — silakan coba lagi."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "Keterampilan tidak bisa dibagikan"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "Keterampilan tidak bisa dibagikan — {detail}."
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "Keterampilan tidak bisa dibagikan: galat internal. Silakan mulai ulang aplikasinya."
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4123,14 +4144,6 @@ msgstr "{subRoot} tidak bisa diperbarui: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "Tidak dapat memperbarui dari {0}: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "Berbagi keterampilan tidak bisa diperbarui"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "Berbagi keterampilan tidak bisa diperbarui — {detail}."
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -4728,12 +4741,10 @@ msgstr "Memutus koneksi"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "Tutup"
 
@@ -5017,6 +5028,10 @@ msgstr "Sunting salinan"
 msgid "Edit and resend"
 msgstr "Ubah dan kirim ulang"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "Sunting dan kirim lagi"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "Sunting di berkas konfigurasi"
@@ -5144,6 +5159,10 @@ msgid "Emailed"
 msgstr "Dikirim lewat surel"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "Sematkan cuplikan langsung papan .excalidraw dari ruang kerja ini."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "Menyematkan video dengan kendali pemutar bawaan."
 
@@ -5190,6 +5209,10 @@ msgstr "kosong"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "Kosong"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "Papan kosong"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5411,13 +5434,17 @@ msgstr "semua yang ada di folder {0}/ di dalam {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "semua yang ada di folder {0}/ mana pun"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Papan Excalidraw"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "Papan Excalidraw gagal dimuat."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Kanvas Excalidraw"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "Pengecualian: keterampilan dibagikan"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
@@ -5456,6 +5483,15 @@ msgstr "Bentangkan semua grup berkas"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "Bentangkan semua berkas"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "Bentangkan papan"
+
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "Bentangkan diagram"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -6256,11 +6292,6 @@ msgstr "Git & PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "konfigurasi git tidak tersedia"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Identitas git belum disetel — commit memakai penulis bawaan. Setel milik Anda agar rekan tim melihat nama Anda."
@@ -7050,6 +7081,10 @@ msgstr "Pasang {0}"
 msgid "Install {brand} →"
 msgstr "Pasang {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "instal dulu sebuah skill di sini"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7543,6 +7578,10 @@ msgstr "Respons graf tautan tidak sesuai bentuk yang diharapkan."
 msgid "Linked theme files aren’t supported"
 msgstr "Berkas tema tertaut tidak didukung"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "Menautkan akan menggabungkan folder lain ke folder ini. Folder ini belum ada, jadi instal dulu sebuah skill di sini."
+
 #: src/components/DocPanel.tsx
 msgid "Links"
 msgstr "Tautan"
@@ -7916,6 +7955,7 @@ msgid "Medium section heading."
 msgstr "Judul bagian sedang."
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Diagram Mermaid"
 
@@ -8524,6 +8564,10 @@ msgstr "Tidak ada alat AI yang terdeteksi. Pasang satu untuk memakai keterampila
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "Tidak ada kunci API yang disetel untuk endpoint ini. Tambahkan satu di atas."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "Belum ada papan yang dipilih. Masukkan path dokumen .excalidraw di properti blok ini."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "Tidak ada perubahan isi utama pada versi ini."
@@ -8611,11 +8655,6 @@ msgstr "Tidak ada remote git"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "Tidak ada repositori git — berbagi konfigurasi tidak berlaku di sini."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "tidak ada repositori git di sini"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -9145,6 +9184,10 @@ msgstr "Membuka folder proyek yang sudah ada dari disk."
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "Membuka dan memfokuskan penyusun prompt Tanya AI di bawah."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "Buka papan"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
 msgstr "Membuka pencarian CodeMirror di mode penyunting sumber."
@@ -9449,6 +9492,18 @@ msgstr "OpenKnowledge memeriksa konflik"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge memeriksa proyek"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal karena folder tersebut tidak berada dengan aman di dalam proyek ini. Pastikan folder tersebut adalah folder nyata di dalam proyek, bukan tautan. Claude akan meminta Anda menyetujui OpenKnowledge."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge tidak dapat menulis pengaturan peluncuran di .ok/local/terminal kali ini. Pastikan folder tersebut dapat ditulisi. Claude akan meminta Anda menyetujui OpenKnowledge."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
@@ -10914,6 +10969,7 @@ msgstr "Mengganti entri OpenKnowledge yang sudah dimiliki masing-masing."
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "Laporkan bug"
 
@@ -11647,6 +11703,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "Pencarian semantik aktif, tetapi tidak ada kunci API yang disetel — pencarian kembali ke pencocokan kata kunci. Tambahkan satu di bawah."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Kirim"
@@ -11672,6 +11729,10 @@ msgstr "Kirim masukan"
 msgid "Send feedback…"
 msgstr "Kirim masukan…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "Kirim di obrolan ini"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Kirim laporan"
@@ -11679,6 +11740,10 @@ msgstr "Kirim laporan"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "Kirim komentar ini"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "Kirim ke obrolan baru"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11705,6 +11770,10 @@ msgstr "Mengirim"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "Mengirim laporan"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "Mengirim…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"
@@ -11869,8 +11938,8 @@ msgid "Setup"
 msgstr "Penyiapan"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat), keterampilan proyek.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Berkas penyiapan mencakup: <0>.ok/</0>, konfigurasi MCP alat AI (<1>.mcp.json</1> dan berkas tiap alat). Keterampilan Anda tidak termasuk: semuanya mengikuti git seperti berkas lain di proyek ini.<2/><3>Dibagikan</3> melakukan commit ke git, jadi siapa pun yang mengkloning repo mendapat penyiapan yang sama. <4/><5>Hanya saya</5> menahannya keluar dari git (lewat <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11893,10 +11962,6 @@ msgstr "Bagikan masukan"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "Bagikan folder"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "Bagikan keterampilan"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12222,10 +12287,6 @@ msgstr "SKILL.md dikelola oleh skill itu sendiri — pilih nama lain"
 msgid "Skills"
 msgstr "Keterampilan"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "Keterampilan kini dibagikan. Lakukan commit pada .ok/skills untuk membagikannya dengan tim Anda."
-
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
 msgid "Skills from {0}."
@@ -12360,6 +12421,10 @@ msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 msgid "Small section heading."
 msgstr "Judul bagian kecil."
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "Beberapa file yang dilepas tidak dapat disisipkan dengan aman."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."
@@ -12485,6 +12550,10 @@ msgstr "Siapkan bagian yang dipilih di panel agen, siap dilengkapi dan dikirim."
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Beri kami bintang di GitHub"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "Memulai laporan bug dengan tangkapan layar persis seperti tampilannya saat ini."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
@@ -13017,6 +13086,18 @@ msgstr "Pengaturan terminal belum dimuat — coba lagi sebentar."
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Pengaturan terminal belum dimuat — coba lagi sebentar"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr "terminal.shell di .ok/local/config.yml harus berupa string. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr "terminal.shell di .ok/local/config.yml harus berupa jalur Windows absolut. Shell Windows yang tersedia akan digunakan sebagai gantinya."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr "terminal.shell di .ok/local/config.yml mendukung PowerShell, cmd.exe, atau Git Bash untuk peluncuran yang dikelola OpenKnowledge dan jalur file yang diletakkan. Shell ini hanya membuka terminal biasa; peluncuran agen dan perintah tidak berjalan di dalamnya."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "Uji koneksi"
@@ -13123,6 +13204,22 @@ msgstr "Kontrak perhitungan yang dibuktikan. Hanya berlaku untuk dokumen yang di
 msgid "The audit could not be completed. Try again."
 msgstr "Audit tidak dapat diselesaikan. Coba lagi."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "Papan tidak dapat dijangkau. Papan mungkin tidak ada, atau server sedang offline."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "Cuplikan papan tidak dapat dirender."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "Penampil papan gagal dimuat. Periksa koneksi Anda dan coba lagi."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "Konten papan bukan scene Excalidraw yang valid."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Aplikasi Claude Desktop tidak membuka berkasnya. Apakah ia terpasang? ({msg})"
@@ -13172,11 +13269,6 @@ msgstr "Folder dan templatnya sudah ada di sini, jadi tidak ada yang perlu ditam
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "Rumus <0>c = √(a² + b²)</0> dirender sebaris."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "berkas exclude git tidak bisa ditulisi"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "File indeks tetap di tempatnya. Open Knowledge hanya menghapus aturan Git yang ditambahkannya."
@@ -13221,6 +13313,10 @@ msgstr "Pratinjau memblokir sumber daya yang tidak memenuhi aturan keamanannya (
 #: src/components/BranchRecycleBanner.tsx
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "Server proyek ini berada di branch yang berbeda dari jendela ini — konten tidak dapat dimuat."
+
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "Prompt telah ditempel, tetapi tidak dikirim secara otomatis. Tinjau prompt tersebut, lalu tekan Enter untuk mengirimnya."
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13275,6 +13371,14 @@ msgstr "Berkas skemanya tidak ada atau gagal dimuat — menambahkan sebuah bidan
 msgid "the server responded but server.lock has no port yet"
 msgstr "server merespons tetapi server.lock belum memiliki port"
 
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "Server berhenti."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "Server berhenti. Mulai ulang untuk menyambung kembali."
+
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
@@ -13325,6 +13429,10 @@ msgstr "Sesi terminal berakhir."
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "Terminal berhenti tak terduga."
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "Executable terminal.shell di .ok/local/config.yml tidak ditemukan. Shell Windows yang tersedia akan digunakan sebagai gantinya."
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
@@ -13714,10 +13822,6 @@ msgstr "Proyek ini tidak punya repositori git — mode berbagi tidak berlaku. In
 msgid "This project has no GitHub remote."
 msgstr "Proyek ini tidak memiliki remote GitHub."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "Proyek ini bersifat lokal saja, jadi .ok/skills disembunyikan dari git dan keterampilan ini tidak bisa di-commit maupun dibagikan. Bagikan folder keterampilannya saja — sisa konfigurasi OK Anda tetap di komputer ini."
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -13960,6 +14064,10 @@ msgstr "Mengaktifkan atau menonaktifkan pola {0}/**"
 msgid "tokens"
 msgstr "token"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "Terlalu banyak referensi langsung di halaman ini. Papan ini tidak dimuat."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Terlalu lambat"
@@ -14008,6 +14116,7 @@ msgstr "Coba sebuah prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Coba lagi"
 
@@ -14128,7 +14237,6 @@ msgstr "Suntingan terakhir pada {docName} dibatalkan"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "Batalkan"
@@ -14589,6 +14697,11 @@ msgstr "Lihat di markdown sumber"
 msgid "View in Source Markdown"
 msgstr "Lihat di sumber Markdown"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "Hanya lihat"
+
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx
 msgid "View plugin"
@@ -14651,6 +14764,7 @@ msgstr "Menunggu otorisasi"
 msgid "Waiting for your approval"
 msgstr "Menunggu persetujuan Anda"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
@@ -15008,6 +15122,10 @@ msgstr "Anda memilih direktori beranda Anda. OpenKnowledge akan mengindeks semua
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "Semuanya sudah siap!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "Anda melakukan push lebih sering daripada memeriksa pembaruan. Jika orang lain juga menulis di repo ini, push sering kali harus menarik perubahan dulu lalu mencoba lagi."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

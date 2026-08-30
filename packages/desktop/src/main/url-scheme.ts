@@ -795,8 +795,9 @@ interface ProtocolHandlerDeps {
   now?: () => number;
   /** Optional structured logger. */
   log?: {
-    warn(obj: object, msg: string): void;
-    info?(obj: object, msg: string): void;
+    warn(obj: Record<string, unknown>, msg: string): void;
+    info?(obj: Record<string, unknown>, msg: string): void;
+    error(obj: Record<string, unknown>, msg: string): void;
   };
 }
 
@@ -942,7 +943,9 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   // Electron.app shell, not this app, so Launch Services has no binding.
   // `setAsDefaultProtocolClient` writes a runtime binding so `open
   // openknowledge://...` targets the dev instance during development. Packaged
-  // builds rely on `CFBundleURLTypes` from electron-builder.yml.
+  // builds additionally self-heal their own binding on every boot below —
+  // `CFBundleURLTypes` from electron-builder.yml is the installer-time
+  // baseline, not a permanently-authoritative claim.
   if (!deps.app.isPackaged) {
     try {
       // Per Electron docs `setAsDefaultProtocolClient` is non-throwing and
@@ -960,11 +963,16 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
         // Unregister on dev-exit so a stale Launch Services binding doesn't
         // route subsequent `open openknowledge://...` to a moved/deleted
         // worktree — a developer-UX footgun when switching between checkouts.
-        // Hard exits (SIGKILL) skip `before-quit`, so the guarantee is
-        // best-effort: the next successful dev-exit re-registers cleanly.
-        // Packaged builds skip this entirely — their `CFBundleURLTypes`
-        // binding is installed by the OS at DMG install time and owned by
-        // Launch Services, not by us.
+        // (On macOS, Electron's `removeAsDefaultProtocolClient` doesn't clear
+        // the binding outright — per `shell/browser/browser_mac.mm` (Electron
+        // v43.x) it hands the scheme to the first other bundle ID Launch
+        // Services finds registered for it, falling back to `None` —
+        // harmless here since the packaged app, if installed, is exactly
+        // what should reclaim it.) Hard exits (SIGKILL) skip `before-quit`,
+        // so the guarantee is best-effort: the next successful dev-exit
+        // re-registers cleanly. Packaged builds don't rely on this at all —
+        // see the packaged self-heal branch below, which re-asserts the
+        // binding at every boot rather than depending on a clean dev exit.
         deps.app.on('before-quit', () => {
           try {
             deps.app.removeAsDefaultProtocolClient('openknowledge');
@@ -979,27 +987,40 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     } catch (err) {
       deps.log?.warn({ err }, '[url-scheme] setAsDefaultProtocolClient failed');
     }
-  } else if (platform !== 'darwin') {
-    // Packaged Windows/Linux self-heal (windows-linux-port deep-link posture).
-    // Unlike macOS (where LaunchServices owns the CFBundleURLTypes binding
-    // installed with the .app), Windows resolves the scheme from
+  } else {
+    // Packaged self-heal, every platform. Windows resolves the scheme from
     // HKCU\Software\Classes and Linux from the .desktop database — both
     // user-mutable and installer-dependent (the NSIS include writes the
     // registry keys; deb's .desktop carries the MimeType; AppImage has no
-    // install step at all, see appimage-integration.ts). Re-asserting at
-    // every boot repairs a stale binding after the install moves, another
-    // app steals the scheme, or the installer-time registration was lost.
-    // No before-quit removal here — a packaged install keeps its binding.
+    // install step at all, see appimage-integration.ts). macOS's
+    // CFBundleURLTypes binding from the DMG install is NOT immune to the same
+    // class of drift: a dev-mode instance's runtime `setAsDefaultProtocolClient`
+    // call (above) writes a user-level Launch Services override that outranks
+    // the installed binding and survives indefinitely whenever that dev
+    // process exits without a clean `before-quit` (SIGKILL, a deleted
+    // worktree, a killed agent session) — the `before-quit` removal is
+    // documented above as best-effort, not guaranteed. A stale claim doesn't
+    // just break deep-linking: Launch Services routes `openknowledge://` to
+    // whatever bundle ID it has on file, which can be Electron's own
+    // `default_app.asar` placeholder if a stray dev instance's runtime
+    // override is still in effect — opening a bare, unbuilt Electron window
+    // instead of this app. Re-asserting at every boot repairs a stale binding
+    // after the install moves, another app/build steals the scheme, or the
+    // installer-time registration was lost. No before-quit removal here — a
+    // packaged install keeps its binding.
     try {
       const ok = deps.app.setAsDefaultProtocolClient('openknowledge');
       if (!ok) {
-        deps.log?.warn(
+        // Packaged is the only line of defense for real users (no dev-exit
+        // unregister to fall back on), so a failed self-heal here — unlike the
+        // dev-mode warn above — is escalated to error.
+        deps.log?.error(
           {},
           '[url-scheme] packaged setAsDefaultProtocolClient returned false — openknowledge:// links may not reach this install',
         );
       }
     } catch (err) {
-      deps.log?.warn({ err }, '[url-scheme] packaged setAsDefaultProtocolClient failed');
+      deps.log?.error({ err }, '[url-scheme] packaged setAsDefaultProtocolClient failed');
     }
   }
 

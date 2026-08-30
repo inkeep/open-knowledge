@@ -52,6 +52,16 @@ export type NormalizedSummary =
   | { kind: 'value'; value: string; truncatedFrom?: number };
 
 /**
+ * Wire shape of an attributed summary echoed back on write responses —
+ * the single owner of this alias so the attribution helpers in
+ * `api-extension.ts` and the route handlers that echo it cannot drift
+ * structurally. Mirrors the (loose) `SummaryResponseField` schema in
+ * `@inkeep/open-knowledge-core`; this alias stays exact-shaped so handlers
+ * don't inherit the schema's `[k: string]: unknown` catchall.
+ */
+export type SummaryResponse = { value: string; truncatedFrom?: number; hint?: string };
+
+/**
  * Normalize a raw body value into a truncated summary or a sentinel.
  *
  * - `undefined` / `''` / whitespace-only → `{ kind: 'absent' }`

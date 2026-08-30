@@ -7,7 +7,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { subscribeToOpenAskAiComposer } from '@/components/ask-ai-composer-events';
-import { OUTLINE_NAV_EVENT, type OutlineNavDetail } from '@/components/OutlinePanel';
+import {
+  OUTLINE_NAV_BREADCRUMB,
+  OUTLINE_NAV_EVENT,
+  type OutlineNavDetail,
+} from '@/components/OutlinePanel';
+import { LINT_NAV_EVENT, type LintNavDetail } from '@/components/ProblemsPanel';
 import { ConfigContext, type ConfigContextValue } from '@/lib/config-context';
 import { evictCmEditor } from './editor-cache';
 import type { LandingHandle } from './landing-controller';
@@ -366,6 +371,77 @@ describe('SourceEditor outline navigation', () => {
     expect(headingLine.text).toBe('## Second');
     expect(view.state.selection.main.head).toBe(headingLine.from);
   });
+
+  describe('breadcrumb', () => {
+    // Only one of the two outline consumers ever answers a given click, so a
+    // bundle that instruments the WYSIWYG side alone cannot separate "the user
+    // was in source mode" from "the event never fired".
+    let infoSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      __resetScrollRestoreCoordination();
+      infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      __resetScrollRestoreCoordination();
+      vi.restoreAllMocks();
+    });
+
+    function breadcrumbs(): Array<Record<string, unknown>> {
+      return infoSpy.mock.calls.flatMap(([first]) => {
+        if (typeof first !== 'string') return [];
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(first) as Record<string, unknown>;
+        } catch {
+          return [];
+        }
+        return parsed.event === OUTLINE_NAV_BREADCRUMB ? [parsed] : [];
+      });
+    }
+
+    async function mountSource(docName: string, content: string): Promise<void> {
+      const { provider, ytext } = makeProvider(docName, content);
+      const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+      await findCmContent(container);
+    }
+
+    test('a jump reports the line it landed on', async () => {
+      await mountSource('source-outline-crumb', '# First\n\n## Second\n\n## Third');
+      await dispatchOutlineNav('source-outline-crumb', 2, 'third');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({
+          docName: 'source-outline-crumb',
+          mode: 'source',
+          index: 2,
+          sourceHeadingCount: 3,
+          outcome: 'scrolled',
+          targetLine: 5,
+        }),
+      ]);
+    });
+
+    test('a declined claim is recorded rather than read as a completed jump', async () => {
+      await mountSource('source-outline-crumb-declined', '# First\n\n## Second');
+      registerLandingScrollOwner('source-outline-crumb-declined', {
+        yieldsToNavigation: false,
+        supersede: () => {},
+      });
+      await dispatchOutlineNav('source-outline-crumb-declined', 1, 'second');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({ mode: 'source', index: 1, outcome: 'declined' }),
+      ]);
+    });
+
+    test('an out-of-range ordinal reports the count that made it out of range', async () => {
+      await mountSource('source-outline-crumb-range', '# Only');
+      await dispatchOutlineNav('source-outline-crumb-range', 7, 'nowhere');
+      expect(breadcrumbs()).toEqual([
+        expect.objectContaining({ index: 7, sourceHeadingCount: 1, outcome: 'no-target' }),
+      ]);
+    });
+  });
 });
 
 describe('SourceEditor raw-MDX replay mode re-check', () => {
@@ -493,5 +569,68 @@ describe('SourceEditor cross-mode landing replay', () => {
     await mountWithQueuedJump('source-landing-started');
 
     expect(peekPendingSourceNavigation('source-landing-started')).toBeNull();
+  });
+});
+
+/**
+ * The Problems row banks its intent and then dispatches a live event, so
+ * whichever editor is visible consumes the event and clears the bank. A click
+ * the scroller refuses moved nothing, so clearing on it spends the intent on a
+ * jump that never happened. The WYSIWYG half of this seam gates its clear on
+ * the same answer.
+ */
+describe('SourceEditor Problems-row navigation', () => {
+  const detailFor = (docName: string): LintNavDetail => ({ docName, line: 3, column: 1 });
+
+  beforeEach(() => {
+    __resetScrollRestoreCoordination();
+    clearPendingSourceNavigationsForTest();
+    globalThis.fetch = vi.fn(async () => Response.json({})) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    __resetScrollRestoreCoordination();
+    clearPendingSourceNavigationsForTest();
+    cleanup();
+    for (const docName of mountedDocNames) evictCmEditor(docName);
+    mountedDocNames.clear();
+    globalThis.fetch = originalFetch;
+  });
+
+  /**
+   * Mount source mode, then bank and click in the panel's own order. Banking
+   * before the mount would be replayed and consumed by the mount-time effect,
+   * which is a different path from the live click under test.
+   */
+  async function clickProblemsRow(docName: string): Promise<void> {
+    const { provider, ytext } = makeProvider(docName, '# heading\n\nbody\n\nmore body');
+    const { container } = render(<Harness provider={provider} ytext={ytext} wordWrap={true} />);
+    await findCmContent(container);
+    rememberPendingSourceNavigation(docName, { kind: 'lint', detail: detailFor(docName) });
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(LINT_NAV_EVENT, { detail: detailFor(docName) }));
+    });
+  }
+
+  test('keeps the banked intent when a landing refuses the scroller', async () => {
+    const docName = 'source-problems-row-refused';
+    // A landing that is itself an explicit navigation keeps the scroller: it has
+    // already placed the caret, so this click stands down whole.
+    registerLandingScrollOwner(docName, { yieldsToNavigation: false, supersede: () => {} });
+
+    await clickProblemsRow(docName);
+
+    expect(peekPendingSourceNavigation(docName)).toEqual({
+      kind: 'lint',
+      detail: detailFor(docName),
+    });
+  });
+
+  test('consumes it once the jump has run', async () => {
+    const docName = 'source-problems-row-granted';
+
+    await clickProblemsRow(docName);
+
+    expect(peekPendingSourceNavigation(docName)).toBeNull();
   });
 });

@@ -638,14 +638,25 @@ function countLines(filePath: string): number {
   return count;
 }
 
+/**
+ * Both spellings a document path is filed under, because the number this feeds
+ * is read by a user deciding whether to share the bundle. `doc.name` is the OTel
+ * span attribute; `docName` is the renderer-log field, and since frontend OTel
+ * is opt-in and off by default, the log spelling is the one most bundles
+ * actually carry. Counting only the span attribute reported zero over a zip full
+ * of document paths.
+ */
+const DOC_NAME_MARKERS = ['"doc.name"', '"docName"'] as const;
+
 function countDocNameOccurrences(filePath: string): number {
   const content = readFileSync(filePath, 'utf-8');
-  const marker = '"doc.name"';
   let count = 0;
-  let idx = content.indexOf(marker);
-  while (idx !== -1) {
-    count++;
-    idx = content.indexOf(marker, idx + marker.length);
+  for (const marker of DOC_NAME_MARKERS) {
+    let idx = content.indexOf(marker);
+    while (idx !== -1) {
+      count++;
+      idx = content.indexOf(marker, idx + marker.length);
+    }
   }
   return count;
 }
@@ -955,7 +966,14 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       const lines = shouldCountLines(relPath) ? countLines(absPath) : 0;
       files.push({ path: relPath, bytes, lines });
       totalBytes += bytes;
-      if (relPath.startsWith('telemetry/') && shouldCountLines(relPath)) {
+      // `logs/` as well as `telemetry/`, and NOT gated on `shouldCountLines`:
+      // that predicate admits only `.jsonl`, while everything staged under
+      // `logs/` is `.log` — including `desktop.<date>.log`, which on the
+      // desktop build is the ONLY sink these breadcrumbs reach, the web
+      // forwarder being switched off there. Scoping the scan to spans, or to
+      // line-countable files, both leave the consent prompt reporting zero over
+      // a bundle carrying a document path per activation.
+      if (relPath.startsWith('telemetry/') || relPath.startsWith('logs/')) {
         docNameCount += countDocNameOccurrences(absPath);
       }
     }

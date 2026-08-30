@@ -124,6 +124,27 @@ describe('TerminalWindowApp', () => {
     __resetLocalMenuActionBusForTests();
   });
 
+  test('Help -> Report a bug reaches this window too', async () => {
+    // The application menu (and the accelerator on it) fires at whichever
+    // window is focused, and main dispatches to that window only. Without a
+    // subscriber here the action crosses IPC, fans out, and nothing handles it
+    // — silently, because report-bug is additive in the buffer policy so it
+    // never even trips the never-buffer debug log. A stuck terminal or a hung
+    // agent session is exactly when someone reaches for the chord.
+    const { bridge } = makeBridge();
+    render(
+      <TooltipProvider>
+        <TerminalWindowApp bridge={bridge} />
+      </TooltipProvider>,
+    );
+
+    act(() => {
+      emitLocalMenuAction('report-bug');
+    });
+
+    expect(await screen.findByRole('dialog', {}, { timeout: 15_000 })).not.toBeNull();
+  });
+
   test('opens with exactly one shell tab on mount', () => {
     const { bridge, create } = makeBridge();
     render(

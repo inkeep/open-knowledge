@@ -35,6 +35,17 @@ vi.doMock('./TerminalGate', () => ({
   },
 }));
 
+// Capture what the report trigger is told about this window rather than mounting
+// the real dialog host: `systemWide` is the only thing this root decides for it,
+// and it is what tells the reporter whether there are project logs to collect.
+const reportTriggerProps: { systemWide?: boolean }[] = [];
+vi.doMock('./ReportBugMenuTrigger', () => ({
+  ReportBugMenuTrigger: (props: { systemWide?: boolean }) => {
+    reportTriggerProps.push(props);
+    return null;
+  },
+}));
+
 const { TerminalWindowApp } = await import('./TerminalWindowApp');
 
 function bridgeWithCollabUrl(collabUrl: string): OkDesktopBridge {
@@ -71,5 +82,26 @@ describe('TerminalWindowApp ConfigProvider wiring', () => {
       </TooltipProvider>,
     );
     expect(screen.getByTestId('config-consumer')).toBeTruthy();
+  });
+
+  test('a project-less terminal window reports system-wide', () => {
+    render(
+      <TooltipProvider>
+        <TerminalWindowApp bridge={bridgeWithCollabUrl('')} />
+      </TooltipProvider>,
+    );
+    expect(reportTriggerProps.at(-1)?.systemWide).toBe(true);
+  });
+
+  test('a project-bound terminal window reports scoped to that project', () => {
+    // The branch the sibling assertions never reached: with a collabUrl there
+    // ARE project logs to collect, so a report filed from this window must not
+    // claim to be system-wide or it collects the wrong thing.
+    render(
+      <TooltipProvider>
+        <TerminalWindowApp bridge={bridgeWithCollabUrl('ws://localhost:5200/collab')} />
+      </TooltipProvider>,
+    );
+    expect(reportTriggerProps.at(-1)?.systemWide).toBe(false);
   });
 });

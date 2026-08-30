@@ -582,6 +582,7 @@ export function runDesktopUninstallCleanup(
         cwd: '/',
         detached: false,
         stdio: 'ignore',
+        windowsHide: true,
       });
       child.once('error', (err) => finish({ ok: false, error: err.message }));
       child.once('close', (code, signal) => {

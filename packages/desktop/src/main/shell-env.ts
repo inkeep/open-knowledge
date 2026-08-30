@@ -62,6 +62,7 @@ export async function harvestShellAuthSock(
   const spawn = opts.spawn ?? defaultSpawn;
   const logger = opts.logger ?? DEFAULT_LOGGER;
   try {
+    // biome-ignore lint/plugin/require-windowshide-on-spawn: injected command-runner seam; defaultSpawn owns child_process options
     const result = await spawn(shell, ['-ilc', `printf %s "${MARK}$SSH_AUTH_SOCK${MARK}"`], {
       timeoutMs: opts.timeoutMs ?? 2000,
       env,

@@ -21,7 +21,7 @@ set -euo pipefail
 # OK_CONTAINER_SANDBOX=disable to use --no-sandbox immediately.
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-DRIVER_PATH="$SCRIPT_DIR/smoke-linux-terminal-package.py"
+DRIVER_PATH="$SCRIPT_DIR/smoke-terminal-package-cdp.py"
 
 usage() {
   printf '%s\n' \
@@ -197,7 +197,7 @@ inside_container() {
     fi
   fi
 
-  runuser -u ok-smoke -- python3 /tmp/smoke-linux-terminal-package.py
+  runuser -u ok-smoke -- python3 /tmp/smoke-terminal-package-cdp.py
   printf 'PASS: installed %s package launched and completed a packaged PTY echo round-trip\n' "$requested_arch"
 }
 
@@ -252,7 +252,7 @@ host_main() {
     --platform "$(docker_platform "$normalized_arch")" \
     --mount "type=bind,src=$absolute_package,dst=$container_artifact,readonly" \
     --mount "type=bind,src=$SCRIPT_DIR/smoke-linux-terminal-package.sh,dst=/tmp/smoke-linux-terminal-package.sh,readonly" \
-    --mount "type=bind,src=$DRIVER_PATH,dst=/tmp/smoke-linux-terminal-package.py,readonly" \
+    --mount "type=bind,src=$DRIVER_PATH,dst=/tmp/smoke-terminal-package-cdp.py,readonly" \
     --env "OK_CONTAINER_SANDBOX=${OK_CONTAINER_SANDBOX:-auto}" \
     "$image" \
     bash /tmp/smoke-linux-terminal-package.sh \

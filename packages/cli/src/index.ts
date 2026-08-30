@@ -174,12 +174,11 @@ export {
   type ExcludeWriteResult,
   formatTrackedRemediation,
   getExcludedOkPaths,
+  getInstalledSkillProjectionPaths,
   getOkArtifactPaths,
   probeTrackedOkPaths,
   readSharingMode,
-  readSkillsShared,
   removeOkPathsFromGitExclude,
   type SharingMode,
-  setSkillsShared,
   type TrackedRefusal,
 } from './sharing/git-exclude.ts';

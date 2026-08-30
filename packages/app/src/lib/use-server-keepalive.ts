@@ -74,8 +74,11 @@ export function useServerKeepalive(
   useEffect(() => {
     const start = optionsRef.current?.startKeepalive ?? defaultStartKeepalive;
     const isElectronHost = optionsRef.current?.isElectronHost ?? defaultIsElectronHost;
-    // Desktop already holds a main-process keepalive and boots its server with
-    // idleShutdownMs: null, so a renderer keepalive there is redundant.
+    // Desktop already holds a main-process keepalive for every window kind, so a
+    // renderer keepalive here is redundant: both the packaged project-window
+    // attach path and ephemeral single-file windows open an explicit
+    // `createKeepalive` against the server's real idle default, and the dev-only
+    // utility-fork boot additionally passes `idleShutdownMs: null`.
     if (isElectronHost()) return;
     const handle = start({
       resolveWsUrl: async () => keepaliveBaseFromCollabUrl(collabUrlRef.current),

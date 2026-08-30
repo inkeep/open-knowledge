@@ -22,6 +22,7 @@ import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
 const WORKFLOWS = join(dirname(fileURLToPath(import.meta.url)), '..', 'workflows');
 const read = (name) => readFileSync(join(WORKFLOWS, name), 'utf8');
 const desktopRelease = read('desktop-release.yml');
+const desktopBuildWinLinux = read('desktop-build-win-linux.yml');
 const promoteStable = read('promote-stable.yml');
 const releaseYml = read('release.yml');
 const bugLane = read('bug-lane.yml');
@@ -41,13 +42,14 @@ const bugLaneVerify = read('bug-lane-verify.yml');
  * same. Both holes were shipped and caught by mutation testing rather than by
  * review, which is why this is the only way these files slice a step.
  */
-const bugLaneVerifyStep = (name) => {
-  const start = bugLaneVerify.indexOf(`- name: ${name}`);
-  if (start === -1) throw new Error(`bug-lane-verify.yml has no step named ${name}`);
-  const rest = bugLaneVerify.slice(start);
+const workflowStep = (source, workflowName, name) => {
+  const start = source.indexOf(`- name: ${name}`);
+  if (start === -1) throw new Error(`${workflowName} has no step named ${name}`);
+  const rest = source.slice(start);
   const end = rest.indexOf('\n      - name: ');
   return end === -1 ? rest : rest.slice(0, end);
 };
+const bugLaneVerifyStep = (name) => workflowStep(bugLaneVerify, 'bug-lane-verify.yml', name);
 const selectBeta = read('select-beta-to-promote.yml');
 
 /**
@@ -199,7 +201,7 @@ describe('the Azure signing flag set satisfies the schema', () => {
     const required = scheme.definitions.WindowsAzureSigningConfiguration.required;
     expect(required.length).toBeGreaterThanOrEqual(3); // schema sanity, not vacuous
 
-    for (const workflow of [desktopRelease, read('desktop-build-win-linux.yml')]) {
+    for (const workflow of [desktopRelease, desktopBuildWinLinux]) {
       const passed = [...workflow.matchAll(/--config\.win\.azureSignOptions\.([A-Za-z]+)=/g)].map(
         (m) => m[1],
       );
@@ -208,6 +210,145 @@ describe('the Azure signing flag set satisfies the schema', () => {
           field,
         );
       }
+    }
+  });
+});
+
+describe('the optional Windows signing lane proves what it reports', () => {
+  test('signing_ran is authored only after Authenticode attestation succeeds', () => {
+    const attestation = desktopBuildWinLinux.indexOf('id: attest-windows-signing');
+    expect(attestation).toBeGreaterThan(0);
+    expect(desktopBuildWinLinux.slice(0, attestation)).not.toContain('signing_ran=true');
+    expect(desktopBuildWinLinux.slice(attestation)).toContain(
+      "Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value 'signing_ran=true'",
+    );
+    expect(desktopBuildWinLinux).toContain(
+      'steps.attest-windows-signing.outputs.signing_ran',
+    );
+  });
+
+  test('attests and package-checks both Windows outer architectures', () => {
+    for (const dir of ['dist-desktop/win-unpacked', 'dist-desktop/win-arm64-unpacked']) {
+      expect(desktopBuildWinLinux).toContain(`Path = '${dir}'`);
+      expect(desktopBuildWinLinux).toContain(`OK_WIN_PACKAGE_DIR: ${dir}`);
+    }
+  });
+});
+
+describe('the publishing Windows lane attests its signed native payload', () => {
+  // This workflow runs main's YAML against `client_payload[ref]`, which may be
+  // an older tag whose tree legitimately excludes node-pty from its Windows
+  // package (a soaked beta or bug-lane synthetic commit cut before the
+  // terminal shipped). The terminal-specific assertions are therefore gated on
+  // the checked-out tree's own packaging intent via the `winterm` detect step;
+  // the app-signature attestation stays unconditional. These tests pin BOTH
+  // halves: the gate may say exactly one thing, and nothing else in the
+  // attestation region may grow a condition.
+  const GATE_CONDITION = "success() && steps.winterm.outputs.ships == 'true'";
+
+  test('checks both outer architectures before staging release assets', () => {
+    const detect = desktopRelease.indexOf(
+      '- name: Detect whether this ref packages the Windows terminal',
+    );
+    const attest = desktopRelease.indexOf('- name: Attest signed Windows packages', detect);
+    const conpty = desktopRelease.indexOf(
+      '- name: Attest preserved Microsoft signatures on the packaged ConPTY pairs',
+      attest,
+    );
+    const asar = desktopRelease.indexOf(
+      '- name: Assert the packaged asar carries its dependencies',
+      attest,
+    );
+    const upload = desktopRelease.indexOf(
+      '- name: Upload Windows release assets for the fan-in publisher',
+      attest,
+    );
+
+    expect(detect).toBeGreaterThan(0);
+    expect(detect).toBeLessThan(attest);
+    expect(attest).toBeLessThan(conpty);
+    expect(conpty).toBeLessThan(asar);
+    expect(asar).toBeLessThan(upload);
+    const attestationSteps = desktopRelease.slice(attest, asar);
+    expect(attestationSteps).toContain('Get-AuthenticodeSignature');
+    expect(attestationSteps).toContain("-notmatch 'Microsoft'");
+    expect(attestationSteps.match(/OK_WIN_PACKAGE_REQUIRED: "1"/gu) ?? []).toHaveLength(2);
+    expect(attestationSteps).not.toContain('continue-on-error:');
+    // Every condition in the attestation region is exactly the tree gate —
+    // nothing may weaken these steps with any other predicate.
+    const conditions = stepLevelIfConditions(attestationSteps);
+    expect(conditions).toHaveLength(3);
+    for (const condition of conditions) {
+      expect(condition).toBe(GATE_CONDITION);
+    }
+    for (const dir of ['dist-desktop/win-unpacked', 'dist-desktop/win-arm64-unpacked']) {
+      expect(attestationSteps).toContain(`Path = '${dir}'`);
+      expect(attestationSteps).toContain(`OK_WIN_PACKAGE_DIR: ${dir}`);
+    }
+  });
+
+  test('the tree gate probes the pre-terminal exclusion and fails closed', () => {
+    const detectStep = workflowStep(
+      desktopRelease,
+      'desktop-release.yml',
+      'Detect whether this ref packages the Windows terminal',
+    );
+    // The probe is the checked-out tree's own electron-builder config — never
+    // the packaged output, which would let a broken packaging run skip its
+    // own guard.
+    expect(detectStep).toContain('packages/desktop/electron-builder.yml');
+    expect(detectStep).toContain('grep -qF -- \'- "!**/node_modules/node-pty/**"\'');
+    // Polarity: the grep HIT (the closed set of pre-terminal trees) is the
+    // skip; every other shape — including future config refactors — stays
+    // armed.
+    expect(detectStep.indexOf('ships=false')).toBeGreaterThan(-1);
+    expect(detectStep.indexOf('ships=false')).toBeLessThan(detectStep.indexOf('ships=true'));
+    // The app-signature attestation itself carries no condition at all.
+    const appAttestation = workflowStep(
+      desktopRelease,
+      'desktop-release.yml',
+      'Attest signed Windows packages',
+    );
+    expect(stepLevelIfConditions(appAttestation)).toHaveLength(0);
+  });
+
+  test('keeps the shared signature-preservation core in both Windows lanes', () => {
+    // desktop-release splits the attestation (the app-signature half runs on
+    // every ref; the ConPTY half is tree-gated); desktop-build-win-linux runs
+    // its workflow file from the dispatched ref itself, so no tree skew is
+    // possible there and it keeps the combined unconditional step.
+    const releaseAppStep = workflowStep(
+      desktopRelease,
+      'desktop-release.yml',
+      'Attest signed Windows packages',
+    );
+    expect(releaseAppStep).toContain('$signature = Get-AuthenticodeSignature $appExecutable');
+
+    const conptyTokens = [
+      '$signature = Get-AuthenticodeSignature $path',
+      "-notmatch 'Microsoft'",
+      "foreach ($name in @('conpty.dll', 'OpenConsole.exe'))",
+      'node-pty[\\\\/]prebuilds[\\\\/]win32-(x64|arm64)[\\\\/]conpty$',
+    ];
+    const releaseConptyStep = workflowStep(
+      desktopRelease,
+      'desktop-release.yml',
+      'Attest preserved Microsoft signatures on the packaged ConPTY pairs',
+    );
+    for (const token of conptyTokens) {
+      expect(releaseConptyStep).toContain(token);
+    }
+
+    const qaAttestationStep = workflowStep(
+      desktopBuildWinLinux,
+      'desktop-build-win-linux.yml',
+      'Attest signed Windows packages and preserved Microsoft signatures',
+    );
+    for (const token of [
+      '$signature = Get-AuthenticodeSignature $appExecutable',
+      ...conptyTokens,
+    ]) {
+      expect(qaAttestationStep).toContain(token);
     }
   });
 });

@@ -45,14 +45,6 @@ msgstr ".myteam/skills"
 msgid ".ok folders"
 msgstr "Carpetas .ok"
 
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is back to Only me."
-msgstr ".ok/skills vuelve a estar en Solo yo."
-
-#: src/components/settings/SharingSection.tsx
-msgid ".ok/skills is committable so your team gets your skills; the rest of .ok/ stays on this computer."
-msgstr ".ok/skills se puede confirmar para que tu equipo reciba tus habilidades; el resto de .ok/ se queda en este equipo."
-
 #. placeholder {0}: target.filePath
 #: src/components/SkillFileDeleteDialog.tsx
 msgid "\"{0}\""
@@ -490,6 +482,10 @@ msgstr "{agentName} no pudo iniciarse."
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} no acepta adjuntos de imagen."
 
+#: src/components/acp/AgentNoticeAnnouncer.tsx
+msgid "{agentName} reported: {headline}"
+msgstr "{agentName} informa: {headline}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "{ahead} ahead"
 msgstr "{ahead} por delante"
@@ -704,6 +700,7 @@ msgid "{failedCount, plural, one {1 file failed to upload} other {{failedCount} 
 msgstr "{failedCount, plural, one {No se pudo subir 1 archivo} many {No se pudieron subir {failedCount} archivos} other {No se pudieron subir {failedCount} archivos}}"
 
 #: src/components/ActivityModeContent.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "{fileCount, plural, one {# file} other {# files}}"
 msgstr "{fileCount, plural, one {# archivo} many {# archivos} other {# archivos}}"
 
@@ -1059,6 +1056,7 @@ msgid "+ Add {addChildName}"
 msgstr "+ Añadir {addChildName}"
 
 #: src/components/NavigatorApp.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "+{overflowCount} more"
 msgstr "+{overflowCount} más"
 
@@ -1099,6 +1097,10 @@ msgstr "<0>ok</0> no funcionará en terminales externas hasta que lo añadas má
 #: src/components/OkBlobRunner.tsx
 msgid "<0>Space</0> to jump · <1>↓</1> to duck"
 msgstr "<0>Espacio</0> para saltar · <1>↓</1> para agacharse"
+
+#: src/editor/components/Mirror.tsx
+msgid "<0>Too many live references on this page.</0> This mirror of <1>{src}</1> was not loaded."
+msgstr "<0>Demasiadas referencias en vivo en esta página.</0> Este espejo de <1>{src}</1> no se cargó."
 
 #: src/components/settings/SkillTargetsPicker.tsx
 msgid "~/.myteam/skills"
@@ -1232,6 +1234,10 @@ msgstr "Una ruta dentro de la habilidad; cualquier carpeta sirve (p. ej. referen
 #: src/components/settings/LintingSection.tsx
 msgid "A personal color-theme picker — not shared with your project. When on, it appears under Plugins in the sidebar."
 msgstr "Un selector de tema de color personal, no compartido con tu proyecto. Al activarlo aparece en Complementos, en la barra lateral."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "A picture of the app from just before you opened this, with a marker showing where your pointer was. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
+msgstr "Una imagen de la aplicación justo antes de que abrieras esto, con una marca que indica dónde estaba tu puntero. No está censurada, así que revisa la vista previa y desmárcala si hay algo que no deba compartirse."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A picture of the app from just before you opened this. It isn't redacted, so check the preview and uncheck it if anything shouldn't be shared."
@@ -1741,6 +1747,11 @@ msgstr "Ya está configurado: ok está disponible en tu terminal"
 msgid "Already signed in?"
 msgstr "¿Ya iniciaste sesión?"
 
+#: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
+msgid "Already starting a chat with this agent — try again in a moment."
+msgstr "Ya se está iniciando un chat con este agente; inténtalo de nuevo en un momento."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Always included"
 msgstr "Siempre incluido"
@@ -2197,6 +2208,10 @@ msgstr "Entrada de blog"
 msgid "blog-post"
 msgstr "blog-post"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Board controls"
+msgstr "Controles de la pizarra"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bold"
 msgstr "Negrita"
@@ -2369,6 +2384,7 @@ msgstr "No se puede compartir esta ruta."
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
 #: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
 #: src/components/CloneDialog.tsx
@@ -2618,6 +2634,10 @@ msgstr "Elige qué inicia una pestaña nueva"
 #: src/comments/CommentSendFooter.tsx
 msgid "Choose where to send these comments"
 msgstr "Elige a dónde enviar estos comentarios"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Choose where to send this message"
+msgstr "Elegir a dónde enviar este mensaje"
 
 #: src/components/settings/SharingSection.tsx
 msgid "Choose whether this project's OpenKnowledge setup, including its AI-tool connections, is saved with the project so teammates get it too, or kept only on your computer."
@@ -2904,6 +2924,7 @@ msgid "Collaborators see your in-progress edits as soon as they sync."
 msgstr "Tus colaboradores ven tus ediciones en curso en cuanto se sincronizan."
 
 #: src/components/GraphPanel.tsx
+#: src/components/SyncStatusBadge.tsx
 msgid "Collapse"
 msgstr "Contraer"
 
@@ -3208,6 +3229,14 @@ msgstr "Conectado a"
 msgid "Connected to GitHub"
 msgstr "Conectado a GitHub"
 
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet."
+msgstr "Conectado, pero tus ediciones aún no llegan al servidor."
+
+#: src/presence/use-sync-toasts.ts
+msgid "Connected, but your edits aren't reaching the server yet. Restart it if this continues."
+msgstr "Conectado, pero tus ediciones aún no llegan al servidor. Reinícialo si esto continúa."
+
 #: src/components/AuthModal.tsx
 #: src/components/PropertyPanel.tsx
 msgid "Connecting"
@@ -3404,6 +3433,10 @@ msgstr "Copiar aquí"
 #: src/lib/native-menu-catalog.ts
 msgid "Copy link"
 msgstr "Copiar enlace"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Copy message"
+msgstr "Copiar el mensaje"
 
 #: src/components/AppMenubar.tsx
 #: src/components/FileTargetMenuItems.tsx
@@ -4066,18 +4099,6 @@ msgstr "No se pudieron enviar tus comentarios: el espacio de trabajo no está li
 msgid "Couldn't send your prompt — please try again."
 msgstr "No se pudo enviar tu prompt; inténtalo de nuevo."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills"
-msgstr "No se pudieron compartir las habilidades"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills — {detail}."
-msgstr "No se pudieron compartir las habilidades: {detail}."
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Couldn't share skills: internal error. Please restart the app."
-msgstr "No se pudieron compartir las habilidades: error interno. Reinicia la aplicación."
-
 #. placeholder {0}: info.agent.name
 #. placeholder {1}: errorText(err)
 #: src/components/acp/ThreadView.tsx
@@ -4127,14 +4148,6 @@ msgstr "No se pudo actualizar {subRoot}: {0}"
 #: src/components/skill-actions.tsx
 msgid "Couldn't update from {0}: {1}"
 msgstr "No se pudo actualizar desde {0}: {1}"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing"
-msgstr "No se pudo actualizar la compartición de habilidades"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Couldn't update skills sharing — {detail}."
-msgstr "No se pudo actualizar la compartición de habilidades: {detail}."
 
 #: src/components/TerminalCliUnverifiedBanner.tsx
 msgid "Couldn't verify that {displayName} ({bin}) is available, so this is a plain shell. You can still run {bin} yourself."
@@ -4732,12 +4745,10 @@ msgstr "Desconectando"
 
 #: src/components/BranchRecycleBanner.tsx
 #: src/components/BugReportSendToast.tsx
-#: src/components/ClaudeReadinessBanner.tsx
 #: src/components/NavigatorApp.tsx
 #: src/components/OnboardingCard.tsx
 #: src/components/settings/SharingSection.tsx
-#: src/components/TerminalCliMissingBanner.tsx
-#: src/components/TerminalCliUnverifiedBanner.tsx
+#: src/components/TerminalNoticeBanner.tsx
 msgid "Dismiss"
 msgstr "Descartar"
 
@@ -5021,6 +5032,10 @@ msgstr "Editar una copia"
 msgid "Edit and resend"
 msgstr "Editar y reenviar"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Edit and send again"
+msgstr "Editar y enviar de nuevo"
+
 #: src/components/settings/rule-option-field.tsx
 msgid "Edit in config file"
 msgstr "Editar en el archivo de configuración"
@@ -5148,6 +5163,10 @@ msgid "Emailed"
 msgstr "Enviado por correo"
 
 #: src/editor/slash-command/component-items.tsx
+msgid "Embed a live snapshot of an .excalidraw board from this workspace."
+msgstr "Inserta una instantánea en vivo de una pizarra .excalidraw de este espacio de trabajo."
+
+#: src/editor/slash-command/component-items.tsx
 msgid "Embed a video with native player controls."
 msgstr "Incrusta un vídeo con los controles nativos del reproductor."
 
@@ -5194,6 +5213,10 @@ msgstr "vacío"
 #: src/components/SkillBundlePreview.tsx
 msgid "Empty"
 msgstr "Vacío"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Empty board"
+msgstr "Pizarra vacía"
 
 #: src/editor/components/Mermaid.tsx
 msgid "Empty diagram"
@@ -5415,13 +5438,17 @@ msgstr "todo lo que hay en las carpetas {0}/ dentro de {1}/"
 msgid "everything under any {0}/ folder"
 msgstr "todo lo que hay en cualquier carpeta {0}/"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board"
+msgstr "Pizarra de Excalidraw"
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Excalidraw board failed to load."
+msgstr "No se pudo cargar la pizarra de Excalidraw."
+
 #: src/components/ExcalidrawDocEditor.tsx
 msgid "Excalidraw canvas"
 msgstr "Lienzo de Excalidraw"
-
-#: src/components/settings/SharingSection.tsx
-msgid "Exception: skills are shared"
-msgstr "Excepción: las habilidades se comparten"
 
 #: src/components/NewWorktreeDialog.tsx
 msgid "Existing branch <0>{trimmed}</0> will be checked out into its own window, under <1>.ok/worktrees/</1>."
@@ -5460,6 +5487,15 @@ msgstr "Expandir todos los grupos de archivos"
 #: src/comments/CommentListPanel.tsx
 msgid "Expand all files"
 msgstr "Expandir todos los archivos"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand board"
+msgstr "Expandir la pizarra"
+
+#: src/editor/components/Mermaid.tsx
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "Expand diagram"
+msgstr "Expandir el diagrama"
 
 #: src/components/GraphPanel.tsx
 msgid "Expand graph"
@@ -6260,11 +6296,6 @@ msgstr "Git y PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git no puede seguir esta carpeta: está vacía o solo contiene archivos ignorados. El enlace no funcionará hasta que añadas un documento seguido por git."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "git configuration is unavailable"
-msgstr "La configuración de git no está disponible"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "No has definido tu identidad de git: los commits usan un autor por defecto. Define la tuya para que tus compañeros vean tu nombre."
@@ -7054,6 +7085,10 @@ msgstr "Instalar {0}"
 msgid "Install {brand} →"
 msgstr "Instalar {brand} →"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "install a skill here first"
+msgstr "instala primero una habilidad aquí"
+
 #. placeholder {0}: res.error
 #: src/hooks/use-explore-preview-install.ts
 msgid "Install failed: {0}"
@@ -7547,6 +7582,10 @@ msgstr "La respuesta del grafo de enlaces no tenía la forma esperada."
 msgid "Linked theme files aren’t supported"
 msgstr "No se admiten archivos de tema vinculados"
 
+#: src/components/settings/SkillTargetsPicker.tsx
+msgid "Linking merges another folder into this one. This folder does not exist yet, so install a skill here first."
+msgstr "Enlazar fusiona otra carpeta en esta. Esta carpeta aún no existe, así que instala primero una habilidad aquí."
+
 #: src/components/DocPanel.tsx
 msgid "Links"
 msgstr "Enlaces"
@@ -7920,6 +7959,7 @@ msgid "Medium section heading."
 msgstr "Encabezado de sección mediano."
 
 #: src/components/MermaidDocEditor.tsx
+#: src/editor/components/Mermaid.tsx
 msgid "Mermaid diagram"
 msgstr "Diagrama de Mermaid"
 
@@ -8528,6 +8568,10 @@ msgstr "No se detectaron herramientas de IA. Instala una para usar esta habilida
 msgid "No API key is set for this endpoint. Add one above."
 msgstr "No hay ninguna clave de API definida para este endpoint. Añade una arriba."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "No board selected. Enter the path to a .excalidraw doc in this block's properties."
+msgstr "No hay ninguna pizarra seleccionada. Introduce la ruta de un documento .excalidraw en las propiedades de este bloque."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No body changes at this version."
 msgstr "No hay cambios en el cuerpo en esta versión."
@@ -8615,11 +8659,6 @@ msgstr "No hay remoto de git"
 #: src/components/settings/SharingSection.tsx
 msgid "No git repository — config sharing does not apply here."
 msgstr "No hay repositorio de git: compartir configuración no aplica aquí."
-
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "no git repository here"
-msgstr "aquí no hay repositorio de git"
 
 #: src/editor/wiki-link-suggestion/WikiLinkSuggestionMenu.tsx
 msgid "No headings in {pageTarget}"
@@ -9149,6 +9188,10 @@ msgstr "Abre desde el disco una carpeta de proyecto existente."
 msgid "Open and focus the bottom Ask AI prompt composer."
 msgstr "Abre y enfoca el compositor de prompts de Preguntar a la IA de abajo."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Open board"
+msgstr "Abrir la pizarra"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open CodeMirror search in source editor mode."
 msgstr "Abre la búsqueda de CodeMirror en el modo editor de código."
@@ -9453,6 +9496,18 @@ msgstr "OpenKnowledge buscó conflictos"
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge checked the project"
 msgstr "OpenKnowledge revisó el proyecto"
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
+msgstr "OpenKnowledge no pudo leer terminal.shell en .ok/local/config.yml. Se usará un shell de Windows disponible."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal because the folder is not safely contained in this project. Check that it is a real folder inside the project, not a link. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge no pudo escribir la configuración de inicio en .ok/local/terminal porque la carpeta no está contenida de forma segura en este proyecto. Comprueba que sea una carpeta real dentro del proyecto y no un enlace. Claude te pedirá que apruebes OpenKnowledge."
+
+#: src/components/TerminalPanel.tsx
+msgid "OpenKnowledge couldn't write launch settings under .ok/local/terminal this time. Check that the folder is writable. Claude will ask you to approve OpenKnowledge."
+msgstr "OpenKnowledge no pudo escribir la configuración de inicio en .ok/local/terminal esta vez. Comprueba que se pueda escribir en la carpeta. Claude te pedirá que apruebes OpenKnowledge."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "OpenKnowledge created a share link"
@@ -10918,6 +10973,7 @@ msgstr "Reemplaza la entrada de OpenKnowledge que cada uno ya tiene."
 #: src/components/command-palette-commands.ts
 #: src/components/HelpPopover.tsx
 #: src/components/ReportBugDialogBody.tsx
+#: src/lib/keyboard-shortcuts.ts
 msgid "Report a bug"
 msgstr "Informar de un error"
 
@@ -11651,6 +11707,7 @@ msgid "Semantic search is on, but no API key is set — search falls back to key
 msgstr "La búsqueda semántica está activada, pero no hay ninguna clave de API definida: la búsqueda vuelve a coincidencia por palabras clave. Añade una abajo."
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/acp/UserMessageActions.tsx
 #: src/components/FeedbackForm.tsx
 msgid "Send"
 msgstr "Enviar"
@@ -11676,6 +11733,10 @@ msgstr "Enviar comentarios"
 msgid "Send feedback…"
 msgstr "Enviar comentarios…"
 
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send in this chat"
+msgstr "Enviar en este chat"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Enviar el informe"
@@ -11683,6 +11744,10 @@ msgstr "Enviar el informe"
 #: src/comments/ThreadCard.tsx
 msgid "Send this comment"
 msgstr "Enviar este comentario"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Send to a new chat"
+msgstr "Enviar a un chat nuevo"
 
 #: src/comments/CommentSendFooter.tsx
 msgid "Send to chat"
@@ -11709,6 +11774,10 @@ msgstr "Enviando"
 #: src/components/BugReportSendToast.tsx
 msgid "Sending report"
 msgstr "Enviando el informe"
+
+#: src/components/acp/UserMessageActions.tsx
+msgid "Sending…"
+msgstr "Enviando…"
 
 #: src/components/BugReportHistory.tsx
 msgid "Sent"
@@ -11873,8 +11942,8 @@ msgid "Setup"
 msgstr "Configuración"
 
 #: src/components/ConfigSharingInfoTooltip.tsx
-msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files), project skills.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
-msgstr "Los archivos de configuración incluyen: <0>.ok/</0>, las configuraciones MCP de las herramientas de IA (<1>.mcp.json</1> y los archivos de cada herramienta) y las habilidades del proyecto.<2/><3>Compartido</3> los guarda en git, así que quien clone el repositorio tendrá la misma configuración. <4/><5>Solo yo</5> los mantiene fuera de git (mediante <6>.git/info/exclude</6>)."
+msgid "Setup files include: <0>.ok/</0>, AI-tool MCP configs (<1>.mcp.json</1> and per-tool files). Your skills are not covered — they follow git like any other file in the project.<2/><3>Shared</3> commits them to git, so anyone who clones the repo gets the same setup. <4/><5>Only me</5> keeps them out of git (via <6>.git/info/exclude</6>)."
+msgstr "Los archivos de configuración incluyen: <0>.ok/</0>, las configuraciones MCP de las herramientas de IA (<1>.mcp.json</1> y los archivos de cada herramienta). Tus habilidades no están incluidas: siguen a git como cualquier otro archivo del proyecto.<2/><3>Compartido</3> los guarda en git, así que quien clone el repositorio tendrá la misma configuración. <4/><5>Solo yo</5> los mantiene fuera de git (mediante <6>.git/info/exclude</6>)."
 
 #: src/components/ConsentDialogBody.tsx
 msgid "Setup OpenKnowledge in this folder?"
@@ -11897,10 +11966,6 @@ msgstr "Enviar comentarios"
 #: src/components/ShareButton.tsx
 msgid "Share folder"
 msgstr "Compartir la carpeta"
-
-#: src/components/SkillsSidebarSection.tsx
-msgid "Share skills"
-msgstr "Compartir habilidades"
 
 #. Heading above the skill-folder list in Settings → Skills Studio — the reason, not the mechanism
 #: src/components/settings/SkillTargetsPicker.tsx
@@ -12226,10 +12291,6 @@ msgstr "SKILL.md lo gestiona la propia habilidad; elige otro nombre"
 msgid "Skills"
 msgstr "Habilidades"
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "Skills are now shared. Commit .ok/skills to share them with your team."
-msgstr "Las habilidades ahora se comparten. Haz commit de .ok/skills para compartirlas con tu equipo."
-
 #. placeholder {0}: bucket.id
 #: src/components/SkillsTree.tsx
 msgid "Skills from {0}."
@@ -12364,6 +12425,10 @@ msgstr "Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."
 msgid "Small section heading."
 msgstr "Encabezado de sección pequeño."
 
+#: src/components/TerminalPanel.tsx
+msgid "Some dropped files could not be inserted safely."
+msgstr "Algunos archivos soltados no se pudieron insertar de forma segura."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Some files are not listed — the working tree has too many changes."
 msgstr "Algunos archivos no aparecen: el árbol de trabajo tiene demasiados cambios."
@@ -12489,6 +12554,10 @@ msgstr "Prepara el fragmento seleccionado en el panel de agentes, listo para amp
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Danos una estrella en GitHub"
+
+#: src/lib/keyboard-shortcuts.ts
+msgid "Start a bug report with a screenshot of the screen as it looks right now."
+msgstr "Inicia un informe de error con una captura de pantalla tal como se ve ahora mismo."
 
 #: src/components/SessionsHost.tsx
 msgid "Start a chat with the ＋ button, or launch an agent from a page."
@@ -13021,6 +13090,18 @@ msgstr "Los ajustes de la terminal aún no se han cargado; inténtalo de nuevo e
 msgid "Terminal settings not yet loaded — try again in a moment"
 msgstr "Los ajustes de la terminal aún no se han cargado; inténtalo de nuevo en un momento"
 
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be a string. Using an available Windows shell instead."
+msgstr "terminal.shell en .ok/local/config.yml debe ser una cadena. Se usará un shell de Windows disponible."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml must be an absolute Windows path. Using an available Windows shell instead."
+msgstr "terminal.shell en .ok/local/config.yml debe ser una ruta absoluta de Windows. Se usará un shell de Windows disponible."
+
+#: src/components/TerminalPanel.tsx
+msgid "terminal.shell in .ok/local/config.yml supports PowerShell, cmd.exe, or Git Bash for OpenKnowledge-managed launches and dropped-file paths. This shell opens a plain terminal only; agent and command launches do not run in it."
+msgstr "terminal.shell en .ok/local/config.yml admite PowerShell, cmd.exe o Git Bash para los inicios administrados por OpenKnowledge y las rutas de archivos soltados. Este shell solo abre un terminal normal; los inicios de agentes y comandos no se ejecutan en él."
+
 #: src/components/settings/SearchSection.tsx
 msgid "Test connection"
 msgstr "Probar conexión"
@@ -13127,6 +13208,22 @@ msgstr "El contrato de cálculo certificado. Solo se aplica a documentos de tipo
 msgid "The audit could not be completed. Try again."
 msgstr "No se pudo completar la auditoría. Inténtalo de nuevo."
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board could not be reached. It may not exist, or the server may be offline."
+msgstr "No se pudo acceder a la pizarra. Puede que no exista o que el servidor esté sin conexión."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board snapshot could not be rendered."
+msgstr "No se pudo renderizar la instantánea de la pizarra."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board viewer failed to load. Check your connection and try again."
+msgstr "No se pudo cargar el visor de la pizarra. Comprueba tu conexión e inténtalo de nuevo."
+
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "The board's content is not a valid Excalidraw scene."
+msgstr "El contenido de la pizarra no es una escena de Excalidraw válida."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "La aplicación Claude Desktop no abrió el archivo. ¿Está instalada? ({msg})"
@@ -13176,11 +13273,6 @@ msgstr "Las carpetas y las plantillas ya están aquí, así que no hay nada que 
 msgid "The formula <0>c = √(a² + b²)</0> renders inline."
 msgstr "La fórmula <0>c = √(a² + b²)</0> se renderiza en línea."
 
-#: src/components/settings/SharingSection.tsx
-#: src/components/SkillsSidebarSection.tsx
-msgid "the git exclude file isn't writable"
-msgstr "el archivo de exclusión de git no admite escritura"
-
 #: src/components/settings/LintingSection.tsx
 msgid "The index files stay in place. Open Knowledge removes only the Git rule it added."
 msgstr "Los archivos de índice permanecen en su lugar. Open Knowledge elimina solo la regla Git que agregó."
@@ -13225,6 +13317,10 @@ msgstr "La vista previa bloquea los recursos que no cumplen sus reglas de seguri
 #: src/components/BranchRecycleBanner.tsx
 msgid "The project's server is on a different branch than this window — content can't load."
 msgstr "El servidor de este proyecto está en una rama distinta a la de esta ventana: el contenido no se puede cargar."
+
+#: src/components/TerminalPanel.tsx
+msgid "The prompt was pasted but not submitted automatically. Review it, then press Enter to send it."
+msgstr "El prompt se pegó, pero no se envió automáticamente. Revísalo y pulsa Enter para enviarlo."
 
 #: src/components/PropertyPanel.tsx
 msgid "The properties block at the top of this doc has a formatting error. Switch to source mode to fix it."
@@ -13279,6 +13375,14 @@ msgstr "El archivo de esquema no existe o no se pudo cargar; al añadir un campo
 msgid "the server responded but server.lock has no port yet"
 msgstr "el servidor respondió pero server.lock aún no tiene puerto"
 
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped."
+msgstr "El servidor se detuvo."
+
+#: src/presence/use-sync-toasts.ts
+msgid "The server stopped. Restart it to reconnect."
+msgstr "El servidor se detuvo. Reinícialo para volver a conectarte."
+
 #. placeholder {0}: origin.trim()
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "The server will accept requests for {0} with no built-in authentication. Anyone who can reach your tunnel will have full control of this knowledge base, including sync, GitHub credentials, and local operations. Make sure the tunnel's edge restricts who can connect."
@@ -13329,6 +13433,10 @@ msgstr "La sesión de terminal terminó."
 #: src/components/TerminalExitNotice.tsx
 msgid "The terminal stopped unexpectedly."
 msgstr "La terminal se detuvo de forma inesperada."
+
+#: src/components/TerminalPanel.tsx
+msgid "The terminal.shell executable in .ok/local/config.yml was not found. Using an available Windows shell instead."
+msgstr "No se encontró el ejecutable terminal.shell de .ok/local/config.yml. Se usará un shell de Windows disponible."
 
 #: src/components/AuthModal.tsx
 msgid "The token needs the repo and read:user scopes."
@@ -13718,10 +13826,6 @@ msgstr "Este proyecto no tiene repositorio de git, así que el modo de compartic
 msgid "This project has no GitHub remote."
 msgstr "Este proyecto no tiene ningún remoto de GitHub."
 
-#: src/components/SkillsSidebarSection.tsx
-msgid "This project is local-only, so .ok/skills is hidden from git and these skills can't be committed or shared. Share just the skills folder — the rest of your OK config stays on this computer."
-msgstr "Este proyecto es solo local, así que .ok/skills está oculto para git y estas habilidades no se pueden confirmar ni compartir. Comparte solo la carpeta de habilidades: el resto de tu configuración de OK se queda en este equipo."
-
 #. placeholder {0}: info.appRuntime
 #: src/lib/install-server-drift-listener.ts
 msgid "This project is running a different, incompatible build of OpenKnowledge than this app (v{0})."
@@ -13964,6 +14068,10 @@ msgstr "Alterna el patrón {0}/**"
 msgid "tokens"
 msgstr "tokens"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+msgid "Too many live references on this page. This board was not loaded."
+msgstr "Demasiadas referencias en vivo en esta página. Esta pizarra no se cargó."
+
 #: src/components/FeedbackForm.tsx
 msgid "Too slow"
 msgstr "Demasiado lento"
@@ -14012,6 +14120,7 @@ msgstr "Prueba un prompt"
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx
+#: src/editor/components/ExcalidrawEmbed.tsx
 msgid "Try again"
 msgstr "Inténtalo de nuevo"
 
@@ -14132,7 +14241,6 @@ msgstr "Se deshizo la última edición en {docName}"
 #: src/components/AppMenubar.tsx
 #: src/components/DiffView.tsx
 #: src/components/settings/SavedThemesTiles.tsx
-#: src/components/settings/SharingSection.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Undo"
 msgstr "Deshacer"
@@ -14593,6 +14701,11 @@ msgstr "Ver en el markdown de origen"
 msgid "View in Source Markdown"
 msgstr "Ver en el Markdown de origen"
 
+#: src/editor/components/ExcalidrawEmbed.tsx
+#: src/editor/components/Mermaid.tsx
+msgid "View only"
+msgstr "Solo lectura"
+
 #: src/components/SkillPluginBundleBanner.tsx
 #: src/components/SkillsTree.tsx
 msgid "View plugin"
@@ -14655,6 +14768,7 @@ msgstr "Esperando la autorización"
 msgid "Waiting for your approval"
 msgstr "Esperando tu aprobación"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/settings/ContentRulesSection.tsx
 #: src/components/settings/ThemePreviewCanvas.tsx
 msgid "Warning"
@@ -15012,6 +15126,10 @@ msgstr "Elegiste tu carpeta personal. OpenKnowledge indexará todo tu árbol per
 #: src/components/OnboardingCard.tsx
 msgid "You're all set up!"
 msgstr "¡Ya está todo listo!"
+
+#: src/components/settings/SyncSection.tsx
+msgid "You're pushing more often than you check for updates. If others write to this repo too, pushes will often have to pull and try again."
+msgstr "Estás haciendo push con más frecuencia de la que buscas actualizaciones. Si otras personas también escriben en este repositorio, los push a menudo tendrán que traer los cambios y volver a intentarlo."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You're signed out — sign in to resume syncing."

@@ -247,7 +247,7 @@ interface JsxComponentMetaBase {
   icon?: string;
   /** Slash menu grouping category. Precedent #9 keeps this add-only —
    *  extending with new members is free; narrowing is permanent lock-in. */
-  category?: 'content' | 'media';
+  category?: 'content' | 'media' | 'embed';
   /** Slash menu label. */
   displayName?: string;
   /** One-line summary for slash menu + MCP agent discovery. */

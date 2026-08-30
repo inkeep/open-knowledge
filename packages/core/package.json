@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-core",
-  "version": "0.63.10",
+  "version": "0.66.2",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -54,6 +54,11 @@
       "development": "./src/acp/permissive-mode.ts",
       "types": "./src/acp/permissive-mode.ts",
       "default": "./dist/acp-permissive-mode.mjs"
+    },
+    "./acp/codex-legacy-notice": {
+      "development": "./src/acp/codex-legacy-notice.ts",
+      "types": "./src/acp/codex-legacy-notice.ts",
+      "default": "./dist/acp-codex-legacy-notice.mjs"
     },
     "./desktop-bridge": {
       "development": "./src/desktop-bridge.ts",

@@ -92,6 +92,19 @@ export function Mirror(props: MirrorProps) {
     );
   }
 
+  if (status.kind === 'at-capacity') {
+    // A pool-capacity refusal is a client-side condition — the source doc
+    // is fine, so the copy must not claim it was removed.
+    return (
+      <StatusFrame tone="error">
+        <Trans>
+          <span className="font-medium">Too many live references on this page.</span> This mirror of{' '}
+          <code>{src}</code> was not loaded.
+        </Trans>
+      </StatusFrame>
+    );
+  }
+
   if (status.kind === 'anchor-not-found') {
     const mirrorSourceTag = `<MirrorSource id="${anchor}">`;
     return (

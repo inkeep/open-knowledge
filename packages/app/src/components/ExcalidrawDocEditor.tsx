@@ -22,27 +22,9 @@ import { useLingui } from '@lingui/react/macro';
 import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { replaceYText } from './MermaidDocEditor';
 
-// Extend `Window` locally so setting `EXCALIDRAW_ASSET_PATH` doesn't require
-// a global `any` cast (and doesn't leak Excalidraw's package-private symbol
-// into every other consumer of `Window`).
-declare global {
-  interface Window {
-    EXCALIDRAW_ASSET_PATH?: string;
-  }
-}
-
-// Point Excalidraw at the self-hosted asset tree vendored in via
-// `scripts/copy-excalidraw-assets.mjs` (runs on `predev`/`prebuild`).
-// Without this, the package falls back to its hardcoded
-// `https://esm.sh/@excalidraw/excalidraw@<v>/dist/prod/` URL for every font
-// file (`createUrls` in the published `chunk-K2UTITRG.js`) — a posture
-// change for a local-first editor: offline users get system-font fallbacks,
-// and every online render ships a request to a third-party CDN we do not
-// otherwise depend on. Set at module load (before any Excalidraw component
-// mounts) so the first canvas render already has the override in place.
-if (typeof window !== 'undefined' && window.EXCALIDRAW_ASSET_PATH === undefined) {
-  window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/';
-}
+// The `EXCALIDRAW_ASSET_PATH` pin lives in the shared side-effect module so
+// the document embed's independent entry point carries it too.
+import '@/lib/excalidraw-env';
 
 type ExcalidrawProps = ComponentProps<typeof Excalidraw>;
 type ExcalidrawImperativeAPI = Parameters<NonNullable<ExcalidrawProps['excalidrawAPI']>>[0];
