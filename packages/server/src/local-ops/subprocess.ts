@@ -7,8 +7,20 @@
  * lines as needed.
  *
  * Lifetime: the returned controller's `cancel()` sends SIGTERM. The runner
- * resolves with `{ code, stderr }` once the child exits, regardless of
- * cancellation.
+ * resolves with `{ code, stderr }` once the child's stdio has closed,
+ * regardless of cancellation.
+ *
+ * KNOWN GAP (deferred, deliberately — the Wave 2 settled-latch adoption
+ * stopped at the HTTP handlers): settlement here still depends on the child
+ * cooperating — the timeout sends SIGTERM without being a settle branch, so
+ * a signal-resistant or wedged child leaves `done` pending. That failure class reaches every consumer of this chokepoint: the
+ * six HTTP local-op endpoints routed through it, plus
+ * `local-ops/auth-query.ts` (`runAuthStatusSubprocess` /
+ * `runAuthReposSubprocess`) and the desktop IPC surface
+ * (`packages/desktop/src/main/index.ts`) that calls them — a surface the
+ * HTTP-side fixes do not cover.
+ * `auth-query.ts` also carries its own duplicate `DEFAULT_TIMEOUT_MS =
+ * 30_000`; fold it into the same follow-up.
  */
 
 import { spawn } from 'node:child_process';
@@ -65,7 +77,7 @@ interface SubprocessRunResult {
 }
 
 interface SubprocessController {
-  /** Promise that resolves once the child has exited (success or otherwise). */
+  /** Promise that resolves once the child's stdio has closed (success or otherwise). */
   done: Promise<SubprocessRunResult>;
   /** SIGTERM the child. Idempotent. */
   cancel(): void;
