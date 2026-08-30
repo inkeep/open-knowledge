@@ -21,7 +21,12 @@
         "OK_INSTANCE",
         "OK_AUTO_INSTANCE",
         "OK_UNINSTALL_UI_PREVIEW",
-        "OK_FEEDBACK_INTAKE_ORIGIN"
+        "OK_FEEDBACK_INTAKE_ORIGIN",
+        // Single-CRDT projection path (dev only). turbo's env mode is strict,
+        // so an undeclared var is dropped before electron-vite sees it and the
+        // flag silently stays off. `packages/app run dev` is plain Vite and
+        // needs no entry.
+        "VITE_OK_PROJECTION_BINDING"
       ]
     },
     "build:desktop:dir": {
