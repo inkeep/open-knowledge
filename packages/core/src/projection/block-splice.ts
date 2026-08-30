@@ -205,6 +205,18 @@ export function computeBlockSplice(
       : null;
   const occupiesBytes = bounds !== null && bounds.to > bounds.from;
 
+  // Any edit that ADDS or REMOVES blank paragraphs is a change to the gap
+  // between their emitting neighbours, not to any block's own bytes — including
+  // one that empties a paragraph of its text, which turns a block into a blank
+  // line. This has to be tried before the deletion branch: removing a blank
+  // reaches here as a deletion of a block that occupies no bytes, which that
+  // branch would decline, leaving the editor holding one fewer blank line than
+  // the markdown records.
+  if (text === '' && touchesBlankParagraphs(projection.doc, after, range)) {
+    const gap = blankRunGapSplice(body, blocks, after, range, shift);
+    if (gap !== null) return gap;
+  }
+
   // Deletion: take one separating blank run with the blocks, on whichever side
   // still has a neighbour, so removing a block cannot leave a wider gap behind.
   if (text === '' && occupiesBytes) {
@@ -250,13 +262,6 @@ export function computeBlockSplice(
   // the empty paragraph could not be placed, the projection rebuilt from the
   // unchanged markdown, and the user's new line vanished as they made it.
   if (text === '') {
-    // ...unless it is a run of blank paragraphs between blocks that DO emit.
-    // Markdown spells that as a wider gap, so it is writable after all — just
-    // not by serializing the blank blocks, which emit nothing however many of
-    // them there are. Widening the gap is also byte-minimal: it rewrites only
-    // the newlines between two blocks, never the neighbours themselves.
-    const gap = blankRunGapSplice(body, blocks, after, range, shift);
-    if (gap !== null) return gap;
     const point = shift(anchor?.point ?? 0);
     return { from: point, to: point, text: '' };
   }
@@ -284,6 +289,24 @@ function isBlankParagraph(node: PmNode): boolean {
 }
 
 /**
+ * Whether an edit adds or removes blank paragraphs.
+ *
+ * Either side counts. A pure deletion of blocks that all emit bytes is NOT a
+ * gap edit and keeps the ordinary deletion path; emptying a paragraph of its
+ * text IS one, because what is left renders as a blank line.
+ */
+function touchesBlankParagraphs(before: PmNode, after: PmNode, range: ChangedBlocks): boolean {
+  for (let i = range.after.from; i < range.after.to; i++) {
+    if (!isBlankParagraph(after.child(i))) return false;
+  }
+  if (range.after.to > range.after.from) return true;
+  for (let i = range.before.from; i < range.before.to && i < before.childCount; i++) {
+    if (isBlankParagraph(before.child(i))) return true;
+  }
+  return false;
+}
+
+/**
  * Express a run of blank paragraphs as the gap between its emitting neighbours.
  *
  * `insertInteriorBlankRunParagraphs` reads N blank paragraphs back out of a
@@ -292,15 +315,23 @@ function isBlankParagraph(node: PmNode): boolean {
  * floor a trailing empty paragraph is indistinguishable from the type-here
  * affordance the editor renders after the last block. So the write here is
  * arithmetic on newlines, not serialization: the blank blocks themselves emit
- * nothing at any count.
+ * nothing at any count, including none at all.
  *
  * The run is re-derived from the CURRENT document rather than taken from the
- * changed range, because adding one blank line to an existing run changes one
- * block but must rewrite the whole run's gap.
+ * changed range, because adding or removing one blank line changes one block
+ * but must rewrite the whole run's gap.
  *
- * Null when the run cannot be spelled: no emitting neighbour on either side, a
- * leading run (whose boundary capture this does not yet handle), or a trailing
- * run below the floor. Those stay held in the projection, unwritten.
+ * A count of zero is the collapse case and is handled by the same arithmetic:
+ * the gap becomes the ordinary two-newline separator, or a single trailing
+ * newline.
+ *
+ * A trailing run below the floor is written as NO trailing run rather than left
+ * alone. Leaving it alone would be worse than losing the blank line: the
+ * markdown would keep more blank lines than the editor shows, and the next
+ * re-projection would hand the user back a line they had just deleted.
+ *
+ * Null when there is no emitting neighbour to hang the gap on — a leading run,
+ * or a document that is nothing but blanks. Those stay held, unwritten.
  */
 function blankRunGapSplice(
   body: string,
@@ -309,39 +340,59 @@ function blankRunGapSplice(
   range: ChangedBlocks,
   shift: (offset: number) => number,
 ): SourceSplice | null {
-  if (range.after.to <= range.after.from) return null;
-  for (let i = range.after.from; i < range.after.to; i++) {
-    if (!isBlankParagraph(after.child(i))) return null;
-  }
-
   let runStart = range.after.from;
   while (runStart > 0 && isBlankParagraph(after.child(runStart - 1))) runStart--;
-  let runEnd = range.after.to;
+  let runEnd = Math.max(range.after.to, range.after.from);
   while (runEnd < after.childCount && isBlankParagraph(after.child(runEnd))) runEnd++;
   const count = runEnd - runStart;
 
   // Blocks outside the changed range line up index-for-index with the block
-  // table, shifted past the change by however much the range grew.
+  // table, shifted past the change by however much the range grew or shrank.
   const tailShift = range.after.to - range.before.to;
   const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
   const next = runEnd < after.childCount ? blocks[runEnd - tailShift] : undefined;
 
   if (prev !== undefined && next !== undefined) {
-    return {
-      from: shift(lineEnd(body, prev.sourceEnd)),
-      to: shift(lineStart(body, next.sourceStart)),
-      text: '\n'.repeat(count + 2),
-    };
+    return gapWrite(
+      body,
+      lineEnd(body, prev.sourceEnd),
+      lineStart(body, next.sourceStart),
+      '\n'.repeat(count + 2),
+      shift,
+    );
   }
   if (prev !== undefined) {
-    if (count < MIN_CARRIED_EDGE_EMPTIES) return null;
-    return {
-      from: shift(lineEnd(body, prev.sourceEnd)),
-      to: shift(body.length),
-      text: '\n'.repeat(count + 1),
-    };
+    return gapWrite(
+      body,
+      lineEnd(body, prev.sourceEnd),
+      body.length,
+      '\n'.repeat(count >= MIN_CARRIED_EDGE_EMPTIES ? count + 1 : 1),
+      shift,
+    );
   }
   return null;
+}
+
+/**
+ * A gap rewrite, or null when the gap already reads that way.
+ *
+ * The no-op case is not merely wasteful, it is wrong to return: a run BELOW the
+ * doc-edge floor computes back to the bytes already present, and handing that
+ * back as a splice makes the caller record a write it did not make. The block
+ * table then holds one fewer entry than the document, and the next keystroke
+ * indexes past the end of it and loses the edit. Declining sends the caller to
+ * the zero-emission hold instead, which gives the block a zero-width span and
+ * keeps table and document aligned.
+ */
+function gapWrite(
+  body: string,
+  from: number,
+  to: number,
+  text: string,
+  shift: (offset: number) => number,
+): SourceSplice | null {
+  if (body.slice(from, to) === text) return null;
+  return { from: shift(from), to: shift(to), text };
 }
 
 /**

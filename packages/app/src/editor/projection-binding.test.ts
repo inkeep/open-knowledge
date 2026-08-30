@@ -174,6 +174,14 @@ function pressEnter(editor: Editor, at: number): void {
   editor.commands.splitBlock();
 }
 
+/** Remove a whole top-level block, the way Backspace on an empty line does. */
+function deleteBlock(editor: Editor, blockIndex: number): void {
+  let pos = 0;
+  for (let i = 0; i < blockIndex; i++) pos += editor.state.doc.child(i).nodeSize;
+  const size = editor.state.doc.child(blockIndex).nodeSize;
+  editor.view.dispatch(editor.state.tr.delete(pos, pos + size));
+}
+
 /** Document position at the end of a top-level block's content. */
 function endOfBlock(editor: Editor, blockIndex: number): number {
   let pos = 0;
@@ -329,6 +337,65 @@ describe('projection binding — blocks markdown cannot spell', () => {
     const reprojected = md.parse(source) as { content: unknown[] };
     expect(reprojected.content).toHaveLength(rig.editor.state.doc.childCount);
     expect(source).toBe('a\n\n\n\nb\n');
+    rig.destroy();
+  });
+
+  it('removes an interior blank line again when it is deleted', () => {
+    // Deleting a blank reaches the write path as a deletion of a block that
+    // occupies no bytes, which the ordinary deletion branch declines. Without
+    // the gap path it wrote nothing at all, so the editor showed one fewer
+    // blank line than the markdown held — and the next re-projection handed the
+    // deleted line straight back.
+    const rig = createRig('a\n\n\n\n\nb\n');
+    expect(rig.editor.state.doc.childCount).toBe(5);
+
+    for (const expected of ['a\n\n\n\nb\n', 'a\n\n\nb\n', 'a\n\nb\n']) {
+      deleteBlock(rig.editor, 1);
+      expect(rig.ytext.toString()).toBe(expected);
+      // The markdown and the document agree at every step.
+      expect((md.parse(rig.ytext.toString()) as { content: unknown[] }).content).toHaveLength(
+        rig.editor.state.doc.childCount,
+      );
+    }
+    rig.destroy();
+  });
+
+  it('collapses a trailing run below the floor rather than resurrecting a line', () => {
+    const rig = createRig('a\n\n\n\n');
+    expect(rig.editor.state.doc.childCount).toBe(4);
+
+    deleteBlock(rig.editor, 1);
+    expect(rig.ytext.toString()).toBe('a\n\n\n');
+
+    // Down to one trailing blank, which is below `MIN_CARRIED_EDGE_EMPTIES` and
+    // so unwritable. Writing NO run is the right answer: leaving the two-blank
+    // run in place would keep more blank lines in the markdown than the editor
+    // shows, and the next re-projection would give back a line the user just
+    // deleted.
+    deleteBlock(rig.editor, 1);
+    expect(rig.ytext.toString()).toBe('a\n');
+    rig.destroy();
+  });
+
+  it('turns a paragraph emptied of its text into a blank line', () => {
+    const rig = createRig('a\n\nx\n\nc\n');
+    const doc = rig.editor.state.doc;
+    const start = doc.child(0).nodeSize;
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.delete(start + 1, start + doc.child(1).nodeSize - 1),
+    );
+    // The block is still there and still renders as a line, so it must not be
+    // deleted from the markdown — it becomes the blank line it now looks like.
+    expect(rig.ytext.toString()).toBe('a\n\n\nc\n');
+    expect(rig.editor.state.doc.childCount).toBe(3);
+    rig.destroy();
+  });
+
+  it('still deletes a block outright when it holds real content', () => {
+    const rig = createRig('a\n\nx\n\nc\n');
+    deleteBlock(rig.editor, 1);
+    expect(rig.ytext.toString()).toBe('a\n\nc\n');
+    expect(rig.editor.state.doc.childCount).toBe(2);
     rig.destroy();
   });
 
