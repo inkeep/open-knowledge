@@ -97,66 +97,6 @@ describe('shouldThrowOnBridgeInvariantViolation (affirmative gate polarity)', ()
   });
 });
 
-/**
- * `deriveSuspended` — the demand gate's contract with the watchdog.
- *
- * While a document's fragment derive is suspended for lack of a consumer, the
- * fragment is knowingly behind Y.Text. That divergence is expected, so it must
- * not be counted as a violation or thrown; but it must still be VISIBLE, on its
- * own counter, because a suspension that never gets its catch-up derive is the
- * one failure mode the gate can introduce.
- *
- * The `control:` row is what makes this meaningful: the very same divergent
- * inputs must still throw when the flag is absent. Without it these assertions
- * would also pass against a watchdog that had simply stopped working.
- */
-describe('assertBridgeInvariant — derive-suspended divergence', () => {
-  const YTEXT = '# Hello\n\nA typed line the fragment has not absorbed.\n';
-  const FRAGMENT = '# Hello\n';
-
-  test('control: the same divergence still throws when not suspended', () => {
-    expect(() => {
-      assertBridgeInvariant(YTEXT, FRAGMENT, { site: 'persistence', suppressDevThrow: false });
-    }).toThrow();
-  });
-
-  test('suspended divergence does not throw', () => {
-    expect(() => {
-      assertBridgeInvariant(YTEXT, FRAGMENT, { site: 'persistence', deriveSuspended: true });
-    }).not.toThrow();
-  });
-
-  test('suspended divergence is not counted as a violation', () => {
-    assertBridgeInvariant(YTEXT, FRAGMENT, { site: 'persistence', deriveSuspended: true });
-    expect(getMetrics().bridgeInvariantViolations).toBe(0);
-    expect(getMetrics().bridgeInvariantViolationsSuppressed).toBe(0);
-  });
-
-  test('suspended divergence IS counted on its own series', () => {
-    assertBridgeInvariant(YTEXT, FRAGMENT, { site: 'persistence', deriveSuspended: true });
-    expect(getMetrics().bridgeDeriveSuspendedDivergences).toBe(1);
-  });
-
-  test('returns false so callers still queue the fragment reconciliation', () => {
-    expect(
-      assertBridgeInvariant(YTEXT, FRAGMENT, { site: 'persistence', deriveSuspended: true }),
-    ).toBe(false);
-  });
-
-  test('a CONVERGED suspended doc reports no divergence at all', () => {
-    // Suspension must not manufacture a divergence signal for a doc that
-    // happens to be in sync — otherwise the new counter climbs on quiet docs
-    // and stops meaning anything.
-    expect(
-      assertBridgeInvariant('# Hello\n', '# Hello\n', {
-        site: 'persistence',
-        deriveSuspended: true,
-      }),
-    ).toBe(true);
-    expect(getMetrics().bridgeDeriveSuspendedDivergences).toBe(0);
-  });
-});
-
 describe('assertBridgeInvariant — no-op for tolerance-equivalent inputs', () => {
   test('byte-equal inputs pass without throwing', () => {
     expect(() => {

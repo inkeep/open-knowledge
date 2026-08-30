@@ -56,7 +56,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { getLogger } from './logger.ts';
 import {
-  incrementBridgeDeriveSuspendedDivergences,
   incrementBridgeInvariantViolations,
   incrementBridgeInvariantViolationsSuppressed,
   incrementBridgeSplitBrainRederivesSuppressed,
@@ -516,24 +515,6 @@ interface AssertBridgeInvariantOpts {
    */
   suppressDevThrow?: boolean;
   /**
-   * The fragment is knowingly stale because its derive is suspended for lack
-   * of a consumer (`fragment-derive-demand.ts`). Divergence is EXPECTED in
-   * that window, so it is reported through its own channel and never counted
-   * as a violation or thrown.
-   *
-   * This is deliberately NOT `suppressDevThrow`. That flag says "this site is
-   * downstream, keep going" and still records a violation, because at a
-   * persistence fire the bridge really is broken. This one says "there is no
-   * claim to check yet" — the fragment has not been asked to track Y.Text.
-   * Folding the two together would either start throwing on normal suspended
-   * operation or stop recording real persistence-site violations.
-   *
-   * Sound only because suspension is bounded: every suspension ends in a
-   * catch-up derive that asserts the invariant at full strength. See the
-   * SAFETY INVARIANT note in `fragment-derive-demand.ts`.
-   */
-  deriveSuspended?: boolean;
-  /**
    * Parse-equivalence fallback (`isParseEquivalentBridge`). When the inputs
    * diverge beyond every `normalizeBridge` byte class, canonicalize the
    * ytext body through the caller's own parse→serialize pipeline and accept
@@ -649,21 +630,6 @@ export function assertBridgeInvariant(
       PARSE_EQUIVALENCE_TOLERANCE,
     ]);
     return true;
-  }
-
-  // Derive suspended: the fragment is behind Y.Text because nothing has asked
-  // it to keep up. Not a violation — there is no broken promise here, only an
-  // unmade one. Reported on its own counter so operators keep a signal (a
-  // suspension that never gets its catch-up derive shows up as this climbing
-  // for an idle doc) without it landing in the violation series.
-  //
-  // Returns false: callers read the boolean as "surfaces differ", and the
-  // conservative downstream behaviour that follows from that — persistence
-  // writing Y.Text bytes and queueing a fragment reconciliation — is exactly
-  // right for a suspended doc, and is the already-tested path.
-  if (opts.deriveSuspended) {
-    incrementBridgeDeriveSuspendedDivergences();
-    return false;
   }
 
   const violation: BridgeInvariantViolation = {

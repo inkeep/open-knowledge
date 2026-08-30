@@ -74,7 +74,6 @@ import {
   snapshotBlocks,
 } from '../agent-sessions.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
-import { resumeFragmentDerive } from '../fragment-derive-demand.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
@@ -3640,14 +3639,6 @@ export class AcpThreadManager {
         this.opts.resolveEmbed !== undefined
           ? { resolveEmbed: this.opts.resolveEmbed, sourcePath: target.rel }
           : undefined;
-      // Pay back any derive the demand gate skipped BEFORE the before-snapshot
-      // is taken. `changedBlockRange` diffs the fragment's top-level children
-      // across the write; a stale `beforeBlocks` would attribute the staleness
-      // itself to this agent's edit and flash blocks it never touched. Outside
-      // the transact deliberately — the catch-up runs the ordinary Observer B
-      // fire, which dispatches from `afterAllTransactions`. No-op when nothing
-      // is owed (the common case) and when the gate is not wired at all.
-      resumeFragmentDerive(session.dc.document);
       session.dc.document.transact(() => {
         const beforeBlocks = snapshotBlocks(session.dc.document);
         applyAgentMarkdownWrite(

@@ -101,18 +101,6 @@ export interface ReconciliationMetrics {
    *  — actual violation rate = `bridgeInvariantViolations` +
    *  `bridgeInvariantViolationsSuppressed`. */
   bridgeInvariantViolationsSuppressed: number;
-  /** Bridge derive-suspended — count of divergence checks that found the
-   *  fragment behind Y.Text at a moment when the derive was DELIBERATELY
-   *  suspended for lack of a consumer (`fragment-derive-demand.ts`). Kept out
-   *  of the violation counters on purpose: a by-design divergence is not a
-   *  bridge defect, and folding it in would break the documented identity
-   *  `actual violation rate = bridgeInvariantViolations +
-   *  bridgeInvariantViolationsSuppressed` and drown the signal the violation
-   *  counters exist to carry. A NON-ZERO value here is normal. A value that
-   *  keeps climbing for a doc nobody is editing is not — it means a suspension
-   *  never got its catch-up derive, which is the one failure mode the demand
-   *  gate can introduce. */
-  bridgeDeriveSuspendedDivergences: number;
   /** Quiescence gate — count of persistence cycles that the quiescence gate
    *  skipped because `isDocQuiescent` returned false (Hocuspocus's debounce
    *  fired mid-burst before `afterAllTransactions` had landed since the last
@@ -560,7 +548,6 @@ const counters: ReconciliationMetrics = {
   producerGuardCheckpointCreated: 0,
   bridgeInvariantViolations: 0,
   bridgeInvariantViolationsSuppressed: 0,
-  bridgeDeriveSuspendedDivergences: 0,
   persistenceSkipNonQuiescent: 0,
   persistenceForceFlushDuringBurst: 0,
   persistenceStalenessDetected: 0,
@@ -733,10 +720,6 @@ export function incrementBridgeInvariantViolations(): void {
 
 export function incrementBridgeInvariantViolationsSuppressed(): void {
   counters.bridgeInvariantViolationsSuppressed++;
-}
-
-export function incrementBridgeDeriveSuspendedDivergences(): void {
-  counters.bridgeDeriveSuspendedDivergences++;
 }
 
 export function incrementPersistenceSkipNonQuiescent(): void {
@@ -1057,7 +1040,6 @@ export function resetMetrics(): void {
   counters.producerGuardCheckpointCreated = 0;
   counters.bridgeInvariantViolations = 0;
   counters.bridgeInvariantViolationsSuppressed = 0;
-  counters.bridgeDeriveSuspendedDivergences = 0;
   counters.persistenceSkipNonQuiescent = 0;
   counters.persistenceForceFlushDuringBurst = 0;
   counters.persistenceStalenessDetected = 0;
