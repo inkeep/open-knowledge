@@ -39,6 +39,7 @@
 
 import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
+import { MIN_CARRIED_EDGE_EMPTIES } from '../markdown/doc-edge-blank-runs.ts';
 import type { MarkdownManager } from '../markdown/index.ts';
 import {
   buildBlockSourceMap,
@@ -249,6 +250,13 @@ export function computeBlockSplice(
   // the empty paragraph could not be placed, the projection rebuilt from the
   // unchanged markdown, and the user's new line vanished as they made it.
   if (text === '') {
+    // ...unless it is a run of blank paragraphs between blocks that DO emit.
+    // Markdown spells that as a wider gap, so it is writable after all — just
+    // not by serializing the blank blocks, which emit nothing however many of
+    // them there are. Widening the gap is also byte-minimal: it rewrites only
+    // the newlines between two blocks, never the neighbours themselves.
+    const gap = blankRunGapSplice(body, blocks, after, range, shift);
+    if (gap !== null) return gap;
     const point = shift(anchor?.point ?? 0);
     return { from: point, to: point, text: '' };
   }
@@ -268,6 +276,72 @@ export function computeBlockSplice(
     to: point,
     text: anchor.follows ? `\n\n${text}` : `${text}\n\n`,
   };
+}
+
+/** A top-level block that renders as a blank line and emits no markdown. */
+function isBlankParagraph(node: PmNode): boolean {
+  return node.type.name === 'paragraph' && node.content.size === 0;
+}
+
+/**
+ * Express a run of blank paragraphs as the gap between its emitting neighbours.
+ *
+ * `insertInteriorBlankRunParagraphs` reads N blank paragraphs back out of a
+ * gap of N+2 newlines, and the doc-edge pass reads them out of N+1 TRAILING
+ * newlines — but only from `MIN_CARRIED_EDGE_EMPTIES` up, because below that
+ * floor a trailing empty paragraph is indistinguishable from the type-here
+ * affordance the editor renders after the last block. So the write here is
+ * arithmetic on newlines, not serialization: the blank blocks themselves emit
+ * nothing at any count.
+ *
+ * The run is re-derived from the CURRENT document rather than taken from the
+ * changed range, because adding one blank line to an existing run changes one
+ * block but must rewrite the whole run's gap.
+ *
+ * Null when the run cannot be spelled: no emitting neighbour on either side, a
+ * leading run (whose boundary capture this does not yet handle), or a trailing
+ * run below the floor. Those stay held in the projection, unwritten.
+ */
+function blankRunGapSplice(
+  body: string,
+  blocks: readonly PmSourceSpan[],
+  after: PmNode,
+  range: ChangedBlocks,
+  shift: (offset: number) => number,
+): SourceSplice | null {
+  if (range.after.to <= range.after.from) return null;
+  for (let i = range.after.from; i < range.after.to; i++) {
+    if (!isBlankParagraph(after.child(i))) return null;
+  }
+
+  let runStart = range.after.from;
+  while (runStart > 0 && isBlankParagraph(after.child(runStart - 1))) runStart--;
+  let runEnd = range.after.to;
+  while (runEnd < after.childCount && isBlankParagraph(after.child(runEnd))) runEnd++;
+  const count = runEnd - runStart;
+
+  // Blocks outside the changed range line up index-for-index with the block
+  // table, shifted past the change by however much the range grew.
+  const tailShift = range.after.to - range.before.to;
+  const prev = runStart > 0 ? blocks[runStart - 1] : undefined;
+  const next = runEnd < after.childCount ? blocks[runEnd - tailShift] : undefined;
+
+  if (prev !== undefined && next !== undefined) {
+    return {
+      from: shift(lineEnd(body, prev.sourceEnd)),
+      to: shift(lineStart(body, next.sourceStart)),
+      text: '\n'.repeat(count + 2),
+    };
+  }
+  if (prev !== undefined) {
+    if (count < MIN_CARRIED_EDGE_EMPTIES) return null;
+    return {
+      from: shift(lineEnd(body, prev.sourceEnd)),
+      to: shift(body.length),
+      text: '\n'.repeat(count + 1),
+    };
+  }
+  return null;
 }
 
 /**
@@ -375,6 +449,10 @@ export function rebaseProjection(
       // The one rewritten block owns exactly the bytes the splice wrote, minus
       // the blank-line separator an insertion brought with it.
       const written = splice.text;
+      // A whitespace-only rewrite is a blank-run gap, whose blocks occupy no
+      // bytes and whose parsed positions the newline arithmetic here cannot
+      // reproduce. Decline and let the caller re-derive from the markdown.
+      if (written !== '' && written.trim() === '') return null;
       const lead = written.length - written.replace(/^\n+/, '').length;
       const trail = written.length - written.replace(/\n+$/, '').length;
       blocks.push({

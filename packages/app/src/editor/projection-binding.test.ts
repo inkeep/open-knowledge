@@ -277,6 +277,61 @@ describe('projection binding — blocks markdown cannot spell', () => {
     rig.destroy();
   });
 
+  it('writes an interior blank run as the wider gap markdown spells it with', () => {
+    // The blank blocks emit nothing at any count, so this is arithmetic on the
+    // newlines BETWEEN their emitting neighbours: N blank paragraphs is a gap of
+    // N+2. Serializing the changed block instead — which is what the first
+    // version did — yields the empty string however many blanks there are, so
+    // the run stayed in the editor and never reached the markdown. The symptom
+    // was blank lines that survived a round trip through WYSIWYG but collapsed
+    // to one the moment you looked at the source.
+    const rig = createRig('a\n\nb\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    expect(rig.ytext.toString()).toBe('a\n\n\nb\n');
+
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    expect(rig.ytext.toString()).toBe('a\n\n\n\nb\n');
+
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    expect(rig.ytext.toString()).toBe('a\n\n\n\n\nb\n');
+
+    // And the run survives a re-projection — which is what a mode switch does.
+    expect(md.parse(rig.ytext.toString()).content).toHaveLength(5);
+    rig.destroy();
+  });
+
+  it('writes a trailing blank run only from the doc-edge floor up', () => {
+    const rig = createRig('a\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    // One trailing empty paragraph is indistinguishable from the type-here
+    // affordance the editor renders after the last block, so the parse side
+    // refuses to carry it and this side must not write it.
+    expect(rig.ytext.toString()).toBe('a\n');
+    expect(rig.editor.state.doc.childCount).toBe(2);
+
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    expect(rig.ytext.toString()).toBe('a\n\n\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    expect(rig.ytext.toString()).toBe('a\n\n\n\n');
+    rig.destroy();
+  });
+
+  it('round-trips a blank run through a re-projection', () => {
+    // The user-visible bug: blank lines showed in WYSIWYG, collapsed in source,
+    // and came back in WYSIWYG only because the editor instance was cached.
+    const rig = createRig('a\n\nb\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    pressEnter(rig.editor, endOfBlock(rig.editor, 0));
+    const source = rig.ytext.toString();
+
+    // A fresh projection of those bytes — what the other mode, or another
+    // client, or a reload would build — has the same blocks.
+    const reprojected = md.parse(source) as { content: unknown[] };
+    expect(reprojected.content).toHaveLength(rig.editor.state.doc.childCount);
+    expect(source).toBe('a\n\n\n\nb\n');
+    rig.destroy();
+  });
+
   it('keeps an outside write correct while an unspellable block is held', () => {
     const rig = createRig(DOC);
     pressEnter(rig.editor, endOfBlock(rig.editor, rig.editor.state.doc.childCount - 1));
