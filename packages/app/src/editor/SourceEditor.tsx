@@ -44,6 +44,7 @@ import {
   SELECTION_STATS_DEBOUNCE_MS,
   selectionStatsFromSource,
 } from './selection-stats';
+import { sharedUndoManagerFor } from './shared-undo-manager';
 import { createSkillPathLinksSourceExtension } from './skill-path-links-source';
 import {
   clearPendingSourceNavigation,
@@ -329,7 +330,16 @@ export function SourceEditor({
               // press Esc → Tab, or Ctrl+M (Shift+Alt+M on macOS) to toggle tab-
               // focus mode. Upstream convention per codemirror.net/examples/tab/.
               keymap.of([indentWithTab]),
-              yCollab(ytext, provider.awareness),
+              // The undo manager is supplied, not left to `yCollab` to create.
+              // It is the document's ONE manager, shared with the WYSIWYG
+              // projection binding: with both surfaces writing `Y.Text` under
+              // origins it tracks, undo is a single global LIFO and the most
+              // recent edit retracts whichever view made it. `yCollab` adds its
+              // own sync config to the tracked origins when it installs, so
+              // source-mode edits are tracked here exactly as before — and with
+              // the projection flag off, the tracked set is identical to the
+              // manager `yCollab` would have built.
+              yCollab(ytext, provider.awareness, { undoManager: sharedUndoManagerFor(ytext) }),
               // Route Mod-z/Mod-y to the y-codemirror Y.UndoManager (origin-aware,
               // remote/agent writes excluded) instead of CodeMirror's native
               // history, which sourceModeSetup omits.

@@ -40,7 +40,11 @@
 import { Fragment, type Node as PmNode } from '@tiptap/pm/model';
 import { stripFrontmatter } from '../extensions/frontmatter.ts';
 import type { MarkdownManager } from '../markdown/index.ts';
-import type { PmSourceMap } from '../markdown/pm-source-map.ts';
+import {
+  buildBlockSourceMap,
+  type PmSourceMap,
+  type PmSourceSpan,
+} from '../markdown/pm-source-map.ts';
 
 /** A contiguous rewrite of the markdown source, in full-source char offsets. */
 export interface SourceSplice {
@@ -99,7 +103,7 @@ export function buildProjection(source: string, md: MarkdownManager): Projection
  * transaction that only moved the selection, and the caller's signal to write
  * nothing at all rather than to write bytes equal to the ones already there.
  */
-export function changedBlockRange(before: PmNode, after: PmNode): ChangedBlocks | null {
+export function changedProjectionBlocks(before: PmNode, after: PmNode): ChangedBlocks | null {
   const beforeCount = before.childCount;
   const afterCount = after.childCount;
   const limit = Math.min(beforeCount, afterCount);
@@ -178,7 +182,7 @@ export function computeBlockSplice(
   md: MarkdownManager,
   changed?: ChangedBlocks | null,
 ): SourceSplice | null {
-  const range = changed === undefined ? changedBlockRange(projection.doc, after) : changed;
+  const range = changed === undefined ? changedProjectionBlocks(projection.doc, after) : changed;
   if (range === null) return null;
 
   const { map, bodyOffset, source } = projection;
@@ -239,4 +243,99 @@ export function computeBlockSplice(
 /** Apply a splice to the source it was computed against. */
 export function applySplice(source: string, splice: SourceSplice): string {
   return source.slice(0, splice.from) + splice.text + source.slice(splice.to);
+}
+
+/**
+ * The projection that results from applying a splice, without re-parsing.
+ *
+ * This is what keeps a keystroke off the O(document) path. Everything the write
+ * path reads is a top-level block span, and after a splice each one is known
+ * exactly: blocks before the edit did not move, blocks after it moved by a
+ * constant, and the replaced block occupies the bytes the splice just wrote.
+ * No parse is involved, so the cost is the `serializeBlockRange` that produced
+ * the splice — measured flat at 0.05 ms against 181 ms for a whole-document
+ * serialize at 488 KB, and against a 911 ms parse.
+ *
+ * The resulting map is `precision: 'block'`. Spans below the top level are not
+ * carried, because deriving them WOULD need a parse; a consumer that needs
+ * character accuracy (cursor placement on a mode switch) should check
+ * `map.precision` and call `buildProjection` instead of interpolating across a
+ * whole block.
+ *
+ * Returns null when the edit replaced more than one block at once. The bytes of
+ * a multi-block splice cannot be subdivided back into per-block spans without
+ * parsing them — remark chooses the separator between two blocks, so it is not
+ * simply `\n\n` — and guessing there would put every span after it off by
+ * however much the guess missed. Rebuild instead; it is the rare case.
+ */
+export function rebaseProjection(
+  projection: Projection,
+  after: PmNode,
+  changed: ChangedBlocks,
+  splice: SourceSplice,
+): Projection | null {
+  if (changed.after.to - changed.after.from > 1) return null;
+
+  const oldBlocks = projection.map.blocks;
+  if (oldBlocks.length !== projection.doc.childCount) return null;
+
+  const source = applySplice(projection.source, splice);
+  const sourceDelta = splice.text.length - (splice.to - splice.from);
+  // Block spans are body-relative (the parse never sees the frontmatter fence,
+  // which would parse as a thematic break); splices are full-source. Do the
+  // whole rebase in body coordinates and cross over once, here.
+  const spliceFrom = splice.from - projection.bodyOffset;
+  // Old index of the block that now sits at new index `i`, for the untouched
+  // tail: the two ranges share a suffix, so the offset is the size difference.
+  const tailShift = changed.after.to - changed.before.to;
+
+  const blocks: PmSourceSpan[] = [];
+  let pos = 0;
+  for (let i = 0; i < after.childCount; i++) {
+    const child = after.child(i);
+    const from = pos;
+    pos += child.nodeSize;
+    const span = { from, to: pos, type: child.type.name, depth: 1 };
+
+    if (i < changed.after.from) {
+      const old = oldBlocks[i];
+      if (old === undefined) return null;
+      blocks.push({
+        ...span,
+        sourceStart: old.sourceStart,
+        sourceEnd: old.sourceEnd,
+        mapped: old.mapped,
+      });
+      continue;
+    }
+    if (i < changed.after.to) {
+      // The one rewritten block owns exactly the bytes the splice wrote, minus
+      // the blank-line separator an insertion brought with it.
+      const written = splice.text;
+      const lead = written.length - written.replace(/^\n+/, '').length;
+      const trail = written.length - written.replace(/\n+$/, '').length;
+      blocks.push({
+        ...span,
+        sourceStart: spliceFrom + lead,
+        sourceEnd: spliceFrom + written.length - trail,
+        mapped: true,
+      });
+      continue;
+    }
+    const old = oldBlocks[i - tailShift];
+    if (old === undefined) return null;
+    blocks.push({
+      ...span,
+      sourceStart: old.sourceStart + sourceDelta,
+      sourceEnd: old.sourceEnd + sourceDelta,
+      mapped: old.mapped,
+    });
+  }
+
+  return {
+    source,
+    bodyOffset: projection.bodyOffset,
+    doc: after,
+    map: buildBlockSourceMap(blocks, source.length - projection.bodyOffset, after.content.size),
+  };
 }

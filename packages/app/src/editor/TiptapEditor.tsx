@@ -90,6 +90,11 @@ import {
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
 import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
+import {
+  createProjectionBinding,
+  type ProjectionBinding,
+  projectionBindingEnabled,
+} from './projection-binding';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -318,6 +323,16 @@ interface BuildEditorOptionsArgs {
    * DocumentContext; the guard's publication gate protects either way.
    */
   onWedged?: (detail: WedgeDetail) => void;
+  /**
+   * Single-CRDT path. When present the editor derives its document from
+   * `Y.Text('source')` instead of binding the XmlFragment, and every extension
+   * that exists to service the fragment binding drops out with it — the y-sync
+   * collaboration extension it replaces, the cursor plugin (which keys off
+   * `ySyncPluginKey`), the binding staleness guard and the walk-currency guard.
+   * Supplied by `buildPatternDConstructorOptions` when
+   * `projectionBindingEnabled()`; see `projection-binding.ts`.
+   */
+  projection?: ProjectionBinding;
 }
 
 /**
@@ -348,7 +363,14 @@ interface PrewarmBoundCollaboration {
 function buildPrewarmBoundCollaboration(
   provider: HocuspocusProvider,
   prebuiltMapping: ProsemirrorMapping | undefined,
+  projection: ProjectionBinding | undefined,
 ): PrewarmBoundCollaboration {
+  // The projection binding replaces y-sync outright. It carries no mapping
+  // because there is no fragment to walk, and needs no walk-currency guard for
+  // the same reason: the construct→mount gap can only strand a pre-warmed walk
+  // of a CRDT the editor is bound to, and this editor is bound to `Y.Text`,
+  // which it re-reads on attach.
+  if (projection) return { collaboration: projection.extension, guard: [] };
   // Forward the pre-warm mapping via ySyncOptions when the deferred-mount
   // path supplies one. The Map arrives initially EMPTY at options-build time
   // and is populated in place by the construct-time walk inside
@@ -399,11 +421,15 @@ function buildPrewarmBoundCollaboration(
  * yields mapping nodes the first incremental rebuild silently drops.
  */
 export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[] {
-  const { provider, placeholder, prebuiltMapping, onWedged } = args;
+  const { provider, placeholder, prebuiltMapping, onWedged, projection } = args;
   // The mapping-forwarding and its currency guard are one decision — derive
   // both from `prebuiltMapping` in a single call so the mapping cannot be
   // wired to the binding without arming the guard.
-  const { collaboration, guard } = buildPrewarmBoundCollaboration(provider, prebuiltMapping);
+  const { collaboration, guard } = buildPrewarmBoundCollaboration(
+    provider,
+    prebuiltMapping,
+    projection,
+  );
   return [
     // Configure docName-aware extensions before construction. Link extensions
     // use it for resolved/folder/unresolved states; render-time media nodes use
@@ -442,39 +468,56 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
       },
     }),
     // Use yCursorPlugin from @tiptap/y-tiptap directly (same module
-    // as Collaboration v3) to avoid ySyncPluginKey mismatch.
-    Extension.create({
-      name: 'collaborationCursor',
-      addProseMirrorPlugins() {
-        const awareness = provider.awareness;
-        if (!awareness) {
-          throw new Error(
-            '[TiptapEditor] HocuspocusProvider has no awareness instance — cursor plugin cannot initialize',
-          );
-        }
-        return [
-          yCursorPlugin(awareness, {
-            cursorBuilder: renderCursor,
+    // as Collaboration v3) to avoid ySyncPluginKey mismatch. Dropped on the
+    // projection path: the plugin resolves remote positions through
+    // `ySyncPluginKey`'s binding, which does not exist there. Remote WYSIWYG
+    // cursors are therefore absent under the flag — no regression against
+    // today, where cross-mode cursors are dropped in both directions anyway,
+    // but the reason they come back is `Y.Text` relative positions, not this
+    // plugin.
+    ...(projection
+      ? []
+      : [
+          Extension.create({
+            name: 'collaborationCursor',
+            addProseMirrorPlugins() {
+              const awareness = provider.awareness;
+              if (!awareness) {
+                throw new Error(
+                  '[TiptapEditor] HocuspocusProvider has no awareness instance — cursor plugin cannot initialize',
+                );
+              }
+              return [
+                yCursorPlugin(awareness, {
+                  cursorBuilder: renderCursor,
+                }),
+              ];
+            },
           }),
-        ];
-      },
-    }),
+        ]),
     // Staleness guard for the y-sync binding: gates PM→Y
     // publication while the binding's Y→PM apply half is wedged and reports
     // the wedge so the pool entry can be recycled. Binds the same fragment
     // Collaboration binds (provider.document field 'default').
-    Extension.create({
-      name: 'bindingStalenessGuard',
-      addProseMirrorPlugins() {
-        return [
-          bindingStalenessGuardPlugin({
-            fragment: provider.document.getXmlFragment('default'),
-            docName: provider.configuration.name ?? '',
-            onWedged: onWedged ?? (() => {}),
+    // Guards the y-sync binding's Y→PM apply half. There is no such half on
+    // the projection path — the document is re-derived from `Y.Text`, so it
+    // cannot wedge in the way this detects.
+    ...(projection
+      ? []
+      : [
+          Extension.create({
+            name: 'bindingStalenessGuard',
+            addProseMirrorPlugins() {
+              return [
+                bindingStalenessGuardPlugin({
+                  fragment: provider.document.getXmlFragment('default'),
+                  docName: provider.configuration.name ?? '',
+                  onWedged: onWedged ?? (() => {}),
+                }),
+              ];
+            },
           }),
-        ];
-      },
-    }),
+        ]),
     // Walk-currency enforcement, produced together with the mapping-bearing
     // `collaboration` above by `buildPrewarmBoundCollaboration`. Kept last so
     // its plugin-view init order among the default-priority extensions is
@@ -617,6 +660,36 @@ export function buildPatternDConstructorOptions(
 ): PatternDConstructorOptions {
   const { provider, placeholder, clipboard, ctorStart, onWedged } = args;
   const fragment = provider.document.getXmlFragment('default');
+
+  // Single-CRDT path: the initial document is a projection of `Y.Text`, so
+  // there is no fragment walk to pre-warm and no mapping to hand ySyncPlugin.
+  // The content and the extension have to come from ONE `createProjectionBinding`
+  // call — a binding told about a different document than the editor was built
+  // from would read the difference as a local edit and write it to the CRDT.
+  if (projectionBindingEnabled()) {
+    const projection = createProjectionBinding({
+      ytext: provider.document.getText('source'),
+      md: clipboard.mdManager,
+    });
+    const baseOptions = buildEditorOptions({
+      provider,
+      placeholder,
+      clipboard,
+      ctorStart,
+      onWedged,
+      projection,
+    });
+    const baseOnBeforeCreate = baseOptions.onBeforeCreate;
+    return {
+      ...baseOptions,
+      onBeforeCreate: (props) => {
+        baseOnBeforeCreate?.(props);
+        props.editor.options.content = projection.content;
+      },
+      element: null,
+    };
+  }
+
   // Stable Map wired to Collaboration's `ySyncOptions.mapping` via
   // `buildPrewarmBoundCollaboration`. Starts empty; the wrapped
   // `onBeforeCreate` below fills it in place once the editor's schema

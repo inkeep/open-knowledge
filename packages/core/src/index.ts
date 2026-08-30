@@ -821,7 +821,7 @@ export {
   maskNonRenderingContexts,
   skipInlineCode,
 } from './markdown/non-rendering-contexts.ts';
-export type { PmSourceMap, PmSourceSpan } from './markdown/pm-source-map.ts';
+export type { PmSourceMap, PmSourceMapPrecision, PmSourceSpan } from './markdown/pm-source-map.ts';
 export { normalizeReferenceLabel } from './markdown/reference-label.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {
@@ -855,6 +855,18 @@ export {
   type ParseHealthMetrics,
   resetParseHealth,
 } from './metrics/parse-health.ts';
+export {
+  applySplice,
+  type BlockRange,
+  buildProjection,
+  type ChangedBlocks,
+  changedProjectionBlocks,
+  computeBlockSplice,
+  type Projection,
+  rebaseProjection,
+  type SourceSplice,
+  serializeBlockRange,
+} from './projection/block-splice.ts';
 // Registry
 export {
   builtInComponents,

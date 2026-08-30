@@ -95,6 +95,11 @@ const ORIGIN_UNDO_CONTRACT: Record<string, UndoRow> = {
     why: 'Chunked large source-mode paste writing Y.Text(source) directly, bypassing CM6 dispatch; captured by no editor UndoManager.',
     contract: 'write-surface-undo-exclusion.test.ts',
   },
+  PROJECTION_WRITE_ORIGIN: {
+    undo: 'client-editor-um',
+    why: "The single-CRDT WYSIWYG write: a ProseMirror edit re-serialized to one block-scoped Y.Text(source) splice on the client. Tracked by the document's ONE shared Y.UndoManager — the same manager source mode drives through yCollab — which is what makes undo a single global LIFO across both surfaces instead of two stacks over two CRDT types. Behind PROJECTION_BINDING_ENABLED; with the flag off nothing writes under it.",
+    contract: 'cross-mode-undo-projection.test.ts, projection-binding.test.ts',
+  },
   TAB_REPLAY_ORIGIN: {
     undo: 'replay-not-undoable',
     why: 'Recovery replay of buffered updates onto a recycled provider. The replayed bytes are durable but not Cmd+Z-undoable — post-recycle, the last pre-hiccup edits are recovery machinery, not a fresh user action.',

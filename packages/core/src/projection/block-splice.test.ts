@@ -21,9 +21,10 @@ import { MarkdownManager } from '../markdown/index.ts';
 import {
   applySplice,
   buildProjection,
-  changedBlockRange,
+  changedProjectionBlocks,
   computeBlockSplice,
   type Projection,
+  rebaseProjection,
   serializeBlockRange,
 } from './block-splice.ts';
 
@@ -64,16 +65,16 @@ const DOC = [
   '',
 ].join('\n');
 
-describe('changedBlockRange', () => {
+describe('changedProjectionBlocks', () => {
   it('reports nothing for an untouched document', () => {
     const { doc } = buildProjection(DOC, md);
-    expect(changedBlockRange(doc, doc)).toBeNull();
+    expect(changedProjectionBlocks(doc, doc)).toBeNull();
   });
 
   it('narrows to the single edited block', () => {
     const projection = buildProjection(DOC, md);
     const after = replaceBlock(projection, 2, '- one\n- two\n- three\n');
-    expect(changedBlockRange(projection.doc, after)).toEqual({
+    expect(changedProjectionBlocks(projection.doc, after)).toEqual({
       before: { from: 2, to: 3 },
       after: { from: 2, to: 3 },
     });
@@ -85,7 +86,7 @@ describe('changedBlockRange', () => {
     const withInsert = withBlocks(projection, (children) => {
       children.splice(1, 0, block as never);
     });
-    expect(changedBlockRange(projection.doc, withInsert)).toEqual({
+    expect(changedProjectionBlocks(projection.doc, withInsert)).toEqual({
       before: { from: 1, to: 1 },
       after: { from: 1, to: 2 },
     });
@@ -93,7 +94,7 @@ describe('changedBlockRange', () => {
     const withDelete = withBlocks(projection, (children) => {
       children.splice(1, 1);
     });
-    expect(changedBlockRange(projection.doc, withDelete)).toEqual({
+    expect(changedProjectionBlocks(projection.doc, withDelete)).toEqual({
       before: { from: 1, to: 2 },
       after: { from: 1, to: 1 },
     });
@@ -230,5 +231,117 @@ describe('computeBlockSplice — corpus containment', () => {
       );
       expect(splice.text, `block ${i}`).toContain('REPLACED.');
     }
+  });
+});
+
+describe('rebaseProjection', () => {
+  /** Every rebase claim, checked against the parse it is standing in for. */
+  function expectAgreesWithRebuild(rebased: Projection) {
+    const rebuilt = buildProjection(rebased.source, md);
+    expect(rebased.map.precision).toBe('block');
+    expect(rebuilt.doc.childCount).toBe(rebased.doc.childCount);
+    expect(rebased.map.blocks).toHaveLength(rebuilt.map.blocks.length);
+    for (let i = 0; i < rebuilt.map.blocks.length; i++) {
+      const got = rebased.map.blocks[i] as { sourceStart: number; sourceEnd: number };
+      const want = rebuilt.map.blocks[i] as { sourceStart: number; sourceEnd: number };
+      const body = rebased.source.slice(rebased.bodyOffset);
+      expect(body.slice(got.sourceStart, got.sourceEnd), `block ${i}`).toBe(
+        body.slice(want.sourceStart, want.sourceEnd),
+      );
+    }
+  }
+
+  it('agrees with a full rebuild after replacing any single block', () => {
+    for (let i = 0; i < buildProjection(DOC, md).doc.childCount; i++) {
+      const projection = buildProjection(DOC, md);
+      const after = replaceBlock(projection, i, 'REPLACED text.\n');
+      const changed = changedProjectionBlocks(projection.doc, after);
+      const splice = computeBlockSplice(projection, after, md, changed);
+      const rebased = rebaseProjection(
+        projection,
+        after,
+        changed as never,
+        splice as never,
+      ) as Projection;
+      expect(rebased, `block ${i}`).not.toBeNull();
+      expectAgreesWithRebuild(rebased);
+    }
+  });
+
+  it('agrees with a full rebuild after an insertion and after a deletion', () => {
+    const projection = buildProjection(DOC, md);
+    const block = projection.doc.type.schema.nodeFromJSON(md.parse('Inserted.\n')).child(0);
+
+    const inserted = withBlocks(projection, (children) => {
+      children.splice(1, 0, block as never);
+    });
+    const insertChange = changedProjectionBlocks(projection.doc, inserted);
+    const insertSplice = computeBlockSplice(projection, inserted, md, insertChange);
+    expectAgreesWithRebuild(
+      rebaseProjection(projection, inserted, insertChange as never, insertSplice as never) as never,
+    );
+
+    const deleted = withBlocks(projection, (children) => {
+      children.splice(1, 1);
+    });
+    const deleteChange = changedProjectionBlocks(projection.doc, deleted);
+    const deleteSplice = computeBlockSplice(projection, deleted, md, deleteChange);
+    expectAgreesWithRebuild(
+      rebaseProjection(projection, deleted, deleteChange as never, deleteSplice as never) as never,
+    );
+  });
+
+  it('survives a run of consecutive edits without ever rebuilding', () => {
+    // The property that matters: a rebased projection is a valid input to the
+    // next splice. If it were not, the second keystroke would write at stale
+    // offsets and corrupt the document.
+    let projection = buildProjection(DOC, md);
+    for (const [index, text] of [
+      [0, '# First edit\n'],
+      [6, 'Last edit.\n'],
+      [2, '- one\n- two\n- three\n'],
+      [0, '# Second edit\n'],
+    ] as const) {
+      const after = replaceBlock(projection, index, text);
+      const changed = changedProjectionBlocks(projection.doc, after);
+      const splice = computeBlockSplice(projection, after, md, changed);
+      const next = rebaseProjection(projection, after, changed as never, splice as never);
+      expect(next, text).not.toBeNull();
+      projection = next as Projection;
+      expectAgreesWithRebuild(projection);
+    }
+    expect(projection.source).toContain('# Second edit');
+    expect(projection.source).toContain('- three');
+    expect(projection.source).toContain('Last edit.');
+    // Untouched blocks kept their authored bytes throughout.
+    expect(projection.source).toContain('[**Desktop**](x)');
+  });
+
+  it('keeps the frontmatter region out of the rebased coordinates', () => {
+    const withFm = `---\ntitle: Test\n---\n\n# Heading\n\nBody paragraph.\n`;
+    const projection = buildProjection(withFm, md);
+    const after = replaceBlock(projection, 1, 'Edited body.\n');
+    const changed = changedProjectionBlocks(projection.doc, after);
+    const splice = computeBlockSplice(projection, after, md, changed);
+    const rebased = rebaseProjection(
+      projection,
+      after,
+      changed as never,
+      splice as never,
+    ) as Projection;
+    expect(rebased.bodyOffset).toBe(projection.bodyOffset);
+    expectAgreesWithRebuild(rebased);
+  });
+
+  it('declines a multi-block replacement rather than guessing the separator', () => {
+    const projection = buildProjection(DOC, md);
+    const replacement = projection.doc.type.schema.nodeFromJSON(md.parse('One.\n\nTwo.\n'));
+    const after = withBlocks(projection, (children) => {
+      children.splice(1, 2, replacement.child(0) as never, replacement.child(1) as never);
+    });
+    const changed = changedProjectionBlocks(projection.doc, after);
+    const splice = computeBlockSplice(projection, after, md, changed);
+    expect(splice).not.toBeNull();
+    expect(rebaseProjection(projection, after, changed as never, splice as never)).toBeNull();
   });
 });

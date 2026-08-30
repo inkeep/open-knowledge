@@ -53,8 +53,22 @@ export interface PmSourceSpan {
   mapped: boolean;
 }
 
+/**
+ * How far down the tree the map's spans go.
+ *
+ * `full` is a parse result — a span for (nearly) every node. `block` carries
+ * only top-level blocks, which is what the write path indexes and all it needs;
+ * it is what a splice rebase produces, since rebasing exactly is cheap at the
+ * top level and would cost a document parse below it. A consumer that places a
+ * character-accurate cursor (a mode switch) should check this and ask for a
+ * rebuild rather than interpolate across a whole block.
+ */
+export type PmSourceMapPrecision = 'full' | 'block';
+
 /** Both directions of the map, plus the block table Phase 1's splice indexes. */
 export interface PmSourceMap {
+  /** See `PmSourceMapPrecision`. */
+  readonly precision: PmSourceMapPrecision;
   /** Every node's span, pre-order (a parent precedes its children). */
   readonly spans: readonly PmSourceSpan[];
   /** Top-level block spans, index-aligned with the PM doc's children. */
@@ -395,6 +409,34 @@ export function buildPmSourceMap(
     1,
   );
 
+  return sourceMapOverSpans(spans, source, doc.content.size, 'full');
+}
+
+/**
+ * A map carrying only top-level block spans.
+ *
+ * The rebase path's output: exact where the write path reads it, and honest
+ * about carrying nothing below that. `spans` and `blocks` are the same array,
+ * so every lookup still answers — it just interpolates across a whole block
+ * instead of across a text run.
+ */
+export function buildBlockSourceMap(
+  blocks: readonly PmSourceSpan[],
+  sourceLength: number,
+  docSize: number,
+): PmSourceMap {
+  return sourceMapOverSpans([...blocks], { length: sourceLength }, docSize, 'block');
+}
+
+/** The shared query surface. `source` is read only for whole-line bounds. */
+function sourceMapOverSpans(
+  spans: PmSourceSpan[],
+  source: string | { length: number },
+  docSize: number,
+  precision: PmSourceMapPrecision,
+): PmSourceMap {
+  const sourceLength = source.length;
+  const text = typeof source === 'string' ? source : null;
   const blocks = spans.filter((span) => span.depth === 1);
 
   // The PM axis is already ascending in pre-order; the source axis is too for
@@ -406,18 +448,18 @@ export function buildPmSourceMap(
   );
   const pmStarts = spans.map((span) => span.from);
   const sourceStarts = bySource.map((span) => span.sourceStart);
-  const docSize = doc.content.size;
 
   return {
+    precision,
     spans,
     blocks,
-    sourceLength: source.length,
+    sourceLength,
     docSize,
 
     pmPosToSourceOffset(pos) {
       const p = clamp(pos, 0, docSize);
       const span = deepestContaining(spans, pmStarts, (s) => s.to, p);
-      if (span === null) return p <= 0 ? 0 : source.length;
+      if (span === null) return p <= 0 ? 0 : sourceLength;
       return clamp(
         interpolate(
           span.to - span.from,
@@ -431,7 +473,7 @@ export function buildPmSourceMap(
     },
 
     sourceOffsetToPmPos(offset) {
-      const o = clamp(offset, 0, source.length);
+      const o = clamp(offset, 0, sourceLength);
       const span = deepestContaining(bySource, sourceStarts, (s) => s.sourceEnd, o);
       if (span === null) return o <= 0 ? 0 : docSize;
       return clamp(
@@ -457,7 +499,7 @@ export function buildPmSourceMap(
 
     blockIndexForSourceOffset(offset) {
       if (blocks.length === 0) return null;
-      const o = clamp(offset, 0, source.length);
+      const o = clamp(offset, 0, sourceLength);
       for (let i = 0; i < blocks.length; i++) {
         if (o < (blocks[i] as PmSourceSpan).sourceEnd) return i;
       }
@@ -470,7 +512,12 @@ export function buildPmSourceMap(
       if (last <= first) return null;
       const head = blocks[first] as PmSourceSpan;
       const tail = blocks[last - 1] as PmSourceSpan;
-      return toLineBounds(source, head.sourceStart, tail.sourceEnd);
+      // Without the bytes (a rebased map keeps none) the block span IS the line
+      // range: rebase derives every span from a splice that was itself
+      // line-bounded, so there is nothing left to widen.
+      return text === null
+        ? { from: head.sourceStart, to: tail.sourceEnd }
+        : toLineBounds(text, head.sourceStart, tail.sourceEnd);
     },
   };
 }
