@@ -58,7 +58,7 @@ import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-man
  * deriving from a fragment the client no longer updates, converge on the
  * fragment's stale content.
  */
-export const PROJECTION_BINDING_ENABLED = false;
+const PROJECTION_BINDING_ENABLED = false;
 
 declare global {
   interface Window {
