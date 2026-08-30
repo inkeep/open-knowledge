@@ -12,7 +12,14 @@ import { errnoCode } from '../http/handler-utils.ts';
  * by the FileOps service and the managed-rename spine; do not fork it.
  */
 
-/** True when any path segment is OK state (`.ok/`) or git internals. */
+/**
+ * True when any `/`-separated segment of `path` is `.ok` or `.git`, at any
+ * depth — nested `<folder>/.ok/` is a first-class OK shape (folder metadata +
+ * templates), so a top-level-only check is not a boundary. Segments compare
+ * case-insensitively: on the default case-insensitive macOS filesystem an
+ * externally-addressed `.OK/x` IS `.ok/x`. Same segment walk as
+ * `pathHasAlwaysSkipSegment` in content-filter.ts.
+ */
 export function isReservedProjectStatePath(path: string): boolean {
   return path.split('/').some((segment) => {
     const normalized = segment.toLowerCase();

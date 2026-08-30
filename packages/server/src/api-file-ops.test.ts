@@ -3042,7 +3042,11 @@ describe('file operation API routes', () => {
         path: 'evil/victim',
       });
 
-      expect(result.status).toBe(500);
+      // A symlink escape is a client-shaped rejection, not a server fault: the
+      // containment family maps to a 400 path-escape. The victim outside the
+      // content root must survive either way.
+      expect(result.status).toBe(400);
+      expect((JSON.parse(result.body) as { type?: string }).type).toBe('urn:ok:error:path-escape');
       expect(existsSync(victim)).toBe(true);
     },
   );

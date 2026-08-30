@@ -10,7 +10,6 @@ import { type SpawnOptions, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   createReadStream,
-  createWriteStream,
   type Dirent,
   existsSync,
   lstatSync,
@@ -21,7 +20,6 @@ import {
   realpathSync,
   rmSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
@@ -54,10 +52,6 @@ import {
   CheckoutResponseSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   type ConfigDiagnosticsReport,
-  CreateFolderRequestSchema,
-  CreateFolderSuccessSchema,
-  CreatePageRequestSchema,
-  CreatePageSuccessSchema,
   changedBlockRange,
   colorFromSeed,
   composeWithDerivedFrontmatter,
@@ -66,12 +60,8 @@ import {
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
-  DeletePathRequestSchema,
-  DeletePathSuccessSchema,
   type DiskEditReconciledWarning,
   type DocumentListEntry,
-  DuplicatePathRequestSchema,
-  DuplicatePathSuccessSchema,
   detectFmRegion,
   EDITOR_PROJECT_SKILL_ROOT,
   type EditorId,
@@ -89,12 +79,10 @@ import {
   InstallSkillRequestSchema,
   InstallSkillSuccessSchema,
   InvalidShareUrlError,
-  instantiateDoc,
   isManagedArtifactDocName,
   isOpenKnowledgeSkillsSource,
   isSkillInstallTarget,
   LEGACY_SKILL_STORE_ROOT,
-  LINKABLE_ASSET_EXTENSIONS,
   type LinksValidationSetting,
   LintConfigResponseSchema,
   type LinterConfig,
@@ -133,8 +121,6 @@ import {
   prependFrontmatter,
   projectSkillContentDocName,
   RENAMED_PACK_SKILLS,
-  RenamePathRequestSchema,
-  RenamePathSuccessSchema,
   RollbackRequestSchema,
   RollbackSuccessSchema,
   readFmMap,
@@ -208,10 +194,6 @@ import {
   TestRescanBacklinksSuccessSchema,
   TestRescanFilesSuccessSchema,
   TestResetSuccessSchema,
-  TrashCleanupRequestSchema,
-  TrashCleanupSuccessSchema,
-  UploadAssetSuccessSchema,
-  UploadRequestSchema,
   USER_SKILL_EDITOR_IDS,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
@@ -268,7 +250,11 @@ import {
   prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
-import { type NormalizedSummary, normalizeSummary } from './agent-write-summary.ts';
+import {
+  type NormalizedSummary,
+  normalizeSummary,
+  type SummaryResponse,
+} from './agent-write-summary.ts';
 import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { createCommentApi } from './comments/comment-api.ts';
 import { CommentIndex } from './comments/comment-index.ts';
@@ -289,8 +275,6 @@ import {
   composeSkillContent,
   countBundleFiles,
 } from './content/skills-write.ts';
-import { applySubstitution, todayIsoUtc } from './content/substitution.ts';
-import { resolveTemplatesAvailable } from './content/templates-resolver.ts';
 import {
   evaluateContentDivergence,
   toContentDivergenceWarning,
@@ -309,7 +293,11 @@ import {
   logFrontmatterRefusal,
   respondFrontmatterMalformed,
 } from './frontmatter-malformed-error.ts';
-import { assertNoSymlinkEscape } from './fs-safety.ts';
+import {
+  assertNoSymlinkEscape,
+  isContainmentRejection,
+  PathContainmentError,
+} from './fs-safety.ts';
 import {
   createInstalledAgentsProbe,
   createOsProbe,
@@ -407,7 +395,6 @@ import {
 } from './skill-projection.ts';
 import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
 import { assertRealpathWithinDir } from './symlink-guard.ts';
-import { HashingPassThrough, mintTempUploadPath } from './upload-streaming.ts';
 
 /** Does the bundle at `dir` carry a `metadata.pack` marker in its frontmatter? */
 function bundleSelfIdentifiesAsPack(dir: string): boolean {
@@ -431,7 +418,6 @@ import {
   applyRenameMap,
   BacklinkIndexRequiredError,
   buildRenameMap,
-  ManagedRenameCollisionError,
   ManagedRenameDestinationExistsError,
   ManagedRenameInvalidRequestError,
   ManagedRenameMissingDocumentError,
@@ -439,7 +425,6 @@ import {
   ManagedRenameSnapshotMissingError,
   ManagedRenameSourceNotFoundError,
   ManagedRenameSourceTypeMismatchError,
-  SymlinkEscapeError,
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
@@ -464,7 +449,6 @@ import {
   extensionlessDocTreePath,
   forgetDocExtension,
   getDocExtension,
-  isSupportedAssetFile,
   isSupportedDocFile,
   registerDocExtension,
   SUPPORTED_DOC_EXTENSIONS,
@@ -490,8 +474,6 @@ import {
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { isProjectRoot } from './fs/find-project-root.ts';
 import {
-  classifyFsPath,
-  normalizeFsPath,
   tracedCpSync,
   tracedMkdirSync,
   tracedRenameSync,
@@ -517,8 +499,13 @@ import {
   errorResponse,
   type HttpErrorStatus,
 } from './http/error-response.ts';
+import {
+  createFileOpsRoutes,
+  type ManagedRenameRewrittenDoc,
+  type RenamedAssetMapping,
+  type RenamedDocMapping,
+} from './http/file-ops-routes.ts';
 import { createFolderTemplateRoutes } from './http/folder-template-routes.ts';
-import { errnoCode } from './http/handler-utils.ts';
 import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
@@ -527,7 +514,7 @@ import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-
 import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
-import { validateBody, withValidation } from './http/request-validation.ts';
+import { withValidation } from './http/request-validation.ts';
 import { createSeedRoutes } from './http/seed-routes.ts';
 import { createSkillsReadRoutes } from './http/skills-read-routes.ts';
 import { createSkillsShRoutes } from './http/skills-sh-routes.ts';
@@ -603,7 +590,7 @@ import {
 } from './rename-log.ts';
 import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
-import { createFileOpsService } from './services/file-ops.ts';
+import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
 import { createSkillImportService, type SkillImportOutcome } from './services/skill-import.ts';
 import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
@@ -881,203 +868,14 @@ export { sanitizeFilename } from './filename-sanitize.ts';
 export { resolveUploadDestDir } from './services/assets.ts';
 
 /**
- * Discriminator for write failures so the upload handler can surface a
- * specific error code (`collision-exhaustion` / `storage-full` /
- * `storage-readonly` / `storage-error`) instead of collapsing every
- * filesystem failure into a generic 500 "Failed to save file" response.
- * The code field is a stable part of the error envelope; the numeric
- * HTTP status differentiates transient-yet-retry (500) from full-disk
- * (507) per RFC 4918.
+ * Shared errno table for disk-write failures (`storage-full` /
+ * `storage-readonly` / `storage-error`) — the agent-write persistence-failure
+ * surfaces below reuse the same mapping as the upload pipeline in
+ * `http/file-ops-routes.ts` so the two disk-failure classifications cannot
+ * drift. The numeric HTTP status differentiates transient-yet-retry (500)
+ * from full-disk (507) per RFC 4918.
  */
-import {
-  classifyUploadErrno,
-  UploadWriteError,
-  type UploadWriteReason,
-  uploadStatusFor,
-  uploadTitleFor,
-} from './upload-errors.ts';
-
-interface UploadResult {
-  filename: string;
-  mimeType: string;
-  parentDocName: string;
-  placement: string;
-  tempPath: string;
-  sha: string;
-  byteLength: number;
-}
-
-/**
- * Stream multipart upload body to a tempfile while hashing on-the-fly.
- *
- * Replaces the buffer-to-memory pattern (chunks.push(chunk) +
- * Buffer.concat) with busboy's streaming 'file' event piped through a
- * HashingPassThrough Transform into createWriteStream(tempPath). Memory
- * becomes O(1); disk is the only bound.
- *
- * Error contract (typed via UploadWriteError.reason — URN-form ProblemType):
- *   - urn:ok:error:malformed-upload: busboy 'error' (unparseable multipart, etc.)
- *   - urn:ok:error:storage-full: ENOSPC / EDQUOT during the write stream
- *   - urn:ok:error:storage-readonly: EROFS / EACCES / EPERM during the write stream
- *   - urn:ok:error:storage-error: any other write-stream error
- *
- * On any error, the tempfile is best-effort unlinked before propagating.
- */
-function readUploadBody(req: IncomingMessage, projectDir: string): Promise<UploadResult> {
-  return new Promise((resolveP, reject) => {
-    let bb: MultipartParser;
-    try {
-      // `files: 1` caps the file part; `fields` + `fieldSize` cap non-file
-      // surface so a flooded multipart can't buffer thousands of fields or a
-      // multi-MB string field in memory before the upload body resolves. The
-      // legitimate schema (agentId / docName / position / summary) is bounded
-      // — short identifiers, never approaching 2 KB or 10 entries. The
-      // ENAMETOOLONG-via-crafted-filename DoS path is closed by the 255-byte
-      // ceiling in `sanitizeFilename` (the filesystem-portability layer);
-      // busboy does not expose a header-section-size limit (only headerPairs
-      // count), so the parsed-value cap is the right place.
-      bb = createMultipartParser(req, { files: 1, fields: 10, fieldSize: 2 * 1024 });
-    } catch (err) {
-      reject(new UploadWriteError('urn:ok:error:malformed-upload', err));
-      return;
-    }
-
-    let settled = false;
-    let filename = 'upload';
-    let mimeType = '';
-    let parentDocName = '';
-    let placement = '';
-    let tempPath: string | undefined;
-    let pipelineError: unknown;
-    // Track whether the 'file' event ever fired. busboy emits 'close' as
-    // soon as it finishes parsing the request body — but the file
-    // pipeline (createWriteStream + HashingPassThrough) is async and may
-    // still be running when 'close' fires. We must NOT resolve to an
-    // empty UploadResult on 'close' when a file IS being processed; the
-    // pipeline `.then()` is the legitimate resolver in that case. Only
-    // the no-file path needs the 'close' fallback.
-    let fileEventFired = false;
-
-    // Mint the tempfile path lazily on the first 'file' event — busboy
-    // can fire 'error' before any file arrives (e.g. missing boundary)
-    // and we'd otherwise create a zero-byte tempfile for no reason.
-
-    const fail = (reason: UploadWriteReason, cause: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (tempPath) {
-        try {
-          unlinkSync(tempPath);
-        } catch {
-          // best-effort; orphan sweep catches stragglers
-        }
-      }
-      reject(cause instanceof UploadWriteError ? cause : new UploadWriteError(reason, cause));
-    };
-
-    const classifyWriteError = classifyUploadErrno;
-
-    bb.on('field', (name, val) => {
-      if (name === 'parentDocName') parentDocName = val;
-      if (name === 'placement') placement = val;
-    });
-
-    bb.on('file', (_fieldname, file, info) => {
-      fileEventFired = true;
-      filename = info.filename || 'upload';
-      mimeType = info.mimeType || '';
-
-      // `mintTempUploadPath` does `tracedMkdirSync(.., { recursive: true })`
-      // which can throw ENOSPC / EDQUOT / EROFS / EACCES / EPERM / EIO. An
-      // uncaught throw here bubbles back through busboy's `_write` and
-      // re-emits as `'error'`, which the listener below classifies as
-      // `'urn:ok:error:malformed-upload'` (HTTP 400). That misleads operators triaging
-      // a full disk into chasing a phantom client bug. Catch the sync
-      // throw, classify via the same table the pipeline rejection uses,
-      // and drain the file part so busboy can finish parsing the rest.
-      let path: string;
-      try {
-        path = mintTempUploadPath(projectDir);
-      } catch (err) {
-        const nodeErr = err as NodeJS.ErrnoException;
-        fail(classifyWriteError(nodeErr), err as Error);
-        file.resume();
-        return;
-      }
-      tempPath = path;
-      const hasher = new HashingPassThrough();
-      const writeStream = createWriteStream(path);
-
-      pipeline(file, hasher, writeStream)
-        .then(() => {
-          if (settled) return;
-          settled = true;
-          resolveP({
-            filename,
-            mimeType,
-            parentDocName,
-            placement,
-            tempPath: path,
-            sha: hasher.digest(),
-            byteLength: hasher.byteLength(),
-          });
-        })
-        .catch((err) => {
-          pipelineError = err;
-          // Classify from the deepest write error if available; otherwise
-          // treat as a generic storage-error. The unlink happens inside fail().
-          const nodeErr = err as NodeJS.ErrnoException;
-          fail(classifyWriteError(nodeErr), err);
-        });
-    });
-
-    bb.on('error', (err) => {
-      fail('urn:ok:error:malformed-upload', err);
-    });
-
-    // busboy's `close` (Writable, emitClose:true via @types/busboy@1.6.0)
-    // fires once busboy finishes parsing the request body. If by then
-    // no `file` event ever fired, the request was a well-formed
-    // multipart with fields-only (no file part) — resolve with a
-    // synthetic empty UploadResult so the route handler's
-    // `byteLength === 0` guard returns the standard 400 "No file
-    // received." Without this hook the Promise never settles on fields-
-    // only uploads and the connection hangs until Node's request
-    // timeout fires (DoS).
-    //
-    // CRUCIAL: gate on `!fileEventFired`. If a file part IS present,
-    // busboy emits 'close' as soon as it finishes parsing — but the
-    // async write/hash pipeline below may still be running. Resolving
-    // here would race the pipeline's legitimate resolveP and produce a
-    // spurious empty result. Pipeline resolves win in that case.
-    bb.on('close', () => {
-      if (settled || pipelineError) return;
-      if (fileEventFired) return;
-      settled = true;
-      resolveP({
-        filename: '',
-        mimeType: '',
-        parentDocName,
-        placement,
-        tempPath: '',
-        sha: '',
-        byteLength: 0,
-      });
-    });
-
-    // Guard the "client disconnected mid-stream" path. busboy never
-    // reaches `_final` if the request aborts before the closing boundary,
-    // so its `close` would not fire and the Promise would otherwise hang.
-    req.on('close', () => {
-      if (settled || pipelineError) return;
-      if (!req.complete) {
-        fail('urn:ok:error:malformed-upload', new Error('client disconnected'));
-      }
-    });
-
-    req.pipe(bb);
-  });
-}
+import { classifyUploadErrno, uploadStatusFor } from './upload-errors.ts';
 
 /**
  * Resolve a subdirectory path within a base directory, rejecting traversal attempts.
@@ -1799,23 +1597,8 @@ export async function walkContentDirForShowAll(
 
 type ContentEntryKind = 'file' | 'folder';
 
-interface RenamedDocMapping {
-  fromDocName: string;
-  toDocName: string;
-}
-
-interface RenamedAssetMapping {
-  fromPath: string;
-  toPath: string;
-}
-
 interface ManagedRenameRewriteSummary {
   markdown: string;
-  rewrites: number;
-}
-
-interface ManagedRenameRewrittenDoc {
-  docName: string;
   rewrites: number;
 }
 
@@ -1825,28 +1608,6 @@ function isValidRelativeContentPath(path: string): boolean {
   }
 
   return path.split('/').every((segment) => segment && segment !== '.' && segment !== '..');
-}
-
-/**
- * True when any `/`-separated segment of `path` is `.ok` or `.git`, at any
- * depth — nested `<folder>/.ok/` is a first-class OK shape (folder metadata +
- * templates), so a top-level-only check is not a boundary. Segments compare
- * case-insensitively: on the default case-insensitive macOS filesystem an
- * externally-addressed `.OK/x` IS `.ok/x`. Same segment walk as
- * `pathHasAlwaysSkipSegment` in content-filter.ts.
- */
-
-function isReservedSyntheticFolderPath(path: string): boolean {
-  return (
-    path === '__system__' ||
-    path === '__config__' ||
-    path === '__user__' ||
-    path === '__local__' ||
-    path.startsWith('__system__/') ||
-    path.startsWith('__config__/') ||
-    path.startsWith('__user__/') ||
-    path.startsWith('__local__/')
-  );
 }
 
 function listAffectedDocNames(
@@ -1898,7 +1659,7 @@ function requireNonEmptyDocName(
 
 function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, path: string): string {
   if (!isValidRelativeContentPath(path)) {
-    throw new Error('path must be a relative content path');
+    throw new PathContainmentError('path must be a relative content path');
   }
 
   const resolvedContentDir = resolve(contentDir);
@@ -1911,7 +1672,7 @@ function resolveContentEntryPath(contentDir: string, kind: ContentEntryKind, pat
   const fullPath = resolve(resolvedContentDir, relativePath);
 
   if (fullPath !== resolvedContentDir && !fullPath.startsWith(`${resolvedContentDir}${sep}`)) {
-    throw new Error('path must not escape content directory');
+    throw new PathContainmentError('path must not escape content directory');
   }
 
   assertNoSymlinkEscape(fullPath, resolvedContentDir);
@@ -1934,40 +1695,6 @@ function joinContentPath(parent: string, basename: string): string {
 
 function duplicateBasename(basename: string, attempt: number): string {
   return attempt === 1 ? `${basename} copy` : `${basename} copy ${attempt}`;
-}
-
-class DuplicateNameExhaustedError extends Error {
-  constructor(readonly sourcePath: string) {
-    super(`Could not find an available duplicate name for ${sourcePath}`);
-    this.name = 'DuplicateNameExhaustedError';
-  }
-}
-
-type DuplicatePathFilesystemProblem = {
-  status: 500 | 507;
-  type: Extract<ProblemType, 'urn:ok:error:storage-full' | 'urn:ok:error:storage-readonly'>;
-  title: string;
-};
-
-function classifyDuplicatePathFilesystemProblem(
-  err: unknown,
-): DuplicatePathFilesystemProblem | null {
-  const code = errnoCode(err);
-  if (code === 'ENOSPC' || code === 'EDQUOT') {
-    return {
-      status: 507,
-      type: 'urn:ok:error:storage-full',
-      title: 'Could not duplicate path because storage is full.',
-    };
-  }
-  if (code === 'EPERM' || code === 'EACCES' || code === 'EROFS') {
-    return {
-      status: 500,
-      type: 'urn:ok:error:storage-readonly',
-      title: 'Could not duplicate path because storage is not writable.',
-    };
-  }
-  return null;
 }
 
 function docNameExistsWithAnySupportedExtension(contentDir: string, docName: string): boolean {
@@ -2007,12 +1734,12 @@ function docNameForFileOperationPath(contentDir: string, relPath: string): strin
 
 function resolveDuplicateDocPath(contentDir: string, docName: string, extension: string): string {
   if (!isValidRelativeContentPath(docName)) {
-    throw new Error('path must be a relative content path');
+    throw new PathContainmentError('path must be a relative content path');
   }
   const resolvedContentDir = resolve(contentDir);
   const fullPath = resolve(resolvedContentDir, `${docName}${extension}`);
   if (fullPath !== resolvedContentDir && !fullPath.startsWith(`${resolvedContentDir}${sep}`)) {
-    throw new Error('path must not escape content directory');
+    throw new PathContainmentError('path must not escape content directory');
   }
   assertNoSymlinkEscape(fullPath, resolvedContentDir);
   return fullPath;
@@ -2091,56 +1818,6 @@ function collectFolderPaths(contentDir: string, folderPath: string): string[] {
   walk(folderAbs, folderPath);
   folders.sort((a, b) => a.localeCompare(b));
   return folders;
-}
-
-/**
- * Probe disk for the actual on-disk extension of a file's docName, registering
- * it in the doc-extensions map if found. Closes a boot/watcher race where the
- * rename handler runs before the file watcher has observed the source — without
- * this, `getDocExtension()` returns the `.md` default, which silently defeats
- * `.mdx`-specific exclusion patterns and routes existence checks to the wrong
- * path. Iterating in `SUPPORTED_DOC_EXTENSIONS` precedence order ensures the
- * `.mdx` precedence rule is preserved when both files exist on disk.
- * Idempotent — `registerDocExtension` is a no-op when the higher-precedence
- * extension is already registered.
- */
-function probeAndRegisterSourceFileExtension(contentDir: string, fromPath: string): void {
-  if (!isValidRelativeContentPath(fromPath)) return;
-  const resolvedContentDir = resolve(contentDir);
-  if (isSupportedDocFile(fromPath)) {
-    const extensionless = stripDocExtension(fromPath);
-    for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-      const candidate = resolve(resolvedContentDir, `${extensionless}${ext}`);
-      if (
-        candidate !== resolvedContentDir &&
-        !candidate.startsWith(`${resolvedContentDir}${sep}`)
-      ) {
-        continue;
-      }
-      if (existsSync(candidate)) {
-        registerDocExtension(extensionless, ext);
-      }
-    }
-    const explicitCandidate = resolve(resolvedContentDir, fromPath);
-    if (
-      explicitCandidate !== resolvedContentDir &&
-      explicitCandidate.startsWith(`${resolvedContentDir}${sep}`) &&
-      existsSync(explicitCandidate)
-    ) {
-      registerDocExtension(extensionless, extname(fromPath));
-    }
-    return;
-  }
-  for (const ext of SUPPORTED_DOC_EXTENSIONS) {
-    const candidate = resolve(resolvedContentDir, `${fromPath}${ext}`);
-    if (candidate !== resolvedContentDir && !candidate.startsWith(`${resolvedContentDir}${sep}`)) {
-      continue;
-    }
-    if (existsSync(candidate)) {
-      registerDocExtension(fromPath, ext);
-      return;
-    }
-  }
 }
 
 function toGitRelativePath(projectDir: string, absolutePath: string): string | null {
@@ -3682,7 +3359,7 @@ export function createApiExtension(
     if (error instanceof ManagedRenameSnapshotMissingError) {
       return { status: 404, type: 'urn:ok:error:doc-not-found', error: withPeriod(error.message) };
     }
-    if (error instanceof SymlinkEscapeError) {
+    if (isContainmentRejection(error)) {
       return { status: 400, type: 'urn:ok:error:path-escape', error: withPeriod(error.message) };
     }
     if (error instanceof BacklinkIndexRequiredError) {
@@ -3959,39 +3636,6 @@ export function createApiExtension(
       rewrittenDocs.push({ docName: pending.docName, rewrites: rewritten.rewrites });
     }
     return { rewrittenDocs, derivedMutations };
-  }
-
-  function resolveExtensionlessAssetPath(assetPath: string): {
-    path: string;
-    ambiguous: boolean;
-  } {
-    // Filesystem-backed authority for extensionless asset targets; the client
-    // canonicalizer is only a UX aid for dialogs and shell-trash paths.
-    if (extname(assetPath)) return { path: assetPath, ambiguous: false };
-
-    const slash = assetPath.lastIndexOf('/');
-    const parent = slash === -1 ? '' : assetPath.slice(0, slash);
-    const stem = slash === -1 ? assetPath : assetPath.slice(slash + 1);
-    const parentPath = parent ? resolveContentEntryPath(contentDir, 'folder', parent) : contentDir;
-
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(parentPath, { withFileTypes: true });
-    } catch (err) {
-      const code = errnoCode(err);
-      if (code === 'ENOENT' || code === 'ENOTDIR') {
-        return { path: assetPath, ambiguous: false };
-      }
-      throw err;
-    }
-
-    const candidates = entries
-      .filter((entry) => entry.isFile() && entry.name.startsWith(`${stem}.`))
-      .map((entry) => (parent ? `${parent}/${entry.name}` : entry.name))
-      .filter((candidate) => isSupportedAssetFile(candidate, LINKABLE_ASSET_EXTENSIONS));
-
-    if (candidates.length === 1) return { path: candidates[0], ambiguous: false };
-    return { path: assetPath, ambiguous: candidates.length > 1 };
   }
 
   /**
@@ -4918,9 +4562,10 @@ export function createApiExtension(
    * `hint` is nested inside `summary` (not a sibling top-level key) so the
    * truncation message always travels with the field it explains — this
    * prevents naming collisions at the response root and tightens the coupling
-   * between `truncatedFrom` and the human-readable explanation.
+   * between `truncatedFrom` and the human-readable explanation. The alias
+   * itself is owned by `agent-write-summary.ts` (imported at module top) so
+   * the native route handlers that echo it cannot drift structurally.
    */
-  type SummaryResponse = { value: string; truncatedFrom?: number; hint?: string };
 
   /**
    * Pure response-shape derivation from a normalized summary — NO side effects.
@@ -8059,230 +7704,6 @@ export function createApiExtension(
     { handler: 'asset-text', method: 'GET', skipBodyParse: true },
   );
 
-  const handleCreatePage = withValidation(
-    CreatePageRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        // Identity boundary: only attribute when the caller explicitly supplies
-        // agentId. UI-driven creates fall through to the loaded principal (if
-        // any) or anonymous — never to a synthetic 'Claude' default. Mirrors
-        // handleRollback / handleRenamePath.
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'create-page',
-          });
-          return;
-        }
-
-        const filePath = body.path;
-        if (!isSupportedDocFile(filePath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must end with .md or .mdx.',
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        if (
-          filePath.includes('..') ||
-          filePath.startsWith('/') ||
-          filePath.includes('\x00') ||
-          filePath.includes('\\')
-        ) {
-          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Invalid path.', {
-            handler: 'create-page',
-            detail: 'path must not contain .. or start with /',
-          });
-          return;
-        }
-        const resolvedContentDir = resolve(contentDir);
-        const fullPath = resolve(resolvedContentDir, filePath);
-        if (!isWithinDir(fullPath, resolvedContentDir)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:path-escape',
-            'path must not escape content directory.',
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        const candidateDocName = stripDocExtension(filePath);
-        if (isSystemDoc(candidateDocName) || isConfigDoc(candidateDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${candidateDocName}' is a reserved document name.`,
-            { handler: 'create-page' },
-          );
-          return;
-        }
-        // Reject managed-artifact + reserved-directory targets. Now that
-        // `.ok/skills/**` is indexed/served content, a raw create-page into
-        // `.ok/skills/<name>/SKILL.md` would write directly with ZERO skill-schema
-        // validation (no name/description checks, no XML-tag ban) and surface as a
-        // malformed phantom skill. Skills/templates must go through their own
-        // validating write/install spines; every other `.ok/` child is excluded
-        // from the content scope anyway. The reserved-path test catches raw
-        // filesystem paths with a `.ok`/`.git` segment at any depth;
-        // `isManagedArtifactDocName` catches the synthetic `__skill__/` /
-        // `__template__/` doc-name forms.
-        if (isReservedProjectStatePath(filePath) || isManagedArtifactDocName(candidateDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${candidateDocName}' is a reserved document name.`,
-            {
-              handler: 'create-page',
-              detail:
-                'Cannot create a page inside .ok or .git — skills and templates are authored through their own validating flows.',
-            },
-          );
-          return;
-        }
-        // Optional template parameter: when set, instantiate the new
-        // doc from the resolved template's body (with {{date}} / {{user}}
-        // substitution applied) instead of an empty file. Resolution walks
-        // the parent folder's templates_available[] — local + inherited,
-        // closest-wins.
-        const templateName =
-          typeof (body as Record<string, unknown>).template === 'string'
-            ? ((body as Record<string, unknown>).template as string).trim()
-            : '';
-        let initialContent = '';
-        let templateScopeForLog: 'local' | 'inherited' | undefined;
-        if (templateName.length > 0) {
-          if (!/^[A-Za-z0-9_-]+$/.test(templateName)) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Template name must match [A-Za-z0-9_-]+.',
-              { handler: 'create-page' },
-            );
-            return;
-          }
-          const parentFolder = filePath.includes('/')
-            ? filePath.slice(0, filePath.lastIndexOf('/'))
-            : '';
-          const available = resolveTemplatesAvailable(resolvedContentDir, parentFolder);
-          const matched = available.find((t) => t.name === templateName);
-          if (!matched) {
-            const availableLabel =
-              available.length === 0
-                ? '(none)'
-                : available.map((t) => `"${t.name}" (${t.scope})`).join(', ');
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Template "${templateName}" does not resolve for folder "${parentFolder || '(root)'}". Available: ${availableLabel}`,
-              { handler: 'create-page' },
-            );
-            return;
-          }
-          const templateAbs = resolve(resolvedContentDir, matched.path);
-          let templateRaw: string;
-          try {
-            templateRaw = readFileSync(templateAbs, 'utf-8');
-          } catch (err) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              `Failed to read template at ${matched.path}.`,
-              { handler: 'create-page', cause: err },
-            );
-            return;
-          }
-          // The new doc IS the template's starter content (doc-frontmatter +
-          // markdown) with the `template:` identity stripped. `instantiateDoc`
-          // normalizes single-block and legacy two-block templates the same way
-          // and preserves `{{date}}`/`{{user}}` tokens verbatim for substitution.
-          const templateStarter = instantiateDoc(templateRaw);
-          // {{user}} substitutes the calling principal's display name; falls
-          // back to empty string when no principal is loaded.
-          const userDisplayName =
-            actor.kind === 'agent' || actor.kind === 'principal' ? (actor.displayName ?? '') : '';
-          initialContent = applySubstitution(templateStarter, {
-            date: todayIsoUtc(),
-            user: userDisplayName,
-          });
-          templateScopeForLog = matched.scope;
-        }
-
-        const docName = stripDocExtension(filePath);
-        // Synchronous through recordContributor below: an async yield between
-        // the write and the contributor recording lets a pending shadow-commit
-        // timer drain the accumulator without this file's attribution.
-        const createOutcome = fileOpsService.createPage({
-          fullPath,
-          docName,
-          initialContent,
-        });
-        if (!createOutcome.ok) {
-          errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'File already exists.', {
-            handler: 'create-page',
-            cause: createOutcome.cause,
-          });
-          return;
-        }
-        switch (actor.kind) {
-          case 'agent':
-          case 'principal':
-            recordContributor(
-              docName,
-              actor.writerId,
-              actor.displayName,
-              actor.colorSeed,
-              undefined,
-              actor.actor,
-            );
-            break;
-          case 'anonymous':
-            // UI-driven create with no loaded principal — no contributor recorded.
-            break;
-          default: {
-            const _exhaustive: never = actor;
-            throw new Error(
-              `Unhandled actor kind in handleCreatePage: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-            );
-          }
-        }
-        // Best-effort for real (see the skill-put site): never hold a create
-        // response on the derived-index command queue.
-        void recordDerivedDocumentBestEffort(docName, initialContent, 'create-page');
-        signalChannel?.('files');
-        if (templateScopeForLog !== undefined) {
-          // Cardinality-bounded structured event — `templateScope` is one of
-          // two values; `templateName` is bounded by the user's actual
-          // templates. Mirrors the structured-event style in activity-log.ts.
-          console.warn(
-            JSON.stringify({
-              event: 'template-instantiate',
-              templateName,
-              templateScope: templateScopeForLog,
-              docName,
-            }),
-          );
-        }
-        successResponse(res, 200, CreatePageSuccessSchema, { docName }, { handler: 'create-page' });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to create page.', {
-          handler: 'create-page',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'create-page', method: 'POST' },
-  );
-
   const fileOpsService = createFileOpsService({
     contentDir,
     resolveContentEntryPath,
@@ -8333,1002 +7754,6 @@ export function createApiExtension(
     recordDerivedDocumentBestEffort,
     recordDerivedMutationsBestEffort,
   });
-
-  const handleCreateFolder = withValidation(
-    CreateFolderRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'create-folder',
-          });
-          return;
-        }
-        const folderPath = body.path;
-        if (!isValidRelativeContentPath(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-        if (isReservedProjectStatePath(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-        if (contentFilter?.isDirExcluded(folderPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Destination folder is excluded by the workspace content config.',
-            { handler: 'create-folder' },
-          );
-          return;
-        }
-
-        const outcome = fileOpsService.createFolder(folderPath);
-        if (!outcome.ok) {
-          errorResponse(res, 409, 'urn:ok:error:doc-already-exists', 'Folder already exists.', {
-            handler: 'create-folder',
-          });
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          CreateFolderSuccessSchema,
-          { path: folderPath },
-          { handler: 'create-folder' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to create folder.', {
-          handler: 'create-folder',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'create-folder', method: 'POST' },
-  );
-
-  const handleDuplicatePath = withValidation(
-    DuplicatePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'duplicate-path',
-          });
-          return;
-        }
-
-        const { kind } = body;
-        const requestedPath = body.path;
-        const requestedDocName = kind === 'file' ? stripDocExtension(requestedPath) : requestedPath;
-        if (!isValidRelativeContentPath(requestedPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'duplicate-path' },
-          );
-          return;
-        }
-        if (
-          isReservedProjectStatePath(requestedPath) ||
-          (kind === 'file' && (isSystemDoc(requestedDocName) || isConfigDoc(requestedDocName))) ||
-          (kind === 'folder' && isReservedSyntheticFolderPath(requestedPath))
-        ) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            'Reserved paths cannot be duplicated.',
-            { handler: 'duplicate-path' },
-          );
-          return;
-        }
-
-        if (kind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, requestedPath);
-        }
-
-        const outcome = await fileOpsService.duplicatePath(kind, requestedPath, requestedDocName);
-        if (!outcome.ok) {
-          switch (outcome.kind) {
-            case 'not-found':
-              errorResponse(res, 404, 'urn:ok:error:doc-not-found', `${kind} does not exist.`, {
-                handler: 'duplicate-path',
-              });
-              return;
-            case 'type-mismatch':
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                `Target path is not a ${kind}.`,
-                { handler: 'duplicate-path' },
-              );
-              return;
-            case 'conflict':
-              respondDocInConflict(
-                res,
-                new DocInConflictError({ file: outcome.file }),
-                'duplicate-path',
-              );
-              return;
-            case 'destination-excluded':
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                kind === 'file'
-                  ? 'Duplicated document destination is excluded by the project content config.'
-                  : 'Duplicated folder destination is excluded by the project content config.',
-                { handler: 'duplicate-path' },
-              );
-              return;
-            case 'already-exists':
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                `A ${kind} at the duplicate destination already exists.`,
-                { handler: 'duplicate-path', cause: outcome.cause },
-              );
-              return;
-            default: {
-              const _exhaustive: never = outcome;
-              throw new Error(
-                `Unhandled duplicate outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-              );
-            }
-          }
-        }
-        const { duplicatedPath, duplicatedDocNames } = outcome;
-
-        switch (actor.kind) {
-          case 'agent':
-          case 'principal':
-            for (const docName of duplicatedDocNames) {
-              recordContributor(
-                docName,
-                actor.writerId,
-                actor.displayName,
-                actor.colorSeed,
-                undefined,
-                actor.actor,
-              );
-            }
-            break;
-          case 'anonymous':
-            break;
-          default: {
-            const _exhaustive: never = actor;
-            throw new Error(
-              `Unhandled actor kind in handleDuplicatePath: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-            );
-          }
-        }
-
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          DuplicatePathSuccessSchema,
-          { kind, path: duplicatedPath, duplicatedDocNames },
-          { handler: 'duplicate-path' },
-        );
-      } catch (e) {
-        if (e instanceof DuplicateNameExhaustedError) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            'All available duplicate name slots are occupied for this path.',
-            { handler: 'duplicate-path', cause: e },
-          );
-          return;
-        }
-        const filesystemProblem = classifyDuplicatePathFilesystemProblem(e);
-        if (filesystemProblem) {
-          errorResponse(
-            res,
-            filesystemProblem.status,
-            filesystemProblem.type,
-            filesystemProblem.title,
-            { handler: 'duplicate-path', cause: e },
-          );
-          return;
-        }
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to duplicate path.', {
-          handler: 'duplicate-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'duplicate-path', method: 'POST' },
-  );
-
-  const handleRenamePath = withValidation(
-    RenamePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const bodyObj = body as unknown as Record<string, unknown>;
-        const actor = extractActorIdentity(bodyObj, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'rename-path',
-          });
-          return;
-        }
-        const { kind, fromPath, toPath } = body;
-        if (!isValidRelativeContentPath(fromPath) || !isValidRelativeContentPath(toPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Paths must be relative content paths.',
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        if (
-          kind === 'file' &&
-          (isSystemDoc(fromPath) ||
-            isSystemDoc(toPath) ||
-            isConfigDoc(fromPath) ||
-            isConfigDoc(toPath))
-        ) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            'Reserved document names cannot be renamed.',
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        // Reject paths with a `.ok` or `.git` segment at any depth — root
-        // `.ok/` holds OK config (`config.yml`, `frontmatter.yml`,
-        // `templates/`) plus the per-machine `local/` runtime subtree
-        // (server.lock, principal.json, cache, etc.), and nested
-        // `<folder>/.ok/` holds folder metadata + templates. Symmetric with
-        // the `__system__` carve-out. The `AGENTS.md` file inside `.ok/` is a
-        // tracked content file by design, but a rename TO or FROM these
-        // directories would clobber OK bookkeeping.
-        if (isReservedProjectStatePath(fromPath) || isReservedProjectStatePath(toPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            {
-              handler: 'rename-path',
-            },
-          );
-          return;
-        }
-        if (fromPath === toPath) {
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            { renamed: [], renamedAssets: [], rewrittenDocs: [] },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        const operationKind =
-          kind === 'asset' && isSupportedDocFile(fromPath) && isSupportedDocFile(toPath)
-            ? 'file'
-            : kind;
-        if (operationKind === 'asset') {
-          let result: {
-            renamedAssets: RenamedAssetMapping[];
-            rewrittenDocs: ManagedRenameRewrittenDoc[];
-          };
-          try {
-            result =
-              isSupportedDocFile(fromPath) && !isSupportedDocFile(toPath)
-                ? await _performDocumentToFileRename(fromPath, toPath)
-                : await _performAssetRename(fromPath, toPath);
-          } catch (err) {
-            if (err instanceof DocInConflictError) {
-              respondDocInConflict(res, err, 'rename-path');
-              return;
-            }
-            const { status, type, error } = toManagedRenamePublicError(err);
-            errorResponse(res, status, type, error, {
-              handler: 'rename-path',
-              cause: err,
-            });
-            return;
-          }
-
-          if (result.renamedAssets.length > 0) {
-            invalidateReferencedAssetsCache();
-          }
-
-          let summaryResponse: SummaryResponse | undefined;
-          if (result.renamedAssets.length > 0 && result.rewrittenDocs.length > 0) {
-            const subject = `Renamed asset ${fromPath} → ${toPath}`;
-            summaryResponse = attributeRenameWriteToActor(
-              actor,
-              subject,
-              result.rewrittenDocs.map(({ docName }) => ({ docName, subject })),
-              {
-                context: 'handleRenamePath asset branch',
-                onAnonymous: () => {
-                  log.debug(
-                    {
-                      kind: 'asset',
-                      fromPath,
-                      toPath,
-                      affectedDocs: result.rewrittenDocs.length,
-                      affectedAssets: result.renamedAssets.length,
-                    },
-                    '[rename-path] anonymous actor; no contributor recorded (no agentId in body and getPrincipal() returned null)',
-                  );
-                },
-              },
-            );
-          }
-          renameAttributionCounter().add(1, {
-            kind: 'rename-asset',
-            attribution_kind: actor.kind,
-          });
-
-          if (flushContributors) {
-            try {
-              await flushContributors();
-            } catch (flushErr) {
-              log.warn(
-                { err: flushErr },
-                '[rename-path] flushContributors failed after asset rename (commitSha backfill may be deferred)',
-              );
-            }
-          }
-
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            {
-              renamed: [],
-              renamedAssets: result.renamedAssets,
-              rewrittenDocs: result.rewrittenDocs,
-              ...(summaryResponse ? { summary: summaryResponse } : {}),
-            },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-        // Register the source's actual on-disk extension before downstream
-        // checks so admission, conflict checks, and existsSync probes all see
-        // the right value when the file watcher hasn't yet observed the source
-        // (boot race).
-        if (operationKind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, fromPath);
-        }
-        // Conflict-aware refusal. Renaming a conflicted source doc would
-        // shift the file path while the merge stages still live at the
-        // old path — the disk-watcher → reconcile loop would then see two
-        // paths racing the same content. For a folder rename we ALSO
-        // refuse if any affected child carries 'conflict': the per-doc
-        // rewrite spine (`applyManagedRenameMapToLoadedDocument` →
-        // `composeAndWriteRawBody`) is a sibling primitive to
-        // `applyAgentMarkdownWrite` and does NOT inherit its gate.
-        // Mirrors handleDeletePath's affected-docs scan.
-        //
-        // Dual-source check: hocuspocus.documents.get() returns undefined
-        // for docs evicted from memory (e.g., after boot-time
-        // restoreLifecycleFromConflictsJson disconnects them). Falling back
-        // to ConflictStore via SyncEngine catches that eviction race —
-        // mirrors the dual-source pattern used in handleSyncConflictContent's
-        // 404 gate.
-        // Enumerate from disk (not the lagging file index) so the conflict
-        // pre-check sees every on-disk child of the folder — same root cause
-        // as the spine's `affectedDocNames`.
-        const renameAffectedDocNames =
-          operationKind === 'file'
-            ? [docNameForFileOperationPath(contentDir, fromPath)]
-            : listManagedDocNamesUnderFolderFromDisk(
-                resolveContentEntryPath(contentDir, 'folder', fromPath),
-              );
-        const renameEngine = getSyncEngine?.();
-        const renameTrackedFiles = new Set(
-          renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-        );
-        for (const affected of renameAffectedDocNames) {
-          const affectedDocName = affected;
-          const doc = hocuspocus.documents.get(affectedDocName);
-          const filePath = docNameToRelativePath(affectedDocName);
-          const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-          const conflictedByStore = renameTrackedFiles.has(filePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: filePath }), 'rename-path');
-            return;
-          }
-        }
-
-        if (contentFilter) {
-          // Mirror `resolveContentEntryPath`'s explicit-extension detection so
-          // a destination like `bar.mdx` is checked verbatim instead of as
-          // `bar.mdx.md` (which would miss `*.mdx` exclusion patterns).
-          const sourceExt = isSupportedDocFile(fromPath)
-            ? extname(fromPath)
-            : getDocExtension(fromPath);
-          const excluded =
-            operationKind === 'file'
-              ? contentFilter.isExcluded(
-                  isSupportedDocFile(toPath) ? toPath : `${toPath}${sourceExt}`,
-                )
-              : contentFilter.isDirExcluded(toPath);
-          if (excluded) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Destination ${operationKind === 'file' ? 'document' : 'folder'} is excluded by the project content config.`,
-              { handler: 'rename-path' },
-            );
-            return;
-          }
-        }
-
-        // Thread the actor identity through to the rewrite spine so the
-        // rename log entry carries the right writerId. Anonymous → service
-        // writer fallback is handled inside the spine.
-        const renameActor =
-          actor.kind === 'agent' || actor.kind === 'principal'
-            ? {
-                writerId: actor.writerId,
-                displayName: actor.displayName,
-                colorSeed: actor.colorSeed,
-                actorMetadata: actor.actor,
-              }
-            : undefined;
-
-        let result: {
-          renamed: RenamedDocMapping[];
-          renamedAssets: RenamedAssetMapping[];
-          rewrittenDocs: ManagedRenameRewrittenDoc[];
-        };
-        try {
-          result = await _performManagedRenameForDocs(
-            fromPath,
-            toPath,
-            operationKind,
-            renameActor ? { actor: renameActor } : {},
-          );
-        } catch (err) {
-          if (err instanceof ManagedRenameCollisionError) {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', withPeriod(err.message), {
-              handler: 'rename-path',
-              extensions: { colliding: err.colliding },
-              cause: err,
-            });
-            return;
-          }
-          throw err;
-        }
-
-        if (result.renamed.length === 0 && result.renamedAssets.length === 0) {
-          successResponse(
-            res,
-            200,
-            RenamePathSuccessSchema,
-            { renamed: [], renamedAssets: [], rewrittenDocs: [] },
-            { handler: 'rename-path' },
-          );
-          return;
-        }
-
-        if (result.renamedAssets.length > 0) {
-          invalidateReferencedAssetsCache();
-        }
-
-        let summaryResponse: SummaryResponse | undefined;
-        const logicalRenames = result.renamed.filter(
-          ({ fromDocName, toDocName }) => fromDocName !== toDocName,
-        );
-        if (logicalRenames.length > 0) {
-          summaryResponse = attributeRenameWriteToActor(
-            actor,
-            `Renamed ${fromPath} → ${toPath}`,
-            logicalRenames.map(({ fromDocName, toDocName }) => ({
-              docName: toDocName,
-              subject: formatRenameSubject(fromDocName, toDocName),
-            })),
-            {
-              context: 'handleRenamePath',
-              onAnonymous: () => {
-                log.debug(
-                  { kind, fromPath, toPath, affectedDocs: result.renamed.length },
-                  '[rename-path] anonymous actor — no contributor recorded (no agentId in body and getPrincipal() returned null)',
-                );
-              },
-            },
-          );
-        }
-        renameAttributionCounter().add(1, {
-          kind: `rename-${operationKind}`,
-          attribution_kind: actor.kind,
-        });
-
-        // Flush pending contributors so the rename-log entry's commitSha is
-        // backfilled by `commitToWipRefInner` BEFORE the API responds.
-        // Without this, a "pure rename without subsequent edit" leaves
-        // commitSha as '' until the next persistence drain (which may never
-        // happen) — the timeline rename-history mitigation depends on
-        // commitSha being a real 40-char SHA at read time. Mirrors the
-        // pattern at handleRollback (post-rollback flushContributors call).
-        if (flushContributors) {
-          try {
-            await flushContributors();
-          } catch (flushErr) {
-            log.warn(
-              { err: flushErr },
-              '[rename-path] flushContributors failed (commitSha backfill may be deferred)',
-            );
-          }
-        }
-
-        successResponse(
-          res,
-          200,
-          RenamePathSuccessSchema,
-          {
-            renamed: result.renamed,
-            renamedAssets: result.renamedAssets,
-            rewrittenDocs: result.rewrittenDocs,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-          },
-          { handler: 'rename-path' },
-        );
-      } catch (e) {
-        const { status, type, error } = toManagedRenamePublicError(e);
-        errorResponse(res, status, type, error, {
-          handler: 'rename-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'rename-path', method: 'POST' },
-  );
-
-  const handleDeletePath = withValidation(
-    DeletePathRequestSchema,
-    async (_req, res, body) => {
-      try {
-        extractAgentIdentity(body as unknown as Record<string, unknown>); // attribution threading
-        const { kind, path } = body;
-        if (!isValidRelativeContentPath(path)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'path must be a relative content path.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-        const assetResolution =
-          kind === 'asset' ? resolveExtensionlessAssetPath(path) : { path, ambiguous: false };
-        if (assetResolution.ambiguous) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Asset path without an extension matches multiple files.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-        const operationPath = assetResolution.path;
-        const operationKind = kind === 'asset' && isSupportedDocFile(operationPath) ? 'file' : kind;
-        if (operationKind === 'file') {
-          probeAndRegisterSourceFileExtension(contentDir, operationPath);
-        }
-        if (isReservedProjectStatePath(operationPath)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            '.ok and .git are reserved directories.',
-            { handler: 'delete-path' },
-          );
-          return;
-        }
-
-        const outcome = await fileOpsService.deletePath(operationKind, operationPath);
-        if (!outcome.ok) {
-          if (outcome.kind === 'not-found') {
-            errorResponse(
-              res,
-              404,
-              'urn:ok:error:doc-not-found',
-              `${operationKind} does not exist.`,
-              { handler: 'delete-path' },
-            );
-          } else if (outcome.kind === 'type-mismatch') {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Target path is not a ${operationKind}.`,
-              { handler: 'delete-path' },
-            );
-          } else {
-            respondDocInConflict(
-              res,
-              new DocInConflictError({ file: outcome.file }),
-              'delete-path',
-            );
-          }
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          DeletePathSuccessSchema,
-          { deletedDocNames: outcome.deletedDocNames },
-          { handler: 'delete-path' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to delete path.', {
-          handler: 'delete-path',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'delete-path', method: 'POST' },
-  );
-
-  // Two-step Trash flow: the renderer calls
-  // `bridge.shell.trashItem` (Step 1) which moves the file to ~/.Trash via
-  // `shell.trashItem`. On success, the renderer POSTs here (Step 2) to
-  // synchronously cleanup server-side state — close Hocuspocus docs, mark
-  // `recentlyRemovedDocs`, purge the file index, broadcast CC1 files.
-  // Does NOT touch disk (the file is already gone from contentDir).
-  //
-  // Idempotent: if the file-watcher already processed the OS-level deletion
-  // between Step 1 and Step 2, `listAffectedDocNames` returns an empty array
-  // and the handler returns 200 with `deletedDocNames: []` rather than 404 —
-  // the desired end state (gone) is still true.
-  const handleTrashCleanup = withValidation(
-    TrashCleanupRequestSchema,
-    async (_req, res, body) => {
-      return withSpan(
-        'ok.fs.trash_cleanup',
-        {
-          attributes: {
-            'ok.cleanup.kind': body.kind,
-            'ok.cleanup.path': normalizeFsPath(body.path),
-            'ok.cleanup.path.role': classifyFsPath(body.path),
-          },
-        },
-        async () => {
-          try {
-            const bodyObj = body as unknown as Record<string, unknown>;
-            const actor = extractActorIdentity(bodyObj, getPrincipal);
-            if (actor.kind === 'invalid-summary') {
-              errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-                handler: 'trash-cleanup',
-              });
-              return;
-            }
-            const { kind, path } = body;
-            if (!isValidRelativeContentPath(path)) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                'path must be a relative content path.',
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-            const operationKind = kind === 'asset' && isSupportedDocFile(path) ? 'file' : kind;
-            const operationDocName = stripDocExtension(path);
-            if (operationKind === 'file') {
-              probeAndRegisterSourceFileExtension(contentDir, path);
-            }
-            // Defense in depth — synthetic docs never reach disk so cleanup
-            // against them is meaningless; mirrors the gate handleDeletePath
-            // implicitly enforces via `resolveContentEntryPath` + existsSync.
-            // Folder kind is checked separately: a `kind: 'folder', path:
-            // '__config__'` payload would otherwise reach listAffectedDocNames
-            // + captureAndCloseDocuments on the synthetic config docs inside
-            // that namespace before the per-doc guard at the recently-removed
-            // loop fires.
-            const isReservedFolder =
-              operationKind === 'folder' && isReservedSyntheticFolderPath(path);
-            if (
-              (operationKind === 'file' &&
-                (isSystemDoc(operationDocName) || isConfigDoc(operationDocName))) ||
-              isReservedFolder ||
-              isReservedProjectStatePath(path)
-            ) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:reserved-doc-name',
-                `'${path}' is a reserved document name.`,
-                { handler: 'trash-cleanup' },
-              );
-              return;
-            }
-            const { deletedDocNames } = await fileOpsService.trashCleanup(
-              operationKind,
-              path,
-              operationDocName,
-              'handleTrashCleanup',
-            );
-            successResponse(
-              res,
-              200,
-              TrashCleanupSuccessSchema,
-              { deletedDocNames },
-              { handler: 'trash-cleanup' },
-            );
-          } catch (e) {
-            errorResponse(
-              res,
-              500,
-              'urn:ok:error:internal-server-error',
-              'Failed to clean up after trash.',
-              {
-                handler: 'trash-cleanup',
-                cause: e,
-              },
-            );
-          }
-        },
-      );
-    },
-    { handler: 'trash-cleanup', method: 'POST' },
-  );
-
-  async function handleUploadAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (req.method !== 'POST') {
-      errorResponse(res, 405, 'urn:ok:error:method-not-allowed', 'Method not allowed.', {
-        handler: 'upload-asset',
-        extraHeaders: { Allow: 'POST' },
-      });
-      return;
-    }
-
-    let uploadResult: UploadResult | undefined;
-    try {
-      uploadResult = await readUploadBody(req, projectDir ?? contentDir);
-    } catch (e) {
-      // All body-parse failures land as UploadWriteError with a URN-form
-      // reason. Tempfile cleanup is handled inside readUploadBody's error
-      // path. Anonymous emit (no extractAgentIdentity yet) is semantically
-      // OK — no Y.Doc mutation has been attempted.
-      if (e instanceof UploadWriteError) {
-        errorResponse(res, uploadStatusFor(e.reason), e.reason, uploadTitleFor(e.reason), {
-          handler: 'upload-asset',
-          cause: e,
-        });
-        return;
-      }
-      errorResponse(res, 400, 'urn:ok:error:malformed-upload', 'Failed to parse upload.', {
-        handler: 'upload-asset',
-        cause: e,
-      });
-      return;
-    }
-
-    const {
-      filename,
-      tempPath,
-      sha,
-      byteLength,
-      parentDocName: rawParentDocName,
-      placement: rawPlacement,
-    } = uploadResult;
-
-    // Belt-and-braces cleanup: if anything below this point errors or
-    // early-returns, the tempfile must go away. Every early-return path
-    // below that does NOT consume tempPath via linkTempToFinal* runs this.
-    const cleanupTempfile = () => {
-      if (existsSync(tempPath)) {
-        try {
-          unlinkSync(tempPath);
-        } catch {
-          // best-effort; orphan sweep reaps stragglers
-        }
-      }
-    };
-
-    // Validate metadata fields (parentDocName etc.) via the shared
-    // `validateBody` middleware. Body-shape failure emits 400
-    // `urn:ok:error:invalid-request` BEFORE `extractAgentIdentity` runs —
-    // an anonymous response is semantically correct here because no Y.Doc
-    // mutation is attempted. Mirrors `withValidation`'s policy for JSON
-    // handlers.
-    const validated = validateBody(
-      UploadRequestSchema,
-      { parentDocName: rawParentDocName, placement: rawPlacement || undefined },
-      res,
-      {
-        handler: 'upload-asset',
-      },
-    );
-    if (!validated.ok) {
-      cleanupTempfile();
-      return;
-    }
-    const { parentDocName, placement } = validated.value;
-
-    // Identity extracted from query params (multipart body precludes JSON).
-    // Capture agentId / agentName so structured upload logs carry
-    // attribution — mirrors precedent #24/#25 and lets operators trace
-    // unexpected file-creation events back to the originating agent
-    // during incident investigation. Both fields follow bounded shapes
-    // (agentId matches AGENT_ID_RE; agentName is sanitized) so they
-    // remain cardinality-safe for log indexing.
-    //
-    // CRUCIAL: identity extraction must precede every SEMANTIC error
-    // emission below (path-escape, no-file-received, storage-error). Body-
-    // shape errors above (urn:ok:error:invalid-request, urn:ok:error:malformed-upload)
-    // are anonymous because no Y.Doc mutation is attempted. The
-    // attribution-sweep-coverage ordering check enforces this distinction
-    // (precedent #24).
-    const { agentId, agentName } = extractAgentIdentity(
-      Object.fromEntries(new URL(req.url ?? '', 'http://localhost').searchParams.entries()),
-    );
-
-    if (byteLength === 0) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:no-file-received', 'No file received.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-
-    // Reject path-escape attempts.
-    if (
-      parentDocName.includes('\x00') ||
-      parentDocName.includes('..') ||
-      parentDocName.startsWith('/')
-    ) {
-      cleanupTempfile();
-      errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-        handler: 'upload-asset',
-      });
-      return;
-    }
-
-    const outcome = await assetService.storeUpload({
-      tempPath,
-      sha,
-      byteLength,
-      filename,
-      parentDocName,
-      placement,
-    });
-    if (outcome.ok) {
-      log.info(
-        {
-          event: 'upload',
-          endpoint: req.url ?? '/api/upload',
-          agentId,
-          agentName,
-          dedup: outcome.deduped,
-          mime: outcome.mime,
-          size: byteLength,
-          // `destPath` is the contentDir-relative asset path. High-
-          // cardinality by nature — fine as a log field consumed by text-
-          // search / by-incident filtering; NEVER promote it to a metric
-          // label (per-asset label explosion).
-          destPath: outcome.path,
-          httpStatus: 200,
-        },
-        outcome.deduped ? '[upload] dedup hit' : '[upload] write ok',
-      );
-      // RFC 9457 §3 success path: drop the `ok: true` wrapper. Wire shape
-      // is `{ src, path, deduped }`; clients discriminate on HTTP status.
-      successResponse(
-        res,
-        200,
-        UploadAssetSuccessSchema,
-        { src: outcome.src, path: outcome.path, deduped: outcome.deduped },
-        { handler: 'upload-asset' },
-      );
-      return;
-    }
-    switch (outcome.kind) {
-      case 'config-error':
-        log.error(
-          { err: outcome.cause },
-          '[upload] project config has invalid content.attachmentFolderPath',
-        );
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Server configuration error: invalid attachment folder path.',
-          { handler: 'upload-asset', cause: outcome.cause },
-        );
-        return;
-      case 'invalid-attachment-folder':
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid attachment folder path.', {
-          handler: 'upload-asset',
-        });
-        return;
-      case 'path-escape':
-        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-          handler: 'upload-asset',
-          ...(outcome.cause === undefined ? {} : { cause: outcome.cause }),
-        });
-        return;
-      case 'dest-validation-error':
-        log.error(
-          { err: outcome.cause, destDir: outcome.destDir },
-          '[upload] failed to validate destination directory',
-        );
-        errorResponse(res, 500, 'urn:ok:error:storage-error', 'Storage error.', {
-          handler: 'upload-asset',
-          cause: outcome.cause,
-        });
-        return;
-      case 'mkdir-failed':
-        errorResponse(
-          res,
-          uploadStatusFor(outcome.reason),
-          outcome.reason,
-          uploadTitleFor(outcome.reason),
-          {
-            handler: 'upload-asset',
-            cause: outcome.cause,
-            detail: 'failed to create attachment directory',
-          },
-        );
-        return;
-      case 'write-failed':
-        log.error(
-          {
-            event: 'upload',
-            endpoint: req.url ?? '/api/upload',
-            requestId: getRequestId(req),
-            agentId,
-            agentName,
-            filename: outcome.filename,
-            size: byteLength,
-            reason: outcome.reason,
-            httpStatus: uploadStatusFor(outcome.reason),
-            err: outcome.cause,
-          },
-          '[upload] write failed',
-        );
-        errorResponse(
-          res,
-          uploadStatusFor(outcome.reason),
-          outcome.reason,
-          uploadTitleFor(outcome.reason),
-          { handler: 'upload-asset', cause: outcome.cause },
-        );
-        return;
-    }
-  }
 
   // ─── Local-op relay endpoints (/api/local-op/*) ─────────────────────────────
   // loopback + origin + path safety + URL allowlist + concurrency=1 + 10-min timeout
@@ -11521,8 +9946,46 @@ export function createApiExtension(
       candidateAbs !== resolvedContentDir &&
       !candidateAbs.startsWith(`${resolvedContentDir}${sep}`)
     ) {
-      errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Path escapes content directory.', {
+      errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {
         handler,
+      });
+      return null;
+    }
+    // Canonical containment on top of the lexical prefix check above, which a
+    // symlinked directory defeats (`notes -> /outside` keeps every lexical
+    // check green while the write lands outside the root). One gate here
+    // covers both consumer families — the folder-template routes AND the
+    // folder-mode history arm — because the writers behind it
+    // (`applyFolderFrontmatterPatch`, the template write/delete/move helpers)
+    // mkdir and write under the validated folder without re-checking.
+    // The asserts anchor on the components the writers actually TOUCH:
+    // `<folder>/.ok` and `<folder>/.ok/templates`, not just the folder —
+    // `assertNoSymlinkEscape` returns as soon as its argument realpaths
+    // in-root and never inspects components below it, so asserting the folder
+    // alone admits a planted `<folder>/.ok -> /outside` link. Anchoring on
+    // `.ok` subsumes the folder (the ENOENT walk passes through it), and both
+    // deeper asserts are free when the dirs don't exist yet.
+    // Reserved-prefix folders (`.ok`, `.git`, `.ok/skills/<name>`) are
+    // deliberately admitted here, unlike the file-ops family: the writers
+    // append the `.ok/{frontmatter.yml,templates/<pinned-name>.md}` leaf
+    // themselves, so nothing load-bearing is reachable through them.
+    try {
+      const okDir = resolve(candidateAbs, '.ok');
+      assertNoSymlinkEscape(okDir, resolvedContentDir);
+      assertNoSymlinkEscape(resolve(okDir, 'templates'), resolvedContentDir);
+    } catch (err) {
+      if (isContainmentRejection(err)) {
+        errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {
+          handler,
+          cause: err,
+        });
+        return null;
+      }
+      // Raw realpath errno or a missing content root: a server fault, not the
+      // caller's path — same split as every other containment consumer.
+      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to validate path.', {
+        handler,
+        cause: err,
       });
       return null;
     }
@@ -19304,7 +17767,7 @@ export function createApiExtension(
           { handler: 'lint-fix' },
         );
       } catch (e) {
-        if (e instanceof SymlinkEscapeError) {
+        if (isContainmentRejection(e)) {
           errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
             handler: 'lint-fix',
           });
@@ -19382,13 +17845,6 @@ export function createApiExtension(
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
     '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
     '/api/lint/fix': handleLintFix,
-    '/api/create-page': handleCreatePage,
-    '/api/create-folder': handleCreateFolder,
-    '/api/duplicate-path': handleDuplicatePath,
-    '/api/rename-path': handleRenamePath,
-    '/api/delete-path': handleDeletePath,
-    '/api/trash/cleanup': handleTrashCleanup,
-    '/api/upload': handleUploadAsset,
     '/api/agent-write': handleAgentWrite,
     '/api/agent-write-md': handleAgentWriteMd,
     '/api/agent-write-batch': handleAgentWriteBatch,
@@ -19445,16 +17901,9 @@ export function createApiExtension(
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/comments',
     '/api/comment',
-    '/api/upload',
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
     '/api/lint/fix',
-    '/api/create-page',
-    '/api/create-folder',
-    '/api/duplicate-path',
-    '/api/rename-path',
-    '/api/delete-path',
-    '/api/trash/cleanup',
     '/api/agent-write',
     '/api/agent-write-md',
     '/api/agent-write-batch',
@@ -19626,6 +18075,33 @@ export function createApiExtension(
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   });
+  const fileOpsRoutes = createFileOpsRoutes({
+    contentDir,
+    projectDir,
+    log,
+    getPrincipal,
+    contentFilter,
+    signalChannel,
+    hocuspocus,
+    getSyncEngine,
+    flushContributors,
+    fileOpsService,
+    assetService,
+    extractAgentIdentity,
+    recordDerivedDocumentBestEffort,
+    invalidateReferencedAssetsCache,
+    listManagedDocNamesUnderFolderFromDisk,
+    resolveContentEntryPath,
+    docNameForFileOperationPath,
+    withPeriod,
+    toManagedRenamePublicError,
+    attributeRenameWriteToActor,
+    renameAttributionCounter,
+    _performAssetRename,
+    _performDocumentToFileRename,
+    _performManagedRenameForDocs,
+    isValidRelativeContentPath,
+  });
   const seedRoutes = createSeedRoutes({
     contentDir,
     checkLocalOpSecurity,
@@ -19676,6 +18152,7 @@ export function createApiExtension(
     skillsReadRoutes,
     skillsShRoutes,
     workspaceToolsRoutes,
+    fileOpsRoutes,
     seedRoutes,
     systemActionsRoutes,
     folderTemplateRoutes,

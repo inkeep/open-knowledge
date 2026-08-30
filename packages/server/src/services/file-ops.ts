@@ -36,6 +36,19 @@ import { getLogger } from '../logger.ts';
  * and the idempotent fast-path returns an empty list.
  */
 
+/**
+ * Thrown by the duplicate-name allocators when every `copy` / `copy N` slot
+ * for a source path is taken. Lives here (not in a route file) so both the
+ * extension-side allocators that throw it and the native duplicate-path
+ * handler that `instanceof`-matches it import the same class identity.
+ */
+export class DuplicateNameExhaustedError extends Error {
+  constructor(readonly sourcePath: string) {
+    super(`Could not find an available duplicate name for ${sourcePath}`);
+    this.name = 'DuplicateNameExhaustedError';
+  }
+}
+
 type FileOpKind = 'file' | 'folder' | 'asset';
 
 type CreateFolderOutcome = { ok: true } | { ok: false; kind: 'already-exists' };

@@ -107,17 +107,10 @@ export class ManagedRenameReservedPathError extends Error {
   }
 }
 
-/**
- * Thrown when a `safeContentPath` resolution lands outside the content
- * directory — content dir missing, path resolves outside, or a symlink cycle.
- * Caller surfaces as 400 `urn:ok:error:path-escape`.
- */
-export class SymlinkEscapeError extends Error {
-  constructor(message: string) {
-    super(`symlink-escape: ${message}`);
-    this.name = 'SymlinkEscapeError';
-  }
-}
+// Re-exported for the historical import path; the containment error family
+// (SymlinkEscapeError, PathContainmentError, isContainmentRejection) lives
+// with the check that throws it in fs-safety.ts.
+export { SymlinkEscapeError } from './fs-safety.ts';
 
 /**
  * Thrown when managed rename starts before the backlink index has been

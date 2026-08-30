@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -32,11 +32,12 @@ const METHOD_SURFACE: ReadonlyArray<{ path: string; unsupported: string; allow: 
 const ALL_ROUTES = METHOD_SURFACE.map(({ path }) => path);
 
 let tmpRoot: string;
+let contentDir: string;
 let server: BootedServer;
 
 beforeAll(async () => {
   tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-folder-template-native-'));
-  const contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
+  contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
   writeFileSync(resolve(contentDir, 'alpha.md'), '# Alpha\n\nBody.\n', 'utf-8');
   server = await bootCompositionRig(contentDir);
   await server.ready;
@@ -85,6 +86,50 @@ describe('folder-template group over the composed listener — served natively',
     );
     expect(res.status).toBe(400);
     expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:invalid-request');
+  });
+
+  test('PUT /api/template refuses a folder that symlinks out of the content root', async () => {
+    // The reader half of the templates feature drops symlinked entries from
+    // the menu; this pins the WRITER half to the same boundary — the lexical
+    // folder gate alone would let a `tpl-escape -> /outside` directory link
+    // land `.ok/templates/<name>.md` outside the root.
+    const outside = await mkdtemp(resolve(tmpRoot, 'tpl-outside-'));
+    symlinkSync(outside, resolve(contentDir, 'tpl-escape'), 'dir');
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: 'tpl-escape/sub',
+        name: 'planted',
+        body: 'body',
+        frontmatter: { title: 'Planted' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(resolve(outside, 'sub', '.ok', 'templates', 'planted.md'))).toBe(false);
+  });
+
+  test('PUT /api/template refuses a real .ok whose templates dir symlinks out', async () => {
+    // Pins the second anchor specifically: the folder AND its `.ok` are real
+    // in-root directories; only `.ok/templates` is the planted link. The
+    // `okDir` assert passes, so only the `okDir/templates` assert refuses.
+    const outside = await mkdtemp(resolve(tmpRoot, 'tpl-outside-deep-'));
+    mkdirSync(resolve(contentDir, 'tpl-real', '.ok'), { recursive: true });
+    symlinkSync(outside, resolve(contentDir, 'tpl-real', '.ok', 'templates'), 'dir');
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: 'tpl-real',
+        name: 'planted',
+        body: 'body',
+        frontmatter: { title: 'Planted' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(resolve(outside, 'planted.md'))).toBe(false);
   });
 
   test('template/import refuses a schema-invalid body with 400 before any doc read', async () => {

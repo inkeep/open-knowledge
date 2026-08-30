@@ -1,0 +1,569 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { connect } from 'node:net';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import type { BootedServer } from './boot.ts';
+import { bootCompositionRig, parseProblem, rawRequest } from './composition-rig.test-helper.ts';
+import { tmpUploadDir } from './upload-streaming.ts';
+
+/**
+ * Characterization: the natively-routed file-ops group (`create-page`,
+ * `create-folder`, `duplicate-path`, `rename-path`, `delete-path`,
+ * `trash/cleanup`, multipart `upload`) over a REAL socket through the
+ * composed `bootServer` stack: verb gating (405 + `Allow: POST` on every
+ * path), the shared admission posture on a whole-family-mutating group, and
+ * `/api/upload`'s multipart body handling — including two load-bearing
+ * behaviors:
+ *
+ *   - a client that disconnects mid-multipart must not wedge the request
+ *     (the `readUploadBody` `req.complete` close-guard settles the parse
+ *     promise when busboy never reaches its closing boundary);
+ *   - an oversized JSON body on the family's ordinary routes lands as the
+ *     shared body-reader's clean 413 (`payload-too-large`), while
+ *     `/api/upload` deliberately has NO equivalent byte cap — its bound is
+ *     the storage layer, so the happy path streams arbitrary sizes.
+ *
+ * The wire cannot distinguish the mutating gate from the read gate (both
+ * apply the same loopback + workspace-Host checks), so the mutating
+ * DECLARATION is pinned at the table tier in `http/file-ops-routes.test.ts`;
+ * the rebound-Host pins here hold the admission outcome itself.
+ */
+
+const FAMILY_PATHS = [
+  '/api/create-page',
+  '/api/create-folder',
+  '/api/duplicate-path',
+  '/api/rename-path',
+  '/api/delete-path',
+  '/api/trash/cleanup',
+  '/api/upload',
+];
+
+let tmpRoot: string;
+let contentDir: string;
+let server: BootedServer;
+
+async function postJson(path: string, body: unknown): Promise<Response> {
+  return fetch(`http://127.0.0.1:${server.port}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function uploadForm(fields: Record<string, string>, file?: { name: string; bytes: string }) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) form.append(k, v);
+  if (file) form.append('file', new Blob([file.bytes]), file.name);
+  return form;
+}
+
+beforeAll(async () => {
+  tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-file-ops-native-'));
+  contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
+  writeFileSync(resolve(contentDir, 'alpha.md'), '# Alpha\n\nBody.\n', 'utf-8');
+  server = await bootCompositionRig(contentDir);
+  await server.ready;
+}, 60_000);
+
+afterAll(async () => {
+  await server?.destroy();
+  await rm(tmpRoot, { recursive: true, force: true });
+});
+
+describe('file-ops group over the composed listener — served natively', () => {
+  test('every path is registered natively with verb gating (405 + Allow: POST)', async () => {
+    for (const path of FAMILY_PATHS) {
+      const res = await fetch(`http://127.0.0.1:${server.port}${path}`);
+      expect(res.status, path).toBe(405);
+      expect(res.headers.get('allow'), path).toBe('POST');
+    }
+  });
+
+  test('create-page serves natively and returns the created docName', async () => {
+    const res = await postJson('/api/create-page', { path: 'notes/created-native.md' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-request-id')).not.toBeNull();
+    expect(((await res.json()) as { docName?: string }).docName).toBe('notes/created-native');
+  });
+
+  test('create-page path validation still lands as typed problems', async () => {
+    const noExt = await postJson('/api/create-page', { path: 'not-a-doc.txt' });
+    expect(noExt.status).toBe(400);
+    expect(((await noExt.json()) as { type?: string }).type).toBe('urn:ok:error:invalid-request');
+
+    const escaped = await postJson('/api/create-page', { path: '../outside.md' });
+    expect(escaped.status).toBe(400);
+    expect(((await escaped.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+  });
+
+  test('create-page rejects non-canonical `.`/empty segments (intentional tightening)', async () => {
+    // Routing containment through `resolveContentEntryPath` (vs the old
+    // `path.resolve` + prefix pair) tightened create-page to reject a `.`
+    // segment or an empty (`//`) segment, which `path.resolve` used to
+    // normalize away. This is the safer default and matches the sibling
+    // routes; pin it so the behavior is deliberate rather than incidental.
+    for (const path of ['./notes/x.md', 'notes//x.md']) {
+      const res = await postJson('/api/create-page', { path });
+      expect(res.status, path).toBe(400);
+      expect(((await res.json()) as { type?: string }).type, path).toBe('urn:ok:error:path-escape');
+    }
+  });
+
+  test('create-page refuses a path routed through a symlinked directory escaping the content root', async () => {
+    // The lexical checks pass ('sneaky/escaped.md' contains no '..'), so only
+    // the realpath symlink-escape refusal inside `resolveContentEntryPath`
+    // stands between this request and a write outside the content root.
+    const outside = mkdtempSync(resolve(tmpRoot, 'outside-'));
+    symlinkSync(outside, resolve(contentDir, 'sneaky'), 'dir');
+    const res = await postJson('/api/create-page', { path: 'sneaky/escaped.md' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(resolve(outside, 'escaped.md'))).toBe(false);
+  });
+
+  test('create-page drops a template symlinked outside the content root from the menu', async () => {
+    // `.ok/templates/*.md` are enumerated via `statSync` (follows links), so a
+    // template symlinked to a file outside the content root would otherwise
+    // inline that file's bytes into the new doc. Containment lives in the
+    // resolver (`collectFromFolder`), so the escaping entry never enters the
+    // menu — the template simply does not resolve, and create-page returns the
+    // ordinary "does not resolve" 400 rather than reading the foreign file. The
+    // fixture is scoped under `leaky/` so the shared root template menu that
+    // every other test in this rig sees stays clean.
+    const secretDir = mkdtempSync(resolve(tmpRoot, 'secret-'));
+    writeFileSync(resolve(secretDir, 'secret.txt'), 'TOP SECRET', 'utf-8');
+    const tplDir = resolve(contentDir, 'leaky', '.ok', 'templates');
+    mkdirSync(tplDir, { recursive: true });
+    symlinkSync(resolve(secretDir, 'secret.txt'), resolve(tplDir, 'leak.md'), 'file');
+    const res = await postJson('/api/create-page', {
+      path: 'leaky/from-leak.md',
+      template: 'leak',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:invalid-request');
+    expect(existsSync(resolve(contentDir, 'leaky', 'from-leak.md'))).toBe(false);
+  });
+
+  test('create-page refuses a target routed into .ok through a symlinked directory', async () => {
+    // `resolveContentEntryPath` uses `path.resolve`, which does not follow
+    // symlinks, so `escape-hatch/skills/phantom.md` — where `escape-hatch` is a
+    // symlink to `.ok` — carries no `.ok` segment lexically and stays inside the
+    // content root (so it does NOT trip symlink-escape). The reserved-path check
+    // must run on the CANONICAL path and refuse the write into `.ok/skills`.
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'escape-hatch'), 'dir');
+    const res = await postJson('/api/create-page', {
+      path: 'escape-hatch/skills/phantom.md',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'skills', 'phantom.md'))).toBe(false);
+  });
+
+  // The canonical reserved-path guard is shared across every mutating file-op,
+  // not just create-page: a symlinked directory that routes a lexically-clean
+  // path into `.ok`/`.git` must be refused by create-folder, duplicate-path,
+  // rename-path, and — most importantly — delete-path, whose recursive rm would
+  // otherwise resolve through the junction and destroy OK/git bookkeeping. Each
+  // case plants its own uniquely-named `.ok` symlink so the tests stay independent.
+  test('delete-path refuses a recursive delete routed into .ok through a symlink', async () => {
+    // The witness must be the exact subtree the recursive rm would destroy —
+    // `esc-del/local` resolves to `.ok/local`, so seed a file there and assert
+    // it survives (a sibling like `.ok/config.yml` would survive even a
+    // regression that follows the junction).
+    mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
+    writeFileSync(resolve(contentDir, '.ok', 'local', 'survivor-marker'), 'still here', 'utf-8');
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-del'), 'dir');
+    const res = await postJson('/api/delete-path', { kind: 'folder', path: 'esc-del/local' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'local', 'survivor-marker'))).toBe(true);
+  });
+
+  test('rename-path refuses a destination routed into .ok/skills through a symlink', async () => {
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-ren'), 'dir');
+    const res = await postJson('/api/rename-path', {
+      kind: 'file',
+      fromPath: 'alpha',
+      toPath: 'esc-ren/skills/evil',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'skills', 'evil.md'))).toBe(false);
+  });
+
+  test('rename-path refuses a SOURCE routed into .ok through a symlink', async () => {
+    // The mirror of the destination case with its own damage profile: renaming
+    // FROM `esc-ren-src/local` would move `.ok/local` (server.lock,
+    // principal.json, cache) out of `.ok` into the synced content tree.
+    mkdirSync(resolve(contentDir, '.ok', 'local'), { recursive: true });
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-ren-src'), 'dir');
+    const res = await postJson('/api/rename-path', {
+      kind: 'folder',
+      fromPath: 'esc-ren-src/local',
+      toPath: 'stolen',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'local'))).toBe(true);
+    expect(existsSync(resolve(contentDir, 'stolen'))).toBe(false);
+  });
+
+  test('create-folder refuses a directory routed into .ok through a symlink', async () => {
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-cf'), 'dir');
+    const res = await postJson('/api/create-folder', { path: 'esc-cf/skills' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+  });
+
+  test('duplicate-path refuses a source routed into .ok through a symlink', async () => {
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-dup'), 'dir');
+    const res = await postJson('/api/duplicate-path', { kind: 'folder', path: 'esc-dup/local' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+  });
+
+  test('upload refuses a parentDocName inside .ok, no symlink needed', async () => {
+    // `.ok` sits INSIDE the content root, so the upload path's escape checks
+    // (`..`/`/`/NUL lexically, symlink-escape in storeUpload) all pass for a
+    // literal `.ok/...` parent — the reserved-subtree gate is the only refusal.
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm(
+        { parentDocName: '.ok/skills/planted' },
+        { name: 'evil.md', bytes: 'planted skill content' },
+      ),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'skills', 'evil.md'))).toBe(false);
+  });
+
+  test('upload refuses a parentDocName routed into .ok through a symlink', async () => {
+    // `esc-upload/skills` carries no reserved segment lexically, so
+    // `isReservedProjectStatePath` alone would admit it — only realpath-based
+    // canonicalization sees the planted directory link. This pins the UNION of
+    // the two canonical gates (the route's fast fail and `storeUpload`'s
+    // destination-side check): deleting either alone keeps this green because
+    // the other still refuses; deleting both goes red.
+    symlinkSync(resolve(contentDir, '.ok'), resolve(contentDir, 'esc-upload'), 'dir');
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm(
+        { parentDocName: 'esc-upload/skills/planted' },
+        { name: 'sneaky.md', bytes: 'planted skill content' },
+      ),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+    expect(existsSync(resolve(contentDir, '.ok', 'skills', 'sneaky.md'))).toBe(false);
+  });
+
+  test('upload refuses a ./-prefixed parentDocName with the same precondition as its siblings', async () => {
+    // A `.` segment defeats BOTH reserved disjuncts (`isReservedProjectStatePath`
+    // splits to ['.','esc',...]; `canonicalTargetIsReserved` swallows the
+    // resolution throw), so the gate is only sound when `isValidRelativeContentPath`
+    // runs first on the directory component — this pins that precondition.
+    // Self-contained: no planted symlink is needed, the `.` segment alone must refuse.
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm(
+        { parentDocName: './dotted-esc/skills/planted' },
+        { name: 'dotted.md', bytes: 'planted skill content' },
+      ),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(existsSync(resolve(contentDir, 'dotted-esc'))).toBe(false);
+  });
+
+  test('upload accepts a parentDocName whose basename carries a backslash', async () => {
+    // The precondition validates only the DIRECTORY component: the basename is
+    // a raw OS filename on the sidebar external-file-drop path (the client
+    // splices `file.name` verbatim), and backslash is a legal filename
+    // character on macOS/Linux. The server discards the basename — only
+    // `dirname(parentDocName)` reaches `resolveUploadDestDir` — so this must
+    // upload, not 400.
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm(
+        { parentDocName: 'alpha/notes\\draft.png' },
+        { name: 'dropped.png', bytes: 'png-ish bytes' },
+      ),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  test('create-folder maps a symlink escape OUT of the content root to a 400, not a 500', async () => {
+    // `escape-out/foo` passes the lexical check; the service's
+    // `resolveContentEntryPath` then throws the containment rejection. The
+    // route must classify that as the caller's 400 path-escape (matching
+    // create-page and rename-path), never the generic 500 that would tag the
+    // infra-error dashboard for a client mistake.
+    const outsideTarget = mkdtempSync(resolve(tmpRoot, 'escape-out-'));
+    symlinkSync(outsideTarget, resolve(contentDir, 'escape-out'), 'dir');
+    const res = await postJson('/api/create-folder', { path: 'escape-out/foo' });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+  });
+
+  test('duplicate-path maps a symlink escape OUT of the content root to a 400, not a 500', async () => {
+    // Same shape as the create-folder case above: the escape clears the lexical
+    // check, the reserved gate swallows, and the service's resolution throws the
+    // containment rejection — duplicate-path's own `isContainmentRejection` arm
+    // must classify it as the caller's 400.
+    const outsideTarget = mkdtempSync(resolve(tmpRoot, 'escape-dup-out-'));
+    symlinkSync(outsideTarget, resolve(contentDir, 'escape-dup-out'), 'dir');
+    const res = await postJson('/api/duplicate-path', {
+      kind: 'folder',
+      path: 'escape-dup-out/foo',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+  });
+
+  test('create-folder creates and refuses reserved directories', async () => {
+    const ok = await postJson('/api/create-folder', { path: 'made-native' });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { path?: string }).path).toBe('made-native');
+
+    const reserved = await postJson('/api/create-folder', { path: '.ok/nested' });
+    expect(reserved.status).toBe(400);
+    expect(((await reserved.json()) as { type?: string }).type).toBe(
+      'urn:ok:error:reserved-doc-name',
+    );
+  });
+
+  test('duplicate-path duplicates a document through the lifted route', async () => {
+    const res = await postJson('/api/duplicate-path', { kind: 'file', path: 'alpha.md' });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { duplicatedDocNames?: string[] };
+    expect(body.duplicatedDocNames).toHaveLength(1);
+  });
+
+  test('rename-path no-op (fromPath === toPath) short-circuits to the empty success shape', async () => {
+    const res = await postJson('/api/rename-path', {
+      kind: 'file',
+      fromPath: 'alpha',
+      toPath: 'alpha',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ renamed: [], renamedAssets: [], rewrittenDocs: [] });
+  });
+
+  test('rename-path refuses reserved directories with the typed problem', async () => {
+    const res = await postJson('/api/rename-path', {
+      kind: 'file',
+      fromPath: 'alpha',
+      toPath: '.ok/alpha',
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:reserved-doc-name');
+  });
+
+  test('delete-path 404s a missing target and deletes a real one', async () => {
+    const missing = await postJson('/api/delete-path', { kind: 'file', path: 'no-such-doc' });
+    expect(missing.status).toBe(404);
+    expect(((await missing.json()) as { type?: string }).type).toBe('urn:ok:error:doc-not-found');
+
+    const seed = await postJson('/api/create-page', { path: 'doomed-native.md' });
+    expect(seed.status).toBe(200);
+    const res = await postJson('/api/delete-path', { kind: 'file', path: 'doomed-native' });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { deletedDocNames?: string[] }).deletedDocNames).toContain(
+      'doomed-native',
+    );
+  });
+
+  test('trash-cleanup is idempotent for an already-gone file and refuses synthetic names', async () => {
+    const gone = await postJson('/api/trash/cleanup', { kind: 'file', path: 'never-existed.md' });
+    expect(gone.status).toBe(200);
+    expect(((await gone.json()) as { deletedDocNames?: string[] }).deletedDocNames).toEqual([]);
+
+    const reserved = await postJson('/api/trash/cleanup', {
+      kind: 'folder',
+      path: '__system__',
+    });
+    expect(reserved.status).toBe(400);
+    expect(((await reserved.json()) as { type?: string }).type).toBe(
+      'urn:ok:error:reserved-doc-name',
+    );
+  });
+
+  test('upload stores a multipart file', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm({ parentDocName: 'alpha' }, { name: 'pic.png', bytes: 'pic-bytes-1' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { src?: string; path?: string; deduped?: boolean };
+    expect(typeof body.src).toBe('string');
+    expect(typeof body.path).toBe('string');
+    expect(body.deduped).toBe(false);
+  });
+
+  test('fields-only multipart (no file part) lands as 400 no-file-received, not a hang', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm({ parentDocName: 'alpha' }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:no-file-received');
+  });
+
+  test('a multipart content-type without a boundary is a 400 malformed-upload', async () => {
+    const res = await rawRequest(server.port, '/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'multipart/form-data' },
+      body: 'not a multipart body',
+    });
+    expect(res.status).toBe(400);
+    expect(parseProblem(res.body).type).toBe('urn:ok:error:malformed-upload');
+  });
+
+  test('a client that disconnects mid-multipart does not wedge the server (req.complete guard)', async () => {
+    // Open a raw socket, start a multipart body whose file part never reaches
+    // the closing boundary, and drop the connection. busboy never reaches
+    // `_final`, so only readUploadBody's `req.on('close')` + `!req.complete`
+    // guard settles the parse promise. The guard's cleanup is the observable:
+    // `fail()` unlinks the minted tempfile, so the staging dir drains back to
+    // empty after each abort — without the guard the parse promise hangs and
+    // the orphan stays (the trailing healthy upload would succeed either way,
+    // so it alone cannot pin the guard). Note this pins the `req.complete`
+    // CLOSE-guard, not the `writeStream.destroy()` fd hygiene: `unlink` drops
+    // the directory entry regardless of open fds, so the drain assertion goes
+    // red only if `fail()` never runs at all.
+    const stagingDir = tmpUploadDir(contentDir);
+    const stagedUploads = () =>
+      existsSync(stagingDir)
+        ? readdirSync(stagingDir).filter((name) => name.startsWith('upload-'))
+        : [];
+    // Deadline sized so `6 × deadline` (three iterations × two waits) stays well
+    // under this test's explicit 45s budget — a genuinely stuck poll fires its
+    // own named diagnostic before vitest's generic timeout can mask which wait
+    // hung. The drain is sub-second when healthy.
+    const waitFor = async (what: string, predicate: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 4_000;
+      while (!predicate()) {
+        if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+    const boundary = 'x-ok-test-boundary';
+    for (let i = 0; i < 3; i++) {
+      await new Promise<void>((resolveAbort, rejectAbort) => {
+        const sock = connect(server.port, '127.0.0.1', () => {
+          const partial = [
+            `POST /api/upload HTTP/1.1`,
+            `Host: 127.0.0.1:${server.port}`,
+            `Content-Type: multipart/form-data; boundary=${boundary}`,
+            `Content-Length: 100000`,
+            '',
+            `--${boundary}`,
+            `Content-Disposition: form-data; name="file"; filename="cut.bin"`,
+            `Content-Type: application/octet-stream`,
+            '',
+            'partial-bytes-then-gone',
+          ].join('\r\n');
+          sock.write(partial);
+          // Abort only once the server has demonstrably dispatched into the
+          // write pipeline (a staged tempfile appeared) — a fixed-delay abort
+          // could beat dispatch on a loaded runner and silently degrade the
+          // whole loop to no-ops.
+          waitFor('a staged tempfile', () => stagedUploads().length > 0).then(() => {
+            sock.destroy();
+            resolveAbort();
+          }, rejectAbort);
+        });
+        sock.on('error', () => {
+          // Expected teardown noise from the destroyed socket.
+        });
+      });
+      await waitFor('the staging dir to drain', () => stagedUploads().length === 0);
+    }
+    const after = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      body: uploadForm(
+        { parentDocName: 'alpha' },
+        { name: 'after-aborts.png', bytes: 'after-abort-bytes' },
+      ),
+    });
+    expect(after.status).toBe(200);
+  }, 45_000);
+
+  test('an oversized JSON body on an ordinary family route is a clean 413', async () => {
+    const res = await rawRequest(server.port, '/api/create-page', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: 'big.md', pad: 'x'.repeat(1_100_000) }),
+    });
+    expect(res.status).toBe(413);
+    expect(parseProblem(res.body).type).toBe('urn:ok:error:payload-too-large');
+  });
+
+  test('the whole family refuses a rebound Host on its GET arms too (admission unchanged)', async () => {
+    for (const path of FAMILY_PATHS) {
+      const res = await rawRequest(server.port, path, {
+        headers: { Host: 'evil.example' },
+      });
+      expect(res.status, path).toBe(403);
+      expect(parseProblem(res.body).type, path).toBe('urn:ok:error:host-not-allowed');
+      // Gate-before-405: the refusal happens before verb dispatch, so no
+      // Allow header leaks from the method router.
+      expect(res.headers.allow, path).toBeUndefined();
+    }
+  });
+
+  test('foreign Origin is refused before dispatch on a ported route', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example' },
+      body: uploadForm(
+        { parentDocName: 'alpha' },
+        { name: 'x.png', bytes: 'origin-refused-bytes' },
+      ),
+    });
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:invalid-origin');
+  });
+
+  test('any forwarding header trips the proxied-request refusal on a ported route', async () => {
+    const res = await rawRequest(server.port, '/api/delete-path', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Forwarded-For': '203.0.113.7',
+      },
+      body: JSON.stringify({ kind: 'file', path: 'alpha' }),
+    });
+    expect(res.status).toBe(403);
+    const body = parseProblem(res.body);
+    expect(body.type).toBe('urn:ok:error:host-not-allowed');
+    expect(body.detail ?? body.title).toContain('Proxied request refused');
+  });
+
+  test('OPTIONS preflight answers 204 on a ported route', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/upload`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'http://localhost:5173' },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-methods')).toBe('GET, POST, PUT, DELETE, OPTIONS');
+  });
+
+  test('both chained groups answer on one server (multi-group dispatch)', async () => {
+    const linkGraph = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=alpha`);
+    expect(linkGraph.status).toBe(200);
+    const created = await postJson('/api/create-page', { path: 'chained-dispatch.md' });
+    expect(created.status).toBe(200);
+  });
+});

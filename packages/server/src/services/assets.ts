@@ -22,9 +22,15 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { fileTypeFromBuffer } from 'file-type';
 import { toContentRelativePath } from '../asset-references.ts';
+import { isReservedProjectStatePath } from '../content/managed-doc-enum.ts';
 import { isWithinContentDir } from '../content-path.ts';
 import { sanitizeFilename } from '../filename-sanitize.ts';
-import { assertNoSymlinkEscape, isAlreadyExistsError } from '../fs-safety.ts';
+import {
+  assertNoSymlinkEscape,
+  canonicalRelPathForNewTarget,
+  isAlreadyExistsError,
+  isContainmentRejection,
+} from '../fs-safety.ts';
 import { tracedMkdirSync } from '../fs-traced.ts';
 import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
@@ -86,6 +92,7 @@ type StoreUploadOutcome =
   | { ok: false; kind: 'invalid-attachment-folder' }
   | { ok: false; kind: 'path-escape'; cause?: unknown }
   | { ok: false; kind: 'dest-validation-error'; cause: unknown; destDir: string }
+  | { ok: false; kind: 'reserved-destination'; destDir: string }
   | { ok: false; kind: 'mkdir-failed'; reason: UploadWriteReason; cause: unknown }
   | {
       ok: false;
@@ -378,11 +385,32 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
       assertNoSymlinkEscape(destDir, resolvedContentDir);
     } catch (err) {
       cleanupTempfile();
-      const message = err instanceof Error ? err.message : String(err);
-      if (message.startsWith('symlink-escape:')) {
+      // Classify through the shared family predicate, not a message sniff, so
+      // this split tracks fs-safety.ts automatically: containment rejections
+      // are the caller's 400; everything else (raw errnos, a missing content
+      // root) is a server-side 500.
+      if (isContainmentRejection(err)) {
         return { ok: false, kind: 'path-escape' };
       }
       return { ok: false, kind: 'dest-validation-error', cause: err, destDir };
+    }
+    // Reserved-subtree gate on the DESTINATION the write actually lands in.
+    // This is the authoritative check: it sees the resolved `destDir`, so it
+    // covers both request arms at once — a `parentDocName` routed into
+    // `.ok`/`.git` through a symlinked directory, and a configured
+    // `content.attachmentFolderPath` that names a reserved subtree directly
+    // (the schema only rejects NUL/absolute/`..`, so `.ok/...` is a legal
+    // config value; a planted `.ok/config.yml` in a cloned tree chooses it).
+    // The route-level check on the request field is a fast fail, not the
+    // boundary.
+    const canonicalDestRel = canonicalRelPathForNewTarget(
+      destDir,
+      resolvedContentDir,
+      getLogger('upload'),
+    );
+    if (isReservedProjectStatePath(canonicalDestRel)) {
+      cleanupTempfile();
+      return { ok: false, kind: 'reserved-destination', destDir };
     }
     // mkdir -p the destination — bare-name / nested attachmentFolderPath
     // values produce directories that may not exist at first upload.
@@ -412,6 +440,13 @@ export function createAssetService(deps: AssetServiceDeps): AssetService {
       if (!isWithinContentDir(realDestDir, realContentDir)) {
         cleanupTempfile();
         return { ok: false, kind: 'path-escape' };
+      }
+      // Reservedness is re-checked here for the same TOCTOU reason containment
+      // is: a symlink-replace between the pre-mkdir gate and mkdir could route
+      // the realized directory into `.ok`/`.git` without leaving the root.
+      if (isReservedProjectStatePath(toPosix(relative(realContentDir, realDestDir)))) {
+        cleanupTempfile();
+        return { ok: false, kind: 'reserved-destination', destDir };
       }
     } catch (e) {
       const code = errnoCode(e);

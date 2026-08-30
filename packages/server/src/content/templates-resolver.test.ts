@@ -217,6 +217,76 @@ describe('resolveTemplatesAvailable', () => {
     expect(tpls[0]?.title).toBeUndefined();
     expect(tpls[0]?.description).toBeUndefined();
   });
+
+  test('a template symlinked outside the project root is dropped from the menu', async () => {
+    // `statSync` follows the link, so an escaping template would otherwise
+    // surface as a menu entry every consumer trusts to read. Containment is
+    // enforced here in the resolver, so it never appears. A sibling legitimate
+    // template in the same folder still resolves.
+    const outside = await mkdtemp(join(tmpdir(), 'tpl-outside-'));
+    try {
+      writeFileSync(join(outside, 'secret.txt'), 'TOP SECRET');
+      writeTemplate('notes', 'ok', withFm('OK', 'In-root template.'));
+      const tplDir = join(projectDir, 'notes', '.ok', 'templates');
+      symlinkSync(join(outside, 'secret.txt'), join(tplDir, 'leak.md'), 'file');
+
+      const tpls = resolveTemplatesAvailable(projectDir, 'notes');
+      expect(tpls.map((t) => t.name).sort()).toEqual(['ok']);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('a template symlinked to an in-root but out-of-templates path is dropped', () => {
+    // The containment anchor is the enumerating `.ok/templates/` directory, not
+    // the project root. A link pointing INSIDE the root but at `.ok/local/`
+    // (agent scratch, out of content scope) would still exfiltrate that file's
+    // bytes into a newly created doc, so it must drop too — a project-root anchor
+    // would have kept it.
+    const okLocal = join(projectDir, '.ok', 'local');
+    mkdirSync(okLocal, { recursive: true });
+    writeFileSync(join(okLocal, 'last-spawn-error.log'), 'stack trace with secrets');
+    writeTemplate('notes', 'ok', withFm('OK', 'In-root template.'));
+    symlinkSync(
+      join(okLocal, 'last-spawn-error.log'),
+      join(projectDir, 'notes', '.ok', 'templates', 'leak.md'),
+      'file',
+    );
+
+    const tpls = resolveTemplatesAvailable(projectDir, 'notes');
+    expect(tpls.map((t) => t.name).sort()).toEqual(['ok']);
+  });
+
+  test('a templates DIRECTORY symlinked out of the project drops all its entries', async () => {
+    // A symlinked `.ok/templates` is refused wholesale by the `lstat` gate
+    // (and, as backstop, `assertNoSymlinkEscape` realpaths its ANCHOR, so a
+    // `templatesDir`-only anchor would relocate to the link target — the
+    // project-root anchor refuses the out-of-project shape even without the
+    // gate). This pins the out-of-project direction.
+    const outside = await mkdtemp(join(tmpdir(), 'tpl-dir-outside-'));
+    try {
+      writeFileSync(join(outside, 'leak.md'), withFm('Leak', 'Foreign template.'));
+      mkdirSync(join(projectDir, 'notes', '.ok'), { recursive: true });
+      symlinkSync(outside, join(projectDir, 'notes', '.ok', 'templates'), 'dir');
+
+      expect(resolveTemplatesAvailable(projectDir, 'notes')).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('a templates DIRECTORY symlinked elsewhere IN-project is skipped wholesale', async () => {
+    // The per-entry anchors cannot catch this shape: anchor 1 realpaths to the
+    // link target and every entry is trivially inside it; anchor 2 passes
+    // because the target is inside the project. Only the `lstat` gate — which
+    // does not follow the link — refuses it, keeping in-project `.md` files
+    // (e.g. `.okignore`-excluded ones) from surfacing as menu items.
+    writeFileSync(join(projectDir, 'stash.md'), withFm('Stash', 'Not a template.'));
+    mkdirSync(join(projectDir, 'notes', '.ok'), { recursive: true });
+    symlinkSync(projectDir, join(projectDir, 'notes', '.ok', 'templates'), 'dir');
+
+    expect(resolveTemplatesAvailable(projectDir, 'notes')).toEqual([]);
+  });
 });
 
 describe('resolveProjectTemplates', () => {
