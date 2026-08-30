@@ -71,8 +71,16 @@ import {
   parseMd,
   parseMdToEditorMdast,
   parseMdToMdast,
+  parseMdWithSourceMap,
   serializeMd,
 } from './pipeline.ts';
+import {
+  buildPmSourceMap,
+  createSourceMapRecorder,
+  type PmSourceMap,
+  type SourceMapRecorderHolder,
+  withSourceMapRecording,
+} from './pm-source-map.ts';
 import { normalizeDocRelativeAssetUrl } from './resolve-image-url.ts';
 import { emitMdxJsxTextFromNode } from './serialize-helpers.ts';
 import { flattenCellBlocks } from './table-cell-flatten.ts';
@@ -121,11 +129,15 @@ export class MarkdownManager {
   private parseProcessor: Processor;
   private serializeProcessor: Processor;
   private parseCtx: ParseContextHolder = { current: {} };
+  private sourceMapHolder: SourceMapRecorderHolder = { current: null };
   private freshnessHolder: FreshnessCheckerHolder = { checker: undefined };
 
   constructor(options: MarkdownManagerOptions) {
     this.schema = getSchema(options.extensions);
-    this.handlers = buildMdastToPmHandlers(this.schema, this.parseCtx);
+    this.handlers = withSourceMapRecording(
+      buildMdastToPmHandlers(this.schema, this.parseCtx),
+      this.sourceMapHolder,
+    );
     this.freshnessHolder.checker = options.deriveStructuralFreshness
       ? createStructuralFreshnessChecker({
           parse: (sourceRaw) => this.parseWithFallback(sourceRaw),
@@ -158,6 +170,37 @@ export class MarkdownManager {
     try {
       const doc = parseMd(markdown, this.parseProcessor);
       return doc.toJSON() as JSONContent;
+    } finally {
+      this.parseCtx.current = {};
+    }
+  }
+
+  /**
+   * Parse to a ProseMirror doc together with the byte map back to `markdown`.
+   *
+   * The WYSIWYG projection needs this pairing, not the doc alone: a local edit
+   * is spliced back into the source by block range, and a cursor is carried
+   * across a mode switch by offset. `parse()` stays the cheap path — the map is
+   * only built for callers that ask for one.
+   *
+   * The empty-source shortcut mirrors `parse()`'s: the same filler doc, and a
+   * map whose single paragraph spans the (empty) source, so callers do not have
+   * to special-case a blank document.
+   */
+  parseWithSourceMap(markdown: string, opts?: ParseContext): { doc: PmNode; map: PmSourceMap } {
+    if (!markdown.trim()) {
+      const doc = this.schema.nodeFromJSON({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [] }],
+      }) as PmNode;
+      return {
+        doc,
+        map: buildPmSourceMap(doc, createSourceMapRecorder(), markdown),
+      };
+    }
+    this.parseCtx.current = opts ?? {};
+    try {
+      return parseMdWithSourceMap(markdown, this.parseProcessor, this.sourceMapHolder);
     } finally {
       this.parseCtx.current = {};
     }

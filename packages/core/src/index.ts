@@ -821,6 +821,7 @@ export {
   maskNonRenderingContexts,
   skipInlineCode,
 } from './markdown/non-rendering-contexts.ts';
+export type { PmSourceMap, PmSourceSpan } from './markdown/pm-source-map.ts';
 export { normalizeReferenceLabel } from './markdown/reference-label.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {

@@ -20,7 +20,7 @@ import { protectFromMdx, restoreFromMdx } from './autolink-void-html-guard.ts';
 import { encodeBackslashEscapes, restoreBackslashEscapesPlugin } from './backslash-escape-guard.ts';
 import { calloutTransformerPlugin, REMARK_GITHUB_ALERTS_OPTIONS } from './callout-transformer.ts';
 import { commentPromoterPlugin } from './comment-promoter.ts';
-import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
+import { type DedentEdit, dedentBlockJsxClose, undedentOffset } from './dedent-block-jsx-close.ts';
 import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts';
 import { divAlignPromoterPlugin } from './div-align-promoter.ts';
 import { materializeDocEdgeBlankRuns } from './doc-edge-blank-runs.ts';
@@ -36,6 +36,12 @@ import type { SourceDocBoundary } from './mdast-augmentation.ts';
 import { mergedPostParseWalkerPlugin } from './merged-walker.ts';
 import { mermaidPromoterPlugin } from './mermaid-promoter.ts';
 import { nonRenderingContextDemotePlugin } from './non-rendering-context-demote.ts';
+import {
+  buildPmSourceMap,
+  createSourceMapRecorder,
+  type PmSourceMap,
+  type SourceMapRecorderHolder,
+} from './pm-source-map.ts';
 import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
@@ -212,8 +218,56 @@ function readDocBoundary(value: unknown): SourceDocBoundary | undefined {
 }
 
 export function parseMd(rawSource: string, processor: Processor): PmNode {
+  return parseMdInternal(rawSource, processor);
+}
+
+/** A projected document together with the map back to the bytes it came from. */
+export interface ParsedWithSourceMap {
+  doc: PmNode;
+  map: PmSourceMap;
+}
+
+/**
+ * Parse and build the source map in one pass.
+ *
+ * The recorder has to be installed for the duration of the parse and taken back
+ * out afterwards: the processor is frozen around the wrapped handler table at
+ * construction, so the holder is the only way in, and leaving a recorder
+ * installed would silently attach the next parse's nodes to this map.
+ */
+export function parseMdWithSourceMap(
+  rawSource: string,
+  processor: Processor,
+  holder: SourceMapRecorderHolder,
+): ParsedWithSourceMap {
+  const recorder = createSourceMapRecorder();
+  const edits: DedentEdit[] = [];
+  const previous = holder.current;
+  holder.current = recorder;
+  let doc: PmNode;
+  try {
+    doc = parseMdInternal(rawSource, processor, edits);
+  } finally {
+    holder.current = previous;
+  }
+  // Both pre-parse shifts, composed back the way they were applied: the dedent
+  // ran on the post-BOM text, so its removals are re-added first and the BOM
+  // last.
+  const bomShift = rawSource.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const adjust =
+    edits.length === 0 && bomShift === 0
+      ? undefined
+      : (offset: number) => undedentOffset(edits, offset) + bomShift;
+  return { doc, map: buildPmSourceMap(doc, recorder, rawSource, adjust) };
+}
+
+function parseMdInternal(
+  rawSource: string,
+  processor: Processor,
+  dedentEdits?: DedentEdit[],
+): PmNode {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
-  const source = dedentBlockJsxClose(rawAfterBom);
+  const source = dedentBlockJsxClose(rawAfterBom, dedentEdits);
   const protectedFr14 = encodeBackslashEscapes(source);
   const protectedR23 = protectFromMdx(protectedFr14);
   const protected_ = encodeEntityRefs(protectedR23);

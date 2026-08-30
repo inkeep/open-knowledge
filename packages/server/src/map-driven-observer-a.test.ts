@@ -11,7 +11,7 @@
  */
 
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
-import { getSchema } from '@tiptap/core';
+import { getSchema, type JSONContent } from '@tiptap/core';
 import { updateYFragment } from '@tiptap/y-tiptap';
 import { describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -332,7 +332,13 @@ describe('map-driven Observer A — default Path A behavior', () => {
       cleanup();
     });
 
-    test('an offset-less block drain increments fallback reason missing-position', () => {
+    test('a comment-block drain now takes the splice path instead of missing-position', () => {
+      // A `commentBlock` is minted by the comment promoter rather than by
+      // remark, so it used to reach this guard with no `position` and send the
+      // whole drain down the fallback. The mdast→PM position work (single-CRDT
+      // Phase 0) mints it, so a document that opens with a comment now splices
+      // like any other — asserted here because this file is where that guard's
+      // real-world trigger lived.
       const raw = '<!-- note -->\n\nOriginal.\n';
       const { doc, xmlFragment, ytext } = createTestDoc();
       const cleanup = setupServerObservers({ doc, xmlFragment, ytext, mdManager, schema });
@@ -347,8 +353,8 @@ describe('map-driven Observer A — default Path A behavior', () => {
       expect(
         (after.mapDrivenSpliceFallback['missing-position'] ?? 0) -
           (before.mapDrivenSpliceFallback['missing-position'] ?? 0),
-      ).toBe(1);
-      expect(after.mapDrivenSpliceApplied - before.mapDrivenSpliceApplied).toBe(0);
+      ).toBe(0);
+      expect(after.mapDrivenSpliceApplied - before.mapDrivenSpliceApplied).toBe(1);
 
       cleanup();
     });
@@ -430,11 +436,24 @@ describe('map-driven Observer A — default Path A behavior', () => {
     });
 
     test('an offset-less block reports missing-position through the pure computer', () => {
+      // No input the parser accepts still yields a position-less top-level
+      // block — the last one, `commentBlock`, is minted with a span now — so
+      // the guard is driven directly. It must stay: it is the last thing
+      // standing between an offset-less block and an offset arithmetic throw
+      // inside the drain.
+      const stripPositions = {
+        parseToEditorMdast: (body: string) => {
+          const tree = mdManager.parseToEditorMdast(body);
+          for (const child of tree.children) delete child.position;
+          return tree;
+        },
+        serialize: (json: JSONContent) => mdManager.serialize(json),
+      } as unknown as MarkdownManager;
       const reasons: string[] = [];
       const splice = computeMapDrivenBodySplice(
-        '<!-- note -->\n',
-        mdManager.parse('<!-- note -->\n\nX.\n'),
-        mdManager,
+        'Note.\n',
+        mdManager.parse('Note.\n\nX.\n'),
+        stripPositions,
         (reason) => {
           reasons.push(reason);
         },

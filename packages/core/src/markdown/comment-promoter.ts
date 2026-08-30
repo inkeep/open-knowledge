@@ -1,4 +1,5 @@
 import type { Nodes, Paragraph, PhrasingContent, Root, RootContent, Text } from 'mdast';
+import type { Position } from 'unist';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import type { CommentBlockMdast, CommentMdast } from './mdast-augmentation.ts';
@@ -127,6 +128,21 @@ function collectInlineCommentMatches(
   return deduped;
 }
 
+/**
+ * Span a synthesized node across the source the nodes it replaces occupied.
+ *
+ * `commentBlock` is minted here rather than by remark, so nothing gives it a
+ * `position` — and a top-level block without one is the one hole the ProseMirror
+ * source map cannot narrow from its neighbours, because a comment block is
+ * exactly where a projection has to place a splice. The replaced children still
+ * carry remark's positions, so the span is theirs end to end.
+ */
+function spanOver(nodes: readonly RootContent[]): Position | undefined {
+  const start = nodes[0]?.position?.start;
+  const end = nodes[nodes.length - 1]?.position?.end;
+  return start === undefined || end === undefined ? undefined : { start, end };
+}
+
 function handleBlockCommentsAtRoot(tree: Root, source: string): void {
   const children = tree.children;
   let i = 0;
@@ -157,9 +173,11 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
               {
                 type: 'paragraph',
                 children: [{ type: 'text', value: fenced }],
+                ...(child.position ? { position: child.position } : {}),
               } as Paragraph,
             ],
             data: { sourceForm: 'percent', sourceLayout: 'block' },
+            ...(child.position ? { position: child.position } : {}),
           };
           children.splice(i, 1, block as unknown as RootContent);
           i += 1;
@@ -178,9 +196,11 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
               {
                 type: 'paragraph',
                 children: [{ type: 'text', value: htmlBlockBody }],
+                ...(child.position ? { position: child.position } : {}),
               } as Paragraph,
             ],
             data: { sourceForm: 'html', sourceLayout: 'inline' },
+            ...(child.position ? { position: child.position } : {}),
           };
           children.splice(i, 1, block as unknown as RootContent);
           i += 1;
@@ -194,6 +214,7 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
           type: 'commentBlock',
           children: [strippedHtml],
           data: { sourceForm: 'html', sourceLayout: 'inline' },
+          ...(child.position ? { position: child.position } : {}),
         };
         children.splice(i, 1, block as unknown as RootContent);
         i += 1;
@@ -206,6 +227,7 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
           type: 'commentBlock',
           children: [strippedPercent],
           data: { sourceForm: 'percent', sourceLayout: 'inline' },
+          ...(child.position ? { position: child.position } : {}),
         };
         children.splice(i, 1, block as unknown as RootContent);
         i += 1;
@@ -222,10 +244,14 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
       }
       if (j < children.length && j > i + 1) {
         const inner = children.slice(i + 1, j);
+        // The span covers the fences too: they are the block's source, and a
+        // splice that replaced only the interior would strand them.
+        const fencedSpan = spanOver(children.slice(i, j + 1));
         const block: CommentBlockMdast = {
           type: 'commentBlock',
           children: inner as Nodes[],
           data: { sourceForm: 'percent', sourceLayout: 'block' },
+          ...(fencedSpan ? { position: fencedSpan } : {}),
         };
         children.splice(i, j - i + 1, block as unknown as RootContent);
         i += 1;
@@ -321,7 +347,11 @@ function stripHtmlCommentDelimiters(p: Paragraph): Paragraph | null {
   }
   if (newChildren.length === 0) return null;
 
-  return { type: 'paragraph', children: newChildren };
+  return {
+    type: 'paragraph',
+    children: newChildren,
+    ...(p.position ? { position: p.position } : {}),
+  };
 }
 
 function stripPercentDelimiters(p: Paragraph): Paragraph | null {
@@ -367,7 +397,11 @@ function stripPercentDelimiters(p: Paragraph): Paragraph | null {
   }
   if (newChildren.length === 0) return null;
 
-  return { type: 'paragraph', children: newChildren };
+  return {
+    type: 'paragraph',
+    children: newChildren,
+    ...(p.position ? { position: p.position } : {}),
+  };
 }
 
 function countOccurrences(haystack: string, needle: string): number {
