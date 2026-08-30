@@ -512,6 +512,14 @@ function sourceMapOverSpans(
       if (last <= first) return null;
       const head = blocks[first] as PmSourceSpan;
       const tail = blocks[last - 1] as PmSourceSpan;
+      // A zero-width range is an INSERTION POINT, not a line. Blocks that emit
+      // no markdown — an empty paragraph the user just made with Enter — hold a
+      // zero-width span so the table keeps one entry per document block; widening
+      // that to its enclosing line would make the next edit overwrite the
+      // neighbour it sits against.
+      if (head.sourceStart === tail.sourceEnd) {
+        return { from: head.sourceStart, to: head.sourceStart };
+      }
       // Without the bytes (a rebased map keeps none) the block span IS the line
       // range: rebase derives every span from a splice that was itself
       // line-bounded, so there is nothing left to widen.

@@ -349,10 +349,21 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
           }
 
           const nextSource = applySplice(projection.source, splice);
-          const doc = ytext.doc;
-          if (doc === null) return;
-          doc.transact(() => applyToYText(ytext, splice), origin);
-          stats.writes++;
+          // A zero-width empty splice means the document changed but the bytes
+          // did not — the edit produced a block markdown cannot spell, an empty
+          // paragraph from Enter being the everyday case. Skip the CRDT write
+          // entirely (an empty transaction would still wake every observer and
+          // land a stack item that undoes nothing) and rebase, which records the
+          // block with a zero-width span so the table keeps one entry per
+          // document block. The block reaches the markdown as soon as it holds
+          // content.
+          const writesBytes = splice.to > splice.from || splice.text !== '';
+          if (writesBytes) {
+            const doc = ytext.doc;
+            if (doc === null) return;
+            doc.transact(() => applyToYText(ytext, splice), origin);
+            stats.writes++;
+          }
 
           const rebased = rebaseProjection(projection, after, changed, splice);
           if (rebased !== null) {

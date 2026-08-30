@@ -23,6 +23,7 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { Editor, getSchema } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
@@ -163,6 +164,132 @@ describe('projection binding — WYSIWYG edits write Y.Text under the user origi
     expect(after).toContain('inside.D');
     // And the projection still agrees with a fresh parse of what it wrote.
     expect(md.parse(after)).toEqual(rig.editor.state.doc.toJSON());
+    rig.destroy();
+  });
+});
+
+/** Put the caret at a document position and press Enter. */
+function pressEnter(editor: Editor, at: number): void {
+  editor.view.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, at)));
+  editor.commands.splitBlock();
+}
+
+/** Document position at the end of a top-level block's content. */
+function endOfBlock(editor: Editor, blockIndex: number): number {
+  let pos = 0;
+  for (let i = 0; i <= blockIndex; i++) pos += editor.state.doc.child(i).nodeSize;
+  return pos - 1;
+}
+
+describe('projection binding — blocks markdown cannot spell', () => {
+  // Enter makes an EMPTY paragraph, and markdown has no way to write one: a
+  // blank line is only expressible as a wider gap between two blocks that
+  // themselves emit. The projection therefore has to hold a block the CRDT does
+  // not, until it gets content. Getting this wrong is not subtle — the first
+  // version routed the empty block into the deletion branch, failed to place it,
+  // rebuilt the document from the unchanged markdown, and Enter appeared to do
+  // nothing at all while Shift+Enter (a hard break INSIDE a paragraph, which
+  // markdown can spell) worked fine.
+  it('keeps the empty paragraph Enter creates, and writes no bytes for it', () => {
+    const rig = createRig(DOC);
+    const before = rig.ytext.toString();
+    const blocks = rig.editor.state.doc.childCount;
+
+    pressEnter(rig.editor, endOfBlock(rig.editor, blocks - 1));
+
+    expect(rig.editor.state.doc.childCount).toBe(blocks + 1);
+    const added = rig.editor.state.doc.child(blocks);
+    expect(added.type.name).toBe('paragraph');
+    expect(added.content.size).toBe(0);
+    expect(rig.ytext.toString()).toBe(before);
+    rig.destroy();
+  });
+
+  it('materializes the block into markdown as soon as it has content', () => {
+    const rig = createRig(DOC);
+    pressEnter(rig.editor, endOfBlock(rig.editor, rig.editor.state.doc.childCount - 1));
+    rig.editor.commands.insertContent('New paragraph.');
+
+    expect(rig.ytext.toString()).toBe(`${DOC}\nNew paragraph.\n`);
+    // And the projection agrees with a fresh parse of what it wrote.
+    expect(md.parse(rig.ytext.toString())).toEqual(rig.editor.state.doc.toJSON());
+    rig.destroy();
+  });
+
+  it('splits a paragraph in two when Enter lands mid-block', () => {
+    // No space at the split point: splitting mid-phrase leaves the second block
+    // with a leading space, which the serializer correctly escapes to keep the
+    // byte — right behaviour, but it would make this test about escaping.
+    const rig = createRig('# H\n\nhelloworld\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 1) - 'world'.length);
+
+    expect(rig.editor.state.doc.childCount).toBe(3);
+    expect(rig.ytext.toString()).toBe('# H\n\nhello\n\nworld\n');
+    rig.destroy();
+  });
+
+  it('preserves a leading space when a split creates one', () => {
+    const rig = createRig('# H\n\nhello world\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 1) - ' world'.length);
+    // The space survives as an escape rather than being silently dropped.
+    expect(rig.ytext.toString()).toBe('# H\n\nhello\n\n&#x20;world\n');
+    // Re-parsing gives the space back — as text plus a `sourceLiteral` mark
+    // carrying the escape it was written with, so a later serialize re-emits
+    // the same bytes. Structural equality is therefore the wrong assertion
+    // here: the editor's document and a parse of what it wrote agree on
+    // content but not on provenance markup, and only the content is the
+    // user-visible claim.
+    const reparsed = rig.editor.state.doc.type.schema.nodeFromJSON(md.parse(rig.ytext.toString()));
+    expect(reparsed.childCount).toBe(rig.editor.state.doc.childCount);
+    expect(reparsed.textContent).toBe(rig.editor.state.doc.textContent);
+    rig.destroy();
+  });
+
+  it('survives Enter, typing, Enter, typing', () => {
+    const rig = createRig('# H\n\nfirst\n');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 1));
+    rig.editor.commands.insertContent('second');
+    pressEnter(rig.editor, endOfBlock(rig.editor, 2));
+    rig.editor.commands.insertContent('third');
+
+    expect(rig.ytext.toString()).toBe('# H\n\nfirst\n\nsecond\n\nthird\n');
+    expect(md.parse(rig.ytext.toString())).toEqual(rig.editor.state.doc.toJSON());
+    rig.destroy();
+  });
+
+  it('removes an empty paragraph again without touching the bytes', () => {
+    const rig = createRig(DOC);
+    const before = rig.ytext.toString();
+    const blocks = rig.editor.state.doc.childCount;
+    pressEnter(rig.editor, endOfBlock(rig.editor, blocks - 1));
+    expect(rig.editor.state.doc.childCount).toBe(blocks + 1);
+
+    rig.editor.commands.undo?.();
+    // Undo goes through the shared Y.UndoManager, which saw no write for the
+    // empty block; delete it directly instead, the way Backspace would.
+    const size = rig.editor.state.doc.content.size;
+    const lastSize = rig.editor.state.doc.child(rig.editor.state.doc.childCount - 1).nodeSize;
+    if (rig.editor.state.doc.childCount > blocks) {
+      rig.editor.view.dispatch(rig.editor.state.tr.delete(size - lastSize, size));
+    }
+    expect(rig.editor.state.doc.childCount).toBe(blocks);
+    expect(rig.ytext.toString()).toBe(before);
+    rig.destroy();
+  });
+
+  it('keeps an outside write correct while an unspellable block is held', () => {
+    const rig = createRig(DOC);
+    pressEnter(rig.editor, endOfBlock(rig.editor, rig.editor.state.doc.childCount - 1));
+    // An agent writes while the editor holds a block the CRDT never saw. The
+    // reprojection is from the markdown, so the unwritten block goes — correct,
+    // since nothing anywhere recorded it.
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Preamble.');
+    expect(rig.ytext.toString()).toBe(`Preamble.\n\n${DOC}`);
+
+    // And the editor still writes correctly afterwards.
+    rig.editor.commands.insertContent('!');
+    expect(rig.ytext.toString()).toContain('Preamble.');
     rig.destroy();
   });
 });

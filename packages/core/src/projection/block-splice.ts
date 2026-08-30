@@ -194,50 +194,113 @@ export function computeBlockSplice(
   const text = serializeBlockRange(after, range.after, md);
   const shift = (offset: number): number => offset + bodyOffset;
 
-  // Replacement: the block range owns whole lines, so the splice is those lines.
-  if (range.before.from < range.before.to && text !== '') {
-    const bounds = map.blockRangeToSourceRange(range.before.from, range.before.to);
-    if (bounds === null) return null;
-    return { from: shift(bounds.from), to: shift(bounds.to), text };
-  }
+  // The bytes the replaced blocks occupy. Zero-width when the edit inserts
+  // between blocks, and ALSO when the blocks being replaced are themselves
+  // zero-emission — both are insertion points, and both must take the
+  // separator-carrying path below rather than the line-replacing one.
+  const bounds =
+    range.before.from < range.before.to
+      ? map.blockRangeToSourceRange(range.before.from, range.before.to)
+      : null;
+  const occupiesBytes = bounds !== null && bounds.to > bounds.from;
 
   // Deletion: take one separating blank run with the blocks, on whichever side
   // still has a neighbour, so removing a block cannot leave a wider gap behind.
-  if (text === '') {
-    const bounds = map.blockRangeToSourceRange(range.before.from, range.before.to);
-    if (bounds === null) return null;
+  if (text === '' && occupiesBytes) {
+    const { from, to } = bounds;
     if (range.before.to < blocks.length) {
       const next = blocks[range.before.to];
       return {
-        from: shift(bounds.from),
-        to: shift(next === undefined ? bounds.to : lineStart(body, next.sourceStart)),
+        from: shift(from),
+        to: shift(next === undefined ? to : lineStart(body, next.sourceStart)),
         text: '',
       };
     }
     if (range.before.from > 0) {
       const prev = blocks[range.before.from - 1];
       return {
-        from: shift(prev === undefined ? bounds.from : lineEnd(body, prev.sourceEnd)),
-        to: shift(bounds.to),
+        from: shift(prev === undefined ? from : lineEnd(body, prev.sourceEnd)),
+        to: shift(to),
         text: '',
       };
     }
-    return { from: shift(bounds.from), to: shift(bounds.to), text: '' };
+    return { from: shift(from), to: shift(to), text: '' };
   }
 
-  // Insertion: a zero-width write at a line boundary, carrying its own
-  // separator on the side that has a neighbour.
-  if (blocks.length === 0) return { from: shift(0), to: shift(body.length), text };
-  if (range.before.from < blocks.length) {
-    const at = blocks[range.before.from];
-    if (at === undefined) return null;
-    const point = shift(lineStart(body, at.sourceStart));
-    return { from: point, to: point, text: `${text}\n\n` };
+  // Replacement: the block range owns whole lines, so the splice is those lines.
+  if (occupiesBytes) {
+    return { from: shift(bounds.from), to: shift(bounds.to), text };
   }
-  const last = blocks[blocks.length - 1];
-  if (last === undefined) return null;
-  const point = shift(lineEnd(body, last.sourceEnd));
-  return { from: point, to: point, text: `\n\n${text}` };
+
+  // Everything below writes at a POINT: either between two blocks, or into the
+  // slot a zero-emission block already holds.
+  const anchor = insertionAnchor(body, blocks, range.before.from);
+
+  // Zero-emission: the new blocks serialize to nothing, so there is nothing to
+  // write. An empty paragraph — what Enter produces before anything is typed
+  // into it — has no markdown spelling; markdown can only express a blank line
+  // as a wider gap between two blocks that DO emit. Returning an empty
+  // zero-width splice says "the document changed, the bytes did not": the caller
+  // keeps the block in its projection (holding a zero-width span, so the table
+  // still has one entry per document block) and writes nothing. The block
+  // materializes into real bytes the moment it gets content.
+  //
+  // Silently dropping this case instead is what made Enter appear to do nothing:
+  // the empty paragraph could not be placed, the projection rebuilt from the
+  // unchanged markdown, and the user's new line vanished as they made it.
+  if (text === '') {
+    const point = shift(anchor?.point ?? 0);
+    return { from: point, to: point, text: '' };
+  }
+
+  // Nothing else in the document emits anything, so the insertion IS the
+  // document and there is no neighbour to separate from.
+  if (anchor === null) return { from: shift(0), to: shift(body.length), text };
+
+  // The blank-line separator belongs to no block's span, so an insertion has to
+  // bring its own — on the side the anchor was taken from. Point and side are
+  // one decision: a separator on the far side of the anchor from the neighbour
+  // it was measured against lands the text inside that neighbour's gap instead
+  // of beside it.
+  const point = shift(anchor.point);
+  return {
+    from: point,
+    to: point,
+    text: anchor.follows ? `\n\n${text}` : `${text}\n\n`,
+  };
+}
+
+/**
+ * Where a point-write lands, and which side of it the separator goes.
+ *
+ * `follows` means the point was taken from the END of a preceding block, so the
+ * text comes after the separator; otherwise it was taken from the START of a
+ * following block and the separator comes after the text. Returning them
+ * together is the point of this helper — they were separate once, and the text
+ * landed on the wrong side of the gap.
+ *
+ * Blocks that emit nothing are skipped on both scans: they hold no bytes to
+ * anchor against, so anchoring to one would place the write at an offset that
+ * describes no line.
+ */
+function insertionAnchor(
+  body: string,
+  blocks: readonly { sourceStart: number; sourceEnd: number }[],
+  beforeFrom: number,
+): { point: number; follows: boolean } | null {
+  for (let i = Math.min(beforeFrom, blocks.length) - 1; i >= 0; i--) {
+    const block = blocks[i];
+    if (block !== undefined && block.sourceEnd > block.sourceStart) {
+      return { point: lineEnd(body, block.sourceEnd), follows: true };
+    }
+  }
+  for (let i = Math.max(0, beforeFrom); i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block !== undefined && block.sourceEnd > block.sourceStart) {
+      return { point: lineStart(body, block.sourceStart), follows: false };
+    }
+  }
+  return null;
 }
 
 /** Apply a splice to the source it was computed against. */
